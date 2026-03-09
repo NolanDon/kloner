@@ -19,10 +19,10 @@ export default function Image() {
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          background: "linear-gradient(135deg, #1b0f2a 0%, #2a1b3e 55%, #111827 100%)",
-          color: "white",
+          background: "#ffffff",
+          color: "#111827",
           fontFamily:
-            "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, 'Apple Color Emoji', 'Segoe UI Emoji'",
+            "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial",
         }}
       >
         <div
@@ -33,31 +33,49 @@ export default function Image() {
             gap: 18,
             padding: 64,
             borderRadius: 28,
-            border: "1px solid rgba(255,255,255,0.12)",
-            background:
-              "linear-gradient(180deg, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0.04) 100%)",
+            border: "1px solid rgba(17,24,39,0.08)",
+            background: "#ffffff",
+            boxShadow: "0 20px 44px rgba(17,24,39,0.08)",
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 14, justifyContent: "space-between" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
             <div
               style={{
-                width: 16,
-                height: 16,
+                width: 18,
+                height: 18,
                 borderRadius: 999,
                 background: "#F55F2A",
               }}
             />
-            <div style={{ fontSize: 26, letterSpacing: -0.5, opacity: 0.9, display: "flex" }}>
+            <div style={{ fontSize: 26, letterSpacing: -0.4, color: "#111827", display: "flex", fontWeight: 500 }}>
               kloner.app
+            </div>
+            </div>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                padding: "10px 18px",
+                borderRadius: 999,
+                background: "#F55F2A",
+                color: "#ffffff",
+                fontSize: 18,
+                fontWeight: 500,
+              }}
+            >
+              Start project
             </div>
           </div>
 
-          <div style={{ fontSize: 86, fontWeight: 800, lineHeight: 1.02, display: "flex", flexDirection: "column" }}>
+          <div style={{ fontSize: 82, fontWeight: 500, lineHeight: 1.03, letterSpacing: -1.8, display: "flex", flexDirection: "column" }}>
             Clone.
-            <span style={{ color: "#F55F2A" }}> Customize.</span> Deploy.
+            <span style={{ color: "#F55F2A" }}>Customize.</span>
+            Deploy.
           </div>
 
-          <div style={{ fontSize: 30, opacity: 0.9, maxWidth: 820, lineHeight: 1.35, display: "flex" }}>
+          <div style={{ fontSize: 30, color: "#374151", maxWidth: 860, lineHeight: 1.35, display: "flex", fontWeight: 400 }}>
             Drop a link or enter a description to generate an editable preview, export clean HTML, and ship faster.
           </div>
 
@@ -67,17 +85,16 @@ export default function Image() {
               gap: 10,
               marginTop: 8,
               flexWrap: "wrap",
-              fontSize: 22,
-              opacity: 0.9,
+              fontSize: 21,
             }}
           >
-            <span style={{ padding: "8px 14px", borderRadius: 999, background: "rgba(255,255,255,0.10)" }}>
+            <span style={{ padding: "10px 16px", borderRadius: 999, background: "#fff", border: "1px solid rgba(17,24,39,0.14)", color: "#111827", fontWeight: 400 }}>
               AI preview builder
             </span>
-            <span style={{ padding: "8px 14px", borderRadius: 999, background: "rgba(255,255,255,0.10)" }}>
+            <span style={{ padding: "10px 16px", borderRadius: 999, background: "#fff", border: "1px solid rgba(17,24,39,0.14)", color: "#111827", fontWeight: 400 }}>
               Export HTML
             </span>
-            <span style={{ padding: "8px 14px", borderRadius: 999, background: "rgba(255,255,255,0.10)" }}>
+            <span style={{ padding: "10px 16px", borderRadius: 999, background: "#fff", border: "1px solid rgba(17,24,39,0.14)", color: "#111827", fontWeight: 400 }}>
               One‑click deploy
             </span>
           </div>
