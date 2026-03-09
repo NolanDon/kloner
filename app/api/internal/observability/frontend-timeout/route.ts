@@ -65,7 +65,7 @@ export async function POST(req: NextRequest) {
             const reason = cleanText(body?.reason, 200);
             const ageMs = cleanNumber(body?.ageMs);
             const elapsedMs = cleanNumber(body?.elapsedMs);
-            const statusCode = cleanNumber(body?.statusCode) || (severity === "info" ? 200 : 504);
+            const statusCode = cleanNumber(body?.statusCode) || ((severity === "info" || severity === "warning") ? 200 : 504);
             const tags = cleanTags(body?.tags) || ["preview", "timeout", "frontend"];
             const requestId = cleanText(body?.requestId, 200);
             const jobId = cleanText(body?.jobId, 200);
