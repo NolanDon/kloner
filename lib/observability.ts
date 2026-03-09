@@ -139,6 +139,25 @@ function isLocalhostUrl(rawUrl?: string): boolean {
 function shouldSuppressSlackWebhook(event: StoredEvent): boolean {
     if (isLocalhostUrl(event.url)) return true;
 
+    const action = String(event.action || "").toLowerCase();
+    const message = String(event.message || "").toLowerCase();
+    const tags = Array.isArray(event.tags)
+        ? event.tags.map((t) => String(t || "").toLowerCase())
+        : [];
+
+    const isLoadingIssue =
+        action.includes("preview") ||
+        action.includes("iframe") ||
+        action.includes("timeout") ||
+        message.includes("preview") ||
+        message.includes("iframe") ||
+        tags.includes("preview") ||
+        tags.includes("timeout") ||
+        tags.includes("frontend");
+
+    // Loading incidents should always reach Slack, even for internally suppressed users.
+    if (isLoadingIssue) return false;
+
     const suppressedUserIds = parseCsvSet(process.env.OBS_SUPPRESS_SLACK_USER_IDS);
     // Backward compatible default for the primary owner UID prefix requested in ops.
     const suppressedUserPrefixes = [

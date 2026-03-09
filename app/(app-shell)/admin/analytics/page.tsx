@@ -12,6 +12,13 @@ type GateState = "loading" | "allowed" | "denied";
 
 const ACCENT = "#f55f2a";
 
+type AiChatAuditEntry = {
+    appId: string;
+    at: Date | null;
+    userPrompt: string;
+    assistantReply: string;
+};
+
 type UserAnalyticsRow = {
     id: string;
     email?: string | null;
@@ -37,6 +44,7 @@ type UserAnalyticsRow = {
     appWithVercelCount?: number;
     appWithStripeCount?: number;
     appAiChatUserMessageCount?: number;
+    appAiChatRecentEntries?: AiChatAuditEntry[];
     appCreationDates?: Date[];
 
     appBuilderSessionTotalMinutes?: number | null;
@@ -174,6 +182,57 @@ function countUserMessagesFromAiChatDoc(data: any): number {
         const role = typeof m?.role === "string" ? m.role.toLowerCase() : "";
         return role === "user" ? sum + 1 : sum;
     }, 0);
+}
+
+function getAiChatMessageDate(m: any): Date | null {
+    if (typeof m?.timestampMs === "number" && Number.isFinite(m.timestampMs)) {
+        const d = new Date(m.timestampMs);
+        return Number.isNaN(d.getTime()) ? null : d;
+    }
+    return tsToDate(m?.timestamp);
+}
+
+function normalizeAiChatText(v: unknown, max = 420): string {
+    if (typeof v !== "string") return "";
+    const oneLine = v.replace(/\s+/g, " ").trim();
+    if (!oneLine) return "";
+    return oneLine.length > max ? `${oneLine.slice(0, max - 1)}...` : oneLine;
+}
+
+function extractRecentAiChatEntries(data: any, appId: string, maxEntries = 3): AiChatAuditEntry[] {
+    const messages = Array.isArray(data?.messages) ? data.messages : [];
+    const out: AiChatAuditEntry[] = [];
+
+    for (let i = 0; i < messages.length; i += 1) {
+        const msg = messages[i];
+        const role = typeof msg?.role === "string" ? msg.role.toLowerCase() : "";
+        if (role !== "user") continue;
+
+        const userPrompt = normalizeAiChatText(msg?.content);
+        if (!userPrompt) continue;
+
+        let assistantReply = "";
+        let assistantAt: Date | null = null;
+        for (let j = i + 1; j < messages.length; j += 1) {
+            const next = messages[j];
+            const nextRole = typeof next?.role === "string" ? next.role.toLowerCase() : "";
+            if (nextRole !== "assistant") continue;
+            assistantReply = normalizeAiChatText(next?.content);
+            assistantAt = getAiChatMessageDate(next);
+            break;
+        }
+
+        const at = assistantAt || getAiChatMessageDate(msg);
+        out.push({
+            appId,
+            at,
+            userPrompt,
+            assistantReply,
+        });
+    }
+
+    out.sort((a, b) => (b.at?.getTime() ?? 0) - (a.at?.getTime() ?? 0));
+    return out.slice(0, maxEntries);
 }
 
 function LineChartCard(props: {
@@ -480,6 +539,7 @@ export default function AdminAnalyticsPage() {
                                 let appWithVercelCount = 0;
                                 let appWithStripeCount = 0;
                                 let appAiChatUserMessageCount = 0;
+                                const appAiChatRecentEntries: AiChatAuditEntry[] = [];
                                 const appCreationDates: Date[] = [];
 
                                 await Promise.all(
@@ -544,10 +604,18 @@ export default function AdminAnalyticsPage() {
                                             );
                                             const aiChatSnap = await getDoc(aiChatRef);
                                             if (aiChatSnap.exists()) {
-                                                appAiChatUserMessageCount += countUserMessagesFromAiChatDoc(aiChatSnap.data());
+                                                const aiChatData = aiChatSnap.data();
+                                                appAiChatUserMessageCount += countUserMessagesFromAiChatDoc(aiChatData);
+                                                appAiChatRecentEntries.push(
+                                                    ...extractRecentAiChatEntries(aiChatData, String(appData.id), 2),
+                                                );
                                             }
                                         } catch { }
                                     }),
+                                );
+
+                                appAiChatRecentEntries.sort(
+                                    (a, b) => (b.at?.getTime() ?? 0) - (a.at?.getTime() ?? 0),
                                 );
 
                                 const existing = map.get(uid);
@@ -561,6 +629,7 @@ export default function AdminAnalyticsPage() {
                                         appWithVercelCount,
                                         appWithStripeCount,
                                         appAiChatUserMessageCount,
+                                        appAiChatRecentEntries: appAiChatRecentEntries.slice(0, 8),
                                         appCreationDates,
                                     });
                                 }
@@ -943,6 +1012,36 @@ export default function AdminAnalyticsPage() {
         };
     }, [filteredRows, usageKeys]);
 
+    const appAiChatAuditEntries = useMemo(() => {
+        const out: Array<{
+            uid: string;
+            email?: string | null;
+            tier?: string | null;
+            appId: string;
+            at: Date | null;
+            userPrompt: string;
+            assistantReply: string;
+        }> = [];
+
+        for (const r of filteredRows) {
+            const entries = Array.isArray(r.appAiChatRecentEntries) ? r.appAiChatRecentEntries : [];
+            for (const e of entries) {
+                out.push({
+                    uid: r.id,
+                    email: r.email ?? null,
+                    tier: r.tier ?? "free",
+                    appId: e.appId,
+                    at: e.at,
+                    userPrompt: e.userPrompt,
+                    assistantReply: e.assistantReply,
+                });
+            }
+        }
+
+        out.sort((a, b) => (b.at?.getTime() ?? 0) - (a.at?.getTime() ?? 0));
+        return out.slice(0, 120);
+    }, [filteredRows]);
+
     const visibleTabs = useMemo(() => {
         if (analyticsScope === "apps") {
             return [
@@ -1086,6 +1185,58 @@ export default function AdminAnalyticsPage() {
                                                 <p className="mt-1 text-[11px] text-neutral-500">Sessions: {appBuilderOverview.totalAppBuilderSessions}</p>
                                             </div>
                                         </div>
+                                    </section>
+
+                                    <section className="rounded-xl border border-neutral-200 bg-white p-4">
+                                        <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                                            <div>
+                                                <p className="text-[11px] uppercase tracking-[0.16em] text-neutral-500">AI chat moderation preview</p>
+                                                <p className="mt-1 text-xs text-neutral-500">
+                                                    Recent prompt/response pairs to quickly spot suspicious behavior.
+                                                </p>
+                                            </div>
+                                            <p className="text-[11px] text-neutral-500">{"Full feed is in Apps -> Usage"}</p>
+                                        </div>
+
+                                        {appAiChatAuditEntries.length === 0 ? (
+                                            <p className="mt-3 text-xs text-neutral-500">No AI chat entries found for this filter.</p>
+                                        ) : (
+                                            <div className="mt-3 space-y-2">
+                                                {appAiChatAuditEntries.slice(0, 8).map((entry, idx) => (
+                                                    <div
+                                                        key={`overview:${entry.uid}:${entry.appId}:${entry.at?.getTime() || 0}:${idx}`}
+                                                        className="rounded-lg border border-neutral-100 bg-neutral-50 p-3"
+                                                    >
+                                                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-neutral-600">
+                                                            <span className="font-medium text-neutral-800">{entry.email || entry.uid}</span>
+                                                            <span>App: {entry.appId}</span>
+                                                            <span>
+                                                                {entry.at
+                                                                    ? entry.at.toLocaleString(undefined, {
+                                                                        dateStyle: "medium",
+                                                                        timeStyle: "short",
+                                                                    })
+                                                                    : "Unknown time"}
+                                                            </span>
+                                                        </div>
+                                                        <div className="mt-2 grid gap-2 md:grid-cols-2">
+                                                            <div className="rounded-md border border-amber-200 bg-amber-50 px-2.5 py-2">
+                                                                <p className="text-[10px] uppercase tracking-[0.12em] text-amber-800">User prompt</p>
+                                                                <p className="mt-1 whitespace-pre-wrap break-words text-xs text-amber-900">
+                                                                    {entry.userPrompt || "(empty)"}
+                                                                </p>
+                                                            </div>
+                                                            <div className="rounded-md border border-blue-200 bg-blue-50 px-2.5 py-2">
+                                                                <p className="text-[10px] uppercase tracking-[0.12em] text-blue-800">Assistant response</p>
+                                                                <p className="mt-1 whitespace-pre-wrap break-words text-xs text-blue-900">
+                                                                    {entry.assistantReply || "(no assistant response captured)"}
+                                                                </p>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
                                     </section>
                                 </>
                             ) : null}
@@ -1300,6 +1451,61 @@ export default function AdminAnalyticsPage() {
                                             points={signupsSeries}
                                         />
                                     </div>
+
+                                    <section className="rounded-xl border border-neutral-200 bg-white p-4">
+                                        <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                                            <div>
+                                                <p className="text-[11px] uppercase tracking-[0.16em] text-neutral-500">AI chat moderation feed</p>
+                                                <p className="mt-1 text-xs text-neutral-500">
+                                                    Recent user prompts and assistant responses from kloner_apps. Use this to spot suspicious or malicious requests.
+                                                </p>
+                                            </div>
+                                            <p className="text-[11px] text-neutral-500">Showing up to 120 recent pairs</p>
+                                        </div>
+
+                                        {appAiChatAuditEntries.length === 0 ? (
+                                            <p className="mt-3 text-xs text-neutral-500">No AI chat entries found for this filter.</p>
+                                        ) : (
+                                            <div className="mt-3 space-y-2">
+                                                {appAiChatAuditEntries.map((entry, idx) => (
+                                                    <div
+                                                        key={`${entry.uid}:${entry.appId}:${entry.at?.getTime() || 0}:${idx}`}
+                                                        className="rounded-lg border border-neutral-100 bg-neutral-50 p-3"
+                                                    >
+                                                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-neutral-600">
+                                                            <span className="font-medium text-neutral-800">{entry.email || entry.uid}</span>
+                                                            <span>UID: {entry.uid}</span>
+                                                            <span>Tier: {entry.tier || "free"}</span>
+                                                            <span>App: {entry.appId}</span>
+                                                            <span>
+                                                                {entry.at
+                                                                    ? entry.at.toLocaleString(undefined, {
+                                                                        dateStyle: "medium",
+                                                                        timeStyle: "short",
+                                                                    })
+                                                                    : "Unknown time"}
+                                                            </span>
+                                                        </div>
+
+                                                        <div className="mt-2 grid gap-2 md:grid-cols-2">
+                                                            <div className="rounded-md border border-amber-200 bg-amber-50 px-2.5 py-2">
+                                                                <p className="text-[10px] uppercase tracking-[0.12em] text-amber-800">User prompt</p>
+                                                                <p className="mt-1 whitespace-pre-wrap break-words text-xs text-amber-900">
+                                                                    {entry.userPrompt || "(empty)"}
+                                                                </p>
+                                                            </div>
+                                                            <div className="rounded-md border border-blue-200 bg-blue-50 px-2.5 py-2">
+                                                                <p className="text-[10px] uppercase tracking-[0.12em] text-blue-800">Assistant response</p>
+                                                                <p className="mt-1 whitespace-pre-wrap break-words text-xs text-blue-900">
+                                                                    {entry.assistantReply || "(no assistant response captured)"}
+                                                                </p>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </section>
                                 </>
                             ) : null}
 

@@ -23,6 +23,8 @@ type Message = {
     migrationStatus?: "PENDING" | "APPLYING" | "APPLIED" | "FAILED";
 
     stagedBundleId?: string;
+    supabaseContinuationPrompt?: string;
+    supabaseContinuationStatus?: "PENDING" | "CONTINUE" | "DISMISS";
 };
 
 type StagedBundle = {
@@ -380,6 +382,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
     const [supabaseDbStatusText, setSupabaseDbStatusText] = useState<string | null>(null);
     const [supabaseDbReason, setSupabaseDbReason] = useState<string | null>(null);
     const [supabaseDbLastCheckedAt, setSupabaseDbLastCheckedAt] = useState<number | null>(null);
+    const [pendingSupabaseFollowupPrompt, setPendingSupabaseFollowupPrompt] = useState<string | null>(null);
     const [existingSupabaseProjectRef, setExistingSupabaseProjectRef] = useState("");
     const [existingSupabaseAnonKey, setExistingSupabaseAnonKey] = useState("");
     const [existingSupabaseServiceRoleKey, setExistingSupabaseServiceRoleKey] = useState("");
@@ -1035,6 +1038,14 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                         timestamp: ts,
                         restorePointId: typeof m.restorePointId === "string" ? m.restorePointId : undefined,
                         restoreActionLabel: typeof m.restoreActionLabel === "string" ? m.restoreActionLabel : undefined,
+                        supabaseContinuationPrompt:
+                            typeof m.supabaseContinuationPrompt === "string" ? m.supabaseContinuationPrompt : undefined,
+                        supabaseContinuationStatus:
+                            m.supabaseContinuationStatus === "PENDING" ||
+                            m.supabaseContinuationStatus === "CONTINUE" ||
+                            m.supabaseContinuationStatus === "DISMISS"
+                                ? m.supabaseContinuationStatus
+                                : undefined,
                     };
                 };
 
@@ -1188,6 +1199,8 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
             timestampMs: m.timestamp.getTime(),
             restorePointId: m.restorePointId ?? null,
             restoreActionLabel: m.restoreActionLabel ?? null,
+            supabaseContinuationPrompt: m.supabaseContinuationPrompt ?? null,
+            supabaseContinuationStatus: m.supabaseContinuationStatus ?? null,
         }));
 
         const encoder = typeof TextEncoder !== "undefined" ? new TextEncoder() : null;
@@ -1456,6 +1469,34 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
         setDatabaseConnections(prev => prev.filter(c => c.id !== id));
     }, []);
 
+    const enqueueSupabaseContinuationPrompt = useCallback((rawPrompt: string) => {
+        const prompt = String(rawPrompt || "").replace(/\s+/g, " ").trim();
+        if (!prompt) return;
+
+        setMessages((prev) => {
+            const exists = prev.some(
+                (m) =>
+                    m.supabaseContinuationStatus === "PENDING" &&
+                    String(m.supabaseContinuationPrompt || "") === prompt,
+            );
+            if (exists) return prev;
+
+            return [
+                ...prev,
+                {
+                    id: `supabase_continue_${Date.now()}`,
+                    role: "assistant",
+                    content:
+                        `Supabase is connected successfully.\n\nDo you want me to continue with your original request?\n\n“${prompt}”`,
+                    timestamp: new Date(),
+                    type: "text",
+                    supabaseContinuationPrompt: prompt,
+                    supabaseContinuationStatus: "PENDING",
+                },
+            ];
+        });
+    }, []);
+
     const handleCreateSupabaseProject = useCallback(async () => {
         // Popups opened after an await are often blocked by browsers.
         // Open a blank tab/window synchronously (while we still have the click gesture),
@@ -1635,6 +1676,10 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                         }]);
 
                         await promptRestartAfterSupabase();
+                        if (pendingSupabaseFollowupPrompt) {
+                            enqueueSupabaseContinuationPrompt(pendingSupabaseFollowupPrompt);
+                            setPendingSupabaseFollowupPrompt(null);
+                        }
                     } else {
                         const details = typeof data.details === "string" ? data.details : "Supabase setup failed";
                         setMessages(prev => [...prev, {
@@ -1688,6 +1733,10 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                             }]);
 
                             await promptRestartAfterSupabase();
+                            if (pendingSupabaseFollowupPrompt) {
+                                enqueueSupabaseContinuationPrompt(pendingSupabaseFollowupPrompt);
+                                setPendingSupabaseFollowupPrompt(null);
+                            }
                         }
                     }
                 } catch (error) {
@@ -1719,7 +1768,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                 type: "text"
             }]);
         }
-    }, [appId, showAlert, showConfirm, withCsrfHeaders]);
+    }, [appId, enqueueSupabaseContinuationPrompt, pendingSupabaseFollowupPrompt, showAlert, showConfirm, withCsrfHeaders]);
 
     const handleConnectExistingSupabaseProject = useCallback(async () => {
         try {
@@ -1770,6 +1819,11 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                     type: "text",
                 },
             ]);
+
+            if (pendingSupabaseFollowupPrompt) {
+                enqueueSupabaseContinuationPrompt(pendingSupabaseFollowupPrompt);
+                setPendingSupabaseFollowupPrompt(null);
+            }
         } catch (error) {
             console.error("Failed to connect existing Supabase project:", error);
             setMessages((prev) => [
@@ -1783,7 +1837,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                 },
             ]);
         }
-    }, [existingSupabaseAnonKey, existingSupabaseProjectRef, existingSupabaseServiceRoleKey, user?.uid, withCsrfHeaders]);
+    }, [enqueueSupabaseContinuationPrompt, existingSupabaseAnonKey, existingSupabaseProjectRef, existingSupabaseServiceRoleKey, pendingSupabaseFollowupPrompt, user?.uid, withCsrfHeaders]);
 
     const applyRestorePoint = useCallback(async (restoreId: string, statusMessage?: string) => {
         if (!restoreId || isRestoreBusy) return;
@@ -2242,6 +2296,10 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
 
             // Handle database setup request (dev-only)
             if (allowDatabaseSetupUi && data.setupDatabase) {
+                const followupPrompt = messageInput.trim();
+                if (followupPrompt) {
+                    setPendingSupabaseFollowupPrompt(followupPrompt);
+                }
                 setTimeout(() => {
                     if (isSupabaseConnectedRef.current) return;
                     setShowDatabaseSetup(true);
@@ -2519,6 +2577,54 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                             </div>
 
                             <div className="whitespace-pre-wrap break-words text-sm leading-relaxed">{renderTextWithLinks(message.content)}</div>
+
+                            {message.supabaseContinuationPrompt && message.supabaseContinuationStatus === "PENDING" ? (
+                                <div className="mt-3 flex flex-wrap gap-2">
+                                    <button
+                                        type="button"
+                                        disabled={isLoading}
+                                        onClick={() => {
+                                            const prompt = String(message.supabaseContinuationPrompt || "").trim();
+                                            if (!prompt) return;
+
+                                            setMessages((prev) =>
+                                                prev.map((m) =>
+                                                    m.id === message.id
+                                                        ? { ...m, supabaseContinuationStatus: "CONTINUE" as const }
+                                                        : m,
+                                                ),
+                                            );
+
+                                            void sendMessage({ forcedInput: prompt });
+                                        }}
+                                        className="inline-flex items-center rounded-full bg-[#F55F2A] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#E04E1B] disabled:opacity-50"
+                                    >
+                                        Continue request
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setMessages((prev) => [
+                                                ...prev.map((m) =>
+                                                    m.id === message.id
+                                                        ? { ...m, supabaseContinuationStatus: "DISMISS" as const }
+                                                        : m,
+                                                ),
+                                                {
+                                                    id: `supabase_continue_dismiss_${Date.now()}`,
+                                                    role: "assistant",
+                                                    content: "No problem, I won’t continue that request unless you ask.",
+                                                    timestamp: new Date(),
+                                                    type: "text",
+                                                },
+                                            ]);
+                                        }}
+                                        className="inline-flex items-center rounded-full border border-black/10 bg-white px-3 py-1.5 text-xs font-semibold text-gray-800 transition hover:bg-black/5"
+                                    >
+                                        Dismiss
+                                    </button>
+                                </div>
+                            ) : null}
 
                             {message.id === "welcome" && message.role === "assistant" ? (
                                 <div className="mt-3 flex flex-wrap gap-2">

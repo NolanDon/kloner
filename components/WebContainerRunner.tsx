@@ -157,6 +157,7 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
   const [startAttempt, setStartAttempt] = useState(0);
   const [loadingStatus, setLoadingStatus] = useState('');
   const [isApplyRefreshing, setIsApplyRefreshing] = useState(false);
+  const [pollNetworkWarning, setPollNetworkWarning] = useState<string | null>(null);
   const [currentStatusData, setCurrentStatusData] = useState<any>(null); // Store latest status data for UI
   const [connectingToExisting, setConnectingToExisting] = useState(false); // Track if connecting to existing machine
   // Prevent duplicate starts for the *same* set of inputs. This avoids the
@@ -201,6 +202,8 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
   const compileErrorSeenByFingerprintRef = useRef<Record<string, true>>({});
   const compileErrorActiveFingerprintRef = useRef<string | null>(null);
   const iframePostLoadRecoveryCountRef = useRef<number>(0);
+  const pollFetchFailureCountRef = useRef(0);
+  const lastPollIssueReportKeyRef = useRef<string>('');
   const lastAppServerKindRef = useRef<'fallback' | 'next-dev' | 'next-prod' | ''>('');
   const stickyProgressByCodeRef = useRef<Record<string, number>>({});
   const lastTimeoutReportKeyRef = useRef<string>('');
@@ -532,6 +535,38 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
     }
   };
 
+  const reportLoadingIssueOnce = (key: string, payload: {
+    appId: string;
+    code?: string;
+    status?: string;
+    message: string;
+    ageMs?: number;
+    previewUrl?: string | null;
+    browser?: string;
+    userAgent?: string;
+    reason?: string;
+  }) => {
+    if (lastTimeoutReportKeyRef.current === key) return;
+    lastTimeoutReportKeyRef.current = key;
+    void reportPreviewTimeout(payload);
+  };
+
+  const reportPollIssueOnce = (key: string, payload: {
+    appId: string;
+    code?: string;
+    status?: string;
+    message: string;
+    ageMs?: number;
+    previewUrl?: string | null;
+    browser?: string;
+    userAgent?: string;
+    reason?: string;
+  }) => {
+    if (lastPollIssueReportKeyRef.current === key) return;
+    lastPollIssueReportKeyRef.current = key;
+    void reportPreviewTimeout(payload);
+  };
+
   const emitCompileErrorTelemetry = useCallback((kind: 'compile_error_seen' | 'compile_error_fix_clicked' | 'compile_error_fix_sent' | 'compile_error_recovered', detail: Record<string, any>) => {
     if (typeof window === 'undefined') return;
     try {
@@ -815,6 +850,7 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
     setCanRetry(false);
     setLoadingStatus(''); // Clear loading status on retry
     setCurrentStatusData(null); // Clear status data on retry
+    setPollNetworkWarning(null);
     setConnectingToExisting(false); // Reset connection state
     lastStartKeyRef.current = null;
     retryScheduledRef.current = false;
@@ -825,6 +861,8 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
     pollingCodeRef.current = null; // Reset polling code
     compileErrorActiveFingerprintRef.current = null;
     iframePostLoadRecoveryCountRef.current = 0;
+    pollFetchFailureCountRef.current = 0;
+    lastPollIssueReportKeyRef.current = '';
     if (iframePostLoadTimeoutRef.current) {
       clearTimeout(iframePostLoadTimeoutRef.current);
       iframePostLoadTimeoutRef.current = null;
@@ -1470,6 +1508,7 @@ export default function NavBar() {
     setCanRetry(false);
     setLoadingStatus('');
     setCurrentStatusData(null);
+    setPollNetworkWarning(null);
 
     pollingRetryCountRef.current = 0;
     containerNotFoundCountRef.current = 0;
@@ -1479,6 +1518,8 @@ export default function NavBar() {
     pollingCodeRef.current = null;
     backendReadyRef.current = false;
     pollStartedAtRef.current = 0;
+    pollFetchFailureCountRef.current = 0;
+    lastPollIssueReportKeyRef.current = '';
     iframePostLoadRecoveryCountRef.current = 0;
     if (iframePostLoadTimeoutRef.current) {
       clearTimeout(iframePostLoadTimeoutRef.current);
@@ -1510,6 +1551,7 @@ export default function NavBar() {
     setCanRetry(false);
     setLoadingStatus('');
     setCurrentStatusData(null);
+    setPollNetworkWarning(null);
 
     pollingRetryCountRef.current = 0;
     containerNotFoundCountRef.current = 0;
@@ -1519,6 +1561,8 @@ export default function NavBar() {
     pollingCodeRef.current = null;
     backendReadyRef.current = false;
     pollStartedAtRef.current = 0;
+    pollFetchFailureCountRef.current = 0;
+    lastPollIssueReportKeyRef.current = '';
     iframePostLoadRecoveryCountRef.current = 0;
     if (iframePostLoadTimeoutRef.current) {
       clearTimeout(iframePostLoadTimeoutRef.current);
@@ -1611,9 +1655,12 @@ export default function NavBar() {
         compileErrorActiveFingerprintRef.current = null;
         setIsPolling(false); // Reset polling state
         setPreviewUrl(null);
+        setPollNetworkWarning(null);
         setConnectingToExisting(false);
         pollingRetryCountRef.current = 0; // Reset retry count
         containerNotFoundCountRef.current = 0; // Reset 404 counter
+        pollFetchFailureCountRef.current = 0;
+        lastPollIssueReportKeyRef.current = '';
 
         console.log('Starting app with ID:', appId);
 
@@ -2147,6 +2194,8 @@ export default function NavBar() {
           if (pollStartedAtRef.current && Date.now() - pollStartedAtRef.current > HARD_POLL_TIMEOUT_MS) {
             console.error('[WebContainerRunner] Preview polling timed out');
             const timedOutAgeMs = Date.now() - pollStartedAtRef.current;
+            const online = typeof navigator !== 'undefined' ? navigator.onLine : null;
+            const suspectedInterference = pollFetchFailureCountRef.current >= 3 && online !== false;
             const timeoutReportKey = `hard-timeout:${appId}:${code}`;
             if (lastTimeoutReportKeyRef.current !== timeoutReportKey) {
               lastTimeoutReportKeyRef.current = timeoutReportKey;
@@ -2154,9 +2203,16 @@ export default function NavBar() {
                 appId,
                 code,
                 status: 'poll_timeout',
-                message: 'Preview polling exceeded 12-minute hard timeout in WebContainerRunner.',
+                reason: suspectedInterference
+                  ? 'poll_timeout_network_interference_suspected'
+                  : 'poll_timeout',
+                message: suspectedInterference
+                  ? 'Preview polling exceeded 12-minute timeout after repeated fetch failures; privacy extension/adblock/VPN interference is suspected.'
+                  : 'Preview polling exceeded 12-minute hard timeout in WebContainerRunner.',
                 ageMs: timedOutAgeMs,
                 previewUrl: previewUrlRef.current,
+                browser: detectBrowserLabel(),
+                userAgent: typeof navigator !== 'undefined' ? String(navigator.userAgent || '') : 'unknown',
               });
             }
             stopAllTimers();
@@ -2297,6 +2353,8 @@ export default function NavBar() {
 
             // Reset 404 counter on successful response
             containerNotFoundCountRef.current = 0;
+            pollFetchFailureCountRef.current = 0;
+            setPollNetworkWarning(null);
 
             // Store the status data for UI display
             setCurrentStatusData(statusData);
@@ -2667,6 +2725,34 @@ export default function NavBar() {
 
             // Handle specific backend errors that shouldn't be shown to users
             const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+            const online = typeof navigator !== 'undefined' ? navigator.onLine : null;
+            const looksLikeNetworkFetchFailure =
+              errorMessage.includes('Failed to fetch') ||
+              errorMessage.includes('NetworkError') ||
+              (err instanceof TypeError && /fetch/i.test(String(errorMessage)));
+
+            if (looksLikeNetworkFetchFailure) {
+              pollFetchFailureCountRef.current += 1;
+
+              if (pollFetchFailureCountRef.current >= 3 && online !== false) {
+                setPollNetworkWarning(
+                  'Connection checks are being blocked or interrupted. This is often caused by privacy/adblock extensions, strict corporate proxies, or VPN routing. You can keep waiting, or temporarily disable blockers for this site.'
+                );
+
+                reportPollIssueOnce(`poll-fetch-failed:${appId}:${code}`, {
+                  appId,
+                  code,
+                  status: 'poll_fetch_failed_network_interference_suspected',
+                  reason: 'network_interference_suspected',
+                  message: 'Repeated status polling fetch failures while browser was online; privacy extension/adblock/VPN interference suspected.',
+                  ageMs: pollStartedAtRef.current ? Date.now() - pollStartedAtRef.current : undefined,
+                  previewUrl: previewUrlRef.current,
+                  browser: detectBrowserLabel(),
+                  userAgent: typeof navigator !== 'undefined' ? String(navigator.userAgent || '') : 'unknown',
+                });
+              }
+            }
+
             if (errorMessage.includes('Element at index 0 is not a valid array element') ||
               errorMessage.includes('FieldValue.serverTimestamp() cannot be used inside of an array')) {
               console.error('Backend Firestore error detected - this is a server-side issue that should be fixed');
@@ -2691,6 +2777,7 @@ export default function NavBar() {
 
             if (pollingRetryCountRef.current >= maxPollingRetries) {
               // Max polling retries reached, show neutral message instead of error
+              const suspectedInterference = pollFetchFailureCountRef.current >= 3 && online !== false;
               const timeoutReportKey = `retry-timeout:${appId}:${code}`;
               if (lastTimeoutReportKeyRef.current !== timeoutReportKey) {
                 lastTimeoutReportKeyRef.current = timeoutReportKey;
@@ -2698,9 +2785,16 @@ export default function NavBar() {
                   appId,
                   code,
                   status: 'poll_retries_exhausted',
-                  message: 'Preview status polling retries were exhausted before readiness.',
+                  reason: suspectedInterference
+                    ? 'poll_retries_exhausted_network_interference_suspected'
+                    : 'poll_retries_exhausted',
+                  message: suspectedInterference
+                    ? 'Preview polling retries exhausted after repeated fetch failures; privacy extension/adblock/VPN interference is suspected.'
+                    : 'Preview status polling retries were exhausted before readiness.',
                   ageMs: pollStartedAtRef.current ? Date.now() - pollStartedAtRef.current : undefined,
                   previewUrl: previewUrlRef.current,
+                  browser: detectBrowserLabel(),
+                  userAgent: typeof navigator !== 'undefined' ? String(navigator.userAgent || '') : 'unknown',
                 });
               }
               setIsPolling(false);
@@ -3054,6 +3148,18 @@ export default function NavBar() {
           // If backend hasn't declared ready yet, treat iframe reachability as transient.
           // Keep polling so we can recover from restarts/DNS delays.
           if (!backendReadyRef.current) {
+            reportLoadingIssueOnce(`iframe-load-timeout-waiting:${appId}:${pollingCodeRef.current || 'unknown'}:${String(previewUrl || '')}`, {
+              appId,
+              code: pollingCodeRef.current || undefined,
+              status: 'iframe_load_timeout_waiting_for_ready',
+              reason: 'iframe_load_timeout_waiting_for_ready',
+              message: 'Preview iframe did not load within 30s while backend was still not ready.',
+              ageMs: pollStartedAtRef.current ? Date.now() - pollStartedAtRef.current : undefined,
+              previewUrl,
+              browser: detectBrowserLabel(),
+              userAgent: typeof navigator !== 'undefined' ? String(navigator.userAgent || '') : 'unknown',
+            });
+
             setError(null);
             setCanRetry(false);
             setIsLoading(false);
@@ -3101,6 +3207,17 @@ export default function NavBar() {
             });
             scheduleAutomaticPreviewRestart('iframe_load_timeout_cookie_likely', 6000);
           } else {
+            reportLoadingIssueOnce(`iframe-load-timeout-ready-unreachable:${appId}:${pollingCodeRef.current || 'unknown'}:${String(previewUrl || '')}`, {
+              appId,
+              code: pollingCodeRef.current || undefined,
+              status: 'iframe_load_timeout_backend_ready_unreachable',
+              reason: 'iframe_load_timeout_backend_ready_unreachable',
+              message: 'Preview iframe timed out after backend reported ready; preview URL appears unreachable from the embedded frame.',
+              ageMs: pollStartedAtRef.current ? Date.now() - pollStartedAtRef.current : undefined,
+              previewUrl,
+              browser: detectBrowserLabel(),
+              userAgent: typeof navigator !== 'undefined' ? String(navigator.userAgent || '') : 'unknown',
+            });
             setError(`Unable to load preview at ${previewUrl}. Try Reconnect, or use Start fresh to start a new machine.`);
             setCookieRecoveryPromptVisible(false);
             setCanRetry(true);
@@ -3545,6 +3662,18 @@ export default function NavBar() {
 
               // If backend hasn't declared ready, treat this as transient and keep polling.
               if (!backendReadyRef.current) {
+                reportLoadingIssueOnce(`iframe-onerror-waiting:${appId}:${pollingCodeRef.current || 'unknown'}:${String(activePreviewUrl || '')}`, {
+                  appId,
+                  code: pollingCodeRef.current || undefined,
+                  status: 'iframe_onerror_waiting_for_ready',
+                  reason: 'iframe_onerror_waiting_for_ready',
+                  message: 'Preview iframe onError fired while backend was still not ready.',
+                  ageMs: pollStartedAtRef.current ? Date.now() - pollStartedAtRef.current : undefined,
+                  previewUrl: activePreviewUrl,
+                  browser: detectBrowserLabel(),
+                  userAgent: typeof navigator !== 'undefined' ? String(navigator.userAgent || '') : 'unknown',
+                });
+
                 setError(null);
                 setCanRetry(false);
                 setIsLoading(false);
@@ -3581,6 +3710,18 @@ export default function NavBar() {
                 try { onPreviewReadyChange?.(false); } catch { }
                 scheduleAutomaticPreviewRestart('iframe_onerror_hub', 6000);
               } else if (activePreviewUrl.includes('.fly.dev') || activePreviewUrl.includes('localhost')) {
+                reportLoadingIssueOnce(`iframe-onerror-unreachable:${appId}:${pollingCodeRef.current || 'unknown'}:${String(activePreviewUrl || '')}`, {
+                  appId,
+                  code: pollingCodeRef.current || undefined,
+                  status: 'iframe_onerror_unreachable_preview',
+                  reason: 'iframe_onerror_unreachable_preview',
+                  message: 'Preview iframe onError fired and preview host looked unreachable.',
+                  ageMs: pollStartedAtRef.current ? Date.now() - pollStartedAtRef.current : undefined,
+                  previewUrl: activePreviewUrl,
+                  browser: detectBrowserLabel(),
+                  userAgent: typeof navigator !== 'undefined' ? String(navigator.userAgent || '') : 'unknown',
+                });
+
                 setError(`Unable to connect to ${activePreviewUrl}. The deployment may still be starting up or has failed. Please try again in a few minutes.`);
                 setCookieRecoveryPromptVisible(false);
                 setCanRetry(true);
@@ -3633,6 +3774,11 @@ export default function NavBar() {
                         }
                 )}
                 {renderBuildChecklist(currentStatusData)}
+                {pollNetworkWarning ? (
+                  <div className="mx-auto mt-3 max-w-xl rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-left text-xs text-amber-900">
+                    {pollNetworkWarning}
+                  </div>
+                ) : null}
               </div>
             ) : (
               // Initial loading state

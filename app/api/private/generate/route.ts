@@ -4,6 +4,7 @@ import { callBackend } from "@/src/lib/callBackend";
 import { verifySession } from "../../_lib/auth";
 import { requireSessionAndMaybeCsrf } from "../../_lib/route-guard";
 import { getAuthoritativeUserTier } from "../../_lib/userTier";
+import { captureCriticalEvent } from "@/lib/observability";
 import type { UserTier } from "@/src/lib/credits";
 import {
     peekUserCredit,
@@ -23,6 +24,31 @@ function isHttpUrl(s?: string): s is string {
     } catch {
         return false;
     }
+}
+
+async function captureUrlScanFailure(params: {
+    uid?: string;
+    targetUrl: string;
+    reason: string;
+    statusCode: number;
+    requestId?: string;
+    extra?: Record<string, unknown>;
+}) {
+    await captureCriticalEvent({
+        source: "internal",
+        severity: "critical",
+        statusCode: params.statusCode,
+        route: "/api/private/generate",
+        method: "POST",
+        action: "url_scan_failed",
+        userId: params.uid,
+        requestId: params.requestId,
+        service: "url-generate-proxy",
+        message: `URL scan failed: ${params.reason}`,
+        url: params.targetUrl,
+        tags: ["url-scan", "generate", "backend-failure"],
+        extra: params.extra,
+    });
 }
 
 export async function POST(req: NextRequest) {
@@ -153,12 +179,35 @@ export async function POST(req: NextRequest) {
                             ? r.status
                             : 502;
 
+                    const reason =
+                        (typeof (payload as any).error === "string" && (payload as any).error.trim()) ||
+                        (typeof (payload as any).message === "string" && (payload as any).message.trim()) ||
+                        (typeof (payload as any).reason === "string" && (payload as any).reason.trim()) ||
+                        "Backend error (no captures or failed run).";
+
+                    const backendCode =
+                        typeof (payload as any).code === "string"
+                            ? (payload as any).code
+                            : undefined;
+
+                    await captureUrlScanFailure({
+                        uid: decoded.uid,
+                        targetUrl: url,
+                        reason,
+                        statusCode: status,
+                        requestId: r.reqId,
+                        extra: {
+                            backendStatus: r.status,
+                            upstreamOk: r.upstream.ok,
+                            payloadOk: okField,
+                            backendCode,
+                            totalPlanned,
+                        },
+                    });
+
                     return NextResponse.json(
                         {
-                            error:
-                                (payload as any).error ||
-                                (payload as any).message ||
-                                "Backend error (no captures or failed run).",
+                            error: reason,
                             ...(totalPlanned === 0
                                 ? { reason: "no_captures" }
                                 : {}),
@@ -189,6 +238,16 @@ export async function POST(req: NextRequest) {
                     },
                 });
             } catch (e: any) {
+                await captureUrlScanFailure({
+                    uid: decoded.uid,
+                    targetUrl: url,
+                    reason: e?.message || "Proxy failed",
+                    statusCode: 502,
+                    extra: {
+                        errorName: e?.name || "Error",
+                    },
+                });
+
                 return NextResponse.json(
                     { error: e?.message || "Proxy failed" },
                     { status: 502 }
