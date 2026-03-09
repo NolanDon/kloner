@@ -3777,6 +3777,7 @@ export default function PreviewPage(): JSX.Element {
     const targetUrlRef = useRef<string>("");
     const captureStallReportedForUrlRef = useRef<string>("");
     const captureStaleReportedForUrlRef = useRef<string>("");
+    const [captureTerminalFailureUrl, setCaptureTerminalFailureUrl] = useState<string>("");
 
     const shouldSendFrontendTimeoutAlert = useCallback((action: string, rawUrl: string) => {
         try {
@@ -3849,6 +3850,7 @@ export default function PreviewPage(): JSX.Element {
         captureLockMinUntilRef.current = Date.now() + 60_000;
         captureStallReportedForUrlRef.current = "";
         captureStaleReportedForUrlRef.current = "";
+        setCaptureTerminalFailureUrl("");
 
         let cancelled = false;
         let shouldMarkHandled = false;
@@ -3893,6 +3895,7 @@ export default function PreviewPage(): JSX.Element {
                 shouldMarkHandled = res.ok;
                 if (res.ok) {
                     generateSucceededRef.current = startRequestKey;
+                    setCaptureTerminalFailureUrl("");
                 }
 
                 if (cancelled) return;
@@ -3914,6 +3917,7 @@ export default function PreviewPage(): JSX.Element {
                     }
 
                     generateAbortedRef.current = startRequestKey;
+                    setCaptureTerminalFailureUrl(normUrl(targetUrl));
                     const serverError =
                         (typeof payload?.error === "string" && payload.error.trim())
                             ? payload.error.trim()
@@ -3957,6 +3961,7 @@ export default function PreviewPage(): JSX.Element {
                 }
             } catch (e: any) {
                 generateAbortedRef.current = startRequestKey;
+                setCaptureTerminalFailureUrl(normUrl(targetUrl));
                 setInfo("");
                 clearStartQueryParam();
                 if (!cancelled) setErr("This URL failed to process. Please ensure it is accessible before retrying.");
@@ -4021,6 +4026,7 @@ export default function PreviewPage(): JSX.Element {
 
             if (res.ok) {
                 generateSucceededRef.current = startRequestKey;
+                setCaptureTerminalFailureUrl("");
                 clearStartQueryParam();
                 return true;
             }
@@ -4042,6 +4048,7 @@ export default function PreviewPage(): JSX.Element {
             // Server error — abort polling, wipe captured UI state, show error.
             generateAbortedRef.current = startRequestKey;
             if (!cancelled) {
+                setCaptureTerminalFailureUrl(normUrl(targetUrl));
                 const serverError =
                     (typeof payload?.error === "string" && payload.error.trim())
                         ? payload.error.trim()
@@ -4171,6 +4178,11 @@ export default function PreviewPage(): JSX.Element {
     }, [targetUrl, startLockRequested, captureLockUrl]);
 
     const captureStatus = useMemo<UrlStatusUi | null>(() => {
+        const normalizedTarget = targetUrl ? normUrl(targetUrl) : "";
+        if (normalizedTarget && captureTerminalFailureUrl === normalizedTarget) {
+            if (activeUrlStatus === "ready") return activeUrlStatus;
+            return "error";
+        }
 
         // If we are in an in-flight capture, don't let an "unknown" doc status remove the UX lock.
         if (lockMatches) {
@@ -4191,7 +4203,7 @@ export default function PreviewPage(): JSX.Element {
         }
 
         return activeUrlStatus;
-    }, [activeUrlStatus, lockMatches, shotMetaCount, startRequested, err]);
+    }, [activeUrlStatus, lockMatches, shotMetaCount, startRequested, err, targetUrl, captureTerminalFailureUrl]);
 
     const captureLocked = captureStatus === "queued" || captureStatus === "processing";
 
@@ -4269,6 +4281,7 @@ export default function PreviewPage(): JSX.Element {
             const normalizedUrl = normUrl(currentTarget);
             if (captureStallReportedForUrlRef.current === normalizedUrl) return;
             captureStallReportedForUrlRef.current = normalizedUrl;
+            setCaptureTerminalFailureUrl(normalizedUrl);
 
             setCaptureLockUrl(null);
             captureLockStartedAtRef.current = 0;
@@ -4317,6 +4330,7 @@ export default function PreviewPage(): JSX.Element {
         const normalizedUrl = normUrl(targetUrl);
         if (captureStaleReportedForUrlRef.current === normalizedUrl) return;
         captureStaleReportedForUrlRef.current = normalizedUrl;
+        setCaptureTerminalFailureUrl(normalizedUrl);
 
         if (!shouldSendFrontendTimeoutAlert("url_capture_stale", targetUrl)) return;
 
