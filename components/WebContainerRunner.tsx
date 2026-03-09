@@ -167,9 +167,9 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
   const maxPollingRetriesRaw =
     typeof pollingConfig?.maxPollingRetries === 'number'
       ? pollingConfig.maxPollingRetries
-      : 240; // default: up to ~6 minutes of polling at 1.5s/tick
-  // Enforce a minimum aligned with the 6-minute hard timeout.
-  const maxPollingRetries = Math.max(240, maxPollingRetriesRaw);
+      : 480; // default: up to ~12 minutes of polling at 1.5s/tick
+  // Enforce a minimum aligned with the 12-minute hard timeout.
+  const maxPollingRetries = Math.max(480, maxPollingRetriesRaw);
   const pollingRetryCountRef = useRef(0); // Track polling retry attempts
   const retryScheduledRef = useRef(false);
   const totalAttemptsRef = useRef(0); // Circuit breaker for infinite retries
@@ -217,7 +217,7 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
   // than this (prevents duplicate loops and tight retry paths from spamming).
   const MIN_STATUS_FETCH_INTERVAL_MS = 1_200;
   const lastStatusFetchAtRef = useRef<number>(0);
-  const HARD_POLL_TIMEOUT_MS = 6 * 60 * 1000;
+  const HARD_POLL_TIMEOUT_MS = 12 * 60 * 1000;
 
   const DEFAULT_HUB_HOST = 'tracksite-hub.fly.dev';
   const CUSTOM_PREVIEW_HOST = String(process.env.NEXT_PUBLIC_PREVIEW_HOST || 'preview.kloner.app').trim().toLowerCase();
@@ -2190,7 +2190,7 @@ export default function NavBar() {
         const pollStatus = async () => {
           if (startRunIdRef.current !== runId) return; // Component was unmounted
 
-          // Hard timeout guard (6 minutes)
+          // Hard timeout guard (12 minutes)
           if (pollStartedAtRef.current && Date.now() - pollStartedAtRef.current > HARD_POLL_TIMEOUT_MS) {
             console.error('[WebContainerRunner] Preview polling timed out');
             const timedOutAgeMs = Date.now() - pollStartedAtRef.current;
@@ -2207,8 +2207,8 @@ export default function NavBar() {
                   ? 'poll_timeout_network_interference_suspected'
                   : 'poll_timeout',
                 message: suspectedInterference
-                  ? 'Preview polling exceeded 6-minute timeout after repeated fetch failures; privacy extension/adblock/VPN interference is suspected.'
-                  : 'Preview polling exceeded 6-minute hard timeout in WebContainerRunner.',
+                  ? 'Preview polling exceeded 12-minute timeout after repeated fetch failures; privacy extension/adblock/VPN interference is suspected.'
+                  : 'Preview polling exceeded 12-minute hard timeout in WebContainerRunner.',
                 ageMs: timedOutAgeMs,
                 previewUrl: previewUrlRef.current,
                 browser: detectBrowserLabel(),

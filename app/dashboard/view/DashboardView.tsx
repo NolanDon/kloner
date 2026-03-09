@@ -106,7 +106,7 @@ const VERCEL_INTEGRATION_SLUG =
     process.env.NEXT_PUBLIC_VERCEL_INTEGRATION_SLUG || "kloner";
 
 const ACCENT = "#f55f2a";
-const CAPTURE_STALL_TIMEOUT_MS = 10 * 60 * 1000;
+const CAPTURE_STALL_TIMEOUT_MS = 6 * 60 * 1000;
 const ERR_AUTO_DISMISS_MS = 30 * 1000;
 const FRONTEND_TIMEOUT_DEDUPE_TTL_MS = 10 * 60 * 1000;
 const FRONTEND_TIMEOUT_DEDUPE_STORAGE_KEY = "dashboardViewFrontendTimeoutAlertsV1";
@@ -4305,7 +4305,7 @@ export default function PreviewPage(): JSX.Element {
                             service: "dashboard-view",
                             statusCode: 504,
                             status: "queued_timeout",
-                            message: "URL capture stayed queued/processing for more than 10 minutes without completion.",
+                            message: "URL capture stayed queued/processing for more than 6 minutes without completion.",
                             previewUrl: currentTarget,
                             ageMs: Date.now() - startedAt,
                             tags: ["url-capture", "queue", "timeout", "frontend"],
