@@ -199,7 +199,7 @@ function normalizeAiChatText(v: unknown, max = 420): string {
     return oneLine.length > max ? `${oneLine.slice(0, max - 1)}...` : oneLine;
 }
 
-function extractRecentAiChatEntries(data: any, appId: string, maxEntries = 3): AiChatAuditEntry[] {
+function extractRecentAiChatEntries(data: any, appId: string): AiChatAuditEntry[] {
     const messages = Array.isArray(data?.messages) ? data.messages : [];
     const out: AiChatAuditEntry[] = [];
 
@@ -232,7 +232,7 @@ function extractRecentAiChatEntries(data: any, appId: string, maxEntries = 3): A
     }
 
     out.sort((a, b) => (b.at?.getTime() ?? 0) - (a.at?.getTime() ?? 0));
-    return out.slice(0, maxEntries);
+    return out;
 }
 
 function LineChartCard(props: {
@@ -607,7 +607,7 @@ export default function AdminAnalyticsPage() {
                                                 const aiChatData = aiChatSnap.data();
                                                 appAiChatUserMessageCount += countUserMessagesFromAiChatDoc(aiChatData);
                                                 appAiChatRecentEntries.push(
-                                                    ...extractRecentAiChatEntries(aiChatData, String(appData.id), 2),
+                                                    ...extractRecentAiChatEntries(aiChatData, String(appData.id)),
                                                 );
                                             }
                                         } catch { }
@@ -629,7 +629,7 @@ export default function AdminAnalyticsPage() {
                                         appWithVercelCount,
                                         appWithStripeCount,
                                         appAiChatUserMessageCount,
-                                        appAiChatRecentEntries: appAiChatRecentEntries.slice(0, 8),
+                                        appAiChatRecentEntries,
                                         appCreationDates,
                                     });
                                 }
@@ -1039,7 +1039,7 @@ export default function AdminAnalyticsPage() {
         }
 
         out.sort((a, b) => (b.at?.getTime() ?? 0) - (a.at?.getTime() ?? 0));
-        return out.slice(0, 120);
+        return out.slice(0, 500);
     }, [filteredRows]);
 
     const visibleTabs = useMemo(() => {
@@ -1460,7 +1460,7 @@ export default function AdminAnalyticsPage() {
                                                     Recent user prompts and assistant responses from kloner_apps. Use this to spot suspicious or malicious requests.
                                                 </p>
                                             </div>
-                                            <p className="text-[11px] text-neutral-500">Showing up to 120 recent pairs</p>
+                                            <p className="text-[11px] text-neutral-500">Showing {appAiChatAuditEntries.length} recent pairs (cap 500)</p>
                                         </div>
 
                                         {appAiChatAuditEntries.length === 0 ? (

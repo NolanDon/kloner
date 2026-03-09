@@ -3784,6 +3784,17 @@ export default function PreviewPage(): JSX.Element {
             const normalizedUrl = normUrl(rawUrl);
             if (!normalizedUrl) return true;
 
+            // Some URL-capture failures can transition through multiple terminal labels
+            // (e.g. queued timeout -> stale) within the same incident. Collapse them into
+            // one dedupe family so Slack gets a single alert per URL incident.
+            const dedupeAction = (() => {
+                const a = String(action || "").trim().toLowerCase();
+                if (a === "url_capture_stalled" || a === "url_capture_stale") {
+                    return "url_capture_timeout_or_stale";
+                }
+                return a || "unknown_action";
+            })();
+
             const now = Date.now();
             const cacheRaw = window.sessionStorage.getItem(FRONTEND_TIMEOUT_DEDUPE_STORAGE_KEY);
             const cache = cacheRaw ? JSON.parse(cacheRaw) as Record<string, number> : {};
@@ -3795,7 +3806,7 @@ export default function PreviewPage(): JSX.Element {
                 }
             }
 
-            const dedupeKey = `${action}:${normalizedUrl}`;
+            const dedupeKey = `${dedupeAction}:${normalizedUrl}`;
             if (typeof next[dedupeKey] === "number") {
                 window.sessionStorage.setItem(FRONTEND_TIMEOUT_DEDUPE_STORAGE_KEY, JSON.stringify(next));
                 return false;
@@ -3887,9 +3898,31 @@ export default function PreviewPage(): JSX.Element {
                 if (cancelled) return;
 
                 if (!res.ok) {
+                    const payload = await res.json().catch(() => ({} as any));
+                    const activeCaptureForTarget = (() => {
+                        const s = String(captureStatusRef.current || "").toLowerCase();
+                        return s === "queued" || s === "processing" || s === "ready";
+                    })();
+
+                    // False-negative guard: if we got rate-limited but a capture is already active,
+                    // do not flip the UI into a hard error state.
+                    if (res.status === 429 && activeCaptureForTarget) {
+                        shouldMarkHandled = true;
+                        setErr("");
+                        clearStartQueryParam();
+                        return;
+                    }
+
                     generateAbortedRef.current = startRequestKey;
-                    await res.json().catch(() => ({})); // consume body
-                    setErr("Sorry, we were not able to process this URL. Please ensure it is accessible before trying again.");
+                    const serverError =
+                        (typeof payload?.error === "string" && payload.error.trim())
+                            ? payload.error.trim()
+                            : "";
+                    const uiError =
+                        res.status === 429
+                            ? (serverError || "Monthly snapshot limit reached for your plan.")
+                            : "Sorry, we were not able to process this URL. Please ensure it is accessible before trying again.";
+                    setErr(uiError);
                     setInfo("");
                     captureLockMinUntilRef.current = 0;
                     setCaptureLockUrl(null);
@@ -3992,10 +4025,32 @@ export default function PreviewPage(): JSX.Element {
                 return true;
             }
 
+            const payload = await res.json().catch(() => ({} as any));
+            const activeCaptureForTarget = (() => {
+                const s = String(captureStatusRef.current || "").toLowerCase();
+                return s === "queued" || s === "processing" || s === "ready";
+            })();
+
+            // False-negative guard for polling fallback: if a capture is already active,
+            // treat 429 as a non-fatal duplicate enqueue outcome.
+            if (res.status === 429 && activeCaptureForTarget) {
+                generateSucceededRef.current = startRequestKey;
+                clearStartQueryParam();
+                return true;
+            }
+
             // Server error — abort polling, wipe captured UI state, show error.
             generateAbortedRef.current = startRequestKey;
             if (!cancelled) {
-                setErr("This URL failed to process. Please ensure it is accessible before retrying.");
+                const serverError =
+                    (typeof payload?.error === "string" && payload.error.trim())
+                        ? payload.error.trim()
+                        : "";
+                const uiError =
+                    res.status === 429
+                        ? (serverError || "Monthly snapshot limit reached for your plan.")
+                        : "This URL failed to process. Please ensure it is accessible before retrying.";
+                setErr(uiError);
                 setInfo("");
                 captureLockMinUntilRef.current = 0;
                 setCaptureLockUrl(null);

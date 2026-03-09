@@ -124,7 +124,7 @@ export default function NavBar(): JSX.Element {
     }
 
     return [
-      { label: "Login / Sign up", href: "/login" },
+      { label: "Login", href: "/login" },
       { label: "Pricing", href: "/price" },
       { label: "Community", href: "/community-builds" },
     ];
@@ -245,10 +245,10 @@ export default function NavBar(): JSX.Element {
             {/* Auth (desktop) */}
             {!user ? (
               <a
-                href="/login?mode=signup"
+                href="/login"
                 className="hidden lg:inline text-[15px] text-white/85 hover:text-white"
               >
-                Sign up
+                Login
               </a>
             ) : (
               <>
