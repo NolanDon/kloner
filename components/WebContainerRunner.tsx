@@ -634,6 +634,12 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
       reason: payload.reason || payload.action,
     });
 
+    // Product requirement: webhook errors should represent terminal failures,
+    // not slow-start latency while the preview may still recover.
+    if (payload.action === 'preview_slow_start_warn' || payload.action === 'preview_slow_start_critical') {
+      return { sent: false, deduped: true, alertKey };
+    }
+
     const dedupe = shouldEmitAlertForKey(alertKey);
     if (dedupe.deduped && !payload.force) {
       return { sent: false, deduped: true, alertKey };
