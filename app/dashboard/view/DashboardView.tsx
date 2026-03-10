@@ -5419,6 +5419,29 @@ export default function PreviewPage(): JSX.Element {
         [router]
     );
 
+    const isBackendFetchFailed502 = useCallback((status: number, payload: any): boolean => {
+        if (status !== 502) return false;
+        const msg = String(payload?.error || "").toLowerCase();
+        return msg.includes("backend fetch failed");
+    }, []);
+
+    const recoverFromTransientRenderStart = useCallback(
+        (label: string) => {
+            push(
+                `${label} is taking a little longer. We are still checking for progress in the background.`,
+                "warn",
+            );
+            void refreshRenders();
+            window.setTimeout(() => {
+                void refreshRenders();
+            }, 1200);
+            window.setTimeout(() => {
+                void refreshRenders();
+            }, 3500);
+        },
+        [push, refreshRenders],
+    );
+
     const buildFromCollection = useCallback(
         async (storageKeys: string[]) => {
             if (!user) return;
@@ -5506,6 +5529,12 @@ export default function PreviewPage(): JSX.Element {
                 if (r.status === 202) {
                     push("Server accepted collection preview job", "ok");
                     await refreshRenders();
+                    return;
+                }
+
+                if (isBackendFetchFailed502(r.status, j)) {
+                    setDeployWizardError("Collection preview start is delayed. Checking for progress…");
+                    recoverFromTransientRenderStart("Collection preview start");
                     return;
                 }
 
@@ -5599,6 +5628,11 @@ export default function PreviewPage(): JSX.Element {
                 return;
             }
 
+            if (isBackendFetchFailed502(r.status, j)) {
+                recoverFromTransientRenderStart("Website generation");
+                return;
+            }
+
             if (!r.ok || !j?.ok) {
                 throw new Error(j?.error || "Render failed");
             }
@@ -5608,7 +5642,7 @@ export default function PreviewPage(): JSX.Element {
             console.error("buildFromUrl failed", e);
             push(e?.message || "Failed to start website generation.", "err");
         }
-    }, [user, targetUrl, canUsePreviewCredit, push, refreshRenders, setShowCreditsPaywall]);
+    }, [user, targetUrl, canUsePreviewCredit, push, refreshRenders, setShowCreditsPaywall, isBackendFetchFailed502, recoverFromTransientRenderStart]);
 
     const continueRender = useCallback(
         async (renderId: string) => {
@@ -5762,6 +5796,11 @@ export default function PreviewPage(): JSX.Element {
                     return;
                 }
 
+                if (isBackendFetchFailed502(resp.status, j)) {
+                    recoverFromTransientRenderStart("Retry");
+                    return;
+                }
+
                 if (!resp.ok || !j?.ok) {
                     const msg = j?.error || "Retry failed";
                     throw new Error(msg);
@@ -5791,7 +5830,7 @@ export default function PreviewPage(): JSX.Element {
                 push("Failed to retry render.", "err");
             }
         },
-        [user, renders, refreshRenders, setRenders, setErr, push],
+        [user, renders, refreshRenders, setRenders, setErr, push, isBackendFetchFailed502, recoverFromTransientRenderStart],
     );
 
 
