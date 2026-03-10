@@ -2535,21 +2535,19 @@ export default function NavBar() {
                   },
                 });
 
-                setLoadingStatus('Preview is still starting. Backing off status checks to avoid rate limiting…');
+                setLoadingStatus('Preview is still starting...');
                 setCurrentStatusData((prev: any) =>
                   prev && typeof prev === 'object'
                     ? {
                         ...prev,
                         updatedAt: Date.now(),
-                        uiMessage:
-                          'Preview is still starting. Status checks are being slowed down to avoid rate limiting.',
+                        uiMessage: 'Preview is still starting...',
                       }
                     : {
                         status: 'starting',
                         uiStage: 'starting',
                         uiTitle: 'Starting preview',
-                        uiMessage:
-                          'Preview is still starting. Status checks are being slowed down to avoid rate limiting.',
+                        uiMessage: 'Preview is still starting...',
                         uiProgress: 0,
                         updatedAt: Date.now(),
                       }
