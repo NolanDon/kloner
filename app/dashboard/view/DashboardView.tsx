@@ -247,6 +247,7 @@ function MiniDashboardEntry({
                     return;
                 }
                 onSubmitUrl(normalized);
+                return;
             }
 
             const p = stripHttpsUrlsFromPrompt(prompt || "").trim();
@@ -4678,8 +4679,9 @@ export default function PreviewPage(): JSX.Element {
                 return;
             }
 
+            const displayUrl = r.url && r.url.length > 64 ? `${r.url.slice(0, 61)}...` : r.url;
             const ok = await showConfirm(
-                `Delete this tracked URL?\n\n${r.url}\n\nThis removes the URL and its screenshots.`,
+                `Delete this tracked URL?\n\n${displayUrl}\n\nThis removes the URL and its screenshots.`,
                 "Delete URL"
             );
             if (!ok) return;
