@@ -34,6 +34,15 @@ const MAX_STACK_CHARS = 12000;
 const MAX_MESSAGE_CHARS = 1000;
 const MAX_TEXT_CHARS = 2800;
 const MAX_STACK_BLOCK_CHARS = 2400;
+const FRONTEND_LABEL = "[FRONTEND]";
+
+function withFrontendLabel(event: Pick<ObservabilityEvent, "source">, text: string): string {
+    if (event.source !== "frontend") return text;
+    const trimmed = text.trim();
+    if (!trimmed) return FRONTEND_LABEL;
+    if (trimmed.startsWith(FRONTEND_LABEL)) return trimmed;
+    return `${FRONTEND_LABEL} ${trimmed}`;
+}
 
 function envName() {
     return process.env.VERCEL_ENV || process.env.NODE_ENV || "unknown";
@@ -191,7 +200,10 @@ function toSlackBlocks(event: StoredEvent, eventId: string) {
     const reqId = event.requestId || "n/a";
     const status = typeof event.statusCode === "number" ? String(event.statusCode) : "n/a";
     const env = event.environment || envName();
-    const title = `${severityEmoji(event.severity)} ${getProjectLabel()} ${event.severity.toUpperCase()}${event.statusCode ? ` (${event.statusCode})` : ""}`;
+    const title = withFrontendLabel(
+        event,
+        `${severityEmoji(event.severity)} ${getProjectLabel()} ${event.severity.toUpperCase()}${event.statusCode ? ` (${event.statusCode})` : ""}`,
+    );
     const details = [
         `*Source:* ${event.source}`,
         `*Route/Page:* ${route}`,
@@ -206,7 +218,7 @@ function toSlackBlocks(event: StoredEvent, eventId: string) {
     ].join("\n");
 
     const stack = truncate(normalizeMultiline(event.stack), MAX_STACK_CHARS);
-    const message = truncate(asOneLine(event.message), MAX_MESSAGE_CHARS);
+    const message = truncate(asOneLine(withFrontendLabel(event, event.message)), MAX_MESSAGE_CHARS);
     const dashboardUrl = buildDashboardUrl(eventId);
 
     const blocks: any[] = [
@@ -306,7 +318,7 @@ async function postToSlack(event: StoredEvent, eventId: string) {
     if (shouldSuppressSlackWebhook(event)) return;
 
     const body: Record<string, unknown> = {
-        text: `${event.severity.toUpperCase()} ${event.message}`,
+        text: withFrontendLabel(event, `${event.severity.toUpperCase()} ${event.message}`),
         blocks: toSlackBlocks(event, eventId),
         unfurl_links: false,
         unfurl_media: false,
