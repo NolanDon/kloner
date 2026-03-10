@@ -12,7 +12,8 @@ export default function Hero() {
     <section
       className="relative bg-white overflow-hidden"
       style={{
-        height: "calc(100dvh - var(--header-h, 0px))",
+        // Use stable viewport height to avoid resize/jump when mobile browser UI collapses.
+        height: "calc(100svh - var(--header-h, 0px))",
         minHeight: 560,
       }}
     >

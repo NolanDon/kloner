@@ -3,6 +3,7 @@
 
 import { MessagesSquare, SquareX } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { useAuth } from "@/src/hooks/useAuth";
 
 type ChatMessage = {
     id: string;
@@ -36,6 +37,7 @@ function ConnectingDots() {
 }
 
 export default function ChatWidgetProvider() {
+    const { user, loading: authLoading } = useAuth();
     const [open, setOpen] = useState(false);
     const [chatId, setChatId] = useState<string | null>(null);
     const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -240,15 +242,24 @@ export default function ChatWidgetProvider() {
     }
 
     async function handleEscalate() {
+        if (!user || authLoading) {
+            setError("Sign in required to talk to a human");
+            return;
+        }
+
         if (!chatId || mode === "agent" || escalating || chatClosed) return;
 
         setEscalating(true);
         setError(null);
 
         try {
+            const token = await user.getIdToken().catch(() => null);
             const res = await fetch("/api/support/escalate", {
                 method: "POST",
-                headers: { "content-type": "application/json" },
+                headers: {
+                    "content-type": "application/json",
+                    ...(token ? { authorization: `Bearer ${token}` } : {}),
+                },
                 body: JSON.stringify({ chatId }),
             });
 
@@ -298,6 +309,7 @@ export default function ChatWidgetProvider() {
     }
 
     const isConnectingToHuman = mode === "agent" && status === "pending";
+    const canRequestHuman = !!user && !authLoading;
 
     return (
         <>
@@ -352,7 +364,7 @@ export default function ChatWidgetProvider() {
                             </button>
                         )}
 
-                        {mode === "ai" && !chatClosed && (
+                        {mode === "ai" && !chatClosed && canRequestHuman && (
                             <button
                                 type="button"
                                 onClick={handleEscalate}

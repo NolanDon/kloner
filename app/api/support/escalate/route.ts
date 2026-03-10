@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import admin from "firebase-admin";
 import { Resend } from "resend";
 import { getAdminDb } from "../../_lib/auth";
+import { requireSessionAndMaybeCsrf } from "../../_lib/route-guard";
 import { captureCriticalEvent, captureException } from "@/lib/observability";
 
 export const dynamic = "force-dynamic";
@@ -88,7 +89,10 @@ function buildEscalationHtml(args: {
 }
 
 export async function POST(req: NextRequest) {
-    try {
+  return requireSessionAndMaybeCsrf(
+    req,
+    async ({ uid }) => {
+      try {
         const body = await req.json().catch(() => ({}));
         const chatId = typeof body.chatId === "string" ? body.chatId.trim() : "";
 
@@ -103,11 +107,12 @@ export async function POST(req: NextRequest) {
             message: "Missing chatId",
             service: "support-chat",
             url: req.url,
+            userId: uid,
           });
-            return NextResponse.json(
-                { ok: false, error: "Missing chatId" },
-                { status: 400 },
-            );
+          return NextResponse.json(
+            { ok: false, error: "Missing chatId" },
+            { status: 400 },
+          );
         }
 
         const db = getAdminDb();
@@ -125,121 +130,136 @@ export async function POST(req: NextRequest) {
             message: "Chat not found",
             service: "support-chat",
             url: req.url,
+            userId: uid,
             extra: { chatId },
           });
-            return NextResponse.json(
-                { ok: false, error: "Chat not found" },
-                { status: 404 },
-            );
+          return NextResponse.json(
+            { ok: false, error: "Chat not found" },
+            { status: 404 },
+          );
         }
 
         const chatData = chatSnap.data() || {};
+        const existingUserId = typeof chatData.userId === "string" ? chatData.userId : null;
+        if (existingUserId && existingUserId !== uid) {
+          return NextResponse.json(
+            { ok: false, error: "Forbidden" },
+            { status: 403 },
+          );
+        }
+
         const nowTs = admin.firestore.Timestamp.now();
+        const resolvedUserId = existingUserId || uid;
 
         // Move into agent lane, but "pending" until an agent actually picks it up.
         await chatRef.set(
-            {
-                mode: "agent",
-                status: "pending",
-                updatedAt: nowTs,
-                lastActivityAt: nowTs,
-                connectingSince: nowTs,
+          {
+            userId: resolvedUserId,
+            mode: "agent",
+            status: "pending",
+            updatedAt: nowTs,
+            lastActivityAt: nowTs,
+            connectingSince: nowTs,
 
-                // stop any inactivity timers immediately
-                inactivityPromptAt: admin.firestore.FieldValue.delete(),
-                pendingAutoCloseAt: admin.firestore.FieldValue.delete(),
-            } as any,
-            { merge: true },
+            // stop any inactivity timers immediately
+            inactivityPromptAt: admin.firestore.FieldValue.delete(),
+            pendingAutoCloseAt: admin.firestore.FieldValue.delete(),
+          } as any,
+          { merge: true },
         );
 
         // Persist a connecting system message in Firestore (so it doesn't "disappear" on polling).
         await chatRef.collection("messages").add({
-            sender: "system",
-            text: CONNECTING_TEXT,
-            createdAt: nowTs,
+          sender: "system",
+          text: CONNECTING_TEXT,
+          createdAt: nowTs,
         });
 
         await chatRef.set(
-            {
-                lastMessageFrom: "system",
-                lastMessage: CONNECTING_TEXT,
-                lastMessageAt: nowTs,
-            } as any,
-            { merge: true },
+          {
+            lastMessageFrom: "system",
+            lastMessage: CONNECTING_TEXT,
+            lastMessageAt: nowTs,
+          } as any,
+          { merge: true },
         );
 
         // Seed /support_inbox/{chatId}
         const inboxRef = db.collection(INBOX_COLLECTION).doc(chatId);
         await inboxRef.set(
-            {
-                mode: "agent",
-                status: "pending",
-                userId: chatData.userId ?? null,
-                createdAt: chatData.createdAt || nowTs,
-                updatedAt: nowTs,
-                lastMessage: CONNECTING_TEXT,
-                lastMessageFrom: "system",
-                unreadCount: admin.firestore.FieldValue.increment(1),
-                assignedTo: null,
-                connectingSince: nowTs,
-            } as any,
-            { merge: true },
+          {
+            mode: "agent",
+            status: "pending",
+            userId: resolvedUserId,
+            createdAt: chatData.createdAt || nowTs,
+            updatedAt: nowTs,
+            lastMessage: CONNECTING_TEXT,
+            lastMessageFrom: "system",
+            unreadCount: admin.firestore.FieldValue.increment(1),
+            assignedTo: null,
+            connectingSince: nowTs,
+          } as any,
+          { merge: true },
         );
 
         // Email support
         try {
-            const resend = getResend();
-            const to = "support@kloner.app";
-            const from = process.env.SUPPORT_ESCALATION_FROM || "hello@kloner.app";
+          const resend = getResend();
+          const to = "support@kloner.app";
+          const from = process.env.SUPPORT_ESCALATION_FROM || "hello@kloner.app";
 
-            const whenIso = new Date().toISOString();
-            const subject = `Kloner support escalation: ${chatId}`;
+          const whenIso = new Date().toISOString();
+          const subject = `Kloner support escalation: ${chatId}`;
 
-            const html = buildEscalationHtml({
-                chatId,
-                userId: chatData.userId ?? null,
-                lastMessage: chatData.lastMessage ?? null,
-                whenIso,
-            });
+          const html = buildEscalationHtml({
+            chatId,
+            userId: resolvedUserId,
+            lastMessage: chatData.lastMessage ?? null,
+            whenIso,
+          });
 
-            const text =
-                `Support escalation\n\n` +
-                `Chat: ${chatId}\n` +
-                `User: ${chatData.userId ?? "Anonymous"}\n` +
-                `Time: ${whenIso}\n\n` +
-                `Open: https://kloner.app/support/agent/${chatId}\n`;
+          const text =
+            `Support escalation\n\n` +
+            `Chat: ${chatId}\n` +
+            `User: ${resolvedUserId || "Anonymous"}\n` +
+            `Time: ${whenIso}\n\n` +
+            `Open: https://kloner.app/support/agent/${chatId}\n`;
 
-            const result = await resend.emails.send({
-                from,
-                to,
-                subject,
-                text,
-                html,
-            });
+          const result = await resend.emails.send({
+            from,
+            to,
+            subject,
+            text,
+            html,
+          });
 
-            if ("error" in result && result.error) {
-                console.error("Resend error (escalation):", result.error);
-            }
+          if ("error" in result && result.error) {
+            console.error("Resend error (escalation):", result.error);
+          }
         } catch (e) {
-            console.error("Escalation email failed:", e);
+          console.error("Escalation email failed:", e);
         }
 
         return NextResponse.json({ ok: true, mode: "agent", status: "pending" });
-    } catch (err) {
+      } catch (err) {
         console.error("support escalate POST failed", err);
-      await captureException({
-        source: "vercel",
-        error: err,
-        route: req.nextUrl?.pathname,
-        method: "POST",
-        action: "support.escalate",
-        statusCode: 500,
-        service: "support-chat",
-        url: req.url,
-      });
+        await captureException({
+          source: "vercel",
+          error: err,
+          route: req.nextUrl?.pathname,
+          method: "POST",
+          action: "support.escalate",
+          statusCode: 500,
+          service: "support-chat",
+          url: req.url,
+          userId: uid,
+        });
         return NextResponse.json(
-            { ok: false, error: "Failed to escalate" },
-            { status: 500 },
+          { ok: false, error: "Failed to escalate" },
+          { status: 500 },
         );
-    }
+      }
+    },
+    { methods: ["POST"] },
+  );
 }
