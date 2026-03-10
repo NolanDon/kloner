@@ -748,12 +748,12 @@ function RenderCardInner({
         }
 
         // Preview build
-        if (p < 10) return "Reading your screenshot…";
-        if (p < 25) return "Detecting layout…";
-        if (p < 45) return "Generating editable HTML… This process can take several minutes for complex pages.";
-        if (p < 65) return "Applying styles…";
-        if (p < 80) return "Linking sections…";
-        if (p < 95) return "Final polish…";
+        if (p < 10) return "Starting… ~4 min left";
+        if (p < 25) return "Reading layout… ~3 min left";
+        if (p < 45) return "Generating page… ~2 min left";
+        if (p < 65) return "Applying styles… ~1 min left";
+        if (p < 80) return "Linking sections… ~1 min left";
+        if (p < 95) return "Finalizing… <1 min left";
         return "Wrapping up…";
     }, [normalizedProgressPercent, isDeploying, r]);
 
