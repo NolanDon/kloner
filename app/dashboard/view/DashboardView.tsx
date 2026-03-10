@@ -94,13 +94,12 @@ import { archiveRender, filterRendersForBuilder, resolveStorageUrl, useResolvedI
 import { archiveApp } from "@/src/lib/apps";
 import { AnimatePresence, motion } from "framer-motion";
 import { extractArchivedPageIdsFromRender, fetchRenderForDeployment, getArchivedRoutesForRender, persistArchivedPageIds, scrubArchivedRoutes, secureHtmlForPreviewIframe, withArchivedPageIds } from "@/components/helpers";
-import { recordDeployAnalytics } from "@/components/analytics";
-import Footer from "@/components/Footer";
 import { useModal } from "@/components/ui/ModalContext";
 import AppBuilderEditor from "@/components/AppBuilderEditor";
 import { PROMPT_PLACEHOLDERS } from "@/src/lib/promptPlaceholders";
 import { useRotatingPlaceholderIndex } from "@/src/hooks/useRotatingPlaceholderIndex";
 import { validateAndNormalizePublicHttpUrl } from "@/src/lib/publicHttpUrl";
+import { recordAppBuilderSessionAnalytics, recordDeployAnalytics } from "@/components/analytics";
 
 const VERCEL_INTEGRATION_SLUG =
     process.env.NEXT_PUBLIC_VERCEL_INTEGRATION_SLUG || "kloner";
@@ -112,6 +111,7 @@ const FRONTEND_TIMEOUT_DEDUPE_TTL_MS = 10 * 60 * 1000;
 const FRONTEND_TIMEOUT_DEDUPE_STORAGE_KEY = "dashboardViewFrontendTimeoutAlertsV1";
 const URL_ADD_SUCCESS_MESSAGE = "URL added successfully! You can now generate websites from this URL below.";
 const APP_WIZARD_PROMPT_MAX_CHARS = 2000;
+
 const APP_BUILDER_COOKIE_CONSENT_KEY = "kloner.appBuilder.necessaryCookiesAccepted.v1";
 const APP_BUILDER_COOKIE_CONSENT_COOKIE = "kloner_app_builder_nc";
 
@@ -244,7 +244,6 @@ function MiniDashboardEntry({
                     return;
                 }
                 onSubmitUrl(normalized);
-                return;
             }
 
             const p = stripHttpsUrlsFromPrompt(prompt || "").trim();
@@ -1108,7 +1107,7 @@ function RenderCardInner({
 
 
                 <div className="pointer-events-none absolute inset-0 z-20 grid place-items-center">
-                    <div className="pointer-events-auto flex max-w-xs flex-col items-stretch rounded-xl border border-neutral-200 bg-white/80 p-3 text-xs shadow-lg backdrop-blur-sm md:max-w-sm">
+                    <div className="pointer-events-auto flex w-[calc(100%-1rem)] max-w-xs flex-col items-stretch rounded-xl border border-neutral-200 bg-white/80 p-3 text-[11px] shadow-lg backdrop-blur-sm min-[420px]:w-auto min-[420px]:text-xs md:max-w-sm">
                         <div className="mb-3 rounded-lg border border-neutral-300 bg-white/90 px-2.5 py-1.5 shadow-sm">
                             {isEditingName ? (
                                 <div className="flex items-center gap-2">
@@ -1175,7 +1174,7 @@ function RenderCardInner({
                         </div>
                         {/* top row: deploy / customize */}
                         {!shareOpen && (
-                            <div className="flex w-full flex-row flex-nowrap items-stretch font-semibold gap-2">
+                            <div className="flex w-full flex-col items-stretch gap-2 font-semibold min-[360px]:flex-row min-[360px]:flex-nowrap">
                                 <button
                                     onClick={
                                         isDeployedFlag
@@ -1191,7 +1190,7 @@ function RenderCardInner({
                                         isDeploying ||
                                         isThisCardLockedForBuild
                                     }
-                                    className={`group inline-flex min-w-0 flex-1 items-center justify-center gap-1.5 overflow-hidden whitespace-nowrap rounded-full px-4 py-1.5 text-xs ${isArchivedFlag
+                                    className={`group inline-flex min-w-0 flex-1 items-center justify-center gap-2 overflow-hidden rounded-full px-3 py-1.5 text-[11px] min-[420px]:px-4 min-[420px]:text-xs ${isArchivedFlag
                                         ? "cursor-not-allowed bg-neutral-50 text-neutral-400"
                                         : isDeployedFlag
                                             ? "bg-emerald-500 text-white shadow-sm hover:bg-green-700"
@@ -1211,17 +1210,17 @@ function RenderCardInner({
                                 >
                                     {isDeploying ? (
                                         <>
-                                            <span className="shrink-0">Deploying…</span>
+                                            <span className="min-w-0">Deploying…</span>
                                             <Rocket className="h-4 w-4 shrink-0 animate-pulse" />
                                         </>
                                     ) : isDeployedFlag ? (
                                         <>
-                                            <span className="shrink-0">Deployed</span>
+                                            <span className="min-w-0">Deployed</span>
                                             <ExternalLink className="h-4 w-4 shrink-0" />
                                         </>
                                     ) : (
                                         <>
-                                            <span className="shrink-0">Deploy</span>
+                                            <span className="min-w-0">Deploy</span>
                                             <Rocket className="h-4 w-4 shrink-0 transform transition-transform duration-150 group-hover:-translate-y-0.5" />
                                         </>
                                     )}
@@ -1237,7 +1236,7 @@ function RenderCardInner({
                                             }
                                         }}
                                         disabled={(disableOpen || isDeleting || !r.html) && !isFailed}
-                                        className="group inline-flex min-w-0 flex-1 items-center justify-center gap-2 overflow-hidden whitespace-nowrap rounded-full border border-neutral-500 px-3 py-1.5 text-neutral-800 shadow-sm disabled:opacity-60"
+                                        className="group inline-flex min-w-0 flex-1 items-center justify-center gap-2 overflow-hidden rounded-full border border-neutral-500 px-3 py-1.5 text-[11px] text-neutral-800 shadow-sm disabled:opacity-60 min-[420px]:text-xs"
                                         title={
                                             isArchivedFlag
                                                 ? "Unarchive to customize this preview"
@@ -1250,7 +1249,7 @@ function RenderCardInner({
                                                             : "Open editor to customize"
                                         }
                                     >
-                                        <span className="shrink-0">
+                                        <span className="min-w-0">
                                             {isBuilding || isQueued
                                                 ? "Building…"
                                                 : isFailed
@@ -1280,12 +1279,12 @@ function RenderCardInner({
                         {/* progress bar / status – only for the active build/deploy and never at 100% */}
                         {hasProgressInfo && (
                             <div className="mt-2 w-full">
-                                <div className="mb-1 flex items-center justify-between text-[10px] font-semibold text-neutral-600">
-                                    <span className="max-w-[72%] truncate" aria-live="polite">
+                                <div className="mb-1 flex flex-col gap-1 text-[10px] font-semibold leading-4 text-neutral-600 min-[360px]:flex-row min-[360px]:items-start min-[360px]:justify-between">
+                                    <span className="min-w-0 break-words" aria-live="polite">
                                         {progressDetail ?? normalizedProgressLabel}
                                     </span>
                                     {normalizedProgressPercent !== null && (
-                                        <span className="font-semibold tabular-nums">
+                                        <span className="self-end font-semibold tabular-nums min-[360px]:self-auto">
                                             {Math.round(normalizedProgressPercent)}%
                                         </span>
                                     )}
@@ -1326,7 +1325,7 @@ function RenderCardInner({
                         )}
 
                         {onShareWithCommunity && (
-                            <div className="mt-4 flex w-full items-center justify-center gap-1">
+                            <div className="mt-4 flex w-full flex-wrap items-center justify-center gap-1.5">
                                 {!shareOpen && (
                                     <>
                                         <button
@@ -1340,7 +1339,7 @@ function RenderCardInner({
                                                 isQueued ||
                                                 isFailed
                                             }
-                                            className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border border-neutral-300 bg-white/60 px-2.5 py-1 text-[11px] text-neutral-600 hover:border-neutral-400 disabled:opacity-50"
+                                            className="inline-flex min-w-0 items-center gap-1.5 rounded-full border border-neutral-300 bg-white/60 px-2.5 py-1 text-[11px] text-neutral-600 hover:border-neutral-400 disabled:opacity-50"
                                             title={
                                                 alreadyShared
                                                     ? "This build is already shared to the community gallery"
@@ -1366,7 +1365,7 @@ function RenderCardInner({
                                                 isQueued ||
                                                 isFailed
                                             }
-                                            className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-2.5 py-1 text-[11px] shadow-sm disabled:opacity-50 disabled:cursor-not-allowed ${isArchivedFlag
+                                            className={`inline-flex min-w-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] shadow-sm disabled:opacity-50 disabled:cursor-not-allowed ${isArchivedFlag
                                                 ? "border-amber-500 bg-amber-50 text-amber-900 hover:bg-amber-100"
                                                 : "border-neutral-300 bg-white/60 text-neutral-700 hover:border-neutral-400"
                                                 }`}
@@ -1670,7 +1669,7 @@ function AppCard({
             <div className="relative aspect-[3/3] w-full overflow-hidden flex flex-col items-center justify-center bg-gradient-to-br from-neutral-50 to-neutral-100">
                 {/* Action buttons overlay */}
                 <div className="pointer-events-none absolute inset-0 z-20 grid place-items-center">
-                    <div className="pointer-events-auto flex max-w-xs flex-col items-stretch rounded-xl border border-neutral-200 bg-white/80 p-3 text-xs shadow-lg backdrop-blur-sm">
+                    <div className="pointer-events-auto flex w-[calc(100%-1rem)] max-w-xs flex-col items-stretch rounded-xl border border-neutral-200 bg-white/80 p-3 text-[11px] shadow-lg backdrop-blur-sm min-[420px]:w-auto min-[420px]:text-xs">
                         <div className="mb-3 rounded-lg border border-neutral-300 bg-white/90 px-2.5 py-1.5 shadow-sm">
                             {isEditingName ? (
                                 <div className="flex items-center gap-2">
@@ -2062,7 +2061,51 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                     </div>
                                 </div>
 
-                                {/* 2) Mobile apps (coming soon) */}
+                                {/* 2) Simple HTML website */}
+                                <div className="relative">
+                                    <button
+                                        type="button"
+                                        onClick={handleWebsiteGeneration}
+                                        disabled={effectiveLocked}
+                                        className="relative w-full rounded-xl border border-neutral-200 bg-white p-4 text-left transition hover:bg-neutral-50 hover:border-neutral-300 disabled:opacity-60 disabled:cursor-not-allowed"
+                                    >
+                                        <div className="flex items-start gap-3">
+                                            <div
+                                                className="flex h-10 w-10 items-center justify-center rounded-lg bg-neutral-100"
+                                                aria-hidden
+                                            >
+                                                <Image
+                                                    src="/images/html.png"
+                                                    alt=""
+                                                    width={24}
+                                                    height={24}
+                                                    className="object-contain opacity-95"
+                                                    priority={false}
+                                                />
+                                            </div>
+
+                                            <div className="flex-1 space-y-1">
+                                                <div className="flex items-center gap-2">
+                                                    <div className="text-sm font-semibold text-neutral-900">
+                                                        Simple Landing Website HTML
+                                                    </div>
+                                                    <span className="inline-flex whitespace-nowrap items-center rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-800">
+                                                        Quick generation
+                                                    </span>
+                                                </div>
+
+                                                <div className="text-xs text-neutral-600">
+                                                    Faster HTML-first flow that opens in the legacy preview editor.
+                                                </div>
+                                                <div className="mt-1 text-[11px] leading-4 text-neutral-500">
+                                                    Best for: simple landing pages, brochure sites, fast iterations, and projects with no auth or database requirements.
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </button>
+                                </div>
+
+                                {/* 3) Mobile apps (coming soon) */}
                                 <div className="relative">
                                     <button
                                         type="button"
@@ -3100,7 +3143,6 @@ export default function PreviewPage(): JSX.Element {
             setAppWizardBusy(false);
         }
     }, [appWizardBusy, appWizardPrompt, handleCreateApp]);
-
     // New: create an app from the starter template (free)
     const handleCreateTemplateApp = useCallback(async () => {
         if (!user) return;

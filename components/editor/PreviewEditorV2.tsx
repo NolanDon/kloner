@@ -649,7 +649,7 @@ import { db, storage } from "@/lib/firebase"; // or wherever your db is
 import type { User as FirebaseUser } from "firebase/auth";
 import { RenderDoc } from "@/app/dashboard/view/DashboardView";
 import { useAuth } from "@/src/hooks/useAuth";
-import { Camera, Code2, Eye, EyeOff, FileText, Images, Loader2, Maximize2, MessageSquare, Minimize2, Monitor, Palette, Redo2, Rocket, RotateCcw, RotateCw, Smartphone, Tablet, Trash2Icon, Undo2 } from "lucide-react";
+import { Camera, Code2, Eye, EyeOff, FileText, Images, Loader2, Maximize2, MessageSquare, Minimize2, Monitor, Palette, Redo2, Rocket, RotateCcw, RotateCw, SlidersHorizontal, Smartphone, Tablet, Trash2Icon, Undo2 } from "lucide-react";
 import { compressImageForUpload } from "@/src/lib/clientImageCompression";
 import { EditorSessionCounters, EditorSessionMetrics, EditorSessionUser, ExportAnalyticsUser, recordEditorSessionAnalytics, recordExportAnalytics } from "../../components/analytics";
 import AiEditPanelV2 from "../../components/editor/AiEditPanel";
@@ -1150,6 +1150,9 @@ export default function PreviewEditorV2({
     const [aiHistory, setAiHistory] = useState<AiEditSuggestion[]>([]);
     const [historyOpen, setHistoryOpen] = useState(true);
     const [sidebarHidden, setSidebarHidden] = useState(IS_MOBILE ? true : false);
+    const [isCompactLayout, setIsCompactLayout] = useState(IS_MOBILE);
+    const [mobileTab, setMobileTab] = useState<"preview" | "panel">("preview");
+    const [mobileControlsOpen, setMobileControlsOpen] = useState(false);
     // dragging iframe
     const previewDragControls = useDragControls();
 
@@ -1197,15 +1200,45 @@ export default function PreviewEditorV2({
             if (event.data?.type === "kloner:tour-show-style-panel") {
                 setSidePanelMode("style");
                 setSidebarHidden(false);
+                setMobileTab("panel");
             } else if (event.data?.type === "kloner:tour-show-ai-panel") {
                 setSidePanelMode("revision-chat");
                 setSidebarHidden(false);
+                setMobileTab("panel");
             }
         };
         
         window.addEventListener("message", handleTourMessage);
         return () => window.removeEventListener("message", handleTourMessage);
     }, []);
+
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+
+        const mq = window.matchMedia("(max-width: 767px)");
+        const update = () => setIsCompactLayout(Boolean(mq.matches));
+        update();
+
+        if (typeof mq.addEventListener === "function") {
+            mq.addEventListener("change", update);
+            return () => mq.removeEventListener("change", update);
+        }
+
+        const legacyMq = mq as MediaQueryList & {
+            addListener?: (listener: (event: MediaQueryListEvent) => void) => void;
+            removeListener?: (listener: (event: MediaQueryListEvent) => void) => void;
+        };
+        legacyMq.addListener?.(update);
+        return () => legacyMq.removeListener?.(update);
+    }, []);
+
+    useEffect(() => {
+        if (!isCompactLayout) {
+            setMobileControlsOpen(false);
+            return;
+        }
+        setMobileTab("preview");
+    }, [isCompactLayout]);
 
     // 3) Timing + flush guards
     const sessionStartRef = useRef<number | null>(null);
@@ -4299,6 +4332,45 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
         [closing, mode, tryClearIframeSelection],
     );
 
+    const openSidePanelMode = useCallback(
+        (nextMode: "style" | "meta" | "code" | "ai-library" | "revision-chat") => {
+            setSidePanelMode(nextMode);
+            setSidebarHidden(false);
+            setMobileControlsOpen(false);
+
+            if (nextMode === "code") {
+                if (isDevCodeMode) handleModeClick("code");
+            } else if (mode !== "preview") {
+                handleModeClick("preview");
+            }
+
+            if (isCompactLayout) {
+                setMobileTab("panel");
+            }
+        },
+        [handleModeClick, isCompactLayout, isDevCodeMode, mode],
+    );
+
+    const openScreenshotMode = useCallback(() => {
+        setSidebarHidden(true);
+        setSidePanelMode("style");
+        setMobileControlsOpen(false);
+        if (mode !== "screenshot") handleModeClick("screenshot");
+        if (isCompactLayout) setMobileTab("preview");
+    }, [handleModeClick, isCompactLayout, mode]);
+
+    const mobilePanelTitle = useMemo(() => {
+        if (sidePanelMode === "style") return "Styles";
+        if (sidePanelMode === "meta") return "SEO / Meta";
+        if (sidePanelMode === "ai-library") return "AI Images";
+        if (sidePanelMode === "code") return "Code";
+        return "AI Edits";
+    }, [sidePanelMode]);
+
+    const showSidebarPanel = isCompactLayout ? mobileTab === "panel" : !sidebarHidden;
+    const showCanvasPanel = !isCompactLayout || mobileTab === "preview";
+    const effectiveUiScale = isCompactLayout ? 1 : uiScale;
+
     // kicks to preview if detects "code mode" in prod
     useEffect(() => {
         if (!isDevCodeMode && mode === "code") {
@@ -4372,12 +4444,91 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
             tabIndex={-1}
             className="fixed inset-0 z-[9999] bg-black/50"
         >
-            {!IS_MOBILE && (<PreviewEditorTour />)}
+            {!isCompactLayout && (<PreviewEditorTour />)}
 
-            <div className="absolute inset-4 overflow-hidden">
+            <div className={`absolute overflow-hidden ${isCompactLayout ? "inset-0 bg-white" : "inset-4"}`}>
+
+                {isCompactLayout && (
+                    <div className="absolute inset-x-0 top-0 z-[104] border-b border-neutral-200 bg-gray-50/95 px-3 py-2 backdrop-blur">
+                        <div className="flex items-center gap-2">
+                            <div className="min-w-0 flex-1">
+                                <div className="truncate text-sm font-semibold text-neutral-900">
+                                    {nameHint || "Preview editor"}
+                                </div>
+                                <div className="truncate text-[11px] text-neutral-500">
+                                    {mobileTab === "preview"
+                                        ? mode === "screenshot"
+                                            ? "Reference view"
+                                            : mode === "code"
+                                                ? "Code preview"
+                                                : `Live preview · ${device}`
+                                        : `${mobilePanelTitle} panel`}
+                                </div>
+                            </div>
+
+                            <button
+                                type="button"
+                                onClick={() => setMobileControlsOpen(true)}
+                                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-neutral-300 bg-white text-neutral-700 shadow-sm transition hover:bg-neutral-50"
+                                title="Controls"
+                                aria-label="Controls"
+                            >
+                                <SlidersHorizontal className="h-4 w-4" aria-hidden="true" />
+                            </button>
+
+                            <button
+                                type="button"
+                                onClick={() => setExportPrompt(true)}
+                                disabled={exporting}
+                                data-tour-deploy
+                                className={`inline-flex h-9 shrink-0 items-center gap-2 rounded-full border border-[#f55f2a] bg-[#f55f2a] px-3 text-sm font-semibold text-white shadow-md transition ${
+                                    exporting
+                                        ? "cursor-not-allowed opacity-60"
+                                        : "hover:bg-[#e54f1a]"
+                                }`}
+                                title="Deploy"
+                                aria-label="Deploy"
+                            >
+                                <Rocket className="h-3.5 w-3.5" aria-hidden="true" />
+                                <span>Deploy</span>
+                            </button>
+
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    if (dirty) setClosePrompt(true);
+                                    else performClose("discard");
+                                }}
+                                disabled={closing || aiEditing}
+                                aria-label="Close editor"
+                                className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-neutral-300 bg-white text-neutral-700 shadow-sm transition ${
+                                    closing
+                                        ? "cursor-not-allowed opacity-60"
+                                        : "hover:bg-neutral-50 hover:text-neutral-900"
+                                }`}
+                            >
+                                <span className="block h-[18px] w-[18px]">
+                                    <svg
+                                        viewBox="0 0 24 24"
+                                        className="h-full w-full"
+                                        aria-hidden="true"
+                                    >
+                                        <path
+                                            d="M6 6l12 12M18 6L6 18"
+                                            fill="none"
+                                            stroke="currentColor"
+                                            strokeWidth="1.8"
+                                            strokeLinecap="round"
+                                        />
+                                    </svg>
+                                </span>
+                            </button>
+                        </div>
+                    </div>
+                )}
 
                 {/* Top right controls */}
-                {!IS_MOBILE && (
+                {!isCompactLayout && (
                     <div className="absolute top-5 right-5 z-[102] flex items-center gap-2">
                         {/* Deploy button */}
                         <button
@@ -4439,9 +4590,10 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                 {/* V2 Badge moved to bottom right area */}
 
                 {/* TOP TOOLBAR (tools + device) */}
+                {!isCompactLayout && (
                 <div
                     id="kloner-device-toggle"
-                    className={`absolute z-[101] ${IS_MOBILE ? "bottom-20 left-4 right-4" : "flex items-center justify-center top-5 left-5 right-5"}`}
+                    className="absolute z-[101] flex items-center justify-center top-5 left-5 right-5"
                 >
                     <div className="flex items-center gap-2">
                         {/* Tools strip (left of device) */}
@@ -4649,31 +4801,37 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                         </div>
                     </div>
                 </div>
+                )}
 
                 {/* UI scale moved to bottom right */}
 
                 <div
-                    className="relative bg-white/90 rounded-xl shadow-xl gap-4 p-4 grid grid-cols-1"
-                    style={{
-                        transform: `scale(${uiScale})`,
+                    className={`relative ${isCompactLayout ? "flex h-full flex-col bg-white pt-[58px]" : "grid h-full grid-cols-1 gap-4 rounded-xl bg-white/90 p-4 shadow-xl"}`}
+                    style={isCompactLayout ? undefined : {
+                        transform: `scale(${effectiveUiScale})`,
                         transformOrigin: "top left",
-                        width: `${100 / uiScale}%`,
-                        height: `${100 / uiScale}%`,
+                        width: `${100 / effectiveUiScale}%`,
+                        height: `${100 / effectiveUiScale}%`,
                     }}
                 >
 
                     {/* LEFT SIDEBAR (consistent styling) */}
-                    {!sidebarHidden && (
+                    {showSidebarPanel && (
                         <motion.aside
                             id="kloner-style-sidebar"
-                            className="pointer-events-auto fixed left-0 top-0 bottom-0 z-40 bg-white flex w-[min(92vw,520px)] sm:w-[520px] flex-col overflow-hidden rounded-r-2xl border-r border-neutral-200 shadow-xl"
-                            initial={{ x: -16, opacity: 0 }}
+                            className={`pointer-events-auto bg-white flex flex-col overflow-hidden ${
+                                isCompactLayout
+                                    ? "relative z-20 h-full w-full bg-gray-50"
+                                    : "fixed bottom-0 left-0 top-0 z-40 w-[min(92vw,520px)] rounded-r-2xl border-r border-neutral-200 shadow-xl"
+                            }`}
+                            initial={isCompactLayout ? { opacity: 0, y: 8 } : { x: -16, opacity: 0 }}
                             animate={{ x: 0, opacity: 1 }}
-                            exit={{ x: -16, opacity: 0 }}
+                            exit={isCompactLayout ? { opacity: 0, y: 8 } : { x: -16, opacity: 0 }}
                             transition={{ duration: 0.18, ease: "easeOut" }}
                         >
                             {/* Panel header */}
                             <div className="flex items-center justify-between px-4 py-3" style={{ backgroundColor: "rgba(245, 95, 42, 0.08)" }}>
+                                <div>
                                 <div className="text-sm font-semibold text-[#f55f2a]">
                                     {sidePanelMode === "style" && "🎨 Styles"}
                                     {sidePanelMode === "meta" && "🔍 SEO / Meta"}
@@ -4681,15 +4839,27 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                     {sidePanelMode === "revision-chat" && "💬 AI Edits"}
                                     {sidePanelMode === "code" && "⌨️ Code"}
                                 </div>
+                                {isCompactLayout && (
+                                    <div className="mt-0.5 text-[11px] text-neutral-600">
+                                        Switch back to preview any time from the footer.
+                                    </div>
+                                )}
+                                </div>
                                 <button
                                     type="button"
-                                    onClick={() => setSidebarHidden(true)}
+                                    onClick={() => {
+                                        if (isCompactLayout) {
+                                            setMobileTab("preview");
+                                        } else {
+                                            setSidebarHidden(true);
+                                        }
+                                    }}
                                     disabled={closing || aiEditing}
                                     className={`inline-flex h-8 w-8 items-center justify-center rounded-full bg-white text-neutral-600 shadow-sm transition ${
                                         closing ? "cursor-not-allowed opacity-60" : "hover:bg-neutral-50"
                                     }`}
                                     aria-label="Close panel"
-                                    title="Close panel"
+                                    title={isCompactLayout ? "Back to preview" : "Close panel"}
                                 >
                                     <span className="block h-4 w-4">
                                         <svg viewBox="0 0 24 24" className="h-full w-full" aria-hidden="true">
@@ -4705,8 +4875,77 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                 </button>
                             </div>
 
+                            {isCompactLayout && (
+                                <div className="border-b border-neutral-200 bg-white px-4 py-3">
+                                    <div className="flex items-center gap-2 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+                                        <button
+                                            type="button"
+                                            onClick={() => openSidePanelMode("revision-chat")}
+                                            className={`shrink-0 inline-flex items-center gap-2 rounded-full border px-3 py-2 text-xs font-semibold transition-colors ${
+                                                sidePanelMode === "revision-chat"
+                                                    ? "border-[#f55f2a] bg-[#f55f2a] text-white"
+                                                    : "border-neutral-300 bg-white text-neutral-700"
+                                            }`}
+                                        >
+                                            <MessageSquare className="h-3.5 w-3.5" />
+                                            <span>AI</span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => openSidePanelMode("style")}
+                                            className={`shrink-0 inline-flex items-center gap-2 rounded-full border px-3 py-2 text-xs font-semibold transition-colors ${
+                                                sidePanelMode === "style"
+                                                    ? "border-[#f55f2a] bg-[#f55f2a] text-white"
+                                                    : "border-neutral-300 bg-white text-neutral-700"
+                                            }`}
+                                        >
+                                            <Palette className="h-3.5 w-3.5" />
+                                            <span>Styles</span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => openSidePanelMode("meta")}
+                                            className={`shrink-0 inline-flex items-center gap-2 rounded-full border px-3 py-2 text-xs font-semibold transition-colors ${
+                                                sidePanelMode === "meta"
+                                                    ? "border-[#f55f2a] bg-[#f55f2a] text-white"
+                                                    : "border-neutral-300 bg-white text-neutral-700"
+                                            }`}
+                                        >
+                                            <FileText className="h-3.5 w-3.5" />
+                                            <span>SEO</span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => openSidePanelMode("ai-library")}
+                                            className={`shrink-0 inline-flex items-center gap-2 rounded-full border px-3 py-2 text-xs font-semibold transition-colors ${
+                                                sidePanelMode === "ai-library"
+                                                    ? "border-[#f55f2a] bg-[#f55f2a] text-white"
+                                                    : "border-neutral-300 bg-white text-neutral-700"
+                                            }`}
+                                        >
+                                            <Images className="h-3.5 w-3.5" />
+                                            <span>Images</span>
+                                        </button>
+                                        {isDevCodeMode && (
+                                            <button
+                                                type="button"
+                                                onClick={() => openSidePanelMode("code")}
+                                                className={`shrink-0 inline-flex items-center gap-2 rounded-full border px-3 py-2 text-xs font-semibold transition-colors ${
+                                                    sidePanelMode === "code"
+                                                        ? "border-[#f55f2a] bg-[#f55f2a] text-white"
+                                                        : "border-neutral-300 bg-white text-neutral-700"
+                                                }`}
+                                            >
+                                                <Code2 className="h-3.5 w-3.5" />
+                                                <span>Code</span>
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+
                             {/* Panel body */}
-                            <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-6">
+                            <div className={`min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-6 ${isCompactLayout ? "pb-36" : ""}`}>
                                 {/* STYLE MODE BODY */}
                                 {!controlsCollapsed && sidePanelMode === "style" && (
                                     <>
@@ -5321,7 +5560,8 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
 
 
                     {/* Right / canvas */}
-                    <section className="relative bg-slate-50 rounded-lg border overflow-hidden flex flex-col max-lg:order-1">
+                    {showCanvasPanel && (
+                    <section className={`relative flex flex-col overflow-hidden ${isCompactLayout ? "min-h-0 flex-1 bg-slate-50 pb-32" : "max-lg:order-1 rounded-lg border bg-slate-50"}`}>
                         {mode === "preview" && draftId && (
                             <div
                                 className="border-t max-h-72 overflow-auto"
@@ -5341,14 +5581,14 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                         {allPages && allPages.length > 0 && (
                             <div
                                 className={
-                                    IS_MOBILE
-                                        ? "mt-2 overflow-x-auto -mx-4 px-4"
+                                    isCompactLayout
+                                        ? "mt-3 overflow-x-auto px-3"
                                         : "mt-20"
                                 }
                             >
                                 <div
                                     className={
-                                        IS_MOBILE
+                                        isCompactLayout
                                             ? "inline-flex min-w-max"
                                             : "flex justify-center"
                                     }
@@ -5642,7 +5882,9 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                 className={
                                     isPreviewFullscreen
                                         ? "flex-1 min-h-0 flex flex-col overflow-hidden"
-                                        : "flex-1 overflow-auto p-3 sm:p-6"
+                                        : isCompactLayout
+                                            ? "flex-1 overflow-auto px-3 pb-6 pt-3"
+                                            : "flex-1 overflow-auto p-3 sm:p-6"
                                 }
                             >
                                 <AnimatePresence mode="wait">
@@ -5801,7 +6043,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                             onAiEditRequest={runAiEditFromMiniToolbar}
                         />
                         {mode === "screenshot" && (
-                            <div className="flex-1 overflow-auto p-6">
+                            <div className={`flex-1 overflow-auto ${isCompactLayout ? "px-3 pb-36 pt-3" : "p-6"}`}>
                                 <div
                                     className="mx-auto"
                                     style={{ width: devicePx, minWidth: 320 }}
@@ -5879,7 +6121,46 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
 
 
                         {/* Mobile footer actions */}
-                        <div className="fixed bottom-0 left-0 right-0 z-50 block bg-white/90/95 px-4 py-3 shadow-[0_-4px_12px_rgba(15,23,42,0.12)] lg:hidden">
+                        {isCompactLayout && (
+                        <div className="fixed bottom-0 left-0 right-0 z-[105] bg-white/95 px-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] pt-3 shadow-[0_-6px_16px_rgba(15,23,42,0.14)]">
+                            <div role="tablist" aria-label="Preview editor tabs" className="mb-3 grid grid-cols-2 gap-2">
+                                <button
+                                    type="button"
+                                    role="tab"
+                                    aria-selected={mobileTab === "preview"}
+                                    onClick={() => {
+                                        setMobileTab("preview");
+                                        setMobileControlsOpen(false);
+                                    }}
+                                    className={`inline-flex items-center justify-center gap-2 rounded-full border px-4 py-2.5 text-sm font-semibold transition-colors ${
+                                        mobileTab === "preview"
+                                            ? "border-[#f55f2a] bg-[#f55f2a] text-white"
+                                            : "border-neutral-300 bg-white text-neutral-800"
+                                    }`}
+                                >
+                                    <Monitor className="h-4 w-4" />
+                                    <span>Preview</span>
+                                </button>
+                                <button
+                                    type="button"
+                                    role="tab"
+                                    aria-selected={mobileTab === "panel"}
+                                    onClick={() => {
+                                        setMobileTab("panel");
+                                        setSidebarHidden(false);
+                                        setMobileControlsOpen(false);
+                                    }}
+                                    className={`inline-flex items-center justify-center gap-2 rounded-full border px-4 py-2.5 text-sm font-semibold transition-colors ${
+                                        mobileTab === "panel"
+                                            ? "border-[#f55f2a] bg-[#f55f2a] text-white"
+                                            : "border-neutral-300 bg-white text-neutral-800"
+                                    }`}
+                                >
+                                    <MessageSquare className="h-4 w-4" />
+                                    <span>Agent</span>
+                                </button>
+                            </div>
+
                             <div className="flex flex-inline gap-2" id="kloner-save-changes-mobile">
                                 <motion.button
                                     whileHover={{ y: -0.5 }}
@@ -5917,8 +6198,10 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                 </button>
                             </div>
                         </div>
+                        )}
 
 
+                        {!isCompactLayout && (
                         <div className="hidden lg:block mb-3" style={{ marginLeft: !sidebarHidden ? "540px" : "20px", marginRight: "20px" }} id="kloner-apply-changes">
                             {/* V2 Badge above Apply button */}
                             <div className="flex items-center justify-between mb-2">
@@ -5971,6 +6254,197 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                 )}
                             </button>
                         </div>
+                        )}
+
+                        {isCompactLayout && mobileControlsOpen && (
+                            <div
+                                className="fixed inset-0 z-[106] flex items-end bg-black/40 backdrop-blur-[1px]"
+                                role="dialog"
+                                aria-modal="true"
+                                aria-label="Preview editor controls"
+                                onClick={() => setMobileControlsOpen(false)}
+                            >
+                                <div
+                                    className="w-full rounded-t-2xl border border-neutral-200 bg-white shadow-2xl"
+                                    onClick={(e) => e.stopPropagation()}
+                                >
+                                    <div className="flex items-center justify-between border-b border-neutral-200 p-4">
+                                        <div>
+                                            <div className="font-semibold text-neutral-900">Controls</div>
+                                            <div className="text-[11px] text-neutral-600">Preview editor</div>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => setMobileControlsOpen(false)}
+                                            className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-neutral-300 bg-white text-neutral-700"
+                                            title="Close controls"
+                                            aria-label="Close controls"
+                                        >
+                                            <span className="block h-[18px] w-[18px]">
+                                                <svg viewBox="0 0 24 24" className="h-full w-full" aria-hidden="true">
+                                                    <path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+                                                </svg>
+                                            </span>
+                                        </button>
+                                    </div>
+
+                                    <div className="space-y-4 p-4 pb-[calc(env(safe-area-inset-bottom)+1rem)]">
+                                        <div>
+                                            <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-neutral-500">View</div>
+                                            <div className="grid grid-cols-2 gap-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setMobileControlsOpen(false);
+                                                        setMobileTab("preview");
+                                                        handleModeClick("preview");
+                                                    }}
+                                                    className={`inline-flex items-center justify-center gap-2 rounded-full border px-4 py-2.5 text-sm font-semibold ${
+                                                        mode === "preview"
+                                                            ? "border-[#f55f2a] bg-[#f55f2a] text-white"
+                                                            : "border-neutral-300 bg-white text-neutral-800"
+                                                    }`}
+                                                >
+                                                    <Eye className="h-4 w-4" />
+                                                    <span>Preview</span>
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={openScreenshotMode}
+                                                    className={`inline-flex items-center justify-center gap-2 rounded-full border px-4 py-2.5 text-sm font-semibold ${
+                                                        mode === "screenshot"
+                                                            ? "border-[#f55f2a] bg-[#f55f2a] text-white"
+                                                            : "border-neutral-300 bg-white text-neutral-800"
+                                                    }`}
+                                                >
+                                                    <Camera className="h-4 w-4" />
+                                                    <span>Reference</span>
+                                                </button>
+                                                {isDevCodeMode && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => openSidePanelMode("code")}
+                                                        className={`col-span-2 inline-flex items-center justify-center gap-2 rounded-full border px-4 py-2.5 text-sm font-semibold ${
+                                                            mode === "code"
+                                                                ? "border-[#f55f2a] bg-[#f55f2a] text-white"
+                                                                : "border-neutral-300 bg-white text-neutral-800"
+                                                        }`}
+                                                    >
+                                                        <Code2 className="h-4 w-4" />
+                                                        <span>Code</span>
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        <div>
+                                            <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-neutral-500">Panel</div>
+                                            <div className="grid grid-cols-2 gap-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => openSidePanelMode("revision-chat")}
+                                                    className={`inline-flex items-center justify-center gap-2 rounded-full border px-4 py-2.5 text-sm font-semibold ${
+                                                        sidePanelMode === "revision-chat"
+                                                            ? "border-[#f55f2a] bg-[#f55f2a] text-white"
+                                                            : "border-neutral-300 bg-white text-neutral-800"
+                                                    }`}
+                                                >
+                                                    <MessageSquare className="h-4 w-4" />
+                                                    <span>AI edits</span>
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => openSidePanelMode("style")}
+                                                    className={`inline-flex items-center justify-center gap-2 rounded-full border px-4 py-2.5 text-sm font-semibold ${
+                                                        sidePanelMode === "style"
+                                                            ? "border-[#f55f2a] bg-[#f55f2a] text-white"
+                                                            : "border-neutral-300 bg-white text-neutral-800"
+                                                    }`}
+                                                >
+                                                    <Palette className="h-4 w-4" />
+                                                    <span>Styles</span>
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => openSidePanelMode("meta")}
+                                                    className={`inline-flex items-center justify-center gap-2 rounded-full border px-4 py-2.5 text-sm font-semibold ${
+                                                        sidePanelMode === "meta"
+                                                            ? "border-[#f55f2a] bg-[#f55f2a] text-white"
+                                                            : "border-neutral-300 bg-white text-neutral-800"
+                                                    }`}
+                                                >
+                                                    <FileText className="h-4 w-4" />
+                                                    <span>SEO</span>
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => openSidePanelMode("ai-library")}
+                                                    className={`inline-flex items-center justify-center gap-2 rounded-full border px-4 py-2.5 text-sm font-semibold ${
+                                                        sidePanelMode === "ai-library"
+                                                            ? "border-[#f55f2a] bg-[#f55f2a] text-white"
+                                                            : "border-neutral-300 bg-white text-neutral-800"
+                                                    }`}
+                                                >
+                                                    <Images className="h-4 w-4" />
+                                                    <span>Images</span>
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        <div>
+                                            <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-neutral-500">Device</div>
+                                            <div className="grid grid-cols-3 gap-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        handleDeviceChange("desktop");
+                                                        setMobileControlsOpen(false);
+                                                    }}
+                                                    className={`inline-flex items-center justify-center gap-2 rounded-full border px-3 py-2.5 text-sm font-semibold ${
+                                                        device === "desktop"
+                                                            ? "border-[#f55f2a] bg-[#f55f2a] text-white"
+                                                            : "border-neutral-300 bg-white text-neutral-800"
+                                                    }`}
+                                                >
+                                                    <Monitor className="h-4 w-4" />
+                                                    <span>Desktop</span>
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        handleDeviceChange("tablet");
+                                                        setMobileControlsOpen(false);
+                                                    }}
+                                                    className={`inline-flex items-center justify-center gap-2 rounded-full border px-3 py-2.5 text-sm font-semibold ${
+                                                        device === "tablet"
+                                                            ? "border-[#f55f2a] bg-[#f55f2a] text-white"
+                                                            : "border-neutral-300 bg-white text-neutral-800"
+                                                    }`}
+                                                >
+                                                    <Tablet className="h-4 w-4" />
+                                                    <span>Tablet</span>
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        handleDeviceChange("mobile");
+                                                        setMobileControlsOpen(false);
+                                                    }}
+                                                    className={`inline-flex items-center justify-center gap-2 rounded-full border px-3 py-2.5 text-sm font-semibold ${
+                                                        device === "mobile"
+                                                            ? "border-[#f55f2a] bg-[#f55f2a] text-white"
+                                                            : "border-neutral-300 bg-white text-neutral-800"
+                                                    }`}
+                                                >
+                                                    <Smartphone className="h-4 w-4" />
+                                                    <span>Mobile</span>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
 
                         {exporting && !closing && (
                             <div className="absolute inset-0 z-[95] bg-white/90/80 backdrop-blur-[2px] grid place-items-center pointer-events-auto">
@@ -6053,6 +6527,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                             </div>
                         )}
                     </section>
+                    )}
                 </div>
 
                 {!aiEditing && (
