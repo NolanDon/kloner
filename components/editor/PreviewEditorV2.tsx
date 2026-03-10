@@ -652,7 +652,7 @@ import { useAuth } from "@/src/hooks/useAuth";
 import { Camera, Code2, Eye, EyeOff, FileText, Images, Loader2, Maximize2, MessageSquare, Minimize2, Monitor, Palette, Redo2, Rocket, RotateCcw, RotateCw, SlidersHorizontal, Smartphone, Tablet, Trash2Icon, Undo2 } from "lucide-react";
 import { compressImageForUpload } from "@/src/lib/clientImageCompression";
 import { EditorSessionCounters, EditorSessionMetrics, EditorSessionUser, ExportAnalyticsUser, recordEditorSessionAnalytics, recordExportAnalytics } from "../../components/analytics";
-import AiEditPanelV2 from "../../components/editor/AiEditPanel";
+import PreviewEditorAgentPanel from "../../components/editor/PreviewEditorAgentPanel";
 import { PreviewEditorTour } from "../../components/PreviewEditorTour";
 import { injectEditableOverlay } from "@/src/lib/klonerIframeRuntime";
 import { MetaSettings, UploadedAsset } from "../../components/MetaSettings";
@@ -1135,6 +1135,78 @@ export default function PreviewEditorV2({
     const [sidePanelMode, setSidePanelMode] = useState<
         "style" | "meta" | "code" | "ai-library" | "revision-chat"
     >("revision-chat");
+
+    const [prefetchedAiSuggestions, setPrefetchedAiSuggestions] = useState<AiEditSuggestion[] | undefined>(undefined);
+    const [prefetchedAiMeta, setPrefetchedAiMeta] = useState<any | null>(null);
+    const [prefetchedAiHistoryError, setPrefetchedAiHistoryError] = useState<string | null>(null);
+    const [prefetchedAiHistoryLoading, setPrefetchedAiHistoryLoading] = useState<boolean>(false);
+
+    function normalizeAiEditCreatedAt(raw: any): string {
+        if (!raw) return "";
+        if (typeof raw === "string") return raw;
+        if (raw instanceof Date) return raw.toISOString();
+        if (typeof raw === "number") {
+            const d = new Date(raw);
+            return Number.isNaN(d.getTime()) ? "" : d.toISOString();
+        }
+        if (typeof raw === "object" && typeof raw._seconds === "number") {
+            const ms =
+                raw._seconds * 1000 +
+                (typeof raw._nanoseconds === "number" ? Math.floor(raw._nanoseconds / 1e6) : 0);
+            const d = new Date(ms);
+            return Number.isNaN(d.getTime()) ? "" : d.toISOString();
+        }
+        return "";
+    }
+
+    useEffect(() => {
+        let cancelled = false;
+
+        async function prefetchAiHistory() {
+            if (!draftId) {
+                setPrefetchedAiSuggestions(undefined);
+                setPrefetchedAiMeta(null);
+                setPrefetchedAiHistoryError(null);
+                setPrefetchedAiHistoryLoading(false);
+                return;
+            }
+
+            setPrefetchedAiHistoryLoading(true);
+
+            try {
+                const res = await fetch(`/api/ai-edit?renderId=${encodeURIComponent(draftId)}`, {
+                    credentials: "include",
+                });
+                const j = await res.json().catch(() => null);
+                if (cancelled) return;
+
+                const rawSuggestions: any[] = Array.isArray(j?.suggestions) ? j.suggestions : [];
+                const normalized: AiEditSuggestion[] = rawSuggestions.map((s) => ({
+                    ...(s as any),
+                    createdAt: normalizeAiEditCreatedAt((s as any).createdAt),
+                }));
+
+                setPrefetchedAiSuggestions(normalized);
+                setPrefetchedAiMeta(j?.meta ?? null);
+                setPrefetchedAiHistoryError(
+                    res.ok ? null : j?.error || `Failed to load AI edit history (status ${res.status}).`
+                );
+            } catch {
+                if (cancelled) return;
+                setPrefetchedAiHistoryError(
+                    "Failed to load AI edit history. It will update after your next edit."
+                );
+            } finally {
+                if (!cancelled) setPrefetchedAiHistoryLoading(false);
+            }
+        }
+
+        prefetchAiHistory();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [draftId]);
     const [htmlDraft, setHtmlDraft] = useState<string>("");
     const [previewHtml, setPreviewHtml] = useState<string>("");
     const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -4945,7 +5017,13 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                             )}
 
                             {/* Panel body */}
-                            <div className={`min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-6 ${isCompactLayout ? "pb-36" : ""}`}>
+                            <div
+                                className={
+                                    sidePanelMode === "revision-chat"
+                                        ? "min-h-0 flex-1 overflow-hidden"
+                                        : `min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-6 ${isCompactLayout ? "pb-36" : ""}`
+                                }
+                            >
                                 {/* STYLE MODE BODY */}
                                 {!controlsCollapsed && sidePanelMode === "style" && (
                                     <>
@@ -5541,12 +5619,20 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                 )}
 
                                 {sidePanelMode === "revision-chat" && (
-                                    <AiEditPanelV2
+                                    <PreviewEditorAgentPanel
                                         renderId={draftId ?? undefined}
                                         refreshNonce={aiHistoryRefreshNonce}
+                                        preloadedSuggestions={prefetchedAiSuggestions}
+                                        preloadedMeta={prefetchedAiMeta}
+                                        preloadedHistoryError={prefetchedAiHistoryError}
+                                        disableAutoHistoryFetch
+                                        externalHistoryLoading={prefetchedAiHistoryLoading}
                                         getSelectedBlockHtml={getSelectedBlockHtml}
                                         selectionMeta={selectionMeta}
-                                        onAiHistoryChange={setAiHistory}
+                                        onAiHistoryChange={(items) => {
+                                            setAiHistory(items);
+                                            setPrefetchedAiSuggestions(items);
+                                        }}
                                         onApplyBlockHtml={applyAiEditedBlockHtml}
                                         onAiEditingStateChange={(isEditing) => {
                                             setAiEditing(isEditing);

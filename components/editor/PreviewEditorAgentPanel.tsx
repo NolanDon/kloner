@@ -21,9 +21,18 @@ type SelectionMeta = {
     path?: string | null;
 };
 
-interface AiEditPanelProps {
+interface PreviewEditorAgentPanelProps {
     renderId: string | undefined;
     refreshNonce?: number;
+    preloadedSuggestions?: AiEditSuggestion[];
+    preloadedMeta?: {
+        tier?: string;
+        creditsRemaining: number | null;
+        creditsLimit: number | null;
+    } | null;
+    preloadedHistoryError?: string | null;
+    disableAutoHistoryFetch?: boolean;
+    externalHistoryLoading?: boolean;
     getSelectedBlockHtml: () => string | null;
     selectionMeta?: SelectionMeta;
     onApplyBlockHtml: (blockHtml: string, targetPath?: string | null) => void;
@@ -135,10 +144,15 @@ function makeRequestId(): string {
     }
 }
 
-export default function AiEditPanel(props: AiEditPanelProps) {
+export default function PreviewEditorAgentPanel(props: PreviewEditorAgentPanelProps) {
     const {
         renderId,
         refreshNonce,
+        preloadedSuggestions,
+        preloadedMeta,
+        preloadedHistoryError,
+        disableAutoHistoryFetch,
+        externalHistoryLoading,
         getSelectedBlockHtml,
         selectionMeta,
         onApplyBlockHtml,
@@ -150,10 +164,10 @@ export default function AiEditPanel(props: AiEditPanelProps) {
     const [loading, setLoading] = useState(false);
     const [loadingPhase, setLoadingPhase] = useState<LoadingPhase>("idle");
     const [historyLoading, setHistoryLoading] = useState(false);
-    const [suggestions, setSuggestions] = useState<AiEditSuggestion[]>([]);
+    const [suggestions, setSuggestions] = useState<AiEditSuggestion[]>(() => preloadedSuggestions ?? []);
     const [activePreviewId, setActivePreviewId] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
-    const [historyError, setHistoryError] = useState<string | null>(null);
+    const [historyError, setHistoryError] = useState<string | null>(() => preloadedHistoryError ?? null);
 
     const [creditsRemaining, setCreditsRemaining] = useState<number | null>(null);
     const [creditsLimit, setCreditsLimit] = useState<number | null>(null);
@@ -182,9 +196,49 @@ export default function AiEditPanel(props: AiEditPanelProps) {
     }
 
     useEffect(() => {
+        if (!disableAutoHistoryFetch) return;
+
+        if (!renderId) {
+            setSuggestions([]);
+            applyCreditsMeta(null);
+            setHistoryError(null);
+            setHistoryLoading(false);
+            return;
+        }
+
+        if (Array.isArray(preloadedSuggestions)) {
+            setSuggestions(
+                preloadedSuggestions.map((s) => ({
+                    ...s,
+                    createdAt: normalizeCreatedAt((s as any).createdAt),
+                }))
+            );
+        } else {
+            // If we're still loading externally, keep an empty list.
+            // Once the external prefetch completes, this effect will run again.
+            setSuggestions([]);
+        }
+
+        applyCreditsMeta(preloadedMeta ?? null);
+        setHistoryError(preloadedHistoryError ?? null);
+        setHistoryLoading(!!externalHistoryLoading);
+    }, [
+        disableAutoHistoryFetch,
+        externalHistoryLoading,
+        renderId,
+        preloadedSuggestions,
+        preloadedMeta,
+        preloadedHistoryError,
+    ]);
+
+    useEffect(() => {
         let cancelled = false;
 
         async function loadSuggestions() {
+            if (disableAutoHistoryFetch) {
+                return;
+            }
+
             if (!renderId) {
                 setSuggestions([]);
                 applyCreditsMeta(null);
@@ -193,10 +247,25 @@ export default function AiEditPanel(props: AiEditPanelProps) {
                 return;
             }
 
+            const isForced = typeof refreshNonce === "number" && refreshNonce > 0;
+
+            // If PreviewEditor preloaded history already, use it and avoid an extra fetch.
+            if (!isForced && Array.isArray(preloadedSuggestions)) {
+                setSuggestions(
+                    preloadedSuggestions.map((s) => ({
+                        ...s,
+                        createdAt: normalizeCreatedAt((s as any).createdAt),
+                    }))
+                );
+                applyCreditsMeta(preloadedMeta ?? null);
+                setHistoryError(preloadedHistoryError ?? null);
+                setHistoryLoading(false);
+                return;
+            }
+
             setHistoryLoading(true);
 
             try {
-                const isForced = typeof refreshNonce === "number" && refreshNonce > 0;
                 const { res, json: j } = isForced
                     ? await getHistoryFetchForce(renderId)
                     : await getHistoryFetchOnce(renderId);
@@ -240,7 +309,14 @@ export default function AiEditPanel(props: AiEditPanelProps) {
         return () => {
             cancelled = true;
         };
-    }, [renderId, refreshNonce]);
+    }, [
+        disableAutoHistoryFetch,
+        renderId,
+        refreshNonce,
+        preloadedSuggestions,
+        preloadedMeta,
+        preloadedHistoryError,
+    ]);
 
     useEffect(() => {
         if (!loading) {

@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import Editor from "@monaco-editor/react";
 import Image from "next/image";
 import { Folder, File, Upload, X, RefreshCw, MessageSquare, Code, Check, RotateCcw, Database, Rocket, Monitor, SlidersHorizontal, Images, Send, Pencil } from "lucide-react";
-import AIAgentChat from "./AIAgentChat";
+import AppBuilderEditorAgentChat from "./AppBuilderEditorAgentChat";
 import KlonerLoader from "./KlonerLoader";
 import WebContainerRunner from "./WebContainerRunner";
 import { bootstrapServerSession, ensureSessionAndCsrf } from "@/lib/auth-client";
@@ -1639,7 +1639,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
         }
     }, [isPreviewBuilding]);
 
-    // Allow child panels (like AIAgentChat) to request a true "fresh machine" rebuild.
+    // Allow child panels (like AppBuilderEditorAgentChat) to request a true "fresh machine" rebuild.
     useEffect(() => {
         if (typeof window === "undefined") return;
 
@@ -2793,7 +2793,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
                 try {
                     if (!appId) return;
 
-                    // Mirror AIAgentChat's flow: refresh session before syncing files.
+                    // Mirror AppBuilderEditorAgentChat's flow: refresh session before syncing files.
                     await ensureSessionAndCsrf().catch(() => null);
 
                     const baseline = generationBaselineFilesRef.current || (app?.files as any) || ({} as any);
@@ -4133,7 +4133,7 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
                         <div className="flex-1 min-h-0 overflow-hidden">
                             {viewMode === "ai" ? (
                                 // AI Chat Interface
-                                <AIAgentChat
+                                <AppBuilderEditorAgentChat
                                     appId={appId}
                                     files={app.files}
                                     onFileEdit={handleFileEditFromAI}

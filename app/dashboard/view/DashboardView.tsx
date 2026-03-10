@@ -148,12 +148,15 @@ type UrlStatusUi = "queued" | "processing" | "ready" | "stale" | "error" | "unkn
 function normalizeUrlStatus(
     raw?: UrlDoc["status"],
     shotCount?: number,
-    updatedAt?: any
+    updatedAt?: any,
+    lastError?: unknown,
 ): UrlStatusUi {
     const s = String(raw || "unknown").toLowerCase();
+    const lastErrorText = String(lastError || "").toLowerCase();
 
     if (s === "stale") return "stale";
     if (s === "error") return "error";
+    if (lastErrorText) return "error";
     if (s === "uploaded" || s === "done" || s === "ready") return "ready";
     if (s === "in_progress" || s === "processing") return "processing";
 
@@ -2090,7 +2093,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                                         Simple Landing Website HTML
                                                     </div>
                                                     <span className="inline-flex whitespace-nowrap items-center rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-800">
-                                                        Quick generation
+                                                        15 preview credits
                                                     </span>
                                                 </div>
 
@@ -3827,6 +3830,29 @@ export default function PreviewPage(): JSX.Element {
     const captureStaleReportedForUrlRef = useRef<string>("");
     const [captureTerminalFailureUrl, setCaptureTerminalFailureUrl] = useState<string>("");
 
+    const markUrlCaptureTerminalError = useCallback(
+        async (uid: string, rawUrl: string, lastError: string, nextStatus: "error" | "stale" = "error") => {
+            try {
+                const colRef = collection(db, "kloner_users", uid, "kloner_urls");
+                const qy = query(colRef, where("url", "==", rawUrl));
+                const latest = await getDocs(qy);
+                await Promise.all(
+                    latest.docs.map((d: any) =>
+                        updateDoc(d.ref, {
+                            status: nextStatus,
+                            updatedAt: serverTimestamp(),
+                            lastError,
+                        } as any)
+                    )
+                );
+                setUrlDocReloadNonce((n) => n + 1);
+            } catch {
+                // ignore Firestore sync failures; local UI will still show the error
+            }
+        },
+        []
+    );
+
     const shouldSendFrontendTimeoutAlert = useCallback((action: string, rawUrl: string) => {
         try {
             if (typeof window === "undefined") return true;
@@ -3970,16 +3996,28 @@ export default function PreviewPage(): JSX.Element {
                         (typeof payload?.error === "string" && payload.error.trim())
                             ? payload.error.trim()
                             : "";
+                    const looksBlocked = /blocked the snapshot request|site blocked|blocked/i.test(serverError);
                     const uiError =
                         res.status === 429
                             ? (serverError || "Monthly snapshot limit reached for your plan.")
-                            : "Sorry, we were not able to process this URL. Please ensure it is accessible before trying again.";
+                            : looksBlocked
+                                ? "This site blocked the snapshot request. Try a different URL or a less protected page."
+                                : "Sorry, we were not able to process this URL. Please ensure it is accessible before trying again.";
                     setErr(uiError);
                     setInfo("");
                     captureLockMinUntilRef.current = 0;
                     setCaptureLockUrl(null);
                     captureLockStartedAtRef.current = 0;
                     clearStartQueryParam();
+
+                    if (res.status === 409) {
+                        void markUrlCaptureTerminalError(
+                            user.uid,
+                            targetUrl,
+                            looksBlocked ? "snapshot_blocked" : (serverError || "generate_conflict"),
+                            "error",
+                        );
+                    }
 
                     void (async () => {
                         // For blocked/conflict outcomes, /api/private/generate already emits a
@@ -4104,16 +4142,27 @@ export default function PreviewPage(): JSX.Element {
                     (typeof payload?.error === "string" && payload.error.trim())
                         ? payload.error.trim()
                         : "";
+                const looksBlocked = /blocked the snapshot request|site blocked|blocked/i.test(serverError);
                 const uiError =
                     res.status === 429
                         ? (serverError || "Monthly snapshot limit reached for your plan.")
-                        : "This URL failed to process. Please ensure it is accessible before retrying.";
+                        : looksBlocked
+                            ? "This site blocked the snapshot request. Try a different URL or a less protected page."
+                            : "This URL failed to process. Please ensure it is accessible before retrying.";
                 setErr(uiError);
                 setInfo("");
                 captureLockMinUntilRef.current = 0;
                 setCaptureLockUrl(null);
                 captureLockStartedAtRef.current = 0;
                 clearStartQueryParam();
+                if (res.status === 409) {
+                    void markUrlCaptureTerminalError(
+                        user.uid,
+                        targetUrl,
+                        looksBlocked ? "snapshot_blocked" : (serverError || "generate_conflict"),
+                        "error",
+                    );
+                }
                 // Best-effort: mark the Firestore doc as error so the UI reflects the real state
                 // (if the doc stays "queued" the ghost render card won't clear).
                 const colRef = collection(db, "kloner_users", user.uid, "kloner_urls");
@@ -4223,7 +4272,7 @@ export default function PreviewPage(): JSX.Element {
 
     const activeUrlStatus = useMemo<UrlStatusUi | null>(() => {
         if (!docData) return null;
-        return normalizeUrlStatus(docData.status, shotMetaCount, docData.updatedAt);
+        return normalizeUrlStatus(docData.status, shotMetaCount, docData.updatedAt, (docData as any)?.lastError);
     }, [docData, shotMetaCount]);
 
     const lockMatches = useMemo(() => {

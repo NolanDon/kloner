@@ -1,4 +1,4 @@
-// src/components/AIAgentChat.tsx
+// src/components/AppBuilderEditorAgentChat.tsx
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
@@ -54,7 +54,7 @@ type DatabaseConnection = {
     status: "connected" | "disconnected" | "connecting";
 };
 
-type AIAgentChatProps = {
+type AppBuilderEditorAgentChatProps = {
     appId: string;
     files: { [path: string]: { content: string; lastModified: number } };
     onFileEdit: (path: string, content: string, creditRequestId?: string) => void;
@@ -197,7 +197,7 @@ function buildCompileFixPrefill(ctx: CompileErrorQuickFixContext): string {
     ].join("\n");
 }
 
-export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, onRestoreApplied, creditError, previewReady, onUserMessageSent, welcomeContext }: AIAgentChatProps) {
+export default function AppBuilderEditorAgentChat({ appId, files, onFileEdit, onFilesReplace, onRestoreApplied, creditError, previewReady, onUserMessageSent, welcomeContext }: AppBuilderEditorAgentChatProps) {
     const { user, userTier } = useAuth();
     const { showConfirm, showAlert } = useModal();
     const AI_EDIT_COST = 3;
@@ -332,7 +332,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
         document.addEventListener("keydown", onKey);
         return () => document.removeEventListener("keydown", onKey);
     }, [topupModalOpen]);
-    const makeWelcomeMessage = useCallback((ctx?: AIAgentChatProps["welcomeContext"]) => {
+    const makeWelcomeMessage = useCallback((ctx?: AppBuilderEditorAgentChatProps["welcomeContext"]) => {
         const base = "Agent ready.";
 
         const cleanOneLine = (v: unknown, max = 180) => {
@@ -1002,7 +1002,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
 
             const retryRes = await doFetch();
             if (retryRes.status === 403) {
-                console.warn(`[AIAgentChat] ${retryLabel} still forbidden after scope bootstrap`);
+                console.warn(`[AppBuilderEditorAgentChat] ${retryLabel} still forbidden after scope bootstrap`);
             }
             return retryRes;
         },
@@ -1136,7 +1136,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                 // If server read fails, fall back to in-memory only.
                 console.warn("Failed to load chat history", e);
                 if (debugChatIo()) {
-                    console.log("[AIAgentChat] chat load failed", {
+                    console.log("[AppBuilderEditorAgentChat] chat load failed", {
                         appId,
                         uid: user?.uid || null,
                         path: `kloner_users/${user?.uid || "<no-uid>"}/kloner_apps/${appId}/ai_chat/default`,
@@ -1146,7 +1146,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
             } finally {
                 // Allow saving after the first load attempt finishes.
                 initialLoadCompletedRef.current = true;
-                if (debugChatIo()) console.log("[AIAgentChat] chat load complete", { appId });
+                if (debugChatIo()) console.log("[AppBuilderEditorAgentChat] chat load complete", { appId });
             }
         })();
 
@@ -1246,7 +1246,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
 
                 // Skip writes if nothing changed since last successful save.
                 if (lastSavedPayloadRef.current === raw) {
-                    if (debugChatIo()) console.log("[AIAgentChat] chat save skipped (unchanged)", { appId });
+                    if (debugChatIo()) console.log("[AppBuilderEditorAgentChat] chat save skipped (unchanged)", { appId });
                     return;
                 }
 
@@ -1262,11 +1262,11 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                 }
 
                 lastSavedPayloadRef.current = raw;
-                if (debugChatIo()) console.log("[AIAgentChat] chat saved", { appId, messages: payload.length });
+                if (debugChatIo()) console.log("[AppBuilderEditorAgentChat] chat saved", { appId, messages: payload.length });
             } catch (e) {
                 console.warn("Failed to save chat history", e);
                 if (debugChatIo()) {
-                    console.log("[AIAgentChat] chat save failed", {
+                    console.log("[AppBuilderEditorAgentChat] chat save failed", {
                         appId,
                         uid: user?.uid || null,
                         path: `kloner_users/${user?.uid || "<no-uid>"}/kloner_apps/${appId}/ai_chat/default`,
@@ -1345,7 +1345,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                 // Skip writes if nothing changed since last successful save.
                 const raw = JSON.stringify(payload);
                 if (lastSavedPayloadRef.current === raw) {
-                    if (debugChatIo()) console.log("[AIAgentChat] chat save skipped (unchanged)", { appId });
+                    if (debugChatIo()) console.log("[AppBuilderEditorAgentChat] chat save skipped (unchanged)", { appId });
                     return;
                 }
 
@@ -1361,12 +1361,12 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                 }
 
                 lastSavedPayloadRef.current = raw;
-                if (debugChatIo()) console.log("[AIAgentChat] chat saved", { appId, messages: payload.length });
+                if (debugChatIo()) console.log("[AppBuilderEditorAgentChat] chat saved", { appId, messages: payload.length });
             } catch (e) {
                 // Non-fatal: chat still works, just won't persist.
                 console.warn("Failed to save chat history", e);
                 if (debugChatIo()) {
-                    console.log("[AIAgentChat] chat save failed", {
+                    console.log("[AppBuilderEditorAgentChat] chat save failed", {
                         appId,
                         uid: user?.uid || null,
                         path: `kloner_users/${user?.uid || "<no-uid>"}/kloner_apps/${appId}/ai_chat/default`,

@@ -212,6 +212,7 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
   const compileErrorActiveFingerprintRef = useRef<string | null>(null);
   const iframePostLoadRecoveryCountRef = useRef<number>(0);
   const pollFetchFailureCountRef = useRef(0);
+  const pollRateLimitCountRef = useRef(0);
   const lastPollIssueReportKeyRef = useRef<string>('');
   const lastAppServerKindRef = useRef<'fallback' | 'next-dev' | 'next-prod' | ''>('');
   const stickyProgressByCodeRef = useRef<Record<string, number>>({});
@@ -234,13 +235,27 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
   // Default status polling interval while the preview is booting/compiling.
   // We keep this relatively infrequent; readiness is primarily driven by the
   // preview URL/iframe once available.
-  const POLL_INTERVAL_MS = 1_500;
+  const POLL_INTERVAL_MS = 2_500;
 
   // Throttle: regardless of code path, never issue status checks more frequently
   // than this (prevents duplicate loops and tight retry paths from spamming).
-  const MIN_STATUS_FETCH_INTERVAL_MS = 1_200;
+  const MIN_STATUS_FETCH_INTERVAL_MS = 2_000;
   const lastStatusFetchAtRef = useRef<number>(0);
   const HARD_POLL_TIMEOUT_MS = 12 * 60 * 1000;
+
+  const parseRetryAfterMs = (value: string | null): number | null => {
+    const raw = String(value || '').trim();
+    if (!raw) return null;
+
+    const numericSeconds = Number(raw);
+    if (Number.isFinite(numericSeconds) && numericSeconds >= 0) {
+      return Math.max(0, Math.round(numericSeconds * 1000));
+    }
+
+    const untilMs = Date.parse(raw);
+    if (!Number.isFinite(untilMs)) return null;
+    return Math.max(0, untilMs - Date.now());
+  };
 
   const DEFAULT_HUB_HOST = 'tracksite-hub.fly.dev';
   const CUSTOM_PREVIEW_HOST = String(process.env.NEXT_PUBLIC_PREVIEW_HOST || 'preview.kloner.app').trim().toLowerCase();
@@ -2456,6 +2471,38 @@ export default function NavBar() {
             }
 
             if (!statusResponse.ok) {
+              if (statusResponse.status === 429) {
+                pollRateLimitCountRef.current += 1;
+                const retryAfterMs = parseRetryAfterMs(statusResponse.headers.get('retry-after'));
+                const nextDelay = Math.max(
+                  POLL_INTERVAL_MS * 2,
+                  getPollBackoffMs(pollRateLimitCountRef.current + 2),
+                  retryAfterMs || 0,
+                );
+
+                setLoadingStatus('Preview is still starting. Backing off status checks to avoid rate limiting…');
+                setCurrentStatusData((prev: any) =>
+                  prev && typeof prev === 'object'
+                    ? {
+                        ...prev,
+                        updatedAt: Date.now(),
+                        uiMessage:
+                          'Preview is still starting. Status checks are being slowed down briefly to avoid rate limiting.',
+                      }
+                    : {
+                        status: 'starting',
+                        uiStage: 'starting',
+                        uiTitle: 'Starting preview',
+                        uiMessage:
+                          'Preview is still starting. Status checks are being slowed down briefly to avoid rate limiting.',
+                        uiProgress: 0,
+                        updatedAt: Date.now(),
+                      }
+                );
+                statusPollTimeoutRef.current = setTimeout(pollStatus, nextDelay);
+                return;
+              }
+
               // Handle 404s specially for newly created containers
               if (statusResponse.status === 404) {
                 containerNotFoundCountRef.current += 1;
@@ -2542,6 +2589,7 @@ export default function NavBar() {
             // Reset 404 counter on successful response
             containerNotFoundCountRef.current = 0;
             pollFetchFailureCountRef.current = 0;
+            pollRateLimitCountRef.current = 0;
             setPollNetworkWarning(null);
 
             // Store the status data for UI display
@@ -2577,6 +2625,17 @@ export default function NavBar() {
                 jobId: backendSignal.jobId,
                 backendStatusData: statusData,
               });
+
+              await clearStoredContainerCodeEverywhere(appId, user);
+              stopAllTimers();
+              setIsPolling(false);
+              setIsLoading(false);
+              setConnectingToExisting(false);
+              setLoadingStatus('');
+              setPreviewUrl(null);
+              setError('Preview startup failed before the app became reachable. Try Refresh first, and if it still fails, please contact support.');
+              setCanRetry(true);
+              return;
             }
 
             const compileErrorInfo = getCompileErrorStateFromStatus(code, statusData);
