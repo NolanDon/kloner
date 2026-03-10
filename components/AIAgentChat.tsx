@@ -110,6 +110,22 @@ function stripMarkdownBold(text: string): string {
         .replace(/\*\*/g, "");
 }
 
+function sanitizeAssistantContent(text: unknown): string {
+    const raw = typeof text === "string" ? text : "";
+    const lower = raw.toLowerCase();
+
+    if (
+        lower.includes("googlegenerativeai error") ||
+        lower.includes("candidate was blocked") ||
+        lower.includes("recitation") ||
+        lower.includes("finishreason")
+    ) {
+        return "That request couldn’t be completed as written. Try rephrasing it in your own words and avoid pasting large blocks of source text.";
+    }
+
+    return raw;
+}
+
 function renderTextWithLinks(text: string): React.ReactNode {
     const cleaned = stripMarkdownBold(text || "");
 
@@ -2202,7 +2218,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
             });
 
             // If the AI response or context indicates a restart is required, suggest the Rebuild app button
-            let aiContent = data.response;
+            let aiContent = sanitizeAssistantContent(data.response);
             if (typeof aiContent === "string" && /restart|server.*restart|refresh.*server|database credentials|should work in a moment/i.test(aiContent)) {
                 aiContent +=
                     "\n\nIf you just updated your database credentials or made a major config change, you may need to click the **Rebuild app** button (formerly 'Start fresh') in the editor to fully restart your app server.";

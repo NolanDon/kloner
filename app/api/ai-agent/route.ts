@@ -171,6 +171,21 @@ function safeString(val: unknown, maxLen: number): string {
     return val.length > maxLen ? val.slice(0, maxLen) : val;
 }
 
+function looksLikeProviderLeak(text: unknown): boolean {
+    const value = typeof text === "string" ? text.trim() : "";
+    if (!value) return false;
+
+    const lower = value.toLowerCase();
+    return (
+        lower.includes("googlegenerativeai error") ||
+        lower.includes("candidate was blocked") ||
+        lower.includes("recitation") ||
+        lower.includes("finishreason") ||
+        lower.includes("safety") ||
+        lower.includes("model not found")
+    );
+}
+
 function classifyAiProviderError(err: unknown): {
     statusCode: number;
     providerMessage: string;
@@ -194,6 +209,20 @@ function classifyAiProviderError(err: unknown): {
             providerMessage: msg,
             userMessage: "AI usage is temporarily rate-limited. Please try again shortly.",
             code: "AI_RATE_LIMITED",
+        };
+    }
+
+    if (
+        lower.includes("candidate was blocked") ||
+        lower.includes("recitation") ||
+        lower.includes("safety") ||
+        lower.includes("policy")
+    ) {
+        return {
+            statusCode: 400,
+            providerMessage: msg,
+            userMessage: "That request couldn’t be completed as written. Try rephrasing it in your own words and avoid pasting large blocks of source text.",
+            code: "AI_SAFETY_REJECTED",
         };
     }
 
@@ -649,6 +678,10 @@ ${buildContext}`;
                 const result = await model.generateContent(systemPrompt);
                 const raw = result.response.text().trim();
 
+                if (looksLikeProviderLeak(raw)) {
+                    throw new Error(raw);
+                }
+
                 let parsed: {
                     response?: string;
                     refreshServer?: boolean;
@@ -696,6 +729,10 @@ ${buildContext}`;
                 }
 
                 let response = safeString(parsed.response || "I've made the requested changes to your app.", 20_000);
+
+                if (looksLikeProviderLeak(response)) {
+                    throw new Error(response);
+                }
                 
                 // Ensure response doesn't contain code
                 if (response.includes('content":') || response.includes('path":') || response.length > 500) {

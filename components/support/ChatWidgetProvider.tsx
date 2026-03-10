@@ -25,6 +25,37 @@ type ApiSendResponse = {
 const STORAGE_KEY = "kloner_support_chat_id";
 const CONNECTING_TEXT = "__CONNECTING__";
 
+function sanitizeUserFacingError(message: unknown): string {
+    const raw = typeof message === "string" ? message : "";
+    const lower = raw.toLowerCase();
+
+    // Allowlist: these are already written as user-facing copy.
+    const allowlist = [
+        "sign in required",
+        "missing message text",
+        "chat not found",
+        "failed to send message",
+        "failed to load chat",
+        "this conversation has been closed",
+        "please start a new chat",
+    ];
+    if (allowlist.some((s) => lower.includes(s))) return raw;
+
+    // Provider/internal errors we never want to show verbatim.
+    if (
+        lower.includes("googlegenerativeai") ||
+        lower.includes("candidate was blocked") ||
+        lower.includes("recitation") ||
+        lower.includes("stack") ||
+        lower.includes("internal server error")
+    ) {
+        return "That request couldn’t be completed. Try rephrasing, or contact support.";
+    }
+
+    // Default: avoid leaking raw server/provider details.
+    return "Something went wrong. Please try again.";
+}
+
 function ConnectingDots() {
     return (
         <div className="flex items-center gap-1.5">
@@ -235,7 +266,7 @@ export default function ChatWidgetProvider() {
                 window.localStorage.setItem(STORAGE_KEY, data.chatId);
             }
         } catch (err: any) {
-            setError(err.message || "Something went wrong");
+            setError(sanitizeUserFacingError(err?.message));
         } finally {
             setLoading(false);
         }
@@ -274,7 +305,7 @@ export default function ChatWidgetProvider() {
             setMode(data.mode);
             setStatus(data.status || "pending");
         } catch (err: any) {
-            setError(err.message || "Failed to escalate");
+            setError(sanitizeUserFacingError(err?.message) || "Failed to escalate");
         } finally {
             setEscalating(false);
         }

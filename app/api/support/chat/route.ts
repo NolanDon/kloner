@@ -74,6 +74,17 @@ function isModelRetiredError(err: unknown): boolean {
     return msg.includes("no longer available") || msg.includes("update your code to use a newer model");
 }
 
+function isGeminiSafetyOrRecitationError(err: unknown): boolean {
+    const msg = String((err as any)?.message ?? err ?? "").toLowerCase();
+    return (
+        msg.includes("candidate was blocked") ||
+        msg.includes("blocked") ||
+        msg.includes("safety") ||
+        msg.includes("policy") ||
+        msg.includes("recitation")
+    );
+}
+
 function uniqueModels(list: string[]): string[] {
     return Array.from(new Set(list.filter(Boolean)));
 }
@@ -619,6 +630,16 @@ export async function POST(req: NextRequest) {
                             if (aiText) return true;
                         } catch (modelErr) {
                             console.warn(`[support-chat] model failed: ${modelName}`, modelErr);
+
+                            // Safety/recitation blocks are expected sometimes; respond with a friendly message
+                            // instead of leaking provider error strings to the user.
+                            if (isGeminiSafetyOrRecitationError(modelErr)) {
+                                aiText =
+                                    "I can’t help with that request as written. Try rephrasing in your own words " +
+                                    "(e.g. ask for a summary or ask about Kloner features), or contact support.";
+                                return true;
+                            }
+
                             if (!isModelNotFoundError(modelErr) && !isModelRetiredError(modelErr)) {
                                 throw modelErr;
                             }
