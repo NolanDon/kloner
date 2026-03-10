@@ -1253,11 +1253,6 @@ export default function PreviewEditorV2({
         const prev = sessionCountersRef.current[key] ?? 0;
         const next = prev + 1;
         sessionCountersRef.current[key] = next;
-
-        if (process.env.NODE_ENV === "development") {
-            // This should spam when you hit save / switch page / etc.
-            console.log("[editor-analytics] bump", key, "->", next);
-        }
     }
 
     // 2) Keep the latest user in a ref so we don't depend on [user]
@@ -1352,23 +1347,7 @@ export default function PreviewEditorV2({
             const u = sessionUserRef.current;
 
             if (!u?.uid) {
-                if (process.env.NODE_ENV === "development") {
-                    console.log(
-                        "[editor-analytics] flush skipped (no user)",
-                        reason,
-                        counters,
-                        durationMs,
-                    );
-                }
                 return;
-            }
-
-            if (process.env.NODE_ENV === "development") {
-                console.log("[editor-analytics] flushing session", {
-                    reason,
-                    durationMs,
-                    counters,
-                });
             }
 
             // fire-and-forget; must not block navigation

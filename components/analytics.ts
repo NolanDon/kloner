@@ -28,7 +28,6 @@ export async function recordExportAnalytics(
 ) {
     try {
         if (!user || !user.uid) {
-            console.log("[recordExportAnalytics] skip – no user");
             return;
         }
 
@@ -43,14 +42,6 @@ export async function recordExportAnalytics(
                 : null;
 
         const durationMinutes = msToMinutesRounded(durationMs);
-
-        console.log("[recordExportAnalytics] start", {
-            uid: user.uid,
-            draftId,
-            status,
-            durationMs,
-            durationMinutes,
-        });
 
         await runTransaction(db, async (tx) => {
             const snap = await tx.get(ref);
@@ -130,7 +121,6 @@ export async function recordExportAnalytics(
             }
         });
 
-        console.log("[recordExportAnalytics] done");
     } catch (err) {
         // analytics failures should never block export
         console.error("recordExportAnalytics failed", err);
@@ -150,7 +140,6 @@ export async function recordDeployAnalytics(
 ) {
     try {
         if (!user?.uid) {
-            console.log("[recordDeployAnalytics] skip – no user");
             return;
         }
 
@@ -161,12 +150,6 @@ export async function recordDeployAnalytics(
             "meta",
             "editor",
         );
-
-        console.log("[recordDeployAnalytics] start", {
-            uid: user.uid,
-            patchKeys: Object.keys(patch || {}),
-            incrementFields,
-        });
 
         await runTransaction(db, async (tx) => {
             const snap = await tx.get(ref);
@@ -208,7 +191,6 @@ export async function recordDeployAnalytics(
             }
         });
 
-        console.log("[recordDeployAnalytics] done");
     } catch (err) {
         console.error("recordDeployAnalytics failed", err);
     }
@@ -279,7 +261,6 @@ export async function recordEditorSessionAnalytics(
 ) {
     try {
         if (!user?.uid) {
-            console.log("[recordEditorSessionAnalytics] skip – no user");
             return;
         }
 
@@ -322,15 +303,6 @@ export async function recordEditorSessionAnalytics(
             aiApply: counters?.aiApply ?? 0,
             aiMiniToolbar: counters?.aiMiniToolbar ?? 0,
         };
-
-        console.log("[recordEditorSessionAnalytics] start", {
-            uid,
-            durationMs: safeDurationMs,
-            durationMinutes,
-            reason,
-            approxStartedAtIso,
-            counters: c,
-        });
 
         const now = serverTimestamp();
 
@@ -463,8 +435,6 @@ export async function recordEditorSessionAnalytics(
             );
         });
 
-        console.log("[recordEditorSessionAnalytics] aggregate doc written");
-
         // 2) Append-only per-session document
         try {
             const sessionsCol = collection(
@@ -505,7 +475,6 @@ export async function recordEditorSessionAnalytics(
                 aiMiniToolbarCount: c.aiMiniToolbar,
             });
 
-            console.log("[recordEditorSessionAnalytics] session doc added");
         } catch (err) {
             console.error("recordEditorSessionAnalytics session doc failed", err);
         }
@@ -528,7 +497,6 @@ export async function recordAppBuilderSessionAnalytics(
 ) {
     try {
         if (!user?.uid || !appId) {
-            console.log("[recordAppBuilderSessionAnalytics] skip – missing user/app");
             return;
         }
 
