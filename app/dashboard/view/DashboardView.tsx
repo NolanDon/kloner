@@ -1824,6 +1824,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
     const router = useRouter();
     const [localDisabled, setLocalDisabled] = useState(false);
     const [showGenerationModal, setShowGenerationModal] = useState(false);
+    const [selectedGenerationType, setSelectedGenerationType] = useState<"nextjs" | "html" | null>(null);
 
     const sourceUrlDisplay = useMemo(() => {
         const raw = (sourceUrl || "").trim();
@@ -1849,7 +1850,19 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
 
         // Even when locked (e.g. snapshots processing), allow opening the modal
         // but disable the options inside so users understand what's happening.
+        setSelectedGenerationType(null);
         setShowGenerationModal(true);
+    };
+
+    const handleContinueGeneration = () => {
+        if (effectiveLocked) return;
+        if (selectedGenerationType === "nextjs") {
+            handleAppGeneration();
+            return;
+        }
+        if (selectedGenerationType === "html") {
+            handleWebsiteGeneration();
+        }
     };
 
     const handleWebsiteGeneration = () => {
@@ -2017,9 +2030,12 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                     <div className="relative">
                                         <button
                                             type="button"
-                                            onClick={handleAppGeneration}
+                                            onClick={() => setSelectedGenerationType("nextjs")}
                                             disabled={effectiveLocked}
-                                            className="relative w-full overflow-visible rounded-xl border border-[rgba(245,95,42,0.45)] bg-[linear-gradient(180deg,rgba(245,95,42,0.06),rgba(255,255,255,0))] p-4 text-left shadow-sm transition hover:bg-[rgba(245,95,42,0.05)] hover:border-[rgba(245,95,42,0.65)] disabled:opacity-60 disabled:cursor-not-allowed"
+                                            className={`relative w-full overflow-visible rounded-xl border p-4 text-left shadow-sm transition disabled:opacity-60 disabled:cursor-not-allowed ${selectedGenerationType === "nextjs"
+                                                ? "border-[rgba(245,95,42,0.65)] bg-[linear-gradient(180deg,rgba(245,95,42,0.06),rgba(255,255,255,0))]"
+                                                : "border-neutral-200 bg-white hover:bg-neutral-50 hover:border-neutral-300"
+                                                }`}
                                         >
                                             {/* <span className="pointer-events-none absolute -right-2 -top-2 z-10 inline-flex items-center rounded-full border border-[rgba(245,95,42,0.45)] bg-white px-2 py-0.5 text-[11px] font-semibold text-[rgba(245,95,42,1)] shadow-sm">
                                                 Recommended
@@ -2069,9 +2085,12 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                 <div className="relative">
                                     <button
                                         type="button"
-                                        onClick={handleWebsiteGeneration}
+                                        onClick={() => setSelectedGenerationType("html")}
                                         disabled={effectiveLocked}
-                                        className="relative w-full rounded-xl border border-neutral-200 bg-white p-4 text-left transition hover:bg-neutral-50 hover:border-neutral-300 disabled:opacity-60 disabled:cursor-not-allowed"
+                                        className={`relative w-full rounded-xl border p-4 text-left transition disabled:opacity-60 disabled:cursor-not-allowed ${selectedGenerationType === "html"
+                                            ? "border-[rgba(245,95,42,0.65)] bg-[linear-gradient(180deg,rgba(245,95,42,0.06),rgba(255,255,255,0))]"
+                                            : "border-neutral-200 bg-white hover:bg-neutral-50 hover:border-neutral-300"
+                                            }`}
                                     >
                                         <div className="flex items-start gap-3">
                                             <div
@@ -2100,6 +2119,9 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
 
                                                 <div className="text-xs text-neutral-600">
                                                     Faster HTML-first flow that opens in the legacy preview editor.
+                                                </div>
+                                                <div className="mt-1 text-[11px] leading-4 text-neutral-500">
+                                                    Clone: <span className="font-mono font-semibold text-accent">{sourceUrlDisplay || "(no URL selected)"}</span>
                                                 </div>
                                                 <div className="mt-1 text-[11px] leading-4 text-neutral-500">
                                                     Best for: simple landing pages, brochure sites, fast iterations, and projects with no auth or database requirements.
@@ -2162,8 +2184,8 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                 </button>
                                 <button
                                     type="button"
-                                    onClick={handleAppGeneration}
-                                    disabled={effectiveLocked}
+                                    onClick={handleContinueGeneration}
+                                    disabled={effectiveLocked || !selectedGenerationType}
                                     className="rounded-xl px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-60 disabled:cursor-not-allowed"
                                     style={{ backgroundColor: ACCENT }}
                                 >
@@ -2452,7 +2474,7 @@ export default function PreviewPage(): JSX.Element {
     const [appWizardError, setAppWizardError] = useState<string | null>(null);
     const [appWizardUrl, setAppWizardUrl] = useState<string>("");
     const [appWizardShotsUrl, setAppWizardShotsUrl] = useState<string>("");
-    const [appWizardSource, setAppWizardSource] = useState<"website" | "prompt">("website");
+    const [appWizardSource, setAppWizardSource] = useState<"website" | "prompt" | null>(null);
     const [appWizardPrompt, setAppWizardPrompt] = useState<string>("");
     const [appWizardPromptFocused, setAppWizardPromptFocused] = useState(false);
     const [appWizardSeedRenderId, setAppWizardSeedRenderId] = useState<string | null>(null);
@@ -3045,8 +3067,8 @@ export default function PreviewPage(): JSX.Element {
             setAppWizardUrl(url);
             setAppWizardShotsUrl(url);
             setAppWizardSeedRenderId(opts?.seedRenderId ?? null);
-            // Default to Clone from URL when opening the wizard.
-            setAppWizardSource("website");
+            // Require explicit source selection in the wizard.
+            setAppWizardSource(null);
             setAppWizardPrompt("");
             setAppWizardError(null);
             setAppWizardBusy(false);
@@ -8232,9 +8254,10 @@ export default function PreviewPage(): JSX.Element {
                                             type="button"
                                             onClick={() => {
                                                 if (appWizardSource === "website") return void submitAppWizardWebsite();
-                                                return void submitAppWizardPrompt();
+                                                if (appWizardSource === "prompt") return void submitAppWizardPrompt();
+                                                setAppWizardError("Select how you want to create your website to continue.");
                                             }}
-                                            disabled={appWizardBusy || (appWizardSource === "prompt" && appWizardPromptOverLimit)}
+                                            disabled={appWizardBusy || !appWizardSource || (appWizardSource === "prompt" && appWizardPromptOverLimit)}
                                             className="rounded-xl px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-60"
                                             style={{ backgroundColor: ACCENT }}
                                         >
