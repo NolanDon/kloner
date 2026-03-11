@@ -106,7 +106,7 @@ const VERCEL_INTEGRATION_SLUG =
 
 const ACCENT = "#f55f2a";
 const CAPTURE_STALL_TIMEOUT_MS = 6 * 60 * 1000;
-const ERR_AUTO_DISMISS_MS = 30 * 1000;
+const CAPTURE_ISSUE_NOTICE_MS = 10 * 1000;
 const FRONTEND_TIMEOUT_DEDUPE_TTL_MS = 10 * 60 * 1000;
 const FRONTEND_TIMEOUT_DEDUPE_STORAGE_KEY = "dashboardViewFrontendTimeoutAlertsV1";
 const URL_ADD_SUCCESS_MESSAGE = "URL added successfully! You can now generate websites from this URL below.";
@@ -181,6 +181,14 @@ function stripHttpsUrlsFromPrompt(input: string): string {
         .replace(/[ \t]{2,}/g, " ");
 }
 
+function truncateMiddle(value: string, maxLen = 72): string {
+    const text = String(value || "");
+    if (text.length <= maxLen) return text;
+    const head = Math.ceil((maxLen - 3) * 0.65);
+    const tail = Math.floor((maxLen - 3) * 0.35);
+    return `${text.slice(0, head)}...${text.slice(text.length - tail)}`;
+}
+
 type MiniDashboardEntryProps = {
     onSubmitUrl: (rawUrl: string) => void;
     onSubmitPrompt: (prompt: string) => void;
@@ -196,6 +204,8 @@ type MiniDashboardEntryProps = {
     size?: "compact" | "full";
     disabled?: boolean;
     captureStatus?: UrlStatusUi | null;
+    captureIssueNotice?: string | null;
+    hideCaptureQueueStatus?: boolean;
 };
 
 function MiniDashboardEntry({
@@ -213,6 +223,8 @@ function MiniDashboardEntry({
     size = "compact",
     disabled = false,
     captureStatus = null,
+    captureIssueNotice = null,
+    hideCaptureQueueStatus = false,
 }: MiniDashboardEntryProps) {
     const isCompact = size === "compact";
     const [mode, setMode] = useState<"url" | "prompt">("url");
@@ -512,7 +524,12 @@ function MiniDashboardEntry({
 
                 {error ? <div className="mt-2 text-sm text-red-700">{error}</div> : null}
 
-                {disabled && (captureStatus === "queued" || captureStatus === "processing") ? (
+                {captureIssueNotice ? (
+                    <div className="mt-4 inline-flex items-center gap-2 text-xs text-amber-700">
+                        <MessageCircleWarning className="h-3.5 w-3.5" />
+                        {captureIssueNotice}
+                    </div>
+                ) : !hideCaptureQueueStatus && disabled && (captureStatus === "queued" || captureStatus === "processing") ? (
                     <div className="mt-4 inline-flex items-center gap-2 text-xs text-neutral-600">
                         {captureStatus === "queued" ? (
                             <Clock3 className="h-3.5 w-3.5" />
@@ -1894,7 +1911,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
 
     const title = effectiveLocked ? "Processing…" : "Generate";
     const subtitle = effectiveLocked
-        ? "You have a pending job. This may take a few moments."
+        ? "You have a pending job."
         : sourceUrlDisplay
             ? "Create an editable website."
             : "Create an editable website.";
@@ -1973,15 +1990,6 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                     <div className="text-xs text-neutral-600">
                                         Select what you&apos;d like to create.
                                     </div>
-                                    {sourceUrlDisplay ? (
-                                        <div className="mt-2 text-[11px] text-neutral-500">
-                                            Selected URL: <span className="font-mono text-neutral-700">{sourceUrlDisplay}</span>
-                                        </div>
-                                    ) : (
-                                        <div className="mt-2 text-[11px] text-neutral-500">
-                                            Selected URL: <span className="font-mono text-neutral-700">(none)</span>
-                                        </div>
-                                    )}
                                 </div>
 
                                 <button
@@ -2100,6 +2108,14 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
 
                                                 <div className="text-xs text-neutral-600">
                                                     Faster HTML-first flow that opens in the legacy preview editor.
+                                                </div>
+                                                <div className="mt-2 rounded-lg border border-neutral-200 bg-neutral-50 px-2.5 py-2">
+                                                    <div className="text-[10px] font-semibold uppercase tracking-wide text-neutral-500">
+                                                        URL to clone
+                                                    </div>
+                                                    <div className="mt-0.5 break-all font-mono text-[11px] text-neutral-700">
+                                                        {sourceUrlDisplay || "(none selected)"}
+                                                    </div>
                                                 </div>
                                                 <div className="mt-1 text-[11px] leading-4 text-neutral-500">
                                                     Best for: simple landing pages, brochure sites, fast iterations, and projects with no auth or database requirements.
@@ -2306,7 +2322,8 @@ export default function PreviewPage(): JSX.Element {
     const [err, setErr] = useState<string>("");
     const [info, setInfo] = useState<string>("");
     const [success, setSuccess] = useState<string>("");
-    const errAutoDismissTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const [captureIssueNotice, setCaptureIssueNotice] = useState<string>("");
+    const [hideCaptureQueueStatus, setHideCaptureQueueStatus] = useState<boolean>(false);
 
     const [loading, setLoading] = useState<boolean>(true);
 
@@ -3518,13 +3535,15 @@ export default function PreviewPage(): JSX.Element {
         } else if (screenshotKeys.length > 0) {
             fileRefs = screenshotKeys.map((k) => sRef(storage, k));
         } else {
-            // Nothing to load yet; do not trigger noisy Storage errors.
-            if (statusUi === "queued" || statusUi === "unknown") {
+            // Only use legacy prefix listing for explicitly ready docs.
+            // For queued/processing/error/stale/unknown, skip listing to avoid noisy
+            // Firebase Storage 400s when no screenshot folder exists yet.
+            if (statusUi !== "ready") {
                 setShots([]);
                 return;
             }
 
-            // Legacy fallback (best-effort): older docs without paths/keys.
+            // Legacy fallback (best-effort): older ready docs without paths/keys.
             fileRefs = await listAllDeepSafe(sRef(storage, prefix));
         }
 
@@ -3909,6 +3928,17 @@ export default function PreviewPage(): JSX.Element {
         }
     }, [router]);
 
+    const showConfirmRef = useRef(showConfirm);
+    const buildDuplicateUrlMessageRef = useRef(buildDuplicateUrlMessage);
+
+    useEffect(() => {
+        showConfirmRef.current = showConfirm;
+    }, [showConfirm]);
+
+    useEffect(() => {
+        buildDuplicateUrlMessageRef.current = buildDuplicateUrlMessage;
+    }, [buildDuplicateUrlMessage]);
+
     // When a URL is entered from the mini-dashboard entry panel (or deep-linked with start=1),
     // ensure the UrlDoc exists and queue the screenshot capture job. The existing loader stages
     // in this page will then take over (docData + shots + groupedShots + preview generation).
@@ -3958,6 +3988,53 @@ export default function PreviewPage(): JSX.Element {
                         if (prev.some((u) => normUrl(u.url) === normUrl(targetUrl))) return prev;
                         return [{ id: `local_${hash64(targetUrl)}`, url: targetUrl, urlHash: hash64(targetUrl) } as any, ...prev].slice(0, 50);
                     });
+                } else {
+                    // If this URL already exists, sync it into local dropdown state first so users
+                    // can select it immediately, even if the initial list query didn't include it.
+                    const existingDoc = snap.docs[0];
+                    const existingData = (existingDoc.data() || {}) as UrlDoc;
+                    const canonicalTarget = normUrl(targetUrl);
+
+                    setUrls((prev) => {
+                        const deduped = prev.filter((u) => normUrl(String(u?.url || "")) !== canonicalTarget);
+                        return [{ id: existingDoc.id, ...(existingData as any) }, ...deduped].slice(0, 50);
+                    });
+
+                    const existingShotCount =
+                        (Array.isArray(existingData?.screenshotPaths) ? existingData.screenshotPaths.length : 0) +
+                        (Array.isArray(existingData?.screenshots) ? existingData.screenshots.length : 0);
+                    const existingStatusUi = normalizeUrlStatus(
+                        existingData?.status,
+                        existingShotCount,
+                        existingData?.updatedAt,
+                        (existingData as any)?.lastError,
+                    );
+
+                    const hasExistingScanContext =
+                        existingStatusUi === "ready" ||
+                        existingStatusUi === "queued" ||
+                        existingStatusUi === "processing";
+
+                    if (hasExistingScanContext) {
+                        const promptText =
+                            existingStatusUi === "ready"
+                                ? "This URL already has a completed scan. Click OK to rescan now, or Cancel to use the existing scan."
+                                : "This URL is already in the scan queue. Click OK to force a rescan, or Cancel to use the existing entry.";
+                        const shouldRescan = await showConfirmRef.current(promptText, "URL Already Tracked");
+                        if (cancelled) return;
+
+                        if (!shouldRescan) {
+                            setErr("");
+                            setInfo(buildDuplicateUrlMessageRef.current(targetUrl));
+                            generateSucceededRef.current = startRequestKey;
+                            setCaptureTerminalFailureUrl("");
+                            captureLockMinUntilRef.current = 0;
+                            setCaptureLockUrl(null);
+                            captureLockStartedAtRef.current = 0;
+                            shouldMarkHandled = true;
+                            return;
+                        }
+                    }
                 }
 
                 startRequestedEnqueueAttemptRef.current = startRequestKey;
@@ -4011,14 +4088,16 @@ export default function PreviewPage(): JSX.Element {
                     captureLockStartedAtRef.current = 0;
                     clearStartQueryParam();
 
-                    if (res.status === 409) {
-                        void markUrlCaptureTerminalError(
-                            user.uid,
-                            targetUrl,
-                            looksBlocked ? "snapshot_blocked" : (serverError || "generate_conflict"),
-                            "error",
-                        );
-                    }
+                    // Persist terminal error status so a page refresh cannot keep this URL
+                    // stuck in queued/processing without an active enqueue attempt.
+                    void markUrlCaptureTerminalError(
+                        user.uid,
+                        targetUrl,
+                        looksBlocked
+                            ? "snapshot_blocked"
+                            : (serverError || `generate_http_${res.status}`),
+                        "error",
+                    );
 
                     void (async () => {
                         // For blocked/conflict outcomes, /api/private/generate already emits a
@@ -4058,6 +4137,13 @@ export default function PreviewPage(): JSX.Element {
                 captureLockMinUntilRef.current = 0;
                 setCaptureLockUrl(null);
                 captureLockStartedAtRef.current = 0;
+
+                void markUrlCaptureTerminalError(
+                    user.uid,
+                    targetUrl,
+                    "generate_request_failed",
+                    "error",
+                );
             } finally {
                 if (!cancelled && shouldMarkHandled) {
                     clearStartQueryParam();
@@ -4308,7 +4394,39 @@ export default function PreviewPage(): JSX.Element {
         return activeUrlStatus;
     }, [activeUrlStatus, lockMatches, shotMetaCount, startRequested, err, targetUrl, captureTerminalFailureUrl]);
 
-    const captureLocked = captureStatus === "queued" || captureStatus === "processing";
+    // Only lock generation controls while this frontend session owns an active capture flow.
+    // A stale Firestore queued/processing status alone should not freeze the dashboard after refresh.
+    const captureLocked =
+        lockMatches && (captureStatus === "queued" || captureStatus === "processing");
+
+    useEffect(() => {
+        if (!err) return;
+        if (!/not able to process this url|url failed to process|couldn't finish capturing this url/i.test(err)) {
+            return;
+        }
+
+        setCaptureIssueNotice("Issue detected while scanning this URL.");
+        setHideCaptureQueueStatus(true);
+        const timeoutId = window.setTimeout(() => {
+            setCaptureIssueNotice("");
+        }, CAPTURE_ISSUE_NOTICE_MS);
+
+        return () => window.clearTimeout(timeoutId);
+    }, [err, targetUrl]);
+
+    useEffect(() => {
+        if (captureStatus === "queued" || captureStatus === "processing") {
+            setCaptureIssueNotice("");
+        }
+    }, [captureStatus]);
+
+    useEffect(() => {
+        // Re-enable queued/processing inline status only when a fresh scan is actively in flight.
+        if (!hideCaptureQueueStatus) return;
+        if (lockMatches && (captureStatus === "queued" || captureStatus === "processing") && !err) {
+            setHideCaptureQueueStatus(false);
+        }
+    }, [hideCaptureQueueStatus, lockMatches, captureStatus, err]);
 
     useEffect(() => {
         captureLockUrlRef.current = captureLockUrl;
@@ -4470,25 +4588,6 @@ export default function PreviewPage(): JSX.Element {
     }, [targetUrl, captureStatus, err, startRequested, shouldSendFrontendTimeoutAlert]);
 
     useEffect(() => {
-        if (errAutoDismissTimeoutRef.current) {
-            clearTimeout(errAutoDismissTimeoutRef.current);
-            errAutoDismissTimeoutRef.current = null;
-        }
-        if (!err) return;
-
-        errAutoDismissTimeoutRef.current = setTimeout(() => {
-            setErr("");
-        }, ERR_AUTO_DISMISS_MS);
-
-        return () => {
-            if (errAutoDismissTimeoutRef.current) {
-                clearTimeout(errAutoDismissTimeoutRef.current);
-                errAutoDismissTimeoutRef.current = null;
-            }
-        };
-    }, [err]);
-
-    useEffect(() => {
         // Avoid stale/duplicate legacy notifications after capture finishes (e.g. during hot reload).
         if (
             info !== "Queued snapshot job…" &&
@@ -4503,7 +4602,6 @@ export default function PreviewPage(): JSX.Element {
 
     const capturePrevStatusRef = useRef<UrlStatusUi | null>(null);
     const captureSuccessShownForUrlRef = useRef<string>("");
-    const captureSuccessTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     useEffect(() => {
         const urlKey = targetUrl ? normUrl(targetUrl) : "";
@@ -4539,17 +4637,7 @@ export default function PreviewPage(): JSX.Element {
         captureSuccessShownForUrlRef.current = urlKey;
 
         setSuccess(URL_ADD_SUCCESS_MESSAGE);
-        if (captureSuccessTimeoutRef.current) clearTimeout(captureSuccessTimeoutRef.current);
-        captureSuccessTimeoutRef.current = setTimeout(() => setSuccess(""), 60000);
     }, [captureStatus, targetUrl, lockMatches, err, info, isDuplicateUrlConfirmationMessage]);
-
-    useEffect(() => {
-        return () => {
-            if (captureSuccessTimeoutRef.current) {
-                clearTimeout(captureSuccessTimeoutRef.current);
-            }
-        };
-    }, []);
 
     useEffect(() => {
         function onDocClick(e: MouseEvent) {
@@ -4581,6 +4669,37 @@ export default function PreviewPage(): JSX.Element {
         const rest = urls.filter((u) => u.id !== activeUrlDoc.id);
         return [activeUrlDoc, ...rest];
     }, [urls, activeUrlDoc]);
+
+    const activeUrlStatusUi = useMemo<UrlStatusUi | null>(() => {
+        if (!activeUrlDoc) return null;
+
+        const normalizedActive = validateAndNormalizePublicHttpUrl(String(activeUrlDoc.url || ""));
+        const activeCanonical = normalizedActive ? normUrl(normalizedActive) : "";
+        const targetCanonical = targetUrl ? normUrl(targetUrl) : "";
+        const isSelectedTarget = !!activeCanonical && !!targetCanonical && activeCanonical === targetCanonical;
+
+        const source: any = isSelectedTarget && docData
+            ? {
+                status: docData.status,
+                screenshotPaths: docData.screenshotPaths,
+                screenshots: docData.screenshots,
+                updatedAt: docData.updatedAt,
+                lastError: (docData as any)?.lastError,
+            }
+            : activeUrlDoc;
+
+        const shotCount =
+            (Array.isArray(source?.screenshotPaths) ? source.screenshotPaths.length : 0) +
+            (Array.isArray(source?.screenshots) ? source.screenshots.length : 0);
+
+        let statusUi = normalizeUrlStatus(source?.status, shotCount, source?.updatedAt, source?.lastError);
+        if (activeCanonical && captureTerminalFailureUrl === activeCanonical && statusUi !== "ready") {
+            statusUi = "error";
+        }
+        return statusUi;
+    }, [activeUrlDoc, targetUrl, docData, captureTerminalFailureUrl]);
+
+    const activeUrlCannotGenerate = activeUrlStatusUi === "error" || activeUrlStatusUi === "stale";
 
     const successfulScannedUrls = useMemo(() => {
         const seen = new Set<string>();
@@ -4851,13 +4970,26 @@ export default function PreviewPage(): JSX.Element {
     /* ───────── url doc + screenshots ───────── */
 
     const lastDocShotsKeyRef = useRef<string>("");
+    const prevUrlDocContextRef = useRef<{ uid: string; targetUrl: string }>({ uid: "", targetUrl: "" });
 
     useEffect(() => {
         let unsubUrlDoc: Unsubscribe | null = null;
 
         (async () => {
-            setErr("");
-            setInfo("");
+            const currentContext = {
+                uid: user?.uid || "",
+                targetUrl,
+            };
+            const contextChanged =
+                currentContext.uid !== prevUrlDocContextRef.current.uid ||
+                currentContext.targetUrl !== prevUrlDocContextRef.current.targetUrl;
+            prevUrlDocContextRef.current = currentContext;
+
+            // Keep terminal capture errors visible during nonce-driven doc refreshes.
+            if (contextChanged) {
+                setErr("");
+                setInfo("");
+            }
             setLoading(true);
             setDocSnap(null);
             setDocData(null);
@@ -5419,6 +5551,24 @@ export default function PreviewPage(): JSX.Element {
         [router]
     );
 
+    const retryTrackedUrl = useCallback(
+        (rawUrl: string) => {
+            const normalized = validateAndNormalizePublicHttpUrl(rawUrl || "");
+            if (!normalized) {
+                setErr("That saved URL looks invalid. Delete it from the list to continue.");
+                return;
+            }
+            setErr("");
+            setInfo("");
+            setSuccess("");
+            setCaptureIssueNotice("");
+            setHideCaptureQueueStatus(false);
+            setUrlMenuOpen(false);
+            router.push(`/dashboard/view?u=${encodeURIComponent(normalized)}&start=1`, { scroll: false });
+        },
+        [router]
+    );
+
     const buildFromCollection = useCallback(
         async (storageKeys: string[]) => {
             if (!user) return;
@@ -5560,6 +5710,13 @@ export default function PreviewPage(): JSX.Element {
             return;
         }
 
+        if (activeUrlCannotGenerate) {
+            const msg = "This URL scan failed and cannot be used to create websites. Retry scan or choose a different URL.";
+            setErr(msg);
+            push(msg, "warn");
+            return;
+        }
+
         if (!canUsePreviewCredit()) {
             push(
                 "You have used all available preview credits for today on this plan.",
@@ -5608,7 +5765,7 @@ export default function PreviewPage(): JSX.Element {
             console.error("buildFromUrl failed", e);
             push(e?.message || "Failed to start website generation.", "err");
         }
-    }, [user, targetUrl, canUsePreviewCredit, push, refreshRenders, setShowCreditsPaywall]);
+    }, [user, targetUrl, activeUrlCannotGenerate, canUsePreviewCredit, push, refreshRenders, setShowCreditsPaywall]);
 
     const continueRender = useCallback(
         async (renderId: string) => {
@@ -7002,6 +7159,21 @@ export default function PreviewPage(): JSX.Element {
                         ? "Agency plan"
                         : "Enterprise plan";
 
+    const showDevUrlScreenshots = process.env.NODE_ENV === "development";
+    const DEV_URL_SCREENSHOT_PREVIEW_LIMIT = 12;
+    const devUrlScreenshotPreviews = shots.slice(0, DEV_URL_SCREENSHOT_PREVIEW_LIMIT);
+
+    const showUrlAccessInError = useMemo(() => {
+        if (!err) return false;
+        return /not able to process this url|url failed to process/i.test(err);
+    }, [err]);
+
+    const safeErrorUrl = useMemo(() => {
+        if (!showUrlAccessInError) return "";
+        const normalized = validateAndNormalizePublicHttpUrl(targetUrl || "");
+        return normalized ? normUrl(normalized) : "";
+    }, [showUrlAccessInError, targetUrl]);
+
     /* ───────── collections grouping ───────── */
 
     const groupedShots = useMemo(() => {
@@ -7398,6 +7570,8 @@ export default function PreviewPage(): JSX.Element {
                         size="compact"
                         disabled={captureLocked}
                         captureStatus={captureStatus}
+                        captureIssueNotice={captureIssueNotice}
+                        hideCaptureQueueStatus={hideCaptureQueueStatus}
                     />
                 </section>
 
@@ -7429,6 +7603,26 @@ export default function PreviewPage(): JSX.Element {
                                         const isActive = activeUrlDoc?.id === u.id;
                                         const normalized = validateAndNormalizePublicHttpUrl(u.url);
                                         const isValid = !!normalized;
+                                        const rowCanonical = normalized ? normUrl(normalized) : "";
+                                        const targetCanonical = targetUrl ? normUrl(targetUrl) : "";
+                                        const isSelectedTargetRow = !!rowCanonical && !!targetCanonical && rowCanonical === targetCanonical;
+                                        const rowStatusSource: any = isSelectedTargetRow && docData
+                                            ? {
+                                                status: docData.status,
+                                                screenshotPaths: docData.screenshotPaths,
+                                                screenshots: docData.screenshots,
+                                                updatedAt: docData.updatedAt,
+                                                lastError: (docData as any)?.lastError,
+                                            }
+                                            : u;
+                                        const statusUi = normalizeUrlStatus(
+                                            rowStatusSource?.status,
+                                            (Array.isArray(rowStatusSource?.screenshotPaths) ? rowStatusSource.screenshotPaths.length : 0) +
+                                            (Array.isArray(rowStatusSource?.screenshots) ? rowStatusSource.screenshots.length : 0),
+                                            rowStatusSource?.updatedAt,
+                                            rowStatusSource?.lastError,
+                                        );
+                                        const isFailedUrl = statusUi === "error" || statusUi === "stale";
 
                                         return (
                                             <li key={u.id}>
@@ -7470,8 +7664,30 @@ export default function PreviewPage(): JSX.Element {
                                                             <span className="ml-2 shrink-0 rounded-full border border-red-200 bg-red-50 px-2 py-0.5 text-[11px] font-medium text-red-700">
                                                                 Invalid
                                                             </span>
+                                                        ) : isFailedUrl ? (
+                                                            <span className="ml-2 shrink-0 inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700">
+                                                                <MessageCircleWarning className="h-3 w-3" />
+                                                                {statusUi === "stale" ? "Stale" : "Failed"}
+                                                            </span>
                                                         ) : null}
                                                     </button>
+
+                                                    {isValid && isFailedUrl ? (
+                                                        <button
+                                                            type="button"
+                                                            onClick={(e) => {
+                                                                e.preventDefault();
+                                                                e.stopPropagation();
+                                                                retryTrackedUrl(u.url);
+                                                            }}
+                                                            className="inline-flex h-8 items-center justify-center gap-1 rounded-md border border-amber-200 bg-amber-50 px-2 text-amber-700 hover:bg-amber-100"
+                                                            title="Retry scanning URL"
+                                                            aria-label={`Retry scanning ${u.url}`}
+                                                        >
+                                                            <RotateCcw className="h-3.5 w-3.5" />
+                                                            <span className="text-[11px] font-semibold">Retry</span>
+                                                        </button>
+                                                    ) : null}
 
                                                     <button
                                                         type="button"
@@ -7496,9 +7712,57 @@ export default function PreviewPage(): JSX.Element {
                     </div>
                 </section>
 
+                {activeUrlCannotGenerate && activeUrlDoc?.url ? (
+                    <div className="mt-2 flex items-start justify-between gap-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                        <div className="min-w-0 flex-1">
+                            <div className="inline-flex items-center gap-1.5 font-semibold text-amber-900">
+                                <MessageCircleWarning className="h-3.5 w-3.5" />
+                                URL scan issue detected
+                            </div>
+                            <p className="mt-1 text-xs text-amber-800">
+                                This URL cannot be used to create websites from until a successful scan completes.
+                            </p>
+                            <p className="mt-1 break-all font-mono text-[11px] text-amber-900" title={activeUrlDoc.url}>
+                                {truncateMiddle(activeUrlDoc.url, 76)}
+                            </p>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => retryTrackedUrl(activeUrlDoc.url)}
+                            className="inline-flex h-8 items-center justify-center gap-1 rounded-md border border-amber-300 bg-white px-2.5 text-xs font-semibold text-amber-800 hover:bg-amber-100"
+                            title="Retry scanning this URL"
+                        >
+                            <RotateCcw className="h-3.5 w-3.5" />
+                            Retry
+                        </button>
+                    </div>
+                ) : null}
+
                 {err ? (
                     <div className="mt-2 flex items-start justify-between gap-3 rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">
-                        <span>{err}</span>
+                        <div className="min-w-0 flex-1">
+                            <span>{err}</span>
+                            {safeErrorUrl ? (
+                                <div className="mt-2 flex flex-wrap items-center gap-2">
+                                    <span
+                                        className="inline-flex max-w-full items-center rounded-md border border-red-200 bg-white px-2 py-1 font-mono text-[11px] text-red-800"
+                                        title={safeErrorUrl}
+                                    >
+                                        {truncateMiddle(safeErrorUrl, 76)}
+                                    </span>
+                                    <a
+                                        href={safeErrorUrl}
+                                        target="_blank"
+                                        rel="noopener noreferrer nofollow"
+                                        className="inline-flex items-center gap-1 rounded-md border border-red-200 bg-white px-2.5 py-1 text-xs font-semibold text-red-700 transition hover:bg-red-100"
+                                        title="Open URL in a new tab"
+                                    >
+                                        <span>Open URL</span>
+                                        <ExternalLink className="h-3 w-3" />
+                                    </a>
+                                </div>
+                            ) : null}
+                        </div>
                         <button
                             type="button"
                             onClick={() => setErr("")}
@@ -7512,9 +7776,20 @@ export default function PreviewPage(): JSX.Element {
                 ) : null}
 
                 {success ? (
-                    <div className="mt-2 flex items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
-                        <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                        <span>{success}</span>
+                    <div className="mt-2 flex items-start justify-between gap-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+                        <div className="flex min-w-0 items-start gap-2">
+                            <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
+                            <span>{success}</span>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => setSuccess("")}
+                            className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-emerald-200 bg-white/70 text-emerald-700 transition hover:bg-white hover:text-emerald-800"
+                            aria-label="Dismiss success message"
+                            title="Dismiss"
+                        >
+                            <X className="h-3.5 w-3.5" />
+                        </button>
                     </div>
                 ) : null}
 
@@ -7530,6 +7805,64 @@ export default function PreviewPage(): JSX.Element {
                         {info}
                     </div>
                 ) : null}
+
+                {showDevUrlScreenshots && targetUrl ? (
+                    <section className="mt-4 rounded-xl border border-dashed border-neutral-300 bg-neutral-50 px-3 py-3 sm:px-4">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div>
+                                <p className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500">
+                                    Dev Only
+                                </p>
+                                <p className="text-sm font-medium text-neutral-800">
+                                    URL screenshots for {targetUrl}
+                                </p>
+                            </div>
+                            <span className="rounded-full border border-neutral-300 bg-white px-2.5 py-1 text-xs text-neutral-700">
+                                {shots.length} screenshot{shots.length === 1 ? "" : "s"}
+                            </span>
+                        </div>
+
+                        {devUrlScreenshotPreviews.length > 0 ? (
+                            <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
+                                {devUrlScreenshotPreviews.map((shot, index) => (
+                                    <button
+                                        key={shot.path}
+                                        type="button"
+                                        onClick={() => openViewer(index)}
+                                        className="group overflow-hidden rounded-lg border border-neutral-200 bg-white text-left shadow-sm transition hover:border-neutral-300 hover:shadow"
+                                        title={shot.fileName}
+                                    >
+                                        <div className="relative aspect-[4/3] w-full overflow-hidden bg-neutral-100">
+                                            <Image
+                                                src={shot.url}
+                                                alt={shot.fileName}
+                                                fill
+                                                sizes="(min-width: 1280px) 180px, (min-width: 768px) 25vw, 50vw"
+                                                className="object-cover transition duration-200 group-hover:scale-[1.02]"
+                                            />
+                                        </div>
+                                        <div className="truncate px-2 py-1.5 text-[11px] text-neutral-700">
+                                            {shot.fileName}
+                                        </div>
+                                    </button>
+                                ))}
+                            </div>
+                        ) : (
+                            <p className="mt-3 text-xs text-neutral-600">
+                                {loading || captureStatus === "queued" || captureStatus === "processing"
+                                    ? "Waiting for screenshots to be captured for this URL..."
+                                    : "No screenshots found yet for this URL."}
+                            </p>
+                        )}
+
+                        {shots.length > DEV_URL_SCREENSHOT_PREVIEW_LIMIT ? (
+                            <p className="mt-2 text-[11px] text-neutral-500">
+                                Showing first {DEV_URL_SCREENSHOT_PREVIEW_LIMIT} screenshots. Use the viewer arrows to browse more.
+                            </p>
+                        ) : null}
+                    </section>
+                ) : null}
+
                 <section className="mt-10 rounded-3xl border border-neutral-200 bg-white/70 px-4 py-5 sm:px-5 sm:py-6 shadow-sm">
                     <div className="mb-3 flex items-center justify-between">
                         <div className="space-y-1">
