@@ -2048,14 +2048,22 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                     "calc(100dvh - 2rem - env(safe-area-inset-top) - env(safe-area-inset-bottom))",
                             }}
                         >
-                            <div className="flex shrink-0 items-start justify-between gap-4 border-b border-neutral-200 px-5 py-4">
-                                <div className="space-y-1">
+                            <div
+                                className={`flex shrink-0 items-start justify-between gap-4 border-b px-5 py-4 ${autoOpenSuccessMessage
+                                    ? "border-emerald-200 bg-gradient-to-r from-emerald-50 via-emerald-50 to-white"
+                                    : "border-neutral-200"
+                                    }`}
+                            >
+                                <div className="space-y-2">
                                     {autoOpenSuccessMessage ? (
                                         <>
-                                            <div className="text-sm font-semibold text-emerald-800">
-                                                {autoOpenSuccessMessage}
+                                            <div className="inline-flex items-start gap-2 rounded-xl border border-emerald-300 bg-emerald-100/80 px-3 py-2 shadow-sm">
+                                                <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-700" />
+                                                <span className="text-sm font-semibold leading-5 text-emerald-900">
+                                                    {autoOpenSuccessMessage}
+                                                </span>
                                             </div>
-                                            <div className="text-xs text-neutral-600">
+                                            <div className="pl-1 text-xs font-medium text-emerald-800">
                                                 Choose what you want to generate next.
                                             </div>
                                         </>
@@ -2074,7 +2082,10 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                 <button
                                     type="button"
                                     onClick={closeGenerationModal}
-                                    className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-neutral-100 hover:bg-neutral-200"
+                                    className={`inline-flex h-9 w-9 items-center justify-center rounded-full ${autoOpenSuccessMessage
+                                        ? "border border-emerald-200 bg-white/90 hover:bg-white"
+                                        : "bg-neutral-100 hover:bg-neutral-200"
+                                        }`}
                                     title="Close"
                                 >
                                     <svg
