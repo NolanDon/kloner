@@ -7281,11 +7281,18 @@ export default function PreviewPage(): JSX.Element {
         renders.some((r) => (r as any).lastExportedAt);
 
     const shouldHighlightCreateWebsiteCta = useMemo(() => {
+        const normalizedTarget = validateAndNormalizePublicHttpUrl(targetUrl || "");
+        const targetCanonical = normalizedTarget ? normUrl(normalizedTarget) : "";
+        const isCurrentUrlSuccessfullyScanned =
+            !!targetCanonical && successfulScannedUrls.some((u) => normUrl(u) === targetCanonical);
+
+        if (!isCurrentUrlSuccessfullyScanned) return false;
+
         const isDev = process.env.NODE_ENV !== "production";
         if (isDev) return true;
 
         return !hasAnyRenderDoc && !hasAnyAppDoc;
-    }, [hasAnyAppDoc, hasAnyRenderDoc]);
+    }, [hasAnyAppDoc, hasAnyRenderDoc, successfulScannedUrls, targetUrl]);
 
     const planLabel =
         userTier === "unknown"
