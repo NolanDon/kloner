@@ -2206,11 +2206,17 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                                     Faster HTML-first flow that opens in the legacy preview editor.
                                                 </div>
                                                 <div className="mt-2 rounded-lg border border-neutral-200 bg-neutral-50 px-2.5 py-2">
-                                                    <div className="text-[10px] font-semibold uppercase tracking-wide text-neutral-500">
-                                                        URL to clone
-                                                    </div>
-                                                    <div className="mt-0.5 break-all font-mono text-[11px] text-neutral-700">
-                                                        {sourceUrlDisplay || "(none selected)"}
+                                                    <div className="flex items-center gap-1 text-[11px]">
+                                                        <span className="shrink-0 font-semibold uppercase tracking-wide text-neutral-500">
+                                                            URL to clone:
+                                                        </span>
+                                                        <span
+                                                            className="min-w-0 truncate whitespace-nowrap font-mono font-semibold underline decoration-2"
+                                                            style={{ color: ACCENT }}
+                                                            title={sourceUrlDisplay || "(none selected)"}
+                                                        >
+                                                            {sourceUrlDisplay ? truncateMiddle(sourceUrlDisplay, 56) : "(none selected)"}
+                                                        </span>
                                                     </div>
                                                 </div>
                                                 {!canUseSimpleHtml ? (
