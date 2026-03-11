@@ -7407,7 +7407,7 @@ export default function PreviewPage(): JSX.Element {
     }, [hasAnyAppDoc, hasAnyRenderDoc, successfulScannedUrls, targetUrl]);
 
     const forceTrialPromptInDev = process.env.NODE_ENV !== "production";
-    const isUserOnFreeTrial = stripeStatus === "trialing";
+    const isFreeTierNotTrialing = userTier === "free" && stripeStatus !== "trialing";
 
     useEffect(() => {
         const wasOpen = previousEditorOpenRef.current;
@@ -7467,7 +7467,7 @@ export default function PreviewPage(): JSX.Element {
 
     const firstGenerationTrialCandidate = useMemo<"kloner_render" | null>(() => {
         if (!user) return null;
-        if (!isUserOnFreeTrial) return null;
+        if (!isFreeTierNotTrialing) return null;
         if (!forceTrialPromptInDev && !renderTrialSessionEligible) return null;
 
         const activeReadyRenders = renders.filter((r) => !r.archived && r.status === "ready");
@@ -7482,7 +7482,7 @@ export default function PreviewPage(): JSX.Element {
         return null;
     }, [
         user,
-        isUserOnFreeTrial,
+        isFreeTierNotTrialing,
         forceTrialPromptInDev,
         renderTrialSessionEligible,
         editorOpen,
@@ -8709,7 +8709,7 @@ export default function PreviewPage(): JSX.Element {
                         }}
                         onDeploy={(app) => openAppDeployWizard(app)}
                         agentWelcomeContext={agentWelcomeContextByAppId[currentAppId]}
-                        trialPromptEnabled={isUserOnFreeTrial}
+                        trialPromptEnabled={isFreeTierNotTrialing}
                         trialPromptSessionEligible={appBuilderTrialSessionEligible}
                         trialCheckoutBusy={checkoutBusy}
                         onTrialPromptShown={() => {
