@@ -1154,6 +1154,9 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
   const lastPreviewUrlForLoadRef = useRef<string | null>(null);
   const lastExternalPreviewOpenedUrlRef = useRef<string | null>(null);
   const lastCookieBlockReportKeyRef = useRef<string>('');
+  const embedPolicySignalTimesRef = useRef<number[]>([]);
+  const embedPolicySpamMutedUntilRef = useRef<number>(0);
+  const embedPolicyLastEscalationKeyRef = useRef<string>('');
   const forceExternalPreviewRef = useRef(false);
   const safariEmbedFailureByCodeRef = useRef<Record<string, number>>({});
   const reconnectOnlyRef = useRef(false);
@@ -1162,6 +1165,105 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
   const effectStartedAtRef = useRef<number>(0);
   const retryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const ensuredConfigRef = useRef(false);
+
+  const EMBED_POLICY_SPAM_WINDOW_MS = 12_000;
+  const EMBED_POLICY_SPAM_THRESHOLD = 4;
+  const EMBED_POLICY_SPAM_MUTED_MS = 2 * 60 * 1000;
+
+  const registerEmbedPolicySignal = (): { triggered: boolean; count: number } => {
+    const now = Date.now();
+    const recent = embedPolicySignalTimesRef.current.filter((ts) => now - ts <= EMBED_POLICY_SPAM_WINDOW_MS);
+    recent.push(now);
+    embedPolicySignalTimesRef.current = recent;
+
+    if (now < embedPolicySpamMutedUntilRef.current) {
+      return { triggered: false, count: recent.length };
+    }
+
+    if (recent.length < EMBED_POLICY_SPAM_THRESHOLD) {
+      return { triggered: false, count: recent.length };
+    }
+
+    embedPolicySpamMutedUntilRef.current = now + EMBED_POLICY_SPAM_MUTED_MS;
+    embedPolicySignalTimesRef.current = [];
+    return { triggered: true, count: recent.length };
+  };
+
+  const switchToExternalPreviewMode = (url: string, reason: string, opts?: { suppressEmbedBlockedReport?: boolean }) => {
+    const normalizedUrl = normalizePreviewUrlHost(url);
+    if (!normalizedUrl) return;
+
+    markSafariEmbedFailure(normalizedUrl);
+
+    forceExternalPreviewRef.current = true;
+    setExternalPreviewMode(true);
+    setError(null);
+    setCanRetry(false);
+    setCookieRecoveryPromptVisible(false);
+    setIsLoading(false);
+    setIsPolling(false);
+    setConnectingToExisting(false);
+
+    if (!opts?.suppressEmbedBlockedReport) {
+      reportCookieIframeBlocked({
+        previewUrl: normalizedUrl,
+        reason,
+        message: 'Embedded preview failed repeatedly; switching to external preview fallback.',
+      });
+    }
+
+    let opened: Window | null = null;
+    try {
+      opened = window.open(normalizedUrl, '_blank', 'noopener,noreferrer');
+    } catch {
+      opened = null;
+    }
+    setExternalPreviewAutoOpenFailed(!opened);
+    try { onPreviewReadyChange?.(true); } catch { }
+  };
+
+  const handleEmbedPolicySignal = (args: { source: 'csp' | 'embed'; reason: string; detail?: string }) => {
+    const signal = registerEmbedPolicySignal();
+    if (!signal.triggered) return;
+
+    const activeUrl = normalizePreviewUrlHost(String(previewUrlRef.current || ''));
+    const activeCode = derivePreviewCodeFromUrl(activeUrl) || pollingCodeRef.current || 'unknown';
+    const escalationKey = `${appId}:${activeCode}`;
+    if (embedPolicyLastEscalationKeyRef.current === escalationKey) return;
+    embedPolicyLastEscalationKeyRef.current = escalationKey;
+
+    void reportPreviewAlert({
+      appId,
+      code: pollingCodeRef.current || undefined,
+      action: 'preview_embed_policy_spam_detected',
+      severity: 'critical',
+      statusCode: 429,
+      status: 'embed_policy_spam',
+      reason: `embed_policy_spam_${args.source}`,
+      message: `Detected ${signal.count} embed-policy/CSP blocks within ${Math.round(EMBED_POLICY_SPAM_WINDOW_MS / 1000)}s; auto-switching to external preview to stop repeated failures.`,
+      previewUrl: activeUrl || undefined,
+      alertKeyOverride: `preview_embed_policy_spam_detected:${user?.uid || 'anonymous'}:${appId}:${activeCode}`,
+      dedupeTtlMs: 30 * 60 * 1000,
+      backendStatusData: {
+        status: 'embed_policy_spam',
+        uiStage: 'embedded_iframe',
+        debug: {
+          timeoutReason: `embed_policy_spam_${args.source}`,
+          source: args.source,
+          reason: args.reason,
+          detail: args.detail || null,
+          countWithinWindow: signal.count,
+          windowMs: EMBED_POLICY_SPAM_WINDOW_MS,
+        },
+      },
+    });
+
+    if (activeUrl && isValidPreviewUrlCandidate(activeUrl)) {
+      switchToExternalPreviewMode(activeUrl, 'embed_policy_spam_detected_auto_external', {
+        suppressEmbedBlockedReport: true,
+      });
+    }
+  };
 
   const reportCookieIframeBlocked = (args: { previewUrl?: string | null; reason: string; message: string }) => {
     if (typeof window === 'undefined') return;
@@ -1192,6 +1294,10 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
         },
       },
     });
+
+    if (!String(args.reason || '').includes('spam_detected')) {
+      handleEmbedPolicySignal({ source: 'embed', reason: args.reason, detail: args.message });
+    }
   };
 
   useEffect(() => {
@@ -1215,7 +1321,8 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
           reason,
           message: `CSP blocked '${directive || 'unknown'}' in the preview/editor context.`,
           previewUrl: previewUrlRef.current,
-          alertKeyOverride: `preview_csp_violation:${user?.uid || 'anonymous'}:${appId}:${directive}:${blockedUri || 'none'}:${sourceFile || 'none'}`,
+          alertKeyOverride: `preview_csp_violation:${user?.uid || 'anonymous'}:${appId}:${directive}`,
+          dedupeTtlMs: 15 * 60 * 1000,
           backendStatusData: {
             status: 'csp_violation',
             uiStage: 'embedded_iframe',
@@ -1234,6 +1341,8 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
             },
           },
         });
+
+        handleEmbedPolicySignal({ source: 'csp', reason, detail: blockedUri || sourceFile || directive || 'unknown' });
       } catch {
         // ignore
       }
@@ -1256,37 +1365,6 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
     const key = derivePreviewCodeFromUrl(url) || normalizePreviewUrlHost(url);
     if (!key) return;
     delete safariEmbedFailureByCodeRef.current[key];
-  };
-
-  const switchToExternalPreviewMode = (url: string, reason: string) => {
-    const normalizedUrl = normalizePreviewUrlHost(url);
-    if (!normalizedUrl) return;
-
-    markSafariEmbedFailure(normalizedUrl);
-
-    forceExternalPreviewRef.current = true;
-    setExternalPreviewMode(true);
-    setError(null);
-    setCanRetry(false);
-    setCookieRecoveryPromptVisible(false);
-    setIsLoading(false);
-    setIsPolling(false);
-    setConnectingToExisting(false);
-
-    reportCookieIframeBlocked({
-      previewUrl: normalizedUrl,
-      reason,
-      message: 'Safari iframe preview failed repeatedly; switching to external preview fallback.',
-    });
-
-    let opened: Window | null = null;
-    try {
-      opened = window.open(normalizedUrl, '_blank', 'noopener,noreferrer');
-    } catch {
-      opened = null;
-    }
-    setExternalPreviewAutoOpenFailed(!opened);
-    try { onPreviewReadyChange?.(true); } catch { }
   };
 
   const normalizeConfigJson = (raw: string): string => {
