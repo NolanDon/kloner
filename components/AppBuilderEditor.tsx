@@ -4,7 +4,7 @@
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import Editor from "@monaco-editor/react";
 import Image from "next/image";
-import { Folder, File, Upload, X, RefreshCw, MessageSquare, Code, Check, RotateCcw, Database, Rocket, Monitor, SlidersHorizontal, Images, Send, Pencil } from "lucide-react";
+import { Folder, File, Upload, X, RefreshCw, MessageSquare, Code, Check, RotateCcw, Database, Rocket, Monitor, SlidersHorizontal, Images, Send, Pencil, Loader2 } from "lucide-react";
 import AppBuilderEditorAgentChat from "./AppBuilderEditorAgentChat";
 import KlonerLoader from "./KlonerLoader";
 import WebContainerRunner from "./WebContainerRunner";
@@ -4841,7 +4841,8 @@ export default function AppBuilderEditor({
                                 <button
                                     type="button"
                                     onClick={() => setShowAppBuilderTrialPrompt(false)}
-                                    className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-50"
+                                    disabled={trialCheckoutBusy}
+                                    className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-60"
                                     aria-label="Close"
                                 >
                                     ×
@@ -4865,23 +4866,36 @@ export default function AppBuilderEditor({
                                 <button
                                     type="button"
                                     onClick={() => {
-                                        setShowAppBuilderTrialPrompt(false);
                                         onTrialPromptStartCheckout?.(appId);
                                     }}
                                     disabled={trialCheckoutBusy}
-                                    className="w-full rounded-xl px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-70"
+                                    className="w-full rounded-xl px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-80"
                                     style={{ backgroundColor: "#f55f2a" }}
                                 >
-                                    {trialCheckoutBusy ? "Redirecting to Stripe..." : "Start free trial & publish →"}
+                                    {trialCheckoutBusy ? (
+                                        <span className="inline-flex items-center justify-center gap-2">
+                                            <Loader2 className="h-4 w-4 animate-spin" />
+                                            Redirecting to Stripe...
+                                        </span>
+                                    ) : (
+                                        "Start free trial & publish →"
+                                    )}
                                 </button>
 
                                 <button
                                     type="button"
                                     onClick={() => setShowAppBuilderTrialPrompt(false)}
-                                    className="w-full rounded-xl border border-neutral-200 bg-white px-4 py-2 text-sm font-semibold text-neutral-700 hover:bg-neutral-50"
+                                    disabled={trialCheckoutBusy}
+                                    className="w-full rounded-xl border border-neutral-200 bg-white px-4 py-2 text-sm font-semibold text-neutral-700 hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-60"
                                 >
                                     Keep building for now
                                 </button>
+
+                                {trialCheckoutBusy ? (
+                                    <p className="text-center text-xs text-neutral-500">
+                                        Opening secure Stripe checkout...
+                                    </p>
+                                ) : null}
                             </div>
                         </motion.div>
                     </motion.div>
