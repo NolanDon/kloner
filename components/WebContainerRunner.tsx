@@ -163,6 +163,7 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
   const [externalPreviewAutoOpenFailed, setExternalPreviewAutoOpenFailed] = useState(false);
   const [canRetry, setCanRetry] = useState(false);
   const [startAttempt, setStartAttempt] = useState(0);
+  const [manualStartNonce, setManualStartNonce] = useState(0);
   const [loadingStatus, setLoadingStatus] = useState('');
   const [isApplyRefreshing, setIsApplyRefreshing] = useState(false);
   const [pollNetworkWarning, setPollNetworkWarning] = useState<string | null>(null);
@@ -435,6 +436,20 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
       }
 
       return `https://${CUSTOM_PREVIEW_HOST || DEFAULT_HUB_HOST}${statusPath}`;
+    } catch {
+      return null;
+    }
+  };
+
+  const deriveCodeFromHubStatusUrl = (url: string): string | null => {
+    try {
+      const u = new URL(String(url || ''));
+      const parts = u.pathname.split('/').filter(Boolean);
+      if (parts.length >= 3 && parts[0] === 'preview' && parts[2] === 'status') {
+        const code = String(parts[1] || '').trim();
+        return code || null;
+      }
+      return null;
     } catch {
       return null;
     }
@@ -1053,6 +1068,17 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
     }
   };
   const retryApp = () => {
+    console.log('[WebContainerRunner] Manual refresh requested', {
+      appId,
+      startAttempt,
+      reconnectOnly: reconnectOnlyRef.current,
+    });
+    recordDebugEvent('manual_refresh_requested', {
+      appId,
+      startAttempt,
+      reconnectOnly: reconnectOnlyRef.current,
+    });
+
     stopAllTimers();
 
     setStartAttempt(0);
@@ -1082,6 +1108,10 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
       clearTimeout(iframePostLoadTimeoutRef.current);
       iframePostLoadTimeoutRef.current = null;
     }
+
+    // Ensure manual refresh always retriggers the startup effect,
+    // even when other dependency values remain unchanged.
+    setManualStartNonce((prev) => prev + 1);
 
     // Do not clear stored container code on retry.
     // Retry should attempt to reconnect to the saved machine first.
@@ -1856,9 +1886,15 @@ export default function NavBar() {
           setIsLoading(false);
           appLoadedSuccessfullyRef.current = false;
           iframeLoadedSuccessfullyRef.current = false;
+          pollingCodeRef.current = null;
+          hubStatusUrlRef.current = null;
+          latestDeploymentUrlRef.current = '';
+          lastReportedStatusRef.current = '';
+          lastBackendReadyNotifyRef.current = null;
+          lastReadyUrlRef.current = null;
         }
 
-        const startKey = `${appId}|${startAttempt}|${restartToken ?? 0}|${reconnectToken ?? 0}|${forceFreshStart ?? 0}`;
+        const startKey = `${appId}|${startAttempt}|${manualStartNonce}|${restartToken ?? 0}|${reconnectToken ?? 0}|${forceFreshStart ?? 0}`;
         if (lastStartKeyRef.current === startKey) {
           console.log('Already started, skipping duplicate startApp call');
           return;
@@ -1877,6 +1913,9 @@ export default function NavBar() {
         containerNotFoundCountRef.current = 0; // Reset 404 counter
         pollFetchFailureCountRef.current = 0;
         lastPollIssueReportKeyRef.current = '';
+        hubStatusUrlRef.current = null;
+        latestDeploymentUrlRef.current = '';
+        lastReportedStatusRef.current = '';
 
         console.log('Starting app with ID:', appId);
 
@@ -2456,9 +2495,22 @@ export default function NavBar() {
             let statusResponse: Response | null = null;
             const hubStatusUrl = hubStatusUrlRef.current;
             if (hubStatusUrl) {
+              const hubCode = deriveCodeFromHubStatusUrl(hubStatusUrl);
+              if (hubCode && hubCode !== code) {
+                console.warn('[WebContainerRunner] Ignoring stale hub status url (code mismatch)', {
+                  appId,
+                  expectedCode: code,
+                  hubCode,
+                });
+                hubStatusUrlRef.current = null;
+              }
+            }
+
+            const activeHubStatusUrl = hubStatusUrlRef.current;
+            if (activeHubStatusUrl) {
               // Poll the hub status endpoint directly once we have a viewer token.
               try {
-                statusResponse = await fetch(hubStatusUrl, { method: 'GET', cache: 'no-store', credentials: 'omit' });
+                statusResponse = await fetch(activeHubStatusUrl, { method: 'GET', cache: 'no-store', credentials: 'omit' });
               } catch (err) {
                 // If the browser blocks this (CORS) or network fails, fall back to our API proxy.
                 console.warn('[WebContainerRunner] Hub status poll failed; falling back to /api/webcontainer-status', err);
@@ -2559,7 +2611,10 @@ export default function NavBar() {
               // Handle 404s specially for newly created containers
               if (statusResponse.status === 404) {
                 containerNotFoundCountRef.current += 1;
-                console.log(`Container not found (404) - attempt ${containerNotFoundCountRef.current}/${maxContainerNotFound}`);
+                const maxNotFoundAttempts = isForceFreshStart
+                  ? Math.max(maxContainerNotFound, 12)
+                  : maxContainerNotFound;
+                console.log(`Container not found (404) - attempt ${containerNotFoundCountRef.current}/${maxNotFoundAttempts}`);
 
                 // Provide a helpful UI status while waiting for the backend to register the preview.
                 // (404 during the first ~seconds is expected; do not treat as fatal yet.)
@@ -2574,7 +2629,7 @@ export default function NavBar() {
                   })
                 );
 
-                if (containerNotFoundCountRef.current >= maxContainerNotFound) {
+                if (containerNotFoundCountRef.current >= maxNotFoundAttempts) {
                   console.log('Too many 404s, giving up on this container');
                   setIsPolling(false);
                   setIsLoading(false);
@@ -3379,7 +3434,7 @@ export default function NavBar() {
       const timer = window.setTimeout(cleanup, delayMs);
       pendingCleanupTimers.set(appId, timer);
     };
-  }, [appId, startAttempt, restartToken, reconnectToken, forceFreshStart]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [appId, startAttempt, manualStartNonce, restartToken, reconnectToken, forceFreshStart]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Reload the iframe without tearing down the underlying server/process.
   useEffect(() => {

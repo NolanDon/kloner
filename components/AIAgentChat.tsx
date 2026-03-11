@@ -2878,10 +2878,10 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                                 <div className="mt-3 flex flex-wrap gap-2">
                                     <button
                                         type="button"
-                                        disabled={isLoading}
+                                        disabled={isLoading || chatDisabled}
                                         onClick={() => {
                                             const prompt = String(message.supabaseContinuationPrompt || "").trim();
-                                            if (!prompt) return;
+                                            if (!prompt || isLoading || chatDisabled) return;
 
                                             setMessages((prev) =>
                                                 prev.map((m) =>
@@ -2899,7 +2899,9 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                                     </button>
                                     <button
                                         type="button"
+                                        disabled={isLoading || chatDisabled}
                                         onClick={() => {
+                                            if (isLoading || chatDisabled) return;
                                             setMessages((prev) => [
                                                 ...prev.map((m) =>
                                                     m.id === message.id
@@ -2915,7 +2917,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                                                 },
                                             ]);
                                         }}
-                                        className="inline-flex items-center rounded-full border border-black/10 bg-white px-3 py-1.5 text-xs font-semibold text-gray-800 transition hover:bg-black/5"
+                                        className="inline-flex items-center rounded-full border border-black/10 bg-white px-3 py-1.5 text-xs font-semibold text-gray-800 transition hover:bg-black/5 disabled:opacity-50"
                                     >
                                         Dismiss
                                     </button>
@@ -3294,7 +3296,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                                     onClick={handleCreateSupabaseProject}
                                     className="flex-1 bg-[#F55F2A] text-white py-2 px-4 rounded-full hover:bg-[#E04E1B] text-sm transition-colors"
                                 >
-                                    Create New Supabase Project
+                                    Create New Database
                                 </button>
                                 <a
                                     href="https://supabase.com/dashboard"

@@ -1868,8 +1868,8 @@ export default function AppBuilderEditorAgentChat({ appId, files, onFileEdit, on
 
             const promptRestartAfterSupabase = async () => {
                 const confirmed = await showConfirm(
-                    "Supabase is connected.\n\nTo finish setup, we need to restart your environment. This can take a minute or two. Restart now?",
-                    "Restart preview to load Supabase?",
+                    "Database is connected.\n\nTo finish setup, we need to restart your environment. This can take a minute or two. Restart now?",
+                    "Restart Required",
                 );
 
                 if (!confirmed) {
@@ -2853,10 +2853,10 @@ export default function AppBuilderEditorAgentChat({ appId, files, onFileEdit, on
                                 <div className="mt-3 flex flex-wrap gap-2">
                                     <button
                                         type="button"
-                                        disabled={isLoading}
+                                        disabled={isLoading || chatDisabled}
                                         onClick={() => {
                                             const prompt = String(message.supabaseContinuationPrompt || "").trim();
-                                            if (!prompt) return;
+                                            if (!prompt || isLoading || chatDisabled) return;
 
                                             setMessages((prev) =>
                                                 prev.map((m) =>
@@ -2874,7 +2874,9 @@ export default function AppBuilderEditorAgentChat({ appId, files, onFileEdit, on
                                     </button>
                                     <button
                                         type="button"
+                                        disabled={isLoading || chatDisabled}
                                         onClick={() => {
+                                            if (isLoading || chatDisabled) return;
                                             setMessages((prev) => [
                                                 ...prev.map((m) =>
                                                     m.id === message.id
@@ -2890,7 +2892,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, onFileEdit, on
                                                 },
                                             ]);
                                         }}
-                                        className="inline-flex items-center rounded-full border border-black/10 bg-white px-3 py-1.5 text-xs font-semibold text-gray-800 transition hover:bg-black/5"
+                                        className="inline-flex items-center rounded-full border border-black/10 bg-white px-3 py-1.5 text-xs font-semibold text-gray-800 transition hover:bg-black/5 disabled:opacity-50"
                                     >
                                         Dismiss
                                     </button>
@@ -3286,7 +3288,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, onFileEdit, on
                             <div className="rounded-xl border border-black/10 bg-white p-3">
                                 <div className="text-sm font-semibold text-gray-900">Recommended</div>
                                 <div className="text-sm text-gray-700 mt-1">
-                                    Create a new Supabase project via OAuth. This is the safest setup and enables the guarded database migration flow.
+                                    Create a new database. This enables you to begin storing user or product data.
                                 </div>
                             </div>
 
@@ -3295,7 +3297,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, onFileEdit, on
                                     onClick={handleCreateSupabaseProject}
                                     className="flex-1 bg-[#F55F2A] text-white py-2 px-4 rounded-full hover:bg-[#E04E1B] text-sm transition-colors"
                                 >
-                                    Create New Supabase Project
+                                    Create
                                 </button>
                                 <a
                                     href="https://supabase.com/dashboard"
@@ -3311,7 +3313,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, onFileEdit, on
                                 onClick={() => setShowSupabaseAdvanced((v) => !v)}
                                 className="w-full text-left px-3 py-2 rounded-xl border border-black/10 hover:bg-gray-50 text-sm text-gray-800 flex items-center justify-between"
                             >
-                                <span className="font-semibold">Advanced options</span>
+                                <span className="font-semibold">I already have a database</span>
                                 {showSupabaseAdvanced ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                             </button>
 
