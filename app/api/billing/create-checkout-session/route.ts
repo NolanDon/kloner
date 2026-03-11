@@ -93,6 +93,48 @@ function isValidExitOfferPayload(payload: { offer?: unknown; offerEndsAt?: unkno
     return true;
 }
 
+function hasClaimedExitOffer(userData: Record<string, any> | null | undefined): boolean {
+    if (!userData || typeof userData !== "object") return false;
+    const nested = (userData as any)?.offers;
+    if (nested && typeof nested === "object" && !Array.isArray(nested)) {
+        if ((nested as any).exitOffer40Claimed === true) return true;
+    }
+    if ((userData as any)["offers.exitOffer40Claimed"] === true) return true;
+    return false;
+}
+
+async function claimExitOfferOnce(userRef: FirebaseFirestore.DocumentReference): Promise<boolean> {
+    return db.runTransaction(async (tx) => {
+        const snap = await tx.get(userRef);
+        const data = snap.exists ? ((snap.data() as Record<string, any>) || {}) : {};
+        if (hasClaimedExitOffer(data)) {
+            return false;
+        }
+
+        const serverTimestampValue =
+            (admin.firestore as any)?.FieldValue?.serverTimestamp?.() ?? new Date();
+
+        const prevOffers =
+            data?.offers && typeof data.offers === "object" && !Array.isArray(data.offers)
+                ? data.offers
+                : {};
+
+        tx.set(
+            userRef,
+            {
+                offers: {
+                    ...prevOffers,
+                    exitOffer40Claimed: true,
+                    exitOffer40ClaimedAt: serverTimestampValue,
+                },
+            },
+            { merge: true },
+        );
+
+        return true;
+    });
+}
+
 async function resolvePromotionCodeIdFromCode(code?: unknown) {
     const c = typeof code === "string" ? code.trim() : "";
     if (!c) return null;
@@ -279,12 +321,13 @@ async function handler({ req, uid }: { req: NextRequest; uid: string }) {
 
     // ---- exit-offer discount resolution ----
     const exitOfferRequested = isValidExitOfferPayload({ offer, offerEndsAt });
+    const exitOfferGranted = exitOfferRequested ? await claimExitOfferOnce(userRef) : false;
 
     let discounts:
         | Array<{ promotion_code?: string; coupon?: string }>
         | undefined = undefined;
 
-    if (exitOfferRequested) {
+    if (exitOfferRequested && exitOfferGranted) {
         // 1) Prefer env ids (fast, deterministic)
         const { promo, coupon } = pickExitPromoId(isProd);
 
@@ -320,6 +363,8 @@ async function handler({ req, uid }: { req: NextRequest; uid: string }) {
         if (typeof offerPromoCode === "string" && offerPromoCode.trim()) {
             baseMeta.exitOfferPromoCode = offerPromoCode.trim().slice(0, 64);
         }
+    } else if (exitOfferRequested && !exitOfferGranted) {
+        baseMeta.exitOffer = "exit40_blocked_already_claimed";
     }
 
     // Stripe constraint: cannot send allow_promotion_codes with discounts.

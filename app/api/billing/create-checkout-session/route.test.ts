@@ -38,25 +38,53 @@ function createFirestoreMock(initialUser?: Record<string, any>) {
     const store = new Map<string, Record<string, any>>();
     if (initialUser) store.set("kloner_users/uid_1", { ...initialUser });
 
+    const keyFor = (name: string, id: string) => `${name}/${id}`;
+
+    const getData = (key: string) => {
+        const data = store.get(key);
+        return data ? { ...data } : undefined;
+    };
+
+    const setData = (key: string, data: any, opts?: { merge?: boolean }) => {
+        const prev = store.get(key) ?? {};
+        store.set(key, opts?.merge ? { ...prev, ...data } : { ...data });
+    };
+
     const db = {
         collection: (name: string) => ({
             doc: (id: string) => {
-                const key = `${name}/${id}`;
+                const key = keyFor(name, id);
                 return {
+                    id,
+                    _collection: name,
                     get: async () => {
-                        const data = store.get(key);
+                        const data = getData(key);
                         return {
                             exists: !!data,
                             data: () => (data ? { ...data } : undefined),
                         };
                     },
                     set: async (data: any, opts?: { merge?: boolean }) => {
-                        const prev = store.get(key) ?? {};
-                        store.set(key, opts?.merge ? { ...prev, ...data } : { ...data });
+                        setData(key, data, opts);
                     },
                 };
             },
         }),
+        runTransaction: async (handler: any) => {
+            const tx = {
+                get: async (ref: any) => {
+                    const data = await ref.get();
+                    return data;
+                },
+                set: (ref: any, data: any, opts?: { merge?: boolean }) => {
+                    const name = String((ref as any)?._collection || "kloner_users");
+                    const id = String((ref as any)?.id || "uid_1");
+                    const key = keyFor(name, id);
+                    setData(key, data, opts);
+                },
+            };
+            return handler(tx);
+        },
     };
 
     return { db, store };
@@ -453,5 +481,80 @@ describe("POST /api/billing/create-checkout-session", () => {
         expect(payload.allow_promotion_codes).toBeUndefined();
         expect(payload.metadata.exitOffer).toBe("exit40");
         expect(payload.subscription_data?.metadata?.exitOffer).toBe("exit40");
+    });
+
+    it("applies exit-offer discount only once per user", async () => {
+        (process.env as any).NODE_ENV = "production";
+        process.env.NEXT_PUBLIC_APP_ORIGIN = "https://kloner.app";
+        process.env.STRIPE_PRICE_PRO_PROD = "price_live_pro";
+        process.env.STRIPE_EXIT40_PROMO_PROD = "promo_123";
+
+        const { db, store } = createFirestoreMock({ stripeCustomerId: "cus_1" });
+
+        jest.doMock("firebase-admin", () => ({
+            __esModule: true,
+            default: {
+                apps: [{}],
+                firestore: () => db,
+                auth: () => ({ getUser: async () => ({ email: "a@b.com" }) }),
+            },
+        }));
+
+        const sessionsCreate = jest.fn<Promise<{ url: string }>, [any]>(
+            async (_payload: any) => ({ url: "https://stripe/checkout" }),
+        );
+
+        jest.doMock("@/lib/stripe", () => ({
+            __esModule: true,
+            getStripe: () => ({
+                subscriptions: {
+                    list: async () => ({ data: [] }),
+                },
+                customers: {
+                    create: async () => ({ id: "cus_1" }),
+                    update: async () => ({}),
+                },
+                promotionCodes: {
+                    list: async () => ({ data: [] }),
+                },
+                checkout: {
+                    sessions: {
+                        create: sessionsCreate,
+                    },
+                },
+            }),
+        }));
+
+        const { POST } = await import("./route");
+
+        const makeReq = () => ({
+            url: "https://example.com/api/billing/create-checkout-session",
+            json: async () => ({
+                plan: "pro",
+                offer: "exit40",
+                offerEndsAt: Date.now() + 5_000,
+                offerPromoCode: "DEPLOY40",
+                offerReason: "close",
+            }),
+        }) as any;
+
+        const first: any = await POST(makeReq());
+        const firstBody = await first.json();
+        expect(first.status).toBe(200);
+        expect(firstBody.url).toBe("https://stripe/checkout");
+        const firstPayload = sessionsCreate.mock.calls[0]?.[0];
+        expect(firstPayload.discounts).toEqual([{ promotion_code: "promo_123" }]);
+
+        const second: any = await POST(makeReq());
+        const secondBody = await second.json();
+        expect(second.status).toBe(200);
+        expect(secondBody.url).toBe("https://stripe/checkout");
+        const secondPayload = sessionsCreate.mock.calls[1]?.[0];
+        expect(secondPayload.discounts).toBeUndefined();
+        expect(secondPayload.allow_promotion_codes).toBe(true);
+        expect(secondPayload.metadata.exitOffer).toBe("exit40_blocked_already_claimed");
+
+        const userDoc = store.get("kloner_users/uid_1") || {};
+        expect(userDoc.offers?.exitOffer40Claimed).toBe(true);
     });
 });

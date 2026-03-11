@@ -111,6 +111,7 @@ const FRONTEND_TIMEOUT_DEDUPE_TTL_MS = 10 * 60 * 1000;
 const FRONTEND_TIMEOUT_DEDUPE_STORAGE_KEY = "dashboardViewFrontendTimeoutAlertsV1";
 const URL_ADD_SUCCESS_MESSAGE = "URL added successfully! You can now generate websites from this URL below.";
 const APP_WIZARD_PROMPT_MAX_CHARS = 2000;
+const FIRST_GEN_TRIAL_INTERACTION_MS = 30 * 1000;
 
 const APP_BUILDER_COOKIE_CONSENT_KEY = "kloner.appBuilder.necessaryCookiesAccepted.v1";
 const APP_BUILDER_COOKIE_CONSENT_COOKIE = "kloner_app_builder_nc";
@@ -1951,12 +1952,19 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
         <>
             <div
                 className={`relative w-full overflow-hidden rounded-xl border bg-white transition-shadow ${highlight
-                    ? "border-amber-300/80 ring-1 ring-amber-200/80 shadow-sm"
+                    ? "border-[rgba(245,95,42,0.45)] ring-1 ring-[rgba(245,95,42,0.30)] shadow-sm"
                     : "border-neutral-200 shadow-sm hover:shadow-md"
                     }`}
             >
                 {highlight ? (
-                    <div className="pointer-events-none absolute right-3 top-3 z-10 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-800">
+                    <div
+                        className="pointer-events-none absolute right-3 top-3 z-10 rounded-full border px-2 py-0.5 text-[11px] font-medium"
+                        style={{
+                            borderColor: "rgba(245,95,42,0.35)",
+                            backgroundColor: "rgba(245,95,42,0.10)",
+                            color: ACCENT,
+                        }}
+                    >
                         Next step
                     </div>
                 ) : null}
@@ -1965,7 +1973,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                     onClick={handleClick}
                     disabled={localDisabled}
                     aria-disabled={effectiveLocked}
-                    className={`group flex aspect-square w-full flex-col items-center justify-center rounded-lg border-2 border-dashed bg-white px-5 py-6 text-center transition ${effectiveLocked ? "opacity-70 cursor-wait" : "cursor-pointer"} ${highlight ? "border-amber-300 bg-amber-50/20 hover:border-amber-400" : "border-neutral-300 hover:border-neutral-400"}`}
+                    className={`group flex aspect-square w-full flex-col items-center justify-center rounded-lg border-2 border-dashed bg-white px-5 py-6 text-center transition ${effectiveLocked ? "opacity-70 cursor-wait" : "cursor-pointer"} ${highlight ? "border-[rgba(245,95,42,0.45)] bg-[rgba(245,95,42,0.08)] hover:border-[rgba(245,95,42,0.70)]" : "border-neutral-300 hover:border-neutral-400"}`}
                     aria-label="Generate a new website or app"
                 >
                     <div
@@ -2260,6 +2268,10 @@ export default function PreviewPage(): JSX.Element {
         null | "screenshot" | "preview" | "deploy"
     >(null);
     const [showProPaywall, setShowProPaywall] = useState(false);
+    const [showFirstGenerationTrialPopup, setShowFirstGenerationTrialPopup] = useState(false);
+    const [firstGenerationTrialSource, setFirstGenerationTrialSource] = useState<"kloner_app" | "kloner_render" | null>(null);
+    const [firstGenerationTrialPromptShown, setFirstGenerationTrialPromptShown] = useState(false);
+    const [exitOfferClaimed, setExitOfferClaimed] = useState(false);
     const [showUpgradeAfterCustomize, setShowUpgradeAfterCustomize] =
         useState(false);
 
@@ -2397,6 +2409,8 @@ export default function PreviewPage(): JSX.Element {
 
     const [appBuilderOpen, setAppBuilderOpen] = useState(false);
     const [currentAppId, setCurrentAppId] = useState<string | null>(null);
+    const [appBuilderTrialPreviewReady, setAppBuilderTrialPreviewReady] = useState(false);
+    const [appBuilderTrialConnectionError, setAppBuilderTrialConnectionError] = useState(false);
     const [appBuilderCookiePromptOpen, setAppBuilderCookiePromptOpen] = useState(false);
     const [pendingAppBuilderAppId, setPendingAppBuilderAppId] = useState<string | null>(null);
     const appBuilderCookiePromptResolverRef = useRef<((accepted: boolean) => void) | null>(null);
@@ -2467,6 +2481,13 @@ export default function PreviewPage(): JSX.Element {
             setAppBuilderOpen(true);
         }
     }, [pendingAppBuilderAppId, currentAppId, resolveAppBuilderCookiePrompt]);
+
+    useEffect(() => {
+        if (!appBuilderOpen || !currentAppId) {
+            setAppBuilderTrialPreviewReady(false);
+            setAppBuilderTrialConnectionError(false);
+        }
+    }, [appBuilderOpen, currentAppId]);
 
     // ───────── app deploy wizard (first deploy) ─────────
     const [appDeployWizardOpen, setAppDeployWizardOpen] = useState(false);
@@ -2803,6 +2824,8 @@ export default function PreviewPage(): JSX.Element {
         setAppDeployWizardLiveUrl(null);
         setAppDeployWizardAppId(null);
         setAppDeployWizardAppName("");
+        setShowAppExitOffer(false);
+        setAppExitOfferReason(null);
         autoAppDeployTriggeredRef.current = false;
     }, []);
 
@@ -3437,6 +3460,8 @@ export default function PreviewPage(): JSX.Element {
                 editUsed: 0,
                 editRemaining: null,
             });
+            setExitOfferClaimed(false);
+            setFirstGenerationTrialPromptShown(false);
             return;
         }
 
@@ -3465,6 +3490,8 @@ export default function PreviewPage(): JSX.Element {
                     editUsed: 0,
                     editRemaining: editLimit || null,
                 });
+                setExitOfferClaimed(false);
+                setFirstGenerationTrialPromptShown(false);
                 return;
             }
 
@@ -3475,6 +3502,20 @@ export default function PreviewPage(): JSX.Element {
                 creditsMap?.["credits.snapshot"] || creditsMap?.credits?.snapshot || {};
             const editBucket =
                 creditsMap?.["credits.aiEdits"] || creditsMap?.credits?.aiEdits || {};
+
+            const offersBucket =
+                creditsMap?.offers && typeof creditsMap.offers === "object"
+                    ? creditsMap.offers
+                    : {};
+            const nextExitOfferClaimed =
+                offersBucket?.exitOffer40Claimed === true ||
+                creditsMap?.["offers.exitOffer40Claimed"] === true;
+            const nextTrialPromptShown =
+                offersBucket?.firstGenerationTrialPromptShown === true ||
+                creditsMap?.["offers.firstGenerationTrialPromptShown"] === true;
+
+            setExitOfferClaimed(nextExitOfferClaimed);
+            setFirstGenerationTrialPromptShown(nextTrialPromptShown);
 
             const previewLimit =
                 typeof previewBucket.monthlyLimit === "number" &&
@@ -3538,6 +3579,7 @@ export default function PreviewPage(): JSX.Element {
         user?.uid,
         tierLimits.screenshotMonthly,
         tierLimits.previewMonthly,
+        tierLimits.editMonthly,
         db,
     ]);
 
@@ -7336,6 +7378,116 @@ export default function PreviewPage(): JSX.Element {
         return !hasAnyRenderDoc && !hasAnyAppDoc;
     }, [hasAnyAppDoc, hasAnyRenderDoc, successfulScannedUrls, targetUrl]);
 
+    const forceTrialPromptInDev = process.env.NODE_ENV !== "production";
+
+    const markFirstGenerationTrialPromptAsShown = useCallback(
+        async (source: "kloner_app" | "kloner_render") => {
+            if (!user || forceTrialPromptInDev) return;
+            try {
+                await setDoc(
+                    doc(db, "kloner_users", user.uid),
+                    {
+                        offers: {
+                            firstGenerationTrialPromptShown: true,
+                            firstGenerationTrialPromptSource: source,
+                            firstGenerationTrialPromptShownAt: serverTimestamp(),
+                        },
+                    },
+                    { merge: true },
+                );
+            } catch (err) {
+                console.warn("[billing] failed to persist first-generation trial prompt flag", err);
+            }
+        },
+        [user, forceTrialPromptInDev],
+    );
+
+    const firstGenerationTrialCandidate = useMemo<"kloner_app" | "kloner_render" | null>(() => {
+        if (!user) return null;
+        if (userTier !== "free") return null;
+
+        const activeReadyRenders = renders.filter((r) => !r.archived && r.status === "ready");
+
+        const appEligible =
+            appBuilderOpen &&
+            !!currentAppId &&
+            appBuilderTrialPreviewReady &&
+            !appBuilderTrialConnectionError &&
+            apps.length <= 1;
+        if (appEligible) return "kloner_app";
+
+        const renderEligible =
+            editorOpen &&
+            editorMode === "website" &&
+            !deployWizardOpen &&
+            activeReadyRenders.length === 1;
+        if (renderEligible) return "kloner_render";
+
+        return null;
+    }, [
+        user,
+        userTier,
+        appBuilderOpen,
+        currentAppId,
+        appBuilderTrialPreviewReady,
+        appBuilderTrialConnectionError,
+        apps.length,
+        editorOpen,
+        editorMode,
+        deployWizardOpen,
+        renders,
+    ]);
+
+    useEffect(() => {
+        if (!firstGenerationTrialCandidate) return;
+        if (showFirstGenerationTrialPopup) return;
+        if (!forceTrialPromptInDev && firstGenerationTrialPromptShown) return;
+
+        const openPrompt = () => {
+            setFirstGenerationTrialSource(firstGenerationTrialCandidate);
+            setShowFirstGenerationTrialPopup(true);
+            setFirstGenerationTrialPromptShown(true);
+            void markFirstGenerationTrialPromptAsShown(firstGenerationTrialCandidate);
+        };
+
+        if (forceTrialPromptInDev) {
+            const devTimer = window.setTimeout(openPrompt, 1200);
+            return () => window.clearTimeout(devTimer);
+        }
+
+        let interactionTimer: number | null = null;
+        let interactionStarted = false;
+
+        const startInteractionTimer = () => {
+            if (interactionStarted) return;
+            interactionStarted = true;
+            interactionTimer = window.setTimeout(openPrompt, FIRST_GEN_TRIAL_INTERACTION_MS);
+        };
+
+        const onInteraction = () => {
+            startInteractionTimer();
+        };
+
+        window.addEventListener("pointerdown", onInteraction, { passive: true });
+        window.addEventListener("keydown", onInteraction);
+        window.addEventListener("mousemove", onInteraction, { passive: true });
+        window.addEventListener("touchstart", onInteraction, { passive: true });
+
+        return () => {
+            if (interactionTimer) window.clearTimeout(interactionTimer);
+            window.removeEventListener("pointerdown", onInteraction);
+            window.removeEventListener("keydown", onInteraction);
+            window.removeEventListener("mousemove", onInteraction);
+            window.removeEventListener("touchstart", onInteraction);
+        };
+    }, [
+        firstGenerationTrialCandidate,
+        showFirstGenerationTrialPopup,
+        forceTrialPromptInDev,
+        firstGenerationTrialPromptShown,
+        markFirstGenerationTrialPromptAsShown,
+    ]);
+
     const planLabel =
         userTier === "unknown"
             ? "Detecting plan…"
@@ -7534,6 +7686,10 @@ export default function PreviewPage(): JSX.Element {
     const [exitOfferReason, setExitOfferReason] = useState<
         "close" | "back" | "nav" | "outside" | "esc" | null
     >(null);
+    const [showAppExitOffer, setShowAppExitOffer] = useState(false);
+    const [appExitOfferReason, setAppExitOfferReason] = useState<
+        "close" | "back" | "nav" | "outside" | "esc" | null
+    >(null);
 
     // ✅ rehydrate when key changes (user/render changes)
     useEffect(() => {
@@ -7585,10 +7741,25 @@ export default function PreviewPage(): JSX.Element {
 
     const step5Time = formatMMSS(step5SaleRemainingSec);
     const step5SaleActive = step5SaleRemainingSec > 0;
+    const allowOfferInDev = process.env.NODE_ENV !== "production";
+    const canUseExitOffer = step5SaleActive && (allowOfferInDev || !exitOfferClaimed);
 
     function openExitOffer(reason: NonNullable<typeof exitOfferReason>) {
+        if (!canUseExitOffer) {
+            closeDeployWizard();
+            return;
+        }
         setExitOfferReason(reason);
         setShowExitOffer(true);
+    }
+
+    function openAppExitOffer(reason: NonNullable<typeof appExitOfferReason>) {
+        if (!canUseExitOffer) {
+            closeAppDeployWizard();
+            return;
+        }
+        setAppExitOfferReason(reason);
+        setShowAppExitOffer(true);
     }
 
     const EXIT_OFFER_PROMO_CODE = "DEPLOY40"; // ✅ Stripe Promotion Code "code" field
@@ -7668,16 +7839,27 @@ export default function PreviewPage(): JSX.Element {
     );
 
     const startProCheckoutForAppDeploy = useCallback(
-        async (opts?: { exitOffer?: boolean; exitOfferReason?: "close" | "back" | "nav" | "outside" | "esc" }) => {
+        async (opts?: {
+            exitOffer?: boolean;
+            exitOfferReason?: "close" | "back" | "nav" | "outside" | "esc";
+            returnAppId?: string | null;
+        }) => {
             if (checkoutBusy) return;
             setCheckoutBusy(true);
 
             try {
-                if (!appDeployWizardAppId) {
+                const checkoutReturnAppId =
+                    (typeof opts?.returnAppId === "string" && opts.returnAppId.trim()) ||
+                    appDeployWizardAppId ||
+                    currentAppId ||
+                    null;
+
+                if (!checkoutReturnAppId) {
                     await showAlert(
                         "We couldn’t determine which app you’re deploying. Close this modal and click Deploy again, then retry.",
                         "Checkout",
                     );
+                    return;
                 }
 
                 const csrfRes = await fetch("/api/auth/csrf", {
@@ -7712,7 +7894,7 @@ export default function PreviewPage(): JSX.Element {
                     credentials: "include",
                     body: JSON.stringify({
                         plan: "pro",
-                        ...(appDeployWizardAppId ? { returnAppId: appDeployWizardAppId } : {}),
+                        returnAppId: checkoutReturnAppId,
                         returnStep: 3,
                         ...offerPayload,
                     }),
@@ -7735,7 +7917,7 @@ export default function PreviewPage(): JSX.Element {
                 setCheckoutBusy(false);
             }
         },
-        [checkoutBusy, appDeployWizardAppId, step5SaleEndsAt],
+        [checkoutBusy, appDeployWizardAppId, currentAppId, step5SaleEndsAt],
     );
 
 
@@ -8476,6 +8658,11 @@ export default function PreviewPage(): JSX.Element {
                         }}
                         onDeploy={(app) => openAppDeployWizard(app)}
                         agentWelcomeContext={agentWelcomeContextByAppId[currentAppId]}
+                        onTrialReadinessChange={(state) => {
+                            if (!currentAppId || state.appId !== currentAppId) return;
+                            setAppBuilderTrialPreviewReady(state.previewReady);
+                            setAppBuilderTrialConnectionError(state.hasConnectionError);
+                        }}
                     />
                 )}
 
@@ -8778,7 +8965,13 @@ export default function PreviewPage(): JSX.Element {
                         >
                             <motion.div
                                 className="absolute inset-0 bg-black/70 backdrop-blur-sm"
-                                onClick={closeAppDeployWizard}
+                                onClick={() => {
+                                    if (appDeployWizardStep === 2) {
+                                        openAppExitOffer("outside");
+                                        return;
+                                    }
+                                    closeAppDeployWizard();
+                                }}
                                 initial={{ opacity: 0 }}
                                 animate={{ opacity: 1 }}
                                 exit={{ opacity: 0 }}
@@ -8814,7 +9007,13 @@ export default function PreviewPage(): JSX.Element {
 
                                             <button
                                                 type="button"
-                                                onClick={closeAppDeployWizard}
+                                                onClick={() => {
+                                                    if (appDeployWizardStep === 2) {
+                                                        openAppExitOffer("close");
+                                                        return;
+                                                    }
+                                                    closeAppDeployWizard();
+                                                }}
                                                 className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-neutral-100 hover:bg-neutral-200"
                                                 title="Close"
                                             >
@@ -8961,10 +9160,10 @@ export default function PreviewPage(): JSX.Element {
                                                     <div className="flex items-start justify-between gap-3">
                                                         <div className="min-w-0">
                                                             <p className="text-lg font-semibold text-neutral-900">
-                                                                Upgrade to publish live
+                                                                Upgrade to launch with one click
                                                             </p>
                                                             <p className="mt-1 text-xs text-neutral-600">
-                                                                Includes a free trial. Cancel anytime.
+                                                                Build in Next.js 16 or ship a lightweight HTML site. Includes a 7-day trial.
                                                             </p>
                                                         </div>
 
@@ -8974,33 +9173,39 @@ export default function PreviewPage(): JSX.Element {
                                                         </div>
                                                     </div>
 
+                                                    {canUseExitOffer ? (
+                                                        <div className="mt-3 inline-flex items-center rounded-full border border-neutral-200 bg-neutral-50 px-2.5 py-1 text-[11px] font-semibold text-neutral-700">
+                                                            Limited welcome offer ends in {step5Time.mm}:{step5Time.ss}
+                                                        </div>
+                                                    ) : null}
+
                                                     <div className="mt-4 space-y-2">
                                                         <div className="flex items-start gap-3 text-[14px] text-neutral-800">
                                                             <span className="mt-[2px] inline-flex h-5 w-5 items-center justify-center rounded-full text-[14px] font-black text-blue-600">
                                                                 ✓
                                                             </span>
-                                                            <span className="leading-snug">Publish full-stack live websites</span>
+                                                            <span className="leading-snug">Deploy Next.js 16 apps and static HTML websites</span>
                                                         </div>
 
                                                         <div className="flex items-start gap-3 text-[14px] text-neutral-800">
                                                             <span className="mt-[2px] inline-flex h-5 w-5 items-center justify-center rounded-full text-[14px] font-black text-blue-600">
                                                                 ✓
                                                             </span>
-                                                            <span className="leading-snug">One‑click deploys from the builder</span>
+                                                            <span className="leading-snug">One-click publish from app builder or website editor</span>
                                                         </div>
 
                                                         <div className="flex items-start gap-3 text-[14px] text-neutral-800">
                                                             <span className="mt-[2px] inline-flex h-5 w-5 items-center justify-center rounded-full text-[14px] font-black text-blue-600">
                                                                 ✓
                                                             </span>
-                                                            <span className="leading-snug">Higher limits and faster queue</span>
+                                                            <span className="leading-snug">More monthly generation credits and faster queues</span>
                                                         </div>
 
                                                         <div className="flex items-start gap-3 text-[14px] text-neutral-800">
                                                             <span className="mt-[2px] inline-flex h-5 w-5 items-center justify-center rounded-full text-[14px] font-black text-blue-600">
                                                                 ✓
                                                             </span>
-                                                            <span className="leading-snug">Priority support included</span>
+                                                            <span className="leading-snug">Priority support when you are ready to ship</span>
                                                         </div>
                                                     </div>
 
@@ -9035,7 +9240,7 @@ export default function PreviewPage(): JSX.Element {
                                                     whileTap={{ scale: 0.99 }}
                                                     transition={{ duration: 0.16, ease: "easeOut" }}
                                                 >
-                                                    {checkoutBusy ? "Redirecting to Stripe…" : "Try Pro free and deploy →"}
+                                                    {checkoutBusy ? "Redirecting to Stripe…" : "Start 7-day trial & publish →"}
                                                 </motion.button>
 
                                                 <p className="-mt-1 text-center text-[11px] text-neutral-500">
@@ -9044,7 +9249,7 @@ export default function PreviewPage(): JSX.Element {
 
                                                 <button
                                                     type="button"
-                                                    onClick={closeAppDeployWizard}
+                                                    onClick={() => openAppExitOffer("back")}
                                                     className="w-full rounded-xl border border-neutral-200 bg-white px-4 py-2 text-sm font-semibold text-neutral-700 hover:bg-neutral-50"
                                                 >
                                                     Not now
@@ -9129,6 +9334,123 @@ export default function PreviewPage(): JSX.Element {
                                     </div>
                                 </motion.div>
                             </div>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
+
+                <AnimatePresence>
+                    {showAppExitOffer && (
+                        <motion.div
+                            key="app-exit-offer"
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            className="fixed inset-0 z-[18120] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
+                            role="dialog"
+                            aria-modal="true"
+                        >
+                            <motion.div
+                                initial={{ opacity: 0, y: 24, scale: 0.96 }}
+                                animate={{ opacity: 1, y: 0, scale: 1 }}
+                                exit={{ opacity: 0, y: 16, scale: 0.96 }}
+                                transition={{ duration: 0.22, ease: [0.23, 0.82, 0.25, 1] }}
+                                className="relative w-full max-w-md overflow-hidden rounded-[28px] border border-neutral-200 bg-white shadow-[0_24px_80px_rgba(0,0,0,0.20)]"
+                            >
+                                <div className="h-1 w-full" style={{ backgroundColor: ACCENT }} />
+
+                                <div className="px-4 pb-4 pt-3">
+                                    <div className="flex items-start justify-between gap-3">
+                                        <div className="min-w-0">
+                                            <div className="flex items-center gap-2">
+                                                <span
+                                                    className="inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold tracking-[0.16em] uppercase"
+                                                    style={{
+                                                        borderColor: `${ACCENT}33`,
+                                                        backgroundColor: `${ACCENT}10`,
+                                                        color: ACCENT,
+                                                    }}
+                                                >
+                                                    One-time Deal
+                                                </span>
+
+                                                {canUseExitOffer ? (
+                                                    <span className="text-[11px] text-neutral-600">
+                                                        Ends in {step5Time.mm}:{step5Time.ss}
+                                                    </span>
+                                                ) : null}
+                                            </div>
+
+                                            <div className="mt-6 text-center">
+                                                <span className="text-[30px] font-semibold leading-none text-neutral-900">
+                                                    Publish your app today
+                                                </span>
+                                            </div>
+
+                                            <div className="mt-4 flex justify-center items-baseline gap-2">
+                                                <span className="text-[28px] font-bold leading-none text-neutral-900">40% off</span>
+                                                <span className="text-[12px] font-medium text-neutral-600">your first month</span>
+                                            </div>
+
+                                            <div className="mt-1 flex justify-center text-[12px] text-neutral-700 gap-1">
+                                                <span className="font-medium">7-day trial + discount after trial</span>
+                                            </div>
+
+                                            <div className="my-5 rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2 text-[12px] text-neutral-700">
+                                                Includes Next.js 16 app deploys, HTML website deploys, and higher generation credits.
+                                            </div>
+                                        </div>
+
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowAppExitOffer(false)}
+                                            aria-label="Close"
+                                            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-neutral-200 bg-white text-[18px] leading-none text-neutral-700 hover:bg-neutral-50"
+                                            style={{ aspectRatio: "1 / 1" }}
+                                        >
+                                            ×
+                                        </button>
+                                    </div>
+
+                                    <div className="mt-6">
+                                        <motion.button
+                                            type="button"
+                                            onClick={() => {
+                                                setShowAppExitOffer(false);
+                                                void startProCheckoutForAppDeploy({
+                                                    exitOffer: true,
+                                                    exitOfferReason: appExitOfferReason || "close",
+                                                    returnAppId: appDeployWizardAppId,
+                                                });
+                                            }}
+                                            disabled={checkoutBusy}
+                                            className="w-full rounded-2xl px-5 py-4 text-[15px] font-extrabold text-white shadow-[0_18px_44px_rgba(0,0,0,0.28)] focus:outline-none focus:ring-2 focus:ring-black/10 disabled:cursor-wait disabled:opacity-70"
+                                            style={{ backgroundColor: ACCENT }}
+                                            whileHover={{ scale: 1.01 }}
+                                            whileTap={{ scale: 0.99 }}
+                                            transition={{ duration: 0.16, ease: "easeOut" }}
+                                        >
+                                            {checkoutBusy ? "Redirecting to Stripe…" : "Start free trial & claim 40% off →"}
+                                        </motion.button>
+
+                                        <p className="mt-3 text-center text-[11px] text-neutral-500">
+                                            Cancel anytime before renewal.
+                                        </p>
+                                    </div>
+
+                                    <div className="mt-4 text-center">
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setShowAppExitOffer(false);
+                                                closeAppDeployWizard();
+                                            }}
+                                            className="text-[12px] font-semibold text-neutral-500 hover:text-neutral-700"
+                                        >
+                                            No thanks, close
+                                        </button>
+                                    </div>
+                                </div>
+                            </motion.div>
                         </motion.div>
                     )}
                 </AnimatePresence>
@@ -9520,18 +9842,24 @@ export default function PreviewPage(): JSX.Element {
                                                         <div className="px-7 pb-6 pt-5">
                                                             {/* badge */}
                                                             <div className="inline-flex items-center rounded-full border border-neutral-200 bg-white px-3 py-1 text-[11px] font-extrabold tracking-[0.18em] text-neutral-800 uppercase">
-                                                                Try Pro for free
+                                                                Start 7-day trial
                                                             </div>
 
                                                             {/* headline */}
                                                             <h2 className="mt-3 text-[34px] font-bold leading-[1.05] text-neutral-900">
-                                                                Deploy in one click
+                                                                Publish apps and websites in one click
                                                             </h2>
 
                                                             {/* subcopy */}
                                                             <p className="mt-2 text-[13px] leading-relaxed text-neutral-600">
-                                                                7 day free trial. Cancel anytime.
+                                                                Build with Next.js 16 or ship lightweight HTML pages, then deploy from the same dashboard.
                                                             </p>
+
+                                                            {canUseExitOffer ? (
+                                                                <p className="mt-2 text-[12px] font-semibold text-neutral-700">
+                                                                    Limited welcome offer ends in {step5Time.mm}:{step5Time.ss}
+                                                                </p>
+                                                            ) : null}
 
                                                             {/* feature list */}
                                                             <div className="mt-5 space-y-3">
@@ -9539,28 +9867,28 @@ export default function PreviewPage(): JSX.Element {
                                                                     <span className="mt-[2px] inline-flex h-5 w-5 items-center justify-center rounded-full text-[14px] font-black text-blue-600">
                                                                         ✓
                                                                     </span>
-                                                                    <span className="leading-snug">One click Vercel deploy</span>
+                                                                    <span className="leading-snug">Deploy Next.js 16 apps and static HTML websites</span>
                                                                 </div>
 
                                                                 <div className="flex items-start gap-3 text-[14px] text-neutral-800">
                                                                     <span className="mt-[2px] inline-flex h-5 w-5 items-center justify-center rounded-full text-[14px] font-black text-blue-600">
                                                                         ✓
                                                                     </span>
-                                                                    <span className="leading-snug">Multiple Sites & Team Management</span>
+                                                                    <span className="leading-snug">One-click publish from app builder and website editor</span>
                                                                 </div>
 
                                                                 <div className="flex items-start gap-3 text-[14px] text-neutral-800">
                                                                     <span className="mt-[2px] inline-flex h-5 w-5 items-center justify-center rounded-full text-[14px] font-black text-blue-600">
                                                                         ✓
                                                                     </span>
-                                                                    <span className="leading-snug">300+ Exclusive Design Tools</span>
+                                                                    <span className="leading-snug">More monthly generation credits</span>
                                                                 </div>
 
                                                                 <div className="flex items-start gap-3 text-[14px] text-neutral-800">
                                                                     <span className="mt-[2px] inline-flex h-5 w-5 items-center justify-center rounded-full text-[14px] font-black text-blue-600">
                                                                         ✓
                                                                     </span>
-                                                                    <span className="leading-snug">Premium Templates</span>
+                                                                    <span className="leading-snug">Higher queue priority for faster outputs</span>
                                                                 </div>
 
 
@@ -9568,14 +9896,7 @@ export default function PreviewPage(): JSX.Element {
                                                                     <span className="mt-[2px] inline-flex h-5 w-5 items-center justify-center rounded-full text-[14px] font-black text-blue-600">
                                                                         ✓
                                                                     </span>
-                                                                    <span className="leading-snug">Higher limits and faster queue</span>
-                                                                </div>
-
-                                                                <div className="flex items-start gap-3 text-[14px] text-neutral-800">
-                                                                    <span className="mt-[2px] inline-flex h-5 w-5 items-center justify-center rounded-full text-[14px] font-black text-blue-600">
-                                                                        ✓
-                                                                    </span>
-                                                                    <span className="leading-snug">24/7 Chat Support Included</span>
+                                                                    <span className="leading-snug">Priority support included</span>
                                                                 </div>
                                                             </div>
 
@@ -9586,7 +9907,7 @@ export default function PreviewPage(): JSX.Element {
                                                                     onClick={() => openExitOffer("close")}
                                                                     className="text-[12px] font-semibold text-neutral-500 hover:text-neutral-700"
                                                                 >
-                                                                    Don’t deploy my new site
+                                                                    Not ready to deploy yet
                                                                 </button>
                                                             </div>
 
@@ -9602,7 +9923,7 @@ export default function PreviewPage(): JSX.Element {
                                                                     whileTap={{ scale: 0.99 }}
                                                                     transition={{ duration: 0.16, ease: "easeOut" }}
                                                                 >
-                                                                    {checkoutBusy ? "Redirecting to Stripe…" : "Try Pro free and deploy →"}
+                                                                    {checkoutBusy ? "Redirecting to Stripe…" : "Start 7-day trial & publish →"}
                                                                 </motion.button>
 
                                                                 <p className="mt-3 text-center text-[11px] text-neutral-500">
@@ -9668,14 +9989,17 @@ export default function PreviewPage(): JSX.Element {
                                                                                     <span className="text-[28px] font-bold text-accent leading-none text-neutral-900">40% off</span>
                                                                                     <span className="text-[12px] font-medium text-neutral-600">your first month</span>
                                                                                 </div>
+                                                                                {canUseExitOffer ? (
+                                                                                    <div className="mt-1 flex justify-center text-[12px] text-neutral-700">
+                                                                                        Offer expires in {step5Time.mm}:{step5Time.ss}
+                                                                                    </div>
+                                                                                ) : null}
                                                                                 <div className="mt-1 flex text-[12px] justify-center text-neutral-700 gap-1">
 
                                                                                 </div>
                                                                                 {/* price compare: minimal, still explicit */}
                                                                                 <div className="mt-1 flex text-[12px] justify-center text-neutral-700 gap-1">
-                                                                                    <span className="font-medium">only $4.35/week</span>{" "}
-                                                                                    <span className="text-neutral-500 line-through">$29.00</span>{" "}
-                                                                                    <span className="text-neutral-500">for month one</span>
+                                                                                    <span className="font-medium">Includes Next.js 16 + HTML deploy paths</span>
                                                                                 </div>
 
                                                                                 {/* micro testimonial row (image avatar) */}
@@ -9735,7 +10059,7 @@ export default function PreviewPage(): JSX.Element {
                                                                             </motion.button>
 
                                                                             <p className="mt-3 text-center text-[11px] text-neutral-500">
-                                                                                Free for 7 days. Discount applies after trial. Cancel anytime.
+                                                                                Free for 7 days. Discount applies after trial. Includes higher generation credits.
                                                                             </p>
                                                                         </div>
 
@@ -9863,6 +10187,79 @@ export default function PreviewPage(): JSX.Element {
                     )
                 }
 
+                {
+                    showFirstGenerationTrialPopup && (
+                        <div className="fixed inset-0 z-[12020]">
+                            <div className="absolute inset-0 bg-black/65" />
+                            <div className="absolute inset-0 flex items-center justify-center p-4">
+                                <div className="w-full max-w-md rounded-2xl border border-neutral-200 bg-white p-6 text-sm text-neutral-800 shadow-xl">
+                                    <div className="mb-2 flex items-center justify-between gap-2">
+                                        <div className="inline-flex items-center rounded-full border border-neutral-200 bg-neutral-50 px-2.5 py-1 text-[11px] font-semibold text-neutral-700">
+                                            7-day free trial
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setShowFirstGenerationTrialPopup(false);
+                                                setFirstGenerationTrialSource(null);
+                                            }}
+                                            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-50"
+                                            aria-label="Close"
+                                        >
+                                            ×
+                                        </button>
+                                    </div>
+
+                                    <h3 className="text-xl font-semibold text-neutral-900">
+                                        Your first build is ready. Publish it live?
+                                    </h3>
+                                    <p className="mt-2 text-sm text-neutral-600">
+                                        Unlock Next.js 16 app deploys, HTML website deploys, and higher generation credits.
+                                    </p>
+
+                                    <ul className="mt-4 list-disc list-inside space-y-1 text-sm text-neutral-700">
+                                        <li>7 days free, cancel anytime</li>
+                                        <li>One-click deploy to live URL</li>
+                                        <li>Higher monthly generation limits</li>
+                                    </ul>
+
+                                    <div className="mt-5 space-y-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setShowFirstGenerationTrialPopup(false);
+                                                const source = firstGenerationTrialSource;
+                                                setFirstGenerationTrialSource(null);
+                                                if (source === "kloner_app") {
+                                                    void startProCheckoutForAppDeploy({ returnAppId: currentAppId });
+                                                    return;
+                                                }
+                                                void startProCheckout();
+                                            }}
+                                            disabled={checkoutBusy}
+                                            className="w-full rounded-xl px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
+                                            style={{ backgroundColor: ACCENT }}
+                                        >
+                                            {checkoutBusy ? "Redirecting to Stripe…" : "Start free trial & publish →"}
+                                        </button>
+
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setShowFirstGenerationTrialPopup(false);
+                                                setFirstGenerationTrialSource(null);
+                                            }}
+                                            className="w-full rounded-xl border border-neutral-200 bg-white px-4 py-2 text-sm font-semibold text-neutral-700 hover:bg-neutral-50"
+                                        >
+                                            Keep building for now
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )
+                }
+
                 {/* generic paywall */}
                 {
                     showCreditsPaywall && (
@@ -9881,9 +10278,9 @@ export default function PreviewPage(): JSX.Element {
                                         {showCreditsPaywall === "screenshot" &&
                                             "You have used all monthly screenshot credits. Upgrade to capture more pages and monitor more sites."}
                                         {showCreditsPaywall === "preview" &&
-                                            "You have used all monthly preview credits. Upgrade to generate more designs and unlock one-click deploy."}
+                                            "You have used all monthly generation credits. Upgrade to generate more Next.js 16 apps or HTML websites and unlock one-click deploy."}
                                         {showCreditsPaywall === "deploy" &&
-                                            "To deploy your website live, upgrade to a paid plan to unlock one-click deploy."}
+                                            "To publish your app or website live, upgrade to unlock one-click deploy and higher monthly credits."}
                                     </p>
                                     <ul className="mb-4 list-disc list-inside text-sm text-neutral-700 space-y-1">
                                         <li>
@@ -9930,16 +10327,16 @@ export default function PreviewPage(): JSX.Element {
                                     <div className="flex items-center gap-2 mb-2">
                                         <Crown className="h-4 w-4 text-amber-500" />
                                         <h3 className="text-base font-semibold">
-                                            Upgrade to PRO to build apps
+                                            Upgrade to Pro to launch faster
                                         </h3>
                                     </div>
                                     <p className="text-sm text-neutral-600 mb-3">
-                                        Building dynamic web apps with features like user authentication, search, and CMS requires a PRO subscription.
+                                        Pro unlocks Next.js 16 app generation, HTML website publishing, and higher monthly generation credits.
                                     </p>
                                     <ul className="mb-4 list-disc list-inside text-sm text-neutral-700 space-y-1">
-                                        <li>Build apps with login, auth, and databases</li>
-                                        <li>Advanced features like CMS and search</li>
-                                        <li>Deploy complex applications</li>
+                                        <li>Create and deploy Next.js 16 apps</li>
+                                        <li>Publish HTML websites from the same dashboard</li>
+                                        <li>Get higher limits and faster queue priority</li>
                                     </ul>
                                     <div className="flex items-center justify-end gap-2">
                                         <button
@@ -9958,7 +10355,7 @@ export default function PreviewPage(): JSX.Element {
                                             className="rounded-md px-3 py-1.5 text-sm font-semibold text-white"
                                             style={{ backgroundColor: ACCENT }}
                                         >
-                                            Upgrade to PRO
+                                            Start 7-day trial
                                         </button>
                                     </div>
                                 </div>

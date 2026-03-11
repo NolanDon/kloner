@@ -519,7 +519,7 @@ function FileTree({ nodes, onFileSelect, prefix = "" }: {
     );
 }
 
-export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcomeContext }: {
+export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcomeContext, onTrialReadinessChange }: {
     appId: string;
     onClose: () => void;
     onDeploy?: (app: { id: string; name: string }) => void;
@@ -529,6 +529,11 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
         url?: string | null;
         templateName?: string | null;
     };
+    onTrialReadinessChange?: (state: {
+        appId: string;
+        previewReady: boolean;
+        hasConnectionError: boolean;
+    }) => void;
 }) {
     const { user, loading: authLoading } = useAuth();
     const { showConfirm, showAlert } = useModal();
@@ -981,6 +986,23 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
             // ignore
         }
     }, [isMobile]);
+
+    useEffect(() => {
+        if (!onTrialReadinessChange) return;
+        const previewReady = previewMode !== "webcontainer" ? true : isWebPreviewReady;
+        onTrialReadinessChange({
+            appId,
+            previewReady,
+            hasConnectionError: Boolean(autoPreviewError || previewError),
+        });
+    }, [
+        onTrialReadinessChange,
+        appId,
+        previewMode,
+        isWebPreviewReady,
+        autoPreviewError,
+        previewError,
+    ]);
 
     useEffect(() => {
         stagedImagesRef.current = stagedImages;
