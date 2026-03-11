@@ -17,6 +17,7 @@ import { useModal } from "@/components/ui/ModalContext";
 import { compressImageForUpload } from "@/src/lib/clientImageCompression";
 import { sanitizeImageName } from "./helpers";
 import { recordAppBuilderSessionAnalytics } from "@/components/analytics";
+import { motion } from "framer-motion";
 
 const VERCEL_INTEGRATION_SLUG =
     process.env.NEXT_PUBLIC_VERCEL_INTEGRATION_SLUG || "kloner";
@@ -526,7 +527,7 @@ export default function AppBuilderEditor({
     onDeploy,
     agentWelcomeContext,
     trialPromptEnabled = false,
-    trialPromptAlreadyShown = false,
+    trialPromptSessionEligible = false,
     trialCheckoutBusy = false,
     onTrialPromptShown,
     onTrialPromptStartCheckout,
@@ -541,7 +542,7 @@ export default function AppBuilderEditor({
         templateName?: string | null;
     };
     trialPromptEnabled?: boolean;
-    trialPromptAlreadyShown?: boolean;
+    trialPromptSessionEligible?: boolean;
     trialCheckoutBusy?: boolean;
     onTrialPromptShown?: (appId: string) => void;
     onTrialPromptStartCheckout?: (appId: string) => void;
@@ -1008,6 +1009,7 @@ export default function AppBuilderEditor({
     useEffect(() => {
         const forceTrialPromptInDev = process.env.NODE_ENV !== "production";
         if (!trialPromptEnabled) return;
+        if (!forceTrialPromptInDev && !trialPromptSessionEligible) return;
         if (showAppBuilderTrialPrompt) return;
         if (appBuilderTrialShownThisOpenRef.current) return;
 
@@ -1017,7 +1019,6 @@ export default function AppBuilderEditor({
         const previewReady = previewMode !== "webcontainer" ? true : isWebPreviewReady;
         if (!previewReady) return;
         if (autoPreviewError || previewError) return;
-        if (!forceTrialPromptInDev && trialPromptAlreadyShown) return;
 
         const timer = window.setTimeout(() => {
             setShowAppBuilderTrialPrompt(true);
@@ -1028,6 +1029,7 @@ export default function AppBuilderEditor({
         return () => window.clearTimeout(timer);
     }, [
         trialPromptEnabled,
+        trialPromptSessionEligible,
         showAppBuilderTrialPrompt,
         app,
         loading,
@@ -1036,7 +1038,6 @@ export default function AppBuilderEditor({
         isWebPreviewReady,
         autoPreviewError,
         previewError,
-        trialPromptAlreadyShown,
         onTrialPromptShown,
         appId,
     ]);
@@ -4821,8 +4822,18 @@ export default function AppBuilderEditor({
                 ) : null}
 
                 {showAppBuilderTrialPrompt ? (
-                    <div className="fixed inset-0 z-[20000] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-                        <div className="w-full max-w-md rounded-2xl border border-neutral-200 bg-white p-6 text-sm text-neutral-800 shadow-xl">
+                    <motion.div
+                        className="fixed inset-0 z-[20000] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        transition={{ duration: 0.2, ease: "easeOut" }}
+                    >
+                        <motion.div
+                            className="w-full max-w-md rounded-2xl border border-neutral-200 bg-white p-6 text-sm text-neutral-800 shadow-xl"
+                            initial={{ opacity: 0, y: 18, scale: 0.98 }}
+                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                            transition={{ duration: 0.24, ease: "easeOut" }}
+                        >
                             <div className="mb-2 flex items-center justify-between gap-2">
                                 <div className="inline-flex items-center rounded-full border border-neutral-200 bg-neutral-50 px-2.5 py-1 text-[11px] font-semibold text-neutral-700">
                                     7-day free trial
@@ -4872,8 +4883,8 @@ export default function AppBuilderEditor({
                                     Keep building for now
                                 </button>
                             </div>
-                        </div>
-                    </div>
+                        </motion.div>
+                    </motion.div>
                 ) : null}
 
                 {vercelConnectOpen && (

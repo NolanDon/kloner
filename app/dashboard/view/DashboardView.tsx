@@ -112,6 +112,9 @@ const FRONTEND_TIMEOUT_DEDUPE_STORAGE_KEY = "dashboardViewFrontendTimeoutAlertsV
 const URL_ADD_SUCCESS_MESSAGE = "URL added successfully! You can now generate websites from this URL below.";
 const APP_WIZARD_PROMPT_MAX_CHARS = 2000;
 const FIRST_GEN_TRIAL_OBSERVE_MS = 15 * 1000;
+const FIRST_GEN_TRIAL_SESSION_INTERVAL = 3;
+const RENDER_TRIAL_SESSION_STORAGE_KEY = "kloner.firstGenTrial.renderSessions.v1";
+const APP_BUILDER_TRIAL_SESSION_STORAGE_KEY = "kloner.firstGenTrial.appBuilderSessions.v1";
 const CHECKOUT_FETCH_TIMEOUT_MS = 20_000;
 
 const APP_BUILDER_COOKIE_CONSENT_KEY = "kloner.appBuilder.necessaryCookiesAccepted.v1";
@@ -143,6 +146,22 @@ function persistAppBuilderNecessaryCookiesConsent(): void {
     }
     const secure = window.location.protocol === "https:" ? "; Secure" : "";
     document.cookie = `${APP_BUILDER_COOKIE_CONSENT_COOKIE}=1; Path=/; Max-Age=${60 * 60 * 24 * 365}; SameSite=Lax${secure}`;
+}
+
+function shouldShowTrialPromptForSession(storageKey: string, everyNthSession: number): boolean {
+    if (typeof window === "undefined") return false;
+    const safeEvery = Number.isFinite(everyNthSession) && everyNthSession > 1
+        ? Math.floor(everyNthSession)
+        : 3;
+    try {
+        const raw = window.localStorage.getItem(storageKey);
+        const prev = Number.parseInt(raw || "0", 10);
+        const next = Number.isFinite(prev) && prev > 0 ? prev + 1 : 1;
+        window.localStorage.setItem(storageKey, String(next));
+        return next % safeEvery === 0;
+    } catch {
+        return false;
+    }
 }
 
 type UrlStatusUi = "queued" | "processing" | "ready" | "stale" | "error" | "unknown";
@@ -2263,6 +2282,7 @@ export default function PreviewPage(): JSX.Element {
 
     const [user, setUser] = useState<FirebaseUser | null>(null);
     const [userTier, setUserTier] = useState<UserTier>("unknown");
+    const [stripeStatus, setStripeStatus] = useState<string | null>(null);
 
 
     const [showCreditsPaywall, setShowCreditsPaywall] = useState<
@@ -2271,6 +2291,8 @@ export default function PreviewPage(): JSX.Element {
     const [showProPaywall, setShowProPaywall] = useState(false);
     const [showFirstGenerationTrialPopup, setShowFirstGenerationTrialPopup] = useState(false);
     const [firstGenerationTrialPromptShown, setFirstGenerationTrialPromptShown] = useState(false);
+    const [renderTrialSessionEligible, setRenderTrialSessionEligible] = useState(false);
+    const [appBuilderTrialSessionEligible, setAppBuilderTrialSessionEligible] = useState(false);
     const [exitOfferClaimed, setExitOfferClaimed] = useState(false);
     const [showUpgradeAfterCustomize, setShowUpgradeAfterCustomize] =
         useState(false);
@@ -2412,6 +2434,8 @@ export default function PreviewPage(): JSX.Element {
     const [appBuilderCookiePromptOpen, setAppBuilderCookiePromptOpen] = useState(false);
     const [pendingAppBuilderAppId, setPendingAppBuilderAppId] = useState<string | null>(null);
     const appBuilderCookiePromptResolverRef = useRef<((accepted: boolean) => void) | null>(null);
+    const previousEditorOpenRef = useRef(false);
+    const previousAppBuilderOpenRef = useRef(false);
 
     const [agentWelcomeContextByAppId, setAgentWelcomeContextByAppId] = useState<
         Record<
@@ -2502,6 +2526,11 @@ export default function PreviewPage(): JSX.Element {
             if (res.ok) {
                 const data = await res.json().catch(() => ({} as any));
                 const t = typeof data?.tier === "string" ? data.tier : "free";
+                const nextStripeStatus =
+                    typeof data?.stripeStatus === "string" && data.stripeStatus.trim()
+                        ? data.stripeStatus.trim().toLowerCase()
+                        : null;
+                setStripeStatus(nextStripeStatus);
                 const normalized: UserTier =
                     t === "pro" || t === "agency" || t === "enterprise" ? (t as UserTier) : "free";
                 setUserTier(normalized);
@@ -5032,6 +5061,7 @@ export default function PreviewPage(): JSX.Element {
     useEffect(() => {
         const unsub = onAuthStateChanged(auth, async (u) => {
             if (!u) {
+                setStripeStatus(null);
                 const next = encodeURIComponent(
                     `/dashboard/view?u=${encodeURIComponent(targetUrl || "")}`
                 );
@@ -5053,6 +5083,11 @@ export default function PreviewPage(): JSX.Element {
                 if (res.ok) {
                     const data = await res.json();
                     const t = data?.tier as string | undefined;
+                    const nextStripeStatus =
+                        typeof data?.stripeStatus === "string" && data.stripeStatus.trim()
+                            ? data.stripeStatus.trim().toLowerCase()
+                            : null;
+                    setStripeStatus(nextStripeStatus);
 
                     if (t === "pro" || t === "agency" || t === "enterprise") {
                         effectiveTier = t as UserTier;
@@ -5060,6 +5095,7 @@ export default function PreviewPage(): JSX.Element {
                         effectiveTier = "free";
                     }
                 } else {
+                    setStripeStatus(null);
                     // 2) Fallback: custom claims
                     const result = await getIdTokenResult(u, true);
                     const claimTier = (result.claims.userTier as string) || "free";
@@ -5074,6 +5110,7 @@ export default function PreviewPage(): JSX.Element {
                     }
                 }
             } catch {
+                setStripeStatus(null);
                 // 3) Hard fallback: try claims, otherwise stay on "free"
                 try {
                     const result = await getIdTokenResult(u, true);
@@ -7370,6 +7407,41 @@ export default function PreviewPage(): JSX.Element {
     }, [hasAnyAppDoc, hasAnyRenderDoc, successfulScannedUrls, targetUrl]);
 
     const forceTrialPromptInDev = process.env.NODE_ENV !== "production";
+    const isUserOnFreeTrial = stripeStatus === "trialing";
+
+    useEffect(() => {
+        const wasOpen = previousEditorOpenRef.current;
+        if (editorOpen && !wasOpen) {
+            const eligible = forceTrialPromptInDev
+                ? true
+                : shouldShowTrialPromptForSession(
+                    RENDER_TRIAL_SESSION_STORAGE_KEY,
+                    FIRST_GEN_TRIAL_SESSION_INTERVAL,
+                );
+            setRenderTrialSessionEligible(eligible);
+        }
+        if (!editorOpen && wasOpen) {
+            setRenderTrialSessionEligible(false);
+        }
+        previousEditorOpenRef.current = editorOpen;
+    }, [editorOpen, forceTrialPromptInDev]);
+
+    useEffect(() => {
+        const wasOpen = previousAppBuilderOpenRef.current;
+        if (appBuilderOpen && !wasOpen) {
+            const eligible = forceTrialPromptInDev
+                ? true
+                : shouldShowTrialPromptForSession(
+                    APP_BUILDER_TRIAL_SESSION_STORAGE_KEY,
+                    FIRST_GEN_TRIAL_SESSION_INTERVAL,
+                );
+            setAppBuilderTrialSessionEligible(eligible);
+        }
+        if (!appBuilderOpen && wasOpen) {
+            setAppBuilderTrialSessionEligible(false);
+        }
+        previousAppBuilderOpenRef.current = appBuilderOpen;
+    }, [appBuilderOpen, forceTrialPromptInDev]);
 
     const markFirstGenerationTrialPromptAsShown = useCallback(
         async (source: "kloner_app" | "kloner_render") => {
@@ -7395,7 +7467,8 @@ export default function PreviewPage(): JSX.Element {
 
     const firstGenerationTrialCandidate = useMemo<"kloner_render" | null>(() => {
         if (!user) return null;
-        if (userTier !== "free") return null;
+        if (!isUserOnFreeTrial) return null;
+        if (!forceTrialPromptInDev && !renderTrialSessionEligible) return null;
 
         const activeReadyRenders = renders.filter((r) => !r.archived && r.status === "ready");
 
@@ -7409,7 +7482,9 @@ export default function PreviewPage(): JSX.Element {
         return null;
     }, [
         user,
-        userTier,
+        isUserOnFreeTrial,
+        forceTrialPromptInDev,
+        renderTrialSessionEligible,
         editorOpen,
         editorMode,
         deployWizardOpen,
@@ -7419,7 +7494,6 @@ export default function PreviewPage(): JSX.Element {
     useEffect(() => {
         if (!firstGenerationTrialCandidate) return;
         if (showFirstGenerationTrialPopup) return;
-        if (!forceTrialPromptInDev && firstGenerationTrialPromptShown) return;
 
         const openPrompt = () => {
             setShowFirstGenerationTrialPopup(true);
@@ -7436,8 +7510,6 @@ export default function PreviewPage(): JSX.Element {
     }, [
         firstGenerationTrialCandidate,
         showFirstGenerationTrialPopup,
-        forceTrialPromptInDev,
-        firstGenerationTrialPromptShown,
         markFirstGenerationTrialPromptAsShown,
     ]);
 
@@ -8637,8 +8709,8 @@ export default function PreviewPage(): JSX.Element {
                         }}
                         onDeploy={(app) => openAppDeployWizard(app)}
                         agentWelcomeContext={agentWelcomeContextByAppId[currentAppId]}
-                        trialPromptEnabled={userTier === "free"}
-                        trialPromptAlreadyShown={!forceTrialPromptInDev && firstGenerationTrialPromptShown}
+                        trialPromptEnabled={isUserOnFreeTrial}
+                        trialPromptSessionEligible={appBuilderTrialSessionEligible}
                         trialCheckoutBusy={checkoutBusy}
                         onTrialPromptShown={() => {
                             setFirstGenerationTrialPromptShown(true);
@@ -10174,10 +10246,26 @@ export default function PreviewPage(): JSX.Element {
                 {
                     showFirstGenerationTrialPopup && typeof document !== "undefined"
                         ? createPortal(
-                            <div className="fixed inset-0 z-[25000]" style={{ zIndex: 2147483647 }}>
-                                <div className="absolute inset-0 bg-black/65" />
+                            <motion.div
+                                className="fixed inset-0 z-[25000]"
+                                style={{ zIndex: 2147483647 }}
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                transition={{ duration: 0.2, ease: "easeOut" }}
+                            >
+                                <motion.div
+                                    className="absolute inset-0 bg-black/65"
+                                    initial={{ opacity: 0 }}
+                                    animate={{ opacity: 1 }}
+                                    transition={{ duration: 0.2, ease: "easeOut" }}
+                                />
                                 <div className="absolute inset-0 flex items-center justify-center p-4">
-                                    <div className="w-full max-w-md rounded-2xl border border-neutral-200 bg-white p-6 text-sm text-neutral-800 shadow-xl">
+                                    <motion.div
+                                        className="w-full max-w-md rounded-2xl border border-neutral-200 bg-white p-6 text-sm text-neutral-800 shadow-xl"
+                                        initial={{ opacity: 0, y: 18, scale: 0.98 }}
+                                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                                        transition={{ duration: 0.24, ease: "easeOut" }}
+                                    >
                                         <div className="mb-2 flex items-center justify-between gap-2">
                                             <div className="inline-flex items-center rounded-full border border-neutral-200 bg-neutral-50 px-2.5 py-1 text-[11px] font-semibold text-neutral-700">
                                                 7-day free trial
@@ -10231,9 +10319,9 @@ export default function PreviewPage(): JSX.Element {
                                                 Keep building for now
                                             </button>
                                         </div>
-                                    </div>
+                                    </motion.div>
                                 </div>
-                            </div>,
+                            </motion.div>,
                             document.body,
                         )
                         : null
