@@ -96,6 +96,7 @@ const IMAGE_PLACEMENT_PLACEHOLDERS = [
 
 const APP_BUILDER_COOKIE_CONSENT_KEY = "kloner.appBuilder.necessaryCookiesAccepted.v1";
 const APP_BUILDER_COOKIE_CONSENT_COOKIE = "kloner_app_builder_nc";
+const APP_BUILDER_TRIAL_DWELL_MS = 15 * 1000;
 
 function getCookieValue(name: string): string | null {
     if (typeof document === "undefined") return null;
@@ -519,7 +520,17 @@ function FileTree({ nodes, onFileSelect, prefix = "" }: {
     );
 }
 
-export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcomeContext, onTrialReadinessChange }: {
+export default function AppBuilderEditor({
+    appId,
+    onClose,
+    onDeploy,
+    agentWelcomeContext,
+    trialPromptEnabled = false,
+    trialPromptAlreadyShown = false,
+    trialCheckoutBusy = false,
+    onTrialPromptShown,
+    onTrialPromptStartCheckout,
+}: {
     appId: string;
     onClose: () => void;
     onDeploy?: (app: { id: string; name: string }) => void;
@@ -529,11 +540,11 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
         url?: string | null;
         templateName?: string | null;
     };
-    onTrialReadinessChange?: (state: {
-        appId: string;
-        previewReady: boolean;
-        hasConnectionError: boolean;
-    }) => void;
+    trialPromptEnabled?: boolean;
+    trialPromptAlreadyShown?: boolean;
+    trialCheckoutBusy?: boolean;
+    onTrialPromptShown?: (appId: string) => void;
+    onTrialPromptStartCheckout?: (appId: string) => void;
 }) {
     const { user, loading: authLoading } = useAuth();
     const { showConfirm, showAlert } = useModal();
@@ -964,6 +975,8 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
     const appBuilderAiMessagesSentRef = useRef<number>(0);
     const appBuilderViewSwitchesRef = useRef<number>(0);
     const previousViewModeRef = useRef<LeftViewMode>("ai");
+    const [showAppBuilderTrialPrompt, setShowAppBuilderTrialPrompt] = useState(false);
+    const appBuilderTrialShownThisOpenRef = useRef(false);
 
     const handleCompileErrorFixRequest = useCallback((payload: {
         appId: string;
@@ -988,20 +1001,44 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
     }, [isMobile]);
 
     useEffect(() => {
-        if (!onTrialReadinessChange) return;
+        appBuilderTrialShownThisOpenRef.current = false;
+        setShowAppBuilderTrialPrompt(false);
+    }, [appId]);
+
+    useEffect(() => {
+        const forceTrialPromptInDev = process.env.NODE_ENV !== "production";
+        if (!trialPromptEnabled) return;
+        if (showAppBuilderTrialPrompt) return;
+        if (appBuilderTrialShownThisOpenRef.current) return;
+
+        const appLoaded = Boolean(app && !loading && !error);
+        if (!appLoaded) return;
+
         const previewReady = previewMode !== "webcontainer" ? true : isWebPreviewReady;
-        onTrialReadinessChange({
-            appId,
-            previewReady,
-            hasConnectionError: Boolean(autoPreviewError || previewError),
-        });
+        if (!previewReady) return;
+        if (autoPreviewError || previewError) return;
+        if (!forceTrialPromptInDev && trialPromptAlreadyShown) return;
+
+        const timer = window.setTimeout(() => {
+            setShowAppBuilderTrialPrompt(true);
+            appBuilderTrialShownThisOpenRef.current = true;
+            onTrialPromptShown?.(appId);
+        }, APP_BUILDER_TRIAL_DWELL_MS);
+
+        return () => window.clearTimeout(timer);
     }, [
-        onTrialReadinessChange,
-        appId,
+        trialPromptEnabled,
+        showAppBuilderTrialPrompt,
+        app,
+        loading,
+        error,
         previewMode,
         isWebPreviewReady,
         autoPreviewError,
         previewError,
+        trialPromptAlreadyShown,
+        onTrialPromptShown,
+        appId,
     ]);
 
     useEffect(() => {
@@ -4778,6 +4815,62 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
                                         <span>View live</span>
                                     </button>
                                 ) : null}
+                            </div>
+                        </div>
+                    </div>
+                ) : null}
+
+                {showAppBuilderTrialPrompt ? (
+                    <div className="fixed inset-0 z-[20000] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+                        <div className="w-full max-w-md rounded-2xl border border-neutral-200 bg-white p-6 text-sm text-neutral-800 shadow-xl">
+                            <div className="mb-2 flex items-center justify-between gap-2">
+                                <div className="inline-flex items-center rounded-full border border-neutral-200 bg-neutral-50 px-2.5 py-1 text-[11px] font-semibold text-neutral-700">
+                                    7-day free trial
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setShowAppBuilderTrialPrompt(false)}
+                                    className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-50"
+                                    aria-label="Close"
+                                >
+                                    ×
+                                </button>
+                            </div>
+
+                            <h3 className="text-xl font-semibold text-neutral-900">
+                                Your first build is ready. Publish it live?
+                            </h3>
+                            <p className="mt-2 text-sm text-neutral-600">
+                                Unlock Next.js 16 app deploys, HTML website deploys, and higher generation credits.
+                            </p>
+
+                            <ul className="mt-4 list-disc list-inside space-y-1 text-sm text-neutral-700">
+                                <li>7 days free, cancel anytime</li>
+                                <li>One-click deploy to live URL</li>
+                                <li>Higher monthly generation limits</li>
+                            </ul>
+
+                            <div className="mt-5 space-y-2">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setShowAppBuilderTrialPrompt(false);
+                                        onTrialPromptStartCheckout?.(appId);
+                                    }}
+                                    disabled={trialCheckoutBusy}
+                                    className="w-full rounded-xl px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-70"
+                                    style={{ backgroundColor: "#f55f2a" }}
+                                >
+                                    {trialCheckoutBusy ? "Redirecting to Stripe..." : "Start free trial & publish →"}
+                                </button>
+
+                                <button
+                                    type="button"
+                                    onClick={() => setShowAppBuilderTrialPrompt(false)}
+                                    className="w-full rounded-xl border border-neutral-200 bg-white px-4 py-2 text-sm font-semibold text-neutral-700 hover:bg-neutral-50"
+                                >
+                                    Keep building for now
+                                </button>
                             </div>
                         </div>
                     </div>

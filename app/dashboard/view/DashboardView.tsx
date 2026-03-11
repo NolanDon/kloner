@@ -10,7 +10,7 @@ import React, {
     memo,
 } from "react";
 import Image from 'next/image'
-import { flushSync } from "react-dom";
+import { createPortal, flushSync } from "react-dom";
 import { toast } from "react-hot-toast";
 
 import { useRouter, useSearchParams } from "next/navigation";
@@ -111,7 +111,8 @@ const FRONTEND_TIMEOUT_DEDUPE_TTL_MS = 10 * 60 * 1000;
 const FRONTEND_TIMEOUT_DEDUPE_STORAGE_KEY = "dashboardViewFrontendTimeoutAlertsV1";
 const URL_ADD_SUCCESS_MESSAGE = "URL added successfully! You can now generate websites from this URL below.";
 const APP_WIZARD_PROMPT_MAX_CHARS = 2000;
-const FIRST_GEN_TRIAL_INTERACTION_MS = 30 * 1000;
+const FIRST_GEN_TRIAL_OBSERVE_MS = 15 * 1000;
+const CHECKOUT_FETCH_TIMEOUT_MS = 20_000;
 
 const APP_BUILDER_COOKIE_CONSENT_KEY = "kloner.appBuilder.necessaryCookiesAccepted.v1";
 const APP_BUILDER_COOKIE_CONSENT_COOKIE = "kloner_app_builder_nc";
@@ -2269,7 +2270,6 @@ export default function PreviewPage(): JSX.Element {
     >(null);
     const [showProPaywall, setShowProPaywall] = useState(false);
     const [showFirstGenerationTrialPopup, setShowFirstGenerationTrialPopup] = useState(false);
-    const [firstGenerationTrialSource, setFirstGenerationTrialSource] = useState<"kloner_app" | "kloner_render" | null>(null);
     const [firstGenerationTrialPromptShown, setFirstGenerationTrialPromptShown] = useState(false);
     const [exitOfferClaimed, setExitOfferClaimed] = useState(false);
     const [showUpgradeAfterCustomize, setShowUpgradeAfterCustomize] =
@@ -2409,8 +2409,6 @@ export default function PreviewPage(): JSX.Element {
 
     const [appBuilderOpen, setAppBuilderOpen] = useState(false);
     const [currentAppId, setCurrentAppId] = useState<string | null>(null);
-    const [appBuilderTrialPreviewReady, setAppBuilderTrialPreviewReady] = useState(false);
-    const [appBuilderTrialConnectionError, setAppBuilderTrialConnectionError] = useState(false);
     const [appBuilderCookiePromptOpen, setAppBuilderCookiePromptOpen] = useState(false);
     const [pendingAppBuilderAppId, setPendingAppBuilderAppId] = useState<string | null>(null);
     const appBuilderCookiePromptResolverRef = useRef<((accepted: boolean) => void) | null>(null);
@@ -2481,13 +2479,6 @@ export default function PreviewPage(): JSX.Element {
             setAppBuilderOpen(true);
         }
     }, [pendingAppBuilderAppId, currentAppId, resolveAppBuilderCookiePrompt]);
-
-    useEffect(() => {
-        if (!appBuilderOpen || !currentAppId) {
-            setAppBuilderTrialPreviewReady(false);
-            setAppBuilderTrialConnectionError(false);
-        }
-    }, [appBuilderOpen, currentAppId]);
 
     // ───────── app deploy wizard (first deploy) ─────────
     const [appDeployWizardOpen, setAppDeployWizardOpen] = useState(false);
@@ -7402,19 +7393,11 @@ export default function PreviewPage(): JSX.Element {
         [user, forceTrialPromptInDev],
     );
 
-    const firstGenerationTrialCandidate = useMemo<"kloner_app" | "kloner_render" | null>(() => {
+    const firstGenerationTrialCandidate = useMemo<"kloner_render" | null>(() => {
         if (!user) return null;
         if (userTier !== "free") return null;
 
         const activeReadyRenders = renders.filter((r) => !r.archived && r.status === "ready");
-
-        const appEligible =
-            appBuilderOpen &&
-            !!currentAppId &&
-            appBuilderTrialPreviewReady &&
-            !appBuilderTrialConnectionError &&
-            apps.length <= 1;
-        if (appEligible) return "kloner_app";
 
         const renderEligible =
             editorOpen &&
@@ -7427,11 +7410,6 @@ export default function PreviewPage(): JSX.Element {
     }, [
         user,
         userTier,
-        appBuilderOpen,
-        currentAppId,
-        appBuilderTrialPreviewReady,
-        appBuilderTrialConnectionError,
-        apps.length,
         editorOpen,
         editorMode,
         deployWizardOpen,
@@ -7444,41 +7422,16 @@ export default function PreviewPage(): JSX.Element {
         if (!forceTrialPromptInDev && firstGenerationTrialPromptShown) return;
 
         const openPrompt = () => {
-            setFirstGenerationTrialSource(firstGenerationTrialCandidate);
             setShowFirstGenerationTrialPopup(true);
             setFirstGenerationTrialPromptShown(true);
             void markFirstGenerationTrialPromptAsShown(firstGenerationTrialCandidate);
         };
 
-        if (forceTrialPromptInDev) {
-            const devTimer = window.setTimeout(openPrompt, 1200);
-            return () => window.clearTimeout(devTimer);
-        }
-
-        let interactionTimer: number | null = null;
-        let interactionStarted = false;
-
-        const startInteractionTimer = () => {
-            if (interactionStarted) return;
-            interactionStarted = true;
-            interactionTimer = window.setTimeout(openPrompt, FIRST_GEN_TRIAL_INTERACTION_MS);
-        };
-
-        const onInteraction = () => {
-            startInteractionTimer();
-        };
-
-        window.addEventListener("pointerdown", onInteraction, { passive: true });
-        window.addEventListener("keydown", onInteraction);
-        window.addEventListener("mousemove", onInteraction, { passive: true });
-        window.addEventListener("touchstart", onInteraction, { passive: true });
+        // Require a dwell window so the trial prompt does not feel instant/spammy.
+        const dwellTimer = window.setTimeout(openPrompt, FIRST_GEN_TRIAL_OBSERVE_MS);
 
         return () => {
-            if (interactionTimer) window.clearTimeout(interactionTimer);
-            window.removeEventListener("pointerdown", onInteraction);
-            window.removeEventListener("keydown", onInteraction);
-            window.removeEventListener("mousemove", onInteraction);
-            window.removeEventListener("touchstart", onInteraction);
+            window.clearTimeout(dwellTimer);
         };
     }, [
         firstGenerationTrialCandidate,
@@ -7651,6 +7604,20 @@ export default function PreviewPage(): JSX.Element {
         return { mm, ss };
     }
 
+    async function fetchWithTimeout(
+        input: RequestInfo | URL,
+        init: RequestInit,
+        timeoutMs = CHECKOUT_FETCH_TIMEOUT_MS,
+    ): Promise<Response> {
+        const controller = new AbortController();
+        const t = setTimeout(() => controller.abort(), timeoutMs);
+        try {
+            return await fetch(input, { ...init, signal: controller.signal });
+        } finally {
+            clearTimeout(t);
+        }
+    }
+
     function getRemainingSec(endsAt: number) {
         return Math.max(0, Math.ceil((endsAt - Date.now()) / 1000));
     }
@@ -7780,7 +7747,7 @@ export default function PreviewPage(): JSX.Element {
                     }
                 }
 
-                const csrfRes = await fetch("/api/auth/csrf", {
+                const csrfRes = await fetchWithTimeout("/api/auth/csrf", {
                     method: "POST",
                     headers: { "content-type": "application/json" },
                     credentials: "include",
@@ -7803,7 +7770,7 @@ export default function PreviewPage(): JSX.Element {
                     }
                 }
 
-                const res = await fetch("/api/billing/create-checkout-session", {
+                const res = await fetchWithTimeout("/api/billing/create-checkout-session", {
                     method: "POST",
                     headers: {
                         "content-type": "application/json",
@@ -7826,16 +7793,22 @@ export default function PreviewPage(): JSX.Element {
 
                 const data = await res.json().catch(() => ({}));
                 if (!res.ok || !data.url) {
-                    await showAlert(data?.error || "Unable to start checkout.", "Checkout Error");
+                    void showAlert(data?.error || "Unable to start checkout.", "Checkout Error");
                     return;
                 }
 
                 window.location.href = data.url;
+            } catch (err) {
+                console.error("startProCheckout failed", err);
+                void showAlert(
+                    "Checkout is taking too long. Please try again in a few seconds.",
+                    "Checkout Error",
+                );
             } finally {
                 setCheckoutBusy(false);
             }
         },
-        [checkoutBusy, deployWizardRenderId, deployWizardProjectName, step5SaleEndsAt],
+        [checkoutBusy, deployWizardRenderId, deployWizardProjectName, step5SaleEndsAt, showAlert],
     );
 
     const startProCheckoutForAppDeploy = useCallback(
@@ -7855,14 +7828,14 @@ export default function PreviewPage(): JSX.Element {
                     null;
 
                 if (!checkoutReturnAppId) {
-                    await showAlert(
+                    void showAlert(
                         "We couldn’t determine which app you’re deploying. Close this modal and click Deploy again, then retry.",
                         "Checkout",
                     );
                     return;
                 }
 
-                const csrfRes = await fetch("/api/auth/csrf", {
+                const csrfRes = await fetchWithTimeout("/api/auth/csrf", {
                     method: "POST",
                     headers: { "content-type": "application/json" },
                     credentials: "include",
@@ -7885,7 +7858,7 @@ export default function PreviewPage(): JSX.Element {
                     }
                 }
 
-                const res = await fetch("/api/billing/create-checkout-session", {
+                const res = await fetchWithTimeout("/api/billing/create-checkout-session", {
                     method: "POST",
                     headers: {
                         "content-type": "application/json",
@@ -7908,16 +7881,22 @@ export default function PreviewPage(): JSX.Element {
 
                 const data = await res.json().catch(() => ({}));
                 if (!res.ok || !data.url) {
-                    await showAlert(data?.error || "Unable to start checkout.", "Checkout Error");
+                    void showAlert(data?.error || "Unable to start checkout.", "Checkout Error");
                     return;
                 }
 
                 window.location.href = data.url;
+            } catch (err) {
+                console.error("startProCheckoutForAppDeploy failed", err);
+                void showAlert(
+                    "Checkout is taking too long. Please try again in a few seconds.",
+                    "Checkout Error",
+                );
             } finally {
                 setCheckoutBusy(false);
             }
         },
-        [checkoutBusy, appDeployWizardAppId, currentAppId, step5SaleEndsAt],
+        [checkoutBusy, appDeployWizardAppId, currentAppId, step5SaleEndsAt, showAlert],
     );
 
 
@@ -8658,10 +8637,15 @@ export default function PreviewPage(): JSX.Element {
                         }}
                         onDeploy={(app) => openAppDeployWizard(app)}
                         agentWelcomeContext={agentWelcomeContextByAppId[currentAppId]}
-                        onTrialReadinessChange={(state) => {
-                            if (!currentAppId || state.appId !== currentAppId) return;
-                            setAppBuilderTrialPreviewReady(state.previewReady);
-                            setAppBuilderTrialConnectionError(state.hasConnectionError);
+                        trialPromptEnabled={userTier === "free"}
+                        trialPromptAlreadyShown={!forceTrialPromptInDev && firstGenerationTrialPromptShown}
+                        trialCheckoutBusy={checkoutBusy}
+                        onTrialPromptShown={() => {
+                            setFirstGenerationTrialPromptShown(true);
+                            void markFirstGenerationTrialPromptAsShown("kloner_app");
+                        }}
+                        onTrialPromptStartCheckout={(appId) => {
+                            void startProCheckoutForAppDeploy({ returnAppId: appId });
                         }}
                     />
                 )}
@@ -10188,76 +10172,71 @@ export default function PreviewPage(): JSX.Element {
                 }
 
                 {
-                    showFirstGenerationTrialPopup && (
-                        <div className="fixed inset-0 z-[12020]">
-                            <div className="absolute inset-0 bg-black/65" />
-                            <div className="absolute inset-0 flex items-center justify-center p-4">
-                                <div className="w-full max-w-md rounded-2xl border border-neutral-200 bg-white p-6 text-sm text-neutral-800 shadow-xl">
-                                    <div className="mb-2 flex items-center justify-between gap-2">
-                                        <div className="inline-flex items-center rounded-full border border-neutral-200 bg-neutral-50 px-2.5 py-1 text-[11px] font-semibold text-neutral-700">
-                                            7-day free trial
+                    showFirstGenerationTrialPopup && typeof document !== "undefined"
+                        ? createPortal(
+                            <div className="fixed inset-0 z-[25000]" style={{ zIndex: 2147483647 }}>
+                                <div className="absolute inset-0 bg-black/65" />
+                                <div className="absolute inset-0 flex items-center justify-center p-4">
+                                    <div className="w-full max-w-md rounded-2xl border border-neutral-200 bg-white p-6 text-sm text-neutral-800 shadow-xl">
+                                        <div className="mb-2 flex items-center justify-between gap-2">
+                                            <div className="inline-flex items-center rounded-full border border-neutral-200 bg-neutral-50 px-2.5 py-1 text-[11px] font-semibold text-neutral-700">
+                                                7-day free trial
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setShowFirstGenerationTrialPopup(false);
+                                                }}
+                                                className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-50"
+                                                aria-label="Close"
+                                            >
+                                                ×
+                                            </button>
                                         </div>
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                setShowFirstGenerationTrialPopup(false);
-                                                setFirstGenerationTrialSource(null);
-                                            }}
-                                            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-50"
-                                            aria-label="Close"
-                                        >
-                                            ×
-                                        </button>
-                                    </div>
 
-                                    <h3 className="text-xl font-semibold text-neutral-900">
-                                        Your first build is ready. Publish it live?
-                                    </h3>
-                                    <p className="mt-2 text-sm text-neutral-600">
-                                        Unlock Next.js 16 app deploys, HTML website deploys, and higher generation credits.
-                                    </p>
+                                        <h3 className="text-xl font-semibold text-neutral-900">
+                                            Your first build is ready. Publish it live?
+                                        </h3>
+                                        <p className="mt-2 text-sm text-neutral-600">
+                                            Unlock Next.js 16 app deploys, HTML website deploys, and higher generation credits.
+                                        </p>
 
-                                    <ul className="mt-4 list-disc list-inside space-y-1 text-sm text-neutral-700">
-                                        <li>7 days free, cancel anytime</li>
-                                        <li>One-click deploy to live URL</li>
-                                        <li>Higher monthly generation limits</li>
-                                    </ul>
+                                        <ul className="mt-4 list-disc list-inside space-y-1 text-sm text-neutral-700">
+                                            <li>7 days free, cancel anytime</li>
+                                            <li>One-click deploy to live URL</li>
+                                            <li>Higher monthly generation limits</li>
+                                        </ul>
 
-                                    <div className="mt-5 space-y-2">
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                setShowFirstGenerationTrialPopup(false);
-                                                const source = firstGenerationTrialSource;
-                                                setFirstGenerationTrialSource(null);
-                                                if (source === "kloner_app") {
-                                                    void startProCheckoutForAppDeploy({ returnAppId: currentAppId });
-                                                    return;
-                                                }
-                                                void startProCheckout();
-                                            }}
-                                            disabled={checkoutBusy}
-                                            className="w-full rounded-xl px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
-                                            style={{ backgroundColor: ACCENT }}
-                                        >
-                                            {checkoutBusy ? "Redirecting to Stripe…" : "Start free trial & publish →"}
-                                        </button>
+                                        <div className="mt-5 space-y-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setShowFirstGenerationTrialPopup(false);
+                                                    void startProCheckout();
+                                                }}
+                                                disabled={checkoutBusy}
+                                                className="w-full rounded-xl px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
+                                                style={{ backgroundColor: ACCENT }}
+                                            >
+                                                {checkoutBusy ? "Redirecting to Stripe…" : "Start free trial & publish →"}
+                                            </button>
 
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                setShowFirstGenerationTrialPopup(false);
-                                                setFirstGenerationTrialSource(null);
-                                            }}
-                                            className="w-full rounded-xl border border-neutral-200 bg-white px-4 py-2 text-sm font-semibold text-neutral-700 hover:bg-neutral-50"
-                                        >
-                                            Keep building for now
-                                        </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setShowFirstGenerationTrialPopup(false);
+                                                }}
+                                                className="w-full rounded-xl border border-neutral-200 bg-white px-4 py-2 text-sm font-semibold text-neutral-700 hover:bg-neutral-50"
+                                            >
+                                                Keep building for now
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
-                        </div>
-                    )
+                            </div>,
+                            document.body,
+                        )
+                        : null
                 }
 
                 {/* generic paywall */}
