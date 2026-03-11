@@ -5,6 +5,22 @@ import { getSupabaseIntegration, getSupabaseAccessToken, isLikelyDestructiveSql 
 
 export const runtime = "nodejs";
 
+type ParsedSqlError = {
+    sqlState: string | null;
+    relationName: string | null;
+};
+
+function parseSqlErrorDetails(raw: string): ParsedSqlError {
+    const text = String(raw || "");
+    const stateMatch = text.match(/ERROR:\s*([0-9A-Z]{5})\b/i);
+    const relationMatch = text.match(/relation\s+"([^"]+)"\s+does\s+not\s+exist/i);
+
+    return {
+        sqlState: stateMatch ? String(stateMatch[1]).toUpperCase() : null,
+        relationName: relationMatch ? String(relationMatch[1]) : null,
+    };
+}
+
 async function runSupabaseSql(params: {
     accessToken: string;
     projectId: string;
@@ -111,8 +127,22 @@ export async function POST(req: NextRequest) {
             });
 
             if (!result.ok) {
+                const details = parseSqlErrorDetails(result.error || "");
+                const isMissingRelation = details.sqlState === "42P01" || Boolean(details.relationName);
                 await proposalRef.update({ status: "FAILED", failedAt: new Date(), error: result.error || "Unknown error" });
-                return NextResponse.json({ ok: false, error: result.error || "Migration failed" }, { status: 502 });
+                return NextResponse.json(
+                    {
+                        ok: false,
+                        code: isMissingRelation ? "SUPABASE_RELATION_MISSING" : "SUPABASE_MIGRATION_APPLY_FAILED",
+                        errorCode: details.sqlState,
+                        relationName: details.relationName,
+                        canRegenerateMigration: isMissingRelation,
+                        error: isMissingRelation
+                            ? `Database update failed because ${details.relationName || "a required table"} was not found. We can regenerate the update for your current schema.`
+                            : result.error || "Migration failed",
+                    },
+                    { status: 502 }
+                );
             }
 
             await proposalRef.update({
@@ -121,7 +151,14 @@ export async function POST(req: NextRequest) {
                 supabaseResult: result.result ?? null,
             });
 
-            return NextResponse.json({ ok: true });
+            return NextResponse.json({
+                ok: true,
+                postApplyActions: {
+                    refreshAppFiles: true,
+                    regenerateDataAccess: true,
+                    restartPreview: true,
+                },
+            });
         },
         { csrf: true, methods: ["POST"] }
     );

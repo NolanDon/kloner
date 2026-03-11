@@ -21,6 +21,10 @@ type Message = {
     migrationSql?: string;
     migrationDestructive?: boolean;
     migrationStatus?: "PENDING" | "APPLYING" | "APPLIED" | "FAILED";
+    migrationErrorCode?: string;
+    migrationRelationName?: string;
+    migrationCanRegenerate?: boolean;
+    migrationRetryPrompt?: string;
 
     stagedBundleId?: string;
     supabaseContinuationPrompt?: string;
@@ -96,6 +100,13 @@ type RestorePointItem = {
     source?: string;
     paths?: string[];
     undoOf?: string | null;
+};
+
+type MigrationApplyFailure = {
+    errorText: string;
+    errorCode: string | null;
+    relationName: string | null;
+    canRegenerate: boolean;
 };
 
 const STARTER_PROMPTS = [
@@ -417,10 +428,17 @@ export default function AppBuilderEditorAgentChat({ appId, files, onFileEdit, on
     const isSupabaseConnectedRef = useRef(false);
     const supabaseDbHealthInFlightRef = useRef(false);
     const lastSupabaseDbHealthAtRef = useRef(0);
+    const scopeRecoveryNoticeAtRef = useRef(0);
+    const migrationFailureSeenAtRef = useRef<Record<string, number>>({});
+    const previewReadyRef = useRef(Boolean(previewReady));
 
     const chatDisabled = previewReady === false && !freeCompileFixContext;
 
     const didSyncSupabasePreviewEnvRef = useRef(false);
+
+    useEffect(() => {
+        previewReadyRef.current = Boolean(previewReady);
+    }, [previewReady]);
 
     useEffect(() => {
         if (allowDatabaseSetupUi) return;
@@ -981,14 +999,55 @@ export default function AppBuilderEditorAgentChat({ appId, files, onFileEdit, on
         }
     }, [appId]);
 
+    const notifyScopeRecoveryFailure = useCallback(
+        (retryLabel: string) => {
+            const now = Date.now();
+            if (now - scopeRecoveryNoticeAtRef.current < 60_000) return;
+            scopeRecoveryNoticeAtRef.current = now;
+
+            const text = "App context expired. Reconnected to app. Please retry.";
+            void showAlert(text, "App connection");
+            setMessages((prev) => [
+                ...prev,
+                {
+                    id: `scope_recovery_${now}`,
+                    role: "assistant",
+                    content: text,
+                    timestamp: new Date(),
+                    type: "text",
+                },
+            ]);
+
+            dispatchAiAgentEvent("app_scope_recovery", {
+                appId,
+                userId: user?.uid || null,
+                retryLabel,
+                scopeRecovered: false,
+            });
+        },
+        [appId, dispatchAiAgentEvent, showAlert, user?.uid],
+    );
+
     const fetchWithScopeRetry = useCallback(
         async (url: string, init: RequestInit, { retryLabel }: { retryLabel: string }): Promise<Response> => {
+            const isScopeSensitiveRoute = /\/api\/app-builder\/[^/]+\/(ai-chat|restore-points)(?:\/|$)/.test(url);
             const doFetch = () =>
                 fetch(url, {
                     ...init,
                     credentials: "include",
                     cache: "no-store",
                 });
+
+            if (isScopeSensitiveRoute) {
+                const warmed = await bootstrapAppScope().catch(() => false);
+                dispatchAiAgentEvent("app_scope_recovery", {
+                    appId,
+                    userId: user?.uid || null,
+                    retryLabel,
+                    scopeRecovered: warmed,
+                    phase: "preflight",
+                });
+            }
 
             const res = await doFetch();
             if (res.status !== 403) return res;
@@ -1000,31 +1059,69 @@ export default function AppBuilderEditorAgentChat({ appId, files, onFileEdit, on
             if (!isScope) return res;
 
             const ok = await bootstrapAppScope();
-            if (!ok) return res;
+            dispatchAiAgentEvent("app_scope_recovery", {
+                appId,
+                userId: user?.uid || null,
+                retryLabel,
+                scopeRecovered: ok,
+                phase: "403_recover",
+            });
+            if (!ok) {
+                notifyScopeRecoveryFailure(retryLabel);
+                return res;
+            }
 
             const retryRes = await doFetch();
             if (retryRes.status === 403) {
                 console.warn(`[AppBuilderEditorAgentChat] ${retryLabel} still forbidden after scope bootstrap`);
+                notifyScopeRecoveryFailure(retryLabel);
             }
+
+            dispatchAiAgentEvent("app_scope_recovery", {
+                appId,
+                userId: user?.uid || null,
+                retryLabel,
+                scopeRecovered: retryRes.status !== 403,
+                phase: "post_retry",
+            });
             return retryRes;
         },
-        [bootstrapAppScope]
+        [appId, bootstrapAppScope, dispatchAiAgentEvent, notifyScopeRecoveryFailure, user?.uid]
     );
 
     const scopeBootstrappedForAppIdRef = useRef<string | null>(null);
+    const [scopeWarmupComplete, setScopeWarmupComplete] = useState(false);
 
     // Proactively issue the scope cookie once per appId to avoid noisy 403s.
     useEffect(() => {
-        if (!user?.uid || !appId) return;
-        if (scopeBootstrappedForAppIdRef.current === appId) return;
-        scopeBootstrappedForAppIdRef.current = appId;
-        void bootstrapAppScope();
+        if (!user?.uid || !appId) {
+            setScopeWarmupComplete(false);
+            return;
+        }
+
+        let cancelled = false;
+        setScopeWarmupComplete(false);
+
+        const warmScope = async () => {
+            if (scopeBootstrappedForAppIdRef.current !== appId) {
+                scopeBootstrappedForAppIdRef.current = appId;
+                await bootstrapAppScope().catch(() => false);
+            }
+
+            if (!cancelled) setScopeWarmupComplete(true);
+        };
+
+        void warmScope();
+
+        return () => {
+            cancelled = true;
+        };
     }, [appId, bootstrapAppScope, user?.uid]);
 
     // Load chat history from server (firebase-admin) and migrate any legacy localStorage once.
     useEffect(() => {
         if (loadedFromRemoteRef.current) return;
-        if (!user?.uid || !appId) return;
+        if (!user?.uid || !appId || !scopeWarmupComplete) return;
 
         let cancelled = false;
         (async () => {
@@ -1163,9 +1260,10 @@ export default function AppBuilderEditorAgentChat({ appId, files, onFileEdit, on
         return () => {
             cancelled = true;
         };
-    }, [appId, debugChatIo, fetchWithScopeRetry, user?.uid, withCsrfHeaders]);
+    }, [appId, debugChatIo, fetchWithScopeRetry, scopeWarmupComplete, user?.uid, withCsrfHeaders]);
 
     const fetchRestorePoints = useCallback(async () => {
+        if (!scopeWarmupComplete) return;
         try {
             await ensureSessionAndCsrf().catch(() => null);
             const res = await fetchWithScopeRetry(
@@ -1181,7 +1279,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, onFileEdit, on
         } catch {
             // ignore
         }
-    }, [appId, fetchWithScopeRetry]);
+    }, [appId, fetchWithScopeRetry, scopeWarmupComplete]);
 
     const syncFilesFromServer = useCallback(async ({ applyToState = true }: { applyToState?: boolean } = {}) => {
         try {
@@ -1488,6 +1586,129 @@ export default function AppBuilderEditorAgentChat({ appId, files, onFileEdit, on
             return next;
         });
     }, [applyStagedBundle]);
+
+    const buildMigrationRetryPrompt = useCallback(
+        (relationName: string | null, errorCode: string | null): string => {
+            const relationText = relationName ? `missing relation: ${relationName}` : "missing database relation";
+            const codeText = errorCode ? ` (error code ${errorCode})` : "";
+            return [
+                "Regenerate the migration for the current schema and then prepare it for apply again.",
+                `Previous apply failed due to ${relationText}${codeText}.`,
+                "Re-check current schema first, then produce corrected SQL and matching app code updates.",
+            ].join(" ");
+        },
+        [],
+    );
+
+    const parseMigrationApplyFailure = useCallback((payload: any): MigrationApplyFailure => {
+        const errorCode =
+            typeof payload?.errorCode === "string" && payload.errorCode.trim()
+                ? payload.errorCode.trim().toUpperCase()
+                : null;
+        const relationName =
+            typeof payload?.relationName === "string" && payload.relationName.trim()
+                ? payload.relationName.trim()
+                : null;
+        const code = typeof payload?.code === "string" ? payload.code.trim().toUpperCase() : "";
+        const canRegenerate =
+            Boolean(payload?.canRegenerateMigration) ||
+            code === "SUPABASE_RELATION_MISSING" ||
+            errorCode === "42P01" ||
+            Boolean(relationName);
+
+        return {
+            errorText:
+                typeof payload?.error === "string" && payload.error.trim()
+                    ? payload.error.trim()
+                    : "Could not apply this database update.",
+            errorCode,
+            relationName,
+            canRegenerate,
+        };
+    }, []);
+
+    const formatMigrationFailureContent = useCallback((failure: MigrationApplyFailure): string => {
+        const details: string[] = [];
+        if (failure.relationName) {
+            details.push(`Missing database item: ${failure.relationName}.`);
+        }
+        if (failure.errorCode) {
+            details.push(`Error code: ${failure.errorCode}.`);
+        }
+        if (failure.canRegenerate) {
+            details.push("Use Regenerate update to rebuild this for your current database.");
+        }
+        if (!details.length) {
+            details.push(failure.errorText || "Please retry.");
+        }
+        return `Update failed. ${details.join(" ")}`;
+    }, []);
+
+    const shouldDedupeMigrationFailure = useCallback(
+        (proposalId: string, failure: MigrationApplyFailure): boolean => {
+            const key = `${proposalId}:${failure.errorCode || "none"}:${failure.relationName || "none"}`;
+            const now = Date.now();
+            const last = migrationFailureSeenAtRef.current[key] || 0;
+            migrationFailureSeenAtRef.current[key] = now;
+            return now - last < 60_000;
+        },
+        [],
+    );
+
+    const runPostMigrationRefreshPipeline = useCallback(async () => {
+        const runId = Date.now();
+
+        setMessages((prev) => [
+            ...prev,
+            {
+                id: `mig_progress_applied_${runId}`,
+                role: "assistant",
+                content: "Migration applied. Regenerating app…",
+                timestamp: new Date(),
+                type: "text",
+            },
+        ]);
+
+        await syncFilesFromServer({ applyToState: true }).catch(() => null);
+
+        setMessages((prev) => [
+            ...prev,
+            {
+                id: `mig_progress_restart_${runId}`,
+                role: "assistant",
+                content: "Restarting preview…",
+                timestamp: new Date(),
+                type: "text",
+            },
+        ]);
+
+        if (typeof window !== "undefined") {
+            window.dispatchEvent(
+                new CustomEvent("kloner:preview-force-fresh", {
+                    detail: { appId, reason: "migration-applied" },
+                }),
+            );
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+        const start = Date.now();
+        let ready = previewReadyRef.current;
+        while (!ready && Date.now() - start < 45_000) {
+            await new Promise((resolve) => setTimeout(resolve, 1000));
+            ready = previewReadyRef.current;
+        }
+
+        setMessages((prev) => [
+            ...prev,
+            {
+                id: `mig_progress_ready_${runId}`,
+                role: "assistant",
+                content: ready ? "Ready." : "Restart started. Your app should be ready shortly.",
+                timestamp: new Date(),
+                type: "text",
+            },
+        ]);
+    }, [appId, syncFilesFromServer]);
 
     const handleDatabaseConnect = useCallback((connection: DatabaseConnection) => {
         setDatabaseConnections(prev => [...prev.filter(c => c.id !== connection.id), connection]);
@@ -2105,19 +2326,28 @@ export default function AppBuilderEditorAgentChat({ appId, files, onFileEdit, on
                 const json = await res.json().catch(() => ({} as any));
 
                 if (!res.ok || json?.ok === false) {
-                    const msg = typeof json?.error === "string" ? json.error : "Failed to apply migration.";
-                    setMessages((prev) => [
-                        ...prev,
-                        {
-                            id: `mig_fail_${Date.now()}`,
-                            role: "assistant",
-                            content: `Migration failed: ${msg}`,
-                            timestamp: new Date(),
-                            type: "text",
-                            migrationProposalId: proposalId,
-                            migrationStatus: "FAILED",
-                        },
-                    ]);
+                    const failure = parseMigrationApplyFailure(json);
+                    const deduped = shouldDedupeMigrationFailure(proposalId, failure);
+                    if (!deduped) {
+                        setMessages((prev) => [
+                            ...prev,
+                            {
+                                id: `mig_fail_${Date.now()}`,
+                                role: "assistant",
+                                content: formatMigrationFailureContent(failure),
+                                timestamp: new Date(),
+                                type: "text",
+                                migrationProposalId: proposalId,
+                                migrationStatus: "FAILED",
+                                migrationErrorCode: failure.errorCode || undefined,
+                                migrationRelationName: failure.relationName || undefined,
+                                migrationCanRegenerate: failure.canRegenerate || undefined,
+                                migrationRetryPrompt: failure.canRegenerate
+                                    ? buildMigrationRetryPrompt(failure.relationName, failure.errorCode)
+                                    : undefined,
+                            },
+                        ]);
+                    }
                     return;
                 }
 
@@ -2136,20 +2366,29 @@ export default function AppBuilderEditorAgentChat({ appId, files, onFileEdit, on
 
                 // If we staged code edits behind this migration, apply them now.
                 markMigrationApplied(proposalId);
+                await runPostMigrationRefreshPipeline();
             } catch (err) {
                 console.error("Migration apply error:", err);
-                setMessages((prev) => [
-                    ...prev,
-                    {
-                        id: `mig_err_${Date.now()}`,
-                        role: "assistant",
-                        content: "Sorry, I couldn’t apply that migration. Please try again.",
-                        timestamp: new Date(),
-                        type: "text",
-                        migrationProposalId: proposalId,
-                        migrationStatus: "FAILED",
-                    },
-                ]);
+                const failure: MigrationApplyFailure = {
+                    errorText: "Sorry, I couldn’t apply that migration. Please retry.",
+                    errorCode: null,
+                    relationName: null,
+                    canRegenerate: false,
+                };
+                if (!shouldDedupeMigrationFailure(proposalId, failure)) {
+                    setMessages((prev) => [
+                        ...prev,
+                        {
+                            id: `mig_err_${Date.now()}`,
+                            role: "assistant",
+                            content: formatMigrationFailureContent(failure),
+                            timestamp: new Date(),
+                            type: "text",
+                            migrationProposalId: proposalId,
+                            migrationStatus: "FAILED",
+                        },
+                    ]);
+                }
             } finally {
                 setApplyingMigrationIds((prev) => {
                     const next = { ...prev };
@@ -2826,6 +3065,44 @@ export default function AppBuilderEditorAgentChat({ appId, files, onFileEdit, on
                                                 {message.migrationSql}
                                             </pre>
                                         )}
+
+                                        {message.migrationStatus === "FAILED" ? (
+                                            <div className="mt-3 rounded border border-red-200 bg-red-50 p-2 text-xs text-red-900">
+                                                <div className="font-semibold">Database update failed</div>
+                                                {message.migrationRelationName ? (
+                                                    <div className="mt-1">Missing item: {message.migrationRelationName}</div>
+                                                ) : null}
+                                                {message.migrationErrorCode ? (
+                                                    <div className="mt-1">Error code: {message.migrationErrorCode}</div>
+                                                ) : null}
+                                                <div className="mt-2 flex flex-wrap items-center gap-2">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setMigrationReviewMessageId(message.id);
+                                                            setMigrationAcknowledge(false);
+                                                            setMigrationConfirmText("");
+                                                            setMigrationShowSqlInModal(false);
+                                                        }}
+                                                        className="px-2 py-1 text-xs bg-white border border-red-300 rounded hover:bg-red-100"
+                                                    >
+                                                        Retry apply
+                                                    </button>
+                                                    {message.migrationCanRegenerate && message.migrationRetryPrompt ? (
+                                                        <button
+                                                            type="button"
+                                                            disabled={isLoading}
+                                                            onClick={() => {
+                                                                void sendMessage({ forcedInput: message.migrationRetryPrompt });
+                                                            }}
+                                                            className="px-2 py-1 text-xs bg-white border border-red-300 rounded hover:bg-red-100 disabled:opacity-50"
+                                                        >
+                                                            Regenerate update
+                                                        </button>
+                                                    ) : null}
+                                                </div>
+                                            </div>
+                                        ) : null}
                                     </div>
                                 </div>
                             ) : null}
@@ -3332,11 +3609,25 @@ export default function AppBuilderEditorAgentChat({ appId, files, onFileEdit, on
                                                     });
                                                     const json = await res.json().catch(() => ({} as any));
                                                     if (!res.ok || json?.ok === false) {
-                                                        const msgErr = typeof json?.error === "string" ? json.error : "Failed to apply migration.";
+                                                        const failure = parseMigrationApplyFailure(json);
+                                                        const failureText = formatMigrationFailureContent(failure);
+                                                        shouldDedupeMigrationFailure(proposalId, failure);
                                                         setMessages((prev) =>
                                                             prev.map((m) =>
                                                                 m.id === migrationReviewMessageId
-                                                                    ? { ...m, migrationStatus: "FAILED", content: `${m.content}\n\nMigration failed: ${msgErr}` }
+                                                                    ? {
+                                                                          ...m,
+                                                                          migrationStatus: "FAILED",
+                                                                          migrationErrorCode: failure.errorCode || undefined,
+                                                                          migrationRelationName: failure.relationName || undefined,
+                                                                          migrationCanRegenerate: failure.canRegenerate || undefined,
+                                                                          migrationRetryPrompt: failure.canRegenerate
+                                                                              ? buildMigrationRetryPrompt(failure.relationName, failure.errorCode)
+                                                                              : undefined,
+                                                                          content: String(m.content || "").includes(failureText)
+                                                                              ? m.content
+                                                                              : `${m.content}\n\n${failureText}`,
+                                                                      }
                                                                     : m
                                                             )
                                                         );
@@ -3352,13 +3643,20 @@ export default function AppBuilderEditorAgentChat({ appId, files, onFileEdit, on
 
                                                     // If we staged code edits behind this migration, apply them now.
                                                     markMigrationApplied(proposalId);
+                                                    await runPostMigrationRefreshPipeline();
                                                     setMigrationReviewMessageId(null);
                                                 } catch (e) {
                                                     console.error("Migration apply error:", e);
                                                     setMessages((prev) =>
                                                         prev.map((m) =>
                                                             m.id === migrationReviewMessageId
-                                                                ? { ...m, migrationStatus: "FAILED", content: `${m.content}\n\nMigration failed.` }
+                                                                ? {
+                                                                      ...m,
+                                                                      migrationStatus: "FAILED",
+                                                                      content: String(m.content || "").includes("Update failed.")
+                                                                          ? m.content
+                                                                          : `${m.content}\n\nUpdate failed. Please retry.`,
+                                                                  }
                                                                 : m
                                                         )
                                                     );
