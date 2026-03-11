@@ -563,7 +563,9 @@ export async function POST(req: NextRequest) {
 
             // Determine whether Supabase is actually connected (source of truth used elsewhere in the product).
             const supabase = await getSupabaseIntegrationStatus({ db, uid, appId });
-            const hasAnyDb = supabase.connected || databaseConnections.length > 0;
+            const hasSupabaseForApp = Boolean(supabase.connected);
+            const hasUiDbConnections = databaseConnections.length > 0;
+            const hasAnyDbSignal = hasSupabaseForApp || hasUiDbConnections;
             const userDeclinedDb =
                 messageExplicitlyDeclinesDatabase(message) ||
                 userDeclinedDatabaseInRecentHistory(conversationHistory);
@@ -575,9 +577,10 @@ export async function POST(req: NextRequest) {
 
             // Security-first guard: if a request likely needs persistence/auth and no DB is connected,
             // do not implement fake/local auth. Instead, push the user to connect Supabase.
-            if (requestLikelyNeedsDatabase(message) && !hasAnyDb && !allowUiOnlyAuthWithoutDb && !allowBasicWithoutDb) {
-                const response =
-                    "This feature needs secure, persistent storage (database) to be safe. Right now no database is connected, so I won’t create local/in-memory users or store passwords on the client.\n\nDo you want to connect Supabase now and have me set up authentication + the required schema (e.g. a profiles table + RLS) for you?";
+            if (requestLikelyNeedsDatabase(message) && !hasSupabaseForApp && !allowUiOnlyAuthWithoutDb && !allowBasicWithoutDb) {
+                const response = hasUiDbConnections
+                    ? "This request needs persistent storage, but Supabase is not currently connected to this app. I won’t generate database-dependent code until Supabase is connected to avoid partial/staged changes.\n\nPlease connect Supabase now, then I can continue and create the required schema safely."
+                    : "This feature needs secure, persistent storage (database) to be safe. Right now no database is connected, so I won’t create local/in-memory users or store passwords on the client.\n\nDo you want to connect Supabase now and have me set up authentication + the required schema (e.g. a profiles table + RLS) for you?";
 
                 if (persistChat) {
                     try {
@@ -646,11 +649,13 @@ export async function POST(req: NextRequest) {
                     ? `\n\nLast build failed. Here are the build logs (most recent):\n${lastBuild.logs}`
                     : "";
 
-                const dbContext = hasAnyDb
+                const dbContext = hasAnyDbSignal
                     ? `\n\nDatabase status:\n- Supabase integration: ${supabase.connected ? `connected${supabase.projectRef ? ` (${supabase.projectRef})` : ""}` : "not connected"}\n${databaseConnections.length > 0
                         ? `\nConnected databases with MCP integration:\n${databaseConnections
                             .map((db) => `- ${db.name} (${db.type}): Full MCP access to database operations, schema exploration, query generation, and real-time development tools`)
                             .join("\n")}`
+                        : ""}${!hasSupabaseForApp && hasUiDbConnections
+                        ? "\n- Important: Supabase is not connected for this app right now. Do not generate persistence-dependent code or schema plans until Supabase is connected."
                         : ""}`
                     : "\n\nNo databases connected yet.";
 
