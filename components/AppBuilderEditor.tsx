@@ -4850,7 +4850,7 @@ export default function AppBuilderEditor({
                             </div>
 
                             <h3 className="text-xl font-semibold text-neutral-900">
-                                Your first build is ready. Publish it live?
+                                Like what you built? Publish it live next.
                             </h3>
                             <p className="mt-2 text-sm text-neutral-600">
                                 Unlock Next.js 16 app deploys, HTML website deploys, and higher generation credits.
