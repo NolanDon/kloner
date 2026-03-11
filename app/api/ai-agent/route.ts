@@ -169,6 +169,12 @@ function fileEditsLookLikeInsecureLocalAuth(edits: FileEdit[]): boolean {
     return redFlags.some((fn) => fn(joined));
 }
 
+function fileEditsUseBrowserModalApis(edits: FileEdit[]): boolean {
+    const joined = edits.map((e) => `${e.path}\n${e.content}`).join("\n\n");
+    const blockedModalApi = /\b(?:window\s*\.\s*)?(?:alert|confirm|prompt)\s*\(/i;
+    return blockedModalApi.test(joined);
+}
+
 async function getSupabaseIntegrationStatus(params: { db: any; uid: string; appId: string }): Promise<{ connected: boolean; projectRef: string | null }> {
     const { db, uid, appId } = params;
     try {
@@ -672,6 +678,8 @@ export async function POST(req: NextRequest) {
 SECURITY + PERSISTENCE (TOP PRIORITY):
 - NEVER implement "fake" auth or user storage using localStorage/sessionStorage/in-memory arrays/JSON files.
 - NEVER store passwords client-side, never store plaintext passwords anywhere.
+- NEVER use browser modal APIs (alert/confirm/prompt) for user feedback in generated app code.
+- For warnings/errors/success states, use in-app UI patterns (inline banner, toast/snackbar, form helper text, or modal component rendered in React), not window-level dialogs.
 - If the user requests authentication, user accounts, or any persistent data feature and a database is not connected, DO NOT implement workarounds. Instead:
     - ask the user to connect Supabase,
     - set setupDatabase: true,
@@ -758,6 +766,20 @@ ${buildContext}`;
 
                 // Post-parse guard: never allow insecure local user storage/auth to land in app files.
                 const fileEdits = Array.isArray(parsed.fileEdits) ? (parsed.fileEdits as FileEdit[]) : [];
+                if (fileEdits.length > 0 && fileEditsUseBrowserModalApis(fileEdits)) {
+                    return NextResponse.json(
+                        {
+                            response:
+                                "I blocked this edit because it used browser dialogs (alert/confirm/prompt). I can regenerate it using in-app UI feedback (banner/toast/modal component) so it works reliably in embedded preview.",
+                            refreshServer: false,
+                            fileEdits: [],
+                            setupDatabase: false,
+                            dbMigrations: [],
+                        },
+                        { status: 200 },
+                    );
+                }
+
                 if (fileEdits.length > 0 && fileEditsLookLikeInsecureLocalAuth(fileEdits)) {
                     return NextResponse.json(
                         {
