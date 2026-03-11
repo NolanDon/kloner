@@ -1821,6 +1821,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
     onClick,
     onAppClick,
     sourceUrl,
+    sourceUrlCannotGenerate = false,
     highlight,
     isAdmin: _isAdmin,
     onStartFromTemplate,
@@ -1831,6 +1832,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
     onClick: () => void;
     onAppClick?: () => void;
     sourceUrl?: string | null;
+    sourceUrlCannotGenerate?: boolean;
     highlight?: boolean;
     isAdmin: boolean;
     onStartFromTemplate?: () => void;
@@ -1859,6 +1861,8 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
         return /^https?:\/\//i.test(raw);
     }, [sourceUrl]);
 
+    const canUseSimpleHtml = canGenerateHtmlFromUrl && !sourceUrlCannotGenerate;
+
     // Consider the card disabled if either the parent says so or we've just been clicked.
     const effectiveLocked = locked || localDisabled;
 
@@ -1878,12 +1882,13 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
             return;
         }
         if (selectedGenerationType === "html") {
+            if (!canUseSimpleHtml) return;
             handleWebsiteGeneration();
         }
     };
 
     const handleWebsiteGeneration = () => {
-        if (effectiveLocked) return;
+        if (effectiveLocked || !canUseSimpleHtml) return;
         setShowGenerationModal(false);
 
         // Immediately prevent further clicks to avoid double-generation.
@@ -2094,7 +2099,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                     <button
                                         type="button"
                                         onClick={() => setSelectedGenerationType("html")}
-                                        disabled={effectiveLocked}
+                                        disabled={effectiveLocked || !canUseSimpleHtml}
                                         className={`relative w-full rounded-xl border p-4 text-left transition disabled:opacity-60 disabled:cursor-not-allowed ${selectedGenerationType === "html"
                                             ? "border-[rgba(245,95,42,0.65)] bg-[linear-gradient(180deg,rgba(245,95,42,0.06),rgba(255,255,255,0))]"
                                             : "border-neutral-200 bg-white hover:bg-neutral-50 hover:border-neutral-300"
@@ -2136,9 +2141,12 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                                         {sourceUrlDisplay || "(none selected)"}
                                                     </div>
                                                 </div>
-                                                <div className="mt-1 text-[11px] leading-4 text-neutral-500">
-                                                    Clone: <span className="font-mono font-semibold text-accent">{sourceUrlDisplay || "(no URL selected)"}</span>
-                                                </div>
+                                                {!canUseSimpleHtml ? (
+                                                    <div className="mt-2 inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700">
+                                                        <MessageCircleWarning className="h-3 w-3" />
+                                                        URL scan failed. Retry scan before cloning.
+                                                    </div>
+                                                ) : null}
                                                 <div className="mt-1 text-[11px] leading-4 text-neutral-500">
                                                     Best for: simple landing pages, brochure sites, fast iterations, and projects with no auth or database requirements.
                                                 </div>
@@ -2201,7 +2209,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                 <button
                                     type="button"
                                     onClick={handleContinueGeneration}
-                                    disabled={effectiveLocked || !selectedGenerationType}
+                                    disabled={effectiveLocked || !selectedGenerationType || (selectedGenerationType === "html" && !canUseSimpleHtml)}
                                     className="rounded-xl px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-60 disabled:cursor-not-allowed"
                                     style={{ backgroundColor: ACCENT }}
                                 >
@@ -8041,6 +8049,7 @@ export default function PreviewPage(): JSX.Element {
                                     <GhostGeneratePreviewCard
                                         locked={captureLocked}
                                         sourceUrl={targetUrl}
+                                            sourceUrlCannotGenerate={activeUrlCannotGenerate}
                                         highlight={shouldHighlightCreateWebsiteCta}
                                         onClick={() => {
                                             if (groupedShots.length > 0) {
@@ -8086,6 +8095,7 @@ export default function PreviewPage(): JSX.Element {
                                                 key={`ghost-${group.snapshotId || first.path}`}
                                                 locked={captureLocked || locked}
                                                 sourceUrl={targetUrl}
+                                                sourceUrlCannotGenerate={activeUrlCannotGenerate}
                                                 highlight={shouldHighlightCreateWebsiteCta}
                                                 onClick={() => buildFromCollection(collectionKeys)}
                                                 onAppClick={() => {
@@ -8166,6 +8176,7 @@ export default function PreviewPage(): JSX.Element {
                                                 <GhostGeneratePreviewCard
                                                     locked={locked}
                                                     sourceUrl={targetUrl}
+                                                    sourceUrlCannotGenerate={activeUrlCannotGenerate}
                                                     highlight={shouldHighlightCreateWebsiteCta}
                                                     onClick={() => {
                                                         if (groupedShots.length > 0) {
@@ -8272,6 +8283,7 @@ export default function PreviewPage(): JSX.Element {
                                             key={`ghost-${group.snapshotId || first.path}`}
                                             locked={captureLocked || locked}
                                             sourceUrl={targetUrl}
+                                            sourceUrlCannotGenerate={activeUrlCannotGenerate}
                                             highlight={shouldHighlightCreateWebsiteCta}
                                             onClick={() => buildFromCollection(collectionKeys)}
                                             onAppClick={() => {
