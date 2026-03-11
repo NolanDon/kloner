@@ -3925,19 +3925,19 @@ export default function AppBuilderEditor({ appId, onClose, onDeploy, agentWelcom
                             >
                                 <Database className="w-4 h-4 shrink-0" />
                                 {supabaseConnected === null ? (
-                                    <span>DB: Verifying…</span>
+                                    <span>Database: Verifying…</span>
                                 ) : supabaseConnected ? (
                                     <span className="flex flex-col items-start leading-tight">
                                         <span className="text-[10px] font-bold uppercase tracking-wide opacity-70">
                                             {supabaseDbReachable === false
                                                 ? supabaseDbReason === "project_paused"
-                                                    ? "DB: Paused"
+                                                    ? "Database: Paused"
                                                     : supabaseDbReason === "timeout_or_network"
-                                                      ? "DB: Resuming"
+                                                      ? "Database: Resuming"
                                                       : "Unreachable"
                                                 : supabaseDbReachable === true
-                                                  ? "DB: Healthy"
-                                                  : "DB: Connected"}
+                                                  ? "Database: Healthy"
+                                                  : "Database: Connected"}
                                         </span>
                                         {supabaseProjectName ? (
                                             <span className="max-w-[110px] truncate font-semibold" title={supabaseProjectName}>

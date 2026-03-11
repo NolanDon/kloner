@@ -1171,17 +1171,79 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
     if (lastCookieBlockReportKeyRef.current === key) return;
     lastCookieBlockReportKeyRef.current = key;
 
-    void reportPreviewTimeout({
+    void reportPreviewAlert({
       appId,
       code: pollingCodeRef.current || undefined,
+      action: 'preview_embed_policy_blocked',
+      severity: 'error',
+      statusCode: 403,
       status: 'iframe_cookie_blocked',
       reason: args.reason,
       message: args.message,
       previewUrl: args.previewUrl || previewUrlRef.current,
-      browser,
-      userAgent: ua,
+      alertKeyOverride: `preview_embed_policy_blocked:${user?.uid || 'anonymous'}:${appId}:${String(args.reason || 'unknown').toLowerCase()}`,
+      backendStatusData: {
+        status: 'iframe_cookie_blocked',
+        uiStage: 'embedded_iframe',
+        debug: {
+          timeoutReason: String(args.reason || '').toLowerCase() || null,
+          browser,
+          userAgent: ua,
+        },
+      },
     });
   };
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const onCspViolation = (event: SecurityPolicyViolationEvent) => {
+      try {
+        const directive = String(event.effectiveDirective || event.violatedDirective || 'unknown').toLowerCase();
+        const blockedUri = String(event.blockedURI || '').trim();
+        const documentUri = String(event.documentURI || '').trim();
+        const sourceFile = String(event.sourceFile || '').trim();
+        const reason = `csp_${directive || 'unknown'}`;
+
+        void reportPreviewAlert({
+          appId,
+          code: pollingCodeRef.current || undefined,
+          action: 'preview_csp_violation',
+          severity: 'error',
+          statusCode: 403,
+          status: 'csp_violation',
+          reason,
+          message: `CSP blocked '${directive || 'unknown'}' in the preview/editor context.`,
+          previewUrl: previewUrlRef.current,
+          alertKeyOverride: `preview_csp_violation:${user?.uid || 'anonymous'}:${appId}:${directive}:${blockedUri || 'none'}:${sourceFile || 'none'}`,
+          backendStatusData: {
+            status: 'csp_violation',
+            uiStage: 'embedded_iframe',
+            debug: {
+              timeoutReason: reason,
+              csp: {
+                effectiveDirective: directive,
+                blockedURI: blockedUri || null,
+                documentURI: documentUri || null,
+                sourceFile: sourceFile || null,
+                lineNumber: Number.isFinite(event.lineNumber) ? event.lineNumber : null,
+                columnNumber: Number.isFinite(event.columnNumber) ? event.columnNumber : null,
+                disposition: String(event.disposition || '').trim() || null,
+                sample: String(event.sample || '').trim() || null,
+              },
+            },
+          },
+        });
+      } catch {
+        // ignore
+      }
+    };
+
+    window.addEventListener('securitypolicyviolation', onCspViolation as EventListener);
+    return () => {
+      window.removeEventListener('securitypolicyviolation', onCspViolation as EventListener);
+    };
+  }, [appId, user?.uid]);
 
   const markSafariEmbedFailure = (url: string) => {
     if (!isSafariLikeBrowser()) return;
@@ -4152,7 +4214,7 @@ export default function NavBar() {
             src={activePreviewUrl}
             className="w-full h-full border border-black/10 rounded-lg"
             title="App Preview"
-            sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+            sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"
             onLoad={() => {
               console.log('[WebContainerRunner] iframe onLoad (navigation complete):', previewUrl);
 
