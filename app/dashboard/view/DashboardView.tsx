@@ -1823,6 +1823,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
     sourceUrl,
     sourceUrlCannotGenerate = false,
     highlight,
+    autoOpenNonce,
     isAdmin: _isAdmin,
     onStartFromTemplate,
     onStartFromCommunityBuild,
@@ -1834,6 +1835,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
     sourceUrl?: string | null;
     sourceUrlCannotGenerate?: boolean;
     highlight?: boolean;
+    autoOpenNonce?: number;
     isAdmin: boolean;
     onStartFromTemplate?: () => void;
     onStartFromCommunityBuild?: () => void;
@@ -1844,6 +1846,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
     const [localDisabled, setLocalDisabled] = useState(false);
     const [showGenerationModal, setShowGenerationModal] = useState(false);
     const [selectedGenerationType, setSelectedGenerationType] = useState<"nextjs" | "html" | null>(null);
+    const lastAutoOpenNonceRef = useRef(0);
 
     const sourceUrlDisplay = useMemo(() => {
         const raw = (sourceUrl || "").trim();
@@ -1862,6 +1865,14 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
     }, [sourceUrl]);
 
     const canUseSimpleHtml = canGenerateHtmlFromUrl && !sourceUrlCannotGenerate;
+
+    useEffect(() => {
+        if (!autoOpenNonce) return;
+        if (autoOpenNonce === lastAutoOpenNonceRef.current) return;
+        lastAutoOpenNonceRef.current = autoOpenNonce;
+        setSelectedGenerationType(null);
+        setShowGenerationModal(true);
+    }, [autoOpenNonce]);
 
     // Consider the card disabled if either the parent says so or we've just been clicked.
     const effectiveLocked = locked || localDisabled;
@@ -2533,6 +2544,7 @@ export default function PreviewPage(): JSX.Element {
     >([]);
     const [hasAnyRenderDoc, setHasAnyRenderDoc] = useState(false);
     const [hasAnyAppDoc, setHasAnyAppDoc] = useState(false);
+    const [autoOpenGenerateModalNonce, setAutoOpenGenerateModalNonce] = useState(0);
     const [loadingRenders, setLoadingRenders] = useState(false);
     const [deletingApp, setDeletingApp] = useState<Record<string, boolean>>({});
     const [lockUntilByKey, setLockUntilByKey] = useState<
@@ -4677,6 +4689,34 @@ export default function PreviewPage(): JSX.Element {
 
     const capturePrevStatusRef = useRef<UrlStatusUi | null>(null);
     const captureSuccessShownForUrlRef = useRef<string>("");
+    const firstUrlEmailAttemptedUrlsRef = useRef<Set<string>>(new Set());
+
+    const triggerFirstUrlNextStepsEmail = useCallback(
+        async (url: string) => {
+            const normalized = validateAndNormalizePublicHttpUrl(url || "");
+            const canonical = normalized ? normUrl(normalized) : "";
+            if (!canonical) return;
+            if (firstUrlEmailAttemptedUrlsRef.current.has(canonical)) return;
+            firstUrlEmailAttemptedUrlsRef.current.add(canonical);
+
+            try {
+                const csrf = await ensureSessionAndCsrf().catch(() => null);
+                await fetch("/api/private/send-first-url-email", {
+                    method: "POST",
+                    headers: {
+                        "content-type": "application/json",
+                        ...(csrf ? { "x-csrf": csrf } : {}),
+                    },
+                    credentials: "same-origin",
+                    cache: "no-store",
+                    body: JSON.stringify({ url: canonical }),
+                });
+            } catch {
+                // Non-blocking: dashboard flow should not fail on email issues.
+            }
+        },
+        [],
+    );
 
     useEffect(() => {
         const urlKey = targetUrl ? normUrl(targetUrl) : "";
@@ -4712,7 +4752,9 @@ export default function PreviewPage(): JSX.Element {
         captureSuccessShownForUrlRef.current = urlKey;
 
         setSuccess(URL_ADD_SUCCESS_MESSAGE);
-    }, [captureStatus, targetUrl, lockMatches, err, info, isDuplicateUrlConfirmationMessage]);
+        setAutoOpenGenerateModalNonce((n) => n + 1);
+        void triggerFirstUrlNextStepsEmail(urlKey);
+    }, [captureStatus, targetUrl, lockMatches, err, info, isDuplicateUrlConfirmationMessage, triggerFirstUrlNextStepsEmail]);
 
     useEffect(() => {
         function onDocClick(e: MouseEvent) {
@@ -8088,8 +8130,9 @@ export default function PreviewPage(): JSX.Element {
                                     <GhostGeneratePreviewCard
                                         locked={captureLocked}
                                         sourceUrl={targetUrl}
-                                            sourceUrlCannotGenerate={activeUrlCannotGenerate}
+                                        sourceUrlCannotGenerate={activeUrlCannotGenerate}
                                         highlight={shouldHighlightCreateWebsiteCta}
+                                        autoOpenNonce={autoOpenGenerateModalNonce}
                                         onClick={() => {
                                             if (groupedShots.length > 0) {
                                                 const firstGroup = groupedShots[0];
@@ -8136,6 +8179,7 @@ export default function PreviewPage(): JSX.Element {
                                                 sourceUrl={targetUrl}
                                                 sourceUrlCannotGenerate={activeUrlCannotGenerate}
                                                 highlight={shouldHighlightCreateWebsiteCta}
+                                                autoOpenNonce={autoOpenGenerateModalNonce}
                                                 onClick={() => buildFromCollection(collectionKeys)}
                                                 onAppClick={() => {
                                                     startWebAppWizard({ seedRenderId: null, url: targetUrl || "" });
@@ -8217,6 +8261,7 @@ export default function PreviewPage(): JSX.Element {
                                                     sourceUrl={targetUrl}
                                                     sourceUrlCannotGenerate={activeUrlCannotGenerate}
                                                     highlight={shouldHighlightCreateWebsiteCta}
+                                                    autoOpenNonce={autoOpenGenerateModalNonce}
                                                     onClick={() => {
                                                         if (groupedShots.length > 0) {
                                                             const firstGroup = groupedShots[0];
@@ -8324,6 +8369,7 @@ export default function PreviewPage(): JSX.Element {
                                             sourceUrl={targetUrl}
                                             sourceUrlCannotGenerate={activeUrlCannotGenerate}
                                             highlight={shouldHighlightCreateWebsiteCta}
+                                            autoOpenNonce={autoOpenGenerateModalNonce}
                                             onClick={() => buildFromCollection(collectionKeys)}
                                             onAppClick={() => {
                                                 // Find the most recent render from this group (optional seed)
