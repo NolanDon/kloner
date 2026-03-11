@@ -2265,11 +2265,16 @@ export default function AppBuilderEditorAgentChat({ appId, files, onFileEdit, on
         }
     }, [applyRestorePoint, checkpoints, lastRestorePointId, onFileEdit]);
 
-    const sendMessage = async (opts?: { forcedInput?: string; forcedCompileFixContext?: CompileErrorQuickFixContext }) => {
+    const sendMessage = async (opts?: {
+        forcedInput?: string;
+        forcedCompileFixContext?: CompileErrorQuickFixContext;
+        allowWhenChatDisabled?: boolean;
+    }) => {
         const messageInput = typeof opts?.forcedInput === "string" ? opts.forcedInput : input;
         const activeCompileFixContext = opts?.forcedCompileFixContext ?? freeCompileFixContext;
+        const allowWhenChatDisabled = opts?.allowWhenChatDisabled === true;
 
-        if (chatDisabled) return;
+        if (chatDisabled && !allowWhenChatDisabled) return;
         if (!messageInput.trim() || isLoading) return;
 
         const compileFixPrefill = activeCompileFixContext ? buildCompileFixPrefill(activeCompileFixContext) : "";
@@ -2841,6 +2846,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, onFileEdit, on
                         key={message.id}
                         className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
                     >
+
                         <div
                             className={`max-w-[80%] rounded-lg p-3 ${message.role === "user"
                                 ? "bg-purple-50 border border-purple-200 text-gray-900"
@@ -2853,10 +2859,11 @@ export default function AppBuilderEditorAgentChat({ appId, files, onFileEdit, on
                                 <div className="mt-3 flex flex-wrap gap-2">
                                     <button
                                         type="button"
-                                        disabled={isLoading || chatDisabled}
+                                        disabled={isLoading}
                                         onClick={() => {
                                             const prompt = String(message.supabaseContinuationPrompt || "").trim();
-                                            if (!prompt || isLoading || chatDisabled) return;
+                                            const blocked = isLoading;
+                                            if (!prompt || blocked) return;
 
                                             setMessages((prev) =>
                                                 prev.map((m) =>
@@ -2866,7 +2873,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, onFileEdit, on
                                                 ),
                                             );
 
-                                            void sendMessage({ forcedInput: prompt });
+                                            void sendMessage({ forcedInput: prompt, allowWhenChatDisabled: true });
                                         }}
                                         className="inline-flex items-center rounded-full bg-[#F55F2A] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#E04E1B] disabled:opacity-50"
                                     >
@@ -2874,9 +2881,9 @@ export default function AppBuilderEditorAgentChat({ appId, files, onFileEdit, on
                                     </button>
                                     <button
                                         type="button"
-                                        disabled={isLoading || chatDisabled}
+                                        disabled={isLoading}
                                         onClick={() => {
-                                            if (isLoading || chatDisabled) return;
+                                            if (isLoading) return;
                                             setMessages((prev) => [
                                                 ...prev.map((m) =>
                                                     m.id === message.id
@@ -2906,6 +2913,9 @@ export default function AppBuilderEditorAgentChat({ appId, files, onFileEdit, on
                                             type="button"
                                             disabled={isLoading}
                                             onClick={() => {
+                                                const blocked = isLoading;
+                                                if (blocked) return;
+
                                                 setMessages((prev) =>
                                                     prev.map((m) =>
                                                         m.id === message.id
@@ -2913,9 +2923,12 @@ export default function AppBuilderEditorAgentChat({ appId, files, onFileEdit, on
                                                             : m,
                                                     ),
                                                 );
-                                                if (!isSupabaseConnectedRef.current) {
-                                                    setShowDatabaseSetup(true);
-                                                }
+
+                                                // Always open the Supabase integration popup from this CTA,
+                                                // even if already connected, so users can immediately manage/reconnect.
+                                                setShowDatabaseSetup(true);
+                                                setShowSupabaseAdvanced(false);
+                                                setShowSupabaseSetup(true);
                                             }}
                                             className="inline-flex items-center rounded-full bg-[#F55F2A] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#E04E1B] disabled:opacity-50"
                                         >
@@ -2927,6 +2940,9 @@ export default function AppBuilderEditorAgentChat({ appId, files, onFileEdit, on
                                         type="button"
                                         disabled={isLoading}
                                         onClick={() => {
+                                            const blocked = isLoading;
+                                            if (blocked) return;
+
                                             const prompt = String(message.dbSetupPrompt || "").trim();
                                             if (!prompt) return;
 
@@ -2939,7 +2955,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, onFileEdit, on
                                             );
 
                                             const forcedInput = `${prompt}\n\nContinue without Supabase or any database setup. Build a basic version that does not require database persistence. Use UI/in-memory behavior only, and do not store auth credentials or passwords.`;
-                                            void sendMessage({ forcedInput });
+                                            void sendMessage({ forcedInput, allowWhenChatDisabled: true });
                                         }}
                                         className="inline-flex items-center rounded-full bg-[#111827] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-black disabled:opacity-50"
                                     >
@@ -2948,7 +2964,11 @@ export default function AppBuilderEditorAgentChat({ appId, files, onFileEdit, on
 
                                     <button
                                         type="button"
+                                        disabled={isLoading}
                                         onClick={() => {
+                                            const blocked = isLoading;
+                                            if (blocked) return;
+
                                             setMessages((prev) => [
                                                 ...prev.map((m) =>
                                                     m.id === message.id
@@ -2964,7 +2984,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, onFileEdit, on
                                                 },
                                             ]);
                                         }}
-                                        className="inline-flex items-center rounded-full border border-black/10 bg-white px-3 py-1.5 text-xs font-semibold text-gray-800 transition hover:bg-black/5"
+                                        className="inline-flex items-center rounded-full border border-black/10 bg-white px-3 py-1.5 text-xs font-semibold text-gray-800 transition hover:bg-black/5 disabled:opacity-50"
                                     >
                                         Dismiss
                                     </button>
@@ -3249,7 +3269,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, onFileEdit, on
                                                 ) : null}
                                             </>
                                         )
-                                        : "PostgreSQL with auth & real-time"}
+                                        : "PostgreSQL with auth & real-time. Click here to get started."}
                                 </div>
                             </div>
                         </button>

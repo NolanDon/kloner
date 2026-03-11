@@ -194,6 +194,8 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
   const iframeLoadedSuccessfullyRef = useRef(false); // Track if iframe loaded successfully
   const lastForceFreshStartRef = useRef<number>(0);
   const pollingCodeRef = useRef<string | null>(null); // Track the current polling code
+  const activePollCodeRef = useRef<string | null>(null); // Latest code that should be polled; stale poll loops must bail
+  const previewRegistrationGraceUntilRef = useRef<number>(0); // Allow extra registration time for brand-new machines
   const backendReadyRef = useRef(false); // Backend contract: `ready === true` is authoritative
   const lastUiStageRef = useRef<string>('');
   const lastStatusRef = useRef<string>('');
@@ -1100,6 +1102,8 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
     appLoadedSuccessfullyRef.current = false; // Reset server success flag
     iframeLoadedSuccessfullyRef.current = false; // Reset iframe success flag
     pollingCodeRef.current = null; // Reset polling code
+    activePollCodeRef.current = null;
+    previewRegistrationGraceUntilRef.current = 0;
     compileErrorActiveFingerprintRef.current = null;
     iframePostLoadRecoveryCountRef.current = 0;
     pollFetchFailureCountRef.current = 0;
@@ -1762,6 +1766,8 @@ export default function NavBar() {
     appLoadedSuccessfullyRef.current = false;
     iframeLoadedSuccessfullyRef.current = false;
     pollingCodeRef.current = null;
+    activePollCodeRef.current = null;
+    previewRegistrationGraceUntilRef.current = 0;
     backendReadyRef.current = false;
     pollStartedAtRef.current = 0;
     pollFetchFailureCountRef.current = 0;
@@ -1805,6 +1811,8 @@ export default function NavBar() {
     appLoadedSuccessfullyRef.current = false;
     iframeLoadedSuccessfullyRef.current = false;
     pollingCodeRef.current = null;
+    activePollCodeRef.current = null;
+    previewRegistrationGraceUntilRef.current = 0;
     backendReadyRef.current = false;
     pollStartedAtRef.current = 0;
     pollFetchFailureCountRef.current = 0;
@@ -1887,6 +1895,8 @@ export default function NavBar() {
           appLoadedSuccessfullyRef.current = false;
           iframeLoadedSuccessfullyRef.current = false;
           pollingCodeRef.current = null;
+          activePollCodeRef.current = null;
+          previewRegistrationGraceUntilRef.current = 0;
           hubStatusUrlRef.current = null;
           latestDeploymentUrlRef.current = '';
           lastReportedStatusRef.current = '';
@@ -2432,6 +2442,8 @@ export default function NavBar() {
 
         console.log('App creation started, tracking code:', code);
         pollingCodeRef.current = code;
+        activePollCodeRef.current = code;
+        previewRegistrationGraceUntilRef.current = Date.now() + (isForceFreshStart ? 4 * 60_000 : 2 * 60_000);
 
         // Store the container code for future connections
         await storeContainerCode(appId, code, user);
@@ -2444,6 +2456,18 @@ export default function NavBar() {
         // Start polling for status
         const pollStatus = async () => {
           if (startRunIdRef.current !== runId) return; // Component was unmounted
+
+          // Guard against stale polling loops from older starts that can keep hitting
+          // an old preview code while a fresh machine is warming up.
+          const activeCode = activePollCodeRef.current || pollingCodeRef.current;
+          if (activeCode && activeCode !== code) {
+            console.warn('[WebContainerRunner] Ignoring stale poll loop (code mismatch)', {
+              appId,
+              staleCode: code,
+              activeCode,
+            });
+            return;
+          }
 
           // Hard timeout guard (12 minutes)
           if (pollStartedAtRef.current && Date.now() - pollStartedAtRef.current > HARD_POLL_TIMEOUT_MS) {
@@ -2508,9 +2532,22 @@ export default function NavBar() {
 
             const activeHubStatusUrl = hubStatusUrlRef.current;
             if (activeHubStatusUrl) {
+              const activeHubCode = deriveCodeFromHubStatusUrl(activeHubStatusUrl);
+              if (activeHubCode && activeCode && activeHubCode !== activeCode) {
+                console.warn('[WebContainerRunner] Ignoring stale hub status url before fetch (active code mismatch)', {
+                  appId,
+                  activeCode,
+                  activeHubCode,
+                });
+                hubStatusUrlRef.current = null;
+              }
+            }
+
+            const nextHubStatusUrl = hubStatusUrlRef.current;
+            if (nextHubStatusUrl) {
               // Poll the hub status endpoint directly once we have a viewer token.
               try {
-                statusResponse = await fetch(activeHubStatusUrl, { method: 'GET', cache: 'no-store', credentials: 'omit' });
+                statusResponse = await fetch(nextHubStatusUrl, { method: 'GET', cache: 'no-store', credentials: 'omit' });
               } catch (err) {
                 // If the browser blocks this (CORS) or network fails, fall back to our API proxy.
                 console.warn('[WebContainerRunner] Hub status poll failed; falling back to /api/webcontainer-status', err);
@@ -2611,9 +2648,14 @@ export default function NavBar() {
               // Handle 404s specially for newly created containers
               if (statusResponse.status === 404) {
                 containerNotFoundCountRef.current += 1;
-                const maxNotFoundAttempts = isForceFreshStart
-                  ? Math.max(maxContainerNotFound, 12)
-                  : maxContainerNotFound;
+                const now = Date.now();
+                const inRegistrationGrace = previewRegistrationGraceUntilRef.current > now;
+                const baseMaxNotFoundAttempts = isForceFreshStart
+                  ? Math.max(maxContainerNotFound, 24)
+                  : Math.max(maxContainerNotFound, 12);
+                const maxNotFoundAttempts = inRegistrationGrace
+                  ? Math.max(baseMaxNotFoundAttempts, 48)
+                  : baseMaxNotFoundAttempts;
                 console.log(`Container not found (404) - attempt ${containerNotFoundCountRef.current}/${maxNotFoundAttempts}`);
 
                 // Provide a helpful UI status while waiting for the backend to register the preview.
@@ -2786,6 +2828,19 @@ export default function NavBar() {
             // If backend/hub provided a URL, always surface it immediately.
             // This ensures the iframe can show its own /__preview loader and we avoid a second outer loader.
             if (deploymentUrl) {
+              const deploymentCode = derivePreviewCodeFromUrl(deploymentUrl);
+              if (deploymentCode && deploymentCode !== code) {
+                console.warn('[WebContainerRunner] Ignoring stale deployment URL from status payload (code mismatch)', {
+                  appId,
+                  expectedCode: code,
+                  deploymentCode,
+                  deploymentUrl,
+                });
+                hubStatusUrlRef.current = null;
+                statusPollTimeoutRef.current = setTimeout(pollStatus, POLL_INTERVAL_MS);
+                return;
+              }
+
               latestDeploymentUrlRef.current = deploymentUrl;
               if (!isValidPreviewUrlCandidate(deploymentUrl)) {
                 console.warn('[WebContainerRunner] Ignoring invalid preview url from status (missing /preview/<code>?)', {
@@ -2802,7 +2857,19 @@ export default function NavBar() {
 
               // Once we have the viewer token, switch polling to the hub status endpoint.
               const nextHub = buildHubStatusUrl(code, deploymentUrl);
-              if (nextHub) hubStatusUrlRef.current = nextHub;
+              if (nextHub) {
+                const nextHubCode = deriveCodeFromHubStatusUrl(nextHub);
+                const expectedCode = activePollCodeRef.current || pollingCodeRef.current || code;
+                if (nextHubCode && expectedCode && nextHubCode !== expectedCode) {
+                  console.warn('[WebContainerRunner] Refusing to adopt stale hub status url from status payload', {
+                    appId,
+                    expectedCode,
+                    nextHubCode,
+                  });
+                } else {
+                  hubStatusUrlRef.current = nextHub;
+                }
+              }
             }
 
             // Backend contract: treat `ready === true` as the completion signal.
@@ -3414,7 +3481,7 @@ export default function NavBar() {
             // Use the new async API cleanup endpoint if we have a polling code
             const cleanupUrl = pollingCodeRef.current
               ? `/api/webcontainer-delete?code=${pollingCodeRef.current}&appId=${appId}`
-              : '/api/webcontainer';
+              : `/api/webcontainer?appId=${encodeURIComponent(appId)}`;
             const cleanupBody = pollingCodeRef.current
               ? undefined
               : JSON.stringify({ appId });

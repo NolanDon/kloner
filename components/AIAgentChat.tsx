@@ -1869,7 +1869,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
             const promptRestartAfterSupabase = async () => {
                 const confirmed = await showConfirm(
                     "Supabase is connected.\n\nTo finish setup, we need to restart your environment. This can take a minute or two. Restart now?",
-                    "Restart preview to load Supabase?",
+                    "Restart required",
                 );
 
                 if (!confirmed) {
@@ -2265,11 +2265,16 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
         }
     }, [applyRestorePoint, checkpoints, lastRestorePointId, onFileEdit]);
 
-    const sendMessage = async (opts?: { forcedInput?: string; forcedCompileFixContext?: CompileErrorQuickFixContext }) => {
+    const sendMessage = async (opts?: {
+        forcedInput?: string;
+        forcedCompileFixContext?: CompileErrorQuickFixContext;
+        allowWhenChatDisabled?: boolean;
+    }) => {
         const messageInput = typeof opts?.forcedInput === "string" ? opts.forcedInput : input;
         const activeCompileFixContext = opts?.forcedCompileFixContext ?? freeCompileFixContext;
+        const allowWhenChatDisabled = opts?.allowWhenChatDisabled === true;
 
-        if (chatDisabled) return;
+        if (chatDisabled && !allowWhenChatDisabled) return;
         if (!messageInput.trim() || isLoading) return;
 
         const compileFixPrefill = activeCompileFixContext ? buildCompileFixPrefill(activeCompileFixContext) : "";
@@ -2878,10 +2883,11 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                                 <div className="mt-3 flex flex-wrap gap-2">
                                     <button
                                         type="button"
-                                        disabled={isLoading || chatDisabled}
+                                        disabled={isLoading}
                                         onClick={() => {
                                             const prompt = String(message.supabaseContinuationPrompt || "").trim();
-                                            if (!prompt || isLoading || chatDisabled) return;
+                                            const blocked = isLoading;
+                                            if (!prompt || blocked) return;
 
                                             setMessages((prev) =>
                                                 prev.map((m) =>
@@ -2891,7 +2897,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                                                 ),
                                             );
 
-                                            void sendMessage({ forcedInput: prompt });
+                                            void sendMessage({ forcedInput: prompt, allowWhenChatDisabled: true });
                                         }}
                                         className="inline-flex items-center rounded-full bg-[#F55F2A] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#E04E1B] disabled:opacity-50"
                                     >
@@ -2899,9 +2905,9 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                                     </button>
                                     <button
                                         type="button"
-                                        disabled={isLoading || chatDisabled}
+                                        disabled={isLoading}
                                         onClick={() => {
-                                            if (isLoading || chatDisabled) return;
+                                            if (isLoading) return;
                                             setMessages((prev) => [
                                                 ...prev.map((m) =>
                                                     m.id === message.id
@@ -2931,6 +2937,9 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                                             type="button"
                                             disabled={isLoading}
                                             onClick={() => {
+                                                const blocked = isLoading;
+                                                if (blocked) return;
+
                                                 setMessages((prev) =>
                                                     prev.map((m) =>
                                                         m.id === message.id
@@ -2938,9 +2947,12 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                                                             : m,
                                                     ),
                                                 );
-                                                if (!isSupabaseConnectedRef.current) {
-                                                    setShowDatabaseSetup(true);
-                                                }
+
+                                                // Always open the Supabase integration popup from this CTA,
+                                                // even if already connected, so users can immediately manage/reconnect.
+                                                setShowDatabaseSetup(true);
+                                                setShowSupabaseAdvanced(false);
+                                                setShowSupabaseSetup(true);
                                             }}
                                             className="inline-flex items-center rounded-full bg-[#F55F2A] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#E04E1B] disabled:opacity-50"
                                         >
@@ -2952,6 +2964,9 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                                         type="button"
                                         disabled={isLoading}
                                         onClick={() => {
+                                            const blocked = isLoading;
+                                            if (blocked) return;
+
                                             const prompt = String(message.dbSetupPrompt || "").trim();
                                             if (!prompt) return;
 
@@ -2964,7 +2979,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                                             );
 
                                             const forcedInput = `${prompt}\n\nContinue without Supabase or any database setup. Build a basic version that does not require database persistence. Use UI/in-memory behavior only, and do not store auth credentials or passwords.`;
-                                            void sendMessage({ forcedInput });
+                                            void sendMessage({ forcedInput, allowWhenChatDisabled: true });
                                         }}
                                         className="inline-flex items-center rounded-full bg-[#111827] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-black disabled:opacity-50"
                                     >
@@ -2973,7 +2988,11 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
 
                                     <button
                                         type="button"
+                                        disabled={isLoading}
                                         onClick={() => {
+                                            const blocked = isLoading;
+                                            if (blocked) return;
+
                                             setMessages((prev) => [
                                                 ...prev.map((m) =>
                                                     m.id === message.id
@@ -2989,7 +3008,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                                                 },
                                             ]);
                                         }}
-                                        className="inline-flex items-center rounded-full border border-black/10 bg-white px-3 py-1.5 text-xs font-semibold text-gray-800 transition hover:bg-black/5"
+                                        className="inline-flex items-center rounded-full border border-black/10 bg-white px-3 py-1.5 text-xs font-semibold text-gray-800 transition hover:bg-black/5 disabled:opacity-50"
                                     >
                                         Dismiss
                                     </button>
@@ -3287,7 +3306,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                             <div className="rounded-xl border border-black/10 bg-white p-3">
                                 <div className="text-sm font-semibold text-gray-900">Recommended</div>
                                 <div className="text-sm text-gray-700 mt-1">
-                                    Create a new Supabase project via OAuth. This is the safest setup and enables the guarded database migration flow.
+                                    Create a new database. This is the safest setup and enables you to store essential data such as products, users, or other information.
                                 </div>
                             </div>
 

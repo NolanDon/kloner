@@ -397,6 +397,24 @@ async function handleWebcontainerDelete(code: string, uid?: string) {
   }
 }
 
+async function getContainerCodeForApp(uid: string, appId: string): Promise<string | null> {
+  try {
+    const db = getAdminDb();
+    const appRef = db.collection('kloner_users').doc(uid).collection('kloner_apps').doc(appId);
+    const snap = await appRef.get();
+    if (!snap.exists) return null;
+    const data: any = snap.data() || {};
+    const code = typeof data?.containerCode === 'string' ? String(data.containerCode).trim() : '';
+    return code || null;
+  } catch (err) {
+    console.warn('[webcontainer] Failed to resolve container code from app document', {
+      appId,
+      error: err instanceof Error ? err.message : String(err || 'unknown_error'),
+    });
+    return null;
+  }
+}
+
 export async function POST(request: NextRequest) {
   console.log('WebContainer POST route hit! Method:', request.method, 'URL:', request.url);
 
@@ -465,11 +483,11 @@ export async function GET(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   const url = new URL(request.url);
-  const code = url.searchParams.get('code');
+  const queryCode = String(url.searchParams.get('code') || '').trim();
+  const queryAppId = String(url.searchParams.get('appId') || '').trim();
 
-  if (!code) {
-    return NextResponse.json({ error: 'Missing code parameter' }, { status: 400 });
-  }
+  let code = queryCode;
+  let appId = queryAppId;
 
   const internal = request.headers.get('x-kloner-internal') || '';
   const internalSecret = process.env.INTERNAL_API_SECRET || '';
@@ -479,10 +497,35 @@ export async function DELETE(request: NextRequest) {
     return requireSessionAndMaybeCsrf(
       request,
       async ({ uid, req: authedReq }) => {
+        // Backward compatibility: some callers send DELETE body with appId but no code.
+        if (!code || !appId) {
+          const body = await authedReq.json().catch(() => ({} as any));
+          if (!code) {
+            code = String(body?.code || '').trim();
+          }
+          if (!appId) {
+            appId = String(body?.appId || '').trim();
+          }
+        }
+
+        if (!code && appId) {
+          assertAppBuilderScope(authedReq, uid, appId);
+          code = (await getContainerCodeForApp(uid, appId)) || '';
+        }
+
+        if (!code) {
+          // Nothing to clean up; keep this idempotent instead of returning a noisy 400.
+          return new NextResponse(null, { status: 204 });
+        }
+
         return handleWebcontainerDelete(code, uid);
       },
       { csrf: true, methods: ['DELETE'] }
     );
+  }
+
+  if (!code) {
+    return NextResponse.json({ error: 'Missing code parameter' }, { status: 400 });
   }
 
   try {
