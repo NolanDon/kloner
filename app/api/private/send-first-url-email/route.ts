@@ -454,21 +454,16 @@ async function sendFirstUrlEmailForUser(args: {
     return { status: "sent" };
 }
 
-async function runBackfill(req: NextRequest) {
+async function runBackfill(body?: { limit?: number }) {
     const db = getAdminDb();
     const auth = getAdminAuth();
     const resend = getResend();
     const from = (process.env.JOURNEY_EMAIL_FROM || "Nolan from Kloner <nolan@kloner.app>").trim();
 
     let limit = BACKFILL_DEFAULT_LIMIT;
-    try {
-        const body = await req.json().catch(() => ({} as any));
-        const raw = Number(body?.limit);
-        if (Number.isFinite(raw) && raw > 0) {
-            limit = Math.min(BACKFILL_MAX_LIMIT, Math.floor(raw));
-        }
-    } catch {
-        // ignore malformed body and use default limit
+    const rawLimit = Number(body?.limit);
+    if (Number.isFinite(rawLimit) && rawLimit > 0) {
+        limit = Math.min(BACKFILL_MAX_LIMIT, Math.floor(rawLimit));
     }
 
     const usersSnap = await db.collection("kloner_users").get();
@@ -544,10 +539,69 @@ async function runBackfill(req: NextRequest) {
     );
 }
 
+async function runInternalTestSend(args: { testTo: string; name?: string }) {
+    const resend = getResend();
+    const from = (process.env.JOURNEY_EMAIL_FROM || "Nolan from Kloner <nolan@kloner.app>").trim();
+    const to = String(args.testTo || "").trim().toLowerCase();
+    const isValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to);
+    if (!isValidEmail) {
+        return NextResponse.json(
+            { ok: false, error: "Invalid test email" },
+            { status: 400, headers: { "Cache-Control": "no-store" } },
+        );
+    }
+
+    const dest = buildUtmGeneric(`${baseUrl()}/dashboard/view`, {
+        source: "journey_email",
+        campaign: `${FIRST_URL_CAMPAIGN_ID}_test`,
+        content: "next_steps",
+    });
+    const unsubUrl = `${baseUrl()}/dashboard/settings`;
+
+    await sendWithRateLimit(resend, {
+        from,
+        to,
+        subject: "[TEST] 🎉 You added your first URL — here is what to do next",
+        html: buildFirstUrlNextStepsHtml({
+            name: args.name || "Nolan",
+            ctaUrl: dest,
+            unsubUrl,
+        }),
+        text: buildFirstUrlNextStepsText({
+            name: args.name || "Nolan",
+            ctaUrl: dest,
+            unsubUrl,
+        }),
+    });
+
+    return NextResponse.json(
+        {
+            ok: true,
+            mode: "test-send",
+            to,
+            campaignId: FIRST_URL_CAMPAIGN_ID,
+        },
+        { headers: { "Cache-Control": "no-store" } },
+    );
+}
+
 export async function POST(req: NextRequest) {
     if (hasValidInternalKey(req)) {
         try {
-            return await runBackfill(req);
+            const body = (await req.json().catch(() => ({} as any))) as {
+                limit?: number;
+                testTo?: string;
+                name?: string;
+            };
+
+            if (typeof body.testTo === "string" && body.testTo.trim()) {
+                return await runInternalTestSend({
+                    testTo: body.testTo,
+                    name: body.name,
+                });
+            }
+
+            return await runBackfill({ limit: body.limit });
         } catch (err: any) {
             return NextResponse.json(
                 { error: err?.message || "Backfill failed" },
