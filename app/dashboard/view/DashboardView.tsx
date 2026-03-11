@@ -1940,12 +1940,12 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
         <>
             <div
                 className={`relative w-full overflow-hidden rounded-xl border bg-white transition-shadow ${highlight
-                    ? "border-orange-300 ring-2 ring-orange-200 shadow-[0_0_0_3px_rgba(251,146,60,0.18)]"
+                    ? "border-amber-300/80 ring-1 ring-amber-200/80 shadow-sm"
                     : "border-neutral-200 shadow-sm hover:shadow-md"
                     }`}
             >
                 {highlight ? (
-                    <div className="pointer-events-none absolute right-3 top-3 z-10 rounded-full border border-orange-200 bg-orange-50 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-orange-700">
+                    <div className="pointer-events-none absolute right-3 top-3 z-10 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-800">
                         Next step
                     </div>
                 ) : null}
@@ -1954,7 +1954,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                     onClick={handleClick}
                     disabled={localDisabled}
                     aria-disabled={effectiveLocked}
-                    className={`group flex aspect-square w-full flex-col items-center justify-center rounded-lg border-2 border-dashed bg-white px-5 py-6 text-center transition ${effectiveLocked ? "opacity-70 cursor-wait" : "cursor-pointer"} ${highlight ? "animate-pulse border-orange-300 hover:border-orange-400" : "border-neutral-300 hover:border-neutral-400"}`}
+                    className={`group flex aspect-square w-full flex-col items-center justify-center rounded-lg border-2 border-dashed bg-white px-5 py-6 text-center transition ${effectiveLocked ? "opacity-70 cursor-wait" : "cursor-pointer"} ${highlight ? "border-amber-300 bg-amber-50/20 hover:border-amber-400" : "border-neutral-300 hover:border-neutral-400"}`}
                     aria-label="Generate a new website or app"
                 >
                     <div
@@ -2531,6 +2531,8 @@ export default function PreviewPage(): JSX.Element {
     const [apps, setApps] = useState<
         Array<{ id: string; name: string; userId: string; createdAt: any; updatedAt: any }>
     >([]);
+    const [hasAnyRenderDoc, setHasAnyRenderDoc] = useState(false);
+    const [hasAnyAppDoc, setHasAnyAppDoc] = useState(false);
     const [loadingRenders, setLoadingRenders] = useState(false);
     const [deletingApp, setDeletingApp] = useState<Record<string, boolean>>({});
     const [lockUntilByKey, setLockUntilByKey] = useState<
@@ -2551,6 +2553,7 @@ export default function PreviewPage(): JSX.Element {
     useEffect(() => {
         if (!user) {
             setApps([]);
+            setHasAnyAppDoc(false);
             return;
         }
 
@@ -2564,6 +2567,7 @@ export default function PreviewPage(): JSX.Element {
                     id: doc.id,
                     ...(doc.data() as any),
                 }));
+                setHasAnyAppDoc(appList.length > 0);
                 // Keep archived apps off the main dashboard without requiring a Firestore index
                 // (and so legacy docs missing the `archived` field still show up).
                 // IMPORTANT: only treat boolean true as archived.
@@ -2575,6 +2579,7 @@ export default function PreviewPage(): JSX.Element {
                 if (code.includes("permission-denied")) {
                     push("Your session permissions expired. Refresh the page and sign in again.", "err");
                 }
+                setHasAnyAppDoc(false);
                 setApps([]);
             },
         );
@@ -2590,6 +2595,38 @@ export default function PreviewPage(): JSX.Element {
             }
         };
     }, [user, push]);
+
+    useEffect(() => {
+        if (!user) {
+            setHasAnyRenderDoc(false);
+            return;
+        }
+
+        const rendersRef = collection(db, "kloner_users", user.uid, "kloner_renders");
+        const rendersAnyQuery = query(rendersRef, limit(1));
+
+        const unsub = onSnapshot(
+            rendersAnyQuery,
+            (snap) => {
+                setHasAnyRenderDoc(!snap.empty);
+            },
+            (err) => {
+                console.warn("[firestore] hasAnyRenderDoc snapshot failed", err);
+                setHasAnyRenderDoc(false);
+            },
+        );
+
+        let didCleanup = false;
+        return () => {
+            if (didCleanup) return;
+            didCleanup = true;
+            try {
+                unsub();
+            } catch (err) {
+                console.warn("[firestore] hasAnyRenderDoc unsubscribe failed", err);
+            }
+        };
+    }, [user]);
 
     useEffect(() => {
         const billingParam = search.get("billing");
@@ -7244,16 +7281,11 @@ export default function PreviewPage(): JSX.Element {
         renders.some((r) => (r as any).lastExportedAt);
 
     const shouldHighlightCreateWebsiteCta = useMemo(() => {
-        const isUrlAddSuccess = success === URL_ADD_SUCCESS_MESSAGE;
-        if (!isUrlAddSuccess) return false;
-
         const isDev = process.env.NODE_ENV !== "production";
         if (isDev) return true;
 
-        const hasNoWebsiteGenerations = renders.length === 0;
-        const hasOnlyFirstSuccessfulUrl = successfulScannedUrls.length === 1;
-        return hasNoWebsiteGenerations && hasOnlyFirstSuccessfulUrl;
-    }, [success, renders.length, successfulScannedUrls.length]);
+        return !hasAnyRenderDoc && !hasAnyAppDoc;
+    }, [hasAnyAppDoc, hasAnyRenderDoc]);
 
     const planLabel =
         userTier === "unknown"
