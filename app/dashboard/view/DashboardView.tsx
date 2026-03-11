@@ -109,7 +109,7 @@ const CAPTURE_STALL_TIMEOUT_MS = 6 * 60 * 1000;
 const CAPTURE_ISSUE_NOTICE_MS = 10 * 1000;
 const FRONTEND_TIMEOUT_DEDUPE_TTL_MS = 10 * 60 * 1000;
 const FRONTEND_TIMEOUT_DEDUPE_STORAGE_KEY = "dashboardViewFrontendTimeoutAlertsV1";
-const URL_ADD_SUCCESS_MESSAGE = "URL added successfully! You can now generate websites from this URL below.";
+const URL_ADD_SUCCESS_MESSAGE = "We successfully added your first URL. Get started with your website below.";
 const APP_WIZARD_PROMPT_MAX_CHARS = 2000;
 const FIRST_GEN_TRIAL_OBSERVE_MS = 15 * 1000;
 const FIRST_GEN_TRIAL_SESSION_INTERVAL = 3;
@@ -1845,6 +1845,8 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
     sourceUrlCannotGenerate = false,
     highlight,
     autoOpenNonce,
+    autoOpenSuccessMessage,
+    onAutoOpenMessageDismiss,
     isAdmin: _isAdmin,
     onStartFromTemplate,
     onStartFromCommunityBuild,
@@ -1857,6 +1859,8 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
     sourceUrlCannotGenerate?: boolean;
     highlight?: boolean;
     autoOpenNonce?: number;
+    autoOpenSuccessMessage?: string;
+    onAutoOpenMessageDismiss?: () => void;
     isAdmin: boolean;
     onStartFromTemplate?: () => void;
     onStartFromCommunityBuild?: () => void;
@@ -1884,6 +1888,11 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
         const raw = (sourceUrl || "").trim();
         return /^https?:\/\//i.test(raw);
     }, [sourceUrl]);
+
+    const closeGenerationModal = useCallback(() => {
+        setShowGenerationModal(false);
+        onAutoOpenMessageDismiss?.();
+    }, [onAutoOpenMessageDismiss]);
 
     const canUseSimpleHtml = canGenerateHtmlFromUrl && !sourceUrlCannotGenerate;
 
@@ -1921,7 +1930,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
 
     const handleWebsiteGeneration = () => {
         if (effectiveLocked || !canUseSimpleHtml) return;
-        setShowGenerationModal(false);
+        closeGenerationModal();
 
         // Immediately prevent further clicks to avoid double-generation.
         setLocalDisabled(true);
@@ -1940,7 +1949,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
 
     const handleAppGeneration = () => {
         if (effectiveLocked) return;
-        setShowGenerationModal(false);
+        closeGenerationModal();
 
         if (onAppClick) {
             // Immediately prevent further clicks to avoid double-generation.
@@ -2025,7 +2034,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                             paddingBottom: "calc(1rem + env(safe-area-inset-bottom))",
                         }}
                         onMouseDown={(e) => {
-                            if (e.target === e.currentTarget) setShowGenerationModal(false);
+                            if (e.target === e.currentTarget) closeGenerationModal();
                         }}
                     >
                         <motion.div
@@ -2041,17 +2050,30 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                         >
                             <div className="flex shrink-0 items-start justify-between gap-4 border-b border-neutral-200 px-5 py-4">
                                 <div className="space-y-1">
-                                    <div className="text-sm font-semibold text-neutral-900">
-                                        Choose Generation Type
-                                    </div>
-                                    <div className="text-xs text-neutral-600">
-                                        Select what you&apos;d like to create.
-                                    </div>
+                                    {autoOpenSuccessMessage ? (
+                                        <>
+                                            <div className="text-sm font-semibold text-emerald-800">
+                                                {autoOpenSuccessMessage}
+                                            </div>
+                                            <div className="text-xs text-neutral-600">
+                                                Choose what you want to generate next.
+                                            </div>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <div className="text-sm font-semibold text-neutral-900">
+                                                Choose Generation Type
+                                            </div>
+                                            <div className="text-xs text-neutral-600">
+                                                Select what you&apos;d like to create.
+                                            </div>
+                                        </>
+                                    )}
                                 </div>
 
                                 <button
                                     type="button"
-                                    onClick={() => setShowGenerationModal(false)}
+                                    onClick={closeGenerationModal}
                                     className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-neutral-100 hover:bg-neutral-200"
                                     title="Close"
                                 >
@@ -2162,7 +2184,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                             <div className="flex-1 space-y-1">
                                                 <div className="flex items-center gap-2">
                                                     <div className="text-sm font-semibold text-neutral-900">
-                                                        Simple Landing Website HTML
+                                                        Simple Landing Page (HTML)
                                                     </div>
                                                     <span className="inline-flex whitespace-nowrap items-center rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-800">
                                                         15 preview credits
@@ -2240,7 +2262,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                             <div className="flex shrink-0 items-center justify-between gap-2 border-t border-neutral-200 px-5 py-4">
                                 <button
                                     type="button"
-                                    onClick={() => setShowGenerationModal(false)}
+                                    onClick={closeGenerationModal}
                                     className="rounded-xl border border-neutral-200 bg-white px-4 py-2 text-sm font-semibold text-neutral-800 hover:bg-neutral-50"
                                 >
                                     Cancel
@@ -2586,6 +2608,7 @@ export default function PreviewPage(): JSX.Element {
     const [hasAnyRenderDoc, setHasAnyRenderDoc] = useState(false);
     const [hasAnyAppDoc, setHasAnyAppDoc] = useState(false);
     const [autoOpenGenerateModalNonce, setAutoOpenGenerateModalNonce] = useState(0);
+    const [autoOpenGenerateSuccessMessage, setAutoOpenGenerateSuccessMessage] = useState("");
     const [loadingRenders, setLoadingRenders] = useState(false);
     const [deletingApp, setDeletingApp] = useState<Record<string, boolean>>({});
     const [lockUntilByKey, setLockUntilByKey] = useState<
@@ -4813,7 +4836,7 @@ export default function PreviewPage(): JSX.Element {
         if (captureSuccessShownForUrlRef.current === urlKey) return;
         captureSuccessShownForUrlRef.current = urlKey;
 
-        setSuccess(URL_ADD_SUCCESS_MESSAGE);
+        setAutoOpenGenerateSuccessMessage(URL_ADD_SUCCESS_MESSAGE);
         setAutoOpenGenerateModalNonce((n) => n + 1);
         void triggerFirstUrlNextStepsEmail(urlKey);
     }, [captureStatus, targetUrl, lockMatches, err, info, isDuplicateUrlConfirmationMessage, triggerFirstUrlNextStepsEmail]);
@@ -8366,6 +8389,8 @@ export default function PreviewPage(): JSX.Element {
                                         sourceUrlCannotGenerate={activeUrlCannotGenerate}
                                         highlight={shouldHighlightCreateWebsiteCta}
                                         autoOpenNonce={autoOpenGenerateModalNonce}
+                                        autoOpenSuccessMessage={autoOpenGenerateSuccessMessage}
+                                        onAutoOpenMessageDismiss={() => setAutoOpenGenerateSuccessMessage("")}
                                         onClick={() => {
                                             if (groupedShots.length > 0) {
                                                 const firstGroup = groupedShots[0];
@@ -8413,6 +8438,8 @@ export default function PreviewPage(): JSX.Element {
                                                 sourceUrlCannotGenerate={activeUrlCannotGenerate}
                                                 highlight={shouldHighlightCreateWebsiteCta}
                                                 autoOpenNonce={autoOpenGenerateModalNonce}
+                                                autoOpenSuccessMessage={autoOpenGenerateSuccessMessage}
+                                                onAutoOpenMessageDismiss={() => setAutoOpenGenerateSuccessMessage("")}
                                                 onClick={() => buildFromCollection(collectionKeys)}
                                                 onAppClick={() => {
                                                     startWebAppWizard({ seedRenderId: null, url: targetUrl || "" });
@@ -8495,6 +8522,8 @@ export default function PreviewPage(): JSX.Element {
                                                     sourceUrlCannotGenerate={activeUrlCannotGenerate}
                                                     highlight={shouldHighlightCreateWebsiteCta}
                                                     autoOpenNonce={autoOpenGenerateModalNonce}
+                                                    autoOpenSuccessMessage={autoOpenGenerateSuccessMessage}
+                                                    onAutoOpenMessageDismiss={() => setAutoOpenGenerateSuccessMessage("")}
                                                     onClick={() => {
                                                         if (groupedShots.length > 0) {
                                                             const firstGroup = groupedShots[0];
@@ -8603,6 +8632,8 @@ export default function PreviewPage(): JSX.Element {
                                             sourceUrlCannotGenerate={activeUrlCannotGenerate}
                                             highlight={shouldHighlightCreateWebsiteCta}
                                             autoOpenNonce={autoOpenGenerateModalNonce}
+                                            autoOpenSuccessMessage={autoOpenGenerateSuccessMessage}
+                                            onAutoOpenMessageDismiss={() => setAutoOpenGenerateSuccessMessage("")}
                                             onClick={() => buildFromCollection(collectionKeys)}
                                             onAppClick={() => {
                                                 // Find the most recent render from this group (optional seed)
