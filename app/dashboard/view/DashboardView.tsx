@@ -765,12 +765,12 @@ function RenderCardInner({
         }
 
         // Preview build
-        if (p < 10) return "Reading your screenshot…";
-        if (p < 25) return "Detecting layout…";
-        if (p < 45) return "Generating editable HTML… This process can take several minutes for complex pages.";
-        if (p < 65) return "Applying styles…";
-        if (p < 80) return "Linking sections…";
-        if (p < 95) return "Final polish…";
+        if (p < 10) return "Starting… ~4 min left";
+        if (p < 25) return "Reading layout… ~3 min left";
+        if (p < 45) return "Generating page… ~2 min left";
+        if (p < 65) return "Applying styles… ~1 min left";
+        if (p < 80) return "Linking sections… ~1 min left";
+        if (p < 95) return "Finalizing… <1 min left";
         return "Wrapping up…";
     }, [normalizedProgressPercent, isDeploying, r]);
 
@@ -1841,6 +1841,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
     const router = useRouter();
     const [localDisabled, setLocalDisabled] = useState(false);
     const [showGenerationModal, setShowGenerationModal] = useState(false);
+    const [selectedGenerationType, setSelectedGenerationType] = useState<"nextjs" | "html" | null>(null);
 
     const sourceUrlDisplay = useMemo(() => {
         const raw = (sourceUrl || "").trim();
@@ -1866,7 +1867,19 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
 
         // Even when locked (e.g. snapshots processing), allow opening the modal
         // but disable the options inside so users understand what's happening.
+        setSelectedGenerationType(null);
         setShowGenerationModal(true);
+    };
+
+    const handleContinueGeneration = () => {
+        if (effectiveLocked) return;
+        if (selectedGenerationType === "nextjs") {
+            handleAppGeneration();
+            return;
+        }
+        if (selectedGenerationType === "html") {
+            handleWebsiteGeneration();
+        }
     };
 
     const handleWebsiteGeneration = () => {
@@ -2025,9 +2038,12 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                     <div className="relative">
                                         <button
                                             type="button"
-                                            onClick={handleAppGeneration}
+                                            onClick={() => setSelectedGenerationType("nextjs")}
                                             disabled={effectiveLocked}
-                                            className="relative w-full overflow-visible rounded-xl border border-[rgba(245,95,42,0.45)] bg-[linear-gradient(180deg,rgba(245,95,42,0.06),rgba(255,255,255,0))] p-4 text-left shadow-sm transition hover:bg-[rgba(245,95,42,0.05)] hover:border-[rgba(245,95,42,0.65)] disabled:opacity-60 disabled:cursor-not-allowed"
+                                            className={`relative w-full overflow-visible rounded-xl border p-4 text-left shadow-sm transition disabled:opacity-60 disabled:cursor-not-allowed ${selectedGenerationType === "nextjs"
+                                                ? "border-[rgba(245,95,42,0.65)] bg-[linear-gradient(180deg,rgba(245,95,42,0.06),rgba(255,255,255,0))]"
+                                                : "border-neutral-200 bg-white hover:bg-neutral-50 hover:border-neutral-300"
+                                                }`}
                                         >
                                             {/* <span className="pointer-events-none absolute -right-2 -top-2 z-10 inline-flex items-center rounded-full border border-[rgba(245,95,42,0.45)] bg-white px-2 py-0.5 text-[11px] font-semibold text-[rgba(245,95,42,1)] shadow-sm">
                                                 Recommended
@@ -2077,9 +2093,12 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                 <div className="relative">
                                     <button
                                         type="button"
-                                        onClick={handleWebsiteGeneration}
+                                        onClick={() => setSelectedGenerationType("html")}
                                         disabled={effectiveLocked}
-                                        className="relative w-full rounded-xl border border-neutral-200 bg-white p-4 text-left transition hover:bg-neutral-50 hover:border-neutral-300 disabled:opacity-60 disabled:cursor-not-allowed"
+                                        className={`relative w-full rounded-xl border p-4 text-left transition disabled:opacity-60 disabled:cursor-not-allowed ${selectedGenerationType === "html"
+                                            ? "border-[rgba(245,95,42,0.65)] bg-[linear-gradient(180deg,rgba(245,95,42,0.06),rgba(255,255,255,0))]"
+                                            : "border-neutral-200 bg-white hover:bg-neutral-50 hover:border-neutral-300"
+                                            }`}
                                     >
                                         <div className="flex items-start gap-3">
                                             <div
@@ -2116,6 +2135,9 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                                     <div className="mt-0.5 break-all font-mono text-[11px] text-neutral-700">
                                                         {sourceUrlDisplay || "(none selected)"}
                                                     </div>
+                                                </div>
+                                                <div className="mt-1 text-[11px] leading-4 text-neutral-500">
+                                                    Clone: <span className="font-mono font-semibold text-accent">{sourceUrlDisplay || "(no URL selected)"}</span>
                                                 </div>
                                                 <div className="mt-1 text-[11px] leading-4 text-neutral-500">
                                                     Best for: simple landing pages, brochure sites, fast iterations, and projects with no auth or database requirements.
@@ -2178,8 +2200,8 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                 </button>
                                 <button
                                     type="button"
-                                    onClick={handleAppGeneration}
-                                    disabled={effectiveLocked}
+                                    onClick={handleContinueGeneration}
+                                    disabled={effectiveLocked || !selectedGenerationType}
                                     className="rounded-xl px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-60 disabled:cursor-not-allowed"
                                     style={{ backgroundColor: ACCENT }}
                                 >
@@ -2324,6 +2346,7 @@ export default function PreviewPage(): JSX.Element {
     const [success, setSuccess] = useState<string>("");
     const [captureIssueNotice, setCaptureIssueNotice] = useState<string>("");
     const [hideCaptureQueueStatus, setHideCaptureQueueStatus] = useState<boolean>(false);
+    const [dismissedUrlIssueCanonical, setDismissedUrlIssueCanonical] = useState<string>("");
 
     const [loading, setLoading] = useState<boolean>(true);
 
@@ -2469,7 +2492,7 @@ export default function PreviewPage(): JSX.Element {
     const [appWizardError, setAppWizardError] = useState<string | null>(null);
     const [appWizardUrl, setAppWizardUrl] = useState<string>("");
     const [appWizardShotsUrl, setAppWizardShotsUrl] = useState<string>("");
-    const [appWizardSource, setAppWizardSource] = useState<"website" | "prompt">("website");
+    const [appWizardSource, setAppWizardSource] = useState<"website" | "prompt" | null>(null);
     const [appWizardPrompt, setAppWizardPrompt] = useState<string>("");
     const [appWizardPromptFocused, setAppWizardPromptFocused] = useState(false);
     const [appWizardSeedRenderId, setAppWizardSeedRenderId] = useState<string | null>(null);
@@ -3062,8 +3085,8 @@ export default function PreviewPage(): JSX.Element {
             setAppWizardUrl(url);
             setAppWizardShotsUrl(url);
             setAppWizardSeedRenderId(opts?.seedRenderId ?? null);
-            // Default to Clone from URL when opening the wizard.
-            setAppWizardSource("website");
+            // Require explicit source selection in the wizard.
+            setAppWizardSource(null);
             setAppWizardPrompt("");
             setAppWizardError(null);
             setAppWizardBusy(false);
@@ -4401,6 +4424,7 @@ export default function PreviewPage(): JSX.Element {
 
     useEffect(() => {
         if (!err) return;
+        if (captureStatus !== "error" && captureStatus !== "stale") return;
         if (!/not able to process this url|url failed to process|couldn't finish capturing this url/i.test(err)) {
             return;
         }
@@ -4412,7 +4436,13 @@ export default function PreviewPage(): JSX.Element {
         }, CAPTURE_ISSUE_NOTICE_MS);
 
         return () => window.clearTimeout(timeoutId);
-    }, [err, targetUrl]);
+    }, [err, captureStatus]);
+
+    useEffect(() => {
+        // Avoid carrying a prior URL's scan-issue notice into a newly selected URL.
+        setCaptureIssueNotice("");
+        setHideCaptureQueueStatus(false);
+    }, [targetUrl]);
 
     useEffect(() => {
         if (captureStatus === "queued" || captureStatus === "processing") {
@@ -4700,6 +4730,25 @@ export default function PreviewPage(): JSX.Element {
     }, [activeUrlDoc, targetUrl, docData, captureTerminalFailureUrl]);
 
     const activeUrlCannotGenerate = activeUrlStatusUi === "error" || activeUrlStatusUi === "stale";
+
+    const activeUrlIssueHref = useMemo(() => {
+        const normalized = validateAndNormalizePublicHttpUrl(String(activeUrlDoc?.url || ""));
+        return normalized ? normUrl(normalized) : "";
+    }, [activeUrlDoc?.url]);
+
+    const showActiveUrlIssueWarning =
+        activeUrlCannotGenerate &&
+        !!activeUrlIssueHref &&
+        dismissedUrlIssueCanonical !== activeUrlIssueHref;
+
+    useEffect(() => {
+        if (!dismissedUrlIssueCanonical) return;
+        const currentCanonical = targetUrl ? normUrl(targetUrl) : "";
+        // Re-show warning if user leaves this URL and later opens it again.
+        if (!currentCanonical || currentCanonical !== dismissedUrlIssueCanonical) {
+            setDismissedUrlIssueCanonical("");
+        }
+    }, [targetUrl, dismissedUrlIssueCanonical]);
 
     const successfulScannedUrls = useMemo(() => {
         const seen = new Set<string>();
@@ -5563,10 +5612,34 @@ export default function PreviewPage(): JSX.Element {
             setSuccess("");
             setCaptureIssueNotice("");
             setHideCaptureQueueStatus(false);
+            setDismissedUrlIssueCanonical("");
             setUrlMenuOpen(false);
             router.push(`/dashboard/view?u=${encodeURIComponent(normalized)}&start=1`, { scroll: false });
         },
         [router]
+    );
+
+    const isBackendFetchFailed502 = useCallback((status: number, payload: any): boolean => {
+        if (status !== 502) return false;
+        const msg = String(payload?.error || "").toLowerCase();
+        return msg.includes("backend fetch failed");
+    }, []);
+
+    const recoverFromTransientRenderStart = useCallback(
+        (label: string) => {
+            push(
+                `${label} is taking a little longer. We are still checking for progress in the background.`,
+                "warn",
+            );
+            void refreshRenders();
+            window.setTimeout(() => {
+                void refreshRenders();
+            }, 1200);
+            window.setTimeout(() => {
+                void refreshRenders();
+            }, 3500);
+        },
+        [push, refreshRenders],
     );
 
     const buildFromCollection = useCallback(
@@ -5656,6 +5729,12 @@ export default function PreviewPage(): JSX.Element {
                 if (r.status === 202) {
                     push("Server accepted collection preview job", "ok");
                     await refreshRenders();
+                    return;
+                }
+
+                if (isBackendFetchFailed502(r.status, j)) {
+                    setDeployWizardError("Collection preview start is delayed. Checking for progress…");
+                    recoverFromTransientRenderStart("Collection preview start");
                     return;
                 }
 
@@ -5756,6 +5835,11 @@ export default function PreviewPage(): JSX.Element {
                 return;
             }
 
+            if (isBackendFetchFailed502(r.status, j)) {
+                recoverFromTransientRenderStart("Website generation");
+                return;
+            }
+
             if (!r.ok || !j?.ok) {
                 throw new Error(j?.error || "Render failed");
             }
@@ -5765,7 +5849,17 @@ export default function PreviewPage(): JSX.Element {
             console.error("buildFromUrl failed", e);
             push(e?.message || "Failed to start website generation.", "err");
         }
-    }, [user, targetUrl, activeUrlCannotGenerate, canUsePreviewCredit, push, refreshRenders, setShowCreditsPaywall]);
+    }, [
+        user,
+        targetUrl,
+        activeUrlCannotGenerate,
+        canUsePreviewCredit,
+        push,
+        refreshRenders,
+        setShowCreditsPaywall,
+        isBackendFetchFailed502,
+        recoverFromTransientRenderStart,
+    ]);
 
     const continueRender = useCallback(
         async (renderId: string) => {
@@ -5919,6 +6013,11 @@ export default function PreviewPage(): JSX.Element {
                     return;
                 }
 
+                if (isBackendFetchFailed502(resp.status, j)) {
+                    recoverFromTransientRenderStart("Retry");
+                    return;
+                }
+
                 if (!resp.ok || !j?.ok) {
                     const msg = j?.error || "Retry failed";
                     throw new Error(msg);
@@ -5948,7 +6047,7 @@ export default function PreviewPage(): JSX.Element {
                 push("Failed to retry render.", "err");
             }
         },
-        [user, renders, refreshRenders, setRenders, setErr, push],
+        [user, renders, refreshRenders, setRenders, setErr, push, isBackendFetchFailed502, recoverFromTransientRenderStart],
     );
 
 
@@ -7696,8 +7795,8 @@ export default function PreviewPage(): JSX.Element {
                                                             e.stopPropagation();
                                                             deleteTrackedUrl(u);
                                                         }}
-                                                        className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-50 hover:text-neutral-900"
-                                                        title="Delete URL"
+                                                        className="inline-flex h-8 w-8 items-center justify-center rounded-md text-red-500/80 transition hover:bg-red-50 hover:text-red-700 focus-visible:bg-red-50 focus-visible:text-red-700"
+                                                        title="Delete tracked URL"
                                                         aria-label={`Delete ${u.url}`}
                                                     >
                                                         <Trash2 className="h-4 w-4" />
@@ -7712,7 +7811,7 @@ export default function PreviewPage(): JSX.Element {
                     </div>
                 </section>
 
-                {activeUrlCannotGenerate && activeUrlDoc?.url ? (
+                {showActiveUrlIssueWarning && activeUrlDoc?.url ? (
                     <div className="mt-2 flex items-start justify-between gap-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
                         <div className="min-w-0 flex-1">
                             <div className="inline-flex items-center gap-1.5 font-semibold text-amber-900">
@@ -7722,23 +7821,51 @@ export default function PreviewPage(): JSX.Element {
                             <p className="mt-1 text-xs text-amber-800">
                                 This URL cannot be used to create websites from until a successful scan completes.
                             </p>
-                            <p className="mt-1 break-all font-mono text-[11px] text-amber-900" title={activeUrlDoc.url}>
-                                {truncateMiddle(activeUrlDoc.url, 76)}
-                            </p>
+                            {activeUrlIssueHref ? (
+                                <div className="mt-2 flex flex-wrap items-center gap-2">
+                                    <span
+                                        className="inline-flex max-w-full items-center rounded-md border border-amber-200 bg-white px-2 py-1 font-mono text-[11px] text-amber-900"
+                                        title={activeUrlIssueHref}
+                                    >
+                                        {truncateMiddle(activeUrlIssueHref, 76)}
+                                    </span>
+                                    <a
+                                        href={activeUrlIssueHref}
+                                        target="_blank"
+                                        rel="noopener noreferrer nofollow"
+                                        className="inline-flex items-center gap-1 rounded-md border border-amber-200 bg-white px-2.5 py-1 text-xs font-semibold text-amber-800 transition hover:bg-amber-100"
+                                        title="Open URL in a new tab"
+                                    >
+                                        <span>Open URL</span>
+                                        <ExternalLink className="h-3 w-3" />
+                                    </a>
+                                </div>
+                            ) : null}
                         </div>
-                        <button
-                            type="button"
-                            onClick={() => retryTrackedUrl(activeUrlDoc.url)}
-                            className="inline-flex h-8 items-center justify-center gap-1 rounded-md border border-amber-300 bg-white px-2.5 text-xs font-semibold text-amber-800 hover:bg-amber-100"
-                            title="Retry scanning this URL"
-                        >
-                            <RotateCcw className="h-3.5 w-3.5" />
-                            Retry
-                        </button>
+                        <div className="flex shrink-0 items-start gap-2">
+                            <button
+                                type="button"
+                                onClick={() => retryTrackedUrl(activeUrlDoc.url)}
+                                className="inline-flex h-8 items-center justify-center gap-1 rounded-md border border-amber-300 bg-white px-2.5 text-xs font-semibold text-amber-800 hover:bg-amber-100"
+                                title="Retry scanning this URL"
+                            >
+                                <RotateCcw className="h-3.5 w-3.5" />
+                                Retry
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setDismissedUrlIssueCanonical(activeUrlIssueHref || "")}
+                                className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-amber-200 bg-white/80 text-amber-700 transition hover:bg-white hover:text-amber-900"
+                                aria-label="Dismiss URL scan issue warning"
+                                title="Dismiss"
+                            >
+                                <X className="h-3.5 w-3.5" />
+                            </button>
+                        </div>
                     </div>
                 ) : null}
 
-                {err ? (
+                {err && !(showUrlAccessInError && activeUrlCannotGenerate) ? (
                     <div className="mt-2 flex items-start justify-between gap-3 rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">
                         <div className="min-w-0 flex-1">
                             <span>{err}</span>
@@ -8526,9 +8653,10 @@ export default function PreviewPage(): JSX.Element {
                                             type="button"
                                             onClick={() => {
                                                 if (appWizardSource === "website") return void submitAppWizardWebsite();
-                                                return void submitAppWizardPrompt();
+                                                if (appWizardSource === "prompt") return void submitAppWizardPrompt();
+                                                setAppWizardError("Select how you want to create your website to continue.");
                                             }}
-                                            disabled={appWizardBusy || (appWizardSource === "prompt" && appWizardPromptOverLimit)}
+                                            disabled={appWizardBusy || !appWizardSource || (appWizardSource === "prompt" && appWizardPromptOverLimit)}
                                             className="rounded-xl px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-60"
                                             style={{ backgroundColor: ACCENT }}
                                         >

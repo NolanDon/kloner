@@ -1134,7 +1134,7 @@ export default function PreviewEditorV2({
     const [controlsCollapsed, setControlsCollapsed] = useState<boolean>(false);
     const [sidePanelMode, setSidePanelMode] = useState<
         "style" | "meta" | "code" | "ai-library" | "revision-chat"
-    >("revision-chat");
+    >("style");
 
     const [prefetchedAiSuggestions, setPrefetchedAiSuggestions] = useState<AiEditSuggestion[] | undefined>(undefined);
     const [prefetchedAiMeta, setPrefetchedAiMeta] = useState<any | null>(null);
@@ -1221,7 +1221,7 @@ export default function PreviewEditorV2({
 
     const [aiHistory, setAiHistory] = useState<AiEditSuggestion[]>([]);
     const [historyOpen, setHistoryOpen] = useState(true);
-    const [sidebarHidden, setSidebarHidden] = useState(IS_MOBILE ? true : false);
+    const [sidebarHidden, setSidebarHidden] = useState(true);
     const [isCompactLayout, setIsCompactLayout] = useState(IS_MOBILE);
     const [mobileTab, setMobileTab] = useState<"preview" | "panel">("preview");
     const [mobileControlsOpen, setMobileControlsOpen] = useState(false);
@@ -1253,11 +1253,6 @@ export default function PreviewEditorV2({
         const prev = sessionCountersRef.current[key] ?? 0;
         const next = prev + 1;
         sessionCountersRef.current[key] = next;
-
-        if (process.env.NODE_ENV === "development") {
-            // This should spam when you hit save / switch page / etc.
-            console.log("[editor-analytics] bump", key, "->", next);
-        }
     }
 
     // 2) Keep the latest user in a ref so we don't depend on [user]
@@ -1352,23 +1347,7 @@ export default function PreviewEditorV2({
             const u = sessionUserRef.current;
 
             if (!u?.uid) {
-                if (process.env.NODE_ENV === "development") {
-                    console.log(
-                        "[editor-analytics] flush skipped (no user)",
-                        reason,
-                        counters,
-                        durationMs,
-                    );
-                }
                 return;
-            }
-
-            if (process.env.NODE_ENV === "development") {
-                console.log("[editor-analytics] flushing session", {
-                    reason,
-                    durationMs,
-                    counters,
-                });
             }
 
             // fire-and-forget; must not block navigation
@@ -4774,6 +4753,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                             </button>
 
                             <button
+                                id="kloner-ai-sidebar"
                                 type="button"
                                 onClick={() => {
                                     const isActive = !sidebarHidden && sidePanelMode === "revision-chat";
@@ -5659,8 +5639,10 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
 
 
                         {showSaveNudge && (
-                            <div className="mt-4 flex justify-center mt-3 pointer-events-none z-[96] rounded-full bg-green-600 text-white hover:bg-green-700 text-white hover:brightness-95 shadow-lg px-4 py-2 text-sm">
-                                This is a one-time friendly reminder to save or apply your changes as you edit, so you don’t lose them.
+                            <div className="pointer-events-none fixed inset-x-0 top-4 z-[2147483647] flex justify-center px-3">
+                                <div className="rounded-full bg-emerald-600 px-4 py-2 text-sm text-white shadow-lg">
+                                    This is a one-time friendly reminder to save or apply your changes as you edit, so you don’t lose them.
+                                </div>
                             </div>
                         )}
 

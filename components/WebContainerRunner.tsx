@@ -586,7 +586,7 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
     }
   };
 
-  const shouldEmitAlertForKey = (alertKey: string): { deduped: boolean } => {
+  const shouldEmitAlertForKey = (alertKey: string, ttlMs = PREVIEW_ALERT_DEDUPE_TTL_MS): { deduped: boolean } => {
     try {
       if (typeof window === 'undefined') return { deduped: false };
       const storageKey = 'kloner.preview.alert.dedupe.v1';
@@ -596,12 +596,12 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
       const next: Record<string, number> = {};
 
       for (const [k, at] of Object.entries(parsed)) {
-        if (typeof at === 'number' && now - at < PREVIEW_ALERT_DEDUPE_TTL_MS) {
+        if (typeof at === 'number' && now - at < ttlMs) {
           next[k] = at;
         }
       }
 
-      const deduped = shouldDedupeAlert(next, alertKey, now, PREVIEW_ALERT_DEDUPE_TTL_MS);
+      const deduped = shouldDedupeAlert(next, alertKey, now, ttlMs);
       if (!deduped) next[alertKey] = now;
       window.sessionStorage.setItem(storageKey, JSON.stringify(next));
       return { deduped };
@@ -614,6 +614,8 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
     appId: string;
     code?: string;
     action: string;
+    alertKeyOverride?: string;
+    dedupeTtlMs?: number;
     severity: 'critical' | 'error' | 'warning' | 'info';
     statusCode?: number;
     status?: string;
@@ -627,12 +629,14 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
     force?: boolean;
   }): Promise<{ sent: boolean; deduped: boolean; alertKey: string }> => {
     const code = payload.code || pollingCodeRef.current || undefined;
-    const alertKey = buildPreviewAlertKey({
-      userId: user?.uid,
-      appId: payload.appId,
-      code,
-      reason: payload.reason || payload.action,
-    });
+    const alertKey =
+      (payload.alertKeyOverride && String(payload.alertKeyOverride).trim()) ||
+      buildPreviewAlertKey({
+        userId: user?.uid,
+        appId: payload.appId,
+        code,
+        reason: payload.reason || payload.action,
+      });
 
     // Product requirement: webhook errors should represent terminal failures,
     // not slow-start latency while the preview may still recover.
@@ -640,7 +644,7 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
       return { sent: false, deduped: true, alertKey };
     }
 
-    const dedupe = shouldEmitAlertForKey(alertKey);
+    const dedupe = shouldEmitAlertForKey(alertKey, payload.dedupeTtlMs);
     if (dedupe.deduped && !payload.force) {
       return { sent: false, deduped: true, alertKey };
     }
@@ -754,6 +758,8 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
     requestId?: string;
     jobId?: string;
     backendStatusData?: any;
+    alertKeyOverride?: string;
+    dedupeTtlMs?: number;
   }) => {
     if (lastPollIssueReportKeyRef.current === key) return;
     lastPollIssueReportKeyRef.current = key;
@@ -771,6 +777,8 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
       requestId: payload.requestId,
       jobId: payload.jobId,
       backendStatusData: payload.backendStatusData,
+      alertKeyOverride: payload.alertKeyOverride,
+      dedupeTtlMs: payload.dedupeTtlMs,
     });
   };
 
@@ -2479,28 +2487,67 @@ export default function NavBar() {
             if (!statusResponse.ok) {
               if (statusResponse.status === 429) {
                 pollRateLimitCountRef.current += 1;
+                const rateData = await statusResponse.clone().json().catch(() => ({} as any));
                 const retryAfterMs = parseRetryAfterMs(statusResponse.headers.get('retry-after'));
+                const retryAfterFromBodyMs = (() => {
+                  const n = Number((rateData as any)?.retryAfterSeconds);
+                  if (!Number.isFinite(n) || n <= 0) return 0;
+                  return Math.round(n * 1000);
+                })();
+                const elapsedMs = pollStartedAtRef.current ? Date.now() - pollStartedAtRef.current : undefined;
                 const nextDelay = Math.max(
-                  POLL_INTERVAL_MS * 2,
-                  getPollBackoffMs(pollRateLimitCountRef.current + 2),
-                  retryAfterMs || 0,
+                  30_000,
+                  Math.min(15 * 60_000, Math.max(retryAfterMs || 0, retryAfterFromBodyMs || 0)),
+                  getPollBackoffMs(pollRateLimitCountRef.current + 4),
                 );
 
-                setLoadingStatus('Preview is still starting. Backing off status checks to avoid rate limiting…');
+                reportPollIssueOnce(`poll-rate-limited:${appId}:${String((rateData as any)?.scope || 'global')}`, {
+                  appId,
+                  code,
+                  action: 'preview_backend_rate_limited',
+                  severity: 'critical',
+                  statusCode: 429,
+                  status: 'rate_limited',
+                  reason: String((rateData as any)?.reason || (rateData as any)?.code || 'rate_limited').toLowerCase(),
+                  message: 'Preview backend responded with rate limit while polling status.',
+                  elapsedMs,
+                  previewUrl: previewUrlRef.current,
+                  requestId: String((rateData as any)?.requestId || '').trim() || undefined,
+                  jobId: String((rateData as any)?.jobId || '').trim() || undefined,
+                  alertKeyOverride: `rate_limited:${user?.uid || 'anonymous'}:${appId}:${String((rateData as any)?.scope || 'global').toLowerCase()}`,
+                  dedupeTtlMs: 15 * 60 * 1000,
+                  backendStatusData: {
+                    status: 'rate_limited',
+                    uiStage: String((rateData as any)?.scope || 'global').trim().toLowerCase(),
+                    debug: {
+                      timeoutReason: String((rateData as any)?.reason || (rateData as any)?.code || 'rate_limited').trim().toLowerCase(),
+                      machine: {
+                        state: (rateData as any)?.scope ?? null,
+                        restartCount: null,
+                      },
+                      compile: {
+                        summary: null,
+                      },
+                      storage: {
+                        rootfsIoCorruption: null,
+                      },
+                    },
+                  },
+                });
+
+                setLoadingStatus('Preview is still starting...');
                 setCurrentStatusData((prev: any) =>
                   prev && typeof prev === 'object'
                     ? {
                         ...prev,
                         updatedAt: Date.now(),
-                        uiMessage:
-                          'Preview is still starting. Status checks are being slowed down briefly to avoid rate limiting.',
+                        uiMessage: 'Preview is still starting...',
                       }
                     : {
                         status: 'starting',
                         uiStage: 'starting',
                         uiTitle: 'Starting preview',
-                        uiMessage:
-                          'Preview is still starting. Status checks are being slowed down briefly to avoid rate limiting.',
+                        uiMessage: 'Preview is still starting...',
                         uiProgress: 0,
                         updatedAt: Date.now(),
                       }

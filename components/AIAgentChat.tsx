@@ -25,6 +25,8 @@ type Message = {
     stagedBundleId?: string;
     supabaseContinuationPrompt?: string;
     supabaseContinuationStatus?: "PENDING" | "CONTINUE" | "DISMISS";
+    dbSetupPrompt?: string;
+    dbSetupStatus?: "PENDING" | "CONNECT" | "BASIC" | "DISMISS";
 };
 
 type StagedBundle = {
@@ -1081,6 +1083,14 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                             m.supabaseContinuationStatus === "DISMISS"
                                 ? m.supabaseContinuationStatus
                                 : undefined,
+                        dbSetupPrompt: typeof m.dbSetupPrompt === "string" ? m.dbSetupPrompt : undefined,
+                        dbSetupStatus:
+                            m.dbSetupStatus === "PENDING" ||
+                            m.dbSetupStatus === "CONNECT" ||
+                            m.dbSetupStatus === "BASIC" ||
+                            m.dbSetupStatus === "DISMISS"
+                                ? m.dbSetupStatus
+                                : undefined,
                     };
                 };
 
@@ -1237,6 +1247,8 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
             restoreActionLabel: m.restoreActionLabel ?? null,
             supabaseContinuationPrompt: m.supabaseContinuationPrompt ?? null,
             supabaseContinuationStatus: m.supabaseContinuationStatus ?? null,
+            dbSetupPrompt: m.dbSetupPrompt ?? null,
+            dbSetupStatus: m.dbSetupStatus ?? null,
         }));
 
         const encoder = typeof TextEncoder !== "undefined" ? new TextEncoder() : null;
@@ -1528,6 +1540,32 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                     type: "text",
                     supabaseContinuationPrompt: prompt,
                     supabaseContinuationStatus: "PENDING",
+                },
+            ];
+        });
+    }, []);
+
+    const enqueueDatabaseSetupChoicePrompt = useCallback((rawPrompt: string) => {
+        const prompt = String(rawPrompt || "").replace(/\s+/g, " ").trim();
+        if (!prompt) return;
+
+        setMessages((prev) => {
+            const exists = prev.some(
+                (m) => m.dbSetupStatus === "PENDING" && String(m.dbSetupPrompt || "") === prompt,
+            );
+            if (exists) return prev;
+
+            return [
+                ...prev,
+                {
+                    id: `db_setup_choice_${Date.now()}`,
+                    role: "assistant",
+                    content:
+                        "This request usually works best with a database. You can connect Supabase, or continue now with a basic version that skips database persistence.",
+                    timestamp: new Date(),
+                    type: "text",
+                    dbSetupPrompt: prompt,
+                    dbSetupStatus: "PENDING",
                 },
             ];
         });
@@ -2330,16 +2368,19 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                 }
             }
 
-            // Handle database setup request (dev-only)
-            if (allowDatabaseSetupUi && data.setupDatabase) {
+            // Handle database setup request
+            if (data.setupDatabase) {
                 const followupPrompt = messageInput.trim();
                 if (followupPrompt) {
                     setPendingSupabaseFollowupPrompt(followupPrompt);
+                    enqueueDatabaseSetupChoicePrompt(followupPrompt);
                 }
-                setTimeout(() => {
-                    if (isSupabaseConnectedRef.current) return;
-                    setShowDatabaseSetup(true);
-                }, 1000); // Small delay for better UX
+                if (allowDatabaseSetupUi) {
+                    setTimeout(() => {
+                        if (isSupabaseConnectedRef.current) return;
+                        setShowDatabaseSetup(true);
+                    }, 1000); // Small delay for better UX
+                }
             }
 
             // Handle file edits if any
@@ -2650,6 +2691,78 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                                                     id: `supabase_continue_dismiss_${Date.now()}`,
                                                     role: "assistant",
                                                     content: "No problem, I won’t continue that request unless you ask.",
+                                                    timestamp: new Date(),
+                                                    type: "text",
+                                                },
+                                            ]);
+                                        }}
+                                        className="inline-flex items-center rounded-full border border-black/10 bg-white px-3 py-1.5 text-xs font-semibold text-gray-800 transition hover:bg-black/5"
+                                    >
+                                        Dismiss
+                                    </button>
+                                </div>
+                            ) : null}
+
+                            {message.dbSetupPrompt && message.dbSetupStatus === "PENDING" ? (
+                                <div className="mt-3 flex flex-wrap gap-2">
+                                    {allowDatabaseSetupUi ? (
+                                        <button
+                                            type="button"
+                                            disabled={isLoading}
+                                            onClick={() => {
+                                                setMessages((prev) =>
+                                                    prev.map((m) =>
+                                                        m.id === message.id
+                                                            ? { ...m, dbSetupStatus: "CONNECT" as const }
+                                                            : m,
+                                                    ),
+                                                );
+                                                if (!isSupabaseConnectedRef.current) {
+                                                    setShowDatabaseSetup(true);
+                                                }
+                                            }}
+                                            className="inline-flex items-center rounded-full bg-[#F55F2A] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#E04E1B] disabled:opacity-50"
+                                        >
+                                            Connect Supabase
+                                        </button>
+                                    ) : null}
+
+                                    <button
+                                        type="button"
+                                        disabled={isLoading}
+                                        onClick={() => {
+                                            const prompt = String(message.dbSetupPrompt || "").trim();
+                                            if (!prompt) return;
+
+                                            setMessages((prev) =>
+                                                prev.map((m) =>
+                                                    m.id === message.id
+                                                        ? { ...m, dbSetupStatus: "BASIC" as const }
+                                                        : m,
+                                                ),
+                                            );
+
+                                            const forcedInput = `${prompt}\n\nContinue without Supabase or any database setup. Build a basic version that does not require database persistence. Use UI/in-memory behavior only, and do not store auth credentials or passwords.`;
+                                            void sendMessage({ forcedInput });
+                                        }}
+                                        className="inline-flex items-center rounded-full bg-[#111827] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-black disabled:opacity-50"
+                                    >
+                                        Continue with basic version
+                                    </button>
+
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setMessages((prev) => [
+                                                ...prev.map((m) =>
+                                                    m.id === message.id
+                                                        ? { ...m, dbSetupStatus: "DISMISS" as const }
+                                                        : m,
+                                                ),
+                                                {
+                                                    id: `db_setup_choice_dismiss_${Date.now()}`,
+                                                    role: "assistant",
+                                                    content: "No problem. Ask anytime if you want to connect a database or continue with a basic version.",
                                                     timestamp: new Date(),
                                                     type: "text",
                                                 },

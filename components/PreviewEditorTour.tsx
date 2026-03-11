@@ -25,7 +25,7 @@ const steps = [
         action: "none"
     },
     {
-        target: "#kloner-ai-sidebar",
+        target: "#kloner-style-sidebar",
         title: "AI Editor",
         content: "Use the powerful AI editor to intelligently edit content, generate new sections, and make smart content modifications with natural language prompts.",
         action: "showAiPanel"
@@ -115,13 +115,21 @@ export function PreviewEditorTour() {
             triggerStepAction(currentStep.action);
         }
         
+        // Initial placement + a few delayed retries so action-driven UI changes
+        // (like opening the AI sidebar) have time to mount before targeting.
         updatePosition();
+        const retryTimers = [80, 220, 500, 900].map((delay) =>
+            window.setTimeout(() => {
+                updatePosition();
+            }, delay)
+        );
 
         const onScroll = () => updatePosition();
         const onResize = () => updatePosition();
         window.addEventListener("scroll", onScroll, true);
         window.addEventListener("resize", onResize);
         return () => {
+            retryTimers.forEach((t) => window.clearTimeout(t));
             window.removeEventListener("scroll", onScroll, true);
             window.removeEventListener("resize", onResize);
         };
