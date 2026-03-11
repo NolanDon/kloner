@@ -3,6 +3,9 @@ export const PREVIEW_ALERT_DEDUPE_TTL_MS = 5 * 60 * 1000;
 const HARD_FAILURE_TIMEOUT_REASONS = new Set([
   'machine_disk_io_error',
   'machine_retries_exhausted',
+  'machine_create_failed',
+  'machine_create_timeout',
+  'fly_machine_create_timeout',
   'compile_error',
 ]);
 

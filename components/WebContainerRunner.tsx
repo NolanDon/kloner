@@ -1425,6 +1425,34 @@ export default function NavBar() {
     }
   };
 
+  const getFlyMachineCreateFailure = (statusData: any): {
+    status: number;
+    requestId?: string;
+    url?: string;
+  } | null => {
+    try {
+      const events = Array.isArray(statusData?.events) ? statusData.events : [];
+      for (const ev of events) {
+        const flyApi = ev?.extra?.flyApi;
+        if (!flyApi || typeof flyApi !== 'object') continue;
+
+        const status = Number(flyApi?.status);
+        const method = String(flyApi?.method || '').trim().toLowerCase();
+        const url = String(flyApi?.url || '').trim();
+
+        if (!Number.isFinite(status) || status < 400) continue;
+        if (method !== 'post') continue;
+        if (!/\/machines(\/|$|\?)/i.test(url)) continue;
+
+        const requestId = String(flyApi?.requestId || '').trim() || undefined;
+        return { status, requestId, url: url || undefined };
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  };
+
   const renderBuildChecklist = (statusData: any) => {
     return null;
   };
@@ -2751,12 +2779,57 @@ export default function NavBar() {
             const backendSignal = classifyBackendSignal(statusData);
             const deploymentUrlRaw = String((statusData as any)?.url || '').trim();
             const deploymentUrl = deploymentUrlRaw ? normalizePreviewUrlHost(deploymentUrlRaw) : '';
+            const flyMachineCreateFailure = getFlyMachineCreateFailure(statusData);
             const appServerKindRaw = String((statusData as any)?.appServerKind || '').toLowerCase();
             const appServerKind = (appServerKindRaw === 'fallback' || appServerKindRaw === 'next-dev' || appServerKindRaw === 'next-prod')
               ? (appServerKindRaw as any)
               : '';
 
             lastAppServerKindRef.current = appServerKind;
+
+            // Fly provider can return a machine-create timeout (HTTP 408) after we already got a preview code.
+            // In that case this code will never become reachable, so stop the spinner and regenerate immediately.
+            if (!readyFlag && flyMachineCreateFailure && flyMachineCreateFailure.status === 408) {
+              reportPollIssueOnce(`fly-machine-create-timeout:${appId}:${code}`, {
+                appId,
+                code,
+                action: 'preview_machine_create_timeout',
+                severity: 'critical',
+                statusCode: 500,
+                status: 'machine_create_timeout',
+                reason: 'fly_machine_create_timeout',
+                message: 'Preview machine creation timed out at Fly provider after preview code issuance; triggering fresh restart.',
+                elapsedMs: pollStartedAtRef.current ? Date.now() - pollStartedAtRef.current : undefined,
+                previewUrl: previewUrlRef.current,
+                requestId: flyMachineCreateFailure.requestId,
+                backendStatusData: statusData,
+              });
+
+              await clearStoredContainerCodeEverywhere(appId, user);
+              stopAllTimers();
+
+              setIsPolling(false);
+              setConnectingToExisting(false);
+              setPreviewUrl(null);
+              setError(null);
+              setCanRetry(false);
+              setCurrentStatusData(
+                normalizeStatusDataForUi(code, {
+                  status: 'starting',
+                  uiStage: 'creating_machine',
+                  uiTitle: 'Restarting preview',
+                  uiMessage: 'Machine startup timed out at the provider. Retrying on a fresh machine…',
+                  uiProgress: 0,
+                  updatedAt: Date.now(),
+                })
+              );
+              setLoadingStatus('Restarting preview on a fresh machine…');
+              setIsLoading(true);
+
+              const syntheticPreviewUrl = `https://${CUSTOM_PREVIEW_HOST || DEFAULT_HUB_HOST}/preview/${encodeURIComponent(code)}`;
+              requestForceFreshRebuild('fly_machine_create_timeout', syntheticPreviewUrl);
+              return;
+            }
 
             if (!readyFlag && backendSignal.hardFailure) {
               const elapsedMs = pollStartedAtRef.current ? Date.now() - pollStartedAtRef.current : undefined;
