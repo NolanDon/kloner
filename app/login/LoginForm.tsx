@@ -355,6 +355,14 @@ export default function LoginPage(): JSX.Element {
     const [pendingUrl, setPendingUrl] = useState<string>("");
     const [pendingPrompt, setPendingPrompt] = useState<string>("");
 
+    useEffect(() => {
+        const reason = (search.get("reason") || "").trim().toLowerCase();
+        if (reason !== "session_expired") return;
+        setMode("signin");
+        setLoading(false);
+        setErr("Your session expired. Please sign in again.");
+    }, [search]);
+
     // Initialize pendingUrl/pendingPrompt from query or localStorage
     useEffect(() => {
         let initial = search.get("u") || "";

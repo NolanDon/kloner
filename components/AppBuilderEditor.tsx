@@ -8,10 +8,11 @@ import { Folder, File, Upload, X, RefreshCw, MessageSquare, Code, Check, RotateC
 import AppBuilderEditorAgentChat from "./AppBuilderEditorAgentChat";
 import KlonerLoader from "./KlonerLoader";
 import WebContainerRunner from "./WebContainerRunner";
-import { bootstrapServerSession, ensureSessionAndCsrf } from "@/lib/auth-client";
+import { bootstrapServerSession, ensureSessionAndCsrf, resetAuthClientCaches } from "@/lib/auth-client";
 import { useVercelIntegration } from "@/src/hooks/useVercelIntegration";
-import { db } from "@/lib/firebase";
+import { auth, db } from "@/lib/firebase";
 import { doc, onSnapshot } from "firebase/firestore";
+import { signOut as firebaseSignOut } from "firebase/auth";
 import { useAuth } from "@/src/hooks/useAuth";
 import { useModal } from "@/components/ui/ModalContext";
 import { compressImageForUpload } from "@/src/lib/clientImageCompression";
@@ -928,6 +929,25 @@ export default function AppBuilderEditor({
     useEffect(() => {
         onCloseRef.current = onClose;
     }, [onClose]);
+
+    const sessionExpiredRedirectingRef = useRef(false);
+    const handleSessionExpired = useCallback(async (source?: string) => {
+        if (sessionExpiredRedirectingRef.current) return;
+        sessionExpiredRedirectingRef.current = true;
+        try {
+            console.warn("[auth] app builder session expired", source || "unknown");
+            resetAuthClientCaches();
+            await firebaseSignOut(auth).catch(() => null);
+        } finally {
+            const nextPath =
+                typeof window !== "undefined"
+                    ? `${window.location.pathname}${window.location.search}`
+                    : "/dashboard/view";
+            if (typeof window !== "undefined") {
+                window.location.assign(`/login?reason=session_expired&next=${encodeURIComponent(nextPath)}`);
+            }
+        }
+    }, []);
     const [currentFile, setCurrentFile] = useState<string | null>(null);
     const [fileTree, setFileTree] = useState<FileNode[]>([]);
     const [code, setCode] = useState<string>("");
@@ -2462,7 +2482,8 @@ export default function AppBuilderEditor({
         const loadApp = async () => {
             try {
                 if (!user?.uid) {
-                    throw new Error("Failed to load app: 401 Unauthorized");
+                    await handleSessionExpired("app_builder_missing_user");
+                    return;
                 }
 
                 const fetchFiles = async (forceRefreshToken: boolean) => {
@@ -2491,6 +2512,11 @@ export default function AppBuilderEditor({
                     res = await fetchFiles(true);
                 }
 
+                if (res.status === 401 || res.status === 403) {
+                    await handleSessionExpired("app_builder_load_unauthorized");
+                    return;
+                }
+
                 if (!res.ok) {
                     if (res.status === 404) {
                         console.error("App not found, closing editor");
@@ -2508,6 +2534,12 @@ export default function AppBuilderEditor({
             } catch (err: any) {
                 if (didCancel) return;
                 if (err?.name === "AbortError") return;
+                const msg = String(err?.message || "").toLowerCase();
+                const code = String(err?.code || "").toLowerCase();
+                if (msg.includes("401") || msg.includes("unauthorized") || code.includes("permission-denied")) {
+                    await handleSessionExpired("app_builder_load_catch_unauthorized");
+                    return;
+                }
                 console.error("Error loading app:", err);
                 // For network errors or server errors, don't close immediately.
                 // Show error state instead.
@@ -2522,7 +2554,7 @@ export default function AppBuilderEditor({
             didCancel = true;
             controller.abort();
         };
-    }, [appId, authLoading, user]);
+    }, [appId, authLoading, user, handleSessionExpired]);
 
     // Derive current favicon URL from head.tsx if we created/updated one.
     useEffect(() => {
@@ -2663,6 +2695,11 @@ export default function AppBuilderEditor({
                 }
             },
             (error) => {
+                const code = String((error as any)?.code || "").toLowerCase();
+                if (code.includes("permission-denied")) {
+                    void handleSessionExpired("app_builder_doc_listener_permission_denied");
+                    return;
+                }
                 console.error('Firebase listener error:', error);
             }
         );
@@ -2676,7 +2713,7 @@ export default function AppBuilderEditor({
                 console.warn("Firebase listener unsubscribe error:", err);
             }
         };
-    }, [appId, previewMode, user?.uid, queuePreviewApply, queuePreviewReloadFromFirebase]);
+    }, [appId, previewMode, user?.uid, queuePreviewApply, queuePreviewReloadFromFirebase, handleSessionExpired]);
 
     // Load panel width from localStorage on mount
     useEffect(() => {

@@ -18,6 +18,7 @@ import {
     onAuthStateChanged,
     User as FirebaseUser,
     getIdTokenResult,
+    signOut as firebaseSignOut,
 } from "firebase/auth";
 import {
     collection,
@@ -87,7 +88,7 @@ import {
     rendersEqual,
 } from "./page.helpers";
 import { CREDIT_LIMITS, UserTier } from "@/src/lib/credits";
-import { ensureSessionAndCsrf } from "@/lib/auth-client";
+import { ensureSessionAndCsrf, resetAuthClientCaches } from "@/lib/auth-client";
 import type { UrlDoc } from "@/app/dashboard/types";
 import { useVercelIntegration } from "@/src/hooks/useVercelIntegration";
 import { archiveRender, filterRendersForBuilder, resolveStorageUrl, useResolvedImg } from "@/src/lib/renders";
@@ -2048,22 +2049,17 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                     "calc(100dvh - 2rem - env(safe-area-inset-top) - env(safe-area-inset-bottom))",
                             }}
                         >
-                            <div
-                                className={`flex shrink-0 items-start justify-between gap-4 border-b px-5 py-4 ${autoOpenSuccessMessage
-                                    ? "border-emerald-200 bg-gradient-to-r from-emerald-50 via-emerald-50 to-white"
-                                    : "border-neutral-200"
-                                    }`}
-                            >
+                            <div className="flex shrink-0 items-start justify-between gap-4 border-b border-neutral-200 px-5 py-4">
                                 <div className="space-y-2">
                                     {autoOpenSuccessMessage ? (
                                         <>
-                                            <div className="inline-flex items-start gap-2 rounded-xl border border-emerald-300 bg-emerald-100/80 px-3 py-2 shadow-sm">
-                                                <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-700" />
-                                                <span className="text-sm font-semibold leading-5 text-emerald-900">
+                                            <div className="inline-flex items-start gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2">
+                                                <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
+                                                <span className="text-sm font-semibold leading-5 text-emerald-800">
                                                     {autoOpenSuccessMessage}
                                                 </span>
                                             </div>
-                                            <div className="pl-1 text-xs font-medium text-emerald-800">
+                                            <div className="pl-1 text-xs text-neutral-600">
                                                 Choose what you want to generate next.
                                             </div>
                                         </>
@@ -2082,10 +2078,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                 <button
                                     type="button"
                                     onClick={closeGenerationModal}
-                                    className={`inline-flex h-9 w-9 items-center justify-center rounded-full ${autoOpenSuccessMessage
-                                        ? "border border-emerald-200 bg-white/90 hover:bg-white"
-                                        : "bg-neutral-100 hover:bg-neutral-200"
-                                        }`}
+                                    className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-neutral-200 bg-white hover:bg-neutral-100"
                                     title="Close"
                                 >
                                     <svg
@@ -2641,6 +2634,25 @@ export default function PreviewPage(): JSX.Element {
     const [viewerOpen, setViewerOpen] = useState(false);
     const [viewerIdx, setViewerIdx] = useState(0);
     const didStripeRestoreRef = useRef(false);
+    const sessionExpiredRedirectingRef = useRef(false);
+
+    const handleSessionExpired = useCallback(async (source?: string) => {
+        if (sessionExpiredRedirectingRef.current) return;
+        sessionExpiredRedirectingRef.current = true;
+
+        try {
+            console.warn("[auth] session expired in dashboard", source || "unknown");
+            push("Your session expired. Please sign in again.", "err");
+            resetAuthClientCaches();
+            await firebaseSignOut(auth).catch(() => null);
+        } finally {
+            const nextPath =
+                typeof window !== "undefined"
+                    ? `${window.location.pathname}${window.location.search}`
+                    : "/dashboard/view";
+            router.replace(`/login?reason=session_expired&next=${encodeURIComponent(nextPath)}`);
+        }
+    }, [push, router]);
 
     // Fetch apps from Firestore
     useEffect(() => {
@@ -2670,7 +2682,7 @@ export default function PreviewPage(): JSX.Element {
                 console.warn("[firestore] apps snapshot failed", err);
                 const code = String((err as any)?.code || "").toLowerCase();
                 if (code.includes("permission-denied")) {
-                    push("Your session permissions expired. Refresh the page and sign in again.", "err");
+                    void handleSessionExpired("apps_snapshot_permission_denied");
                 }
                 setHasAnyAppDoc(false);
                 setApps([]);
@@ -2705,6 +2717,10 @@ export default function PreviewPage(): JSX.Element {
             },
             (err) => {
                 console.warn("[firestore] hasAnyRenderDoc snapshot failed", err);
+                const code = String((err as any)?.code || "").toLowerCase();
+                if (code.includes("permission-denied")) {
+                    void handleSessionExpired("render_probe_permission_denied");
+                }
                 setHasAnyRenderDoc(false);
             },
         );
@@ -2719,7 +2735,7 @@ export default function PreviewPage(): JSX.Element {
                 console.warn("[firestore] hasAnyRenderDoc unsubscribe failed", err);
             }
         };
-    }, [user]);
+    }, [user, handleSessionExpired]);
 
     useEffect(() => {
         const billingParam = search.get("billing");
@@ -3526,8 +3542,10 @@ export default function PreviewPage(): JSX.Element {
         }
 
         const ref = doc(db, "kloner_users", user.uid);
-        const unsub = onSnapshot(ref, (snap) => {
-            if (!snap.exists()) {
+        const unsub = onSnapshot(
+            ref,
+            (snap) => {
+                if (!snap.exists()) {
                 // No doc yet: treat as full allowance based on tier limits
                 const screenshotLimit =
                     tierLimits.screenshotMonthly && tierLimits.screenshotMonthly > 0
@@ -3555,7 +3573,7 @@ export default function PreviewPage(): JSX.Element {
                 return;
             }
 
-            const creditsMap = (snap.data() as any) || {};
+                const creditsMap = (snap.data() as any) || {};
             const previewBucket =
                 creditsMap?.["credits.preview"] || creditsMap?.credits?.preview || {};
             const snapshotBucket =
@@ -3615,7 +3633,7 @@ export default function PreviewPage(): JSX.Element {
                         ? editBucket.remaining
                         : editLimit;
 
-            setCredits({
+                setCredits({
                 screenshotUsed:
                     screenshotRemaining === null || screenshotLimit === 0
                         ? 0
@@ -3632,7 +3650,25 @@ export default function PreviewPage(): JSX.Element {
                         : Math.max(editLimit - editRemaining, 0),
                 editRemaining,
             });
-        });
+            },
+            (err) => {
+                console.warn("[firestore] credits snapshot failed", err);
+                const code = String((err as any)?.code || "").toLowerCase();
+                if (code.includes("permission-denied")) {
+                    void handleSessionExpired("credits_snapshot_permission_denied");
+                }
+                setCredits({
+                    screenshotUsed: 0,
+                    previewUsed: 0,
+                    screenshotRemaining: null,
+                    previewRemaining: null,
+                    editUsed: 0,
+                    editRemaining: null,
+                });
+                setExitOfferClaimed(false);
+                setFirstGenerationTrialPromptShown(false);
+            },
+        );
 
         return () => unsub();
     }, [
@@ -3641,6 +3677,7 @@ export default function PreviewPage(): JSX.Element {
         tierLimits.previewMonthly,
         tierLimits.editMonthly,
         db,
+        handleSessionExpired,
     ]);
 
     // Simple accessors for UI
@@ -5304,7 +5341,16 @@ export default function PreviewPage(): JSX.Element {
                             lastDocShotsKeyRef.current = currentKey;
                             await loadShotsForDoc(user, targetUrl, data).catch(() => null);
                         }
-                    }
+                    },
+                    (err) => {
+                        console.warn("[firestore] url doc snapshot failed", err);
+                        const code = String((err as any)?.code || "").toLowerCase();
+                        if (code.includes("permission-denied")) {
+                            void handleSessionExpired("url_doc_snapshot_permission_denied");
+                            return;
+                        }
+                        setErr("Failed to load screenshots.");
+                    },
                 );
             } catch (e: any) {
                 setErr(
@@ -5318,7 +5364,7 @@ export default function PreviewPage(): JSX.Element {
         return () => {
             unsubUrlDoc?.();
         };
-    }, [user, targetUrl, urlDocReloadNonce]);
+    }, [user, targetUrl, urlDocReloadNonce, handleSessionExpired]);
 
     /* ───────── renders (editable previews) ───────── */
 
@@ -5731,7 +5777,7 @@ export default function PreviewPage(): JSX.Element {
             console.warn("[firestore] renders snapshot failed", err);
             const code = String((err as any)?.code || "").toLowerCase();
             if (code.includes("permission-denied")) {
-                push("Couldn’t load your previews due to a permissions issue. Refresh and sign in again.", "err");
+                void handleSessionExpired("renders_snapshot_permission_denied");
             }
             setRenders([]);
         });
@@ -5752,6 +5798,7 @@ export default function PreviewPage(): JSX.Element {
         targetHash,
         deepLinkRenderId,
         push,
+        handleSessionExpired,
     ]);
 
     useEffect(() => {

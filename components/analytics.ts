@@ -627,9 +627,13 @@ export async function recordAppBuilderSessionAnalytics(
                 stripeConfigured: integrationSnapshot.stripeConfigured,
             });
         } catch (err) {
+            const code = String((err as any)?.code || "").toLowerCase();
+            if (code.includes("permission-denied")) return;
             console.error("recordAppBuilderSessionAnalytics session doc failed", err);
         }
     } catch (err) {
+        const code = String((err as any)?.code || "").toLowerCase();
+        if (code.includes("permission-denied")) return;
         console.error("recordAppBuilderSessionAnalytics failed", err);
     }
 }
