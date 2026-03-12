@@ -56,8 +56,7 @@ describe("mixpanel wrapper", () => {
       default: mockMixpanel,
     }));
 
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const mod = require("./mixpanel") as typeof import("./mixpanel");
+    const mod = jest.requireActual("./mixpanel") as typeof import("./mixpanel");
 
     return {
       mod,
