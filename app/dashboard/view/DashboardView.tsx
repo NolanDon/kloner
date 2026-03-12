@@ -8013,7 +8013,7 @@ export default function PreviewPage(): JSX.Element {
 
 
     return (
-        <main className="min-h-screen bg-white">
+        <main className="min-h-screen bg-white notranslate" translate="no">
             <div className="mx-auto max-w-[1200px] px-4 sm:px-6 lg:px-10 py-8">
                 <section className="mb-10">
                     <MiniDashboardEntry
