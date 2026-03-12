@@ -856,11 +856,6 @@ function RenderCardInner({
         return `${csp}${base}${safeHtml}`;
     }, [r.html]);
 
-    const previewFrameSrc = useMemo(() => {
-        const candidate = String(r.lastDeployUrl || "").trim();
-        return validateAndNormalizePublicHttpUrl(candidate) || "";
-    }, [r.lastDeployUrl]);
-
     const isDeployedFlag = isDeployed;
     const isArchivedFlag = isArchived;
     const renderDisplayName = (() => {
@@ -898,7 +893,7 @@ function RenderCardInner({
         setIsEditingName(false);
     }, [nameDraft, onRenameRender, r.id, renderDisplayName]);
 
-    const showIframe = !!previewFrameSrc || !!r.html?.trim();
+    const showIframe = !!r.html?.trim();
 
     // ✅ Enhanced deployThis function with validation
     const deployThis = () => {
@@ -1546,13 +1541,11 @@ function RenderCardInner({
                     <iframe
                         title={`r-${r.id}`}
                         className="h-0 w-full"
-                        // allow-scripts + allow-same-origin are required so preview JS (analytics/session replay) can initialize.
-                        sandbox="allow-same-origin allow-scripts"
+                        sandbox="allow-same-origin"
                         referrerPolicy="no-referrer"
                         allow="clipboard-read; clipboard-write"
                         key={`frame-${r.id}`}
-                        src={previewFrameSrc || undefined}
-                        srcDoc={previewFrameSrc ? undefined : srcDoc}
+                        srcDoc={srcDoc}
                     />
                 </div>
             )}
