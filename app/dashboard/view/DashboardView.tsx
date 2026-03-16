@@ -2110,7 +2110,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                             type="button"
                                             onClick={() => setSelectedGenerationType("nextjs")}
                                             disabled={effectiveLocked}
-                                            className={`relative w-full overflow-visible rounded-xl border p-4 text-left shadow-sm transition disabled:opacity-60 disabled:cursor-not-allowed ${selectedGenerationType === "nextjs"
+                                            className={`relative w-full overflow-hidden rounded-xl border p-4 text-left shadow-sm transition disabled:opacity-60 disabled:cursor-not-allowed ${selectedGenerationType === "nextjs"
                                                 ? "border-[rgba(245,95,42,0.65)] bg-[linear-gradient(180deg,rgba(245,95,42,0.06),rgba(255,255,255,0))]"
                                                 : "border-neutral-200 bg-white hover:bg-neutral-50 hover:border-neutral-300"
                                                 }`}
@@ -2133,12 +2133,12 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                                     />
                                                 </div>
 
-                                                <div className="flex-1 space-y-1">
-                                                    <div className="flex items-center gap-2">
-                                                        <div className="text-sm font-semibold text-neutral-900">
+                                                <div className="min-w-0 flex-1 space-y-1">
+                                                    <div className="flex min-w-0 flex-wrap items-start gap-2 sm:items-center">
+                                                        <div className="min-w-0 text-sm font-semibold text-neutral-900 break-words">
                                                             Website (NextJS)
                                                         </div>
-                                                        <span className="inline-flex whitespace-nowrap items-center rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-800">
+                                                        <span className="inline-flex max-w-full items-center rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-800 whitespace-nowrap">
                                                             15 preview credits
                                                         </span>
                                                     </div>
@@ -2170,7 +2170,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                             : "border-neutral-200 bg-white hover:bg-neutral-50 hover:border-neutral-300"
                                             }`}
                                     >
-                                        <div className="flex items-start gap-3">
+                                        <div className="flex items-start gap-3 overflow-hidden">
                                             <div
                                                 className="flex h-10 w-10 items-center justify-center rounded-lg bg-neutral-100"
                                                 aria-hidden
@@ -2185,12 +2185,12 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                                 />
                                             </div>
 
-                                            <div className="flex-1 space-y-1">
-                                                <div className="flex items-center gap-2">
-                                                    <div className="text-sm font-semibold text-neutral-900">
+                                            <div className="min-w-0 flex-1 space-y-1">
+                                                <div className="flex min-w-0 flex-wrap items-start gap-2 sm:items-center">
+                                                    <div className="min-w-0 text-sm font-semibold text-neutral-900 break-words">
                                                         Simple Landing Page (HTML)
                                                     </div>
-                                                    <span className="inline-flex whitespace-nowrap items-center rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-800">
+                                                    <span className="inline-flex max-w-full items-center rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-800 whitespace-nowrap">
                                                         15 preview credits
                                                     </span>
                                                 </div>
@@ -2199,12 +2199,12 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                                     Faster HTML-first flow that opens in the legacy preview editor.
                                                 </div>
                                                 <div className="mt-2 rounded-lg border border-neutral-200 bg-neutral-50 px-2.5 py-2">
-                                                    <div className="flex items-center gap-1 text-[11px]">
+                                                    <div className="flex min-w-0 flex-wrap items-center gap-1 text-[11px]">
                                                         <span className="shrink-0 font-semibold uppercase tracking-wide text-neutral-500">
                                                             URL to clone:
                                                         </span>
                                                         <span
-                                                            className="min-w-0 truncate whitespace-nowrap font-mono font-semibold underline decoration-2"
+                                                            className="min-w-0 max-w-full flex-1 break-all font-mono font-semibold underline decoration-2 sm:truncate sm:whitespace-nowrap"
                                                             style={{ color: ACCENT }}
                                                             title={sourceUrlDisplay || "(none selected)"}
                                                         >
@@ -2234,7 +2234,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                         aria-disabled="true"
                                         className="relative w-full rounded-xl border border-neutral-200 bg-white p-4 text-left opacity-75 cursor-not-allowed"
                                     >
-                                        <span className="pointer-events-none absolute -right-2 -top-2 z-10 inline-flex items-center rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700 shadow-sm">
+                                        <span className="pointer-events-none absolute right-2 top-2 z-10 inline-flex items-center rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700 shadow-sm sm:-right-2 sm:-top-2">
                                             Coming Soon
                                         </span>
                                         <div className="flex items-start gap-3">
