@@ -56,7 +56,7 @@ const tiers: Tier[] = [
         name: "Free",
         badge: "Try it",
         price: "$0",
-        period: "/month",
+        period: "/week",
         highlight: false,
         blurb: "Clone a few pages, test the workflow, learn the limits.",
         topFeatures: [
@@ -75,8 +75,8 @@ const tiers: Tier[] = [
     {
         name: "Pro",
         badge: "Most popular",
-        price: "$29",
-        period: "/month",
+        price: "$4.25",
+        period: "/week",
         highlight: true,
         blurb: "For shipping real client work fast without rebuilding from scratch.",
         topFeatures: [
@@ -94,13 +94,13 @@ const tiers: Tier[] = [
             "Email support with faster response targets",
         ],
         cta: "Start 7-day free trial",
-        fineprint: "Then $29/month. Cancel anytime. Secure checkout via Stripe.",
+        fineprint: "Billed monthly at $16.99/month. Cancel anytime. Secure checkout via Stripe.",
     },
     {
         name: "Agency",
         badge: "Scale",
-        price: "$99",
-        period: "/month",
+        price: "$1.90",
+        period: "/week",
         highlight: false,
         blurb: "For higher volume teams managing multiple projects and iterations.",
         topFeatures: [
@@ -117,7 +117,7 @@ const tiers: Tier[] = [
             "Priority support",
         ],
         cta: "Subscribe to Agency",
-        fineprint: "Starts immediately. Cancel anytime. Secure checkout via Stripe.",
+        fineprint: "Billed yearly at $99/year. Cancel anytime. Secure checkout via Stripe.",
     },
 ];
 
