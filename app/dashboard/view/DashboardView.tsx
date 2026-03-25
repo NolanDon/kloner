@@ -5967,7 +5967,7 @@ export default function PreviewPage(): JSX.Element {
 
             if (!canUsePreviewCredit()) {
                 push(
-                    "You have used all available preview credits for today on this plan.",
+                    "You have used all available preview credits for this month.",
                     "warn",
                 );
                 setShowCreditsPaywall("preview");
@@ -6105,7 +6105,7 @@ export default function PreviewPage(): JSX.Element {
 
         if (!canUsePreviewCredit()) {
             push(
-                "You have used all available preview credits for today on this plan.",
+                "You have used all available preview credits for this month on this plan.",
                 "warn",
             );
             setShowCreditsPaywall("preview");
