@@ -4108,11 +4108,18 @@ export default function PreviewPage(): JSX.Element {
         (raw: string) => {
             const normalized = validateAndNormalizePublicHttpUrl(raw);
             if (!normalized) return;
+            if (!canUseScreenshotCredit()) {
+                setErr("You have used all monthly screenshot credits. Upgrade to capture more pages and monitor more sites.");
+                setInfo("");
+                push("You have used all available screenshot credits for this month.", "warn");
+                setShowCreditsPaywall("screenshot");
+                return;
+            }
             setErr("");
             setInfo("");
             router.push(`/dashboard/view?u=${encodeURIComponent(normalized)}&start=1`, { scroll: false });
         },
-        [router]
+        [canUseScreenshotCredit, push, router]
     );
 
     const submitMiniPrompt = useCallback(
@@ -4241,6 +4248,14 @@ export default function PreviewPage(): JSX.Element {
         if (!startRequested) return;
         if (!user || !targetUrl) return;
         if (!isHttpUrl(targetUrl)) return;
+        if (!canUseScreenshotCredit()) return;
+        if (!canUseScreenshotCredit()) {
+            setErr("You have used all monthly screenshot credits. Upgrade to capture more pages and monitor more sites.");
+            setInfo("");
+            setShowCreditsPaywall("screenshot");
+            clearStartQueryParam();
+            return;
+        }
         const startRequestKey = `${user.uid}:${targetUrl}`;
         if (startRequestedInFlightRef.current === startRequestKey) return;
         startRequestedInFlightRef.current = startRequestKey;
@@ -4371,6 +4386,9 @@ export default function PreviewPage(): JSX.Element {
                                 : "Sorry, we were not able to process this URL. Please ensure it is accessible before trying again.";
                     setErr(uiError);
                     setInfo("");
+                    if (res.status === 429) {
+                        setShowCreditsPaywall("screenshot");
+                    }
                     captureLockMinUntilRef.current = 0;
                     setCaptureLockUrl(null);
                     captureLockStartedAtRef.current = 0;
@@ -4446,7 +4464,14 @@ export default function PreviewPage(): JSX.Element {
         return () => {
             cancelled = true;
         };
-    }, [startRequested, user, targetUrl, clearStartQueryParam, shouldSendFrontendTimeoutAlert]);
+    }, [
+        startRequested,
+        user,
+        targetUrl,
+        canUseScreenshotCredit,
+        clearStartQueryParam,
+        shouldSendFrontendTimeoutAlert,
+    ]);
 
     // Polling fallback: retries /generate up to MAX_POLL_ATTEMPTS times if the main effect
     // fails to enqueue (network hiccup, slow auth hydration on live, etc.). The poll starts
@@ -4526,6 +4551,9 @@ export default function PreviewPage(): JSX.Element {
                             : "This URL failed to process. Please ensure it is accessible before retrying.";
                 setErr(uiError);
                 setInfo("");
+                if (res.status === 429) {
+                    setShowCreditsPaywall("screenshot");
+                }
                 captureLockMinUntilRef.current = 0;
                 setCaptureLockUrl(null);
                 captureLockStartedAtRef.current = 0;
@@ -4633,7 +4661,14 @@ export default function PreviewPage(): JSX.Element {
             cancelled = true;
             if (nextPollTimeoutId !== null) clearTimeout(nextPollTimeoutId);
         };
-    }, [startRequested, user, targetUrl, clearStartQueryParam, shouldSendFrontendTimeoutAlert]);
+    }, [
+        startRequested,
+        user,
+        targetUrl,
+        canUseScreenshotCredit,
+        clearStartQueryParam,
+        shouldSendFrontendTimeoutAlert,
+    ]);
 
     const startLockRequested = !!startRequested && !!targetUrl && !err;
 
@@ -4654,11 +4689,22 @@ export default function PreviewPage(): JSX.Element {
         return !!targetUrl && (startLockRequested || captureLockUrl === targetUrl);
     }, [targetUrl, startLockRequested, captureLockUrl]);
 
+    const hasAbortedStartForTarget = useMemo(() => {
+        if (!user || !targetUrl) return false;
+        return generateAbortedRef.current === `${user.uid}:${targetUrl}`;
+    }, [user?.uid, targetUrl, err]);
+
     const captureStatus = useMemo<UrlStatusUi | null>(() => {
         const normalizedTarget = targetUrl ? normUrl(targetUrl) : "";
         if (normalizedTarget && captureTerminalFailureUrl === normalizedTarget) {
             if (activeUrlStatus === "ready") return activeUrlStatus;
             return "error";
+        }
+
+        if (hasAbortedStartForTarget) {
+            if (activeUrlStatus === "ready") return activeUrlStatus;
+            if (activeUrlStatus === "error" || activeUrlStatus === "stale") return activeUrlStatus;
+            return err ? "error" : "stale";
         }
 
         // If we are in an in-flight capture, don't let an "unknown" doc status remove the UX lock.
@@ -4668,7 +4714,7 @@ export default function PreviewPage(): JSX.Element {
             // When a fresh scan was explicitly requested (start=1), an old "stale" or "error" doc
             // should not surface as an error immediately — treat it as "queued" until the new
             // /generate call either succeeds or fails.
-            if (startRequested && !err) {
+            if (startRequested && !err && !hasAbortedStartForTarget) {
                 if (stable === "stale" || stable === "error") return "queued";
             }
 
@@ -4680,12 +4726,24 @@ export default function PreviewPage(): JSX.Element {
         }
 
         return activeUrlStatus;
-    }, [activeUrlStatus, lockMatches, shotMetaCount, startRequested, err, targetUrl, captureTerminalFailureUrl]);
+    }, [
+        activeUrlStatus,
+        hasAbortedStartForTarget,
+        lockMatches,
+        shotMetaCount,
+        startRequested,
+        err,
+        targetUrl,
+        captureTerminalFailureUrl,
+    ]);
 
     // Only lock generation controls while this frontend session owns an active capture flow.
     // A stale Firestore queued/processing status alone should not freeze the dashboard after refresh.
     const captureLocked =
-        lockMatches && (captureStatus === "queued" || captureStatus === "processing");
+        !err &&
+        !hasAbortedStartForTarget &&
+        lockMatches &&
+        (captureStatus === "queued" || captureStatus === "processing");
 
     useEffect(() => {
         if (!err) return;
@@ -5920,6 +5978,13 @@ export default function PreviewPage(): JSX.Element {
                 setErr("That saved URL looks invalid. Delete it from the list to continue.");
                 return;
             }
+            if (!canUseScreenshotCredit()) {
+                setErr("You have used all monthly screenshot credits. Upgrade to capture more pages and monitor more sites.");
+                setInfo("");
+                push("You have used all available screenshot credits for this month.", "warn");
+                setShowCreditsPaywall("screenshot");
+                return;
+            }
             setErr("");
             setInfo("");
             setSuccess("");
@@ -5929,7 +5994,7 @@ export default function PreviewPage(): JSX.Element {
             setUrlMenuOpen(false);
             router.push(`/dashboard/view?u=${encodeURIComponent(normalized)}&start=1`, { scroll: false });
         },
-        [router]
+        [canUseScreenshotCredit, push, router]
     );
 
     const isBackendFetchFailed502 = useCallback((status: number, payload: any): boolean => {
@@ -8345,7 +8410,7 @@ export default function PreviewPage(): JSX.Element {
                     </div>
                 ) : null}
 
-                {err && !(showUrlAccessInError && activeUrlCannotGenerate) ? (
+                {err && !showActiveUrlIssueWarning && !(showUrlAccessInError && activeUrlCannotGenerate) ? (
                     <div className="mt-2 flex items-start justify-between gap-3 rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">
                         <div className="min-w-0 flex-1">
                             <span>{err}</span>
