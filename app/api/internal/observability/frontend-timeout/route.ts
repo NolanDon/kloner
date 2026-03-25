@@ -42,6 +42,16 @@ export async function POST(req: NextRequest) {
     return requireSessionAndMaybeCsrf(
         req,
         async ({ uid, req: authedReq }) => {
+            const requestUserAgent = cleanText(authedReq.headers.get("user-agent"), 500);
+            const origin = cleanText(authedReq.headers.get("origin"), 300);
+            const referer = cleanText(authedReq.headers.get("referer"), 300);
+            const clientIp =
+                cleanText(authedReq.headers.get("x-forwarded-for"), 300) ||
+                cleanText(authedReq.headers.get("x-real-ip"), 300) ||
+                cleanText(authedReq.headers.get("fly-client-ip"), 300) ||
+                cleanText(authedReq.headers.get("cf-connecting-ip"), 300) ||
+                cleanText(authedReq.headers.get("x-vercel-forwarded-for"), 300);
+
             let body: any = {};
             try {
                 body = await authedReq.json();
@@ -61,7 +71,7 @@ export async function POST(req: NextRequest) {
                 "Preview exceeded timeout while starting in frontend polling";
             const previewUrl = cleanText(body?.previewUrl, 1000);
             const browser = cleanText(body?.browser, 120);
-            const userAgent = cleanText(body?.userAgent, 500);
+            const payloadUserAgent = cleanText(body?.userAgent, 500);
             const reason = cleanText(body?.reason, 200);
             const ageMs = cleanNumber(body?.ageMs);
             const elapsedMs = cleanNumber(body?.elapsedMs);
@@ -86,11 +96,21 @@ export async function POST(req: NextRequest) {
                     ? (backendDebug as any).storage.rootfsIoCorruption
                     : undefined;
 
+            const requestContext = {
+                callerType: "frontend-browser",
+                userAgent: requestUserAgent || undefined,
+                origin: origin || undefined,
+                referer: referer || undefined,
+                clientIp: clientIp || undefined,
+                hasSession: true,
+                hasBearer: Boolean(authedReq.headers.get("authorization")),
+            };
+
             const enrichedMessage = [
                 message,
                 browser ? `browser=${browser}` : "",
                 reason ? `reason=${reason}` : "",
-                userAgent ? `ua=${userAgent}` : "",
+                payloadUserAgent ? `ua=${payloadUserAgent}` : "",
             ]
                 .filter(Boolean)
                 .join(" | ");
@@ -113,11 +133,12 @@ export async function POST(req: NextRequest) {
                     status,
                     browser: browser || undefined,
                     reason: reason || undefined,
-                    userAgent: userAgent || undefined,
+                    userAgent: payloadUserAgent || undefined,
                     ageMs: typeof ageMs === "number" ? ageMs : undefined,
                     elapsedMs: typeof elapsedMs === "number" ? elapsedMs : undefined,
                     requestId: requestId || undefined,
                     jobId: jobId || undefined,
+                    requestContext,
                     alertKey: alertKey || undefined,
                     deduped,
                     backend: {

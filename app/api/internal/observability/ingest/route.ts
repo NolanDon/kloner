@@ -61,6 +61,33 @@ function cleanTags(value: unknown): string[] | undefined {
     return tags.length ? tags : undefined;
 }
 
+function getClientIp(req: NextRequest): string | undefined {
+    const candidates = [
+        req.headers.get("x-forwarded-for"),
+        req.headers.get("x-real-ip"),
+        req.headers.get("fly-client-ip"),
+        req.headers.get("cf-connecting-ip"),
+        req.headers.get("x-vercel-forwarded-for"),
+    ];
+    const raw = candidates.find((value) => typeof value === "string" && value.trim()) || "";
+    const ip = raw.split(",")[0].trim();
+    return ip || undefined;
+}
+
+function classifyCaller(req: NextRequest, isAuthorized: boolean, source: string): string {
+    const userAgent = (req.headers.get("user-agent") || "").toLowerCase();
+    const origin = (req.headers.get("origin") || "").trim();
+    const referer = (req.headers.get("referer") || "").trim();
+    const browserContext = Boolean(origin || referer);
+    const scriptUa = /curl|wget|python-requests|go-http-client|postmanruntime|okhttp|httpie/.test(userAgent);
+
+    if (isAuthorized) return browserContext ? "tokenized-browser" : "tokenized-api";
+    if ((source || "").toLowerCase() === "frontend") return "frontend-browser";
+    if (scriptUa && !browserContext) return "anonymous-script";
+    if (browserContext) return "browser-anonymous";
+    return "unknown";
+}
+
 export async function POST(req: NextRequest) {
     let payload: any;
     try {
@@ -79,6 +106,15 @@ export async function POST(req: NextRequest) {
     }
 
     const results: Array<{ delivered: boolean; eventId?: string | null; reason?: string }> = [];
+    const requestContext = {
+        callerType: classifyCaller(req, isAuthorized(req), String(payload?.source || "")),
+        userAgent: (req.headers.get("user-agent") || "").trim() || undefined,
+        origin: (req.headers.get("origin") || "").trim() || undefined,
+        referer: (req.headers.get("referer") || "").trim() || undefined,
+        clientIp: getClientIp(req),
+        hasSession: Boolean(req.headers.get("cookie")),
+        hasBearer: Boolean((req.headers.get("authorization") || "").trim()),
+    };
 
     for (const item of inputEvents.slice(0, 25)) {
         const statusCode = cleanStatus(item?.statusCode);
@@ -114,7 +150,10 @@ export async function POST(req: NextRequest) {
             tags: cleanTags(item?.tags),
             environment: cleanString(item?.environment, 100),
             occurredAt: cleanString(item?.occurredAt, 100),
-            extra: typeof item?.extra === "object" && item.extra ? item.extra : undefined,
+            extra: {
+                ...(typeof item?.extra === "object" && item.extra ? item.extra : {}),
+                requestContext,
+            },
         });
 
         results.push({

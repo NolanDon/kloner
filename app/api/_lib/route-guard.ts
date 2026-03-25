@@ -61,6 +61,51 @@ function readBearerToken(req: NextRequest): string | null {
     return token || null;
 }
 
+function getClientIp(req: NextRequest): string {
+    const candidates = [
+        req.headers.get("x-forwarded-for"),
+        req.headers.get("x-real-ip"),
+        req.headers.get("fly-client-ip"),
+        req.headers.get("cf-connecting-ip"),
+        req.headers.get("x-vercel-forwarded-for"),
+    ];
+    const raw = candidates.find((value) => typeof value === "string" && value.trim()) || "";
+    return raw.split(",")[0].trim();
+}
+
+function classifyRequestContext(req: NextRequest, uid?: string) {
+    const userAgent = (req.headers.get("user-agent") || "").trim();
+    const origin = (req.headers.get("origin") || "").trim();
+    const referer = (req.headers.get("referer") || "").trim();
+    const hasSession = Boolean(req.headers.get("cookie"));
+    const hasBearer = Boolean(req.headers.get("authorization"));
+    const lowerUa = userAgent.toLowerCase();
+    const browserUa = /mozilla|chrome|safari|firefox|edg\//.test(lowerUa);
+    const scriptUa = /curl|wget|python-requests|go-http-client|postmanruntime|okhttp|httpie/.test(lowerUa);
+    const browserContext = Boolean(origin || referer);
+
+    let callerType: string = "unknown";
+    if (uid) {
+        callerType = browserContext || browserUa ? "frontend-browser" : "authenticated-api";
+    } else if (browserContext && browserUa) {
+        callerType = "browser-anonymous";
+    } else if (scriptUa) {
+        callerType = "anonymous-script";
+    } else if (hasBearer || hasSession) {
+        callerType = "unauthenticated-session";
+    }
+
+    return {
+        callerType,
+        userAgent: userAgent || undefined,
+        origin: origin || undefined,
+        referer: referer || undefined,
+        clientIp: getClientIp(req) || undefined,
+        hasSession,
+        hasBearer,
+    };
+}
+
 async function getResponseDebugDetails(response: NextResponse): Promise<{
     errorMessage?: string;
     errorCode?: string;
@@ -150,6 +195,7 @@ export async function requireSessionAndMaybeCsrf(
             if (responseDetails.errorReason) messageParts.push(`reason=${responseDetails.errorReason}`);
             if (responseDetails.errorMessage) messageParts.push(`error=${responseDetails.errorMessage}`);
             const severity = status >= 500 ? "critical" : "error";
+            const requestContext = classifyRequestContext(req, uid);
             await captureCriticalEvent({
                 source: "vercel",
                 severity,
@@ -168,6 +214,7 @@ export async function requireSessionAndMaybeCsrf(
                     responseCode: responseDetails.errorCode || null,
                     responseReason: responseDetails.errorReason || null,
                     responseDebug: responseDetails.debugDetails || null,
+                    requestContext,
                 },
             });
         }
@@ -189,6 +236,7 @@ export async function requireSessionAndMaybeCsrf(
             if (mapped.status >= 400) {
                 const severity = mapped.status >= 500 ? "critical" : "error";
                 const isAppScope = mapped.code === "MISSING_APP_SCOPE" || mapped.code === "INVALID_APP_SCOPE";
+                const requestContext = classifyRequestContext(req, uid);
                 await captureCriticalEvent({
                     source: "vercel",
                     severity,
@@ -204,6 +252,7 @@ export async function requireSessionAndMaybeCsrf(
                     extra: {
                         code: mapped.code,
                         appId: mapped.appId || null,
+                        requestContext,
                     },
                 });
             }
@@ -226,6 +275,8 @@ export async function requireSessionAndMaybeCsrf(
             message: typeof err?.message === "string" ? err.message : String(err),
         });
 
+        const requestContext = classifyRequestContext(req, uid);
+
         await captureException({
             source: "vercel",
             error: err,
@@ -237,6 +288,9 @@ export async function requireSessionAndMaybeCsrf(
             statusCode: 500,
             url: req.url,
             service: "next-api",
+            extra: {
+                requestContext,
+            },
         });
 
         // Return a structured 500 so the frontend can surface a usable error.

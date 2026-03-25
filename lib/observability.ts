@@ -194,6 +194,13 @@ function buildDashboardUrl(eventId: string): string {
     return `${base}/dashboard/observability?event=${encodeURIComponent(eventId)}`;
 }
 
+function cleanContextValue(value: unknown, max = 200): string {
+    if (typeof value !== "string") return "";
+    const trimmed = value.trim();
+    if (!trimmed) return "";
+    return trimmed.length > max ? `${trimmed.slice(0, max - 1)}…` : trimmed;
+}
+
 function toSlackBlocks(event: StoredEvent, eventId: string) {
     const route = event.route || event.page || "n/a";
     const user = event.userId || "anonymous";
@@ -216,6 +223,24 @@ function toSlackBlocks(event: StoredEvent, eventId: string) {
         `*Service:* ${event.service || "n/a"}`,
         `*Time:* ${event.occurredAt}`,
     ].join("\n");
+
+    const extra = (event.extra && typeof event.extra === "object") ? event.extra : {};
+    const contextFields = [
+        ["Caller", cleanContextValue((extra as any).callerType || (extra as any).caller || (extra as any).requestContext?.callerType, 80)],
+        ["IP", cleanContextValue((extra as any).ip || (extra as any).clientIp || (extra as any).requestContext?.ip, 80)],
+        ["UA", cleanContextValue((extra as any).userAgent || (extra as any).ua || (extra as any).requestContext?.userAgent, 220)],
+        ["Origin", cleanContextValue((extra as any).origin || (extra as any).requestContext?.origin, 220)],
+        ["Referer", cleanContextValue((extra as any).referer || (extra as any).requestContext?.referer, 220)],
+        ["Has session", typeof (extra as any).hasSession === "boolean" ? String((extra as any).hasSession) : typeof (extra as any).hasSessionSignals === "boolean" ? String((extra as any).hasSessionSignals) : ""],
+        ["Job", cleanContextValue((extra as any).jobId || (extra as any).job || (extra as any).requestContext?.jobId, 120)],
+    ].filter(([, value]) => Boolean(value)) as Array<[string, string]>;
+
+    const contextBlock = contextFields.length
+        ? [
+            "*Request Context:*",
+            ...contextFields.map(([label, value]) => `${label}: ${value}`),
+        ].join("\n")
+        : "";
 
     const stack = truncate(normalizeMultiline(event.stack), MAX_STACK_CHARS);
     const message = truncate(asOneLine(withFrontendLabel(event, event.message)), MAX_MESSAGE_CHARS);
@@ -245,6 +270,16 @@ function toSlackBlocks(event: StoredEvent, eventId: string) {
             },
         },
     ];
+
+    if (contextBlock) {
+        blocks.push({
+            type: "section",
+            text: {
+                type: "mrkdwn",
+                text: truncate(contextBlock, MAX_TEXT_CHARS),
+            },
+        });
+    }
 
     if (event.url) {
         blocks.push({
