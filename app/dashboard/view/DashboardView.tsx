@@ -110,6 +110,7 @@ const CAPTURE_STALL_TIMEOUT_MS = 6 * 60 * 1000;
 const CAPTURE_ISSUE_NOTICE_MS = 10 * 1000;
 const FRONTEND_TIMEOUT_DEDUPE_TTL_MS = 10 * 60 * 1000;
 const FRONTEND_TIMEOUT_DEDUPE_STORAGE_KEY = "dashboardViewFrontendTimeoutAlertsV1";
+const CAPTURE_STALE_ALERT_STORAGE_KEY = "dashboardViewCaptureStaleAlertsV1";
 const URL_ADD_SUCCESS_MESSAGE = "Successfully added your first URL.";
 const APP_WIZARD_PROMPT_MAX_CHARS = 2000;
 const FIRST_GEN_TRIAL_OBSERVE_MS = 15 * 1000;
@@ -163,6 +164,54 @@ function shouldShowTrialPromptForSession(storageKey: string, everyNthSession: nu
     } catch {
         return false;
     }
+}
+
+function readCaptureStaleAlertCache(): Record<string, number> {
+    if (typeof window === "undefined") return {};
+    try {
+        const raw = window.sessionStorage.getItem(CAPTURE_STALE_ALERT_STORAGE_KEY);
+        if (!raw) return {};
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== "object") return {};
+        return parsed as Record<string, number>;
+    } catch {
+        return {};
+    }
+}
+
+function writeCaptureStaleAlertCache(cache: Record<string, number>): void {
+    if (typeof window === "undefined") return;
+    try {
+        const keys = Object.keys(cache);
+        if (!keys.length) {
+            window.sessionStorage.removeItem(CAPTURE_STALE_ALERT_STORAGE_KEY);
+            return;
+        }
+        window.sessionStorage.setItem(CAPTURE_STALE_ALERT_STORAGE_KEY, JSON.stringify(cache));
+    } catch {
+        // ignore
+    }
+}
+
+function hasCaptureStaleAlertBeenSent(normalizedUrl: string): boolean {
+    if (typeof window === "undefined") return false;
+    const cache = readCaptureStaleAlertCache();
+    return typeof cache[normalizedUrl] === "number";
+}
+
+function markCaptureStaleAlertSent(normalizedUrl: string): void {
+    if (typeof window === "undefined") return;
+    const cache = readCaptureStaleAlertCache();
+    cache[normalizedUrl] = Date.now();
+    writeCaptureStaleAlertCache(cache);
+}
+
+function clearCaptureStaleAlertSent(normalizedUrl: string): void {
+    if (typeof window === "undefined") return;
+    const cache = readCaptureStaleAlertCache();
+    if (!Object.prototype.hasOwnProperty.call(cache, normalizedUrl)) return;
+    delete cache[normalizedUrl];
+    writeCaptureStaleAlertCache(cache);
 }
 
 type UrlStatusUi = "queued" | "processing" | "ready" | "stale" | "error" | "unknown";
@@ -4919,7 +4968,9 @@ export default function PreviewPage(): JSX.Element {
 
         const normalizedUrl = normUrl(targetUrl);
         if (captureStaleReportedForUrlRef.current === normalizedUrl) return;
+        if (hasCaptureStaleAlertBeenSent(normalizedUrl)) return;
         captureStaleReportedForUrlRef.current = normalizedUrl;
+        markCaptureStaleAlertSent(normalizedUrl);
         setCaptureTerminalFailureUrl(normalizedUrl);
 
         if (!shouldSendFrontendTimeoutAlert("url_capture_stale", targetUrl)) return;
@@ -4955,6 +5006,13 @@ export default function PreviewPage(): JSX.Element {
             }
         })();
     }, [targetUrl, captureStatus, err, startRequested, shouldSendFrontendTimeoutAlert]);
+
+    useEffect(() => {
+        const normalizedUrl = targetUrl ? normUrl(targetUrl) : "";
+        if (!normalizedUrl) return;
+        if (captureStatus === "stale") return;
+        clearCaptureStaleAlertSent(normalizedUrl);
+    }, [targetUrl, captureStatus]);
 
     useEffect(() => {
         // Avoid stale/duplicate legacy notifications after capture finishes (e.g. during hot reload).
