@@ -110,7 +110,7 @@ const CAPTURE_STALL_TIMEOUT_MS = 6 * 60 * 1000;
 const CAPTURE_ISSUE_NOTICE_MS = 10 * 1000;
 const FRONTEND_TIMEOUT_DEDUPE_TTL_MS = 10 * 60 * 1000;
 const FRONTEND_TIMEOUT_DEDUPE_STORAGE_KEY = "dashboardViewFrontendTimeoutAlertsV1";
-const URL_ADD_SUCCESS_MESSAGE = "We successfully added your first URL. Get started with your website below.";
+const URL_ADD_SUCCESS_MESSAGE = "We successfully added your first URL. Get started below.";
 const APP_WIZARD_PROMPT_MAX_CHARS = 2000;
 const FIRST_GEN_TRIAL_OBSERVE_MS = 15 * 1000;
 const FIRST_GEN_TRIAL_SESSION_INTERVAL = 3;
@@ -2154,7 +2154,17 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                                     </div>
                                                 </div>
                                             </div>
-
+                                            <div className="mt-2 rounded-lg border border-neutral-200 bg-neutral-50 px-2.5 py-2">
+                                                <div className="flex min-w-0 flex-wrap items-center gap-1 text-[11px]">
+                                                    <span
+                                                        className="min-w-0 max-w-full flex-1 break-all font-mono font-semibold underline decoration-2 sm:truncate sm:whitespace-nowrap"
+                                                        style={{ color: ACCENT }}
+                                                        title={sourceUrlDisplay || "(none selected)"}
+                                                    >
+                                                        {sourceUrlDisplay ? truncateMiddle(sourceUrlDisplay, 56) : "(none selected)"}
+                                                    </span>
+                                                </div>
+                                            </div>
                                         </button>
                                     </div>
                                 </div>
@@ -2188,7 +2198,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                             <div className="min-w-0 flex-1 space-y-1">
                                                 <div className="flex min-w-0 flex-wrap items-start gap-2 sm:items-center">
                                                     <div className="min-w-0 text-sm font-semibold text-neutral-900 break-words">
-                                                        Simple Landing Page (HTML)
+                                                        Landing Page (HTML)
                                                     </div>
                                                     <span className="inline-flex max-w-full items-center rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-800 whitespace-nowrap">
                                                         15 preview credits
@@ -2198,20 +2208,6 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                                 <div className="text-xs text-neutral-600">
                                                     Faster HTML-first flow that opens in the legacy preview editor.
                                                 </div>
-                                                <div className="mt-2 rounded-lg border border-neutral-200 bg-neutral-50 px-2.5 py-2">
-                                                    <div className="flex min-w-0 flex-wrap items-center gap-1 text-[11px]">
-                                                        <span className="shrink-0 font-semibold uppercase tracking-wide text-neutral-500">
-                                                            URL to clone:
-                                                        </span>
-                                                        <span
-                                                            className="min-w-0 max-w-full flex-1 break-all font-mono font-semibold underline decoration-2 sm:truncate sm:whitespace-nowrap"
-                                                            style={{ color: ACCENT }}
-                                                            title={sourceUrlDisplay || "(none selected)"}
-                                                        >
-                                                            {sourceUrlDisplay ? truncateMiddle(sourceUrlDisplay, 56) : "(none selected)"}
-                                                        </span>
-                                                    </div>
-                                                </div>
                                                 {!canUseSimpleHtml ? (
                                                     <div className="mt-2 inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700">
                                                         <MessageCircleWarning className="h-3 w-3" />
@@ -2219,15 +2215,26 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                                     </div>
                                                 ) : null}
                                                 <div className="mt-1 text-[11px] leading-4 text-neutral-500">
-                                                    Best for: simple landing pages, brochure sites, fast iterations, and projects with no auth or database requirements.
+                                                    Best for: simple landing sites, fast iterations, and projects with no auth or database requirements.
                                                 </div>
+                                            </div>
+                                        </div>
+                                        <div className="mt-2 rounded-lg border border-neutral-200 bg-neutral-50 px-2.5 py-2">
+                                            <div className="flex min-w-0 flex-wrap items-center gap-1 text-[11px]">
+                                                <span
+                                                    className="min-w-0 max-w-full flex-1 break-all font-mono font-semibold underline decoration-2 sm:truncate sm:whitespace-nowrap"
+                                                    style={{ color: ACCENT }}
+                                                    title={sourceUrlDisplay || "(none selected)"}
+                                                >
+                                                    {sourceUrlDisplay ? truncateMiddle(sourceUrlDisplay, 56) : "(none selected)"}
+                                                </span>
                                             </div>
                                         </div>
                                     </button>
                                 </div>
 
                                 {/* 3) Mobile apps (coming soon) */}
-                                <div className="relative">
+                                {/* <div className="relative">
                                     <button
                                         type="button"
                                         disabled
@@ -2266,7 +2273,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                             </div>
                                         </div>
                                     </button>
-                                </div>
+                                </div> */}
                             </div>
 
                             <div className="flex shrink-0 items-center justify-between gap-2 border-t border-neutral-200 px-5 py-4">
@@ -2524,6 +2531,16 @@ export default function PreviewPage(): JSX.Element {
 
         setPendingAppBuilderAppId(nextId);
         setAppBuilderCookiePromptOpen(true);
+    }, []);
+
+    const openAppBuilderDirectly = useCallback((appId: string | null) => {
+        const nextId = typeof appId === "string" ? appId.trim() : "";
+        if (!nextId) return;
+
+        setCurrentAppId(nextId);
+        setPendingAppBuilderAppId(null);
+        setAppBuilderCookiePromptOpen(false);
+        setAppBuilderOpen(true);
     }, []);
 
     const acceptCookiesAndOpenAppBuilder = useCallback(() => {
@@ -3103,13 +3120,15 @@ export default function PreviewPage(): JSX.Element {
         prompt?: string,
         renderId?: string,
         url?: string,
-        opts?: { screenshotKeys?: string[]; onError?: (message: string) => void },
+        opts?: { screenshotKeys?: string[]; onError?: (message: string) => void; skipCookieConsent?: boolean },
     ) => {
         if (!user) return;
 
-        const consentAccepted = await requestAppBuilderCookieConsent();
-        if (!consentAccepted) {
-            return null;
+        if (!opts?.skipCookieConsent) {
+            const consentAccepted = await requestAppBuilderCookieConsent();
+            if (!consentAccepted) {
+                return null;
+            }
         }
 
         try {
@@ -3242,8 +3261,10 @@ export default function PreviewPage(): JSX.Element {
                 return next;
             });
 
-            // Open app builder as overlay
-            openAppBuilderWithCookieGate(appId);
+            // URL creations should finish without auto-opening the builder overlay.
+            if (mode !== "url") {
+                openAppBuilderWithCookieGate(appId);
+            }
 
             // No agent application for new modes, as they are full generations
 
@@ -3578,110 +3599,110 @@ export default function PreviewPage(): JSX.Element {
             ref,
             (snap) => {
                 if (!snap.exists()) {
-                // No doc yet: treat as full allowance based on tier limits
-                const screenshotLimit =
-                    tierLimits.screenshotMonthly && tierLimits.screenshotMonthly > 0
-                        ? tierLimits.screenshotMonthly
-                        : 0;
-                const previewLimit =
-                    tierLimits.previewMonthly && tierLimits.previewMonthly > 0
-                        ? tierLimits.previewMonthly
-                        : 0;
-                const editLimit =
-                    tierLimits.editMonthly && tierLimits.editMonthly > 0
-                        ? tierLimits.editMonthly
-                        : 0;
+                    // No doc yet: treat as full allowance based on tier limits
+                    const screenshotLimit =
+                        tierLimits.screenshotMonthly && tierLimits.screenshotMonthly > 0
+                            ? tierLimits.screenshotMonthly
+                            : 0;
+                    const previewLimit =
+                        tierLimits.previewMonthly && tierLimits.previewMonthly > 0
+                            ? tierLimits.previewMonthly
+                            : 0;
+                    const editLimit =
+                        tierLimits.editMonthly && tierLimits.editMonthly > 0
+                            ? tierLimits.editMonthly
+                            : 0;
 
-                setCredits({
-                    screenshotUsed: 0,
-                    previewUsed: 0,
-                    screenshotRemaining: screenshotLimit || null,
-                    previewRemaining: previewLimit || null,
-                    editUsed: 0,
-                    editRemaining: editLimit || null,
-                });
-                setExitOfferClaimed(false);
-                setFirstGenerationTrialPromptShown(false);
-                return;
-            }
+                    setCredits({
+                        screenshotUsed: 0,
+                        previewUsed: 0,
+                        screenshotRemaining: screenshotLimit || null,
+                        previewRemaining: previewLimit || null,
+                        editUsed: 0,
+                        editRemaining: editLimit || null,
+                    });
+                    setExitOfferClaimed(false);
+                    setFirstGenerationTrialPromptShown(false);
+                    return;
+                }
 
                 const creditsMap = (snap.data() as any) || {};
-            const previewBucket =
-                creditsMap?.["credits.preview"] || creditsMap?.credits?.preview || {};
-            const snapshotBucket =
-                creditsMap?.["credits.snapshot"] || creditsMap?.credits?.snapshot || {};
-            const editBucket =
-                creditsMap?.["credits.aiEdits"] || creditsMap?.credits?.aiEdits || {};
+                const previewBucket =
+                    creditsMap?.["credits.preview"] || creditsMap?.credits?.preview || {};
+                const snapshotBucket =
+                    creditsMap?.["credits.snapshot"] || creditsMap?.credits?.snapshot || {};
+                const editBucket =
+                    creditsMap?.["credits.aiEdits"] || creditsMap?.credits?.aiEdits || {};
 
-            const offersBucket =
-                creditsMap?.offers && typeof creditsMap.offers === "object"
-                    ? creditsMap.offers
-                    : {};
-            const nextExitOfferClaimed =
-                offersBucket?.exitOffer40Claimed === true ||
-                creditsMap?.["offers.exitOffer40Claimed"] === true;
-            const nextTrialPromptShown =
-                offersBucket?.firstGenerationTrialPromptShown === true ||
-                creditsMap?.["offers.firstGenerationTrialPromptShown"] === true;
+                const offersBucket =
+                    creditsMap?.offers && typeof creditsMap.offers === "object"
+                        ? creditsMap.offers
+                        : {};
+                const nextExitOfferClaimed =
+                    offersBucket?.exitOffer40Claimed === true ||
+                    creditsMap?.["offers.exitOffer40Claimed"] === true;
+                const nextTrialPromptShown =
+                    offersBucket?.firstGenerationTrialPromptShown === true ||
+                    creditsMap?.["offers.firstGenerationTrialPromptShown"] === true;
 
-            setExitOfferClaimed(nextExitOfferClaimed);
-            setFirstGenerationTrialPromptShown(nextTrialPromptShown);
+                setExitOfferClaimed(nextExitOfferClaimed);
+                setFirstGenerationTrialPromptShown(nextTrialPromptShown);
 
-            const previewLimit =
-                typeof previewBucket.monthlyLimit === "number" &&
-                    previewBucket.monthlyLimit >= 0
-                    ? previewBucket.monthlyLimit
-                    : tierLimits.previewMonthly || 0;
+                const previewLimit =
+                    typeof previewBucket.monthlyLimit === "number" &&
+                        previewBucket.monthlyLimit >= 0
+                        ? previewBucket.monthlyLimit
+                        : tierLimits.previewMonthly || 0;
 
-            const screenshotLimit =
-                typeof snapshotBucket.monthlyLimit === "number" &&
-                    snapshotBucket.monthlyLimit >= 0
-                    ? snapshotBucket.monthlyLimit
-                    : tierLimits.screenshotMonthly || 0;
+                const screenshotLimit =
+                    typeof snapshotBucket.monthlyLimit === "number" &&
+                        snapshotBucket.monthlyLimit >= 0
+                        ? snapshotBucket.monthlyLimit
+                        : tierLimits.screenshotMonthly || 0;
 
-            const editLimit =
-                typeof editBucket.monthlyLimit === "number" && editBucket.monthlyLimit >= 0
-                    ? editBucket.monthlyLimit
-                    : tierLimits.editMonthly || 0;
+                const editLimit =
+                    typeof editBucket.monthlyLimit === "number" && editBucket.monthlyLimit >= 0
+                        ? editBucket.monthlyLimit
+                        : tierLimits.editMonthly || 0;
 
-            const previewRemaining =
-                previewLimit === 0
-                    ? null
-                    : typeof previewBucket.remaining === "number"
-                        ? previewBucket.remaining
-                        : previewLimit;
+                const previewRemaining =
+                    previewLimit === 0
+                        ? null
+                        : typeof previewBucket.remaining === "number"
+                            ? previewBucket.remaining
+                            : previewLimit;
 
-            const screenshotRemaining =
-                screenshotLimit === 0
-                    ? null
-                    : typeof snapshotBucket.remaining === "number"
-                        ? snapshotBucket.remaining
-                        : screenshotLimit;
+                const screenshotRemaining =
+                    screenshotLimit === 0
+                        ? null
+                        : typeof snapshotBucket.remaining === "number"
+                            ? snapshotBucket.remaining
+                            : screenshotLimit;
 
-            const editRemaining =
-                editLimit === 0
-                    ? null
-                    : typeof editBucket.remaining === "number"
-                        ? editBucket.remaining
-                        : editLimit;
+                const editRemaining =
+                    editLimit === 0
+                        ? null
+                        : typeof editBucket.remaining === "number"
+                            ? editBucket.remaining
+                            : editLimit;
 
                 setCredits({
-                screenshotUsed:
-                    screenshotRemaining === null || screenshotLimit === 0
-                        ? 0
-                        : Math.max(screenshotLimit - screenshotRemaining, 0),
-                previewUsed:
-                    previewRemaining === null || previewLimit === 0
-                        ? 0
-                        : Math.max(previewLimit - previewRemaining, 0),
-                screenshotRemaining,
-                previewRemaining,
-                editUsed:
-                    editRemaining === null || editLimit === 0
-                        ? 0
-                        : Math.max(editLimit - editRemaining, 0),
-                editRemaining,
-            });
+                    screenshotUsed:
+                        screenshotRemaining === null || screenshotLimit === 0
+                            ? 0
+                            : Math.max(screenshotLimit - screenshotRemaining, 0),
+                    previewUsed:
+                        previewRemaining === null || previewLimit === 0
+                            ? 0
+                            : Math.max(previewLimit - previewRemaining, 0),
+                    screenshotRemaining,
+                    previewRemaining,
+                    editUsed:
+                        editRemaining === null || editLimit === 0
+                            ? 0
+                            : Math.max(editLimit - editRemaining, 0),
+                    editRemaining,
+                });
             },
             (err) => {
                 console.warn("[firestore] credits snapshot failed", err);
@@ -3938,6 +3959,16 @@ export default function PreviewPage(): JSX.Element {
         const normalized = validateAndNormalizePublicHttpUrl(dec);
         return normalized ? normUrl(normalized) : "";
     }, [urlParam]);
+
+    const startNextJsAppBuilder = useCallback(async (url: string) => {
+        const created = await handleCreateApp("url", undefined, undefined, url, {
+            skipCookieConsent: true,
+        });
+
+        if (created) {
+            openAppBuilderDirectly(created);
+        }
+    }, [handleCreateApp, openAppBuilderDirectly]);
 
     const DUPLICATE_URL_MESSAGE =
         "This URL has already been processed. Click Generate website below to get started.";
@@ -4547,7 +4578,7 @@ export default function PreviewPage(): JSX.Element {
                     pollAttempt: generatePollCountRef.current,
                     tags: ["url-capture", "enqueue", "poll", "frontend"],
                 }),
-            }).catch(() => {});
+            }).catch(() => { });
             return false;
         };
 
@@ -8499,8 +8530,8 @@ export default function PreviewPage(): JSX.Element {
                                         }}
                                         onAppClick={() => {
                                             // Next.js apps should not open the HTML PreviewEditor with empty initialHtml.
-                                            // Route through the app wizard which creates/opens the App Builder overlay.
-                                            startWebAppWizard({ seedRenderId: null, url: targetUrl || "" });
+                                            // Go straight to the App Builder editor.
+                                            void startNextJsAppBuilder(targetUrl || "");
                                         }}
                                         isAdmin={isAdmin}
                                         onStartFromTemplate={handleCreateTemplateApp}
@@ -8538,7 +8569,7 @@ export default function PreviewPage(): JSX.Element {
                                                 onAutoOpenMessageDismiss={() => setAutoOpenGenerateSuccessMessage("")}
                                                 onClick={() => buildFromCollection(collectionKeys)}
                                                 onAppClick={() => {
-                                                    startWebAppWizard({ seedRenderId: null, url: targetUrl || "" });
+                                                    void startNextJsAppBuilder(targetUrl || "");
                                                 }}
                                                 isAdmin={isAdmin}
                                                 onStartFromTemplate={handleCreateTemplateApp}
@@ -8649,8 +8680,8 @@ export default function PreviewPage(): JSX.Element {
                                                     }}
                                                     onAppClick={() => {
                                                         // Next.js apps should not open the HTML PreviewEditor with empty initialHtml.
-                                                        // Route through the app wizard which creates/opens the App Builder overlay.
-                                                        startWebAppWizard({ seedRenderId: null, url: targetUrl || "" });
+                                                        // Go straight to the App Builder editor.
+                                                        void startNextJsAppBuilder(targetUrl || "");
                                                     }}
                                                     isAdmin={isAdmin}
                                                     onStartFromTemplate={handleCreateTemplateApp}
