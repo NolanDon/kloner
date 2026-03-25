@@ -60,8 +60,8 @@ const tiers: Tier[] = [
         highlight: false,
         blurb: "Clone a few pages, test the workflow, learn the limits.",
         topFeatures: [
-            "30 screenshot credits (3 site captures)",
-            "60 preview credits (4 site generations)",
+            "30 screenshot credits (3 site captures /mo)",
+            "60 preview credits (4 site generations /mo)",
             "15 AI credits",
         ],
         allFeatures: [
@@ -80,8 +80,8 @@ const tiers: Tier[] = [
         highlight: true,
         blurb: "For shipping real client work fast without rebuilding from scratch.",
         topFeatures: [
-            "100 screenshot credits (10 site captures)",
-            "400 preview credits (15 site generations)",
+            "100 screenshot credits (10 site captures /mo)",
+            "400 preview credits (15 site generations /mo)",
             "AI editing support",
         ],
         allFeatures: [
@@ -104,8 +104,8 @@ const tiers: Tier[] = [
         highlight: false,
         blurb: "For higher volume teams managing multiple projects and iterations.",
         topFeatures: [
-            "400 screenshot credits (40 site captures)",
-            "1500 preview credits (100 site generations)",
+            "400 screenshot credits (40 site captures /mo)",
+            "1500 preview credits (100 site generations /mo)",
             "30 pages per generation + team seats",
         ],
         allFeatures: [

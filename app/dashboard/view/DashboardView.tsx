@@ -110,7 +110,7 @@ const CAPTURE_STALL_TIMEOUT_MS = 6 * 60 * 1000;
 const CAPTURE_ISSUE_NOTICE_MS = 10 * 1000;
 const FRONTEND_TIMEOUT_DEDUPE_TTL_MS = 10 * 60 * 1000;
 const FRONTEND_TIMEOUT_DEDUPE_STORAGE_KEY = "dashboardViewFrontendTimeoutAlertsV1";
-const URL_ADD_SUCCESS_MESSAGE = "We successfully added your first URL. Get started below.";
+const URL_ADD_SUCCESS_MESSAGE = "Successfully added your first URL.";
 const APP_WIZARD_PROMPT_MAX_CHARS = 2000;
 const FIRST_GEN_TRIAL_OBSERVE_MS = 15 * 1000;
 const FIRST_GEN_TRIAL_SESSION_INTERVAL = 3;
@@ -3115,6 +3115,15 @@ export default function PreviewPage(): JSX.Element {
         return firstLine || fallback;
     }
 
+    function isPreviewCreditsLimitErrorMessage(message: string): boolean {
+        const normalized = (message || "").toLowerCase();
+        return (
+            normalized.includes("monthly preview limit reached") ||
+            normalized.includes("preview credits") && normalized.includes("limit") ||
+            normalized.includes("used all available preview credits")
+        );
+    }
+
     const handleCreateApp = useCallback(async (
         mode: "clone" | "url" | "prompt",
         prompt?: string,
@@ -3272,11 +3281,20 @@ export default function PreviewPage(): JSX.Element {
         } catch (error) {
             const message = getUserFacingErrorMessage(error, "Failed to create app. Please try again.");
             console.error("Failed to create app:", error);
+            if (isPreviewCreditsLimitErrorMessage(message)) {
+                setShowCreditsPaywall("preview");
+                if (appWizardOpen) {
+                    setAppWizardOpen(false);
+                    setAppWizardError(null);
+                    setAppWizardBusy(false);
+                }
+                return null;
+            }
             opts?.onError?.(message);
             push(message, "err");
             return null;
         }
-    }, [user, router, push, activeRenderId, openAppBuilderWithCookieGate, requestAppBuilderCookieConsent]);
+    }, [user, router, push, activeRenderId, openAppBuilderWithCookieGate, requestAppBuilderCookieConsent, appWizardOpen]);
 
     const startWebAppWizard = useCallback(
         (opts?: { seedRenderId?: string | null; url?: string | null }) => {
@@ -4210,12 +4228,7 @@ export default function PreviewPage(): JSX.Element {
         }
     }, [router]);
 
-    const showConfirmRef = useRef(showConfirm);
     const buildDuplicateUrlMessageRef = useRef(buildDuplicateUrlMessage);
-
-    useEffect(() => {
-        showConfirmRef.current = showConfirm;
-    }, [showConfirm]);
 
     useEffect(() => {
         buildDuplicateUrlMessageRef.current = buildDuplicateUrlMessage;
@@ -4298,24 +4311,17 @@ export default function PreviewPage(): JSX.Element {
                         existingStatusUi === "processing";
 
                     if (hasExistingScanContext) {
-                        const promptText =
-                            existingStatusUi === "ready"
-                                ? "This URL already has a completed scan. Click OK to rescan now, or Cancel to use the existing scan."
-                                : "This URL is already in the scan queue. Click OK to force a rescan, or Cancel to use the existing entry.";
-                        const shouldRescan = await showConfirmRef.current(promptText, "URL Already Tracked");
                         if (cancelled) return;
 
-                        if (!shouldRescan) {
-                            setErr("");
-                            setInfo(buildDuplicateUrlMessageRef.current(targetUrl));
-                            generateSucceededRef.current = startRequestKey;
-                            setCaptureTerminalFailureUrl("");
-                            captureLockMinUntilRef.current = 0;
-                            setCaptureLockUrl(null);
-                            captureLockStartedAtRef.current = 0;
-                            shouldMarkHandled = true;
-                            return;
-                        }
+                        setErr("");
+                        setInfo(buildDuplicateUrlMessageRef.current(targetUrl));
+                        generateSucceededRef.current = startRequestKey;
+                        setCaptureTerminalFailureUrl("");
+                        captureLockMinUntilRef.current = 0;
+                        setCaptureLockUrl(null);
+                        captureLockStartedAtRef.current = 0;
+                        shouldMarkHandled = true;
+                        return;
                     }
                 }
 
@@ -8137,7 +8143,9 @@ export default function PreviewPage(): JSX.Element {
                         previewLimitDisplay={previewLimitDisplay}
                         editRemaining={editRemaining}
                         editLimitDisplay={editLimitDisplay}
-                        onManagePlan={() => router.push("/price")}
+                        onManagePlan={() => {
+                            void startProCheckout();
+                        }}
                         size="compact"
                         disabled={captureLocked}
                         captureStatus={captureStatus}
@@ -8775,7 +8783,7 @@ export default function PreviewPage(): JSX.Element {
                                                             0,
                                                     );
                                                 const latestRender = groupRenders[0];
-                                                startWebAppWizard({ seedRenderId: latestRender?.id || null, url: targetUrl || "" });
+                                                            void startNextJsAppBuilder(targetUrl || "");
                                             }}
                                             isAdmin={isAdmin}
                                             onStartFromCommunityBuild={() => router.push("/community-builds")}
@@ -10505,8 +10513,18 @@ export default function PreviewPage(): JSX.Element {
                         <div className="fixed inset-0 z-[12000]">
                             <div className="absolute inset-0 bg-black/60" />
                             <div className="absolute inset-0 flex items-center justify-center p-4">
-                                <div className="w-full max-w-md rounded-2xl bg-white shadow-xl border border-neutral-200 p-6 text-sm text-neutral-800">
-                                    <div className="flex items-center gap-2 mb-2">
+                                <div className="relative w-full max-w-md rounded-2xl bg-white shadow-xl border border-neutral-200 p-6 pt-5 text-sm text-neutral-800">
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowCreditsPaywall(null)}
+                                        className="absolute right-4 top-4 inline-flex h-7 w-7 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-500 shadow-sm transition hover:bg-neutral-50 hover:text-neutral-700"
+                                        aria-label="Close paywall"
+                                        title="Close"
+                                    >
+                                        <X className="h-4 w-4" />
+                                    </button>
+
+                                    <div className="flex items-center gap-2 mb-2 pr-10">
                                         <Crown className="h-4 w-4 text-amber-500" />
                                         <h3 className="text-base font-semibold">
                                             You’ve hit the limit on your{" "}
@@ -10517,7 +10535,7 @@ export default function PreviewPage(): JSX.Element {
                                         {showCreditsPaywall === "screenshot" &&
                                             "You have used all monthly screenshot credits. Upgrade to capture more pages and monitor more sites."}
                                         {showCreditsPaywall === "preview" &&
-                                            "You have used all monthly generation credits. Upgrade to generate more Next.js 16 apps or HTML websites and unlock one-click deploy."}
+                                            "You have used all monthly generation credits. Upgrade to websites and unlock one-click deploy."}
                                         {showCreditsPaywall === "deploy" &&
                                             "To publish your app or website live, upgrade to unlock one-click deploy and higher monthly credits."}
                                     </p>
@@ -10530,24 +10548,17 @@ export default function PreviewPage(): JSX.Element {
                                         </li>
                                         <li>Priority rendering and faster queues</li>
                                     </ul>
-                                    <div className="flex items-center justify-end gap-2">
-                                        <button
-                                            type="button"
-                                            onClick={() => setShowCreditsPaywall(null)}
-                                            className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm text-neutral-700 hover:bg-neutral-50"
-                                        >
-                                            Not now
-                                        </button>
+                                    <div className="flex items-center justify-center">
                                         <button
                                             type="button"
                                             onClick={() => {
                                                 setShowCreditsPaywall(null);
-                                                router.push("/price");
+                                                void startProCheckout();
                                             }}
-                                            className="rounded-md px-3 py-1.5 text-sm font-semibold text-white"
+                                            className="inline-flex w-full max-w-sm items-center justify-center rounded-xl px-4 py-3 text-base font-semibold text-white shadow-sm transition hover:opacity-90"
                                             style={{ backgroundColor: ACCENT }}
                                         >
-                                            View upgrade options
+                                            Claim free 7-day trial
                                         </button>
                                     </div>
                                 </div>
@@ -10710,7 +10721,7 @@ export default function PreviewPage(): JSX.Element {
                                                 type="button"
                                                 onClick={() => {
                                                     setShowUpgradeAfterCustomize(false);
-                                                    router.push("/price");
+                                                    void startProCheckout();
                                                 }}
                                                 className="flex w-full items-center justify-center rounded-xl px-4 py-2.5 text-sm font-semibold text-white shadow-[0_18px_40px_rgba(0,0,0,0.6)] transition transform hover:-translate-y-[1px] focus:outline-none focus:ring-2 focus:ring-white/20"
                                                 style={{ backgroundColor: ACCENT }}
