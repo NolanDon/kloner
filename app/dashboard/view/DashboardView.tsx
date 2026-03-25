@@ -1842,7 +1842,6 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
     locked,
     onClick,
     onAppClick,
-    appWizardBlocked = false,
     sourceUrl,
     sourceUrlCannotGenerate = false,
     highlight,
@@ -1857,7 +1856,6 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
     locked: boolean;
     onClick: () => void;
     onAppClick?: () => void;
-    appWizardBlocked?: boolean;
     sourceUrl?: string | null;
     sourceUrlCannotGenerate?: boolean;
     highlight?: boolean;
@@ -1874,8 +1872,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
     const [localDisabled, setLocalDisabled] = useState(false);
     const [showGenerationModal, setShowGenerationModal] = useState(false);
     const [selectedGenerationType, setSelectedGenerationType] = useState<"nextjs" | "html" | null>(null);
-    const lastAutoOpenKeyRef = useRef("");
-    const blockOpen = appWizardBlocked;
+    const lastAutoOpenNonceRef = useRef(0);
 
     const sourceUrlDisplay = useMemo(() => {
         const raw = (sourceUrl || "").trim();
@@ -1901,28 +1898,18 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
     const canUseSimpleHtml = canGenerateHtmlFromUrl && !sourceUrlCannotGenerate;
 
     useEffect(() => {
-        if (onAppClick) return;
-        if (blockOpen) return;
-        if (!autoOpenNonce && !autoOpenSuccessMessage) return;
-
-        const autoOpenKey = `${autoOpenNonce || 0}::${autoOpenSuccessMessage || ""}`;
-        if (autoOpenKey === lastAutoOpenKeyRef.current) return;
-        lastAutoOpenKeyRef.current = autoOpenKey;
-
+        if (!autoOpenNonce) return;
+        if (autoOpenNonce === lastAutoOpenNonceRef.current) return;
+        lastAutoOpenNonceRef.current = autoOpenNonce;
         setSelectedGenerationType(null);
         setShowGenerationModal(true);
-    }, [autoOpenNonce, autoOpenSuccessMessage, blockOpen]);
+    }, [autoOpenNonce]);
 
     // Consider the card disabled if either the parent says so or we've just been clicked.
-    const effectiveLocked = locked || localDisabled || blockOpen;
+    const effectiveLocked = locked || localDisabled;
 
     const handleClick = () => {
-        if (localDisabled || blockOpen) return;
-
-        if (onAppClick) {
-            handleAppGeneration();
-            return;
-        }
+        if (localDisabled) return;
 
         // Even when locked (e.g. snapshots processing), allow opening the modal
         // but disable the options inside so users understand what's happening.
@@ -1962,7 +1949,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
     };
 
     const handleAppGeneration = () => {
-        if (effectiveLocked || blockOpen) return;
+        if (effectiveLocked) return;
         closeGenerationModal();
 
         if (onAppClick) {
@@ -2649,41 +2636,6 @@ export default function PreviewPage(): JSX.Element {
     const didStripeRestoreRef = useRef(false);
     const sessionExpiredRedirectingRef = useRef(false);
 
-    const urlParam = search.get("u") || "";
-    const startParam = (search.get("start") || "").toLowerCase();
-    const startRequested = startParam === "1" || startParam === "true";
-
-    const targetUrl = useMemo(() => {
-        let raw = urlParam;
-
-        if (!raw) {
-            try {
-                raw = localStorage.getItem("kloner:lastUrl") || "";
-            } catch {
-                raw = "";
-            }
-        }
-
-        if (!raw) return "";
-
-        let dec = raw;
-        try {
-            dec = decodeURIComponent(raw);
-        } catch {
-            dec = raw;
-        }
-
-        const normalized = validateAndNormalizePublicHttpUrl(dec);
-        return normalized ? normUrl(normalized) : "";
-    }, [urlParam]);
-
-    const hasProcessingBuild = useMemo(
-        () =>
-            Object.keys(pendingByKey).length > 0 ||
-            renders.some((r) => !r.archived && (r.status === "queued" || r.status === "processing")),
-        [pendingByKey, renders],
-    );
-
     const handleSessionExpired = useCallback(async (source?: string) => {
         if (sessionExpiredRedirectingRef.current) return;
         sessionExpiredRedirectingRef.current = true;
@@ -3306,25 +3258,22 @@ export default function PreviewPage(): JSX.Element {
     }, [user, router, push, activeRenderId, openAppBuilderWithCookieGate, requestAppBuilderCookieConsent]);
 
     const startWebAppWizard = useCallback(
-        async (opts?: { seedRenderId?: string | null; url?: string | null }) => {
-            if (!user) return;
-
-            const url = typeof opts?.url === "string" ? opts.url.trim() : "";
-            if (!url || !isHttpUrl(url)) {
-                push("Enter a valid URL first.", "err");
-                return;
-            }
-
-            const screenshotKeys = shots.length > 0
-                ? shots
-                    .map((s) => s.path)
-                    .filter((p) => typeof p === "string" && p.startsWith(`kloner-screenshots/${user.uid}/`))
-                    .slice(0, 6)
-                : [];
-
-            await handleCreateApp("url", undefined, undefined, url, { screenshotKeys });
+        (opts?: { seedRenderId?: string | null; url?: string | null }) => {
+            // Always refresh Vercel status when opening the wizard so we don't
+            // accidentally auto-advance from stale "connected" state.
+            void refreshVercelStatus();
+            const url = typeof opts?.url === "string" ? opts.url : "";
+            setAppWizardUrl(url);
+            setAppWizardShotsUrl(url);
+            setAppWizardSeedRenderId(opts?.seedRenderId ?? null);
+            // Require explicit source selection in the wizard.
+            setAppWizardSource(null);
+            setAppWizardPrompt("");
+            setAppWizardError(null);
+            setAppWizardBusy(false);
+            setAppWizardOpen(true);
         },
-        [handleCreateApp, push, shots, user],
+        [refreshVercelStatus],
     );
 
     const submitAppWizardWebsite = useCallback(async () => {
@@ -3960,6 +3909,35 @@ export default function PreviewPage(): JSX.Element {
     const pollStopAt = useRef<number>(0);
 
     /* ───────── url + tier ───────── */
+
+    const urlParam = search.get("u") || "";
+    const startParam = (search.get("start") || "").toLowerCase();
+    const startRequested = startParam === "1" || startParam === "true";
+
+    const targetUrl = useMemo(() => {
+        let raw = urlParam;
+
+        if (!raw) {
+            try {
+                raw = localStorage.getItem("kloner:lastUrl") || "";
+            } catch {
+                raw = "";
+            }
+        }
+
+        if (!raw) return "";
+
+        let dec = raw;
+        try {
+            dec = decodeURIComponent(raw);
+        } catch {
+            dec = raw;
+        }
+
+        // Validate strictly: only public http(s) URLs with a real domain.
+        const normalized = validateAndNormalizePublicHttpUrl(dec);
+        return normalized ? normUrl(normalized) : "";
+    }, [urlParam]);
 
     const DUPLICATE_URL_MESSAGE =
         "This URL has already been processed. Click Generate website below to get started.";
@@ -8503,7 +8481,6 @@ export default function PreviewPage(): JSX.Element {
                                 {groupedShots.length === 0 ? (
                                     <GhostGeneratePreviewCard
                                         locked={captureLocked}
-                                        appWizardBlocked={hasProcessingBuild}
                                         sourceUrl={targetUrl}
                                         sourceUrlCannotGenerate={activeUrlCannotGenerate}
                                         highlight={shouldHighlightCreateWebsiteCta}
@@ -8553,7 +8530,6 @@ export default function PreviewPage(): JSX.Element {
                                             <GhostGeneratePreviewCard
                                                 key={`ghost-${group.snapshotId || first.path}`}
                                                 locked={captureLocked || locked}
-                                                appWizardBlocked={hasProcessingBuild}
                                                 sourceUrl={targetUrl}
                                                 sourceUrlCannotGenerate={activeUrlCannotGenerate}
                                                 highlight={shouldHighlightCreateWebsiteCta}
@@ -8638,7 +8614,6 @@ export default function PreviewPage(): JSX.Element {
                                             return (
                                                 <GhostGeneratePreviewCard
                                                     locked={locked}
-                                                    appWizardBlocked={hasProcessingBuild}
                                                     sourceUrl={targetUrl}
                                                     sourceUrlCannotGenerate={activeUrlCannotGenerate}
                                                     highlight={shouldHighlightCreateWebsiteCta}
@@ -8749,7 +8724,6 @@ export default function PreviewPage(): JSX.Element {
                                         <GhostGeneratePreviewCard
                                             key={`ghost-${group.snapshotId || first.path}`}
                                             locked={captureLocked || locked}
-                                            appWizardBlocked={hasProcessingBuild}
                                             sourceUrl={targetUrl}
                                             sourceUrlCannotGenerate={activeUrlCannotGenerate}
                                             highlight={shouldHighlightCreateWebsiteCta}
