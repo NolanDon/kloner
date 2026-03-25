@@ -3080,12 +3080,30 @@ export default function PreviewPage(): JSX.Element {
         [user],
     );
 
+    function getUserFacingErrorMessage(error: unknown, fallback: string): string {
+        const rawMessage =
+            typeof error === "string"
+                ? error
+                : error instanceof Error
+                    ? error.message
+                    : error && typeof error === "object"
+                        ? typeof (error as any).error === "string"
+                            ? (error as any).error
+                            : typeof (error as any).message === "string"
+                                ? (error as any).message
+                                : ""
+                        : "";
+
+        const firstLine = rawMessage.split(/\r?\n/, 1)[0].replace(/^Error:\s*/i, "").trim();
+        return firstLine || fallback;
+    }
+
     const handleCreateApp = useCallback(async (
         mode: "clone" | "url" | "prompt",
         prompt?: string,
         renderId?: string,
         url?: string,
-        opts?: { screenshotKeys?: string[] },
+        opts?: { screenshotKeys?: string[]; onError?: (message: string) => void },
     ) => {
         if (!user) return;
 
@@ -3193,10 +3211,15 @@ export default function PreviewPage(): JSX.Element {
                 });
 
                 if (!res.ok) {
-                    throw new Error("Failed to create app");
+                    const data = await res.json().catch(() => ({} as any));
+                    throw new Error(data?.error || data?.message || `Failed to create app (HTTP ${res.status})`);
                 }
 
-                const { appId: createdAppId } = await res.json();
+                const data = await res.json();
+                const createdAppId = typeof data?.appId === "string" ? data.appId.trim() : "";
+                if (!createdAppId) {
+                    throw new Error("Failed to create app: no appId returned");
+                }
                 appId = createdAppId;
             }
 
@@ -3226,8 +3249,10 @@ export default function PreviewPage(): JSX.Element {
 
             return appId as string;
         } catch (error) {
+            const message = getUserFacingErrorMessage(error, "Failed to create app. Please try again.");
             console.error("Failed to create app:", error);
-            push("Failed to create app. Please try again.", "err");
+            opts?.onError?.(message);
+            push(message, "err");
             return null;
         }
     }, [user, router, push, activeRenderId, openAppBuilderWithCookieGate, requestAppBuilderCookieConsent]);
@@ -3305,11 +3330,12 @@ export default function PreviewPage(): JSX.Element {
                     .slice(0, 6)
                 : [];
 
-            const created = await handleCreateApp("url", undefined, undefined, url, { screenshotKeys });
+            const created = await handleCreateApp("url", undefined, undefined, url, {
+                screenshotKeys,
+                onError: setAppWizardError,
+            });
             if (created) {
                 setAppWizardOpen(false);
-            } else {
-                setAppWizardError("Failed to create app. Please try again.");
             }
         } finally {
             setAppWizardBusy(false);
@@ -3333,11 +3359,11 @@ export default function PreviewPage(): JSX.Element {
         setAppWizardError(null);
 
         try {
-            const created = await handleCreateApp("prompt", prompt);
+            const created = await handleCreateApp("prompt", prompt, undefined, undefined, {
+                onError: setAppWizardError,
+            });
             if (created) {
                 setAppWizardOpen(false);
-            } else {
-                setAppWizardError("Failed to create app. Please try again.");
             }
         } finally {
             setAppWizardBusy(false);
@@ -3360,10 +3386,15 @@ export default function PreviewPage(): JSX.Element {
             });
 
             if (!res.ok) {
-                throw new Error("Failed to create app");
+                const data = await res.json().catch(() => ({} as any));
+                throw new Error(data?.error || data?.message || `Failed to create app (HTTP ${res.status})`);
             }
 
-            const { appId } = await res.json();
+            const data = await res.json();
+            const appId = typeof data?.appId === "string" ? data.appId.trim() : "";
+            if (!appId) {
+                throw new Error("Failed to create app: no appId returned");
+            }
 
             // Close any open editor modal
             setEditorOpen(false);
@@ -3379,8 +3410,9 @@ export default function PreviewPage(): JSX.Element {
                 [appId]: { source: "template", templateName: "Starter Template" },
             }));
         } catch (error) {
+            const message = getUserFacingErrorMessage(error, "Failed to start from template. Please try again.");
             console.error("Failed to create template app:", error);
-            push("Failed to start from template. Please try again.", "err");
+            push(message, "err");
         }
     }, [user, push, openAppBuilderWithCookieGate, requestAppBuilderCookieConsent]);
 
