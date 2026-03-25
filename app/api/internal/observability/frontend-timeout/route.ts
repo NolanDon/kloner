@@ -73,6 +73,7 @@ export async function POST(req: NextRequest) {
             const browser = cleanText(body?.browser, 120);
             const payloadUserAgent = cleanText(body?.userAgent, 500);
             const reason = cleanText(body?.reason, 200);
+            const machineId = cleanText(body?.machineId, 120);
             const ageMs = cleanNumber(body?.ageMs);
             const elapsedMs = cleanNumber(body?.elapsedMs);
             const statusCode = cleanNumber(body?.statusCode) || ((severity === "info" || severity === "warning") ? 200 : 504);
@@ -88,6 +89,7 @@ export async function POST(req: NextRequest) {
             const backendStatus = cleanText((backend as any)?.status, 80);
             const backendUiStage = cleanText((backend as any)?.uiStage, 120);
             const timeoutReason = cleanText((backendDebug as any)?.timeoutReason, 120);
+            const backendMachineId = cleanText((backendDebug as any)?.machine?.id, 120);
             const machineState = cleanText((backendDebug as any)?.machine?.state, 120);
             const machineRestartCount = cleanNumber((backendDebug as any)?.machine?.restartCount);
             const compileSummary = cleanText((backendDebug as any)?.compile?.summary, 300);
@@ -147,6 +149,7 @@ export async function POST(req: NextRequest) {
                         debug: {
                             timeoutReason: timeoutReason || undefined,
                             machine: {
+                                id: backendMachineId || machineId || undefined,
                                 state: machineState || undefined,
                                 restartCount: typeof machineRestartCount === "number" ? machineRestartCount : undefined,
                             },

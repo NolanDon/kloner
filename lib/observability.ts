@@ -233,6 +233,7 @@ function toSlackBlocks(event: StoredEvent, eventId: string) {
         ["Referer", cleanContextValue((extra as any).referer || (extra as any).requestContext?.referer, 220)],
         ["Has session", typeof (extra as any).hasSession === "boolean" ? String((extra as any).hasSession) : typeof (extra as any).hasSessionSignals === "boolean" ? String((extra as any).hasSessionSignals) : ""],
         ["Job", cleanContextValue((extra as any).jobId || (extra as any).job || (extra as any).requestContext?.jobId, 120)],
+        ["Machine", cleanContextValue((extra as any).machineId || (extra as any).backend?.debug?.machine?.id || (extra as any).backend?.machineId, 120)],
     ].filter(([, value]) => Boolean(value)) as Array<[string, string]>;
 
     const contextBlock = contextFields.length

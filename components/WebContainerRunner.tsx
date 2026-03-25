@@ -571,6 +571,63 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
     return headers;
   };
 
+  const extractTimeoutBackendContext = (rawStatusData: any) => {
+    const backend: any = rawStatusData && typeof rawStatusData === 'object' ? rawStatusData : null;
+    const backendDebug = (backend?.debug && typeof backend.debug === 'object' ? backend.debug : {}) as Record<string, any>;
+    const machine = (backendDebug?.machine && typeof backendDebug.machine === 'object' ? backendDebug.machine : {}) as Record<string, any>;
+    const machineId = String(
+      backend?.machineId ||
+      backend?.machine?.id ||
+      machine?.id ||
+      backendDebug?.machineId ||
+      ''
+    ).trim() || null;
+    const machineState = String(
+      machine?.state ||
+      backend?.machineState ||
+      backend?.machine?.state ||
+      ''
+    ).trim() || null;
+    const restartCountRaw = machine?.restartCount;
+    const restartCount = typeof restartCountRaw === 'number' && Number.isFinite(restartCountRaw)
+      ? Math.floor(restartCountRaw)
+      : null;
+
+    return {
+      backend: backend
+        ? {
+            status: String(backend?.status || '').trim() || null,
+            uiStage: String(backend?.uiStage || '').trim() || null,
+            debug: {
+              timeoutReason: String(backendDebug?.timeoutReason || backend?.timeoutReason || '').trim() || null,
+              machine: {
+                id: machineId,
+                state: machineState,
+                restartCount,
+              },
+              compile: {
+                summary: backendDebug?.compile?.summary ?? backend?.compileError?.summary ?? null,
+              },
+              storage: {
+                rootfsIoCorruption: backendDebug?.storage?.rootfsIoCorruption ?? null,
+              },
+            },
+          }
+        : null,
+      machineId,
+      machineState,
+      restartCount,
+      requestId: String(
+        backend?.requestId ||
+        backend?.reqId ||
+        backendDebug?.requestId ||
+        backendDebug?.reqId ||
+        ''
+      ).trim() || null,
+      jobId: String(backend?.jobId || backendDebug?.jobId || '').trim() || null,
+    };
+  };
+
   const reportPreviewTimeout = async (payload: {
     appId: string;
     code?: string;
@@ -668,24 +725,26 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
       return { sent: false, deduped: true, alertKey };
     }
 
-    const backend = payload.backendStatusData || lastBackendStatusRef.current || null;
-    const backendDebug = backend?.debug && typeof backend.debug === 'object' ? backend.debug : {};
+    const backendContext = extractTimeoutBackendContext(payload.backendStatusData || lastBackendStatusRef.current || null);
+    const backend: any = backendContext.backend;
+    const backendDebug = (backend?.debug && typeof backend.debug === 'object' ? backend.debug : {}) as Record<string, any>;
 
     const debugPayload = {
       appId: payload.appId,
       code: code || null,
       userId: user?.uid || null,
-      requestId: payload.requestId || backend?.requestId || backend?.reqId || backendDebug?.requestId || backendDebug?.reqId || null,
-      jobId: payload.jobId || backend?.jobId || backendDebug?.jobId || null,
+      requestId: payload.requestId || backendContext.requestId || null,
+      jobId: payload.jobId || backendContext.jobId || null,
       elapsedMs: typeof payload.elapsedMs === 'number' ? payload.elapsedMs : null,
       backend: {
-        status: String(backend?.status || '').trim() || null,
-        uiStage: String(backend?.uiStage || '').trim() || null,
+        status: backend?.status || null,
+        uiStage: backend?.uiStage || null,
         debug: {
-          timeoutReason: String(backendDebug?.timeoutReason || backend?.timeoutReason || '').trim() || null,
+          timeoutReason: backendDebug?.timeoutReason || null,
           machine: {
-            state: backendDebug?.machine?.state ?? null,
-            restartCount: backendDebug?.machine?.restartCount ?? null,
+            id: backendContext.machineId,
+            state: backendContext.machineState,
+            restartCount: backendContext.restartCount,
           },
           compile: {
             summary: backendDebug?.compile?.summary ?? backend?.compileError?.summary ?? null,
@@ -2650,6 +2709,7 @@ export default function NavBar() {
             const online = typeof navigator !== 'undefined' ? navigator.onLine : null;
             const suspectedInterference = pollFetchFailureCountRef.current >= 3 && online !== false;
             const timeoutReportKey = `hard-timeout:${appId}:${code}`;
+            const timeoutContext = extractTimeoutBackendContext(currentStatusData || lastBackendStatusRef.current || null);
             if (lastTimeoutReportKeyRef.current !== timeoutReportKey) {
               lastTimeoutReportKeyRef.current = timeoutReportKey;
               void reportPreviewTimeout({
@@ -2660,12 +2720,15 @@ export default function NavBar() {
                   ? 'poll_timeout_network_interference_suspected'
                   : 'poll_timeout',
                 message: suspectedInterference
-                  ? 'Preview polling exceeded 12-minute timeout after repeated fetch failures; privacy extension/adblock/VPN interference is suspected.'
-                  : 'Preview polling exceeded 12-minute hard timeout in WebContainerRunner.',
+                  ? `Preview polling exceeded 12-minute timeout after repeated fetch failures while connecting to machine ${timeoutContext.machineId || 'unknown'}; privacy extension/adblock/VPN interference is suspected.`
+                  : `Preview polling exceeded 12-minute hard timeout in WebContainerRunner${timeoutContext.machineId ? ` while connecting to machine ${timeoutContext.machineId}` : ''}.`,
                 ageMs: timedOutAgeMs,
                 previewUrl: previewUrlRef.current,
                 browser: detectBrowserLabel(),
                 userAgent: typeof navigator !== 'undefined' ? String(navigator.userAgent || '') : 'unknown',
+                requestId: timeoutContext.requestId || undefined,
+                jobId: timeoutContext.jobId || undefined,
+                backend: timeoutContext.backend,
               });
             }
             stopAllTimers();
@@ -2674,7 +2737,7 @@ export default function NavBar() {
             setConnectingToExisting(false);
             setLoadingStatus('');
             setCurrentStatusData(null);
-            setError('Preview is taking longer than expected (12 minute timeout). Try Refresh first, if it still fails, please contact support.');
+            setError(`Preview is taking longer than expected${timeoutContext.machineId ? ` while connecting to machine ${timeoutContext.machineId}` : ''} (12 minute timeout). Try Refresh first, if it still fails, please contact support.`);
             setCanRetry(true);
             return;
           }
@@ -3505,6 +3568,7 @@ export default function NavBar() {
               // Max polling retries reached, show neutral message instead of error
               const suspectedInterference = pollFetchFailureCountRef.current >= 3 && online !== false;
               const timeoutReportKey = `retry-timeout:${appId}:${code}`;
+              const timeoutContext = extractTimeoutBackendContext(currentStatusData || lastBackendStatusRef.current || null);
               if (lastTimeoutReportKeyRef.current !== timeoutReportKey) {
                 lastTimeoutReportKeyRef.current = timeoutReportKey;
                 void reportPreviewTimeout({
@@ -3515,12 +3579,15 @@ export default function NavBar() {
                     ? 'poll_retries_exhausted_network_interference_suspected'
                     : 'poll_retries_exhausted',
                   message: suspectedInterference
-                    ? 'Preview polling retries exhausted after repeated fetch failures; privacy extension/adblock/VPN interference is suspected.'
-                    : 'Preview status polling retries were exhausted before readiness.',
+                    ? `Preview polling retries exhausted after repeated fetch failures while connecting to machine ${timeoutContext.machineId || 'unknown'}; privacy extension/adblock/VPN interference is suspected.`
+                    : `Preview status polling retries were exhausted before readiness${timeoutContext.machineId ? ` while connecting to machine ${timeoutContext.machineId}` : ''}.`,
                   ageMs: pollStartedAtRef.current ? Date.now() - pollStartedAtRef.current : undefined,
                   previewUrl: previewUrlRef.current,
                   browser: detectBrowserLabel(),
                   userAgent: typeof navigator !== 'undefined' ? String(navigator.userAgent || '') : 'unknown',
+                  requestId: timeoutContext.requestId || undefined,
+                  jobId: timeoutContext.jobId || undefined,
+                  backend: timeoutContext.backend,
                 });
               }
               setIsPolling(false);
@@ -3528,7 +3595,7 @@ export default function NavBar() {
               setConnectingToExisting(false);
               setCurrentStatusData(null); // Clear status data
               setLoadingStatus(''); // Clear loading status on timeout
-              setError('Build is taking longer than expected. The app may still be starting up. Try Refresh first, if it still fails, please contact support.');
+              setError(`Build is taking longer than expected${timeoutContext.machineId ? ` while connecting to machine ${timeoutContext.machineId}` : ''}. The app may still be starting up. Try Refresh first, if it still fails, please contact support.`);
               setCanRetry(true);
               setPreviewUrl(null);
               stopAllTimers();
