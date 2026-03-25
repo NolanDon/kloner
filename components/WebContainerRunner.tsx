@@ -216,6 +216,8 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
   const iframePostLoadRecoveryCountRef = useRef<number>(0);
   const pollFetchFailureCountRef = useRef(0);
   const pollRateLimitCountRef = useRef(0);
+  const lastPollFailureSignatureRef = useRef('');
+  const repeatedPollFailureCountRef = useRef(0);
   const lastPollIssueReportKeyRef = useRef<string>('');
   const lastAppServerKindRef = useRef<'fallback' | 'next-dev' | 'next-prod' | ''>('');
   const stickyProgressByCodeRef = useRef<Record<string, number>>({});
@@ -1107,6 +1109,8 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
     compileErrorActiveFingerprintRef.current = null;
     iframePostLoadRecoveryCountRef.current = 0;
     pollFetchFailureCountRef.current = 0;
+    lastPollFailureSignatureRef.current = '';
+    repeatedPollFailureCountRef.current = 0;
     lastPollIssueReportKeyRef.current = '';
     if (iframePostLoadTimeoutRef.current) {
       clearTimeout(iframePostLoadTimeoutRef.current);
@@ -2090,6 +2094,8 @@ export default function NavBar() {
         pollingRetryCountRef.current = 0; // Reset retry count
         containerNotFoundCountRef.current = 0; // Reset 404 counter
         pollFetchFailureCountRef.current = 0;
+        lastPollFailureSignatureRef.current = '';
+        repeatedPollFailureCountRef.current = 0;
         lastPollIssueReportKeyRef.current = '';
         hubStatusUrlRef.current = null;
         latestDeploymentUrlRef.current = '';
@@ -2798,18 +2804,23 @@ export default function NavBar() {
                     ? {
                         ...prev,
                         updatedAt: Date.now(),
-                        uiMessage: 'Preview is still starting...',
+                        uiMessage: 'Preview polling paused due to rate limiting. Please wait and retry.',
                       }
                     : {
-                        status: 'starting',
-                        uiStage: 'starting',
-                        uiTitle: 'Starting preview',
-                        uiMessage: 'Preview is still starting...',
+                        status: 'rate_limited',
+                        uiStage: 'rate_limited',
+                        uiTitle: 'Rate limited',
+                        uiMessage: 'Preview polling paused due to rate limiting. Please wait and retry.',
                         uiProgress: 0,
                         updatedAt: Date.now(),
                       }
                 );
-                statusPollTimeoutRef.current = setTimeout(pollStatus, nextDelay);
+                stopAllTimers();
+                setIsPolling(false);
+                setIsLoading(false);
+                setConnectingToExisting(false);
+                setError(`Preview polling was rate-limited (429). Please wait about ${Math.max(30, Math.round(nextDelay / 1000))}s and click Refresh.`);
+                setCanRetry(true);
                 return;
               }
 
@@ -2908,6 +2919,8 @@ export default function NavBar() {
             containerNotFoundCountRef.current = 0;
             pollFetchFailureCountRef.current = 0;
             pollRateLimitCountRef.current = 0;
+            lastPollFailureSignatureRef.current = '';
+            repeatedPollFailureCountRef.current = 0;
             setPollNetworkWarning(null);
 
             // Store the status data for UI display
@@ -3098,6 +3111,20 @@ export default function NavBar() {
               setError('Preview stopped. Try Refresh first, if it still fails, please contact support.');
               setCanRetry(true);
               setPreviewUrl(null);
+              return;
+            }
+
+            if (status === 'failed' || status === 'canceled' || status === 'cancelled' || status === 'timeout') {
+              backendReadyRef.current = false;
+              await clearStoredContainerCodeEverywhere(appId, user);
+              stopAllTimers();
+              setIsPolling(false);
+              setIsLoading(false);
+              setConnectingToExisting(false);
+              setLoadingStatus('');
+              setPreviewUrl(null);
+              setError('Preview failed before becoming ready. Try Refresh first, and if it still fails, please contact support.');
+              setCanRetry(true);
               return;
             }
 
@@ -3380,6 +3407,26 @@ export default function NavBar() {
 
             // Handle specific backend errors that shouldn't be shown to users
             const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+            const failureSignature = String(errorMessage || 'unknown_poll_error').slice(0, 240);
+            if (lastPollFailureSignatureRef.current === failureSignature) {
+              repeatedPollFailureCountRef.current += 1;
+            } else {
+              lastPollFailureSignatureRef.current = failureSignature;
+              repeatedPollFailureCountRef.current = 1;
+            }
+
+            if (repeatedPollFailureCountRef.current >= 5) {
+              stopAllTimers();
+              setIsPolling(false);
+              setIsLoading(false);
+              setConnectingToExisting(false);
+              setCurrentStatusData(null);
+              setLoadingStatus('');
+              setError('Preview polling stopped after repeated identical failures. Try Refresh.');
+              setCanRetry(true);
+              return;
+            }
+
             const online = typeof navigator !== 'undefined' ? navigator.onLine : null;
             const looksLikeNetworkFetchFailure =
               errorMessage.includes('Failed to fetch') ||
