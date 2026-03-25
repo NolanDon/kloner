@@ -4377,10 +4377,17 @@ export default function PreviewPage(): JSX.Element {
                         (typeof payload?.error === "string" && payload.error.trim())
                             ? payload.error.trim()
                             : "";
+                    const backendCode = String(payload?.code || payload?.backendCode || "").toUpperCase();
                     const looksBlocked = /blocked the snapshot request|site blocked|blocked/i.test(serverError);
+                    const looksCrossDomainRedirect =
+                        res.status === 422 ||
+                        backendCode === "CROSS_DOMAIN_REDIRECT" ||
+                        /redirect(ed)? to a different domain|cross.?domain redirect/i.test(serverError);
                     const uiError =
                         res.status === 429
                             ? (serverError || "Monthly snapshot limit reached for your plan.")
+                            : looksCrossDomainRedirect
+                                ? "This URL redirected to a different domain and was stopped for safety. Please use the final destination URL directly."
                             : looksBlocked
                                 ? "This site blocked the snapshot request. Try a different URL or a less protected page."
                                 : "Sorry, we were not able to process this URL. Please ensure it is accessible before trying again.";
@@ -4399,7 +4406,9 @@ export default function PreviewPage(): JSX.Element {
                     void markUrlCaptureTerminalError(
                         user.uid,
                         targetUrl,
-                        looksBlocked
+                        looksCrossDomainRedirect
+                            ? "cross_domain_redirect"
+                            : looksBlocked
                             ? "snapshot_blocked"
                             : (serverError || `generate_http_${res.status}`),
                         "error",
@@ -4408,7 +4417,7 @@ export default function PreviewPage(): JSX.Element {
                     void (async () => {
                         // For blocked/conflict outcomes, /api/private/generate already emits a
                         // richer backend alert (url_scan_failed). Avoid duplicate Slack noise.
-                        if (res.status === 409) return;
+                        if (res.status === 409 || looksCrossDomainRedirect) return;
                         if (!shouldSendFrontendTimeoutAlert("url_capture_enqueue_failed", targetUrl)) return;
                         try {
                             await fetch("/api/internal/observability/frontend-timeout", {
@@ -4542,10 +4551,17 @@ export default function PreviewPage(): JSX.Element {
                     (typeof payload?.error === "string" && payload.error.trim())
                         ? payload.error.trim()
                         : "";
+                const backendCode = String(payload?.code || payload?.backendCode || "").toUpperCase();
                 const looksBlocked = /blocked the snapshot request|site blocked|blocked/i.test(serverError);
+                const looksCrossDomainRedirect =
+                    res.status === 422 ||
+                    backendCode === "CROSS_DOMAIN_REDIRECT" ||
+                    /redirect(ed)? to a different domain|cross.?domain redirect/i.test(serverError);
                 const uiError =
                     res.status === 429
                         ? (serverError || "Monthly snapshot limit reached for your plan.")
+                        : looksCrossDomainRedirect
+                            ? "This URL redirected to a different domain and was stopped for safety. Please use the final destination URL directly."
                         : looksBlocked
                             ? "This site blocked the snapshot request. Try a different URL or a less protected page."
                             : "This URL failed to process. Please ensure it is accessible before retrying.";
@@ -4591,7 +4607,7 @@ export default function PreviewPage(): JSX.Element {
             }
 
             // For blocked/conflict outcomes, backend already emits url_scan_failed.
-            if (res.status === 409) return false;
+            if (res.status === 409 || res.status === 422) return false;
             if (!shouldSendFrontendTimeoutAlert("url_capture_poll_enqueue_failed", targetUrl)) return false;
 
             void fetch("/api/internal/observability/frontend-timeout", {
