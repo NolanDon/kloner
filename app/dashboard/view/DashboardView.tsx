@@ -753,6 +753,17 @@ function getTimestampMs(value: any): number | null {
     return Number.isFinite(parsed) ? parsed : null;
 }
 
+function isGenerationTierBlockedMessage(message: string): boolean {
+    const lower = String(message || "").toLowerCase();
+    return (
+        lower.includes("upgrade to pro") ||
+        lower.includes("upgrade to pro or agency") ||
+        lower.includes("app_generation_tier_blocked") ||
+        lower.includes("app_wizard_tier_blocked") ||
+        lower.includes("app_create_tier_blocked")
+    );
+}
+
 // ============================================================================
 // HELPER FUNCTION: Strict deployment check
 // ============================================================================
@@ -3441,6 +3452,15 @@ export default function PreviewPage(): JSX.Element {
         } catch (error) {
             const message = getUserFacingErrorMessage(error, "Failed to create app. Please try again.");
             console.error("Failed to create app:", error);
+            if (isGenerationTierBlockedMessage(message)) {
+                setShowCreditsPaywall("preview");
+                if (appWizardOpen) {
+                    setAppWizardOpen(false);
+                    setAppWizardError(null);
+                    setAppWizardBusy(false);
+                }
+                return null;
+            }
             if (isPreviewCreditsLimitErrorMessage(message)) {
                 setShowCreditsPaywall("preview");
                 if (appWizardOpen) {
@@ -6249,6 +6269,29 @@ export default function PreviewPage(): JSX.Element {
             if (!storageKeys.length) return;
 
             const primaryKey = storageKeys[0];
+            const clearOptimisticWebsiteState = () => {
+                setRenders((prev) => prev.filter((render) => render.id !== optimisticId));
+                setOptimisticByKey((prev) => {
+                    const next = { ...prev };
+                    delete next[primaryKey];
+                    return next;
+                });
+                setPendingByKey((prev) => {
+                    const next = { ...prev };
+                    delete next[primaryKey];
+                    return next;
+                });
+                setLockUntilByKey((prev) => {
+                    const next = { ...prev };
+                    delete next[primaryKey];
+                    return next;
+                });
+                setLockUntilByRender((prev) => {
+                    const next = { ...prev };
+                    delete next[optimisticId];
+                    return next;
+                });
+            };
 
             // hard guard: if anything already queued or pending for this key, bail
             const alreadyQueued = renders.some(
@@ -6333,6 +6376,20 @@ export default function PreviewPage(): JSX.Element {
                     return;
                 }
 
+                const blockedByTier =
+                    r.status === 403 ||
+                    String(j?.code || j?.reason || "").toLowerCase().includes("tier_blocked") ||
+                    isGenerationTierBlockedMessage(String(j?.error || ""));
+
+                if (blockedByTier) {
+                    clearOptimisticWebsiteState();
+                    setDeployWizardError(null);
+                    setErr("");
+                    setShowCreditsPaywall("preview");
+                    push("Upgrade to Pro or Agency to create websites or apps from the dashboard.", "warn");
+                    return;
+                }
+
                 if (isBackendFetchFailed502(r.status, j)) {
                     setDeployWizardError("Collection preview start is delayed. Checking for progress…");
                     recoverFromTransientRenderStart("Collection preview start");
@@ -6341,6 +6398,7 @@ export default function PreviewPage(): JSX.Element {
 
                 if (!r.ok || !j?.ok) {
                     const msg = j?.error || "Render failed";
+                    clearOptimisticWebsiteState();
                     setDeployWizardError(msg);
                     throw new Error(msg);
                 }
@@ -6348,6 +6406,15 @@ export default function PreviewPage(): JSX.Element {
                 await refreshRenders();
             } catch (e: any) {
                 const msg = e?.message || "Failed to start collection preview.";
+
+                if (isGenerationTierBlockedMessage(msg)) {
+                    clearOptimisticWebsiteState();
+                    setDeployWizardError(null);
+                    setErr("");
+                    setShowCreditsPaywall("preview");
+                    push("Upgrade to Pro or Agency to create websites or apps from the dashboard.", "warn");
+                    return;
+                }
 
                 setDeployWizardError(msg);
 
@@ -6380,6 +6447,11 @@ export default function PreviewPage(): JSX.Element {
             setErr,
             setDeployWizardError,
             setShowCreditsPaywall,
+            setRenders,
+            setOptimisticByKey,
+            setPendingByKey,
+            setLockUntilByKey,
+            setLockUntilByRender,
         ],
     );
 
@@ -6436,6 +6508,17 @@ export default function PreviewPage(): JSX.Element {
                 return;
             }
 
+            if (
+                r.status === 403 &&
+                (isGenerationTierBlockedMessage(String(j?.error || "")) ||
+                    String(j?.code || j?.reason || "").toLowerCase().includes("tier_blocked"))
+            ) {
+                setErr("");
+                setShowCreditsPaywall("preview");
+                push("Upgrade to Pro or Agency to create websites or apps from the dashboard.", "warn");
+                return;
+            }
+
             if (isBackendFetchFailed502(r.status, j)) {
                 recoverFromTransientRenderStart("Website generation");
                 return;
@@ -6448,6 +6531,11 @@ export default function PreviewPage(): JSX.Element {
             await refreshRenders();
         } catch (e: any) {
             console.error("buildFromUrl failed", e);
+            if (isGenerationTierBlockedMessage(e?.message || "")) {
+                setErr("");
+                setShowCreditsPaywall("preview");
+                return;
+            }
             push(e?.message || "Failed to start website generation.", "err");
         }
     }, [
@@ -6460,6 +6548,7 @@ export default function PreviewPage(): JSX.Element {
         setShowCreditsPaywall,
         isBackendFetchFailed502,
         recoverFromTransientRenderStart,
+        setErr,
     ]);
 
     const continueRender = useCallback(
