@@ -14,6 +14,11 @@ type Metric = {
   roles?: string[];
 };
 
+type Feature = {
+  title: string;
+  text: string;
+};
+
 const metrics: Metric[] = [
   {
     value: '01',
@@ -33,6 +38,33 @@ const metrics: Metric[] = [
     metric: 'avg 160 hrs',
     text: 'Handle five roles from one place, without extra overhead.',
     roles: ['Designer', 'Marketer', 'Frontend dev', 'Backend dev', 'Product dev'],
+  },
+];
+
+const features: Feature[] = [
+  {
+    title: '40 website generations per month',
+    text: 'Ship more client work without hitting a wall every time you want to publish a new idea.',
+  },
+  {
+    title: 'Database connections',
+    text: 'Connect your app to real data instead of leaving everything in static mockups.',
+  },
+  {
+    title: 'AI helper',
+    text: 'Use AI editing support to speed up revisions, fixes, and small build tasks.',
+  },
+  {
+    title: 'Vibe coding',
+    text: 'Stay in the flow while you iterate visually, without bouncing between tools.',
+  },
+  {
+    title: 'One-click deploy integrations',
+    text: 'Push the finished site live with the same clean workflow you used to build it.',
+  },
+  {
+    title: 'Image, SEO, and route setup',
+    text: 'Handle the boring site plumbing automatically so the project is ready to ship.',
   },
 ];
 
@@ -123,7 +155,9 @@ export default function Stories() {
         <div className="mb-8 flex items-center justify-between gap-4 sm:mb-6">
           <h2 className="mt-1 flex flex-wrap items-center justify-start gap-x-3 gap-y-1 text-base text-neutral-600 sm:text-lg">
             <span className="block text-[13px] uppercase leading-tight tracking-[0.1em] text-neutral-500 sm:text-[14px]">
-              Teams Ship Faster With
+              Join
+              <span className="mx-1 text-[rgba(245,95,42,1)]">5,000+</span>
+              Kloner members shipping sites in minutes
             </span>
             <span className="relative inline-block h-[72px] w-[72px] sm:h-[92px] sm:w-[92px]">
               <Image
@@ -156,6 +190,33 @@ export default function Stories() {
                 </div>
               ))}
             </div>
+          </div>
+        </div>
+
+        <div className="mt-8 sm:mt-10">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <h3 className="text-sm font-semibold uppercase tracking-[0.14em] text-neutral-500 sm:text-[13px]">
+              What they get
+            </h3>
+            <span className="text-xs text-neutral-500 sm:text-sm">
+              From the pricing plan
+            </span>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {features.map((feature, index) => (
+              <SectionReveal key={feature.title} delay={0.12 + index * 0.04}>
+                <div className="h-full rounded-2xl border border-black/10 bg-white p-4 shadow-sm">
+                  <div className="mb-3 flex items-center gap-2">
+                    <span className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-[rgba(245,95,42,0.18)] bg-[rgba(245,95,42,0.08)] text-[rgba(245,95,42,1)]">
+                      <BadgeDollarSign className="h-3.5 w-3.5" />
+                    </span>
+                    <p className="text-sm font-semibold text-black/80">{feature.title}</p>
+                  </div>
+                  <p className="text-sm leading-relaxed text-black/70">{feature.text}</p>
+                </div>
+              </SectionReveal>
+            ))}
           </div>
         </div>
 

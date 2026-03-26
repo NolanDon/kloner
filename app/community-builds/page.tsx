@@ -24,16 +24,16 @@ export default function CommunityBuildsPage() {
             <NavBar />
             <section className="bg-white text-black mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 pt-20">
                 <header className="mb-12 flex flex-col items-center text-center gap-3">
-                    <div className="mt-2 flex items-center justify-center gap-4 pt-10">
-                        <span className="text-[13px] uppercase tracking-[0.1em] text-neutral-500">
-                            <h1>See what the community has built with</h1>
-                        </span>
-                        <span className="relative inline-block h-[90px] w-[90px] sm:h-[120px] sm:w-[120px]">
+                    <div className="mt-2 flex items-center justify-center gap-3 pt-10">
+                        <h1 className="text-[13px] uppercase tracking-[0.1em] text-neutral-500 sm:text-[12px]">
+                            See what the community has built with
+                        </h1>
+                        <span className="relative inline-block h-[64px] w-[64px] sm:h-[84px] sm:w-[84px]">
                             <Image
                                 src={logo}
                                 alt="Kloner logo"
                                 fill
-                                sizes="(max-width: 640px) 90px, 120px"
+                                sizes="(max-width: 640px) 64px, 84px"
                                 className="object-contain"
                             />
                         </span>

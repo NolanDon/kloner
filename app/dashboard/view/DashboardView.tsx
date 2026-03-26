@@ -10,6 +10,7 @@ import React, {
     memo,
 } from "react";
 import Image from 'next/image'
+import logo from "@/public/images/orange_logo.png";
 import { createPortal, flushSync } from "react-dom";
 import { toast } from "react-hot-toast";
 
@@ -2488,8 +2489,7 @@ export default function PreviewPage(): JSX.Element {
     const [renderTrialSessionEligible, setRenderTrialSessionEligible] = useState(false);
     const [appBuilderTrialSessionEligible, setAppBuilderTrialSessionEligible] = useState(false);
     const [exitOfferClaimed, setExitOfferClaimed] = useState(false);
-    const [showUpgradeAfterCustomize, setShowUpgradeAfterCustomize] =
-        useState(false);
+    const [showWebsitePrePaywall, setShowWebsitePrePaywall] = useState(false);
 
     const [archivingRender, setArchivingRender] = useState<Record<string, boolean>>({});
     const [archivingApp, setArchivingApp] = useState<Record<string, boolean>>({});
@@ -8315,6 +8315,35 @@ export default function PreviewPage(): JSX.Element {
     const step5SaleActive = step5SaleRemainingSec > 0;
     const allowOfferInDev = process.env.NODE_ENV !== "production";
     const canUseExitOffer = step5SaleActive && (allowOfferInDev || !exitOfferClaimed);
+    const websitePaywallShowcaseImages = [
+        "/images/showcase/showcase1.jpg",
+        "/images/showcase/showcase2.jpg",
+        "/images/showcase/showcase3.jpg",
+        "/images/showcase/showcase4.jpg",
+        "/images/showcase/showcase5.jpg",
+        "/images/showcase/mobile_showcase2.jpg",
+    ];
+
+    const websitePrePaywallBenefits = [
+        {
+            value: '01',
+            title: 'Save time on planning',
+            metric: 'save ~40 hrs/wk',
+            text: 'Start from templates instead of blank pages and cut the heavy setup work.',
+        },
+        {
+            value: '02',
+            title: 'Save money on building',
+            metric: 'save ~$2000 per project',
+            text: 'Ship polished sites without paying premium platform fees for every project.',
+        },
+        {
+            value: '03',
+            title: 'Boost your output',
+            metric: 'save ~160 hrs/mo',
+            text: 'Handle five roles from one place, without extra overhead.',
+        },
+    ];
 
     function openExitOffer(reason: NonNullable<typeof exitOfferReason>) {
         if (!canUseExitOffer) {
@@ -8337,12 +8366,12 @@ export default function PreviewPage(): JSX.Element {
     function showWebsiteExitOfferPaywall() {
         setShowCreditsPaywall(null);
         setShowProPaywall(false);
-        setShowUpgradeAfterCustomize(false);
+        setShowAppExitOffer(false);
+        setShowExitOffer(false);
         setAppWizardOpen(false);
         setAppWizardBusy(false);
         setAppWizardError(null);
-        setAppExitOfferReason("close");
-        setShowAppExitOffer(true);
+        setShowWebsitePrePaywall(true);
     }
 
     const EXIT_OFFER_PROMO_CODE = "DEPLOY40"; // ✅ Stripe Promotion Code "code" field
@@ -8518,6 +8547,18 @@ export default function PreviewPage(): JSX.Element {
 
     return (
         <main className="min-h-screen bg-white notranslate" translate="no">
+            {checkoutBusy ? (
+                <div className="fixed inset-0 z-[13000] flex items-center justify-center bg-black/55 px-4 backdrop-blur-sm">
+                    <div className="flex flex-col items-center gap-3 rounded-3xl border border-white/10 bg-neutral-950/95 px-6 py-5 text-center text-white shadow-[0_20px_80px_rgba(0,0,0,0.45)]">
+                        <Loader2 className="h-6 w-6 animate-spin text-[#f55f2a]" />
+                        <div>
+                            <p className="text-sm font-semibold">Opening secure Stripe checkout...</p>
+                            <p className="mt-1 text-xs text-neutral-300">Please wait while we prepare your session.</p>
+                        </div>
+                    </div>
+                </div>
+            ) : null}
+
             <div className="mx-auto max-w-[1200px] px-4 sm:px-6 lg:px-10 py-8">
                 <section className="mb-10">
                     <MiniDashboardEntry
@@ -10597,8 +10638,8 @@ export default function PreviewPage(): JSX.Element {
 
                                                                                 {/* discount line: big number, not heavy font */}
                                                                                 <div className="mt-6 flex justify-center items-baseline gap-2">
-                                                                                    <span className="text-[28px] font-bold text-accent leading-none text-neutral-900">40% off</span>
-                                                                                    <span className="text-[12px] font-medium text-neutral-600">your first month</span>
+                                                                                    <span className="text-[28px] font-bold leading-none text-[#f55f2a]">40% off</span>
+                                                                                    <span className="text-[12px] font-medium text-neutral-600">your first month + free trial</span>
                                                                                 </div>
                                                                                 {canUseExitOffer ? (
                                                                                     <div className="mt-1 flex justify-center text-[12px] text-neutral-700">
@@ -10608,30 +10649,32 @@ export default function PreviewPage(): JSX.Element {
                                                                                 <div className="mt-1 flex text-[12px] justify-center text-neutral-700 gap-1">
 
                                                                                 </div>
-                                                                                {/* price compare: minimal, still explicit */}
-                                                                                <div className="mt-1 flex text-[12px] justify-center text-neutral-700 gap-1">
-                                                                                    <span className="font-medium">Includes Next.js 16 + HTML deploy paths</span>
-                                                                                </div>
-
-                                                                                {/* micro testimonial row (image avatar) */}
-                                                                                <div className="my-7 flex items-start gap-2 rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2">
-                                                                                    <div className="mt-[1px] h-7 w-7 shrink-0 overflow-hidden rounded-full border border-neutral-200 bg-white">
-                                                                                        <Image
-                                                                                            src="/images/testimonial-avatar.jpg"
-                                                                                            alt="Customer avatar"
-                                                                                            width={28}
-                                                                                            height={28}
-                                                                                            className="h-full w-full object-cover"
-                                                                                            loading="lazy"
-                                                                                        />
-                                                                                    </div>
-
-                                                                                    <div className="min-w-0">
-                                                                                        <p className="text-[12px] leading-snug text-neutral-800">
-                                                                                            “I struggled with a slow wordpress site but didn&apos;t have the budget to redo it. This app helped me clone and redeploy it in under 10 minutes, I recommend it to anyone needing a quick landing page”
-                                                                                        </p>
-                                                                                        <p className="mt-1 text-[11px] text-neutral-500">Karissa, freelancer</p>
-                                                                                    </div>
+                                                                                <div className="mt-4 space-y-3">
+                                                                                    {websitePrePaywallBenefits.map((item, index) => (
+                                                                                        <div
+                                                                                            key={item.value}
+                                                                                            className="website-paywall-feature flex items-start gap-4 px-1 py-1"
+                                                                                            style={{
+                                                                                                animationDelay: `${index * 140}ms`,
+                                                                                                ["--website-paywall-feature-delay" as string]: `${index * 140}ms`,
+                                                                                            }}
+                                                                                        >
+                                                                                            <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[rgba(245,95,42,0.2)] text-[#f55f2a]">
+                                                                                                <CheckCircle2 className="h-5 w-5" />
+                                                                                            </div>
+                                                                                            <div>
+                                                                                                <p className="text-base font-semibold text-neutral-900 sm:text-[17px]">
+                                                                                                    {item.title}
+                                                                                                </p>
+                                                                                                <p className="mt-0.5 text-sm font-semibold text-[rgba(245,95,42,1)]">
+                                                                                                    {item.metric}
+                                                                                                </p>
+                                                                                                <p className="mt-1 text-sm leading-relaxed text-neutral-600">
+                                                                                                    {item.text}
+                                                                                                </p>
+                                                                                            </div>
+                                                                                        </div>
+                                                                                    ))}
                                                                                 </div>
 
                                                                             </div>
@@ -10666,7 +10709,7 @@ export default function PreviewPage(): JSX.Element {
                                                                                 whileTap={{ scale: 0.99 }}
                                                                                 transition={{ duration: 0.16, ease: "easeOut" }}
                                                                             >
-                                                                                {checkoutBusy ? "Redirecting to Stripe…" : "Start free trial & claim 40% off →"}
+                                                                                {checkoutBusy ? "Redirecting to Stripe…" : "Start 7-day free trial & claim 40% off first month →"}
                                                                             </motion.button>
 
                                                                             <p className="mt-3 text-center text-[11px] text-neutral-500">
@@ -11004,129 +11047,117 @@ export default function PreviewPage(): JSX.Element {
                 }
 
                 {
-                    showUpgradeAfterCustomize && (
-                        <div className="fixed inset-0 z-[12050]">
-                            {/* Backdrop */}
-                            <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
+                    showWebsitePrePaywall && (
+                        <div className="website-paywall-overlay fixed inset-0 z-[12049] opacity-0 animate-[website-paywall-fade-in_900ms_ease-out_forwards]">
+                            <div className="absolute inset-0 bg-black/70 backdrop-blur-sm opacity-0 animate-[website-paywall-backdrop-fade-in_900ms_ease-out_forwards]" />
 
-                            {/* Shell */}
-                            <div className="absolute inset-0 flex items-center justify-center px-4 sm:px-6">
-                                <div className="relative w-full max-w-lg overflow-hidden rounded-3xl border border-white/8 bg-neutral-950/95 text-neutral-50 shadow-[0_30px_120px_rgba(0,0,0,0.85)]">
-                                    {/* Accent glow */}
-                                    <div
-                                        className="pointer-events-none absolute inset-x-10 -top-24 h-40 rounded-full blur-3xl opacity-80"
-                                        style={{
-                                            background: `radial-gradient(circle, ${ACCENT}40 0%, transparent 65%)`,
+                            <div className="absolute inset-0 flex items-start justify-center px-4 py-4 sm:items-center sm:px-6 sm:py-6">
+                                <div className="relative w-full max-w-2xl max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain rounded-[32px] border border-neutral-200 bg-white shadow-[0_30px_120px_rgba(0,0,0,0.24)] opacity-0 translate-y-2 animate-[website-paywall-panel-in_900ms_ease-out_forwards] sm:max-h-[calc(100dvh-3rem)]">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setShowWebsitePrePaywall(false);
+                                            openExitOffer("close");
                                         }}
-                                    />
+                                        aria-label="Close paywall"
+                                        title="Close paywall"
+                                        className="absolute right-3 top-3 z-10 inline-flex h-8 w-8 items-center justify-center rounded-full text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-800 focus:outline-none focus:ring-2 focus:ring-[rgba(245,95,42,0.35)] focus:ring-offset-2 focus:ring-offset-white sm:right-4 sm:top-4"
+                                    >
+                                        <X className="h-4 w-4" />
+                                    </button>
 
-                                    <div className="relative p-6 sm:p-7">
-                                        {/* Header row */}
-                                        <div className="mb-4 flex items-start justify-between gap-3">
-                                            <div className="flex items-start gap-3">
-                                                <div className="flex h-9 w-9 items-center justify-center rounded-2xl bg-neutral-900/80 border border-white/10">
-                                                    <Crown className="h-4 w-4 text-amber-400" />
-                                                </div>
-                                                <div>
-                                                    <p className="mb-1 text-[11px] uppercase tracking-[0.16em] text-neutral-400">
-                                                        You just customized a live preview
-                                                    </p>
-                                                </div>
-                                            </div>
-
-                                            <span className="whitespace-nowrap rounded-full border border-white/10 bg-neutral-900/80 px-3 py-1 text-[10px] uppercase tracking-[0.16em] text-neutral-400">
-                                                Pro upgrade
-                                            </span>
-                                        </div>
-
-                                        <h3 className="text-2xl mb-4  font-semibold tracking-tight text-white">
-                                            Turn this preview into a real, live site
-                                        </h3>
-                                        {/* Value stack */}
-                                        <div className="mb-4 grid gap-2 text-sm sm:text-[13px] text-neutral-200">
-                                            <div className="flex items-start gap-2.5">
-                                                <div
-                                                    className="mt-[3px] h-2 w-2 rounded-full"
-                                                    style={{ backgroundColor: ACCENT }}
-                                                />
-                                                <div>
-                                                    <p className="text-white">
-                                                        Publish in minutes
-                                                    </p>
-                                                    <p className="text-[11px] text-neutral-400">
-                                                        Kloner ships this exact preview to a
-                                                        live URL, no Git, no config.
-                                                    </p>
-                                                </div>
-                                            </div>
-
-                                            <div className="flex items-start gap-2.5">
-                                                <div
-                                                    className="mt-[3px] h-2 w-2 rounded-full"
-                                                    style={{ backgroundColor: ACCENT }}
-                                                />
-                                                <div>
-                                                    <p className="text-white">
-                                                        Your domain, your branding
-                                                    </p>
-                                                    <p className="text-[11px] text-neutral-400">
-                                                        Point your own domain, and own the
-                                                        experience.
-                                                    </p>
-                                                </div>
-                                            </div>
-
-                                            <div className="flex items-start gap-2.5">
-                                                <div
-                                                    className="mt-[3px] h-2 w-2 rounded-full"
-                                                    style={{ backgroundColor: ACCENT }}
-                                                />
-                                                <div>
-                                                    <p className="text-white">
-                                                        Keep editing visually
-                                                    </p>
-                                                    <p className="text-[11px] text-neutral-400">
-                                                        Keep using the editor you’re in right
-                                                        now. Every change ships with one click.
-                                                    </p>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        {/* What happens next strip */}
-                                        <div className="mb-5 rounded-2xl border border-white/10 bg-neutral-900/80 px-3 py-2.5 text-[14px] text-neutral-300">
-                                            <p className="mb-1 text-neutral-100">
-                                                What happens when you continue
-                                            </p>
-                                            <p className="text-[12px] text-neutral-200">
-                                                1) Pick a plan · 2) Fast, secure checkout · 3)
-                                                Click publish and your site goes live.
+                                    <div className="p-6 sm:p-8 lg:p-10">
+                                        <div className="max-w-xl">
+                                            <h3 className="text-[30px] font-semibold leading-[1.05] tracking-tight text-neutral-950 sm:text-[38px]">
+                                                See what upgrading unlocks
+                                            </h3>
+                                            <p className="mt-3 text-[15px] leading-relaxed text-neutral-600 sm:text-[16px]">
+                                                A few quick reasons people upgrade before they ship.
                                             </p>
                                         </div>
 
-                                        {/* Actions */}
-                                        <div className="space-y-2.5">
+                                        <div className="mt-7 space-y-4">
+                                            {websitePrePaywallBenefits.map((item, index) => (
+                                                <div
+                                                    key={item.value}
+                                                    className="website-paywall-feature flex items-start gap-4 px-1 py-1"
+                                                    style={{
+                                                        animationDelay: `${index * 140}ms`,
+                                                        ["--website-paywall-feature-delay" as string]: `${index * 140}ms`,
+                                                    }}
+                                                >
+                                                    <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[rgba(245,95,42,0.2)] text-[#f55f2a]">
+                                                        <CheckCircle2 className="h-5 w-5" />
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-base font-semibold text-neutral-900 sm:text-[17px]">
+                                                            {item.title}
+                                                        </p>
+                                                        <p className="mt-0.5 text-sm font-semibold text-[rgba(245,95,42,1)]">
+                                                            {item.metric}
+                                                        </p>
+                                                        <p className="mt-1 text-sm leading-relaxed text-neutral-600">
+                                                            {item.text}
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+
+                                        <div className="mt-7 flex flex-col gap-2">
                                             <button
                                                 type="button"
                                                 onClick={() => {
-                                                    setShowUpgradeAfterCustomize(false);
-                                                    void startProCheckout();
+                                                    setShowWebsitePrePaywall(false);
+                                                    void startProCheckout({ exitOffer: true, exitOfferReason: "close" });
                                                 }}
-                                                className="flex w-full items-center justify-center rounded-xl px-4 py-2.5 text-sm font-semibold text-white shadow-[0_18px_40px_rgba(0,0,0,0.6)] transition transform hover:-translate-y-[1px] focus:outline-none focus:ring-2 focus:ring-white/20"
-                                                style={{ backgroundColor: ACCENT }}
+                                                className="inline-flex flex-1 items-center justify-center rounded-2xl bg-[#f55f2a] px-6 py-5 text-[19px] font-semibold tracking-tight text-white shadow-[0_18px_44px_rgba(245,95,42,0.24)] transition hover:translate-y-[-1px] hover:bg-[#f3602c] sm:text-[20px]"
                                             >
-                                                Upgrade and publish this site
+                                                Start generating websites for free →
                                             </button>
+                                        </div>
 
-                                            <button
-                                                type="button"
-                                                onClick={() =>
-                                                    setShowUpgradeAfterCustomize(false)
-                                                }
-                                                className="flex w-full items-center justify-center rounded-xl px-4 py-2 text-[11px] text-neutral-400 hover:bg-neutral-900/70 hover:text-neutral-200 transition"
-                                            >
-                                                Keep editing for now
-                                            </button>
+                                        <p className="mt-3 text-xs text-neutral-500">
+                                            Cancel anytime before renewal.
+                                        </p>
+
+                                        <div className="mt-8 border-t border-neutral-200 pt-6">
+                                            <div className="mb-3 flex items-center justify-center gap-3 text-center">
+                                                <span className="text-[13px] uppercase tracking-[0.1em] text-neutral-500 sm:text-[12px]">
+                                                    See what <span className="text-[15px] font-bold text-[rgba(245,95,42,1)]">5000+</span> Kloner members have built with
+                                                </span>
+                                                <span className="relative inline-block h-[56px] w-[56px] sm:h-[72px] sm:w-[72px]">
+                                                    <Image
+                                                        src={logo}
+                                                        alt="Kloner logo"
+                                                        fill
+                                                        sizes="(max-width: 640px) 56px, 72px"
+                                                        className="object-contain"
+                                                    />
+                                                </span>
+                                            </div>
+
+                                            <div className="relative overflow-hidden rounded-[28px] border border-neutral-200 bg-white shadow-[0_18px_48px_rgba(0,0,0,0.08)]">
+                                                <div className="overflow-hidden py-5">
+                                                    <div className="website-paywall-carousel flex w-max items-stretch gap-4 px-4">
+                                                        {[...websitePaywallShowcaseImages, ...websitePaywallShowcaseImages].map((src, index) => (
+                                                            <div
+                                                                key={`${src}-${index}`}
+                                                                className="relative h-[220px] w-[260px] shrink-0 overflow-hidden rounded-[24px] border border-neutral-200 bg-neutral-100 shadow-[0_16px_36px_rgba(0,0,0,0.12)] sm:h-[250px] sm:w-[300px]"
+                                                            >
+                                                                <Image
+                                                                    src={src}
+                                                                    alt={`Showcase ${index + 1}`}
+                                                                    fill
+                                                                    sizes="(min-width: 640px) 300px, 260px"
+                                                                    className="object-cover"
+                                                                    priority={index < 2}
+                                                                />
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>

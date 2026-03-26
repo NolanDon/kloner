@@ -6,7 +6,7 @@ import NavBar from "@/components/NavBar";
 import Footer from "@/components/Footer";
 import { useModal } from "@/components/ui/ModalContext";
 import { useAuth } from "@/src/hooks/useAuth";
-import { Check } from "lucide-react";
+import { Check, Loader2 } from "lucide-react";
 
 const ACCENT = "#f55f2a";
 const AI_EDIT_CREDIT_COST = 3;
@@ -307,6 +307,8 @@ export default function PriceClient(): JSX.Element {
         return "/dashboard/settings";
     }, [user]);
 
+    const checkoutOverlayVisible = loadingPlan !== null || loadingTopup;
+
     const topupOptions = useMemo(() => {
         const cfg = topupConfig;
         const min = cfg?.minCredits ?? 50;
@@ -497,6 +499,18 @@ export default function PriceClient(): JSX.Element {
 
     return (
         <main className="min-h-screen bg-neutral-50 text-neutral-900">
+            {checkoutOverlayVisible ? (
+                <div className="fixed inset-0 z-[13000] flex items-center justify-center bg-black/55 px-4 backdrop-blur-sm">
+                    <div className="flex flex-col items-center gap-3 rounded-3xl border border-white/10 bg-neutral-950/95 px-6 py-5 text-center text-white shadow-[0_20px_80px_rgba(0,0,0,0.45)]">
+                        <Loader2 className="h-6 w-6 animate-spin text-[#f55f2a]" />
+                        <div>
+                            <p className="text-sm font-semibold">Opening secure Stripe checkout...</p>
+                            <p className="mt-1 text-xs text-neutral-300">Please wait while we prepare your session.</p>
+                        </div>
+                    </div>
+                </div>
+            ) : null}
+
             <NavBar />
 
             <div className="pt-28 pb-20 px-4">
