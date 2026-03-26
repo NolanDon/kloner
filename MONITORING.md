@@ -42,6 +42,7 @@ Optional:
 - `OBS_PROJECT_NAME` (defaults to `kloner`)
 - `OBS_DASHBOARD_BASE_URL` (defaults to `NEXT_PUBLIC_SITE_URL`)
 - `OBS_ALLOW_UNAUTH_FRONTEND_INGEST=1` (only if you want global frontend errors ingested)
+- `OBS_SUPPRESS_LOCALHOST_SLACK=1` (silence localhost-origin alerts; defaults to off in development)
 
 ## Slack setup
 

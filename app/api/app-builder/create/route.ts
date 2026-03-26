@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAdminDb } from "../../_lib/auth";
 import { requireSessionAndMaybeCsrf } from "../../_lib/route-guard";
 import { DEFAULT_APP_TEMPLATE_FILES, DEFAULT_APP_TEMPLATE_VERSION } from "../_lib/default-app-template";
+import { getAuthoritativeUserTier } from "../../_lib/userTier";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -76,6 +77,30 @@ function ensureSupabaseJsDependencyInPackageJson(files: Record<string, { content
 export async function POST(req: NextRequest) {
   return requireSessionAndMaybeCsrf(req, async ({ uid }) => {
     const db = getAdminDb();
+
+    let tier;
+    try {
+      tier = await getAuthoritativeUserTier(uid);
+    } catch (e: any) {
+      return NextResponse.json(
+        {
+          error: e?.message || "Unable to determine subscription tier. Try again shortly.",
+        },
+        { status: 500 },
+      );
+    }
+
+    if (tier === "free") {
+      return NextResponse.json(
+        {
+          error: "Upgrade to Pro to create websites or apps from the dashboard.",
+          code: "APP_CREATE_TIER_BLOCKED",
+          reason: "app_create_tier_blocked",
+          requiredTiers: ["trialing", "pro", "agency"],
+        },
+        { status: 403 },
+      );
+    }
 
     const body = await req.json();
     const { name, renderId, prompt } = body;

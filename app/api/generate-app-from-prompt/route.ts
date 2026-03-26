@@ -60,6 +60,18 @@ export async function POST(req: NextRequest) {
       );
     }
 
+
+    if (tier === "free") {
+      return NextResponse.json(
+        {
+          error: "Upgrade to Pro to create websites or apps from the dashboard.",
+          code: "APP_WIZARD_TIER_BLOCKED",
+          reason: "app_wizard_tier_blocked",
+          requiredTiers: ["trialing", "pro", "agency"],
+        },
+        { status: 403 },
+      );
+    }
     // Hard gate: app generation with createPreview consumes preview credits.
     try {
       const peek = await peekUserCredit(decoded.uid, tier, "preview");

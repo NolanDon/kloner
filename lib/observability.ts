@@ -145,8 +145,18 @@ function isLocalhostUrl(rawUrl?: string): boolean {
     }
 }
 
+function shouldSuppressLocalhostSlackWebhook(): boolean {
+    const raw = (process.env.OBS_SUPPRESS_LOCALHOST_SLACK || "").trim().toLowerCase();
+    if (raw === "1" || raw === "true" || raw === "yes") return true;
+    if (raw === "0" || raw === "false" || raw === "no") return false;
+
+    // Default to surfacing localhost alerts in development so local 5xx failures
+    // still exercise the Slack path during testing.
+    return process.env.NODE_ENV === "production";
+}
+
 function shouldSuppressSlackWebhook(event: StoredEvent): boolean {
-    if (isLocalhostUrl(event.url)) return true;
+    if (isLocalhostUrl(event.url) && shouldSuppressLocalhostSlackWebhook()) return true;
 
     const action = String(event.action || "").toLowerCase();
     const message = String(event.message || "").toLowerCase();

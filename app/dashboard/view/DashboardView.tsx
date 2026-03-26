@@ -2645,7 +2645,7 @@ export default function PreviewPage(): JSX.Element {
 
     const canProceedWithAppWizardGeneration = useCallback(async (): Promise<boolean> => {
         const tierNow = await refreshUserTierNow();
-        if (tierNow !== "free") {
+        if (tierNow === "pro" || tierNow === "agency") {
             return true;
         }
 
@@ -3193,6 +3193,10 @@ export default function PreviewPage(): JSX.Element {
     ) => {
         if (!user) return;
 
+        if (!(await canProceedWithAppWizardGeneration())) {
+            return null;
+        }
+
         if (!opts?.skipCookieConsent) {
             const consentAccepted = await requestAppBuilderCookieConsent();
             if (!consentAccepted) {
@@ -3479,6 +3483,10 @@ export default function PreviewPage(): JSX.Element {
     // New: create an app from the starter template (free)
     const handleCreateTemplateApp = useCallback(async () => {
         if (!user) return;
+
+        if (!(await canProceedWithAppWizardGeneration())) {
+            return;
+        }
 
         const consentAccepted = await requestAppBuilderCookieConsent();
         if (!consentAccepted) {

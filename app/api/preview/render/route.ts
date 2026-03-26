@@ -98,6 +98,18 @@ export async function POST(req: NextRequest) {
                 );
             }
 
+            if (tier === "free") {
+                return NextResponse.json(
+                    {
+                        error: "Upgrade to Pro or Agency to create websites or apps from the dashboard.",
+                        code: "APP_GENERATION_TIER_BLOCKED",
+                        reason: "app_generation_tier_blocked",
+                        requiredTiers: ["trialing", "pro", "agency"],
+                    },
+                    { status: 403 }
+                );
+            }
+
             // HARD GATE: do not render if out of preview credits
             try {
                 const peek = await peekUserCredit(decoded.uid, tier, "preview");

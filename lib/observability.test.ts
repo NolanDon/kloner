@@ -93,4 +93,28 @@ describe("observability Slack formatting", () => {
         );
         expect(messageBlock.text.text).not.toContain("[FRONTEND]");
     });
+
+    it("delivers localhost API failures to Slack unless localhost suppression is enabled", async () => {
+        const { captureCriticalEvent } = await import("./observability");
+
+        await captureCriticalEvent({
+            source: "vercel",
+            severity: "critical",
+            statusCode: 502,
+            route: "/api/preview/render",
+            method: "POST",
+            requestId: "req_local_502",
+            url: "http://localhost:3000/api/preview/render",
+            message: "Proxy failed (render)",
+            action: "api.post",
+        });
+
+        expect(global.fetch).toHaveBeenCalledTimes(1);
+        const fetchArgs = (global.fetch as jest.Mock).mock.calls[0];
+        const body = JSON.parse(String(fetchArgs[1].body));
+
+        expect(body.text).toContain("Proxy failed (render)");
+        const headerBlock = body.blocks.find((b: any) => b.type === "header");
+        expect(headerBlock.text.text).toContain("502");
+    });
 });
