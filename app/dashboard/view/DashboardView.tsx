@@ -107,6 +107,7 @@ const VERCEL_INTEGRATION_SLUG =
 
 const ACCENT = "#f55f2a";
 const CAPTURE_STALL_TIMEOUT_MS = 6 * 60 * 1000;
+const RENDER_STALL_TIMEOUT_MS = 5 * 60 * 1000;
 const CAPTURE_ISSUE_NOTICE_MS = 10 * 1000;
 const FRONTEND_TIMEOUT_DEDUPE_TTL_MS = 10 * 60 * 1000;
 const FRONTEND_TIMEOUT_DEDUPE_STORAGE_KEY = "dashboardViewFrontendTimeoutAlertsV1";
@@ -739,6 +740,19 @@ type RenderCardProps = {
     onRenameRender: (id: string, name: string) => Promise<void>;
 };
 
+function getTimestampMs(value: any): number | null {
+    if (!value) return null;
+    if (typeof value?.toMillis === "function") {
+        const millis = value.toMillis();
+        return Number.isFinite(millis) ? millis : null;
+    }
+    if (typeof value === "number" && Number.isFinite(value)) {
+        return value;
+    }
+    const parsed = Date.parse(value);
+    return Number.isFinite(parsed) ? parsed : null;
+}
+
 // ============================================================================
 // HELPER FUNCTION: Strict deployment check
 // ============================================================================
@@ -850,6 +864,35 @@ function RenderCardInner({
 
     // only the card that is actually building/deploying is locked
     const isThisCardLockedForBuild = hasActiveProgress;
+    const [allowStuckCardCancel, setAllowStuckCardCancel] = useState(false);
+
+    useEffect(() => {
+        if (!isQueued) {
+            setAllowStuckCardCancel(false);
+            return;
+        }
+
+        const startedAtMs = getTimestampMs(r.updatedAt) ?? getTimestampMs(r.createdAt);
+        if (!startedAtMs) {
+            setAllowStuckCardCancel(false);
+            return;
+        }
+
+        const elapsedMs = Date.now() - startedAtMs;
+        const remainingMs = Math.max(0, RENDER_STALL_TIMEOUT_MS - elapsedMs);
+        if (remainingMs === 0) {
+            setAllowStuckCardCancel(true);
+            return;
+        }
+
+        const timeoutId = window.setTimeout(() => {
+            setAllowStuckCardCancel(true);
+        }, remainingMs);
+
+        return () => window.clearTimeout(timeoutId);
+    }, [isQueued, r.updatedAt, r.createdAt, r.id]);
+
+    const isStuckQueued = isQueued && allowStuckCardCancel;
 
     const disableOpen =
         isOpening || isDeploying || isArchived || isThisCardLockedForBuild;
@@ -1166,9 +1209,9 @@ function RenderCardInner({
             {!isDeployedFlag && !isArchivedFlag && (
                 <button
                     onClick={() => discardRender(r.id)}
-                    disabled={isDeleting || isBuilding}
+                    disabled={isDeleting || (isBuilding && !isStuckQueued)}
                     aria-label="Discard preview"
-                    title="Delete this editable preview"
+                    title={isStuckQueued ? "Delete this preview and clear the stuck processing state" : "Delete this editable preview"}
                     className="absolute right-2 top-2 z-50 inline-flex h-6 w-6 items-center justify-center rounded-full border shadow-sm transition-all duration-150 bg-white/85 border-neutral-200 text-neutral-400 hover:bg-red-600 hover:border-red-600 hover:text-white hover:shadow-md hover:scale-[1.04] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300 focus-visible:ring-offset-2 disabled:opacity-60 disabled:pointer-events-none"
                 >
                     <X className="h-3.5 w-3.5 transition-colors" />
@@ -1578,10 +1621,25 @@ function RenderCardInner({
                             isDeploying
                                 ? "Deploying…"
                                 : isQueued
-                                    ? "Building site. This may take up to five minutes"
+                                    ? isStuckQueued
+                                        ? "Still building. You can cancel this stuck preview now."
+                                        : "Building site. This may take up to five minutes"
                                     : "Locked…"
                         }
                     />
+                )}
+
+                {isStuckQueued && !isDeleting && !isDeploying && (
+                    <div className="absolute inset-x-0 bottom-4 z-40 flex justify-center px-4">
+                        <button
+                            type="button"
+                            onClick={() => discardRender(r.id)}
+                            className="inline-flex items-center gap-1.5 rounded-full border border-red-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-red-700 shadow-sm hover:border-red-300 hover:bg-red-50"
+                            title="Cancel the stuck preview and clear the processing card"
+                        >
+                            Cancel stuck preview
+                        </button>
+                    </div>
                 )}
             </div>
 
@@ -1891,7 +1949,9 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
     locked,
     onClick,
     onAppClick,
+    onCancelLocked,
     sourceUrl,
+    lockedSinceMs,
     sourceUrlCannotGenerate = false,
     highlight,
     autoOpenNonce,
@@ -1905,7 +1965,9 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
     locked: boolean;
     onClick: () => void;
     onAppClick?: () => void;
+    onCancelLocked?: () => void;
     sourceUrl?: string | null;
+    lockedSinceMs?: number | null;
     sourceUrlCannotGenerate?: boolean;
     highlight?: boolean;
     autoOpenNonce?: number;
@@ -1921,6 +1983,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
     const [localDisabled, setLocalDisabled] = useState(false);
     const [showGenerationModal, setShowGenerationModal] = useState(false);
     const [selectedGenerationType, setSelectedGenerationType] = useState<"nextjs" | "html" | null>(null);
+    const [canOverrideLocked, setCanOverrideLocked] = useState(false);
     const lastAutoOpenNonceRef = useRef(0);
 
     const sourceUrlDisplay = useMemo(() => {
@@ -1956,6 +2019,26 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
 
     // Consider the card disabled if either the parent says so or we've just been clicked.
     const effectiveLocked = locked || localDisabled;
+
+    useEffect(() => {
+        if (!effectiveLocked || !lockedSinceMs) {
+            setCanOverrideLocked(false);
+            return;
+        }
+
+        const elapsedMs = Date.now() - lockedSinceMs;
+        const remainingMs = Math.max(0, RENDER_STALL_TIMEOUT_MS - elapsedMs);
+        if (remainingMs === 0) {
+            setCanOverrideLocked(true);
+            return;
+        }
+
+        const timeoutId = window.setTimeout(() => {
+            setCanOverrideLocked(true);
+        }, remainingMs);
+
+        return () => window.clearTimeout(timeoutId);
+    }, [effectiveLocked, lockedSinceMs]);
 
     const handleClick = () => {
         if (localDisabled) return;
@@ -2020,7 +2103,9 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
 
     const title = effectiveLocked ? "Processing…" : "Generate";
     const subtitle = effectiveLocked
-        ? "You have a pending job."
+        ? canOverrideLocked
+            ? "This job has been processing for a while. You can cancel it now."
+            : "You have a pending job."
         : sourceUrlDisplay
             ? "Create an editable website."
             : "Create an editable website.";
@@ -2068,6 +2153,17 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                     <div className="mt-4 px-2 text-sm font-semibold text-neutral-800">{title}</div>
                     <div className="mt-1 px-2 text-sm text-neutral-500">{subtitle}</div>
                 </button>
+                {effectiveLocked && canOverrideLocked && onCancelLocked ? (
+                    <div className="absolute inset-x-0 bottom-4 flex justify-center px-4">
+                        <button
+                            type="button"
+                            onClick={onCancelLocked}
+                            className="inline-flex items-center justify-center rounded-full border border-red-200 bg-white px-3 py-1.5 text-xs font-semibold text-red-700 shadow-sm hover:border-red-300 hover:bg-red-50"
+                        >
+                            Cancel stuck job
+                        </button>
+                    </div>
+                ) : null}
             </div>
 
             {/* Generation Type Selection Modal */}
@@ -4829,6 +4925,31 @@ export default function PreviewPage(): JSX.Element {
         targetUrl,
         captureTerminalFailureUrl,
     ]);
+
+    const cancelQueuedCapture = useCallback(() => {
+        if (!user || !targetUrl) return;
+
+        const normalized = normUrl(targetUrl);
+        generateAbortedRef.current = `${user.uid}:${targetUrl}`;
+        captureStallReportedForUrlRef.current = normalized;
+        captureLockMinUntilRef.current = 0;
+        setCaptureLockUrl(null);
+        captureLockStartedAtRef.current = 0;
+        setCaptureTerminalFailureUrl(normalized);
+        setHideCaptureQueueStatus(true);
+        setCaptureIssueNotice("Capture cancelled after waiting too long.");
+        setInfo("");
+        setErr("");
+        push("Cancelled stuck website generation. You can try again now.", "warn");
+        clearStartQueryParam();
+
+        void markUrlCaptureTerminalError(
+            user.uid,
+            targetUrl,
+            "cancelled_after_timeout",
+            "stale",
+        );
+    }, [clearStartQueryParam, markUrlCaptureTerminalError, targetUrl, user]);
 
     // Only lock generation controls while this frontend session owns an active capture flow.
     // A stale Firestore queued/processing status alone should not freeze the dashboard after refresh.
@@ -8686,6 +8807,7 @@ export default function PreviewPage(): JSX.Element {
                                 {groupedShots.length === 0 ? (
                                     <GhostGeneratePreviewCard
                                         locked={captureLocked}
+                                        lockedSinceMs={captureLockStartedAtRef.current || null}
                                         sourceUrl={targetUrl}
                                         sourceUrlCannotGenerate={activeUrlCannotGenerate}
                                         highlight={shouldHighlightCreateWebsiteCta}
@@ -8707,6 +8829,7 @@ export default function PreviewPage(): JSX.Element {
                                             // Go straight to the App Builder editor.
                                             void startNextJsAppBuilder(targetUrl || "");
                                         }}
+                                        onCancelLocked={cancelQueuedCapture}
                                         isAdmin={isAdmin}
                                         onStartFromTemplate={handleCreateTemplateApp}
                                         onStartFromCommunityBuild={() => router.push("/community-builds")}
@@ -8735,6 +8858,7 @@ export default function PreviewPage(): JSX.Element {
                                             <GhostGeneratePreviewCard
                                                 key={`ghost-${group.snapshotId || first.path}`}
                                                 locked={captureLocked || locked}
+                                                lockedSinceMs={captureLockStartedAtRef.current || null}
                                                 sourceUrl={targetUrl}
                                                 sourceUrlCannotGenerate={activeUrlCannotGenerate}
                                                 highlight={shouldHighlightCreateWebsiteCta}
@@ -8745,6 +8869,7 @@ export default function PreviewPage(): JSX.Element {
                                                 onAppClick={() => {
                                                     void startNextJsAppBuilder(targetUrl || "");
                                                 }}
+                                                onCancelLocked={cancelQueuedCapture}
                                                 isAdmin={isAdmin}
                                                 onStartFromTemplate={handleCreateTemplateApp}
                                                 onStartFromCommunityBuild={() => router.push("/community-builds")}
@@ -8819,6 +8944,7 @@ export default function PreviewPage(): JSX.Element {
                                             return (
                                                 <GhostGeneratePreviewCard
                                                     locked={locked}
+                                                    lockedSinceMs={captureLockStartedAtRef.current || null}
                                                     sourceUrl={targetUrl}
                                                     sourceUrlCannotGenerate={activeUrlCannotGenerate}
                                                     highlight={shouldHighlightCreateWebsiteCta}
@@ -8857,6 +8983,7 @@ export default function PreviewPage(): JSX.Element {
                                                         // Go straight to the App Builder editor.
                                                         void startNextJsAppBuilder(targetUrl || "");
                                                     }}
+                                                    onCancelLocked={cancelQueuedCapture}
                                                     isAdmin={isAdmin}
                                                     onStartFromTemplate={handleCreateTemplateApp}
                                                     user={user}
@@ -8929,6 +9056,7 @@ export default function PreviewPage(): JSX.Element {
                                         <GhostGeneratePreviewCard
                                             key={`ghost-${group.snapshotId || first.path}`}
                                             locked={captureLocked || locked}
+                                            lockedSinceMs={captureLockStartedAtRef.current || null}
                                             sourceUrl={targetUrl}
                                             sourceUrlCannotGenerate={activeUrlCannotGenerate}
                                             highlight={shouldHighlightCreateWebsiteCta}
@@ -8951,6 +9079,7 @@ export default function PreviewPage(): JSX.Element {
                                                 const latestRender = groupRenders[0];
                                                             void startNextJsAppBuilder(targetUrl || "");
                                             }}
+                                            onCancelLocked={cancelQueuedCapture}
                                             isAdmin={isAdmin}
                                             onStartFromCommunityBuild={() => router.push("/community-builds")}
                                             user={user}
