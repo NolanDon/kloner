@@ -4373,6 +4373,45 @@ export default function PreviewPage(): JSX.Element {
         []
     );
 
+    const clearStartQueryParam = useCallback(() => {
+        try {
+            const url = new URL(window.location.href);
+            url.searchParams.delete("start");
+            const qs = url.searchParams.toString();
+            const next = qs ? `${url.pathname}?${qs}` : url.pathname;
+            router.replace(next, { scroll: false });
+        } catch {
+            // ignore
+        }
+    }, [router]);
+
+    const clearUrlScanQueuedState = useCallback(
+        (rawUrl: string, message: string) => {
+            const normalized = normUrl(rawUrl);
+            generateAbortedRef.current = `${user?.uid || ""}:${rawUrl}`;
+            captureStallReportedForUrlRef.current = normalized;
+            captureStaleReportedForUrlRef.current = normalized;
+            captureLockMinUntilRef.current = 0;
+            captureLockStartedAtRef.current = 0;
+            setCaptureTerminalFailureUrl(normalized);
+            setCaptureLockUrl(null);
+            setHideCaptureQueueStatus(true);
+            setCaptureIssueNotice("Issue detected while scanning this URL.");
+            setInfo("");
+            setErr(message);
+            try {
+                const url = new URL(window.location.href);
+                url.searchParams.delete("start");
+                const qs = url.searchParams.toString();
+                const next = qs ? `${url.pathname}?${qs}` : url.pathname;
+                router.replace(next, { scroll: false });
+            } catch {
+                // ignore
+            }
+        },
+        [router, user?.uid],
+    );
+
     const shouldSendFrontendTimeoutAlert = useCallback((action: string, rawUrl: string) => {
         try {
             if (typeof window === "undefined") return true;
@@ -4415,18 +4454,6 @@ export default function PreviewPage(): JSX.Element {
             return true;
         }
     }, []);
-
-    const clearStartQueryParam = useCallback(() => {
-        try {
-            const url = new URL(window.location.href);
-            url.searchParams.delete("start");
-            const qs = url.searchParams.toString();
-            const next = qs ? `${url.pathname}?${qs}` : url.pathname;
-            router.replace(next, { scroll: false });
-        } catch {
-            // ignore
-        }
-    }, [router]);
 
     const buildDuplicateUrlMessageRef = useRef(buildDuplicateUrlMessage);
 
@@ -4758,21 +4785,21 @@ export default function PreviewPage(): JSX.Element {
                         : looksBlocked
                             ? "This site blocked the snapshot request. Try a different URL or a less protected page."
                             : "This URL failed to process. Please ensure it is accessible before retrying.";
-                setErr(uiError);
-                setInfo("");
                 if (res.status === 429) {
                     setShowCreditsPaywall("screenshot");
                 }
-                captureLockMinUntilRef.current = 0;
-                setCaptureLockUrl(null);
-                captureLockStartedAtRef.current = 0;
-                clearStartQueryParam();
-                if (res.status === 409) {
+                clearUrlScanQueuedState(targetUrl, uiError);
+
+                if (res.status === 409 || res.status >= 500) {
                     void markUrlCaptureTerminalError(
                         user.uid,
                         targetUrl,
-                        looksBlocked ? "snapshot_blocked" : (serverError || "generate_conflict"),
-                        "error",
+                        looksCrossDomainRedirect
+                            ? "cross_domain_redirect"
+                            : looksBlocked
+                                ? "snapshot_blocked"
+                                : (serverError || (res.status >= 500 ? `generate_http_${res.status}` : "generate_conflict")),
+                        res.status >= 500 ? "stale" : "error",
                     );
                 }
                 // Best-effort: mark the Firestore doc as error so the UI reflects the real state
@@ -6166,8 +6193,8 @@ export default function PreviewPage(): JSX.Element {
         user,
         targetUrl,
         targetHash,
-        deepLinkRenderId,
-        push,
+        optimisticByKey,
+        lockUntilByKey,
         handleSessionExpired,
     ]);
 
@@ -8327,21 +8354,27 @@ export default function PreviewPage(): JSX.Element {
     const websitePrePaywallBenefits = [
         {
             value: '01',
-            title: 'Save time on planning',
-            metric: 'save ~40 hrs/wk',
-            text: 'Start from templates instead of blank pages and cut the heavy setup work.',
+            title: '40+ site generations/mo',
+            metric: 'Included',
+            text: 'Build and publish more pages without running out of runs.',
         },
         {
             value: '02',
-            title: 'Save money on building',
-            metric: 'save ~$2000 per project',
-            text: 'Ship polished sites without paying premium platform fees for every project.',
+            title: 'AI Agent for app tasks',
+            metric: 'Included',
+            text: 'Use AI to handle small changes, fixes, and build tasks.',
         },
         {
             value: '03',
-            title: 'Boost your output',
-            metric: 'save ~160 hrs/mo',
-            text: 'Handle five roles from one place, without extra overhead.',
+            title: 'Editor for design tweaks',
+            metric: 'Included',
+            text: 'Make quick visual updates without rebuilding from scratch.',
+        },
+        {
+            value: '04',
+            title: '24/7 support',
+            metric: 'Included',
+            text: 'Get help anytime you need it.',
         },
     ];
 
@@ -10713,7 +10746,7 @@ export default function PreviewPage(): JSX.Element {
                                                                             </motion.button>
 
                                                                             <p className="mt-3 text-center text-[11px] text-neutral-500">
-                                                                                Free for 7 days. Discount applies after trial. Includes higher generation credits.
+                                                                                Free for 7 days. Then 40% off your first month. Includes higher generation credits.
                                                                             </p>
                                                                         </div>
 
@@ -11057,7 +11090,8 @@ export default function PreviewPage(): JSX.Element {
                                         type="button"
                                         onClick={() => {
                                             setShowWebsitePrePaywall(false);
-                                            openExitOffer("close");
+                                            setExitOfferReason("close");
+                                            setShowExitOffer(true);
                                         }}
                                         aria-label="Close paywall"
                                         title="Close paywall"
