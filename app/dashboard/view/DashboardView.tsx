@@ -2129,7 +2129,6 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                         </div>
                                     ) : null}
                                 </div>
-x
                                 <button
                                     type="button"
                                     onClick={closeGenerationModal}
