@@ -111,7 +111,7 @@ const CAPTURE_ISSUE_NOTICE_MS = 10 * 1000;
 const FRONTEND_TIMEOUT_DEDUPE_TTL_MS = 10 * 60 * 1000;
 const FRONTEND_TIMEOUT_DEDUPE_STORAGE_KEY = "dashboardViewFrontendTimeoutAlertsV1";
 const CAPTURE_STALE_ALERT_STORAGE_KEY = "dashboardViewCaptureStaleAlertsV1";
-const URL_ADD_SUCCESS_MESSAGE = "Successfully added your first URL.";
+const URL_ADD_SUCCESS_MESSAGE = "Successfully added your URL.";
 const APP_WIZARD_PROMPT_MAX_CHARS = 2000;
 const FIRST_GEN_TRIAL_OBSERVE_MS = 15 * 1000;
 const FIRST_GEN_TRIAL_SESSION_INTERVAL = 3;
@@ -4038,7 +4038,7 @@ export default function PreviewPage(): JSX.Element {
     }, [handleCreateApp, openAppBuilderDirectly]);
 
     const DUPLICATE_URL_MESSAGE =
-        "This URL has already been processed. Click Generate website below to get started.";
+        "This URL has already been processed.";
 
     const isDuplicateUrlConfirmationMessage = useCallback(
         (message: string): boolean => {
@@ -4107,13 +4107,13 @@ export default function PreviewPage(): JSX.Element {
             const hasV2 = hasV2FromApps;
 
             if (hasV1 && hasV2) {
-                return "A website already exist for this URL. Click Generate website below to continue.";
+                return "A website already exist for this URL.";
             }
             if (hasV2) {
-                return "A website already exists for this URL. Click Generate website below to continue.";
+                return "A website already exists for this URL.";
             }
             if (hasV1) {
-                return "A website already exists for this URL. Click Generate website below to continue.";
+                return "A website already exists for this URL.";
             }
 
             return DUPLICATE_URL_MESSAGE;
@@ -7730,13 +7730,13 @@ export default function PreviewPage(): JSX.Element {
                     APP_BUILDER_TRIAL_SESSION_STORAGE_KEY,
                     FIRST_GEN_TRIAL_SESSION_INTERVAL,
                 );
-            setAppBuilderTrialSessionEligible(eligible);
+            setAppBuilderTrialSessionEligible(eligible && !firstGenerationTrialPromptShown);
         }
         if (!appBuilderOpen && wasOpen) {
             setAppBuilderTrialSessionEligible(false);
         }
         previousAppBuilderOpenRef.current = appBuilderOpen;
-    }, [appBuilderOpen, forceTrialPromptInDev]);
+    }, [appBuilderOpen, forceTrialPromptInDev, firstGenerationTrialPromptShown]);
 
     const markFirstGenerationTrialPromptAsShown = useCallback(
         async (source: "kloner_app" | "kloner_render") => {
@@ -9014,8 +9014,8 @@ export default function PreviewPage(): JSX.Element {
                         }}
                         onDeploy={(app) => openAppDeployWizard(app)}
                         agentWelcomeContext={agentWelcomeContextByAppId[currentAppId]}
-                        trialPromptEnabled={isFreeTierNotTrialing}
-                        trialPromptSessionEligible={appBuilderTrialSessionEligible}
+                        trialPromptEnabled={isFreeTierNotTrialing && !firstGenerationTrialPromptShown}
+                        trialPromptSessionEligible={appBuilderTrialSessionEligible && !firstGenerationTrialPromptShown}
                         trialCheckoutBusy={checkoutBusy}
                         onTrialPromptShown={() => {
                             setFirstGenerationTrialPromptShown(true);
