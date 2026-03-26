@@ -2644,6 +2644,18 @@ export default function PreviewPage(): JSX.Element {
         return userTier === "free" ? "unknown" : userTier;
     }, [userTier]);
 
+    const canProceedWithAppWizardGeneration = useCallback(async (): Promise<boolean> => {
+        const tierNow = await refreshUserTierNow();
+        if (tierNow !== "free") {
+            return true;
+        }
+
+        setAppWizardBusy(false);
+        setAppWizardError(null);
+        setShowProPaywall(true);
+        return false;
+    }, [refreshUserTierNow]);
+
     // ───────── web app wizard (new) ─────────
     const [appWizardOpen, setAppWizardOpen] = useState(false);
     const [appWizardBusy, setAppWizardBusy] = useState(false);
@@ -3367,6 +3379,10 @@ export default function PreviewPage(): JSX.Element {
     const submitAppWizardWebsite = useCallback(async () => {
         if (appWizardBusy) return;
 
+        if (!(await canProceedWithAppWizardGeneration())) {
+            return;
+        }
+
         setAppWizardBusy(true);
         setAppWizardError(null);
 
@@ -3428,10 +3444,14 @@ export default function PreviewPage(): JSX.Element {
         } finally {
             setAppWizardBusy(false);
         }
-    }, [appWizardBusy, appWizardUrl, appWizardShotsUrl, user, shots, handleCreateApp, urls]);
+    }, [appWizardBusy, appWizardUrl, appWizardShotsUrl, user, shots, handleCreateApp, urls, canProceedWithAppWizardGeneration]);
 
     const submitAppWizardPrompt = useCallback(async () => {
         if (appWizardBusy) return;
+
+        if (!(await canProceedWithAppWizardGeneration())) {
+            return;
+        }
 
         const prompt = stripHttpsUrlsFromPrompt(appWizardPrompt || "").trim();
         if (!prompt) {
@@ -3456,7 +3476,7 @@ export default function PreviewPage(): JSX.Element {
         } finally {
             setAppWizardBusy(false);
         }
-    }, [appWizardBusy, appWizardPrompt, handleCreateApp]);
+    }, [appWizardBusy, appWizardPrompt, handleCreateApp, canProceedWithAppWizardGeneration]);
     // New: create an app from the starter template (free)
     const handleCreateTemplateApp = useCallback(async () => {
         if (!user) return;
