@@ -3,127 +3,114 @@
 
 import Image from 'next/image';
 import SectionReveal from './SectionReveal';
+import { BadgeDollarSign, Clock3, UserRound, UsersRound } from 'lucide-react';
 import logo from "@/public/images/orange_logo.png";
 
-type Reel = {
-  src: string;
-  handle: string;
-  followers: string;
-  avatar?: string;
-  alt?: string;
-
-  // minimal context
-  clonedUrl?: string;
-  resultLabel?: string;   // e.g. "Rebuilt as a clean landing page"
+type Metric = {
+  value: string;
+  title: string;
+  metric: string;
+  text: string;
+  roles?: string[];
 };
 
-const reels: Reel[] = [
+const metrics: Metric[] = [
   {
-    src: '/reel2.webm',
-    handle: '@emmyxtech',
-    followers: '368k followers',
-    avatar: '/images/avatars/portfolio2.jpg',
-    alt: 'Review by @emmyxtech',
-    clonedUrl: 'photography portfolio site',
-    resultLabel: 'Managed perfect pagescores for a large gallery website, all from a reference URL.',
+    value: '01',
+    title: 'Save time on setup',
+    metric: 'avg 40 hrs',
+    text: 'Start from templates instead of blank pages and cut the heavy setup work.',
   },
   {
-    src: '/reel3.webm',
-    handle: '@stefarmstead',
-    followers: '90.2k followers',
-    avatar: '/images/avatars/portfolio4.jpg',
-    alt: 'Review by @stefarmstead',
-    clonedUrl: 'podcast site',
-    resultLabel: 'Saved thousands on developer costs, by rebuilding a popular design and tweaking copy.',
+    value: '02',
+    title: 'Save money on every build',
+    metric: 'avg $1000',
+    text: 'Ship polished sites without paying premium platform fees for every project.',
   },
   {
-    src: '/reel4.webm',
-    handle: '@avnibarman_',
-    followers: '228k followers',
-    avatar: '/images/avatars/portfolio3.jpg',
-    alt: 'Review by @avnibarman_',
-    clonedUrl: 'sales funnel site',
-    resultLabel: 'Cloned their clunky wordpress site, increasing page score by 70%',
+    value: '03',
+    title: 'Boost your output',
+    metric: 'avg 160 hrs',
+    text: 'Handle five roles from one place, without extra overhead.',
+    roles: ['Designer', 'Marketer', 'Frontend dev', 'Backend dev', 'Product dev'],
   },
 ];
 
-function BlueCheck({ className = 'h-4 w-4' }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" className={className} aria-hidden>
-      <path
-        fill="#1DA1F2"
-        d="M12 2.8l1.9 1.1 2.2-.2 1.4 1.7 2 .8.3 2.2 1.5 1.4-1 2 0 2.2-1.8 1.3-.7 2.1-2.2.4-1.5 1.6-2.2-.5L12 21l-1.9-1.1-2.2.2-1.4-1.7-2-.8-.3-2.2L2.7 12l1-2 0-2.2L5.5 6.5l.7-2.1 2.2-.4 1.5-1.6 2.2.5L12 2.8z"
-      />
-      <path
-        fill="#fff"
-        d="M10.8 14.8l-3-3 1.4-1.4 1.6 1.6 3.9-3.9 1.4 1.4z"
-      />
-    </svg>
-  );
+function CardIcon({ kind }: { kind: 'time' | 'money' | 'output' }) {
+  const iconClassName = 'h-4 w-4';
+  if (kind === 'time') return <Clock3 className={iconClassName} />;
+  if (kind === 'money') return <BadgeDollarSign className={iconClassName} />;
+  return <UsersRound className={iconClassName} />;
 }
 
-function ReelContextPill({ r }: { r: Reel }) {
-  if (!r.clonedUrl && !r.resultLabel) return null;
-
+function TeamMap({ roles }: { roles: string[] }) {
   return (
-    <div className="pointer-events-none absolute left-3 right-3 bottom-3">
-      <div className="inline-flex max-w-full items-start gap-2 rounded-2xl bg-black/55 px-3 py-2 text-white ring-1 ring-white/10 backdrop-blur">
-        <span className="relative mt-[1px] h-5 w-5 shrink-0">
-          <Image src={logo} alt="Kloner" fill sizes="20px" className="object-contain" />
-        </span>
+    <div className="mt-4 flex items-center gap-2.5 overflow-hidden whitespace-nowrap">
+      <div className="flex items-center gap-2 text-[11px] font-semibold text-[rgba(245,95,42,1)] sm:text-[12px]">
+        <UserRound className="h-4 w-4 shrink-0 text-[rgba(245,95,42,1)] sm:h-5 sm:w-5" />
+        <span>Kloner User</span>
+      </div>
 
-        <div className="min-w-0">
-          {r.clonedUrl ? (
-            <div className="text-[11px] leading-4 text-white/85">
-              Cloned: <span className="font-semibold text-white">{r.clonedUrl}</span>
-            </div>
-          ) : null}
+      <span className="shrink-0 text-[11px] font-semibold text-neutral-500 sm:text-[12px]">
+        =
+      </span>
 
-          {r.resultLabel ? (
-            <div className="mt-[2px] text-[12px] font-semibold leading-4">
-              {r.resultLabel}
-            </div>
-          ) : null}
-        </div>
+      <div className="flex items-center -space-x-1.5 sm:-space-x-2">
+        {roles.map((role, index) => (
+          <span
+            key={role}
+            title={role}
+            className="relative grid h-4 w-4 shrink-0 place-items-center text-neutral-500 sm:h-5 sm:w-5"
+            style={{ zIndex: roles.length - index }}
+          >
+            <UserRound className="h-4 w-4 sm:h-5 sm:w-5" />
+          </span>
+        ))}
       </div>
     </div>
   );
 }
 
-function ReelCard({ r, i }: { r: Reel; i: number }) {
+function MetricText({ metric }: { metric: string }) {
+  const isAvg = metric.toLowerCase().startsWith('avg ');
+  if (!isAvg) return <span>{metric}</span>;
+
+  const rest = metric.slice(4);
+  return (
+    <span>
+      <span className="text-[0.3em] font-semibold uppercase tracking-[0.22em] text-[rgba(245,95,42,1)] align-baseline mr-1.5">
+        avg
+      </span>
+      <span>{rest}</span>
+    </span>
+  );
+}
+
+function MetricCard({ r, i }: { r: Metric; i: number }) {
+  const kind = r.value === '01' ? 'time' : r.value === '02' ? 'money' : 'output';
+  const metricSizeClass = 'text-[1.9rem] leading-[1.05] sm:text-[2.7rem]';
+
   return (
     <SectionReveal delay={i * 0.04}>
-      <div className="relative aspect-[9/16] w-full overflow-hidden rounded-2xl border border-black/10 shadow-sm bg-black">
-        <video
-          className="absolute inset-0 h-full w-full object-cover"
-          src={r.src}
-          autoPlay
-          loop
-          muted
-          playsInline
-        />
-        <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/40 via-transparent to-black/40" />
-
-        <div className="absolute left-3 right-3 top-3 flex items-center gap-2">
-          <div className="relative h-8 w-8 overflow-hidden rounded-full bg-white/20 ring-1 ring-white/40">
-            {r.avatar ? (
-              <Image src={r.avatar} alt={`${r.handle} avatar`} fill sizes="32px" className="object-cover" />
-            ) : (
-              <div className="grid h-full w-full place-items-center text-xs text-white/80">
-                {r.handle.replace('@', '')[0]?.toUpperCase()}
-              </div>
-            )}
-          </div>
-
-          <div className="flex min-w-0 items-center gap-1 text-white">
-            <span className="truncate font-semibold">{r.handle}</span>
-            <BlueCheck className="h-4 w-4 shrink-0" />
-          </div>
-
-          <span className="ml-auto text-xs text-white/80">{r.followers}</span>
+      <div className="flex h-full w-full max-w-[520px] flex-col justify-start space-y-5 rounded-2xl border border-black/10 bg-white p-5 shadow-md min-h-[270px] md:justify-between md:min-h-[300px]">
+        <div className="flex items-center gap-2 mt-1 min-w-0">
+          <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[rgba(245,95,42,0.18)] bg-[rgba(245,95,42,0.08)] text-[rgba(245,95,42,1)]">
+            <CardIcon kind={kind} />
+          </span>
+          <h3 className="min-w-0 text-left text-xl leading-tight text-black/80 sm:text-2xl md:text-[28px]">
+            {r.title}
+          </h3>
         </div>
 
-        <ReelContextPill r={r} />
+        <div className="space-y-5 pt-1">
+          <div className={`${metricSizeClass} max-w-full break-words text-center font-semibold tracking-tight text-black/80`}>
+            <MetricText metric={r.metric} />
+          </div>
+          <p className="text-black/70 text-sm leading-relaxed">
+            {r.text}
+          </p>
+          {r.roles ? <TeamMap roles={r.roles} /> : null}
+        </div>
       </div>
     </SectionReveal>
   );
@@ -133,17 +120,17 @@ export default function Stories() {
   return (
     <section className="section bg-white mt-20 mb-20 text-black" id="reviews">
       <div className="container-soft">
-        <div className="mb-6 flex items-center justify-between gap-4">
-          <h2 className="mt-1 flex items-center justify-center text-lg text-neutral-600">
-            <span className="text-[16px] uppercase tracking-[0.1em] text-neutral-500">
+        <div className="mb-8 flex items-center justify-between gap-4 sm:mb-6">
+          <h2 className="mt-1 flex flex-wrap items-center justify-start gap-x-3 gap-y-1 text-base text-neutral-600 sm:text-lg">
+            <span className="block text-[13px] uppercase leading-tight tracking-[0.1em] text-neutral-500 sm:text-[14px]">
               Teams Ship Faster With
             </span>
-            <span className="relative inline-block h-[120px] w-[120px]">
+            <span className="relative inline-block h-[72px] w-[72px] sm:h-[92px] sm:w-[92px]">
               <Image
                 src={logo}
                 alt="Kloner logo"
                 fill
-                sizes="120px"
+                sizes="(min-width: 640px) 92px, 72px"
                 className="object-contain"
               />
             </span>
@@ -157,15 +144,15 @@ export default function Stories() {
           </a> */}
         </div>
 
-        <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-4 md:gap-6 md:[overflow:visible]">
-          <div className="col-span-2 -mx-4 md:mx-0 md:col-span-4">
-            <div className="flex gap-3 sm:gap-4 md:grid md:grid-cols-4 md:gap-6 overflow-x-auto snap-x snap-mandatory px-4 md:px-0 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-              {reels.map((r, i) => (
+        <div className="grid grid-cols-1 gap-3 sm:gap-4 md:grid-cols-3 md:gap-6 md:[overflow:visible] items-stretch">
+          <div className="col-span-1 -mx-4 md:mx-0 md:col-span-3">
+            <div className="flex items-stretch gap-3 overflow-x-auto snap-x snap-mandatory px-4 md:grid md:grid-cols-3 md:gap-6 md:px-0 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              {metrics.map((r, i) => (
                 <div
-                  key={r.src}
-                  className="snap-center shrink-0 basis-[75%] sm:basis-[60%] md:basis-auto md:shrink md:snap-none"
+                  key={r.value}
+                  className="snap-center shrink-0 basis-[78%] sm:basis-[60%] md:basis-auto md:h-full md:shrink md:snap-none"
                 >
-                  <ReelCard r={r} i={i} />
+                  <MetricCard r={r} i={i} />
                 </div>
               ))}
             </div>

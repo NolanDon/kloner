@@ -4044,8 +4044,9 @@ export default function PreviewPage(): JSX.Element {
         (message: string): boolean => {
             const m = (message || "").toLowerCase();
             return m === DUPLICATE_URL_MESSAGE.toLowerCase() ||
-                (m.includes("already") && m.includes("url") && (m.includes("v1") || m.includes("v2") || m.includes("processed"))) ||
-                (m.includes("website") && m.includes("already exists") && m.includes("url"));
+                (m.includes("already") && m.includes("url") && (m.includes("v1") || m.includes("v2") || m.includes("processed") || m.includes("exists"))) ||
+                (m.includes("website") && m.includes("already exists") && m.includes("url")) ||
+                m.includes("already has a website");
         },
         [],
     );
@@ -4107,13 +4108,13 @@ export default function PreviewPage(): JSX.Element {
             const hasV2 = hasV2FromApps;
 
             if (hasV1 && hasV2) {
-                return "A website already exist for this URL.";
+                return "This URL already has a website. Use a different URL to create a new one.";
             }
             if (hasV2) {
-                return "A website already exists for this URL.";
+                return "This URL already has a website. Use a different URL to create a new one.";
             }
             if (hasV1) {
-                return "A website already exists for this URL.";
+                return "This URL has already been processed.";
             }
 
             return DUPLICATE_URL_MESSAGE;
