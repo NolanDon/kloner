@@ -2122,8 +2122,14 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                             </div>
                                         </>
                                     )}
-                                </div>
 
+                                    {sourceUrlCannotGenerate ? (
+                                        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                                            URL scan failed. Retry scan before continuing.
+                                        </div>
+                                    ) : null}
+                                </div>
+x
                                 <button
                                     type="button"
                                     onClick={closeGenerationModal}
@@ -2158,7 +2164,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                         <button
                                             type="button"
                                             onClick={() => setSelectedGenerationType("nextjs")}
-                                            disabled={effectiveLocked}
+                                            disabled={effectiveLocked || sourceUrlCannotGenerate}
                                             className={`relative w-full overflow-hidden rounded-xl border p-4 text-left shadow-sm transition disabled:opacity-60 disabled:cursor-not-allowed ${selectedGenerationType === "nextjs"
                                                 ? "border-[rgba(245,95,42,0.65)] bg-[linear-gradient(180deg,rgba(245,95,42,0.06),rgba(255,255,255,0))]"
                                                 : "border-neutral-200 bg-white hover:bg-neutral-50 hover:border-neutral-300"
@@ -2257,12 +2263,6 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                                 <div className="text-xs text-neutral-600">
                                                     Faster HTML-first flow that opens in the legacy preview editor.
                                                 </div>
-                                                {!canUseSimpleHtml ? (
-                                                    <div className="mt-2 inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700">
-                                                        <MessageCircleWarning className="h-3 w-3" />
-                                                        URL scan failed. Retry scan before cloning.
-                                                    </div>
-                                                ) : null}
                                                 <div className="mt-1 text-[11px] leading-4 text-neutral-500">
                                                     Best for: simple landing sites, fast iterations, and projects with no auth or database requirements.
                                                 </div>
@@ -8490,7 +8490,6 @@ export default function PreviewPage(): JSX.Element {
                                 title="Retry scanning this URL"
                             >
                                 <RotateCcw className="h-3.5 w-3.5" />
-                                Retry
                             </button>
                             <button
                                 type="button"
@@ -9171,12 +9170,6 @@ export default function PreviewPage(): JSX.Element {
                                     </div>
 
                                     <div className="px-5 py-4">
-                                        {appWizardError ? (
-                                            <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-                                                {appWizardError}
-                                            </div>
-                                        ) : null}
-
                                         <div className="space-y-3">
                                             <div className="grid gap-2">
                                                 <button
