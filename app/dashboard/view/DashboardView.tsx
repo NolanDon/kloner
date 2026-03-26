@@ -3453,7 +3453,7 @@ export default function PreviewPage(): JSX.Element {
             const message = getUserFacingErrorMessage(error, "Failed to create app. Please try again.");
             console.error("Failed to create app:", error);
             if (isGenerationTierBlockedMessage(message)) {
-                setShowCreditsPaywall("preview");
+                showWebsiteExitOfferPaywall();
                 if (appWizardOpen) {
                     setAppWizardOpen(false);
                     setAppWizardError(null);
@@ -6385,7 +6385,7 @@ export default function PreviewPage(): JSX.Element {
                     clearOptimisticWebsiteState();
                     setDeployWizardError(null);
                     setErr("");
-                    setShowCreditsPaywall("preview");
+                    showWebsiteExitOfferPaywall();
                     push("Upgrade to Pro or Agency to create websites or apps from the dashboard.", "warn");
                     return;
                 }
@@ -6411,7 +6411,7 @@ export default function PreviewPage(): JSX.Element {
                     clearOptimisticWebsiteState();
                     setDeployWizardError(null);
                     setErr("");
-                    setShowCreditsPaywall("preview");
+                    showWebsiteExitOfferPaywall();
                     push("Upgrade to Pro or Agency to create websites or apps from the dashboard.", "warn");
                     return;
                 }
@@ -6514,7 +6514,7 @@ export default function PreviewPage(): JSX.Element {
                     String(j?.code || j?.reason || "").toLowerCase().includes("tier_blocked"))
             ) {
                 setErr("");
-                setShowCreditsPaywall("preview");
+                showWebsiteExitOfferPaywall();
                 push("Upgrade to Pro or Agency to create websites or apps from the dashboard.", "warn");
                 return;
             }
@@ -6533,7 +6533,7 @@ export default function PreviewPage(): JSX.Element {
             console.error("buildFromUrl failed", e);
             if (isGenerationTierBlockedMessage(e?.message || "")) {
                 setErr("");
-                setShowCreditsPaywall("preview");
+                showWebsiteExitOfferPaywall();
                 return;
             }
             push(e?.message || "Failed to start website generation.", "err");
@@ -6545,10 +6545,10 @@ export default function PreviewPage(): JSX.Element {
         canUsePreviewCredit,
         push,
         refreshRenders,
-        setShowCreditsPaywall,
         isBackendFetchFailed502,
         recoverFromTransientRenderStart,
         setErr,
+        showWebsiteExitOfferPaywall,
     ]);
 
     const continueRender = useCallback(
@@ -8331,6 +8331,17 @@ export default function PreviewPage(): JSX.Element {
             return;
         }
         setAppExitOfferReason(reason);
+        setShowAppExitOffer(true);
+    }
+
+    function showWebsiteExitOfferPaywall() {
+        setShowCreditsPaywall(null);
+        setShowProPaywall(false);
+        setShowUpgradeAfterCustomize(false);
+        setAppWizardOpen(false);
+        setAppWizardBusy(false);
+        setAppWizardError(null);
+        setAppExitOfferReason("close");
         setShowAppExitOffer(true);
     }
 
