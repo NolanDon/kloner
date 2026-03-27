@@ -4609,15 +4609,13 @@ export default function PreviewPage(): JSX.Element {
                             : looksBlocked
                                 ? "This site blocked the snapshot request. Try a different URL or a less protected page."
                                 : "Sorry, we were not able to process this URL. Please ensure it is accessible before trying again.";
-                    setErr(uiError);
-                    setInfo("");
                     if (res.status === 429) {
                         setShowCreditsPaywall("screenshot");
                     }
+                    clearUrlScanQueuedState(targetUrl, uiError);
                     captureLockMinUntilRef.current = 0;
                     setCaptureLockUrl(null);
                     captureLockStartedAtRef.current = 0;
-                    clearStartQueryParam();
 
                     // Persist terminal error status so a page refresh cannot keep this URL
                     // stuck in queued/processing without an active enqueue attempt.
@@ -4853,7 +4851,6 @@ export default function PreviewPage(): JSX.Element {
     useEffect(() => {
         generateSucceededRef.current = "";
         generateAbortedRef.current = "";
-        generatePollCountRef.current = 0;
     }, [user, targetUrl]);
 
     useEffect(() => {
