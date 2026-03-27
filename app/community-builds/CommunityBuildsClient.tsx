@@ -2,7 +2,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import KlonerLoader from "@/components/KlonerLoader";
 import { ensureSessionAndCsrf } from "@/lib/auth-client";
@@ -194,12 +194,12 @@ export default function CommunityBuildsClient() {
     const [confirmRemixBuild, setConfirmRemixBuild] = useState<CommunityBuild | null>(null);
 
     const router = useRouter();
-    const searchParams = useSearchParams();
     const viewedOnceRef = useRef<Set<string>>(new Set());
 
     useEffect(() => {
-        setShowTemplateTip(searchParams.get("templateTip") === "1");
-    }, [searchParams]);
+        if (typeof window === "undefined") return;
+        setShowTemplateTip(new URLSearchParams(window.location.search).get("templateTip") === "1");
+    }, []);
 
     function patchItem(id: string, patch: Partial<CommunityBuild>) {
         setState((s) => {
