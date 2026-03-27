@@ -58,19 +58,19 @@ const tiers: Tier[] = [
         price: "$0",
         period: "/week",
         highlight: false,
-        blurb: "Clone a few pages, test the workflow, learn the limits.",
+        blurb: "No website generations. Copy community templates to get started.",
         topFeatures: [
             "30 screenshot credits (3 site captures /mo)",
-            "60 preview credits (4 site generations /mo)",
+            "No website generations",
             "15 AI credits",
         ],
         allFeatures: [
-            "Limited to 3 pages per generation",
+            "Copy templates from the community templates gallery",
             "Single user workspace",
             "Community-level email support",
         ],
         cta: "Start free",
-        fineprint: "No card required.",
+        fineprint: "No card required. Community templates only.",
     },
     {
         name: "Pro",

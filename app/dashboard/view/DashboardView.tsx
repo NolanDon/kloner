@@ -2177,28 +2177,16 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
         <>
             <div
                 className={`relative w-full overflow-hidden rounded-xl border bg-white transition-shadow ${highlight
-                    ? "border-[rgba(245,95,42,0.45)] ring-1 ring-[rgba(245,95,42,0.30)] shadow-sm"
+                    ? "border-[rgba(245,95,42,0.45)] ring-1 ring-[rgba(245,95,42,0.30)] shadow-[0_24px_80px_rgba(245,95,42,0.20)] animate-[ghost-generate-pulse_2.8s_ease-in-out_infinite]"
                     : "border-neutral-200 shadow-sm hover:shadow-md"
                     }`}
             >
-                {highlight ? (
-                    <div
-                        className="pointer-events-none absolute right-3 top-3 z-10 rounded-full border px-2 py-0.5 text-[11px] font-medium"
-                        style={{
-                            borderColor: "rgba(245,95,42,0.35)",
-                            backgroundColor: "rgba(245,95,42,0.10)",
-                            color: ACCENT,
-                        }}
-                    >
-                        Next step
-                    </div>
-                ) : null}
                 <button
                     type="button"
                     onClick={handleClick}
                     disabled={localDisabled}
                     aria-disabled={effectiveLocked}
-                    className={`group flex aspect-square w-full flex-col items-center justify-center rounded-lg border-2 border-dashed bg-white px-5 py-6 text-center transition ${effectiveLocked ? "opacity-70 cursor-wait" : "cursor-pointer"} ${highlight ? "border-[rgba(245,95,42,0.45)] bg-[rgba(245,95,42,0.08)] hover:border-[rgba(245,95,42,0.70)]" : "border-neutral-300 hover:border-neutral-400"}`}
+                    className={`group flex aspect-square w-full flex-col items-center justify-center rounded-lg border-2 bg-white px-5 py-6 text-center transition ${effectiveLocked ? "opacity-70 cursor-wait" : "cursor-pointer"} ${highlight ? "border-[rgba(245,95,42,0.45)] bg-[rgba(245,95,42,0.08)] hover:border-[rgba(245,95,42,0.70)]" : "border-neutral-300 hover:border-neutral-400"}`}
                     aria-label="Generate a new website or app"
                 >
                     <div
@@ -2813,6 +2801,7 @@ export default function PreviewPage(): JSX.Element {
     const [appDeployWizardAppId, setAppDeployWizardAppId] = useState<string | null>(null);
     const [appDeployWizardAppName, setAppDeployWizardAppName] = useState<string>("");
     const [appDeployWizardLiveUrl, setAppDeployWizardLiveUrl] = useState<string | null>(null);
+    const appDeployWizardErrorText = appDeployWizardError || "";
     const autoAppDeployTriggeredRef = useRef(false);
 
     const refreshUserTierNow = useCallback(async (): Promise<UserTier> => {
@@ -8284,6 +8273,11 @@ export default function PreviewPage(): JSX.Element {
         },
     ];
 
+    const websitePrePaywallWeeklyPrice = 16.99 / 4;
+    const websitePrePaywallDismissLabel = targetUrl
+        ? `No, I don't want to clone ${truncateMiddle(targetUrl, 42)}.`
+        : "No thanks, skip cloning for now.";
+
     function openExitOffer(reason: NonNullable<typeof exitOfferReason>) {
         if (!canUseExitOffer) {
             closeDeployWizard();
@@ -8311,6 +8305,16 @@ export default function PreviewPage(): JSX.Element {
         setAppWizardBusy(false);
         setAppWizardError(null);
         setShowWebsitePrePaywall(true);
+    }
+
+    function dismissWebsitePrePaywall() {
+        setShowCreditsPaywall(null);
+        setShowProPaywall(false);
+        setShowAppExitOffer(false);
+        setShowExitOffer(false);
+        setExitOfferReason(null);
+        setAppExitOfferReason(null);
+        setShowWebsitePrePaywall(false);
     }
 
     const EXIT_OFFER_PROMO_CODE = "DEPLOY40"; // ✅ Stripe Promotion Code "code" field
@@ -9557,10 +9561,6 @@ export default function PreviewPage(): JSX.Element {
                             <motion.div
                                 className="absolute inset-0 bg-black/70 backdrop-blur-sm"
                                 onClick={() => {
-                                    if (appDeployWizardStep === 2) {
-                                        openAppExitOffer("outside");
-                                        return;
-                                    }
                                     closeAppDeployWizard();
                                 }}
                                 initial={{ opacity: 0 }}
@@ -9599,10 +9599,6 @@ export default function PreviewPage(): JSX.Element {
                                             <button
                                                 type="button"
                                                 onClick={() => {
-                                                    if (appDeployWizardStep === 2) {
-                                                        openAppExitOffer("close");
-                                                        return;
-                                                    }
                                                     closeAppDeployWizard();
                                                 }}
                                                 className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-neutral-100 hover:bg-neutral-200"
@@ -9623,13 +9619,13 @@ export default function PreviewPage(): JSX.Element {
                                             </button>
                                         </div>
 
-                                        {appDeployWizardError ? (
+                                        {appDeployWizardErrorText ? (
                                             <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
-                                                {/already exists/i.test(appDeployWizardError) ? (
+                                                {/already exists/i.test(appDeployWizardErrorText) ? (
                                                     <div>
                                                         <div className="font-semibold">Project name already exists</div>
                                                         <div className="mt-1 text-sm text-red-700">
-                                                            {appDeployWizardError}
+                                                            {appDeployWizardErrorText}
                                                         </div>
                                                         <div className="mt-2 text-[12px] leading-relaxed text-red-700">
                                                             Fix: open your app in the editor by clicking <span className="font-semibold">Customize app</span> on your project,
@@ -9659,7 +9655,7 @@ export default function PreviewPage(): JSX.Element {
                                                         </div>
                                                     </div>
                                                 ) : (
-                                                    <div className="text-sm text-red-700">{appDeployWizardError}</div>
+                                                    <div className="text-sm text-red-700">{appDeployWizardErrorText}</div>
                                                 )}
                                             </div>
                                         ) : null}
@@ -9770,28 +9766,28 @@ export default function PreviewPage(): JSX.Element {
                                                             <span className="mt-[2px] inline-flex h-5 w-5 items-center justify-center rounded-full text-[14px] font-black text-blue-600">
                                                                 ✓
                                                             </span>
-                                                            <span className="leading-snug">Deploy Next.js 16 apps and static HTML websites</span>
+                                                            <span className="leading-snug">Deploy 40+ apps and websites per month</span>
                                                         </div>
 
                                                         <div className="flex items-start gap-3 text-[13px] text-neutral-800 sm:text-[14px]">
                                                             <span className="mt-[2px] inline-flex h-5 w-5 items-center justify-center rounded-full text-[14px] font-black text-blue-600">
                                                                 ✓
                                                             </span>
-                                                            <span className="leading-snug">One-click publish from app builder or website editor</span>
+                                                            <span className="leading-snug">One-click publishing</span>
                                                         </div>
 
                                                         <div className="flex items-start gap-3 text-[13px] text-neutral-800 sm:text-[14px]">
                                                             <span className="mt-[2px] inline-flex h-5 w-5 items-center justify-center rounded-full text-[14px] font-black text-blue-600">
                                                                 ✓
                                                             </span>
-                                                            <span className="leading-snug">More monthly generation credits and faster queues</span>
+                                                            <span className="leading-snug">AI task-force to help build your projects</span>
                                                         </div>
 
                                                         <div className="flex items-start gap-3 text-[13px] text-neutral-800 sm:text-[14px]">
                                                             <span className="mt-[2px] inline-flex h-5 w-5 items-center justify-center rounded-full text-[14px] font-black text-blue-600">
                                                                 ✓
                                                             </span>
-                                                            <span className="leading-snug">Priority support when you are ready to ship</span>
+                                                            <span className="leading-snug">24/7 Priority support</span>
                                                         </div>
                                                     </div>
 
@@ -10584,7 +10580,10 @@ export default function PreviewPage(): JSX.Element {
 
                                                                             <button
                                                                                 type="button"
-                                                                                onClick={() => setShowExitOffer(false)}
+                                                                                onClick={() => {
+                                                                                    setShowExitOffer(false);
+                                                                                    setExitOfferReason(null);
+                                                                                }}
                                                                                 aria-label="Close"
                                                                                 className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-neutral-200 bg-white text-[18px] leading-none text-neutral-700 hover:bg-neutral-50"
                                                                                 style={{ aspectRatio: "1 / 1" }}
@@ -10675,6 +10674,14 @@ export default function PreviewPage(): JSX.Element {
                 .ghost-hammer-swing {
                     animation: ghost-hammer-swing 0.8s ease-in-out infinite;
                     transform-origin: 25% 10%;
+                }
+                @keyframes ghost-generate-pulse {
+                    0%, 100% {
+                        box-shadow: 0 24px 80px rgba(245, 95, 42, 0.20);
+                    }
+                    50% {
+                        box-shadow: 0 30px 95px rgba(245, 95, 42, 0.28);
+                    }
                 }
             `}</style>
 
@@ -10916,10 +10923,10 @@ export default function PreviewPage(): JSX.Element {
                                         </h3>
                                     </div>
                                     <p className="text-sm text-neutral-600 mb-3">
-                                        Pro unlocks Next.js 16 app generation, HTML website publishing, and higher monthly generation credits.
+                                        Pro unlocks app generation, website publishing, and higher monthly generation credits.
                                     </p>
                                     <ul className="mb-4 list-disc list-inside text-sm text-neutral-700 space-y-1">
-                                        <li>Create and deploy Next.js 16 apps</li>
+                                        <li>Create and deploy high performant apps and websites</li>
                                         <li>Publish HTML websites from the same dashboard</li>
                                         <li>Get higher limits and faster queue priority</li>
                                     </ul>
@@ -10956,83 +10963,86 @@ export default function PreviewPage(): JSX.Element {
 
                             <div className="absolute inset-0 flex items-start justify-center overflow-y-auto px-4 py-6 sm:items-center sm:px-6 sm:py-8">
                                 <div className="relative w-full max-w-2xl max-h-[calc(100dvh-3rem)] overflow-y-auto overscroll-contain rounded-[32px] border border-neutral-200 bg-white shadow-[0_30px_120px_rgba(0,0,0,0.24)] opacity-0 translate-y-2 animate-[website-paywall-panel-in_900ms_ease-out_forwards] sm:max-h-[calc(100dvh-4rem)]">
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            setShowWebsitePrePaywall(false);
-                                            setExitOfferReason("close");
-                                            setShowExitOffer(true);
-                                        }}
-                                        aria-label="Close paywall"
-                                        title="Close paywall"
-                                        className="absolute right-3 top-3 z-10 inline-flex h-8 w-8 items-center justify-center rounded-full text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-800 focus:outline-none focus:ring-2 focus:ring-[rgba(245,95,42,0.35)] focus:ring-offset-2 focus:ring-offset-white sm:right-4 sm:top-4"
-                                    >
-                                        <X className="h-4 w-4" />
-                                    </button>
-
                                     <div className="p-5 sm:p-8 lg:p-10">
                                         <div className="max-w-xl">
-                                            <h3 className="text-[28px] font-semibold leading-[1.05] tracking-tight text-neutral-950 sm:text-[38px]">
-                                                Publish apps and websites in one click
+                                            <h3 className="text-3xl sm:text-4xl tracking-tight text-neutral-900">
+                                                You&apos;re close to publishing
                                             </h3>
-                                            <p className="mt-3 text-[14px] leading-relaxed text-neutral-600 sm:text-[16px]">
+                                            <p className="mt-6 text-sm sm:text-base leading-relaxed text-neutral-600">
                                                 Build websites with databases, products, and AI integrations, then publish them from the same dashboard.
                                             </p>
                                         </div>
 
                                         <div className="mt-5 space-y-3">
-                                            <div className="flex items-start gap-3 text-[13px] text-neutral-800 sm:text-[14px]">
-                                                <span className="mt-[2px] inline-flex h-6 w-6 items-center justify-center rounded-full text-[14px] font-black text-blue-600 sm:h-7 sm:w-7">
+                                            <div className="flex items-start gap-3 text-sm leading-relaxed text-neutral-800">
+                                                <span className="mt-[1px] inline-flex h-6 w-6 items-center justify-center rounded-full text-[12px] font-semibold text-accent shrink-0">
                                                     ✓
                                                 </span>
-                                                <span className="leading-snug">Deploy Next.js 16 apps and static HTML websites</span>
+                                                <span>Deploy 40+ apps or websites per month</span>
                                             </div>
 
-                                            <div className="flex items-start gap-3 text-[13px] text-neutral-800 sm:text-[14px]">
-                                                <span className="mt-[2px] inline-flex h-6 w-6 items-center justify-center rounded-full text-[14px] font-black text-blue-600 sm:h-7 sm:w-7">
+                                            <div className="flex items-start gap-3 text-sm leading-relaxed text-neutral-800">
+                                                <span className="mt-[1px] inline-flex h-6 w-6 items-center justify-center rounded-full text-[12px] font-semibold text-accent shrink-0">
                                                     ✓
                                                 </span>
-                                                <span className="leading-snug">One-click publish from app builder and website editor</span>
+                                                <span>One-click publishing</span>
                                             </div>
 
-                                            <div className="flex items-start gap-3 text-[13px] text-neutral-800 sm:text-[14px]">
-                                                <span className="mt-[2px] inline-flex h-6 w-6 items-center justify-center rounded-full text-[14px] font-black text-blue-600 sm:h-7 sm:w-7">
+                                            <div className="flex items-start gap-3 text-sm leading-relaxed text-neutral-800">
+                                                <span className="mt-[1px] inline-flex h-6 w-6 items-center justify-center rounded-full text-[12px] font-semibold text-accent shrink-0">
                                                     ✓
                                                 </span>
-                                                <span className="leading-snug">More monthly generation credits</span>
+                                                <span>AI task force to build and design your websites</span>
                                             </div>
 
-                                            <div className="flex items-start gap-3 text-[13px] text-neutral-800 sm:text-[14px]">
-                                                <span className="mt-[2px] inline-flex h-6 w-6 items-center justify-center rounded-full text-[14px] font-black text-blue-600 sm:h-7 sm:w-7">
+                                            <div className="flex items-start gap-3 text-sm leading-relaxed text-neutral-800">
+                                                <span className="mt-[1px] inline-flex h-6 w-6 items-center justify-center rounded-full text-[12px] font-semibold text-accent shrink-0">
                                                     ✓
                                                 </span>
-                                                <span className="leading-snug">Higher queue priority for faster outputs</span>
+                                                <span>Higher queue priority for faster outputs</span>
                                             </div>
 
-                                            <div className="flex items-start gap-3 text-[13px] text-neutral-800 sm:text-[14px]">
-                                                <span className="mt-[2px] inline-flex h-6 w-6 items-center justify-center rounded-full text-[14px] font-black text-blue-600 sm:h-7 sm:w-7">
+                                            <div className="flex items-start gap-3 text-sm leading-relaxed text-neutral-800">
+                                                <span className="mt-[1px] inline-flex h-6 w-6 items-center justify-center rounded-full text-[12px] font-semibold text-accent shrink-0">
                                                     ✓
                                                 </span>
-                                                <span className="leading-snug">Priority support included</span>
+                                                <span>Priority support included</span>
+                                            </div>
+
+                                            <div className="flex items-start gap-3 text-sm leading-relaxed text-neutral-800">
+                                                <span className="mt-[1px] inline-flex h-6 w-6 items-center justify-center rounded-full text-[12px] font-semibold text-accent shrink-0">
+                                                    ✓
+                                                </span>
+                                                <span className="font-semibold text-neutral-900">
+                                                    {`Memberships start at as little as $${websitePrePaywallWeeklyPrice.toFixed(2)} per week.`}
+                                                </span>
                                             </div>
                                         </div>
 
-                                        <div className="mt-7 flex flex-col gap-2">
+                                        <div className="mt-7 flex flex-col gap-4">
+                                            <p className="text-[11px] text-neutral-500 sm:text-xs">
+                                                Cancel anytime before renewal.
+                                            </p>
+
                                             <button
                                                 type="button"
                                                 onClick={() => {
                                                     setShowWebsitePrePaywall(false);
                                                     void startProCheckout({ exitOffer: true, exitOfferReason: "close" });
                                                 }}
-                                                className="inline-flex flex-1 items-center justify-center rounded-2xl bg-[#f55f2a] px-5 py-4 text-[17px] font-semibold tracking-tight text-white shadow-[0_18px_44px_rgba(245,95,42,0.24)] transition hover:translate-y-[-1px] hover:bg-[#f3602c] sm:px-6 sm:py-5 sm:text-[20px]"
+                                                className="inline-flex flex-1 items-center justify-center rounded-full bg-[#f55f2a] px-5 py-4 text-[17px] font-semibold tracking-tight text-white shadow-[0_18px_44px_rgba(245,95,42,0.24)] transition hover:translate-y-[-1px] hover:bg-[#f3602c] sm:px-6 sm:py-5 sm:text-[20px]"
                                             >
                                                 Start generating websites for free →
                                             </button>
-                                        </div>
 
-                                        <p className="mt-3 text-[11px] text-neutral-500 sm:text-xs">
-                                            Cancel anytime before renewal.
-                                        </p>
+                                            <button
+                                                type="button"
+                                                onClick={dismissWebsitePrePaywall}
+                                                className="inline-flex justify-center pt-1 text-sm font-medium text-neutral-600 underline decoration-neutral-300 underline-offset-4 transition hover:text-neutral-900 hover:decoration-neutral-500"
+                                            >
+                                                {websitePrePaywallDismissLabel}
+                                            </button>
+                                        </div>
 
                                         <div className="mt-8 border-t border-neutral-200 pt-6">
                                             <div className="mb-3 flex items-center justify-center gap-3 text-center">
