@@ -2,7 +2,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import KlonerLoader from "@/components/KlonerLoader";
 import { ensureSessionAndCsrf } from "@/lib/auth-client";
@@ -188,12 +188,18 @@ export default function CommunityBuildsClient() {
     const [previewPageIndex, setPreviewPageIndex] = useState(0);
     const [likeBusyId, setLikeBusyId] = useState<string | null>(null);
     const [remixBusyId, setRemixBusyId] = useState<string | null>(null);
+    const [showTemplateTip, setShowTemplateTip] = useState(false);
 
     // Remix confirm modal state
     const [confirmRemixBuild, setConfirmRemixBuild] = useState<CommunityBuild | null>(null);
 
     const router = useRouter();
+    const searchParams = useSearchParams();
     const viewedOnceRef = useRef<Set<string>>(new Set());
+
+    useEffect(() => {
+        setShowTemplateTip(searchParams.get("templateTip") === "1");
+    }, [searchParams]);
 
     function patchItem(id: string, patch: Partial<CommunityBuild>) {
         setState((s) => {
@@ -386,6 +392,11 @@ export default function CommunityBuildsClient() {
         setPreviewPageIndex(0);
     }
 
+    const dismissTemplateTip = useCallback(() => {
+        setShowTemplateTip(false);
+        router.replace("/community-builds", { scroll: false });
+    }, [router]);
+
     async function trackViewOnce(buildId: string) {
         if (!buildId) return;
         if (viewedOnceRef.current.has(buildId)) return;
@@ -509,6 +520,112 @@ export default function CommunityBuildsClient() {
 
     return (
         <>
+            <AnimatePresence>
+                {showTemplateTip ? (
+                    <motion.div
+                        className="fixed inset-0 z-[120] flex items-center justify-center bg-black/35 p-4 backdrop-blur-[2px]"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                    >
+                        <motion.div
+                            className="w-full max-w-[520px] overflow-hidden rounded-3xl border border-black/10 bg-white shadow-[0_24px_60px_rgba(15,23,42,0.24)]"
+                            initial={{ y: 16, scale: 0.98, opacity: 0 }}
+                            animate={{ y: 0, scale: 1, opacity: 1 }}
+                            exit={{ y: 10, scale: 0.985, opacity: 0 }}
+                            transition={{ type: "spring", stiffness: 150, damping: 18 }}
+                            role="dialog"
+                            aria-modal="true"
+                            aria-label="Template walkthrough"
+                        >
+                            <div className="flex items-start justify-between gap-3 border-b border-black/8 px-5 py-4 sm:px-6">
+                                <div className="min-w-0">
+                                    <p className="text-[11px] uppercase tracking-[0.24em] text-black/45">
+                                        Template walkthrough
+                                    </p>
+                                    <p className="mt-1 text-[15px] font-semibold text-black">
+                                        Start from a template
+                                    </p>
+                                    <p className="mt-2 text-[12px] leading-5 text-black/60">
+                                        Hover to preview any website, then remix one you like into your own dashboard.
+                                    </p>
+                                </div>
+
+                                <button
+                                    type="button"
+                                    onClick={dismissTemplateTip}
+                                    className="inline-flex shrink-0 items-center rounded-full bg-black/5 px-3 py-1.5 text-[12px] font-semibold text-black/70 hover:bg-black/10 hover:text-black"
+                                >
+                                    Close tip
+                                </button>
+                            </div>
+
+                            <div className="grid gap-3 px-5 py-4 sm:grid-cols-2 sm:px-6">
+                                <div className="rounded-2xl border border-black/10 bg-neutral-50 p-3">
+                                    <div className="text-[10px] uppercase tracking-[0.22em] text-black/45">
+                                        1. Preview
+                                    </div>
+                                    <div className="mt-3 inline-flex items-center gap-1 rounded-full bg-[rgba(245,95,42,0.95)] px-4 py-1.5 text-sm font-medium text-white shadow-sm">
+                                        <span>See preview</span>
+                                        <Eye className="h-4 w-4" />
+                                    </div>
+                                    <p className="mt-3 text-[12px] leading-5 text-black/60">
+                                        Hover and preview any of the websites before picking one.
+                                    </p>
+                                </div>
+
+                                <div className="rounded-2xl border border-black/10 bg-neutral-50 p-3">
+                                    <div className="text-[10px] uppercase tracking-[0.22em] text-black/45">
+                                        2. Remix
+                                    </div>
+                                    <div className="mt-3 inline-flex items-center justify-center gap-2 rounded-full bg-[rgba(245,95,42,1)] px-4 py-2 text-[12px] font-semibold text-white shadow-[0_10px_24px_rgba(15,23,42,0.10)]">
+                                        <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-white/15 ring-1 ring-white/20">
+                                            <svg
+                                                className="h-4 w-4"
+                                                viewBox="0 0 24 24"
+                                                fill="none"
+                                                aria-hidden="true"
+                                            >
+                                                <path
+                                                    d="M7 7h6a4 4 0 0 1 4 4v1"
+                                                    stroke="currentColor"
+                                                    strokeWidth="2.25"
+                                                    strokeLinecap="round"
+                                                />
+                                                <path
+                                                    d="M17 7l2 2-2 2"
+                                                    stroke="currentColor"
+                                                    strokeWidth="2.25"
+                                                    strokeLinecap="round"
+                                                    strokeLinejoin="round"
+                                                />
+                                                <path
+                                                    d="M17 17H11a4 4 0 0 1-4-4v-1"
+                                                    stroke="currentColor"
+                                                    strokeWidth="2.25"
+                                                    strokeLinecap="round"
+                                                />
+                                                <path
+                                                    d="M7 17l-2-2 2-2"
+                                                    stroke="currentColor"
+                                                    strokeWidth="2.25"
+                                                    strokeLinecap="round"
+                                                    strokeLinejoin="round"
+                                                />
+                                            </svg>
+                                        </span>
+                                        Remix
+                                    </div>
+                                    <p className="mt-3 text-[12px] leading-5 text-black/60">
+                                        If you find one you like, click Remix to copy it into your own dashboard.
+                                    </p>
+                                </div>
+                            </div>
+                        </motion.div>
+                    </motion.div>
+                ) : null}
+            </AnimatePresence>
+
             <section className="flex flex-col gap-6">
                 <div className="mx-auto w-full">
                     <div className="grid w-full grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-2 2xl:grid-cols-2">
@@ -530,7 +647,7 @@ export default function CommunityBuildsClient() {
                                 >
                                     <div className="relative h-[70%] w-full overflow-hidden bg-neutral-100 group">
                                         {firstPageHtml ? (
-                                            <div className="absolute inset-0 overflow-hidden transition group-hover:opacity-100">
+                                            <div className="absolute inset-0 overflow-hidden">
                                                 <div className="absolute left-0 top-0 origin-top-left scale-[0.32] pointer-events-none">
                                                     <iframe
                                                         title={item.name}
@@ -539,15 +656,14 @@ export default function CommunityBuildsClient() {
                                                         sandbox="allow-same-origin"
                                                     />
                                                 </div>
-                                                <div className="absolute inset-0 bg-white/30" />
                                             </div>
                                         ) : item.screenshotUrl ? (
                                             <motion.img
                                                 src={item.screenshotUrl}
                                                 alt={item.name}
-                                                className="absolute inset-0 h-full w-full object-cover object-top opacity-35 transition group-hover:opacity-100"
-                                                initial={{ scale: 1.03, opacity: 0.35 }}
-                                                animate={{ scale: 1, opacity: 0.35 }}
+                                                className="absolute inset-0 h-full w-full object-cover object-top transition"
+                                                initial={{ scale: 1.03 }}
+                                                animate={{ scale: 1 }}
                                                 transition={{ duration: 0.6 }}
                                                 loading="lazy"
                                             />

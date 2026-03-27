@@ -360,12 +360,12 @@ export default function AdminAnalyticsPage() {
     const EXCLUDE_UIDS = useMemo(() => new Set(["FJPVD2BuHrXBLhOFOBWi9oW7Apt1"]), []);
     const EXCLUDE_EMAILS = useMemo(() => new Set(["nolan796@live.ca"]), []);
 
-    const isExcluded = (uid: string, email?: string | null) => {
+    const isExcluded = useCallback((uid: string, email?: string | null) => {
         if (EXCLUDE_UIDS.has(uid)) return true;
         const e = (email ?? "").trim().toLowerCase();
         if (e && EXCLUDE_EMAILS.has(e)) return true;
         return false;
-    };
+    }, [EXCLUDE_EMAILS, EXCLUDE_UIDS]);
 
     // ---- auth / admin gate ----
     useEffect(() => {
@@ -653,7 +653,7 @@ export default function AdminAnalyticsPage() {
         return () => {
             cancelled = true;
         };
-    }, [gate, EXCLUDE_UIDS, EXCLUDE_EMAILS]);
+    }, [gate, isExcluded]);
 
     const filteredRows = useMemo(() => {
         const base = rows;

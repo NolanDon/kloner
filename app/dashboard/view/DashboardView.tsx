@@ -2389,6 +2389,54 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                     </button>
                                 </div>
 
+                                <div className="relative">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            router.push("/community-builds?templateTip=1", { scroll: false });
+                                        }}
+                                        className="relative w-full rounded-xl border border-neutral-200 bg-white p-4 text-left transition hover:border-neutral-300 hover:bg-neutral-50"
+                                    >
+                                        <div className="flex items-start gap-3 overflow-hidden">
+                                            <div
+                                                className="flex h-10 w-10 items-center justify-center rounded-lg bg-[rgba(245,95,42,0.10)] text-[rgba(245,95,42,1)]"
+                                                aria-hidden
+                                            >
+                                                <svg
+                                                    xmlns="http://www.w3.org/2000/svg"
+                                                    viewBox="0 0 24 24"
+                                                    fill="none"
+                                                    stroke="currentColor"
+                                                    strokeWidth="1.8"
+                                                    className="h-5 w-5"
+                                                >
+                                                    <path d="M4.5 6.5h15v11h-15z" />
+                                                    <path d="M4.5 10h15" />
+                                                    <path d="M9 6.5v11" />
+                                                </svg>
+                                            </div>
+
+                                            <div className="min-w-0 flex-1 space-y-1">
+                                                <div className="flex min-w-0 flex-wrap items-start gap-2 sm:items-center">
+                                                    <div className="min-w-0 text-sm font-semibold text-neutral-900 break-words">
+                                                        Start from a template
+                                                    </div>
+                                                    <span className="inline-flex max-w-full items-center rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-800 whitespace-nowrap">
+                                                        community builds
+                                                    </span>
+                                                </div>
+
+                                                <div className="text-xs text-neutral-600">
+                                                    Browse approved websites, preview them, and remix one into your own dashboard.
+                                                </div>
+                                                <div className="mt-1 text-[11px] leading-4 text-neutral-500">
+                                                    Best for: starting from a proven layout instead of building from scratch.
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </button>
+                                </div>
+
                                 {/* 3) Mobile apps (coming soon) */}
                                 {/* <div className="relative">
                                     <button
