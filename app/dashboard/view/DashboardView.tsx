@@ -8249,7 +8249,6 @@ export default function PreviewPage(): JSX.Element {
         "/images/showcase/showcase3.jpg",
         "/images/showcase/showcase4.jpg",
         "/images/showcase/showcase5.jpg",
-        "/images/showcase/mobile_showcase2.jpg",
     ];
 
     const websitePrePaywallBenefits = [
