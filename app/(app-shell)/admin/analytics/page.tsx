@@ -1,7 +1,7 @@
 // app/(app-shell)/admin/analytics/page.tsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { onAuthStateChanged } from "firebase/auth";
 import { collection, doc, getDoc, getDocs, Timestamp } from "firebase/firestore";
 import { db, auth } from "@/lib/firebase";
