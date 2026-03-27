@@ -1398,7 +1398,7 @@ function RenderCardInner({
                                             : isDeployedFlag
                                                 ? "View and manage this deployment"
                                                 : !r.html?.trim()
-                                                    ? "This preview's HTML isn't available yet. Click Customize to finish generating it, then deploy."
+                                                    ? "This preview HTML is not available yet. Click Customize to finish generating it, then deploy."
                                                     : deployLocked
                                                         ? "Upgrade to publish live sites"
                                                         : "Deploy current HTML to Vercel"
@@ -10133,7 +10133,7 @@ export default function PreviewPage(): JSX.Element {
                                                                         err = "Remove .com/.ca and any dots. Use only the slug.";
                                                                     } else if (!slugOk) {
                                                                         err =
-                                                                            "Use only letters, numbers, and dashes, no spaces, and don't start or end with a dash.";
+                                                                            "Use only letters, numbers, and dashes, no spaces, and do not start or end with a dash.";
                                                                     }
 
                                                                     setDeployWizardProjectName(raw);
