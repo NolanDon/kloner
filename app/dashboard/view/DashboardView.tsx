@@ -2261,7 +2261,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                         <>
                                             <div className="inline-flex items-start gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2">
                                                 <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
-                                                <span className="text-sm font-semibold leading-5 text-emerald-800">
+                                                <span className="text-xs font-semibold leading-5 text-emerald-800">
                                                     {autoOpenSuccessMessage}
                                                 </span>
                                             </div>
@@ -4564,6 +4564,11 @@ export default function PreviewPage(): JSX.Element {
         if (!user || !targetUrl) return;
         if (!isHttpUrl(targetUrl)) return;
         if (!canUseScreenshotCredit()) return;
+        const startRequestKey = `${user.uid}:${targetUrl}`;
+        if (generateSucceededRef.current === startRequestKey) {
+            clearStartQueryParam();
+            return;
+        }
         if (!canUseScreenshotCredit()) {
             setErr("You have used all monthly screenshot credits. Upgrade to capture more pages and monitor more sites.");
             setInfo("");
@@ -4571,7 +4576,6 @@ export default function PreviewPage(): JSX.Element {
             clearStartQueryParam();
             return;
         }
-        const startRequestKey = `${user.uid}:${targetUrl}`;
         if (startRequestedInFlightRef.current === startRequestKey) return;
         startRequestedInFlightRef.current = startRequestKey;
 
