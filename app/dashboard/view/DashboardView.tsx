@@ -9454,15 +9454,15 @@ export default function PreviewPage(): JSX.Element {
                                 transition={{ duration: 0.18 }}
                             />
 
-                            <div className="absolute inset-0 flex items-center justify-center px-4 sm:px-6">
+                            <div className="absolute inset-0 flex items-start justify-center overflow-y-auto px-3 py-3 sm:items-center sm:px-6 sm:py-6">
                                 <motion.div
-                                    className="relative w-full max-w-md overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-xl"
+                                    className="relative w-full max-w-md max-h-[calc(100dvh-1.5rem)] overflow-y-auto overscroll-contain rounded-2xl border border-neutral-200 bg-white shadow-xl sm:max-h-[calc(100dvh-3rem)]"
                                     initial={{ opacity: 0, y: 24, scale: 0.96 }}
                                     animate={{ opacity: 1, y: 0, scale: 1 }}
                                     exit={{ opacity: 0, y: 16, scale: 0.96 }}
                                     transition={{ duration: 0.22, ease: [0.23, 0.82, 0.25, 1] }}
                                 >
-                                    <div className="relative p-5 pt-6">
+                                    <div className="relative p-4 pt-5 sm:p-5 sm:pt-6">
                                         <div className="mb-3 flex items-center justify-between gap-3">
                                             <div className="flex items-center gap-2">
                                                 <div
@@ -9631,14 +9631,14 @@ export default function PreviewPage(): JSX.Element {
                                         ) : null}
 
                                         {appDeployWizardStep === 2 ? (
-                                            <div className="space-y-4">
+                                            <div className="space-y-4 pb-1 sm:pb-0">
                                                 <div className="rounded-2xl border border-neutral-200 bg-white px-4 py-4 shadow-sm">
                                                     <div className="flex items-start justify-between gap-3">
                                                         <div className="min-w-0">
-                                                            <p className="text-lg font-semibold text-neutral-900">
+                                                            <p className="text-[18px] font-semibold leading-tight text-neutral-900 sm:text-lg">
                                                                 Upgrade to launch with one click
                                                             </p>
-                                                            <p className="mt-1 text-xs text-neutral-600">
+                                                            <p className="mt-1 text-[11px] leading-relaxed text-neutral-600 sm:text-xs">
                                                                 Build in Next.js 16 or ship a lightweight HTML site. Includes a 7-day trial.
                                                             </p>
                                                         </div>
@@ -9656,28 +9656,28 @@ export default function PreviewPage(): JSX.Element {
                                                     ) : null}
 
                                                     <div className="mt-4 space-y-2">
-                                                        <div className="flex items-start gap-3 text-[14px] text-neutral-800">
+                                                        <div className="flex items-start gap-3 text-[13px] text-neutral-800 sm:text-[14px]">
                                                             <span className="mt-[2px] inline-flex h-5 w-5 items-center justify-center rounded-full text-[14px] font-black text-blue-600">
                                                                 ✓
                                                             </span>
                                                             <span className="leading-snug">Deploy Next.js 16 apps and static HTML websites</span>
                                                         </div>
 
-                                                        <div className="flex items-start gap-3 text-[14px] text-neutral-800">
+                                                        <div className="flex items-start gap-3 text-[13px] text-neutral-800 sm:text-[14px]">
                                                             <span className="mt-[2px] inline-flex h-5 w-5 items-center justify-center rounded-full text-[14px] font-black text-blue-600">
                                                                 ✓
                                                             </span>
                                                             <span className="leading-snug">One-click publish from app builder or website editor</span>
                                                         </div>
 
-                                                        <div className="flex items-start gap-3 text-[14px] text-neutral-800">
+                                                        <div className="flex items-start gap-3 text-[13px] text-neutral-800 sm:text-[14px]">
                                                             <span className="mt-[2px] inline-flex h-5 w-5 items-center justify-center rounded-full text-[14px] font-black text-blue-600">
                                                                 ✓
                                                             </span>
                                                             <span className="leading-snug">More monthly generation credits and faster queues</span>
                                                         </div>
 
-                                                        <div className="flex items-start gap-3 text-[14px] text-neutral-800">
+                                                        <div className="flex items-start gap-3 text-[13px] text-neutral-800 sm:text-[14px]">
                                                             <span className="mt-[2px] inline-flex h-5 w-5 items-center justify-center rounded-full text-[14px] font-black text-blue-600">
                                                                 ✓
                                                             </span>
@@ -9719,7 +9719,7 @@ export default function PreviewPage(): JSX.Element {
                                                     {checkoutBusy ? "Redirecting to Stripe…" : "Start 7-day trial & publish →"}
                                                 </motion.button>
 
-                                                <p className="-mt-1 text-center text-[11px] text-neutral-500">
+                                                <p className="-mt-1 text-center text-[11px] text-neutral-500 pb-1 sm:pb-0">
                                                     Trial starts today. Cancel anytime before renewal.
                                                 </p>
 
@@ -9858,7 +9858,7 @@ export default function PreviewPage(): JSX.Element {
 
                                             <div className="mt-6 text-center">
                                                 <span className="text-[30px] font-semibold leading-none text-neutral-900">
-                                                    Publish your app today
+                                                    Publish your website today
                                                 </span>
                                             </div>
 
@@ -9872,7 +9872,7 @@ export default function PreviewPage(): JSX.Element {
                                             </div>
 
                                             <div className="my-5 rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2 text-[12px] text-neutral-700">
-                                                Includes Next.js 16 app deploys, HTML website deploys, and higher generation credits.
+                                                Build websites with databases, products, and AI integrations, then publish them from the same dashboard.
                                             </div>
                                         </div>
 
@@ -10272,52 +10272,52 @@ export default function PreviewPage(): JSX.Element {
                                                             </h2>
 
                                                             {/* subcopy */}
-                                                            <p className="mt-2 text-[13px] leading-relaxed text-neutral-600">
-                                                                Build with Next.js 16 or ship lightweight HTML pages, then deploy from the same dashboard.
+                                                            <p className="mt-3 text-[13px] leading-relaxed text-neutral-600">
+                                                                Build websites with databases, products, and AI integrations, then publish them from the same dashboard.
                                                             </p>
 
-                                                            {canUseExitOffer ? (
+                                                            {/* {canUseExitOffer ? (
                                                                 <p className="mt-2 text-[12px] font-semibold text-neutral-700">
                                                                     Limited welcome offer ends in {step5Time.mm}:{step5Time.ss}
                                                                 </p>
-                                                            ) : null}
+                                                            ) : null} */}
 
                                                             {/* feature list */}
                                                             <div className="mt-5 space-y-3">
                                                                 <div className="flex items-start gap-3 text-[14px] text-neutral-800">
-                                                                    <span className="mt-[2px] inline-flex h-5 w-5 items-center justify-center rounded-full text-[14px] font-black text-blue-600">
+                                                                    <span className="mt-[2px] inline-flex h-5 w-5 items-center justify-center rounded-full text-[14px] font-black text-accent">
                                                                         ✓
                                                                     </span>
-                                                                    <span className="leading-snug">Deploy Next.js 16 apps and static HTML websites</span>
+                                                                    <span className="leading-snug">Deploy 40+ websites/mo</span>
                                                                 </div>
 
                                                                 <div className="flex items-start gap-3 text-[14px] text-neutral-800">
-                                                                    <span className="mt-[2px] inline-flex h-5 w-5 items-center justify-center rounded-full text-[14px] font-black text-blue-600">
+                                                                    <span className="mt-[2px] inline-flex h-5 w-5 items-center justify-center rounded-full text-[14px] font-black text-accent">
                                                                         ✓
                                                                     </span>
-                                                                    <span className="leading-snug">One-click publish from app builder and website editor</span>
+                                                                    <span className="leading-snug">One-click publishing</span>
                                                                 </div>
 
                                                                 <div className="flex items-start gap-3 text-[14px] text-neutral-800">
-                                                                    <span className="mt-[2px] inline-flex h-5 w-5 items-center justify-center rounded-full text-[14px] font-black text-blue-600">
+                                                                    <span className="mt-[2px] inline-flex h-5 w-5 items-center justify-center rounded-full text-[14px] font-black text-accent">
                                                                         ✓
                                                                     </span>
-                                                                    <span className="leading-snug">More monthly generation credits</span>
+                                                                    <span className="leading-snug">AI Agent task-force to help you code</span>
                                                                 </div>
 
                                                                 <div className="flex items-start gap-3 text-[14px] text-neutral-800">
-                                                                    <span className="mt-[2px] inline-flex h-5 w-5 items-center justify-center rounded-full text-[14px] font-black text-blue-600">
+                                                                    <span className="mt-[2px] inline-flex h-5 w-5 items-center justify-center rounded-full text-[14px] font-black text-accent">
                                                                         ✓
                                                                     </span>
-                                                                    <span className="leading-snug">Higher queue priority for faster outputs</span>
+                                                                    <span className="leading-snug">Highest generation queue priority</span>
                                                                 </div>
 
 
                                                                 <div className="flex items-start gap-3 text-[14px] text-neutral-800">
-                                                                    <span className="mt-[2px] inline-flex h-5 w-5 items-center justify-center rounded-full text-[14px] font-black text-blue-600">
+                                                                    <span className="mt-[2px] inline-flex h-5 w-5 items-center justify-center rounded-full text-[14px] font-black text-accent">
                                                                         ✓
                                                                     </span>
-                                                                    <span className="leading-snug">Priority support included</span>
+                                                                    <span className="leading-snug">24/7 Priority support</span>
                                                                 </div>
                                                             </div>
 
@@ -10410,22 +10410,34 @@ export default function PreviewPage(): JSX.Element {
                                                                                     <span className="text-[12px] font-medium text-neutral-600 sm:text-[13px]">your first month</span>
                                                                                 </div>
                                                                                 <div className="mt-3 flex justify-center">
-                                                                                    <div className="inline-flex items-center rounded-full border border-[#f55f2a33] bg-[#f55f2a10] px-3 py-1.5 text-[12px] font-semibold text-[#c2410c]">
-                                                                                        15-minute exit offer
+                                                                                    <div className="inline-flex items-center gap-2 rounded-full border border-[#f55f2a33] bg-[#f55f2a10] px-3 py-1.5 text-[12px] font-semibold text-[#c2410c]">
+                                                                                        <span className="inline-flex h-2 w-2 rounded-full bg-[#f55f2a]" />
+                                                                                        Offer expires in {step5Time.mm}:{step5Time.ss}
                                                                                     </div>
                                                                                 </div>
 
-                                                                                <div className="mt-4 rounded-2xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-center">
-                                                                                    <p className="text-[12px] leading-relaxed text-neutral-700 sm:text-[13px]">
-                                                                                        “We launch faster, save money, and don’t need extra tools.”
-                                                                                    </p>
-                                                                                    <p className="mt-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-neutral-500">
-                                                                                        Kloner member review
-                                                                                    </p>
+                                                                                <div className="mt-4 flex items-center gap-3 rounded-2xl px-1 py-1">
+                                                                                    <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-full border border-neutral-200 bg-neutral-100 shadow-sm sm:h-14 sm:w-14">
+                                                                                        <Image
+                                                                                            src="/images/testimonial-avatar.jpg"
+                                                                                            alt="Kloner member"
+                                                                                            fill
+                                                                                            sizes="56px"
+                                                                                            className="object-cover"
+                                                                                        />
+                                                                                    </div>
+                                                                                    <div className="min-w-0">
+                                                                                        <p className="text-[12px] leading-relaxed text-neutral-700 sm:text-[13px]">
+                                                                                            “We launch faster, save money, and don’t need extra tools.”
+                                                                                        </p>
+                                                                                        <p className="mt-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-neutral-500">
+                                                                                            — Jamie L., Kloner Pro user
+                                                                                        </p>
+                                                                                    </div>
                                                                                 </div>
 
                                                                                 <div className="mt-4 space-y-3">
-                                                                                    <div className="rounded-2xl border border-neutral-200 bg-white px-4 py-3 shadow-[0_10px_24px_rgba(0,0,0,0.04)]">
+                                                                                    <div className="rounded-2xl px-0 py-1">
                                                                                         <div className="flex items-baseline justify-between gap-3">
                                                                                             <p className="text-sm font-semibold text-neutral-900">Save time on setup</p>
                                                                                             <p className="text-[12px] font-semibold text-[rgba(245,95,42,1)]">avg 40 hrs</p>
@@ -10435,7 +10447,7 @@ export default function PreviewPage(): JSX.Element {
                                                                                         </p>
                                                                                     </div>
 
-                                                                                    <div className="rounded-2xl border border-neutral-200 bg-white px-4 py-3 shadow-[0_10px_24px_rgba(0,0,0,0.04)]">
+                                                                                    <div className="rounded-2xl px-0 py-1">
                                                                                         <div className="flex items-baseline justify-between gap-3">
                                                                                             <p className="text-sm font-semibold text-neutral-900">Save money on builds</p>
                                                                                             <p className="text-[12px] font-semibold text-[rgba(245,95,42,1)]">avg $1000</p>
@@ -10445,7 +10457,7 @@ export default function PreviewPage(): JSX.Element {
                                                                                         </p>
                                                                                     </div>
 
-                                                                                    <div className="rounded-2xl border border-neutral-200 bg-white px-4 py-3 shadow-[0_10px_24px_rgba(0,0,0,0.04)]">
+                                                                                    <div className="rounded-2xl px-0 py-1">
                                                                                         <div className="flex items-baseline justify-between gap-3">
                                                                                             <p className="text-sm font-semibold text-neutral-900">Boost your output</p>
                                                                                             <p className="text-[12px] font-semibold text-[rgba(245,95,42,1)]">avg 160 hrs</p>
@@ -10495,7 +10507,7 @@ export default function PreviewPage(): JSX.Element {
                                                                             </motion.button>
 
                                                                             <p className="mt-3 text-center text-[11px] text-neutral-500">
-                                                                                Free for 7 days. 40% off applies for 15 minutes after you close this.
+                                                                                Free for 7 days. 40% off applies to your first month after trial.
                                                                             </p>
                                                                         </div>
 
@@ -10833,8 +10845,8 @@ export default function PreviewPage(): JSX.Element {
                         <div className="website-paywall-overlay fixed inset-0 z-[12049] opacity-0 animate-[website-paywall-fade-in_900ms_ease-out_forwards]">
                             <div className="absolute inset-0 bg-black/70 backdrop-blur-sm opacity-0 animate-[website-paywall-backdrop-fade-in_900ms_ease-out_forwards]" />
 
-                                <div className="absolute inset-0 flex items-start justify-center overflow-y-auto px-2 py-2 sm:items-center sm:px-6 sm:py-6">
-                                <div className="relative w-full max-w-2xl max-h-[calc(100dvh-1rem)] overflow-y-auto overscroll-contain rounded-[32px] border border-neutral-200 bg-white shadow-[0_30px_120px_rgba(0,0,0,0.24)] opacity-0 translate-y-2 animate-[website-paywall-panel-in_900ms_ease-out_forwards] sm:max-h-[calc(100dvh-3rem)]">
+                                <div className="absolute inset-0 flex items-start justify-center overflow-y-auto px-4 py-6 sm:items-center sm:px-6 sm:py-8">
+                                <div className="relative w-full max-w-2xl max-h-[calc(100dvh-3rem)] overflow-y-auto overscroll-contain rounded-[32px] border border-neutral-200 bg-white shadow-[0_30px_120px_rgba(0,0,0,0.24)] opacity-0 translate-y-2 animate-[website-paywall-panel-in_900ms_ease-out_forwards] sm:max-h-[calc(100dvh-4rem)]">
                                     <button
                                         type="button"
                                         onClick={() => {
@@ -10849,47 +10861,47 @@ export default function PreviewPage(): JSX.Element {
                                         <X className="h-4 w-4" />
                                     </button>
 
-                                    <div className="p-6 sm:p-8 lg:p-10">
+                                    <div className="p-5 sm:p-8 lg:p-10">
                                         <div className="max-w-xl">
-                                            <h3 className="text-[30px] font-semibold leading-[1.05] tracking-tight text-neutral-950 sm:text-[38px]">
+                                            <h3 className="text-[28px] font-semibold leading-[1.05] tracking-tight text-neutral-950 sm:text-[38px]">
                                                 Publish apps and websites in one click
                                             </h3>
-                                            <p className="mt-3 text-[15px] leading-relaxed text-neutral-600 sm:text-[16px]">
-                                                Build with Next.js 16 or ship lightweight HTML pages, then deploy from the same dashboard.
+                                            <p className="mt-3 text-[14px] leading-relaxed text-neutral-600 sm:text-[16px]">
+                                                Build websites with databases, products, and AI integrations, then publish them from the same dashboard.
                                             </p>
                                         </div>
 
                                         <div className="mt-5 space-y-3">
-                                            <div className="flex items-start gap-3 text-[14px] text-neutral-800">
-                                                <span className="mt-[2px] inline-flex h-5 w-5 items-center justify-center rounded-full text-[14px] font-black text-blue-600">
+                                            <div className="flex items-start gap-3 text-[13px] text-neutral-800 sm:text-[14px]">
+                                                <span className="mt-[2px] inline-flex h-6 w-6 items-center justify-center rounded-full text-[14px] font-black text-blue-600 sm:h-7 sm:w-7">
                                                     ✓
                                                 </span>
                                                 <span className="leading-snug">Deploy Next.js 16 apps and static HTML websites</span>
                                             </div>
 
-                                            <div className="flex items-start gap-3 text-[14px] text-neutral-800">
-                                                <span className="mt-[2px] inline-flex h-5 w-5 items-center justify-center rounded-full text-[14px] font-black text-blue-600">
+                                            <div className="flex items-start gap-3 text-[13px] text-neutral-800 sm:text-[14px]">
+                                                <span className="mt-[2px] inline-flex h-6 w-6 items-center justify-center rounded-full text-[14px] font-black text-blue-600 sm:h-7 sm:w-7">
                                                     ✓
                                                 </span>
                                                 <span className="leading-snug">One-click publish from app builder and website editor</span>
                                             </div>
 
-                                            <div className="flex items-start gap-3 text-[14px] text-neutral-800">
-                                                <span className="mt-[2px] inline-flex h-5 w-5 items-center justify-center rounded-full text-[14px] font-black text-blue-600">
+                                            <div className="flex items-start gap-3 text-[13px] text-neutral-800 sm:text-[14px]">
+                                                <span className="mt-[2px] inline-flex h-6 w-6 items-center justify-center rounded-full text-[14px] font-black text-blue-600 sm:h-7 sm:w-7">
                                                     ✓
                                                 </span>
                                                 <span className="leading-snug">More monthly generation credits</span>
                                             </div>
 
-                                            <div className="flex items-start gap-3 text-[14px] text-neutral-800">
-                                                <span className="mt-[2px] inline-flex h-5 w-5 items-center justify-center rounded-full text-[14px] font-black text-blue-600">
+                                            <div className="flex items-start gap-3 text-[13px] text-neutral-800 sm:text-[14px]">
+                                                <span className="mt-[2px] inline-flex h-6 w-6 items-center justify-center rounded-full text-[14px] font-black text-blue-600 sm:h-7 sm:w-7">
                                                     ✓
                                                 </span>
                                                 <span className="leading-snug">Higher queue priority for faster outputs</span>
                                             </div>
 
-                                            <div className="flex items-start gap-3 text-[14px] text-neutral-800">
-                                                <span className="mt-[2px] inline-flex h-5 w-5 items-center justify-center rounded-full text-[14px] font-black text-blue-600">
+                                            <div className="flex items-start gap-3 text-[13px] text-neutral-800 sm:text-[14px]">
+                                                <span className="mt-[2px] inline-flex h-6 w-6 items-center justify-center rounded-full text-[14px] font-black text-blue-600 sm:h-7 sm:w-7">
                                                     ✓
                                                 </span>
                                                 <span className="leading-snug">Priority support included</span>
@@ -10903,22 +10915,22 @@ export default function PreviewPage(): JSX.Element {
                                                     setShowWebsitePrePaywall(false);
                                                     void startProCheckout({ exitOffer: true, exitOfferReason: "close" });
                                                 }}
-                                                className="inline-flex flex-1 items-center justify-center rounded-2xl bg-[#f55f2a] px-6 py-5 text-[19px] font-semibold tracking-tight text-white shadow-[0_18px_44px_rgba(245,95,42,0.24)] transition hover:translate-y-[-1px] hover:bg-[#f3602c] sm:text-[20px]"
+                                                className="inline-flex flex-1 items-center justify-center rounded-2xl bg-[#f55f2a] px-5 py-4 text-[17px] font-semibold tracking-tight text-white shadow-[0_18px_44px_rgba(245,95,42,0.24)] transition hover:translate-y-[-1px] hover:bg-[#f3602c] sm:px-6 sm:py-5 sm:text-[20px]"
                                             >
                                                 Start generating websites for free →
                                             </button>
                                         </div>
 
-                                        <p className="mt-3 text-xs text-neutral-500">
+                                        <p className="mt-3 text-[11px] text-neutral-500 sm:text-xs">
                                             Cancel anytime before renewal.
                                         </p>
 
                                         <div className="mt-8 border-t border-neutral-200 pt-6">
                                             <div className="mb-3 flex items-center justify-center gap-3 text-center">
-                                                <span className="text-[13px] uppercase tracking-[0.1em] text-neutral-500 sm:text-[12px]">
+                                                <span className="text-[12px] uppercase tracking-[0.1em] text-neutral-500 sm:text-[12px]">
                                                     See what <span className="text-[15px] font-bold text-[rgba(245,95,42,1)]">5000+</span> Kloner members have built with
                                                 </span>
-                                                <span className="relative inline-block h-[56px] w-[56px] sm:h-[72px] sm:w-[72px]">
+                                                <span className="relative inline-block h-[48px] w-[48px] sm:h-[72px] sm:w-[72px]">
                                                     <Image
                                                         src={logo}
                                                         alt="Kloner logo"
@@ -10930,18 +10942,18 @@ export default function PreviewPage(): JSX.Element {
                                             </div>
 
                                             <div className="relative overflow-hidden rounded-[28px] border border-neutral-200 bg-white shadow-[0_18px_48px_rgba(0,0,0,0.08)]">
-                                                <div className="overflow-hidden py-5">
+                                                <div className="overflow-hidden py-4 sm:py-5">
                                                     <div className="website-paywall-carousel flex w-max items-stretch gap-4 px-4">
                                                         {[...websitePaywallShowcaseImages, ...websitePaywallShowcaseImages].map((src, index) => (
                                                             <div
                                                                 key={`${src}-${index}`}
-                                                                className="relative h-[220px] w-[260px] shrink-0 overflow-hidden rounded-[24px] border border-neutral-200 bg-neutral-100 shadow-[0_16px_36px_rgba(0,0,0,0.12)] sm:h-[250px] sm:w-[300px]"
+                                                                className="relative h-[170px] w-[220px] shrink-0 overflow-hidden rounded-[24px] border border-neutral-200 bg-neutral-100 shadow-[0_16px_36px_rgba(0,0,0,0.12)] sm:h-[250px] sm:w-[300px]"
                                                             >
                                                                 <Image
                                                                     src={src}
                                                                     alt={`Showcase ${index + 1}`}
                                                                     fill
-                                                                    sizes="(min-width: 640px) 300px, 260px"
+                                                                    sizes="(min-width: 640px) 300px, 220px"
                                                                     className="object-cover"
                                                                     priority={index < 2}
                                                                 />
