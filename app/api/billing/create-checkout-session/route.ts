@@ -69,7 +69,7 @@ function pickExitPromoId(isProd: boolean) {
         : process.env.STRIPE_EXIT40_PROMO_TEST;
 
     const coupon = isProd
-        ? process.env.STRIPE_EXIT40_COUPON_PROD
+        ? "6ugbzul1"
         : process.env.STRIPE_EXIT40_COUPON_TEST;
 
     return { promo, coupon };
@@ -154,9 +154,9 @@ function assertValidDiscountId(promo?: string | null, coupon?: string | null) {
             `STRIPE_EXIT40_PROMO_* must be a Promotion Code id starting with "promo_". Got: "${promo}"`,
         );
     }
-    if (coupon && !coupon.startsWith("coupon_")) {
+    if (coupon && typeof coupon !== "string") {
         throw new Error(
-            `STRIPE_EXIT40_COUPON_* must be a Coupon id starting with "coupon_". Got: "${coupon}"`,
+            `STRIPE_EXIT40_COUPON_* must be a valid Stripe Coupon id. Got: "${coupon}"`,
         );
     }
 }

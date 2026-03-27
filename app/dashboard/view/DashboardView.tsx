@@ -10235,82 +10235,27 @@ export default function PreviewPage(): JSX.Element {
                                                     {/* paywall-style card */}
                                                     <div className="mx-auto w-full max-w-[420px] overflow-hidden rounded-[28px] border border-neutral-200 bg-white shadow-[0_24px_80px_rgba(0,0,0,0.20)]">
                                                         {/* illustration header */}
-                                                        <div className="relative bg-neutral-50 px-6 pb-6 pt-6">
-                                                            <div className="mx-auto flex max-w-[320px] items-center justify-center pt-6">
-                                                                {/* simple inline illustration (no extra copy) */}
-                                                                <svg viewBox="0 0 560 320" className="h-[160px] w-full" role="img" aria-hidden="true">
-                                                                    <defs>
-                                                                        <linearGradient id="g1" x1="0" y1="0" x2="1" y2="1">
-                                                                            <stop offset="0" stopColor="#1D4ED8" stopOpacity="0.22" />
-                                                                            <stop offset="1" stopColor="#60A5FA" stopOpacity="0.14" />
-                                                                        </linearGradient>
-                                                                        <filter id="s1" x="-20%" y="-20%" width="140%" height="140%">
-                                                                            <feDropShadow dx="0" dy="12" stdDeviation="12" floodColor="#000" floodOpacity="0.10" />
-                                                                        </filter>
-                                                                    </defs>
-
-                                                                    {/* soft swoosh */}
-                                                                    <path
-                                                                        d="M70,210 C130,90 260,70 330,95 C420,128 470,110 510,70"
-                                                                        fill="none"
-                                                                        stroke="url(#g1)"
-                                                                        strokeWidth="22"
-                                                                        strokeLinecap="round"
-                                                                    />
-                                                                    <path
-                                                                        d="M80,230 C145,150 250,120 330,140 C415,160 470,155 515,130"
-                                                                        fill="none"
-                                                                        stroke="url(#g1)"
-                                                                        strokeWidth="14"
-                                                                        strokeLinecap="round"
-                                                                    />
-
-                                                                    {/* hand-ish outline */}
-                                                                    <path
-                                                                        d="M285 215
-                 C275 200 278 182 292 174
-                 C305 167 322 173 330 187
-                 L358 242
-                 C365 256 357 272 343 276
-                 C328 280 315 273 309 259
-                 L296 230"
-                                                                        fill="#fff"
-                                                                        stroke="#111827"
-                                                                        strokeWidth="6"
-                                                                        strokeLinejoin="round"
-                                                                        filter="url(#s1)"
-                                                                    />
-
-                                                                    {/* pen */}
-                                                                    <path
-                                                                        d="M360 70
-                 L410 40
-                 C420 34 432 38 436 48
-                 L466 118
-                 C470 128 465 140 455 144
-                 L405 174 Z"
-                                                                        fill="#2563EB"
-                                                                        opacity="0.95"
-                                                                        filter="url(#s1)"
-                                                                    />
-                                                                    <path
-                                                                        d="M406 174 L360 70"
-                                                                        stroke="#93C5FD"
-                                                                        strokeWidth="10"
-                                                                        strokeLinecap="round"
-                                                                        opacity="0.8"
-                                                                    />
-
-                                                                    {/* sparks */}
-                                                                    <path d="M140 92 L152 62" stroke="#F59E0B" strokeWidth="8" strokeLinecap="round" />
-                                                                    <path d="M152 62 L172 78" stroke="#F59E0B" strokeWidth="8" strokeLinecap="round" />
-                                                                    <path d="M140 92 L166 98" stroke="#F59E0B" strokeWidth="8" strokeLinecap="round" />
-
-                                                                    <circle cx="210" cy="88" r="6" fill="#FB7185" opacity="0.9" />
-                                                                    <circle cx="238" cy="68" r="4" fill="#FB7185" opacity="0.85" />
-                                                                    <circle cx="468" cy="88" r="5" fill="#FB7185" opacity="0.85" />
-                                                                    <circle cx="494" cy="112" r="4" fill="#FB7185" opacity="0.8" />
-                                                                </svg>
+                                                        <div className="relative bg-neutral-50 px-5 pb-5 pt-5">
+                                                            <div className="overflow-hidden rounded-[24px] border border-neutral-200 bg-white shadow-[0_18px_48px_rgba(0,0,0,0.08)]">
+                                                                <div className="overflow-hidden py-4">
+                                                                    <div className="website-paywall-carousel flex w-max items-stretch gap-4 px-4">
+                                                                        {[...websitePaywallShowcaseImages, ...websitePaywallShowcaseImages].map((src, index) => (
+                                                                            <div
+                                                                                key={`${src}-${index}`}
+                                                                                className="relative h-[170px] w-[210px] shrink-0 overflow-hidden rounded-[20px] border border-neutral-200 bg-neutral-100 shadow-[0_16px_36px_rgba(0,0,0,0.12)] sm:h-[190px] sm:w-[235px]"
+                                                                            >
+                                                                                <Image
+                                                                                    src={src}
+                                                                                    alt={`Showcase ${index + 1}`}
+                                                                                    fill
+                                                                                    sizes="(min-width: 640px) 235px, 210px"
+                                                                                    className="object-cover"
+                                                                                    priority={index < 2}
+                                                                                />
+                                                                            </div>
+                                                                        ))}
+                                                                    </div>
+                                                                </div>
                                                             </div>
                                                         </div>
 
@@ -10417,7 +10362,7 @@ export default function PreviewPage(): JSX.Element {
                                                                 initial={{ opacity: 0 }}
                                                                 animate={{ opacity: 1 }}
                                                                 exit={{ opacity: 0 }}
-                                                                className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
+                                                                        className="fixed inset-0 z-[9999] flex items-start justify-center overflow-y-auto bg-black/70 backdrop-blur-sm p-2 sm:items-center sm:p-4"
                                                                 role="dialog"
                                                                 aria-modal="true"
                                                             >
@@ -10426,13 +10371,13 @@ export default function PreviewPage(): JSX.Element {
                                                                     animate={{ opacity: 1, y: 0, scale: 1 }}
                                                                     exit={{ opacity: 0, y: 16, scale: 0.96 }}
                                                                     transition={{ duration: 0.22, ease: [0.23, 0.82, 0.25, 1] }}
-                                                                    className="relative w-full max-w-md overflow-hidden rounded-[28px] border border-neutral-200 bg-white shadow-[0_24px_80px_rgba(0,0,0,0.20)]"
+                                                                            className="relative w-full max-w-md max-h-[calc(100dvh-1rem)] overflow-y-auto overscroll-contain rounded-[28px] border border-neutral-200 bg-white shadow-[0_24px_80px_rgba(0,0,0,0.20)] sm:max-h-[calc(100dvh-3rem)]"
                                                                 >
                                                                     {/* ultra-minimal header strip */}
                                                                     <div className="h-1 w-full" style={{ backgroundColor: ACCENT }} />
 
                                                                     {/* tighter padding, more “exclusive” */}
-                                                                    <div className="px-4 pb-4 pt-3">
+                                                                    <div className="px-3 pb-3 pt-3 sm:px-4 sm:pb-4">
                                                                         <div className="flex items-start justify-between gap-3">
                                                                             <div className="min-w-0">
                                                                                 {/* small whisper label */}
@@ -10456,49 +10401,62 @@ export default function PreviewPage(): JSX.Element {
                                                                                 </div>
 
                                                                                 {/* discount line: big number, not heavy font */}
-                                                                                <div className="mt-6 flex justify-center items-baseline gap-2">
-                                                                                    <span className="text-[30px] font-semibold leading-none text-neutral-900">Exclusive Welcome Gift</span>
+                                                                                <div className="mt-5 flex justify-center items-baseline gap-2 text-center">
+                                                                                    <span className="text-[26px] font-semibold leading-[1.04] text-neutral-900 sm:text-[30px]">Publish apps and websites in one click</span>
                                                                                 </div>
 
-                                                                                {/* discount line: big number, not heavy font */}
-                                                                                <div className="mt-6 flex justify-center items-baseline gap-2">
-                                                                                    <span className="text-[28px] font-bold leading-none text-[#f55f2a]">40% off</span>
-                                                                                    <span className="text-[12px] font-medium text-neutral-600">your first month + free trial</span>
+                                                                                <div className="mt-3 flex justify-center items-baseline gap-2 text-center">
+                                                                                    <span className="text-[24px] font-bold leading-none text-[#f55f2a] sm:text-[28px]">40% off</span>
+                                                                                    <span className="text-[12px] font-medium text-neutral-600 sm:text-[13px]">your first month</span>
                                                                                 </div>
-                                                                                {canUseExitOffer ? (
-                                                                                    <div className="mt-1 flex justify-center text-[12px] text-neutral-700">
-                                                                                        Offer expires in {step5Time.mm}:{step5Time.ss}
+                                                                                <div className="mt-3 flex justify-center">
+                                                                                    <div className="inline-flex items-center rounded-full border border-[#f55f2a33] bg-[#f55f2a10] px-3 py-1.5 text-[12px] font-semibold text-[#c2410c]">
+                                                                                        15-minute exit offer
                                                                                     </div>
-                                                                                ) : null}
-                                                                                <div className="mt-1 flex text-[12px] justify-center text-neutral-700 gap-1">
-
                                                                                 </div>
+
+                                                                                <div className="mt-4 rounded-2xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-center">
+                                                                                    <p className="text-[12px] leading-relaxed text-neutral-700 sm:text-[13px]">
+                                                                                        “We launch faster, save money, and don’t need extra tools.”
+                                                                                    </p>
+                                                                                    <p className="mt-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-neutral-500">
+                                                                                        Kloner member review
+                                                                                    </p>
+                                                                                </div>
+
                                                                                 <div className="mt-4 space-y-3">
-                                                                                    {websitePrePaywallBenefits.map((item, index) => (
-                                                                                        <div
-                                                                                            key={item.value}
-                                                                                            className="website-paywall-feature flex items-start gap-4 px-1 py-1"
-                                                                                            style={{
-                                                                                                animationDelay: `${index * 140}ms`,
-                                                                                                ["--website-paywall-feature-delay" as string]: `${index * 140}ms`,
-                                                                                            }}
-                                                                                        >
-                                                                                            <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[rgba(245,95,42,0.2)] text-[#f55f2a]">
-                                                                                                <CheckCircle2 className="h-5 w-5" />
-                                                                                            </div>
-                                                                                            <div>
-                                                                                                <p className="text-base font-semibold text-neutral-900 sm:text-[17px]">
-                                                                                                    {item.title}
-                                                                                                </p>
-                                                                                                <p className="mt-0.5 text-sm font-semibold text-[rgba(245,95,42,1)]">
-                                                                                                    {item.metric}
-                                                                                                </p>
-                                                                                                <p className="mt-1 text-sm leading-relaxed text-neutral-600">
-                                                                                                    {item.text}
-                                                                                                </p>
-                                                                                            </div>
+                                                                                    <div className="rounded-2xl border border-neutral-200 bg-white px-4 py-3 shadow-[0_10px_24px_rgba(0,0,0,0.04)]">
+                                                                                        <div className="flex items-baseline justify-between gap-3">
+                                                                                            <p className="text-sm font-semibold text-neutral-900">Save time on setup</p>
+                                                                                            <p className="text-[12px] font-semibold text-[rgba(245,95,42,1)]">avg 40 hrs</p>
                                                                                         </div>
-                                                                                    ))}
+                                                                                        <p className="mt-1 text-[12px] leading-relaxed text-neutral-600 sm:text-[13px]">
+                                                                                            Start from templates instead of blank pages and cut the heavy setup work.
+                                                                                        </p>
+                                                                                    </div>
+
+                                                                                    <div className="rounded-2xl border border-neutral-200 bg-white px-4 py-3 shadow-[0_10px_24px_rgba(0,0,0,0.04)]">
+                                                                                        <div className="flex items-baseline justify-between gap-3">
+                                                                                            <p className="text-sm font-semibold text-neutral-900">Save money on builds</p>
+                                                                                            <p className="text-[12px] font-semibold text-[rgba(245,95,42,1)]">avg $1000</p>
+                                                                                        </div>
+                                                                                        <p className="mt-1 text-[12px] leading-relaxed text-neutral-600 sm:text-[13px]">
+                                                                                            Ship polished sites without paying premium platform fees for every project.
+                                                                                        </p>
+                                                                                    </div>
+
+                                                                                    <div className="rounded-2xl border border-neutral-200 bg-white px-4 py-3 shadow-[0_10px_24px_rgba(0,0,0,0.04)]">
+                                                                                        <div className="flex items-baseline justify-between gap-3">
+                                                                                            <p className="text-sm font-semibold text-neutral-900">Boost your output</p>
+                                                                                            <p className="text-[12px] font-semibold text-[rgba(245,95,42,1)]">avg 160 hrs</p>
+                                                                                        </div>
+                                                                                        <p className="mt-1 text-[12px] leading-relaxed text-neutral-600 sm:text-[13px]">
+                                                                                            Handle five roles from one place, without extra overhead.
+                                                                                        </p>
+                                                                                        <p className="mt-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-neutral-500 sm:text-[11px]">
+                                                                                            1 Kloner user = 5 roles
+                                                                                        </p>
+                                                                                    </div>
                                                                                 </div>
 
                                                                             </div>
@@ -10533,11 +10491,11 @@ export default function PreviewPage(): JSX.Element {
                                                                                 whileTap={{ scale: 0.99 }}
                                                                                 transition={{ duration: 0.16, ease: "easeOut" }}
                                                                             >
-                                                                                {checkoutBusy ? "Redirecting to Stripe…" : "Start 7-day free trial & claim 40% off first month →"}
+                                                                                {checkoutBusy ? "Redirecting to Stripe…" : "Claim 40% off now →"}
                                                                             </motion.button>
 
                                                                             <p className="mt-3 text-center text-[11px] text-neutral-500">
-                                                                                Free for 7 days. Then 40% off your first month. Includes higher generation credits.
+                                                                                Free for 7 days. 40% off applies for 15 minutes after you close this.
                                                                             </p>
                                                                         </div>
 
@@ -10875,8 +10833,8 @@ export default function PreviewPage(): JSX.Element {
                         <div className="website-paywall-overlay fixed inset-0 z-[12049] opacity-0 animate-[website-paywall-fade-in_900ms_ease-out_forwards]">
                             <div className="absolute inset-0 bg-black/70 backdrop-blur-sm opacity-0 animate-[website-paywall-backdrop-fade-in_900ms_ease-out_forwards]" />
 
-                            <div className="absolute inset-0 flex items-start justify-center px-4 py-4 sm:items-center sm:px-6 sm:py-6">
-                                <div className="relative w-full max-w-2xl max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain rounded-[32px] border border-neutral-200 bg-white shadow-[0_30px_120px_rgba(0,0,0,0.24)] opacity-0 translate-y-2 animate-[website-paywall-panel-in_900ms_ease-out_forwards] sm:max-h-[calc(100dvh-3rem)]">
+                                <div className="absolute inset-0 flex items-start justify-center overflow-y-auto px-2 py-2 sm:items-center sm:px-6 sm:py-6">
+                                <div className="relative w-full max-w-2xl max-h-[calc(100dvh-1rem)] overflow-y-auto overscroll-contain rounded-[32px] border border-neutral-200 bg-white shadow-[0_30px_120px_rgba(0,0,0,0.24)] opacity-0 translate-y-2 animate-[website-paywall-panel-in_900ms_ease-out_forwards] sm:max-h-[calc(100dvh-3rem)]">
                                     <button
                                         type="button"
                                         onClick={() => {
@@ -10894,39 +10852,48 @@ export default function PreviewPage(): JSX.Element {
                                     <div className="p-6 sm:p-8 lg:p-10">
                                         <div className="max-w-xl">
                                             <h3 className="text-[30px] font-semibold leading-[1.05] tracking-tight text-neutral-950 sm:text-[38px]">
-                                                See what upgrading unlocks
+                                                Publish apps and websites in one click
                                             </h3>
                                             <p className="mt-3 text-[15px] leading-relaxed text-neutral-600 sm:text-[16px]">
-                                                A few quick reasons people upgrade before they ship.
+                                                Build with Next.js 16 or ship lightweight HTML pages, then deploy from the same dashboard.
                                             </p>
                                         </div>
 
-                                        <div className="mt-7 space-y-4">
-                                            {websitePrePaywallBenefits.map((item, index) => (
-                                                <div
-                                                    key={item.value}
-                                                    className="website-paywall-feature flex items-start gap-4 px-1 py-1"
-                                                    style={{
-                                                        animationDelay: `${index * 140}ms`,
-                                                        ["--website-paywall-feature-delay" as string]: `${index * 140}ms`,
-                                                    }}
-                                                >
-                                                    <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[rgba(245,95,42,0.2)] text-[#f55f2a]">
-                                                        <CheckCircle2 className="h-5 w-5" />
-                                                    </div>
-                                                    <div>
-                                                        <p className="text-base font-semibold text-neutral-900 sm:text-[17px]">
-                                                            {item.title}
-                                                        </p>
-                                                        <p className="mt-0.5 text-sm font-semibold text-[rgba(245,95,42,1)]">
-                                                            {item.metric}
-                                                        </p>
-                                                        <p className="mt-1 text-sm leading-relaxed text-neutral-600">
-                                                            {item.text}
-                                                        </p>
-                                                    </div>
-                                                </div>
-                                            ))}
+                                        <div className="mt-5 space-y-3">
+                                            <div className="flex items-start gap-3 text-[14px] text-neutral-800">
+                                                <span className="mt-[2px] inline-flex h-5 w-5 items-center justify-center rounded-full text-[14px] font-black text-blue-600">
+                                                    ✓
+                                                </span>
+                                                <span className="leading-snug">Deploy Next.js 16 apps and static HTML websites</span>
+                                            </div>
+
+                                            <div className="flex items-start gap-3 text-[14px] text-neutral-800">
+                                                <span className="mt-[2px] inline-flex h-5 w-5 items-center justify-center rounded-full text-[14px] font-black text-blue-600">
+                                                    ✓
+                                                </span>
+                                                <span className="leading-snug">One-click publish from app builder and website editor</span>
+                                            </div>
+
+                                            <div className="flex items-start gap-3 text-[14px] text-neutral-800">
+                                                <span className="mt-[2px] inline-flex h-5 w-5 items-center justify-center rounded-full text-[14px] font-black text-blue-600">
+                                                    ✓
+                                                </span>
+                                                <span className="leading-snug">More monthly generation credits</span>
+                                            </div>
+
+                                            <div className="flex items-start gap-3 text-[14px] text-neutral-800">
+                                                <span className="mt-[2px] inline-flex h-5 w-5 items-center justify-center rounded-full text-[14px] font-black text-blue-600">
+                                                    ✓
+                                                </span>
+                                                <span className="leading-snug">Higher queue priority for faster outputs</span>
+                                            </div>
+
+                                            <div className="flex items-start gap-3 text-[14px] text-neutral-800">
+                                                <span className="mt-[2px] inline-flex h-5 w-5 items-center justify-center rounded-full text-[14px] font-black text-blue-600">
+                                                    ✓
+                                                </span>
+                                                <span className="leading-snug">Priority support included</span>
+                                            </div>
                                         </div>
 
                                         <div className="mt-7 flex flex-col gap-2">
