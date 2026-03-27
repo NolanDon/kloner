@@ -4606,9 +4606,9 @@ export default function PreviewPage(): JSX.Element {
                             ? (serverError || "Monthly snapshot limit reached for your plan.")
                             : looksCrossDomainRedirect
                                 ? "This URL redirected to a different domain and was stopped for safety. Please use the final destination URL directly."
-                            : looksBlocked
-                                ? "This site blocked the snapshot request. Try a different URL or a less protected page."
-                                : "Sorry, we were not able to process this URL. Please ensure it is accessible before trying again.";
+                                : looksBlocked
+                                    ? "This site blocked the snapshot request. Try a different URL or a less protected page."
+                                    : "Sorry, we were not able to process this URL. Please ensure it is accessible before trying again.";
                     if (res.status === 429) {
                         setShowCreditsPaywall("screenshot");
                     }
@@ -4625,8 +4625,8 @@ export default function PreviewPage(): JSX.Element {
                         looksCrossDomainRedirect
                             ? "cross_domain_redirect"
                             : looksBlocked
-                            ? "snapshot_blocked"
-                            : (serverError || `generate_http_${res.status}`),
+                                ? "snapshot_blocked"
+                                : (serverError || `generate_http_${res.status}`),
                         "error",
                     );
 
@@ -9042,7 +9042,7 @@ export default function PreviewPage(): JSX.Element {
                                                             0,
                                                     );
                                                 const latestRender = groupRenders[0];
-                                                            void startNextJsAppBuilder(targetUrl || "");
+                                                void startNextJsAppBuilder(targetUrl || "");
                                             }}
                                             onCancelLocked={cancelQueuedCapture}
                                             isAdmin={isAdmin}
@@ -9642,11 +9642,6 @@ export default function PreviewPage(): JSX.Element {
                                                                 Build in Next.js 16 or ship a lightweight HTML site. Includes a 7-day trial.
                                                             </p>
                                                         </div>
-
-                                                        <div className="flex items-center gap-1 text-[11px] text-neutral-600 shrink-0">
-                                                            <span className="text-amber-500">★★★★★</span>
-                                                            <span className="text-neutral-500">4.9</span>
-                                                        </div>
                                                     </div>
 
                                                     {canUseExitOffer ? (
@@ -9863,7 +9858,7 @@ export default function PreviewPage(): JSX.Element {
                                             </div>
 
                                             <div className="mt-4 flex justify-center items-baseline gap-2">
-                                                <span className="text-[28px] font-bold leading-none text-neutral-900">40% off</span>
+                                                <span className="text-[32px] font-bold leading-none text-neutral-900">40% off</span>
                                                 <span className="text-[12px] font-medium text-neutral-600">your first month</span>
                                             </div>
 
@@ -10362,7 +10357,7 @@ export default function PreviewPage(): JSX.Element {
                                                                 initial={{ opacity: 0 }}
                                                                 animate={{ opacity: 1 }}
                                                                 exit={{ opacity: 0 }}
-                                                                        className="fixed inset-0 z-[9999] flex items-start justify-center overflow-y-auto bg-black/70 backdrop-blur-sm p-2 sm:items-center sm:p-4"
+                                                                className="fixed inset-0 z-[9999] flex items-start justify-center overflow-y-auto bg-black/70 backdrop-blur-sm p-2 sm:items-center sm:p-4"
                                                                 role="dialog"
                                                                 aria-modal="true"
                                                             >
@@ -10371,7 +10366,7 @@ export default function PreviewPage(): JSX.Element {
                                                                     animate={{ opacity: 1, y: 0, scale: 1 }}
                                                                     exit={{ opacity: 0, y: 16, scale: 0.96 }}
                                                                     transition={{ duration: 0.22, ease: [0.23, 0.82, 0.25, 1] }}
-                                                                            className="relative w-full max-w-md max-h-[calc(100dvh-1rem)] overflow-y-auto overscroll-contain rounded-[28px] border border-neutral-200 bg-white shadow-[0_24px_80px_rgba(0,0,0,0.20)] sm:max-h-[calc(100dvh-3rem)]"
+                                                                    className="relative w-full max-w-md max-h-[calc(100dvh-1rem)] overflow-y-auto overscroll-contain rounded-[28px] border border-neutral-200 bg-white shadow-[0_24px_80px_rgba(0,0,0,0.20)] sm:max-h-[calc(100dvh-3rem)]"
                                                                 >
                                                                     {/* ultra-minimal header strip */}
                                                                     <div className="h-1 w-full" style={{ backgroundColor: ACCENT }} />
@@ -10392,17 +10387,11 @@ export default function PreviewPage(): JSX.Element {
                                                                                     >
                                                                                         One-time Deal
                                                                                     </span>
-
-                                                                                    {/* social proof: minimal */}
-                                                                                    <div className="flex items-center gap-1 text-[11px] text-neutral-600">
-                                                                                        <span className="text-amber-500">★★★★★</span>
-                                                                                        <span className="text-neutral-500">4.9</span>
-                                                                                    </div>
                                                                                 </div>
 
                                                                                 {/* discount line: big number, not heavy font */}
                                                                                 <div className="mt-5 flex justify-center items-baseline gap-2 text-center">
-                                                                                    <span className="text-[26px] font-semibold leading-[1.04] text-neutral-900 sm:text-[30px]">Publish apps and websites in one click</span>
+                                                                                    <span className="text-[26px] font-semibold leading-[1.04] text-neutral-900 sm:text-[30px]">Last chance to upgrade</span>
                                                                                 </div>
 
                                                                                 <div className="mt-3 flex justify-center items-baseline gap-2 text-center">
@@ -10433,6 +10422,11 @@ export default function PreviewPage(): JSX.Element {
                                                                                         <p className="mt-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-neutral-500">
                                                                                             — Jamie L., Kloner Pro user
                                                                                         </p>
+
+                                                                                        <div className="flex items-center gap-1 text-[11px] text-neutral-600 shrink-0">
+                                                                                            <span className="text-amber-500">★★★★★</span>
+                                                                                            <span className="text-neutral-500">4.9</span>
+                                                                                        </div>
                                                                                     </div>
                                                                                 </div>
 
@@ -10503,7 +10497,7 @@ export default function PreviewPage(): JSX.Element {
                                                                                 whileTap={{ scale: 0.99 }}
                                                                                 transition={{ duration: 0.16, ease: "easeOut" }}
                                                                             >
-                                                                                {checkoutBusy ? "Redirecting to Stripe…" : "Claim 40% off now →"}
+                                                                                {checkoutBusy ? "Redirecting to Stripe…" : "Start Trial & Claim 40% off now →"}
                                                                             </motion.button>
 
                                                                             <p className="mt-3 text-center text-[11px] text-neutral-500">
@@ -10521,7 +10515,7 @@ export default function PreviewPage(): JSX.Element {
                                                                                 }}
                                                                                 className="text-[12px] font-semibold text-neutral-500 hover:text-neutral-700"
                                                                             >
-                                                                                No thanks, close
+                                                                                No, don't publish my app live
                                                                             </button>
                                                                         </div>
                                                                     </div>
@@ -10845,7 +10839,7 @@ export default function PreviewPage(): JSX.Element {
                         <div className="website-paywall-overlay fixed inset-0 z-[12049] opacity-0 animate-[website-paywall-fade-in_900ms_ease-out_forwards]">
                             <div className="absolute inset-0 bg-black/70 backdrop-blur-sm opacity-0 animate-[website-paywall-backdrop-fade-in_900ms_ease-out_forwards]" />
 
-                                <div className="absolute inset-0 flex items-start justify-center overflow-y-auto px-4 py-6 sm:items-center sm:px-6 sm:py-8">
+                            <div className="absolute inset-0 flex items-start justify-center overflow-y-auto px-4 py-6 sm:items-center sm:px-6 sm:py-8">
                                 <div className="relative w-full max-w-2xl max-h-[calc(100dvh-3rem)] overflow-y-auto overscroll-contain rounded-[32px] border border-neutral-200 bg-white shadow-[0_30px_120px_rgba(0,0,0,0.24)] opacity-0 translate-y-2 animate-[website-paywall-panel-in_900ms_ease-out_forwards] sm:max-h-[calc(100dvh-4rem)]">
                                     <button
                                         type="button"

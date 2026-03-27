@@ -22,13 +22,13 @@ type Feature = {
 const metrics: Metric[] = [
   {
     value: '01',
-    title: 'Save time on setup',
+    title: 'Save time starting projects',
     metric: 'avg 40 hrs',
     text: 'Start from templates instead of blank pages and cut the heavy setup work.',
   },
   {
     value: '02',
-    title: 'Save money on builds',
+    title: 'Save money on platform fees',
     metric: 'avg $1000',
     text: 'Ship polished sites without paying premium platform fees for every project.',
   },
