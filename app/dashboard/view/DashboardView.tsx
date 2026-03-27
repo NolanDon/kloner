@@ -2113,7 +2113,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
     const handleContinueGeneration = () => {
         if (effectiveLocked) return;
         if (selectedGenerationType === "nextjs") {
-            handleAppGeneration();
+            handleWebsiteGeneration();
             return;
         }
         if (selectedGenerationType === "html") {
