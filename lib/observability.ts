@@ -1,3 +1,4 @@
+import { createHash } from "crypto";
 import { getAdminDb } from "@/app/api/_lib/auth";
 
 export type ObservabilitySeverity = "critical" | "error" | "warning" | "info";
@@ -62,6 +63,20 @@ function getSlackChannel() {
 
 function getProjectLabel() {
     return (process.env.OBS_PROJECT_NAME || "kloner").trim();
+}
+
+function buildSlackDedupeId(event: Pick<StoredEvent, "source" | "action" | "statusCode" | "userId" | "url" | "page" | "message" | "errorName">): string {
+    const material = [
+        event.source,
+        event.action || "",
+        event.statusCode || "",
+        event.userId || "",
+        event.url || event.page || "",
+        event.errorName || "",
+        event.message || "",
+    ].join("|").toLowerCase();
+
+    return createHash("sha256").update(material).digest("hex");
 }
 
 function shouldCaptureEvent(event: ObservabilityEvent): boolean {
@@ -433,17 +448,43 @@ function sanitizeEvent(event: ObservabilityEvent): StoredEvent {
         environment: event.environment || envName(),
         service: event.service || "app",
         createdAt: new Date(),
-        fingerprint: [
-            event.source,
-            event.route || event.page || "",
-            event.action || "",
-            event.statusCode || "",
-            event.errorName || "",
-            truncate(asOneLine(event.message || ""), 120),
-        ]
-            .join("|")
-            .toLowerCase(),
+        fingerprint: buildSlackDedupeId({
+            source: event.source,
+            action: event.action,
+            statusCode: event.statusCode,
+            userId: event.userId,
+            url: event.url,
+            page: event.page || event.route,
+            message: truncate(asOneLine(event.message || ""), 160),
+            errorName: event.errorName,
+        }),
     };
+}
+
+async function reserveSlackDedupe(event: StoredEvent): Promise<boolean> {
+    const db = getAdminDb();
+    const ref = db.collection("observability_slack_dedupe").doc(event.fingerprint);
+
+    try {
+        await ref.create({
+            fingerprint: event.fingerprint,
+            createdAt: new Date(),
+            source: event.source,
+            action: event.action || null,
+            statusCode: typeof event.statusCode === "number" ? event.statusCode : null,
+            userId: event.userId || null,
+            url: event.url || event.page || null,
+            message: event.message || null,
+        });
+        return true;
+    } catch (err: any) {
+        const code = String(err?.code || err?.errorInfo?.code || "");
+        const message = String(err?.message || "").toLowerCase();
+        if (code === "6" || code === "already-exists" || message.includes("already exists")) {
+            return false;
+        }
+        throw err;
+    }
 }
 
 export async function captureCriticalEvent(event: ObservabilityEvent) {
@@ -451,6 +492,11 @@ export async function captureCriticalEvent(event: ObservabilityEvent) {
     if (!shouldCaptureEvent(normalized)) return { delivered: false, reason: "below_threshold" as const };
 
     try {
+        const shouldSendSlack = await reserveSlackDedupe(normalized);
+        if (!shouldSendSlack) {
+            return { delivered: false as const, reason: "duplicate" as const };
+        }
+
         const eventId = await storeEvent(normalized);
         await postToSlack(normalized, eventId);
         return { delivered: true as const, eventId };

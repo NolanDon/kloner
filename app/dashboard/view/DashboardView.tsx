@@ -5030,6 +5030,7 @@ export default function PreviewPage(): JSX.Element {
                         credentials: "include",
                         body: JSON.stringify({
                             action: "url_capture_stalled",
+                            alertKey: `url_capture_stalled:${normalizedUrl}`,
                             route: "/dashboard/view",
                             service: "dashboard-view",
                             statusCode: 504,
@@ -5082,6 +5083,7 @@ export default function PreviewPage(): JSX.Element {
                     credentials: "include",
                     body: JSON.stringify({
                         action: "url_capture_stale",
+                        alertKey: `url_capture_stale:${normalizedUrl}`,
                         route: "/dashboard/view",
                         service: "dashboard-view",
                         statusCode: 504,
