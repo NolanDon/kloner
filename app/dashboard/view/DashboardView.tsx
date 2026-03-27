@@ -113,6 +113,7 @@ const CAPTURE_ISSUE_NOTICE_MS = 10 * 1000;
 const FRONTEND_TIMEOUT_DEDUPE_TTL_MS = 10 * 60 * 1000;
 const FRONTEND_TIMEOUT_DEDUPE_STORAGE_KEY = "dashboardViewFrontendTimeoutAlertsV1";
 const CAPTURE_STALE_ALERT_STORAGE_KEY = "dashboardViewCaptureStaleAlertsV1";
+const CAPTURE_STALLED_ALERT_STORAGE_KEY = "dashboardViewCaptureStalledAlertsV1";
 const URL_ADD_SUCCESS_MESSAGE = "Successfully added your URL.";
 const APP_WIZARD_PROMPT_MAX_CHARS = 2000;
 const FIRST_GEN_TRIAL_OBSERVE_MS = 15 * 1000;
@@ -214,6 +215,54 @@ function clearCaptureStaleAlertSent(normalizedUrl: string): void {
     if (!Object.prototype.hasOwnProperty.call(cache, normalizedUrl)) return;
     delete cache[normalizedUrl];
     writeCaptureStaleAlertCache(cache);
+}
+
+function readCaptureStalledAlertCache(): Record<string, number> {
+    if (typeof window === "undefined") return {};
+    try {
+        const raw = window.sessionStorage.getItem(CAPTURE_STALLED_ALERT_STORAGE_KEY);
+        if (!raw) return {};
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== "object") return {};
+        return parsed as Record<string, number>;
+    } catch {
+        return {};
+    }
+}
+
+function writeCaptureStalledAlertCache(cache: Record<string, number>): void {
+    if (typeof window === "undefined") return;
+    try {
+        const keys = Object.keys(cache);
+        if (!keys.length) {
+            window.sessionStorage.removeItem(CAPTURE_STALLED_ALERT_STORAGE_KEY);
+            return;
+        }
+        window.sessionStorage.setItem(CAPTURE_STALLED_ALERT_STORAGE_KEY, JSON.stringify(cache));
+    } catch {
+        // ignore
+    }
+}
+
+function hasCaptureStalledAlertBeenSent(normalizedUrl: string): boolean {
+    if (typeof window === "undefined") return false;
+    const cache = readCaptureStalledAlertCache();
+    return typeof cache[normalizedUrl] === "number";
+}
+
+function markCaptureStalledAlertSent(normalizedUrl: string): void {
+    if (typeof window === "undefined") return;
+    const cache = readCaptureStalledAlertCache();
+    cache[normalizedUrl] = Date.now();
+    writeCaptureStalledAlertCache(cache);
+}
+
+function clearCaptureStalledAlertSent(normalizedUrl: string): void {
+    if (typeof window === "undefined") return;
+    const cache = readCaptureStalledAlertCache();
+    if (!Object.prototype.hasOwnProperty.call(cache, normalizedUrl)) return;
+    delete cache[normalizedUrl];
+    writeCaptureStalledAlertCache(cache);
 }
 
 type UrlStatusUi = "queued" | "processing" | "ready" | "stale" | "error" | "unknown";
@@ -4532,6 +4581,7 @@ export default function PreviewPage(): JSX.Element {
         captureStallReportedForUrlRef.current = "";
         captureStaleReportedForUrlRef.current = "";
         setCaptureTerminalFailureUrl("");
+        clearCaptureStalledAlertSent(normUrl(targetUrl));
 
         let cancelled = false;
         let shouldMarkHandled = false;
@@ -4935,6 +4985,10 @@ export default function PreviewPage(): JSX.Element {
         if (err) return;
         if (captureStatus !== "queued" && captureStatus !== "processing") return;
 
+        const normalizedUrl = normUrl(targetUrl);
+        if (captureStallReportedForUrlRef.current === normalizedUrl) return;
+        if (hasCaptureStalledAlertBeenSent(normalizedUrl)) return;
+
         const updatedAtMs = (() => {
             const raw = (docData as any)?.updatedAt;
             if (typeof raw?.toMillis === "function") return raw.toMillis();
@@ -4955,6 +5009,7 @@ export default function PreviewPage(): JSX.Element {
             const normalizedUrl = normUrl(currentTarget);
             if (captureStallReportedForUrlRef.current === normalizedUrl) return;
             captureStallReportedForUrlRef.current = normalizedUrl;
+            markCaptureStalledAlertSent(normalizedUrl);
             setCaptureTerminalFailureUrl(normalizedUrl);
 
             setCaptureLockUrl(null);
@@ -5047,6 +5102,13 @@ export default function PreviewPage(): JSX.Element {
         if (!normalizedUrl) return;
         if (captureStatus === "stale") return;
         clearCaptureStaleAlertSent(normalizedUrl);
+    }, [targetUrl, captureStatus]);
+
+    useEffect(() => {
+        const normalizedUrl = targetUrl ? normUrl(targetUrl) : "";
+        if (!normalizedUrl) return;
+        if (captureStatus === "queued" || captureStatus === "processing") return;
+        clearCaptureStalledAlertSent(normalizedUrl);
     }, [targetUrl, captureStatus]);
 
     useEffect(() => {
@@ -10563,7 +10625,7 @@ export default function PreviewPage(): JSX.Element {
                                                                                 }}
                                                                                 className="text-[12px] font-semibold text-neutral-500 hover:text-neutral-700"
                                                                             >
-                                                                                No, don't publish my app live
+                                                                                No, don&apos;t publish my app live
                                                                             </button>
                                                                         </div>
                                                                     </div>
