@@ -3142,6 +3142,24 @@ export default function PreviewPage(): JSX.Element {
         if (sourceParam !== "prompt") return;
         if (!promptParam.trim()) return;
 
+        if (userTier === "free" && stripeStatus !== "trialing") {
+            showWebsiteExitOfferPaywall();
+
+            try {
+                const url = new URL(window.location.href);
+                const params = url.searchParams;
+                params.delete("wizard");
+                params.delete("source");
+                params.delete("prompt");
+                const qs = params.toString();
+                const next = qs ? `${url.pathname}?${qs}` : url.pathname;
+                router.replace(next, { scroll: false });
+            } catch {
+                // ignore
+            }
+            return;
+        }
+
         setAppWizardOpen(true);
         setAppWizardBusy(false);
         setAppWizardError(null);
@@ -3161,7 +3179,7 @@ export default function PreviewPage(): JSX.Element {
         } catch {
             // ignore
         }
-    }, [search, user, router]);
+    }, [search, user, router, showWebsiteExitOfferPaywall, stripeStatus, userTier]);
 
     const closeAppDeployWizard = useCallback(() => {
         setAppDeployWizardOpen(false);
@@ -4405,9 +4423,13 @@ export default function PreviewPage(): JSX.Element {
         (prompt: string) => {
             const p = stripHttpsUrlsFromPrompt(prompt || "").trim();
             if (!p) return;
+            if (userTier === "free" && stripeStatus !== "trialing") {
+                showWebsiteExitOfferPaywall();
+                return;
+            }
             router.push(`/dashboard/view?wizard=1&source=prompt&prompt=${encodeURIComponent(p)}`, { scroll: false });
         },
-        [router]
+        [router, showWebsiteExitOfferPaywall, stripeStatus, userTier]
     );
 
     const [urlMenuOpen, setUrlMenuOpen] = useState(false);
