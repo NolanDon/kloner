@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import admin from "firebase-admin";
+import { Resend } from "resend";
 import {
     effectiveTierFromStripeSubscription,
     getUidForStripeCustomer,
@@ -83,6 +84,133 @@ const db = admin.firestore();
 const AFF_RATE = 0.3;
 const AFF_CAP_MONTHS = 12;
 const AFF_PENDING_DAYS = 14;
+
+function getResend() {
+        const key = process.env.RESEND_API_KEY;
+        if (!key) throw new Error("RESEND_API_KEY env not set");
+        return new Resend(key);
+}
+
+function appOrigin() {
+        return (process.env.FRONTEND_BASE_URL || process.env.NEXT_PUBLIC_SITE_URL || "https://kloner.app").replace(/\/$/, "");
+}
+
+function buildTrialWelcomeHtml(args: { name?: string | null; dashboardUrl: string }) {
+        const safeName = (args.name || "there").trim() || "there";
+
+        return `<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <title>Your Kloner trial is live</title>
+</head>
+<body style="margin:0;padding:0;background:#ffffff;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#111827;">
+    <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
+        <tr>
+            <td align="center" style="padding:40px 16px;">
+                <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="max-width:560px;">
+                    <tr>
+                        <td style="font-size:15px;line-height:1.65;">
+                            <p style="margin:0 0 16px 0;">Hey ${safeName},</p>
+
+                            <p style="margin:0 0 16px 0;">
+                                Your Kloner trial is live. You can start building right now from the dashboard.
+                            </p>
+
+                            <p style="margin:0 0 16px 0;">
+                                If you want a landing page, use the Generate website button.
+                                If you want a full app, use the top prompt to describe what you want and let Kloner build the Next.js version for you.
+                            </p>
+
+                            <div style="margin:0 0 16px 0;padding:12px;border:1px solid #e5e7eb;border-radius:10px;background:#f9fafb;">
+                                <p style="margin:0 0 8px 0;font-weight:700;">Quick rule of thumb</p>
+                                <p style="margin:0;color:#374151;">
+                                    Landing pages are best for simple marketing sites.
+                                    Next.js apps are better when you need auth, data, dashboards, or any app-like behavior.
+                                </p>
+                            </div>
+
+                            <p style="margin:0 0 24px 0;">
+                                <a href="${args.dashboardUrl}" style="display:inline-block;padding:10px 18px;border-radius:8px;background:#111827;color:#ffffff;text-decoration:none;font-weight:600;">
+                                    Open your dashboard
+                                </a>
+                            </p>
+
+                            <p style="margin:0 0 28px 0;">
+                                If you want help choosing the right starting point, just reply to this email.
+                            </p>
+
+                            <p style="margin:0 0 4px 0;">— Nolan</p>
+                            <p style="margin:0 0 24px 0;color:#6b7280;">Founder, Kloner</p>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>`;
+}
+
+function buildTrialWelcomeText(args: { name?: string | null; dashboardUrl: string }) {
+        const safeName = (args.name || "there").trim() || "there";
+
+        return `Hey ${safeName},
+
+Your Kloner trial is live. You can start building right now from the dashboard.
+
+If you want a landing page, use the Generate website button.
+If you want a full app, use the top prompt to describe what you want and let Kloner build the Next.js version for you.
+
+Quick rule of thumb:
+Landing pages are best for simple marketing sites.
+Next.js apps are better when you need auth, data, dashboards, or any app-like behavior.
+
+Open your dashboard:
+${args.dashboardUrl}
+
+If you want help choosing the right starting point, just reply to this email.
+
+— Nolan
+Founder, Kloner`;
+}
+
+async function sendTrialWelcomeEmail(params: {
+        uid: string;
+        sessionId: string;
+        email: string;
+        name?: string | null;
+}) {
+        const userRef = db.collection("kloner_users").doc(params.uid);
+        const snap = await userRef.get();
+        const data = snap.exists ? (snap.data() as any) : {};
+        if (data?.trialWelcomeEmailSessionId === params.sessionId) return;
+
+        const from = process.env.WELCOME_EMAIL_FROM || "hello@kloner.app";
+        if (!from) throw new Error("WELCOME_EMAIL_FROM env not set");
+
+        const dashboardUrl = `${appOrigin()}/dashboard/view`;
+        const resend = getResend();
+        const result = await resend.emails.send({
+                from,
+                to: params.email,
+                subject: "Welcome to your Kloner trial",
+                text: buildTrialWelcomeText({ name: params.name, dashboardUrl }),
+                html: buildTrialWelcomeHtml({ name: params.name, dashboardUrl }),
+        });
+
+        if ("error" in result && result.error) {
+                throw new Error(result.error.message || "Email send failed");
+        }
+
+        await userRef.set(
+                {
+                        trialWelcomeEmailSessionId: params.sessionId,
+                        trialWelcomeEmailSentAt: admin.firestore.FieldValue.serverTimestamp(),
+                },
+                { merge: true },
+        );
+}
 
 // ------------------------
 // Helpers
@@ -716,6 +844,24 @@ export async function POST(req: NextRequest) {
                 }
 
                 await applyAiCreditTopupFromCheckoutSession(session);
+
+                const checkoutFlow = cleanStr((session.metadata as any)?.checkoutFlow, 64);
+                if (firebaseUid && checkoutFlow === "app_deploy_trial") {
+                    try {
+                        const authUser = await admin.auth().getUser(firebaseUid);
+                        const email = authUser.email?.trim() || "";
+                        if (email) {
+                            await sendTrialWelcomeEmail({
+                                uid: firebaseUid,
+                                sessionId: session.id,
+                                email,
+                                name: authUser.displayName || null,
+                            });
+                        }
+                    } catch (err) {
+                        console.error("[stripe-webhook] trial welcome email failed", err);
+                    }
+                }
                 break;
             }
 

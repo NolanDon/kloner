@@ -66,6 +66,7 @@ import {
     Archive,
     Share2,
     WrenchIcon,
+    Sparkles,
     CheckCheck,
     ExternalLink,
     ArrowUpRight,
@@ -95,6 +96,7 @@ import { useVercelIntegration } from "@/src/hooks/useVercelIntegration";
 import { archiveRender, filterRendersForBuilder, resolveStorageUrl, useResolvedImg } from "@/src/lib/renders";
 import { archiveApp } from "@/src/lib/apps";
 import { AnimatePresence, motion } from "framer-motion";
+import TrialSuccessCelebration from "../../../components/TrialSuccessCelebration";
 import { extractArchivedPageIdsFromRender, fetchRenderForDeployment, getArchivedRoutesForRender, persistArchivedPageIds, scrubArchivedRoutes, secureHtmlForPreviewIframe, withArchivedPageIds } from "@/components/helpers";
 import { useModal } from "@/components/ui/ModalContext";
 import AppBuilderEditor from "@/components/AppBuilderEditor";
@@ -2590,6 +2592,9 @@ export default function PreviewPage(): JSX.Element {
     const [appBuilderTrialSessionEligible, setAppBuilderTrialSessionEligible] = useState(false);
     const [exitOfferClaimed, setExitOfferClaimed] = useState(false);
     const [showWebsitePrePaywall, setShowWebsitePrePaywall] = useState(false);
+    const [showTrialSuccessCelebration, setShowTrialSuccessCelebration] = useState(false);
+    const [showDevQuickMenu, setShowDevQuickMenu] = useState(false);
+    const isDev = process.env.NODE_ENV !== "production";
 
     const [archivingRender, setArchivingRender] = useState<Record<string, boolean>>({});
     const [archivingApp, setArchivingApp] = useState<Record<string, boolean>>({});
@@ -3024,22 +3029,28 @@ export default function PreviewPage(): JSX.Element {
 
     useEffect(() => {
         const billingParam = search.get("billing");
+        const isTrialSuccess = billingParam === "success" && search.get("trial") === "1";
         const wizardParam = search.get("wizard");
         const stepParam = search.get("step");
         const renderId = search.get("render");
         const returnAppId = search.get("appId");
 
-        if (billingParam !== "success" || wizardParam !== "1") return;
-        if (!renderId && !returnAppId) return;
+        if (billingParam !== "success") return;
         if (!user) return;
         if (didStripeRestoreRef.current) return;
         didStripeRestoreRef.current = true;
 
         void (async () => {
+            if (isTrialSuccess) {
+                setStripeStatus("trialing");
+                setStripeCancelAtPeriodEnd(false);
+                setUserTier("pro");
+            }
+
             // pull latest nameHint/app name from Firestore
             let nameFromDb = "";
             try {
-                if (renderId) {
+                if (!isTrialSuccess && renderId) {
                     const renderRef = doc(
                         db,
                         "kloner_users",
@@ -3054,7 +3065,7 @@ export default function PreviewPage(): JSX.Element {
                             nameFromDb = data.nameHint.trim();
                         }
                     }
-                } else if (returnAppId) {
+                } else if (!isTrialSuccess && returnAppId) {
                     const appRef = doc(
                         db,
                         "kloner_users",
@@ -3085,8 +3096,13 @@ export default function PreviewPage(): JSX.Element {
                     const data = await tierRes.json().catch(() => ({} as any));
                     const t = data?.tier as string | undefined;
                     setStripeCancelAtPeriodEnd(!!data?.cancelAtPeriodEnd);
+                    if (isTrialSuccess) {
+                        setStripeStatus("trialing");
+                    }
                     if (t === "pro" || t === "agency" || t === "enterprise") {
                         setUserTier(t as any);
+                    } else if (isTrialSuccess) {
+                        setUserTier("pro");
                     } else {
                         setUserTier("free");
                     }
@@ -3094,6 +3110,32 @@ export default function PreviewPage(): JSX.Element {
             } catch {
                 // ignore; normal tier detection will run via auth effect
             }
+
+            if (isTrialSuccess) {
+                setShowTrialSuccessCelebration(true);
+
+                try {
+                    const url = new URL(window.location.href);
+                    const params = url.searchParams;
+                    params.delete("billing");
+                    params.delete("trial");
+                    params.delete("wizard");
+                    params.delete("step");
+                    params.delete("render");
+                    params.delete("appId");
+
+                    const qs = params.toString();
+                    const next = qs ? `${url.pathname}?${qs}` : url.pathname;
+                    router.replace(next, { scroll: false });
+                } catch (e) {
+                    console.error("Failed to clear trial success params", e);
+                }
+
+                return;
+            }
+
+            if (wizardParam !== "1") return;
+            if (!renderId && !returnAppId) return;
 
             if (renderId) {
                 // seed website deploy wizard state
@@ -8532,6 +8574,152 @@ export default function PreviewPage(): JSX.Element {
 
     return (
         <main className="min-h-screen bg-white notranslate" translate="no">
+            {isDev ? (
+                <>
+                    <button
+                        type="button"
+                        onClick={() => setShowDevQuickMenu((v) => !v)}
+                        className="fixed right-3 top-1/2 z-[25000] -translate-y-1/2 rounded-l-2xl rounded-r-none border border-r-0 border-neutral-200 bg-white px-3 py-3 text-left shadow-[0_16px_45px_rgba(15,23,42,0.14)] transition hover:bg-neutral-50"
+                        aria-label="Open dev quick menu"
+                        title="Dev quick menu"
+                    >
+                        <div className="flex items-center gap-2">
+                            <span className="grid h-8 w-8 place-items-center rounded-full bg-[#f55f2a]/10 text-[#f55f2a]">
+                                <Sparkles className="h-4 w-4" />
+                            </span>
+                            <div className="hidden sm:block">
+                                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-500">
+                                    Dev
+                                </div>
+                                <div className="text-sm font-semibold text-neutral-800">
+                                    Quick Tests
+                                </div>
+                            </div>
+                        </div>
+                    </button>
+
+                    <AnimatePresence>
+                        {showDevQuickMenu ? (
+                            <motion.aside
+                                key="dev-quick-menu"
+                                initial={{ opacity: 0, x: 24 }}
+                                animate={{ opacity: 1, x: 0 }}
+                                exit={{ opacity: 0, x: 24 }}
+                                transition={{ duration: 0.18, ease: "easeOut" }}
+                                className="fixed right-3 top-1/2 z-[25000] w-[320px] -translate-y-1/2 rounded-3xl border border-neutral-200 bg-white p-4 shadow-[0_24px_80px_rgba(15,23,42,0.22)]"
+                            >
+                                <div className="flex items-start justify-between gap-3">
+                                    <div>
+                                        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#f55f2a]">
+                                            Dev only
+                                        </div>
+                                        <h3 className="mt-1 text-base font-semibold text-neutral-900">
+                                            Quick test menu
+                                        </h3>
+                                        <p className="mt-1 text-xs leading-5 text-neutral-500">
+                                            Use this to open paywalls and replay callback states without going through the full flow.
+                                        </p>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowDevQuickMenu(false)}
+                                        className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-500 hover:bg-neutral-50 hover:text-neutral-800"
+                                        aria-label="Close dev quick menu"
+                                    >
+                                        <X className="h-4 w-4" />
+                                    </button>
+                                </div>
+
+                                <div className="mt-4 space-y-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setShowDevQuickMenu(false);
+                                            router.push("/dashboard/view?billing=success&trial=1");
+                                        }}
+                                        className="flex w-full items-center justify-between rounded-2xl border border-neutral-200 bg-neutral-50 px-3 py-2.5 text-left text-sm font-medium text-neutral-800 transition hover:bg-neutral-100"
+                                    >
+                                        <span>Replay trial success callback</span>
+                                        <ArrowUpRight className="h-4 w-4 text-neutral-400" />
+                                    </button>
+
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setShowDevQuickMenu(false);
+                                            setShowTrialSuccessCelebration(true);
+                                        }}
+                                        className="flex w-full items-center justify-between rounded-2xl border border-neutral-200 bg-white px-3 py-2.5 text-left text-sm font-medium text-neutral-800 transition hover:bg-neutral-50"
+                                    >
+                                        <span>Show trial celebration</span>
+                                        <Sparkles className="h-4 w-4 text-[#f55f2a]" />
+                                    </button>
+
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setShowDevQuickMenu(false);
+                                            setShowCreditsPaywall("preview");
+                                        }}
+                                        className="flex w-full items-center justify-between rounded-2xl border border-neutral-200 bg-white px-3 py-2.5 text-left text-sm font-medium text-neutral-800 transition hover:bg-neutral-50"
+                                    >
+                                        <span>Open preview paywall</span>
+                                        <Crown className="h-4 w-4 text-amber-500" />
+                                    </button>
+
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setShowDevQuickMenu(false);
+                                            setShowCreditsPaywall("deploy");
+                                        }}
+                                        className="flex w-full items-center justify-between rounded-2xl border border-neutral-200 bg-white px-3 py-2.5 text-left text-sm font-medium text-neutral-800 transition hover:bg-neutral-50"
+                                    >
+                                        <span>Open deploy paywall</span>
+                                        <Rocket className="h-4 w-4 text-[#f55f2a]" />
+                                    </button>
+
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setShowDevQuickMenu(false);
+                                            setShowProPaywall(true);
+                                        }}
+                                        className="flex w-full items-center justify-between rounded-2xl border border-neutral-200 bg-white px-3 py-2.5 text-left text-sm font-medium text-neutral-800 transition hover:bg-neutral-50"
+                                    >
+                                        <span>Open app paywall</span>
+                                        <CrownIcon className="h-4 w-4 text-amber-500" />
+                                    </button>
+
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setShowDevQuickMenu(false);
+                                            setShowWebsitePrePaywall(true);
+                                        }}
+                                        className="flex w-full items-center justify-between rounded-2xl border border-neutral-200 bg-white px-3 py-2.5 text-left text-sm font-medium text-neutral-800 transition hover:bg-neutral-50"
+                                    >
+                                        <span>Open website pre-paywall</span>
+                                        <WrenchIcon className="h-4 w-4 text-neutral-500" />
+                                    </button>
+
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setShowDevQuickMenu(false);
+                                            setShowFirstGenerationTrialPopup(true);
+                                        }}
+                                        className="flex w-full items-center justify-between rounded-2xl border border-neutral-200 bg-white px-3 py-2.5 text-left text-sm font-medium text-neutral-800 transition hover:bg-neutral-50"
+                                    >
+                                        <span>Open first-trial popup</span>
+                                        <Sparkles className="h-4 w-4 text-sky-500" />
+                                    </button>
+                                </div>
+                            </motion.aside>
+                        ) : null}
+                    </AnimatePresence>
+                </>
+            ) : null}
             {checkoutBusy ? (
                 <div className="fixed inset-0 z-[13000] flex items-center justify-center bg-black/55 px-4 backdrop-blur-sm">
                     <div className="flex flex-col items-center gap-3 rounded-3xl border border-white/10 bg-neutral-950/95 px-6 py-5 text-center text-white shadow-[0_20px_80px_rgba(0,0,0,0.45)]">
@@ -11058,7 +11246,7 @@ export default function PreviewPage(): JSX.Element {
                                                     ✓
                                                 </span>
                                                 <span className="font-semibold text-neutral-900">
-                                                    {`Memberships start at as little as $${websitePrePaywallWeeklyPrice.toFixed(2)} per week.`}
+                                                    {`Memberships starting at just $${websitePrePaywallWeeklyPrice.toFixed(2)} per week.`}
                                                 </span>
                                             </div>
                                         </div>
@@ -11173,6 +11361,10 @@ export default function PreviewPage(): JSX.Element {
                         </div>
                     )
                 }
+                <TrialSuccessCelebration
+                    open={showTrialSuccessCelebration}
+                    onDismiss={() => setShowTrialSuccessCelebration(false)}
+                />
             </div>
         </main>
     );

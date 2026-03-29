@@ -294,6 +294,7 @@ async function handler({ req, uid }: { req: NextRequest; uid: string }) {
     // do not attach a new trial.
     const hasAnySubscriptionHistory = existingSubs.data.length > 0;
     const includeTrial = trialCandidate && !hasAnySubscriptionHistory;
+    const isAppDeployTrialSuccess = !!(returnAppId && includeTrial);
 
     const appOrigin = isProd
         ? process.env.NEXT_PUBLIC_APP_ORIGIN || "https://kloner.app"
@@ -305,9 +306,11 @@ async function handler({ req, uid }: { req: NextRequest; uid: string }) {
                 returnRenderId || "",
             )}&billing=success`
             : returnAppId && returnStep
-                ? `${appOrigin}/dashboard/view?wizard=1&step=${returnStep || 3}&appId=${encodeURIComponent(
-                    returnAppId || "",
-                )}&billing=success`
+                ? isAppDeployTrialSuccess
+                    ? `${appOrigin}/dashboard/view?billing=success&trial=1`
+                    : `${appOrigin}/dashboard/view?wizard=1&step=${returnStep || 3}&appId=${encodeURIComponent(
+                        returnAppId || "",
+                    )}&billing=success`
             : `${appOrigin}/dashboard/view?billing=success`;
 
     const cancelUrl = `${appOrigin}/price?billing=cancelled`;
@@ -317,6 +320,10 @@ async function handler({ req, uid }: { req: NextRequest; uid: string }) {
         plan,
         ...(affiliateRef ? { affiliateRef } : {}),
         ...(affiliateSource ? { affiliateSource } : {}),
+        ...(returnAppId ? { returnAppId: String(returnAppId) } : {}),
+        ...(returnRenderId ? { returnRenderId: String(returnRenderId) } : {}),
+        ...(returnStep ? { returnStep: String(returnStep) } : {}),
+        ...(isAppDeployTrialSuccess ? { checkoutFlow: "app_deploy_trial" } : {}),
     };
 
     // ---- exit-offer discount resolution ----
