@@ -79,10 +79,6 @@ function getActiveTierOverride(data: any, now: Date): UserTier | null {
     if (!rawTier || !until) return null;
     if (!(now < until)) return null;
 
-    // `trial_cancelled` should not revoke paid access immediately.
-    // Credits/feature limits are handled via credits overrides.
-    if (reason === "trial_cancelled") return null;
-
     const t = rawTier.toLowerCase();
     if (t === "free" || t === "pro" || t === "agency") return t as UserTier;
     return "free";

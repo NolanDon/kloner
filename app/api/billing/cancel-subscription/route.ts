@@ -176,6 +176,7 @@ async function handler(req: NextRequest, uid: string) {
         update["credits.aiEdits"] = {
             monthlyLimit: freeEdits,
             remaining: capToLimit(getBucketRemaining(data, "credits.aiEdits"), freeEdits),
+            bonusRemaining: 0,
             periodEnd: overrideUntilTs,
         };
 

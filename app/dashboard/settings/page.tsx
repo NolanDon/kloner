@@ -641,8 +641,11 @@ export default function SettingsPage(): JSX.Element {
     }
 
     async function handleCancelSubscription() {
+        const trialCancelWarning = onTrial
+            ? "You are currently in a trial. If you cancel now, website generation access will end immediately."
+            : "You’ll keep access until then.";
         const confirmed = await showConfirm(
-            "Cancel your subscription at the end of the current period? You’ll keep access until then.",
+            `Cancel your subscription at the end of the current period? ${trialCancelWarning}`,
             "Cancel Subscription"
         );
         if (!confirmed) return;
@@ -673,7 +676,11 @@ export default function SettingsPage(): JSX.Element {
                 return;
             }
 
-            setCancelSuccess("Cancellation scheduled. You’ll keep access until the end date.");
+            setCancelSuccess(
+                onTrial
+                    ? "Cancellation scheduled. Trial access is revoked immediately and website generation is disabled."
+                    : "Cancellation scheduled. You’ll keep access until the end date."
+            );
             await loadTier();
         } catch (err: any) {
             console.error("Cancel subscription error", err);
@@ -1097,6 +1104,12 @@ export default function SettingsPage(): JSX.Element {
                                         {cancelBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <XCircle className="h-3.5 w-3.5" />}
                                         Cancel subscription
                                     </button>
+
+                                    {onTrial && (
+                                        <p className="max-w-[18rem] text-right text-[11px] leading-5 text-amber-700 sm:max-w-[20rem]">
+                                            Cancelling during trial ends website generation access immediately.
+                                        </p>
+                                    )}
 
                                     <span className="text-[11px] text-neutral-500">Billing managed by Stripe</span>
                                 </div>

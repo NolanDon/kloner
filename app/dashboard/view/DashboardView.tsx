@@ -315,6 +315,8 @@ type MiniDashboardEntryProps = {
     onSubmitUrl: (rawUrl: string) => void;
     onSubmitPrompt: (prompt: string) => void;
     planLabel?: string;
+    stripeStatus?: string | null;
+    stripeCancelAtPeriodEnd?: boolean;
     userTier?: UserTier | "unknown";
     screenshotRemaining?: number | null;
     screenshotLimitDisplay?: string | number | null;
@@ -334,6 +336,8 @@ function MiniDashboardEntry({
     onSubmitUrl,
     onSubmitPrompt,
     planLabel,
+    stripeStatus,
+    stripeCancelAtPeriodEnd = false,
     userTier = "unknown",
     screenshotRemaining = null,
     screenshotLimitDisplay = null,
@@ -361,6 +365,16 @@ function MiniDashboardEntry({
         length: PROMPT_PLACEHOLDERS.length,
         intervalMs: 3200,
     });
+
+    const isActiveTrial = stripeStatus === "trialing" && !stripeCancelAtPeriodEnd;
+    const badgeLabel = isActiveTrial ? "trialing" : planLabel;
+    const badgeClassName = isActiveTrial
+        ? "inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2 py-1"
+        : "inline-flex items-center gap-1 rounded-full border border-accent bg-accent-50 px-2 py-1";
+    const badgeIconClassName = isActiveTrial ? "h-2.5 w-2.5 text-blue-600" : "h-2.5 w-2.5 text-accent";
+    const badgeTextClassName = isActiveTrial
+        ? "text-[9px] font-semibold uppercase tracking-wide text-blue-700"
+        : "text-[9px] font-semibold uppercase tracking-wide text-accent";
 
     async function handleSubmit(e: React.FormEvent) {
         e.preventDefault();
@@ -422,12 +436,12 @@ function MiniDashboardEntry({
                         >
                             Dashboard
                         </h2>
-                        {userTier !== "unknown" && planLabel ? (
+                        {userTier !== "unknown" && badgeLabel ? (
                             <div className="inline-flex items-center">
-                                <div className="inline-flex items-center gap-1 rounded-full border border-accent bg-accent-50 px-2 py-1">
-                                    <Crown className="h-2.5 w-2.5 text-accent" />
-                                    <span className="text-[9px] font-semibold uppercase tracking-wide text-accent">
-                                        {planLabel}
+                                <div className={badgeClassName}>
+                                    <Crown className={badgeIconClassName} />
+                                    <span className={badgeTextClassName}>
+                                        {badgeLabel}
                                     </span>
                                 </div>
                                 {onManagePlan ? (
@@ -2563,6 +2577,7 @@ export default function PreviewPage(): JSX.Element {
     const [user, setUser] = useState<FirebaseUser | null>(null);
     const [userTier, setUserTier] = useState<UserTier>("unknown");
     const [stripeStatus, setStripeStatus] = useState<string | null>(null);
+    const [stripeCancelAtPeriodEnd, setStripeCancelAtPeriodEnd] = useState<boolean>(false);
 
 
     const [showCreditsPaywall, setShowCreditsPaywall] = useState<
@@ -3069,6 +3084,7 @@ export default function PreviewPage(): JSX.Element {
                 if (tierRes.ok) {
                     const data = await tierRes.json().catch(() => ({} as any));
                     const t = data?.tier as string | undefined;
+                    setStripeCancelAtPeriodEnd(!!data?.cancelAtPeriodEnd);
                     if (t === "pro" || t === "agency" || t === "enterprise") {
                         setUserTier(t as any);
                     } else {
@@ -5454,6 +5470,7 @@ export default function PreviewPage(): JSX.Element {
         const unsub = onAuthStateChanged(auth, async (u) => {
             if (!u) {
                 setStripeStatus(null);
+                setStripeCancelAtPeriodEnd(false);
                 const next = encodeURIComponent(
                     `/dashboard/view?u=${encodeURIComponent(targetUrl || "")}`
                 );
@@ -5480,6 +5497,7 @@ export default function PreviewPage(): JSX.Element {
                             ? data.stripeStatus.trim().toLowerCase()
                             : null;
                     setStripeStatus(nextStripeStatus);
+                    setStripeCancelAtPeriodEnd(!!data?.cancelAtPeriodEnd);
 
                     if (t === "pro" || t === "agency" || t === "enterprise") {
                         effectiveTier = t as UserTier;
@@ -5488,6 +5506,7 @@ export default function PreviewPage(): JSX.Element {
                     }
                 } else {
                     setStripeStatus(null);
+                    setStripeCancelAtPeriodEnd(false);
                     // 2) Fallback: custom claims
                     const result = await getIdTokenResult(u, true);
                     const claimTier = (result.claims.userTier as string) || "free";
@@ -5503,6 +5522,7 @@ export default function PreviewPage(): JSX.Element {
                 }
             } catch {
                 setStripeStatus(null);
+                    setStripeCancelAtPeriodEnd(false);
                 // 3) Hard fallback: try claims, otherwise stay on "free"
                 try {
                     const result = await getIdTokenResult(u, true);
@@ -8530,6 +8550,8 @@ export default function PreviewPage(): JSX.Element {
                         onSubmitUrl={submitMiniUrl}
                         onSubmitPrompt={submitMiniPrompt}
                         planLabel={planLabel}
+                        stripeStatus={stripeStatus}
+                        stripeCancelAtPeriodEnd={stripeCancelAtPeriodEnd}
                         userTier={userTier}
                         screenshotRemaining={screenshotRemaining}
                         screenshotLimitDisplay={screenshotLimitDisplay}
