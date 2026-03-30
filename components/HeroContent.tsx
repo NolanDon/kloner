@@ -7,7 +7,7 @@ import { auth } from "@/lib/firebase";
 import { ArrowRightSquare, Send } from "lucide-react";
 import { PROMPT_PLACEHOLDERS } from "@/src/lib/promptPlaceholders";
 import { useRotatingPlaceholderIndex } from "@/src/hooks/useRotatingPlaceholderIndex";
-import { stripProtocol, validateAndNormalizePublicHttpUrl } from "@/src/lib/publicHttpUrl";
+import { getPublicHttpUrlRejectionReason, stripProtocol, validateAndNormalizePublicHttpUrl } from "@/src/lib/publicHttpUrl";
 
 
 export default function HeroContent({
@@ -57,7 +57,7 @@ export default function HeroContent({
     const normalized = validateAndNormalizePublicHttpUrl(stripped);
 
     if (!normalized) {
-      setError("Please enter a valid public http(s) URL.");
+      setError(getPublicHttpUrlRejectionReason(stripped) || "Please enter a valid public http(s) URL.");
       return;
     }
 
@@ -89,7 +89,7 @@ export default function HeroContent({
     setUrl(cleaned);
     setError(
       cleaned && !validateAndNormalizePublicHttpUrl(cleaned)
-        ? "Please enter a valid public http(s) URL."
+        ? getPublicHttpUrlRejectionReason(cleaned) || "Please enter a valid public http(s) URL."
         : null
     );
   }
@@ -110,7 +110,7 @@ export default function HeroContent({
     setUrl(cleaned);
     setError(
       !validateAndNormalizePublicHttpUrl(cleaned)
-        ? "Please enter a valid public http(s) URL."
+        ? getPublicHttpUrlRejectionReason(cleaned) || "Please enter a valid public http(s) URL."
         : null
     );
   }

@@ -35,6 +35,7 @@ import {
     getDoc,
 } from "firebase/firestore";
 import Image from "next/image";
+import { validateAndNormalizePublicHttpUrl } from "@/src/lib/publicHttpUrl";
 
 const ACCENT = "#f55f2a";
 
@@ -99,21 +100,10 @@ async function ensureBestAuthPersistence(): Promise<void> {
 /* ───────── URL helpers ───────── */
 
 function normUrl(s: string): string {
-    try {
-        const u = new URL(s);
-        u.hash = "";
-        return u.toString();
-    } catch {
-        return s.trim();
-    }
+    return validateAndNormalizePublicHttpUrl(s) || s.trim();
 }
 function isHttpUrl(s: string): s is string {
-    try {
-        const u = new URL(s);
-        return u.protocol === "http:" || u.protocol === "https:";
-    } catch {
-        return false;
-    }
+    return !!validateAndNormalizePublicHttpUrl(s);
 }
 function hash64(s: string): string {
     let h = 0;
@@ -373,7 +363,15 @@ export default function LoginPage(): JSX.Element {
                 // ignore
             }
         }
-        setPendingUrl(initial);
+        const normalizedInitial = validateAndNormalizePublicHttpUrl(initial);
+        setPendingUrl(normalizedInitial || "");
+        if (initial && !normalizedInitial) {
+            try {
+                localStorage.removeItem("kloner.pendingUrl");
+            } catch {
+                // ignore
+            }
+        }
 
         let initialPrompt = search.get("prompt") || search.get("p") || "";
         if (!initialPrompt) {
@@ -451,8 +449,8 @@ export default function LoginPage(): JSX.Element {
 
                         // Send the user to the consolidated dashboard view and let it
                         // own the url-doc creation + capture queueing (start=1).
-                        const cleaned = normUrl(pending);
-                        if (isHttpUrl(cleaned)) {
+                        const cleaned = validateAndNormalizePublicHttpUrl(pending);
+                        if (cleaned) {
                             router.replace(
                                 `/dashboard/view?u=${encodeURIComponent(cleaned)}&start=1`,
                             );

@@ -3,6 +3,7 @@ import { Resend } from "resend";
 import crypto from "node:crypto";
 import { getAdminAuth, getAdminDb } from "../../_lib/auth";
 import { requireSessionAndMaybeCsrf } from "../../_lib/route-guard";
+import { validateAndNormalizePublicHttpUrl } from "@/src/lib/publicHttpUrl";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -48,6 +49,28 @@ function baseUrl() {
     const v = (process.env.FRONTEND_BASE_URL || process.env.NEXT_PUBLIC_SITE_URL || "").trim();
     if (v) return v.replace(/\/$/, "");
     return "https://kloner.app";
+}
+
+async function reportBlockedUrlAttempt(args: { uid: string; url: string; reason: string }) {
+    const webhookUrl = (process.env.MALICIOUS_ACTIVITY_WEBHOOK_URL || process.env.ABUSE_WEBHOOK_URL || "").trim();
+    if (!webhookUrl) return;
+
+    try {
+        await fetch(webhookUrl, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+                event: "blocked_url_attempt",
+                uid: args.uid,
+                url: args.url,
+                reason: args.reason,
+                route: "/api/private/send-first-url-email",
+                timestamp: new Date().toISOString(),
+            }),
+        });
+    } catch {
+        // Best-effort reporting only.
+    }
 }
 
 function getEmailLinkSecret(): string {
@@ -111,21 +134,7 @@ function safeName(name?: string | null) {
 }
 
 function normalizePublicHttpUrl(raw: unknown): string | null {
-    const input = String(raw || "").trim();
-    if (!input) return null;
-    try {
-        const u = new URL(input);
-        if (u.protocol !== "http:" && u.protocol !== "https:") return null;
-        if (!u.hostname || !u.hostname.includes(".")) return null;
-        u.hash = "";
-        const out = u.toString();
-        if (u.pathname === "/" && !u.search) {
-            return out.replace(/\/$/, "");
-        }
-        return out;
-    } catch {
-        return null;
-    }
+    return validateAndNormalizePublicHttpUrl(String(raw || ""));
 }
 
 function buildFirstUrlNextStepsHtml(args: {
@@ -620,6 +629,13 @@ export async function POST(req: NextRequest) {
 
             const body = (await req.json().catch(() => ({} as any))) as { url?: string };
             const targetUrlCanonical = normalizePublicHttpUrl(body?.url || "");
+            if (body?.url && !targetUrlCanonical) {
+                void reportBlockedUrlAttempt({
+                    uid,
+                    url: String(body.url),
+                    reason: "Invalid or blocked URL",
+                });
+            }
 
             const userRef = db.collection("kloner_users").doc(uid);
             const userSnap = await userRef.get();

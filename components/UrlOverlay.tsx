@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import { auth } from "@/lib/firebase";
 import { Send } from "lucide-react";
+import { stripProtocol, validateAndNormalizePublicHttpUrl, getPublicHttpUrlRejectionReason } from "@/src/lib/publicHttpUrl";
 
 const PROMPT_PLACEHOLDERS = [
     "Generate me a website for a yoga retreat",
@@ -19,71 +20,6 @@ type UrlOverlayProps = {
     open: boolean;
     onClose: () => void;
 };
-
-/* -------- shared URL helpers (same logic as Hero) -------- */
-
-function toAbsolute(u: string) {
-    const s = u.trim();
-    if (!s) return "";
-    try {
-        return new URL(s).toString();
-    } catch {
-        try {
-            return new URL(`https://${s}`).toString();
-        } catch {
-            return "";
-        }
-    }
-}
-
-function stripProtocol(input: string) {
-    return input.replace(/^\s*https?:\/\//i, "").trim();
-}
-
-const DOMAIN_RE = /^(?!-)(?:[a-z0-9-]{1,63}\.)+[a-z]{2,63}$/i;
-
-function validateAndNormalize(u: string): string | null {
-    const s = u.trim();
-    if (!s) return null;
-    if (s.length > 2083) return null;
-
-    const lower = s.toLowerCase();
-    if (lower === "http" || lower === "https") return null;
-
-    const abs = toAbsolute(s);
-    if (!abs) return null;
-
-    try {
-        const parsed = new URL(abs);
-        const proto = parsed.protocol.toLowerCase();
-        if (proto !== "http:" && proto !== "https:") return null;
-
-        const host = parsed.hostname || "";
-        if (!host) return null;
-
-        const hostLower = host.toLowerCase();
-
-        if (
-            hostLower === "localhost" ||
-            hostLower === "::1" ||
-            hostLower === "0.0.0.0" ||
-            /^127(?:\.\d{1,3}){0,3}$/.test(hostLower) ||
-            /^10\./.test(hostLower) ||
-            /^192\.168\./.test(hostLower) ||
-            /^169\.254\./.test(hostLower) ||
-            /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(hostLower)
-        ) {
-            return null;
-        }
-
-        if (!DOMAIN_RE.test(hostLower)) return null;
-
-        parsed.hash = "";
-        return parsed.toString();
-    } catch {
-        return null;
-    }
-}
 
 /* ----------------- Overlay component ----------------- */
 
@@ -134,8 +70,8 @@ export default function UrlOverlay({ open, onClose }: UrlOverlayProps) {
             setError(null);
             return;
         }
-        const ok = validateAndNormalize(cleaned);
-        setError(ok ? null : "Please enter a valid public http(s) URL.");
+        const ok = validateAndNormalizePublicHttpUrl(cleaned);
+        setError(ok ? null : getPublicHttpUrlRejectionReason(cleaned));
     }
 
     function handlePaste(
@@ -153,8 +89,8 @@ export default function UrlOverlay({ open, onClose }: UrlOverlayProps) {
 
         const cleaned = stripProtocol(pasted);
         setUrl(cleaned);
-        const ok = validateAndNormalize(cleaned);
-        setError(ok ? null : "Please enter a valid public http(s) URL.");
+        const ok = validateAndNormalizePublicHttpUrl(cleaned);
+        setError(ok ? null : getPublicHttpUrlRejectionReason(cleaned));
     }
 
     function handleSubmit(e: React.FormEvent) {
@@ -191,10 +127,10 @@ export default function UrlOverlay({ open, onClose }: UrlOverlayProps) {
         }
 
         const stripped = stripProtocol(url);
-        const normalized = validateAndNormalize(stripped);
+        const normalized = validateAndNormalizePublicHttpUrl(stripped);
 
         if (!normalized) {
-            setError("Please enter a valid public http(s) URL (no localhost or private IPs).");
+            setError(getPublicHttpUrlRejectionReason(stripped) || "Please enter a valid public http(s) URL.");
             return;
         }
 

@@ -6,6 +6,7 @@ import { getAuthoritativeUserTier } from "../_lib/userTier";
 import { verifySession } from "../_lib/auth";
 import type { UserTier } from "@/src/lib/credits";
 import { peekUserCredit, consumeUserCredit } from "../_lib/credits-server";
+import { validateAndNormalizePublicHttpUrl, getPublicHttpUrlRejectionReason } from "@/src/lib/publicHttpUrl";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -17,18 +18,30 @@ function backendConfigHint() {
   return { origin, prefix, hasInternalKey };
 }
 
-function isBackendFetchFailed(resp: any) {
-  return resp?.status === 502 && String(resp?.json?.error || "") === "Backend fetch failed";
+async function reportBlockedUrlAttempt(args: { uid: string; url: string; reason: string }) {
+  const webhookUrl = (process.env.MALICIOUS_ACTIVITY_WEBHOOK_URL || process.env.ABUSE_WEBHOOK_URL || "").trim();
+  if (!webhookUrl) return;
+
+  try {
+    await fetch(webhookUrl, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        event: "blocked_url_attempt",
+        uid: args.uid,
+        url: args.url,
+        reason: args.reason,
+        route: "/api/generate-app-from-url",
+        timestamp: new Date().toISOString(),
+      }),
+    });
+  } catch {
+    // Best-effort reporting only.
+  }
 }
 
-function isHttpUrl(s?: string): s is string {
-  if (!s) return false;
-  try {
-    const u = new URL(s);
-    return u.protocol === "http:" || u.protocol === "https:";
-  } catch {
-    return false;
-  }
+function isBackendFetchFailed(resp: any) {
+  return resp?.status === 502 && String(resp?.json?.error || "") === "Backend fetch failed";
 }
 
 export async function POST(req: NextRequest) {
@@ -54,8 +67,17 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Name required" }, { status: 400 });
     }
 
-    if (!isHttpUrl(url)) {
-      return NextResponse.json({ error: "Invalid URL" }, { status: 400 });
+    const normalizedUrl = validateAndNormalizePublicHttpUrl(url);
+    if (!normalizedUrl) {
+      const reason = getPublicHttpUrlRejectionReason(url) || "Invalid URL";
+      void reportBlockedUrlAttempt({ uid: decoded.uid, url, reason });
+      return NextResponse.json(
+        {
+          error: reason,
+          code: "BLOCKED_URL",
+        },
+        { status: 400 }
+      );
     }
 
     const ownedPrefix = `kloner-screenshots/${decoded.uid}/`;
@@ -148,7 +170,7 @@ export async function POST(req: NextRequest) {
         const screenshotResponse = await callBackend(req, {
           path: "/generate-screenshots",
           method: "POST",
-          body: { url },
+          body: { url: normalizedUrl },
           userCtx: { uid: decoded.uid, email: decoded?.email || "", tier },
           timeoutMs: 60000,
           acceptOnTimeout: true,
@@ -235,7 +257,7 @@ export async function POST(req: NextRequest) {
       const appResponse = await callBackend(req, {
         path: "/generate-app-from-url",
         method: "POST",
-        body: { url, name, screenshotKey: finalScreenshotKey, createPreview: true },
+        body: { url: normalizedUrl, name, screenshotKey: finalScreenshotKey, createPreview: true },
         userCtx: { uid: decoded.uid, email: decoded?.email || "", tier },
         timeoutMs: 300000, // 5 minutes
         acceptOnTimeout: true,

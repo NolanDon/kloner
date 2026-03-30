@@ -2,25 +2,14 @@
 import { useCallback, useEffect, useState } from "react";
 import type { Timestamp } from "firebase/firestore";
 import { RenderDoc } from "./DashboardView";
+import { validateAndNormalizePublicHttpUrl } from "@/src/lib/publicHttpUrl";
 
 export function isHttpUrl(s?: string): s is string {
-    if (!s) return false;
-    try {
-        const u = new URL(s);
-        return u.protocol === "http:" || u.protocol === "https:";
-    } catch {
-        return false;
-    }
+    return !!validateAndNormalizePublicHttpUrl(s || "");
 }
 
 export function normUrl(s: string): string {
-    try {
-        const u = new URL(s);
-        u.hash = "";
-        return u.toString();
-    } catch {
-        return s.trim();
-    }
+    return validateAndNormalizePublicHttpUrl(s) || s.trim();
 }
 
 export function hash64(s: string): string {

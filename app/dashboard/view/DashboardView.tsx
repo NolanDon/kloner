@@ -102,7 +102,7 @@ import { useModal } from "@/components/ui/ModalContext";
 import AppBuilderEditor from "@/components/AppBuilderEditor";
 import { PROMPT_PLACEHOLDERS } from "@/src/lib/promptPlaceholders";
 import { useRotatingPlaceholderIndex } from "@/src/hooks/useRotatingPlaceholderIndex";
-import { validateAndNormalizePublicHttpUrl } from "@/src/lib/publicHttpUrl";
+import { getPublicHttpUrlRejectionReason, validateAndNormalizePublicHttpUrl } from "@/src/lib/publicHttpUrl";
 import { recordAppBuilderSessionAnalytics, recordDeployAnalytics } from "@/components/analytics";
 
 const VERCEL_INTEGRATION_SLUG =
@@ -578,15 +578,18 @@ function MiniDashboardEntry({
                             ref={inputRef as any}
                             value={url}
                             onChange={(e) => {
-                                setUrl(e.target.value);
-                                setError(null);
+                                const value = e.target.value;
+                                setUrl(value);
+                                const cleaned = value.trim();
+                                setError(cleaned ? getPublicHttpUrlRejectionReason(cleaned) : null);
                             }}
                             onPaste={(e) => {
                                 const pasted = e.clipboardData.getData("text");
                                 if (!pasted) return;
                                 e.preventDefault();
+                                const cleaned = pasted.trim();
                                 setUrl(pasted);
-                                setError(null);
+                                setError(cleaned ? getPublicHttpUrlRejectionReason(cleaned) : null);
                             }}
                             placeholder="example.com"
                             onFocus={() => setIsFocused(true)}
