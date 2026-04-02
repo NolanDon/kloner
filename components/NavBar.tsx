@@ -173,22 +173,25 @@ export default function NavBar(): JSX.Element {
             </div>
           </Link>
 
-          {/* Mobile priority nav */}
-          <nav className="hidden md:flex lg:hidden flex-1 min-w-0">
-            <ul className="flex items-center justify-center gap-1.5 sm:gap-2 pr-1">
-              {mobilePrimaryNav.map((item, idx) => (
-                <li
-                  key={`${item.href}-${idx}`}
-                  className="block"
+          {/* Tablet nav */}
+          <nav className="hidden md:flex lg:hidden flex-1 min-w-0 items-center justify-center">
+            <ul className="flex items-center gap-2 text-[13px] text-white/85">
+              <li>
+                <Link
+                  href="/price"
+                  className="inline-flex items-center rounded-full border border-white/10 px-3 py-1.5 hover:bg-white/10 hover:text-white transition whitespace-nowrap"
                 >
-                  <Link
-                    href={item.href}
-                    className="inline-flex h-8 items-center rounded-full border border-white/15 px-3 text-[12px] font-medium text-white/90 hover:bg-white/10"
-                  >
-                    {item.label}
-                  </Link>
-                </li>
-              ))}
+                  Pricing
+                </Link>
+              </li>
+              <li>
+                <Link
+                  href="/#how"
+                  className="inline-flex items-center rounded-full border border-white/10 px-3 py-1.5 hover:bg-white/10 hover:text-white transition whitespace-nowrap"
+                >
+                  How it Works
+                </Link>
+              </li>
             </ul>
           </nav>
 
@@ -233,7 +236,7 @@ export default function NavBar(): JSX.Element {
                 setMOpen((v) => !v);
                 setOpen(false);
               }}
-              className="lg:hidden mr-1 inline-flex h-10 w-10 items-center justify-center rounded-full text-white/90 hover:bg-white/10 ring-1 ring-white/10"
+              className="md:hidden mr-1 inline-flex h-10 w-10 items-center justify-center rounded-full text-white/90 hover:bg-white/10 ring-1 ring-white/10"
             >
               {mOpen ? (
                 <X size={18} strokeWidth={2.2} />
@@ -246,7 +249,7 @@ export default function NavBar(): JSX.Element {
             {!user ? (
               <a
                 href="/login"
-                className="hidden lg:inline text-[15px] text-white/85 hover:text-white"
+                className="hidden md:inline text-[15px] text-white/85 hover:text-white"
               >
                 Login
               </a>
@@ -254,7 +257,7 @@ export default function NavBar(): JSX.Element {
               <>
                 <Link
                   href="/dashboard/view"
-                  className="hidden lg:inline text-[15px] text-white/85 hover:text-white"
+                  className="hidden md:inline text-[15px] text-white/85 hover:text-white"
                 >
                   Dashboard
                 </Link>
@@ -310,7 +313,7 @@ export default function NavBar(): JSX.Element {
             <button
               type="button"
               onClick={openUrlOverlay}
-              className="hidden lg:inline-flex items-center justify-center h-[52px] mr-1.5 rounded-full px-5 text-[15px] text-white whitespace-nowrap"
+              className="hidden md:inline-flex items-center justify-center h-[52px] mr-1.5 rounded-full px-5 text-[15px] text-white whitespace-nowrap"
               style={{ backgroundColor: ACCENT }}
             >
               Start project

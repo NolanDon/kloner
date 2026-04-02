@@ -15,9 +15,12 @@ type TrialSuccessCelebrationProps = {
 export default function TrialSuccessCelebration({ open, onDismiss }: TrialSuccessCelebrationProps) {
     const [animationData, setAnimationData] = useState<any>(null);
     const [animationError, setAnimationError] = useState(false);
+    const [isClosing, setIsClosing] = useState(false);
 
     useEffect(() => {
         if (!open) return;
+
+        setIsClosing(false);
 
         let cancelled = false;
         setAnimationError(false);
@@ -40,15 +43,23 @@ export default function TrialSuccessCelebration({ open, onDismiss }: TrialSucces
         };
     }, [open, onDismiss]);
 
-    if (!open || typeof document === "undefined") return null;
+    if (!open || isClosing || typeof document === "undefined") return null;
 
     const handleDismiss = () => {
+        setIsClosing(true);
         onDismiss();
     };
 
     return createPortal(
         <div className="fixed inset-0 z-[26000]">
-            <div className="absolute inset-0 bg-white/72 backdrop-blur-[8px]" onClick={handleDismiss} />
+            <div
+                className="absolute inset-0 bg-white/72 backdrop-blur-[8px]"
+                onMouseDown={(e) => {
+                    e.preventDefault();
+                    handleDismiss();
+                }}
+                onClick={handleDismiss}
+            />
             {animationData && !animationError ? (
                 <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden">
                     <Lottie
@@ -66,11 +77,16 @@ export default function TrialSuccessCelebration({ open, onDismiss }: TrialSucces
                 >
                     <button
                         type="button"
-                        onPointerDown={(e) => {
+                        onMouseDown={(e) => {
+                            e.preventDefault();
                             e.stopPropagation();
                             handleDismiss();
                         }}
-                        onClick={handleDismiss}
+                        onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            handleDismiss();
+                        }}
                         className="absolute right-4 top-4 z-30 inline-flex h-8 w-8 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-500 transition hover:bg-neutral-50 hover:text-neutral-800"
                         aria-label="Close celebration"
                     >
@@ -106,6 +122,10 @@ export default function TrialSuccessCelebration({ open, onDismiss }: TrialSucces
                             <div className="mt-5 flex justify-center">
                                 <button
                                     type="button"
+                                    onMouseDown={(e) => {
+                                        e.preventDefault();
+                                        handleDismiss();
+                                    }}
                                     onClick={handleDismiss}
                                     className="inline-flex items-center justify-center rounded-full bg-[#f55f2a] px-5 py-3 text-sm font-semibold text-white shadow-[0_16px_36px_rgba(245,95,42,0.24)] transition hover:bg-[#f3602c]"
                                 >

@@ -2574,7 +2574,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                                         Start from a template
                                                     </div>
                                                     <span className="inline-flex max-w-full items-center rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-800 whitespace-nowrap">
-                                                        community builds
+                                                        free
                                                     </span>
                                                 </div>
 
