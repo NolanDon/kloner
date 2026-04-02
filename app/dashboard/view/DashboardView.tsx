@@ -76,6 +76,7 @@ import {
     Clock12Icon,
     ClockPlus,
     RotateCcw,
+    ChevronUp,
     X,
     Send,
     Trash2,
@@ -116,6 +117,7 @@ const FRONTEND_TIMEOUT_DEDUPE_TTL_MS = 10 * 60 * 1000;
 const FRONTEND_TIMEOUT_DEDUPE_STORAGE_KEY = "dashboardViewFrontendTimeoutAlertsV1";
 const CAPTURE_STALE_ALERT_STORAGE_KEY = "dashboardViewCaptureStaleAlertsV1";
 const CAPTURE_STALLED_ALERT_STORAGE_KEY = "dashboardViewCaptureStalledAlertsV1";
+const URL_SCAN_RETRY_COOLDOWN_MS = 10 * 1000;
 const URL_ADD_SUCCESS_MESSAGE = "Successfully added your URL.";
 const APP_WIZARD_PROMPT_MAX_CHARS = 2000;
 const FIRST_GEN_TRIAL_OBSERVE_MS = 15 * 1000;
@@ -269,6 +271,24 @@ function clearCaptureStalledAlertSent(normalizedUrl: string): void {
 
 type UrlStatusUi = "queued" | "processing" | "ready" | "stale" | "error" | "unknown";
 
+function isArchiveBackedUrlDoc(doc?: Partial<UrlDoc> | null): boolean {
+    return Boolean(doc && (doc.archiveMode || doc.zipPath || doc.zipUrl));
+}
+
+function getUrlArtifactCount(doc?: Partial<UrlDoc> | null): number {
+    if (!doc) return 0;
+
+    const screenshotPathCount = Array.isArray(doc.screenshotPaths)
+        ? doc.screenshotPaths.filter((p) => typeof p === "string" && !!p).length
+        : 0;
+    const screenshotMetaCount = Array.isArray(doc.screenshots)
+        ? doc.screenshots.length
+        : 0;
+        const archiveCount = isArchiveBackedUrlDoc(doc) ? (typeof doc.zipPageCount === "number" && Number.isFinite(doc.zipPageCount) && doc.zipPageCount > 0 ? doc.zipPageCount : 1) : 0;
+
+    return Math.max(screenshotPathCount + screenshotMetaCount, archiveCount);
+}
+
 function normalizeUrlStatus(
     raw?: UrlDoc["status"],
     shotCount?: number,
@@ -311,6 +331,74 @@ function truncateMiddle(value: string, maxLen = 72): string {
     const head = Math.ceil((maxLen - 3) * 0.65);
     const tail = Math.floor((maxLen - 3) * 0.35);
     return `${text.slice(0, head)}...${text.slice(text.length - tail)}`;
+}
+
+type AmberIssueBannerProps = {
+    message: string;
+    onDismiss: () => void;
+    onRetry?: () => void;
+    retryDisabled?: boolean;
+    retryLabel?: string;
+    details?: React.ReactNode;
+};
+
+function AmberIssueBanner({ message, onDismiss, onRetry, retryDisabled = false, retryLabel = "Retry", details }: AmberIssueBannerProps) {
+    const [showDetails, setShowDetails] = useState(false);
+    const detailsNode = details ?? <span>No details provided.</span>;
+    const hasDetails = details != null;
+
+    return (
+        <motion.div
+            initial={{ opacity: 0, y: -8, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            transition={{ type: "spring", stiffness: 700, damping: 28, mass: 0.55 }}
+            className="relative mt-2 overflow-hidden rounded-full border border-amber-300 bg-amber-100 px-3 py-1.5 text-xs text-amber-950 shadow-sm"
+        >
+            <div className={`flex items-start gap-2 ${hasDetails ? "pr-16" : "pr-8"}`}>
+                <MessageCircleWarning className="h-4 w-4 shrink-0 text-amber-700" />
+                <span className="min-w-0 flex-1 whitespace-normal break-words font-medium leading-5">{message}</span>
+                {onRetry ? (
+                    <button
+                        type="button"
+                        onClick={onRetry}
+                        disabled={retryDisabled}
+                        className="inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-1 text-[11px] font-semibold text-amber-900 transition hover:text-amber-950 disabled:cursor-not-allowed disabled:opacity-50"
+                        title="Retry this URL"
+                    >
+                        <RotateCcw className="h-3 w-3" />
+                        <span>{retryLabel}</span>
+                    </button>
+                ) : null}
+                {hasDetails ? (
+                    <button
+                        type="button"
+                        onClick={() => setShowDetails((v) => !v)}
+                        className="inline-flex shrink-0 items-center gap-1 text-[11px] font-semibold text-amber-800/90 transition hover:text-amber-950"
+                        aria-expanded={showDetails}
+                        aria-label={showDetails ? "Hide details" : "View details"}
+                        title={showDetails ? "Hide details" : "View details"}
+                    >
+                        <span>{showDetails ? "Hide details" : "View details"}</span>
+                        {showDetails ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                    </button>
+                ) : null}
+            </div>
+            {showDetails ? (
+                <div className="absolute left-3 right-3 top-full z-10 mt-2 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] leading-5 text-amber-900 shadow-sm sm:text-xs">
+                    {detailsNode}
+                </div>
+            ) : null}
+            <button
+                type="button"
+                onClick={onDismiss}
+                className="absolute right-2 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full text-amber-700 transition hover:bg-amber-200 hover:text-amber-950"
+                aria-label="Dismiss warning"
+                title="Dismiss"
+            >
+                <X className="h-3.5 w-3.5" />
+            </button>
+        </motion.div>
+    );
 }
 
 type MiniDashboardEntryProps = {
@@ -360,6 +448,7 @@ function MiniDashboardEntry({
     const [prompt, setPrompt] = useState("");
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [dismissedCaptureIssueNotice, setDismissedCaptureIssueNotice] = useState(false);
     const inputRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
     const [isFocused, setIsFocused] = useState(false);
     const promptPlaceholderIdx = useRotatingPlaceholderIndex({
@@ -370,6 +459,10 @@ function MiniDashboardEntry({
 
     const isActiveTrial = stripeStatus === "trialing" && !stripeCancelAtPeriodEnd;
     const badgeLabel = isActiveTrial ? "trialing" : planLabel;
+
+    useEffect(() => {
+        setDismissedCaptureIssueNotice(false);
+    }, [captureIssueNotice]);
     const badgeClassName = isActiveTrial
         ? "inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2 py-1"
         : "inline-flex items-center gap-1 rounded-full border border-accent bg-accent-50 px-2 py-1";
@@ -665,11 +758,11 @@ function MiniDashboardEntry({
 
                 {error ? <div className="mt-2 text-sm text-red-700">{error}</div> : null}
 
-                {captureIssueNotice ? (
-                    <div className="mt-4 inline-flex items-center gap-2 text-xs text-amber-700">
-                        <MessageCircleWarning className="h-3.5 w-3.5" />
-                        {captureIssueNotice}
-                    </div>
+                {captureIssueNotice && !dismissedCaptureIssueNotice ? (
+                    <AmberIssueBanner
+                        message={captureIssueNotice}
+                        onDismiss={() => setDismissedCaptureIssueNotice(true)}
+                    />
                 ) : !hideCaptureQueueStatus && disabled && (captureStatus === "queued" || captureStatus === "processing") ? (
                     <div className="mt-4 inline-flex items-center gap-2 text-xs text-neutral-600">
                         {captureStatus === "queued" ? (
@@ -2266,14 +2359,17 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                 <div className="space-y-2">
                                     {autoOpenSuccessMessage ? (
                                         <>
-                                            <div className="inline-flex items-start gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2">
-                                                <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
-                                                <span className="text-xs font-semibold leading-5 text-emerald-800">
+                                            <div className="inline-flex items-start gap-2 rounded-2xl border border-emerald-300 bg-gradient-to-br from-emerald-50 to-white px-4 py-3 shadow-sm">
+                                                <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" />
+                                                <span className="text-sm font-semibold leading-6 text-emerald-900">
                                                     {autoOpenSuccessMessage}
                                                 </span>
                                             </div>
+                                            <div className="pl-1 text-sm font-medium text-neutral-800">
+                                                Choose what you want to generate from your URL.
+                                            </div>
                                             <div className="pl-1 text-xs text-neutral-600">
-                                                Choose what you want to generate next.
+                                                Your URL is ready. Pick a website type below to continue.
                                             </div>
                                         </>
                                     ) : (
@@ -2702,6 +2798,9 @@ export default function PreviewPage(): JSX.Element {
     const [captureIssueNotice, setCaptureIssueNotice] = useState<string>("");
     const [hideCaptureQueueStatus, setHideCaptureQueueStatus] = useState<boolean>(false);
     const [dismissedUrlIssueCanonical, setDismissedUrlIssueCanonical] = useState<string>("");
+    const [retryCooldownUntil, setRetryCooldownUntil] = useState<number>(0);
+    const [retryCooldownTick, setRetryCooldownTick] = useState<number>(Date.now());
+    const retryCooldownTimerRef = useRef<number | null>(null);
 
     const [loading, setLoading] = useState<boolean>(true);
 
@@ -2710,6 +2809,7 @@ export default function PreviewPage(): JSX.Element {
     const [docSnap, setDocSnap] =
         useState<QueryDocumentSnapshot<DocumentData> | null>(null);
     const [docData, setDocData] = useState<UrlDoc | null>(null);
+    const [archiveDownloadUrl, setArchiveDownloadUrl] = useState<string>("");
 
     const [shots, setShots] = useState<Shot[]>([]);
     const [rescanning, setRescanning] = useState<boolean>(false);
@@ -3461,7 +3561,7 @@ export default function PreviewPage(): JSX.Element {
         prompt?: string,
         renderId?: string,
         url?: string,
-        opts?: { screenshotKeys?: string[]; onError?: (message: string) => void; skipCookieConsent?: boolean },
+        opts?: { screenshotKeys?: string[]; zipUrl?: string; zipPath?: string; onError?: (message: string) => void; skipCookieConsent?: boolean },
     ) => {
         if (!user) return;
 
@@ -3510,6 +3610,8 @@ export default function PreviewPage(): JSX.Element {
                 const screenshotKeysToSend = Array.isArray(opts?.screenshotKeys)
                     ? opts!.screenshotKeys!.filter((p) => typeof p === "string" && p.trim()).slice(0, 6)
                     : [];
+                const zipUrlToSend = typeof opts?.zipUrl === "string" && opts.zipUrl.trim() ? opts.zipUrl.trim() : "";
+                const zipPathToSend = typeof opts?.zipPath === "string" && opts.zipPath.trim() ? opts.zipPath.trim() : "";
 
                 const res = await fetch("/api/generate-app-from-url", {
                     method: "POST",
@@ -3517,7 +3619,7 @@ export default function PreviewPage(): JSX.Element {
                         "Content-Type": "application/json",
                         ...(csrf ? { "x-csrf": csrf } : {}),
                     },
-                    body: JSON.stringify({ url, name: appName, screenshotKeys: screenshotKeysToSend }),
+                    body: JSON.stringify({ url, name: appName, screenshotKeys: screenshotKeysToSend, zipUrl: zipUrlToSend, zipPath: zipPathToSend }),
                     credentials: "include",
                 });
 
@@ -3682,11 +3784,9 @@ export default function PreviewPage(): JSX.Element {
                     .map((entry) => {
                         const normalized = validateAndNormalizePublicHttpUrl(String(entry?.url || ""));
                         if (!normalized) return "";
-                        const screenshotPathCount = Array.isArray(entry?.screenshotPaths) ? entry.screenshotPaths.length : 0;
-                        const screenshotMetaCount = Array.isArray(entry?.screenshots) ? entry.screenshots.length : 0;
                         const statusUi = normalizeUrlStatus(
                             entry?.status,
-                            screenshotPathCount + screenshotMetaCount,
+                            getUrlArtifactCount(entry),
                             entry?.updatedAt,
                         );
                         return statusUi === "ready" ? normUrl(normalized) : "";
@@ -4172,9 +4272,14 @@ export default function PreviewPage(): JSX.Element {
 
         const statusUi = normalizeUrlStatus(
             data.status,
-            screenshotPaths.length + screenshotKeys.length,
+            getUrlArtifactCount(data),
             data.updatedAt
         );
+
+        if (isArchiveBackedUrlDoc(data)) {
+            setShots([]);
+            return;
+        }
 
         let fileRefs: StorageReference[] = [];
         if (screenshotPaths.length > 0) {
@@ -4308,7 +4413,9 @@ export default function PreviewPage(): JSX.Element {
 
     const urlParam = search.get("u") || "";
     const startParam = (search.get("start") || "").toLowerCase();
+    const retryParam = (search.get("retry") || "").toLowerCase();
     const startRequested = startParam === "1" || startParam === "true";
+    const forceRetryRequested = retryParam === "1" || retryParam === "true";
 
     const targetUrl = useMemo(() => {
         let raw = urlParam;
@@ -4463,9 +4570,13 @@ export default function PreviewPage(): JSX.Element {
     }, [urlParam, targetUrl, router]);
 
     const submitMiniUrl = useCallback(
-        (raw: string) => {
+        async (raw: string) => {
             const normalized = validateAndNormalizePublicHttpUrl(raw);
-            if (!normalized) return;
+            if (!normalized) {
+                setErr("Please enter a valid public http(s) URL.");
+                setInfo("");
+                return;
+            }
             if (!canUseScreenshotCredit()) {
                 setErr("You have used all monthly screenshot credits. Upgrade to capture more pages and monitor more sites.");
                 setInfo("");
@@ -4473,11 +4584,53 @@ export default function PreviewPage(): JSX.Element {
                 setShowCreditsPaywall("screenshot");
                 return;
             }
+
+            const canonical = normUrl(normalized);
+            const hasDuplicateTrackedUrl = urls.some((entry) => {
+                const existing = validateAndNormalizePublicHttpUrl(String(entry?.url || ""));
+                if (!existing) return false;
+                return normUrl(existing) === canonical;
+            });
+
+            if (!hasDuplicateTrackedUrl && user) {
+                try {
+                    const existingSnap = await getDocs(
+                        query(
+                            collection(db, "kloner_users", user.uid, "kloner_urls"),
+                            where("url", "==", normalized)
+                        )
+                    );
+                    if (!existingSnap.empty) {
+                        setErr("");
+                        setInfo(
+                            "This URL has already been processed. Kloner will not queue a second scan for the same URL. Open the existing entry or use Retry from the warning."
+                        );
+                        router.push(`/dashboard/view?u=${encodeURIComponent(normalized)}`, { scroll: false });
+                        return;
+                    }
+                } catch {
+                    // If the preflight read fails, fall back to the local duplicate gate and
+                    // let the normal start flow handle any remaining cases.
+                }
+            }
+
+            if (hasDuplicateTrackedUrl) {
+                setErr("");
+                setInfo(
+                    "This URL has already been processed. Kloner will not queue a second scan for the same URL. Open the existing entry or use Retry from the warning."
+                );
+                router.push(`/dashboard/view?u=${encodeURIComponent(normalized)}`, { scroll: false });
+                return;
+            }
+
+            const queued = await enqueueUrlScanRef.current?.(normalized, { clearStartParam: false });
+            if (!queued) return;
+
             setErr("");
             setInfo("");
-            router.push(`/dashboard/view?u=${encodeURIComponent(normalized)}&start=1`, { scroll: false });
+            router.push(`/dashboard/view?u=${encodeURIComponent(normalized)}`, { scroll: false });
         },
-        [canUseScreenshotCredit, push, router]
+        [canUseScreenshotCredit, db, push, router, urls, user]
     );
 
     const submitMiniPrompt = useCallback(
@@ -4516,6 +4669,23 @@ export default function PreviewPage(): JSX.Element {
     const captureStallReportedForUrlRef = useRef<string>("");
     const captureStaleReportedForUrlRef = useRef<string>("");
     const [captureTerminalFailureUrl, setCaptureTerminalFailureUrl] = useState<string>("");
+    const [captureIssueDetails, setCaptureIssueDetails] = useState<string>("");
+
+    useEffect(() => {
+        return () => {
+            if (retryCooldownTimerRef.current) {
+                clearTimeout(retryCooldownTimerRef.current);
+            }
+        };
+    }, []);
+
+    useEffect(() => {
+        if (retryCooldownUntil <= Date.now()) return;
+        const intervalId = window.setInterval(() => {
+            setRetryCooldownTick(Date.now());
+        }, 1000);
+        return () => window.clearInterval(intervalId);
+    }, [retryCooldownUntil]);
 
     const markUrlCaptureTerminalError = useCallback(
         async (uid: string, rawUrl: string, lastError: string, nextStatus: "error" | "stale" = "error") => {
@@ -4544,6 +4714,7 @@ export default function PreviewPage(): JSX.Element {
         try {
             const url = new URL(window.location.href);
             url.searchParams.delete("start");
+            url.searchParams.delete("retry");
             const qs = url.searchParams.toString();
             const next = qs ? `${url.pathname}?${qs}` : url.pathname;
             router.replace(next, { scroll: false });
@@ -4561,6 +4732,7 @@ export default function PreviewPage(): JSX.Element {
             captureLockMinUntilRef.current = 0;
             captureLockStartedAtRef.current = 0;
             setCaptureTerminalFailureUrl(normalized);
+            setCaptureIssueDetails(message);
             setCaptureLockUrl(null);
             setHideCaptureQueueStatus(true);
             setCaptureIssueNotice("Issue detected while scanning this URL.");
@@ -4628,258 +4800,301 @@ export default function PreviewPage(): JSX.Element {
         buildDuplicateUrlMessageRef.current = buildDuplicateUrlMessage;
     }, [buildDuplicateUrlMessage]);
 
-    // When a URL is entered from the mini-dashboard entry panel (or deep-linked with start=1),
-    // ensure the UrlDoc exists and queue the screenshot capture job. The existing loader stages
-    // in this page will then take over (docData + shots + groupedShots + preview generation).
-    useEffect(() => {
-        if (!startRequested) return;
-        if (!user || !targetUrl) return;
-        if (!isHttpUrl(targetUrl)) return;
-        if (!canUseScreenshotCredit()) return;
-        const startRequestKey = `${user.uid}:${targetUrl}`;
-        if (generateSucceededRef.current === startRequestKey) {
-            clearStartQueryParam();
-            return;
-        }
-        if (!canUseScreenshotCredit()) {
-            setErr("You have used all monthly screenshot credits. Upgrade to capture more pages and monitor more sites.");
-            setInfo("");
-            setShowCreditsPaywall("screenshot");
-            clearStartQueryParam();
-            return;
-        }
-        if (startRequestedInFlightRef.current === startRequestKey) return;
-        startRequestedInFlightRef.current = startRequestKey;
+    const enqueueUrlScanRef = useRef<((
+        rawUrl: string,
+        options?: { forceRetry?: boolean; clearStartParam?: boolean },
+    ) => Promise<boolean>) | null>(null);
 
-        setCaptureLockUrl(targetUrl);
-        captureLockStartedAtRef.current = Date.now();
-        captureLockMinUntilRef.current = Date.now() + 60_000;
-        captureStallReportedForUrlRef.current = "";
-        captureStaleReportedForUrlRef.current = "";
-        setCaptureTerminalFailureUrl("");
-        clearCaptureStalledAlertSent(normUrl(targetUrl));
+    const enqueueUrlScan = useCallback(
+        async (
+            rawUrl: string,
+            options?: {
+                forceRetry?: boolean;
+                clearStartParam?: boolean;
+            },
+        ): Promise<boolean> => {
+            if (!user) return false;
 
-        let cancelled = false;
-        let shouldMarkHandled = false;
-        (async () => {
-            try {
-                let csrf = await ensureSessionAndCsrf().catch(() => null);
+            const target = validateAndNormalizePublicHttpUrl(rawUrl || "");
+            if (!target) {
+                setErr("Please enter a valid public http(s) URL.");
+                setInfo("");
+                return false;
+            }
 
-                const colRef = collection(db, "kloner_users", user.uid, "kloner_urls");
-                const qy = query(colRef, where("url", "==", targetUrl));
-                const snap = await getDocs(qy);
-                if (cancelled) return;
+            if (!canUseScreenshotCredit()) {
+                setErr("You have used all monthly screenshot credits. Upgrade to capture more pages and monitor more sites.");
+                setInfo("");
+                setShowCreditsPaywall("screenshot");
+                return false;
+            }
 
-                if (snap.empty) {
-                    const urlHash = hash64(targetUrl);
-                    await addDoc(colRef, {
-                        url: targetUrl,
-                        urlHash,
-                        createdAt: serverTimestamp(),
-                        updatedAt: serverTimestamp(),
-                        status: "queued",
-                        screenshotsPrefix: `kloner-screenshots/${user.uid}/${urlHash}`,
-                        screenshotPaths: [],
-                    } as UrlDoc);
+            const forceRetry = !!options?.forceRetry;
+            const shouldClearStartParam = options?.clearStartParam !== false;
+            const startRequestKey = `${user.uid}:${target}`;
 
-                    // Trigger the url-doc loader effect to re-run immediately.
-                    setUrlDocReloadNonce((n) => n + 1);
+            if (generateSucceededRef.current === startRequestKey && !forceRetry) {
+                if (shouldClearStartParam) clearStartQueryParam();
+                return false;
+            }
 
-                    // Best-effort: keep dropdown list fresh even before the next fetch.
-                    setUrls((prev) => {
-                        if (prev.some((u) => normUrl(u.url) === normUrl(targetUrl))) return prev;
-                        return [{ id: `local_${hash64(targetUrl)}`, url: targetUrl, urlHash: hash64(targetUrl) } as any, ...prev].slice(0, 50);
+            if (startRequestedInFlightRef.current === startRequestKey && !forceRetry) {
+                return false;
+            }
+            startRequestedInFlightRef.current = startRequestKey;
+
+            setCaptureLockUrl(target);
+            captureLockStartedAtRef.current = Date.now();
+            captureLockMinUntilRef.current = Date.now() + 60_000;
+            captureStallReportedForUrlRef.current = "";
+            captureStaleReportedForUrlRef.current = "";
+            setCaptureTerminalFailureUrl("");
+            clearCaptureStalledAlertSent(normUrl(target));
+            if (shouldClearStartParam) clearStartQueryParam();
+
+            let cancelled = false;
+            let shouldMarkHandled = false;
+
+            void (async () => {
+                try {
+                    const csrf = await ensureSessionAndCsrf().catch(() => null);
+
+                    const colRef = collection(db, "kloner_users", user.uid, "kloner_urls");
+                    const qy = query(colRef, where("url", "==", target));
+                    const snap = await getDocs(qy);
+                    if (cancelled) return;
+
+                    if (snap.empty) {
+                        const urlHash = hash64(target);
+                        await addDoc(colRef, {
+                            url: target,
+                            urlHash,
+                            createdAt: serverTimestamp(),
+                            updatedAt: serverTimestamp(),
+                            status: "queued",
+                            screenshotsPrefix: `kloner-screenshots/${user.uid}/${urlHash}`,
+                            screenshotPaths: [],
+                        } as UrlDoc);
+
+                        setUrlDocReloadNonce((n) => n + 1);
+
+                        setUrls((prev) => {
+                            if (prev.some((u) => normUrl(u.url) === normUrl(target))) return prev;
+                            return [{ id: `local_${hash64(target)}`, url: target, urlHash: hash64(target) } as any, ...prev].slice(0, 50);
+                        });
+                    } else {
+                        const existingDoc = snap.docs[0];
+                        const existingData = (existingDoc.data() || {}) as UrlDoc;
+                        const canonicalTarget = normUrl(target);
+
+                        setUrls((prev) => {
+                            const deduped = prev.filter((u) => normUrl(String(u?.url || "")) !== canonicalTarget);
+                            return [{ id: existingDoc.id, ...(existingData as any) }, ...deduped].slice(0, 50);
+                        });
+
+                        const existingShotCount =
+                            (Array.isArray(existingData?.screenshotPaths) ? existingData.screenshotPaths.length : 0) +
+                            (Array.isArray(existingData?.screenshots) ? existingData.screenshots.length : 0);
+                        const existingStatusUi = normalizeUrlStatus(
+                            existingData?.status,
+                            existingShotCount,
+                            existingData?.updatedAt,
+                            (existingData as any)?.lastError,
+                        );
+
+                        const hasExistingScanContext =
+                            existingStatusUi === "ready" ||
+                            existingStatusUi === "queued" ||
+                            existingStatusUi === "processing";
+
+                        if (hasExistingScanContext && !forceRetry) {
+                            if (cancelled) return;
+
+                            setErr("");
+                            setInfo(buildDuplicateUrlMessageRef.current(target));
+                            generateSucceededRef.current = startRequestKey;
+                            setCaptureTerminalFailureUrl("");
+                            captureLockMinUntilRef.current = 0;
+                            setCaptureLockUrl(null);
+                            captureLockStartedAtRef.current = 0;
+                            shouldMarkHandled = true;
+                            return;
+                        }
+                    }
+
+                    startRequestedEnqueueAttemptRef.current = startRequestKey;
+                    const res = await fetch("/api/private/generate", {
+                        method: "POST",
+                        headers: { "content-type": "application/json" },
+                        credentials: "include",
+                        body: JSON.stringify({ url: target }),
                     });
-                } else {
-                    // If this URL already exists, sync it into local dropdown state first so users
-                    // can select it immediately, even if the initial list query didn't include it.
-                    const existingDoc = snap.docs[0];
-                    const existingData = (existingDoc.data() || {}) as UrlDoc;
-                    const canonicalTarget = normUrl(targetUrl);
-
-                    setUrls((prev) => {
-                        const deduped = prev.filter((u) => normUrl(String(u?.url || "")) !== canonicalTarget);
-                        return [{ id: existingDoc.id, ...(existingData as any) }, ...deduped].slice(0, 50);
-                    });
-
-                    const existingShotCount =
-                        (Array.isArray(existingData?.screenshotPaths) ? existingData.screenshotPaths.length : 0) +
-                        (Array.isArray(existingData?.screenshots) ? existingData.screenshots.length : 0);
-                    const existingStatusUi = normalizeUrlStatus(
-                        existingData?.status,
-                        existingShotCount,
-                        existingData?.updatedAt,
-                        (existingData as any)?.lastError,
-                    );
-
-                    const hasExistingScanContext =
-                        existingStatusUi === "ready" ||
-                        existingStatusUi === "queued" ||
-                        existingStatusUi === "processing";
-
-                    if (hasExistingScanContext) {
-                        if (cancelled) return;
-
-                        setErr("");
-                        setInfo(buildDuplicateUrlMessageRef.current(targetUrl));
+                    shouldMarkHandled = res.ok;
+                    if (res.ok) {
                         generateSucceededRef.current = startRequestKey;
                         setCaptureTerminalFailureUrl("");
+                    }
+
+                    if (cancelled) return;
+
+                    if (!res.ok) {
+                        const activeCaptureForTarget = (() => {
+                            const s = String(captureStatusRef.current || "").toLowerCase();
+                            return s === "queued" || s === "processing" || s === "ready";
+                        })();
+
+                        if (res.status === 429 && activeCaptureForTarget) {
+                            shouldMarkHandled = true;
+                            setErr("");
+                            if (shouldClearStartParam) clearStartQueryParam();
+                            return;
+                        }
+
+                        generateAbortedRef.current = startRequestKey;
+                        setCaptureTerminalFailureUrl(normUrl(target));
+                        const payload = await res.clone().json().catch(() => ({} as any));
+                        const serverError =
+                            (typeof payload?.error === "string" && payload.error.trim())
+                                ? payload.error.trim()
+                                : "";
+                        setCaptureIssueDetails(
+                            [
+                                `Backend returned HTTP ${res.status}${serverError ? `: ${serverError}` : ""}.`,
+                                "Test the URL in a private or incognito browser tab and make sure it loads without login, captcha, geo-blocking, or a redirect to a different domain.",
+                                "If the page works in a browser but not here, the site is likely blocking automated capture.",
+                            ].join(" "),
+                        );
+                        const backendCode = String(payload?.code || payload?.backendCode || "").toUpperCase();
+                        const looksBlocked = /blocked the snapshot request|site blocked|blocked/i.test(serverError);
+                        const looksCrossDomainRedirect =
+                            res.status === 422 ||
+                            backendCode === "CROSS_DOMAIN_REDIRECT" ||
+                            /redirect(ed)? to a different domain|cross.?domain redirect/i.test(serverError);
+                        const uiError =
+                            res.status === 429
+                                ? "Monthly snapshot limit reached for your plan."
+                                : res.status === 502
+                                    ? "This URL failed to process. Please try again."
+                                    : "Sorry, we were not able to process this URL. Please ensure it is accessible before trying again.";
+                        clearUrlScanQueuedState(target, uiError);
                         captureLockMinUntilRef.current = 0;
                         setCaptureLockUrl(null);
                         captureLockStartedAtRef.current = 0;
-                        shouldMarkHandled = true;
-                        return;
-                    }
-                }
 
-                startRequestedEnqueueAttemptRef.current = startRequestKey;
-                const res = await fetch("/api/private/generate", {
-                    method: "POST",
-                    headers: { "content-type": "application/json" },
-                    credentials: "include",
-                    body: JSON.stringify({ url: targetUrl }),
-                });
-                shouldMarkHandled = res.ok;
-                if (res.ok) {
-                    generateSucceededRef.current = startRequestKey;
-                    setCaptureTerminalFailureUrl("");
-                }
+                        const nextUiError =
+                            res.status === 429
+                                ? (serverError || uiError)
+                                : looksCrossDomainRedirect
+                                    ? "This URL redirected to a different domain and was stopped for safety. Please use the final destination URL directly."
+                                    : looksBlocked
+                                        ? "This site blocked the snapshot request. Try a different URL or a less protected page."
+                                        : (serverError || uiError);
+                        if (nextUiError !== uiError) {
+                            setErr(nextUiError);
+                        }
+                        if (res.status === 429) {
+                            setShowCreditsPaywall("screenshot");
+                        }
 
-                if (cancelled) return;
-
-                if (!res.ok) {
-                    const payload = await res.json().catch(() => ({} as any));
-                    const activeCaptureForTarget = (() => {
-                        const s = String(captureStatusRef.current || "").toLowerCase();
-                        return s === "queued" || s === "processing" || s === "ready";
-                    })();
-
-                    // False-negative guard: if we got rate-limited but a capture is already active,
-                    // do not flip the UI into a hard error state.
-                    if (res.status === 429 && activeCaptureForTarget) {
-                        shouldMarkHandled = true;
-                        setErr("");
-                        clearStartQueryParam();
-                        return;
-                    }
-
-                    generateAbortedRef.current = startRequestKey;
-                    setCaptureTerminalFailureUrl(normUrl(targetUrl));
-                    const serverError =
-                        (typeof payload?.error === "string" && payload.error.trim())
-                            ? payload.error.trim()
-                            : "";
-                    const backendCode = String(payload?.code || payload?.backendCode || "").toUpperCase();
-                    const looksBlocked = /blocked the snapshot request|site blocked|blocked/i.test(serverError);
-                    const looksCrossDomainRedirect =
-                        res.status === 422 ||
-                        backendCode === "CROSS_DOMAIN_REDIRECT" ||
-                        /redirect(ed)? to a different domain|cross.?domain redirect/i.test(serverError);
-                    const uiError =
-                        res.status === 429
-                            ? (serverError || "Monthly snapshot limit reached for your plan.")
-                            : looksCrossDomainRedirect
-                                ? "This URL redirected to a different domain and was stopped for safety. Please use the final destination URL directly."
+                        void markUrlCaptureTerminalError(
+                            user.uid,
+                            target,
+                            looksCrossDomainRedirect
+                                ? "cross_domain_redirect"
                                 : looksBlocked
-                                    ? "This site blocked the snapshot request. Try a different URL or a less protected page."
-                                    : "Sorry, we were not able to process this URL. Please ensure it is accessible before trying again.";
-                    if (res.status === 429) {
-                        setShowCreditsPaywall("screenshot");
+                                    ? "snapshot_blocked"
+                                    : (serverError || `generate_http_${res.status}`),
+                            "error",
+                        );
+
+                        void (async () => {
+                            if (res.status === 409 || looksCrossDomainRedirect) return;
+                            if (!shouldSendFrontendTimeoutAlert("url_capture_enqueue_failed", target)) return;
+                            try {
+                                await fetch("/api/internal/observability/frontend-timeout", {
+                                    method: "POST",
+                                    headers: {
+                                        "content-type": "application/json",
+                                        ...(csrf ? { "x-csrf": csrf } : {}),
+                                    },
+                                    credentials: "include",
+                                    body: JSON.stringify({
+                                        action: "url_capture_enqueue_failed",
+                                        route: "/dashboard/view",
+                                        service: "dashboard-view",
+                                        statusCode: res.status,
+                                        status: "enqueue_failed",
+                                        message: `Failed to queue URL capture (HTTP ${res.status}).`,
+                                        previewUrl: target,
+                                        tags: ["url-capture", "enqueue", "frontend", "error"],
+                                    }),
+                                });
+                            } catch {
+                                // ignore telemetry failures
+                            }
+                        })();
                     }
-                    clearUrlScanQueuedState(targetUrl, uiError);
+                } catch (e: any) {
+                    generateAbortedRef.current = startRequestKey;
+                    setCaptureTerminalFailureUrl(normUrl(target));
+                    setCaptureIssueDetails("The request failed before the backend could return a response. Please try again.");
+                    setInfo("");
+                    if (shouldClearStartParam) clearStartQueryParam();
+                    if (!cancelled) setErr("This URL failed to process. Please ensure it is accessible before retrying.");
                     captureLockMinUntilRef.current = 0;
                     setCaptureLockUrl(null);
                     captureLockStartedAtRef.current = 0;
 
-                    // Persist terminal error status so a page refresh cannot keep this URL
-                    // stuck in queued/processing without an active enqueue attempt.
                     void markUrlCaptureTerminalError(
                         user.uid,
-                        targetUrl,
-                        looksCrossDomainRedirect
-                            ? "cross_domain_redirect"
-                            : looksBlocked
-                                ? "snapshot_blocked"
-                                : (serverError || `generate_http_${res.status}`),
+                        target,
+                        "generate_request_failed",
                         "error",
                     );
+                } finally {
+                    if (!cancelled && shouldMarkHandled) {
+                        if (shouldClearStartParam) clearStartQueryParam();
+                    }
 
-                    void (async () => {
-                        // For blocked/conflict outcomes, /api/private/generate already emits a
-                        // richer backend alert (url_scan_failed). Avoid duplicate Slack noise.
-                        if (res.status === 409 || looksCrossDomainRedirect) return;
-                        if (!shouldSendFrontendTimeoutAlert("url_capture_enqueue_failed", targetUrl)) return;
-                        try {
-                            await fetch("/api/internal/observability/frontend-timeout", {
-                                method: "POST",
-                                headers: {
-                                    "content-type": "application/json",
-                                    ...(csrf ? { "x-csrf": csrf } : {}),
-                                },
-                                credentials: "include",
-                                body: JSON.stringify({
-                                    action: "url_capture_enqueue_failed",
-                                    route: "/dashboard/view",
-                                    service: "dashboard-view",
-                                    statusCode: res.status,
-                                    status: "enqueue_failed",
-                                    message: `Failed to queue URL capture (HTTP ${res.status}).`,
-                                    previewUrl: targetUrl,
-                                    tags: ["url-capture", "enqueue", "frontend", "error"],
-                                }),
-                            });
-                        } catch {
-                            // ignore telemetry failures
-                        }
-                    })();
+                    if (startRequestedInFlightRef.current === startRequestKey) {
+                        startRequestedInFlightRef.current = "";
+                    }
                 }
-            } catch (e: any) {
-                generateAbortedRef.current = startRequestKey;
-                setCaptureTerminalFailureUrl(normUrl(targetUrl));
-                setInfo("");
-                clearStartQueryParam();
-                if (!cancelled) setErr("This URL failed to process. Please ensure it is accessible before retrying.");
-                captureLockMinUntilRef.current = 0;
-                setCaptureLockUrl(null);
-                captureLockStartedAtRef.current = 0;
+            })();
 
-                void markUrlCaptureTerminalError(
-                    user.uid,
-                    targetUrl,
-                    "generate_request_failed",
-                    "error",
-                );
-            } finally {
-                if (!cancelled && shouldMarkHandled) {
-                    clearStartQueryParam();
-                }
+            return true;
+        },
+        [
+            canUseScreenshotCredit,
+            clearStartQueryParam,
+            db,
+            push,
+            user,
+            setShowCreditsPaywall,
+            shouldSendFrontendTimeoutAlert,
+        ],
+    );
 
-                if (startRequestedInFlightRef.current === startRequestKey) {
-                    startRequestedInFlightRef.current = "";
-                }
-            }
-        })();
+    useEffect(() => {
+        enqueueUrlScanRef.current = enqueueUrlScan;
+    }, [enqueueUrlScan]);
 
-        return () => {
-            cancelled = true;
-        };
-    }, [
-        startRequested,
-        user,
-        targetUrl,
-        canUseScreenshotCredit,
-        clearStartQueryParam,
-        shouldSendFrontendTimeoutAlert,
-    ]);
+    // When a URL is entered from the mini-dashboard entry panel (or deep-linked with start=1),
+    // ensure the UrlDoc exists and queue the screenshot capture job. The existing loader stages
+    // in this page will then take over (docData + shots + groupedShots + preview generation).
+    useEffect(() => {
+        if (!startRequested || !targetUrl) return;
+        void enqueueUrlScan(targetUrl, {
+            forceRetry: forceRetryRequested,
+            clearStartParam: true,
+        });
+    }, [enqueueUrlScan, forceRetryRequested, startRequested, targetUrl]);
 
     const startLockRequested = !!startRequested && !!targetUrl && !err;
 
     const shotMetaCount = useMemo(() => {
         if (!docData) return 0;
-        return (
-            (docData.screenshotPaths?.length || 0) +
-            (Array.isArray(docData.screenshots) ? docData.screenshots.length : 0)
-        );
+        return getUrlArtifactCount(docData);
     }, [docData]);
 
     const activeUrlStatus = useMemo<UrlStatusUi | null>(() => {
@@ -5315,21 +5530,26 @@ export default function PreviewPage(): JSX.Element {
                 status: docData.status,
                 screenshotPaths: docData.screenshotPaths,
                 screenshots: docData.screenshots,
+                archiveMode: docData.archiveMode,
+                zipPath: docData.zipPath,
+                zipUrl: docData.zipUrl,
+                zipPageCount: docData.zipPageCount,
                 updatedAt: docData.updatedAt,
                 lastError: (docData as any)?.lastError,
             }
             : activeUrlDoc;
 
-        const shotCount =
-            (Array.isArray(source?.screenshotPaths) ? source.screenshotPaths.length : 0) +
-            (Array.isArray(source?.screenshots) ? source.screenshots.length : 0);
+        const shotCount = getUrlArtifactCount(source);
 
         let statusUi = normalizeUrlStatus(source?.status, shotCount, source?.updatedAt, source?.lastError);
+        if (isSelectedTarget && startRequested && !err && (statusUi === "error" || statusUi === "stale")) {
+            statusUi = shotCount > 0 ? "processing" : "queued";
+        }
         if (activeCanonical && captureTerminalFailureUrl === activeCanonical && statusUi !== "ready") {
             statusUi = "error";
         }
         return statusUi;
-    }, [activeUrlDoc, targetUrl, docData, captureTerminalFailureUrl]);
+    }, [activeUrlDoc, targetUrl, docData, captureTerminalFailureUrl, startRequested, err]);
 
     const activeUrlCannotGenerate = activeUrlStatusUi === "error" || activeUrlStatusUi === "stale";
 
@@ -5342,6 +5562,36 @@ export default function PreviewPage(): JSX.Element {
         activeUrlCannotGenerate &&
         !!activeUrlIssueHref &&
         dismissedUrlIssueCanonical !== activeUrlIssueHref;
+    const retryCooldownActive = retryCooldownUntil > Date.now();
+    const retryCooldownRemainingMs = retryCooldownActive ? Math.max(0, retryCooldownUntil - retryCooldownTick) : 0;
+    const retryCooldownSeconds = retryCooldownActive ? Math.max(1, Math.ceil(retryCooldownRemainingMs / 1000)) : 0;
+    const retryLabel = retryCooldownActive ? `Retry in ${retryCooldownSeconds}s` : "Retry";
+
+    const activeUrlIssueDetails = useMemo(() => {
+        if (!showActiveUrlIssueWarning) return null;
+        const reasonText =
+            activeUrlStatusUi === "stale"
+                ? "This URL is marked stale from a previous attempt, so retry has to start a fresh scan."
+                : captureTerminalFailureUrl === activeUrlIssueHref
+                    ? "This URL has a terminal failure recorded, so retry clears that state and starts a new /generate run."
+                    : "This URL is currently blocked by saved scan state, so the UI will only retry after the existing failure state is cleared.";
+        return (
+            <div className="space-y-2">
+                <p className="font-semibold text-amber-950">{reasonText}</p>
+                <p>Test the URL in a private or incognito browser tab and make sure it loads without login, captcha, geo-blocking, or a redirect.</p>
+                {captureIssueDetails ? (
+                    <p className="text-amber-900/90">
+                        <span className="font-semibold">Backend response:</span> {captureIssueDetails}
+                    </p>
+                ) : (
+                    <p className="text-amber-900/90">
+                        <span className="font-semibold">Backend response:</span> No backend details were returned for this failure. That usually means the scan was stopped by a duplicate, a temporary backend error, or a site restriction before a fuller response was available.
+                    </p>
+                )}
+                <p>If the page works in a browser but not here, the site is probably blocking automated capture.</p>
+            </div>
+        );
+    }, [activeUrlIssueHref, activeUrlStatusUi, captureIssueDetails, captureTerminalFailureUrl, showActiveUrlIssueWarning]);
 
     useEffect(() => {
         if (!dismissedUrlIssueCanonical) return;
@@ -5356,21 +5606,13 @@ export default function PreviewPage(): JSX.Element {
         const seen = new Set<string>();
         const out: string[] = [];
 
-        const addIfReady = (entry: {
-            url?: string;
-            status?: UrlDoc["status"];
-            screenshotPaths?: unknown;
-            screenshots?: unknown;
-            updatedAt?: any;
-        }) => {
+        const addIfReady = (entry: Partial<UrlDoc>) => {
             const normalized = validateAndNormalizePublicHttpUrl(String(entry?.url || ""));
             if (!normalized) return;
 
-            const screenshotPathCount = Array.isArray(entry?.screenshotPaths) ? entry.screenshotPaths.length : 0;
-            const screenshotMetaCount = Array.isArray(entry?.screenshots) ? entry.screenshots.length : 0;
             const statusUi = normalizeUrlStatus(
                 entry?.status,
-                screenshotPathCount + screenshotMetaCount,
+                getUrlArtifactCount(entry),
                 entry?.updatedAt,
             );
             if (statusUi !== "ready") return;
@@ -5462,6 +5704,10 @@ export default function PreviewPage(): JSX.Element {
                 const prefix =
                     r.screenshotsPrefix ||
                     `kloner-screenshots/${user.uid}/${urlHash}`;
+
+                if (r.zipPath) {
+                    await deleteObject(sRef(storage, r.zipPath)).catch(() => null);
+                }
 
                 if (Array.isArray(r.screenshotPaths) && r.screenshotPaths.length > 0) {
                     await Promise.allSettled(
@@ -5657,6 +5903,7 @@ export default function PreviewPage(): JSX.Element {
             setDocSnap(null);
             setDocData(null);
             setShots([]);
+            setArchiveDownloadUrl("");
 
             if (!user || !targetUrl) {
                 setLoading(false);
@@ -5686,6 +5933,15 @@ export default function PreviewPage(): JSX.Element {
 
                 const initial = (first.data() || {}) as UrlDoc;
                 setDocData(initial);
+                if (isArchiveBackedUrlDoc(initial)) {
+                    const initialArchiveSource = String(initial.zipUrl || initial.zipPath || "").trim();
+                    if (initialArchiveSource) {
+                        const resolved = /^https?:\/\//i.test(initialArchiveSource)
+                            ? initialArchiveSource
+                            : await resolveStorageUrl(initialArchiveSource);
+                        setArchiveDownloadUrl(resolved || initialArchiveSource);
+                    }
+                }
 
                 lastDocShotsKeyRef.current = JSON.stringify({
                     paths: initial.screenshotPaths || [],
@@ -5704,6 +5960,17 @@ export default function PreviewPage(): JSX.Element {
                     async (fresh) => {
                         const data = (fresh.data() || {}) as UrlDoc;
                         setDocData(data);
+                        if (isArchiveBackedUrlDoc(data)) {
+                            const archiveSource = String(data.zipUrl || data.zipPath || "").trim();
+                            if (archiveSource) {
+                                const resolved = /^https?:\/\//i.test(archiveSource)
+                                    ? archiveSource
+                                    : await resolveStorageUrl(archiveSource);
+                                setArchiveDownloadUrl(resolved || archiveSource);
+                            }
+                        } else {
+                            setArchiveDownloadUrl("");
+                        }
 
                         const currentKey = JSON.stringify({
                             paths: data.screenshotPaths || [],
@@ -6225,7 +6492,12 @@ export default function PreviewPage(): JSX.Element {
     );
 
     const retryTrackedUrl = useCallback(
-        (rawUrl: string) => {
+        async (rawUrl: string) => {
+            const now = Date.now();
+            if (retryCooldownUntil && now < retryCooldownUntil) {
+                return;
+            }
+
             const normalized = validateAndNormalizePublicHttpUrl(rawUrl || "");
             if (!normalized) {
                 setErr("That saved URL looks invalid. Delete it from the list to continue.");
@@ -6244,10 +6516,51 @@ export default function PreviewPage(): JSX.Element {
             setCaptureIssueNotice("");
             setHideCaptureQueueStatus(false);
             setDismissedUrlIssueCanonical("");
+            setCaptureTerminalFailureUrl("");
+            setCaptureIssueDetails("");
             setUrlMenuOpen(false);
-            router.push(`/dashboard/view?u=${encodeURIComponent(normalized)}&start=1`, { scroll: false });
+
+            const urlHash = hash64(normalized);
+            if (user) {
+                try {
+                    const urlsCol = collection(db, "kloner_users", user.uid, "kloner_urls");
+                    const [byUrlSnap, byHashSnap] = await Promise.all([
+                        getDocs(query(urlsCol, where("url", "==", normalized))),
+                        getDocs(query(urlsCol, where("urlHash", "==", urlHash))),
+                    ]);
+
+                    const docsToDelete = new Map<string, (typeof byUrlSnap.docs)[number]>();
+                    for (const snap of [byUrlSnap, byHashSnap]) {
+                        for (const docSnap of snap.docs) {
+                            docsToDelete.set(docSnap.id, docSnap);
+                        }
+                    }
+
+                    if (docsToDelete.size > 0) {
+                        await Promise.allSettled(
+                            [...docsToDelete.values()].map((docSnap) => deleteDoc(docSnap.ref))
+                        );
+                        setUrls((prev) => prev.filter((u) => normUrl(String(u?.url || "")) !== normUrl(normalized)));
+                        setUrlDocReloadNonce((n) => n + 1);
+                    }
+                } catch (err) {
+                    console.warn("[dashboard] retry preflight delete failed", err);
+                }
+            }
+
+            if (retryCooldownTimerRef.current) {
+                clearTimeout(retryCooldownTimerRef.current);
+            }
+            const nextUntil = now + URL_SCAN_RETRY_COOLDOWN_MS;
+            setRetryCooldownUntil(nextUntil);
+            retryCooldownTimerRef.current = window.setTimeout(() => {
+                setRetryCooldownUntil(0);
+                retryCooldownTimerRef.current = null;
+            }, URL_SCAN_RETRY_COOLDOWN_MS);
+
+            router.push(`/dashboard/view?u=${encodeURIComponent(normalized)}&start=1&retry=1`, { scroll: false });
         },
-        [canUseScreenshotCredit, push, router]
+        [canUseScreenshotCredit, db, push, router, retryCooldownUntil, user]
     );
 
     const isBackendFetchFailed502 = useCallback((status: number, payload: any): boolean => {
@@ -8082,6 +8395,11 @@ export default function PreviewPage(): JSX.Element {
         return normalized ? normUrl(normalized) : "";
     }, [showUrlAccessInError, targetUrl]);
 
+    const isUrlProcessingError = Boolean(err) && (
+        showActiveUrlIssueWarning ||
+        /failed to process|unable to process|couldn't finish capturing this URL|failed to queue URL capture/i.test(err)
+    );
+
     /* ───────── collections grouping ───────── */
 
     const groupedShots = useMemo(() => {
@@ -8133,7 +8451,7 @@ export default function PreviewPage(): JSX.Element {
 
 
     // somewhere above the JSX return in this component:
-    const hasGhostPending = groupedShots.some((group, groupIndex) => {
+    const hasGhostPending = !err && groupedShots.some((group, groupIndex) => {
         if (groupIndex > 0) return false;
         return group.items.some((s) => pendingByKey[s.path]);
     });
@@ -8756,7 +9074,7 @@ export default function PreviewPage(): JSX.Element {
                         size="compact"
                         disabled={captureLocked}
                         captureStatus={captureStatus}
-                        captureIssueNotice={captureIssueNotice}
+                        captureIssueNotice={showActiveUrlIssueWarning || isUrlProcessingError ? "" : captureIssueNotice}
                         hideCaptureQueueStatus={hideCaptureQueueStatus}
                     />
                 </section>
@@ -8797,18 +9115,22 @@ export default function PreviewPage(): JSX.Element {
                                                 status: docData.status,
                                                 screenshotPaths: docData.screenshotPaths,
                                                 screenshots: docData.screenshots,
+                                                archiveMode: docData.archiveMode,
+                                                zipPath: docData.zipPath,
+                                                zipUrl: docData.zipUrl,
+                                                zipPageCount: docData.zipPageCount,
                                                 updatedAt: docData.updatedAt,
                                                 lastError: (docData as any)?.lastError,
                                             }
                                             : u;
                                         const statusUi = normalizeUrlStatus(
                                             rowStatusSource?.status,
-                                            (Array.isArray(rowStatusSource?.screenshotPaths) ? rowStatusSource.screenshotPaths.length : 0) +
-                                            (Array.isArray(rowStatusSource?.screenshots) ? rowStatusSource.screenshots.length : 0),
+                                            getUrlArtifactCount(rowStatusSource),
                                             rowStatusSource?.updatedAt,
                                             rowStatusSource?.lastError,
                                         );
                                         const isFailedUrl = statusUi === "error" || statusUi === "stale";
+                                        const failedUrlLabel = statusUi === "stale" ? "Stale" : "Failed";
 
                                         return (
                                             <li key={u.id}>
@@ -8851,29 +9173,26 @@ export default function PreviewPage(): JSX.Element {
                                                                 Invalid
                                                             </span>
                                                         ) : isFailedUrl ? (
-                                                            <span className="ml-2 shrink-0 inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700">
+                                                            <button
+                                                                type="button"
+                                                                onClick={(e) => {
+                                                                    e.preventDefault();
+                                                                    e.stopPropagation();
+                                                                    retryTrackedUrl(u.url);
+                                                                }}
+                                                                disabled={retryCooldownActive}
+                                                                className="ml-2 inline-flex shrink-0 items-center gap-1.5 rounded-full border border-amber-300 bg-amber-100 px-2.5 py-1 text-[11px] font-semibold text-amber-900 shadow-sm transition hover:bg-amber-200 disabled:cursor-not-allowed disabled:opacity-50"
+                                                                title="Retry scanning URL"
+                                                                aria-label={`Retry scanning ${u.url}`}
+                                                            >
                                                                 <MessageCircleWarning className="h-3 w-3" />
-                                                                {statusUi === "stale" ? "Stale" : "Failed"}
-                                                            </span>
+                                                                <span>{failedUrlLabel}</span>
+                                                                <span className="mx-0.5 h-3 w-px bg-amber-300/80" />
+                                                                <RotateCcw className="h-3 w-3" />
+                                                                <span>{retryLabel}</span>
+                                                            </button>
                                                         ) : null}
                                                     </button>
-
-                                                    {isValid && isFailedUrl ? (
-                                                        <button
-                                                            type="button"
-                                                            onClick={(e) => {
-                                                                e.preventDefault();
-                                                                e.stopPropagation();
-                                                                retryTrackedUrl(u.url);
-                                                            }}
-                                                            className="inline-flex h-8 items-center justify-center gap-1 rounded-md border border-amber-200 bg-amber-50 px-2 text-amber-700 hover:bg-amber-100"
-                                                            title="Retry scanning URL"
-                                                            aria-label={`Retry scanning ${u.url}`}
-                                                        >
-                                                            <RotateCcw className="h-3.5 w-3.5" />
-                                                            <span className="text-[11px] font-semibold">Retry</span>
-                                                        </button>
-                                                    ) : null}
 
                                                     <button
                                                         type="button"
@@ -8899,59 +9218,22 @@ export default function PreviewPage(): JSX.Element {
                 </section>
 
                 {showActiveUrlIssueWarning && activeUrlDoc?.url ? (
-                    <div className="mt-2 flex items-start justify-between gap-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                        <div className="min-w-0 flex-1">
-                            <div className="inline-flex items-center gap-1.5 font-semibold text-amber-900">
-                                <MessageCircleWarning className="h-3.5 w-3.5" />
-                                URL scan issue detected
-                            </div>
-                            <p className="mt-1 text-xs text-amber-800">
-                                This URL cannot be used to create websites from until a successful scan completes.
-                            </p>
-                            {activeUrlIssueHref ? (
-                                <div className="mt-2 flex flex-wrap items-center gap-2">
-                                    <span
-                                        className="inline-flex max-w-full items-center rounded-md border border-amber-200 bg-white px-2 py-1 font-mono text-[11px] text-amber-900"
-                                        title={activeUrlIssueHref}
-                                    >
-                                        {truncateMiddle(activeUrlIssueHref, 76)}
-                                    </span>
-                                    <a
-                                        href={activeUrlIssueHref}
-                                        target="_blank"
-                                        rel="noopener noreferrer nofollow"
-                                        className="inline-flex items-center gap-1 rounded-md border border-amber-200 bg-white px-2.5 py-1 text-xs font-semibold text-amber-800 transition hover:bg-amber-100"
-                                        title="Open URL in a new tab"
-                                    >
-                                        <span>Open URL</span>
-                                        <ExternalLink className="h-3 w-3" />
-                                    </a>
-                                </div>
-                            ) : null}
-                        </div>
-                        <div className="flex shrink-0 items-start gap-2">
-                            <button
-                                type="button"
-                                onClick={() => retryTrackedUrl(activeUrlDoc.url)}
-                                className="inline-flex h-8 items-center justify-center gap-1 rounded-md border border-amber-300 bg-white px-2.5 text-xs font-semibold text-amber-800 hover:bg-amber-100"
-                                title="Retry scanning this URL"
-                            >
-                                <RotateCcw className="h-3.5 w-3.5" />
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => setDismissedUrlIssueCanonical(activeUrlIssueHref || "")}
-                                className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-amber-200 bg-white/80 text-amber-700 transition hover:bg-white hover:text-amber-900"
-                                aria-label="Dismiss URL scan issue warning"
-                                title="Dismiss"
-                            >
-                                <X className="h-3.5 w-3.5" />
-                            </button>
-                        </div>
-                    </div>
+                    <AmberIssueBanner
+                        message="URL scan issue detected"
+                        onDismiss={() => setDismissedUrlIssueCanonical(activeUrlIssueHref || "")}
+                        onRetry={() => retryTrackedUrl(activeUrlDoc?.url || "")}
+                        retryDisabled={retryCooldownActive}
+                        retryLabel={retryLabel}
+                        details={activeUrlIssueDetails}
+                    />
                 ) : null}
 
-                {err && !showActiveUrlIssueWarning && !(showUrlAccessInError && activeUrlCannotGenerate) ? (
+                {err && isUrlProcessingError && !showActiveUrlIssueWarning ? (
+                    <AmberIssueBanner
+                        message={err}
+                        onDismiss={() => setErr("")}
+                    />
+                ) : err && !showActiveUrlIssueWarning && !(showUrlAccessInError && activeUrlCannotGenerate) ? (
                     <div className="mt-2 flex items-start justify-between gap-3 rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">
                         <div className="min-w-0 flex-1">
                             <span>{err}</span>
@@ -9007,16 +9289,59 @@ export default function PreviewPage(): JSX.Element {
                 ) : null}
 
                 {info ? (
-                    <div
-                        className={
-                            "mt-2 rounded-md px-3 py-2 text-sm " +
-                            (isDuplicateUrlConfirmationMessage(info)
-                                ? "border border-amber-300 bg-amber-50 text-amber-800"
-                                : "border border-neutral-300 bg-neutral-50 text-neutral-800")
-                        }
-                    >
-                        {info}
-                    </div>
+                    isDuplicateUrlConfirmationMessage(info) ? (
+                        <AmberIssueBanner
+                            message={info}
+                            onDismiss={() => setInfo("")}
+                        />
+                    ) : (
+                        <div className="mt-2 rounded-md border border-neutral-300 bg-neutral-50 px-3 py-2 text-sm text-neutral-800">
+                            {info}
+                        </div>
+                    )
+                ) : null}
+
+                {isArchiveBackedUrlDoc(docData) ? (
+                    <section className="mt-4 rounded-xl border border-dashed border-neutral-300 bg-neutral-50 px-3 py-3 sm:px-4">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div>
+                                <p className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500">
+                                    Archive build
+                                </p>
+                                <p className="text-sm font-medium text-neutral-800">
+                                    ZIP archive ready for {targetUrl}
+                                </p>
+                            </div>
+                            <span className="rounded-full border border-neutral-300 bg-white px-2.5 py-1 text-xs text-neutral-700">
+                                {typeof docData?.zipPageCount === "number" && docData.zipPageCount > 0
+                                    ? `${docData.zipPageCount} pages`
+                                    : "Archive ready"}
+                            </span>
+                        </div>
+
+                        <div className="mt-3 flex flex-wrap items-center gap-2">
+                            {archiveDownloadUrl ? (
+                                <a
+                                    href={archiveDownloadUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer nofollow"
+                                    className="inline-flex items-center gap-1 rounded-md border border-neutral-200 bg-white px-2.5 py-1 text-xs font-semibold text-neutral-700 transition hover:bg-neutral-100"
+                                >
+                                    <span>Download ZIP</span>
+                                    <ExternalLink className="h-3 w-3" />
+                                </a>
+                            ) : null}
+                            {docData?.zipPath ? (
+                                <span className="inline-flex max-w-full items-center rounded-md border border-neutral-200 bg-white px-2 py-1 font-mono text-[11px] text-neutral-700">
+                                    {truncateMiddle(docData.zipPath, 84)}
+                                </span>
+                            ) : null}
+                        </div>
+
+                        <p className="mt-3 text-xs text-neutral-600">
+                            This build was mirrored into a zip archive instead of screenshots.
+                        </p>
+                    </section>
                 ) : null}
 
                 {showDevUrlScreenshots && targetUrl ? (
@@ -9062,7 +9387,7 @@ export default function PreviewPage(): JSX.Element {
                             </div>
                         ) : (
                             <p className="mt-3 text-xs text-neutral-600">
-                                {loading || captureStatus === "queued" || captureStatus === "processing"
+                                {!err && (loading || captureStatus === "queued" || captureStatus === "processing")
                                     ? "Waiting for screenshots to be captured for this URL..."
                                     : "No screenshots found yet for this URL."}
                             </p>
@@ -11193,11 +11518,17 @@ export default function PreviewPage(): JSX.Element {
 
                 {
                     showWebsitePrePaywall && (
-                        <div className="website-paywall-overlay fixed inset-0 z-[12049] opacity-0 animate-[website-paywall-fade-in_900ms_ease-out_forwards]">
-                            <div className="absolute inset-0 bg-black/70 backdrop-blur-sm opacity-0 animate-[website-paywall-backdrop-fade-in_900ms_ease-out_forwards]" />
+                        <motion.div
+                            className="website-paywall-overlay fixed inset-0 z-[12049]"
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            transition={{ duration: 1.15, ease: [0.22, 1, 0.36, 1] }}
+                        >
+                            <div className="absolute inset-0 bg-black/70" />
 
                             <div className="absolute inset-0 flex items-start justify-center overflow-y-auto px-4 py-6 sm:items-center sm:px-6 sm:py-8">
-                                <div className="relative w-full max-w-2xl max-h-[calc(100dvh-3rem)] overflow-y-auto overscroll-contain rounded-[32px] border border-neutral-200 bg-white shadow-[0_30px_120px_rgba(0,0,0,0.24)] opacity-0 translate-y-2 animate-[website-paywall-panel-in_900ms_ease-out_forwards] sm:max-h-[calc(100dvh-4rem)]">
+                                <div className="relative w-full max-w-2xl max-h-[calc(100dvh-3rem)] overflow-y-auto overscroll-contain rounded-[32px] border border-neutral-200 bg-white shadow-[0_30px_120px_rgba(0,0,0,0.24)] sm:max-h-[calc(100dvh-4rem)]">
                                     <div className="p-5 sm:p-8 lg:p-10">
                                         <div className="max-w-xl">
                                             <h3 className="text-3xl sm:text-4xl tracking-tight text-neutral-900">
@@ -11320,7 +11651,7 @@ export default function PreviewPage(): JSX.Element {
                                     </div>
                                 </div>
                             </div>
-                        </div>
+                        </motion.div>
                     )
                 }
 

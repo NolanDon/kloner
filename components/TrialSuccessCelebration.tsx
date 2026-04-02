@@ -4,8 +4,6 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import Lottie from "lottie-react";
 import { CheckCircle2, X } from "lucide-react";
-import Image from "next/image";
-import logo from "@/public/images/orange_logo.png";
 
 const CONFETTI_URL = "/lotties/confetti.json";
 
@@ -44,14 +42,31 @@ export default function TrialSuccessCelebration({ open, onDismiss }: TrialSucces
 
     if (!open || typeof document === "undefined") return null;
 
+    const handleDismiss = () => {
+        onDismiss();
+    };
+
     return createPortal(
         <div className="fixed inset-0 z-[26000]">
-            <div className="absolute inset-0 bg-white/72 backdrop-blur-[8px]" onClick={onDismiss} />
-            <div className="relative flex h-full items-center justify-center px-4 py-8">
-                <div className="relative w-full max-w-lg overflow-hidden rounded-[28px] border border-neutral-200 bg-white text-neutral-900 shadow-[0_28px_120px_rgba(15,23,42,0.16)]">
+            <div className="absolute inset-0 bg-white/72 backdrop-blur-[8px]" onClick={handleDismiss} />
+            {animationData && !animationError ? (
+                <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden">
+                    <Lottie
+                        animationData={animationData}
+                        loop={true}
+                        autoplay={true}
+                        className="absolute inset-0 h-full w-full opacity-70"
+                    />
+                </div>
+            ) : null}
+            <div className="relative z-10 flex h-full items-center justify-center px-4 py-8">
+                <div
+                    className="relative w-full max-w-lg overflow-hidden rounded-[28px] border border-neutral-200 bg-white text-neutral-900 shadow-[0_28px_120px_rgba(15,23,42,0.16)]"
+                    onClick={(e) => e.stopPropagation()}
+                >
                     <button
                         type="button"
-                        onClick={onDismiss}
+                        onClick={handleDismiss}
                         className="absolute right-4 top-4 inline-flex h-8 w-8 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-500 transition hover:bg-neutral-50 hover:text-neutral-800"
                         aria-label="Close celebration"
                     >
@@ -60,18 +75,7 @@ export default function TrialSuccessCelebration({ open, onDismiss }: TrialSucces
 
                     <div className="relative px-6 pb-6 pt-8 sm:px-8 sm:pb-8">
                         <div className="relative flex flex-col items-center text-center">
-                            <div className="mb-0.5">
-                                <Image
-                                    src={logo}
-                                    alt="Kloner"
-                                    width={120}
-                                    height={36}
-                                    className="h-auto w-[120px] object-contain"
-                                    priority
-                                />
-                            </div>
-
-                            <div className="mb-2 inline-flex h-12 w-12 items-center justify-center rounded-full border border-sky-100 bg-sky-50 text-sky-600">
+                            <div className="mb-2 inline-flex h-12 w-12 items-center justify-center rounded-full border border-emerald-100 bg-emerald-50 text-emerald-600">
                                 <CheckCircle2 className="h-6 w-6" />
                             </div>
 
@@ -81,21 +85,27 @@ export default function TrialSuccessCelebration({ open, onDismiss }: TrialSucces
                             <h3 className="mt-2 text-3xl font-normal tracking-tight text-neutral-900 sm:text-4xl">
                                 Your Kloner trial is ready.
                             </h3>
-                            <p className="mt-3 max-w-md text-sm leading-6 text-neutral-600">
-                                Start from the dashboard, use Generate website for a landing page, or describe the app in the top prompt if you want a Next.js build.
-                            </p>
+                            <div className="mt-3 max-w-md rounded-[22px] border border-neutral-200 bg-white px-4 py-3 text-left shadow-sm">
+                                <p className="text-sm font-semibold text-neutral-900">What to do next:</p>
+                                <ol className="mt-2 space-y-2 text-sm leading-6 text-neutral-700">
+                                    <li>1. Click <span className="font-semibold">Let&apos;s go</span>.</li>
+                                    <li>2. Pick <span className="font-semibold text-[#f55f2a]">Website (NextJS)</span> for AI, databases, or user accounts.</li>
+                                    <li>3. Pick <span className="font-semibold text-[#f55f2a]">Landing Page (HTML)</span> for something simple and fast.</li>
+                                    <li>4. Try <span className="font-semibold text-[#f55f2a]">Start from template</span> if you want inspiration from the community.</li>
+                                </ol>
+                                <p className="mt-3 text-sm leading-6 text-neutral-600">
+                                    You&apos;re in the right place now. Kloner is built to help you move from idea to launch quickly.
+                                </p>
+                            </div>
 
-                            <div className="mt-5 w-full max-w-md rounded-[24px] border border-neutral-200 bg-neutral-50 px-4 py-4">
-                                {animationData && !animationError ? (
-                                    <div className="pointer-events-none relative h-40 overflow-hidden rounded-[18px] border border-neutral-200 bg-white">
-                                        <Lottie
-                                            animationData={animationData}
-                                            loop={true}
-                                            autoplay={true}
-                                            className="absolute inset-0 h-full w-full opacity-80"
-                                        />
-                                    </div>
-                                ) : null}
+                            <div className="mt-5 flex justify-center">
+                                <button
+                                    type="button"
+                                    onClick={handleDismiss}
+                                    className="inline-flex items-center justify-center rounded-full bg-[#f55f2a] px-5 py-3 text-sm font-semibold text-white shadow-[0_16px_36px_rgba(245,95,42,0.24)] transition hover:bg-[#f3602c]"
+                                >
+                                    Let&apos;s go!
+                                </button>
                             </div>
                         </div>
                     </div>

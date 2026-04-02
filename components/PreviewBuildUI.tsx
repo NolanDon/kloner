@@ -59,8 +59,16 @@ export default function PreviewBuildUI({ userId, appId, code }: PreviewBuildUIPr
         downloading: 'Downloading',
         installing: 'Installing',
         building: 'Building',
+        starting: 'Starting',
+        mirroring: 'Mirroring site',
+        packaging: 'Packaging archive',
+        uploading: 'Uploading archive',
+        extracting: 'Extracting archive',
+        generating: 'Generating preview',
+        writing_files: 'Writing files',
         starting_app: 'Starting app',
         ready: 'Ready',
+        error: 'Error',
         stopped: 'Stopped'
       };
       return stageLabels[data.uiStage] || 'Working...';

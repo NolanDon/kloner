@@ -26,6 +26,11 @@ export interface UrlDoc {
     screenshotsPrefix?: string;
     screenshotPaths?: string[];
     screenshots?: any[];
+    archiveMode?: string | boolean | null;
+    zipPath?: string | null;
+    zipUrl?: string | null;
+    zipBytes?: number | null;
+    zipPageCount?: number | null;
     attemptCount?: number;
     lastError?: string | null;
     retry?: boolean;

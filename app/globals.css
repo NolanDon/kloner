@@ -55,6 +55,7 @@ body {
     .website-paywall-carousel {
         animation: website-paywall-marquee 28s linear infinite;
         will-change: transform;
+        transform: translate3d(0, 0, 0);
     }
 
     .website-paywall-carousel:hover {
@@ -85,11 +86,18 @@ body {
 
     @keyframes website-paywall-marquee {
         0% {
-            transform: translateX(0);
+            transform: translate3d(0, 0, 0);
         }
 
         100% {
-            transform: translateX(-50%);
+            transform: translate3d(-50%, 0, 0);
+        }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        .website-paywall-carousel {
+            animation: none;
+            transform: none;
         }
     }
 
