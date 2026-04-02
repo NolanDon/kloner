@@ -4153,7 +4153,13 @@ export default function PreviewPage(): JSX.Element {
 
                 const nextTier =
                     typeof creditsMap.tier === "string" ? creditsMap.tier.trim().toLowerCase() : "";
-                if (nextTier === "free" || nextTier === "pro" || nextTier === "agency" || nextTier === "enterprise") {
+                const tierOverrideReason =
+                    typeof creditsMap.tierOverrideReason === "string"
+                        ? creditsMap.tierOverrideReason.trim().toLowerCase()
+                        : "";
+                if (tierOverrideReason === "trial_cancelled") {
+                    setUserTier("free");
+                } else if (nextTier === "free" || nextTier === "pro" || nextTier === "agency" || nextTier === "enterprise") {
                     setUserTier(nextTier as UserTier);
                 }
 

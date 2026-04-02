@@ -2,6 +2,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAdminAuth, CSRF_COOKIE, SESSION_COOKIE_NAME } from "../../_lib/auth";
 import { captureCriticalEvent, captureException } from "@/lib/observability";
+import { getClientIp } from "../../_lib/route-guard";
+import { getSignupBlockDecision } from "@/src/lib/signupBlocklist";
 
 const COOKIE = SESSION_COOKIE_NAME;
 const MAX_AGE_MS = 5 * 24 * 60 * 60 * 1000; // 5 days
@@ -25,7 +27,23 @@ export async function POST(req: NextRequest) {
 
     try {
         const auth = getAdminAuth();
-        await auth.verifyIdToken(idToken, true);
+        const decoded = await auth.verifyIdToken(idToken, true);
+        const decision = getSignupBlockDecision({
+            email: typeof decoded.email === "string" ? decoded.email : null,
+            ip: getClientIp(req),
+        });
+
+        if (decision.blocked) {
+            return NextResponse.json(
+                { error: "Sign-up blocked" },
+                {
+                    status: 403,
+                    headers: {
+                        "x-observability-skip-status-alert": "1",
+                    },
+                },
+            );
+        }
 
         const cookie = await auth.createSessionCookie(idToken, {
             expiresIn: MAX_AGE_MS,

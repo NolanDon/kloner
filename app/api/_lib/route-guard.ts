@@ -61,7 +61,7 @@ function readBearerToken(req: NextRequest): string | null {
     return token || null;
 }
 
-function getClientIp(req: NextRequest): string {
+export function getClientIp(req: NextRequest): string {
     const candidates = [
         req.headers.get("x-forwarded-for"),
         req.headers.get("x-real-ip"),

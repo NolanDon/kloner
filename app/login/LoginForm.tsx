@@ -16,6 +16,7 @@ import {
     onAuthStateChanged,
     signInWithEmailAndPassword,
     createUserWithEmailAndPassword,
+    deleteUser,
     sendPasswordResetEmail,
     getIdToken,
     getAdditionalUserInfo,
@@ -76,6 +77,31 @@ function normalizeError(e: unknown): string {
     }
     if (e instanceof Error) return e.message;
     return "Request failed.";
+}
+
+async function checkSignupBlocklist(email?: string | null): Promise<{ blocked: boolean; reason: string | null }> {
+    try {
+        const res = await fetch("/api/private/signup-blocklist", {
+            method: "POST",
+            headers: {
+                "content-type": "application/json",
+            },
+            body: JSON.stringify({ email: email || null }),
+            credentials: "include",
+        });
+
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+            return { blocked: false, reason: null };
+        }
+
+        return {
+            blocked: !!data?.blocked,
+            reason: typeof data?.reason === "string" && data.reason.trim() ? data.reason.trim() : null,
+        };
+    } catch {
+        return { blocked: false, reason: null };
+    }
 }
 
 async function ensureBestAuthPersistence(): Promise<void> {
@@ -486,11 +512,26 @@ export default function LoginPage(): JSX.Element {
         setLoading(true);
         try {
             await ensureBestAuthPersistence();
+            const precheck = await checkSignupBlocklist();
+            if (precheck.blocked) {
+                setErr(precheck.reason || "This signup is blocked.");
+                setLoading(false);
+                return;
+            }
+
             const provider = new GoogleAuthProvider();
             provider.setCustomParameters({ prompt: "select_account" });
 
             const cred = await signInWithPopup(auth, provider);
             const isNew = !!getAdditionalUserInfo(cred)?.isNewUser;
+
+            const postcheck = await checkSignupBlocklist(cred.user.email);
+            if (postcheck.blocked) {
+                await deleteUser(cred.user).catch(() => null);
+                setErr(postcheck.reason || "This signup is blocked.");
+                setLoading(false);
+                return;
+            }
 
             await setSessionCookie();
 
@@ -519,11 +560,27 @@ export default function LoginPage(): JSX.Element {
             await ensureBestAuthPersistence();
             if (!email || !pw) throw new Error("Enter email and password.");
 
+            const blockcheck = await checkSignupBlocklist(mode === "signup" ? email.trim() : null);
+            if (mode === "signup" && blockcheck.blocked) {
+                setErr(blockcheck.reason || "This signup is blocked.");
+                setLoading(false);
+                return;
+            }
+
             if (mode === "signin") {
                 await signInWithEmailAndPassword(auth, email.trim(), pw);
                 await setSessionCookie();
             } else {
                 const cred = await createUserWithEmailAndPassword(auth, email.trim(), pw);
+
+                const postcheck = await checkSignupBlocklist(cred.user.email);
+                if (postcheck.blocked) {
+                    await deleteUser(cred.user).catch(() => null);
+                    setErr(postcheck.reason || "This signup is blocked.");
+                    setLoading(false);
+                    return;
+                }
+
                 await setSessionCookie();
                 await ensureUserCreatedAt(cred.user);
                 await attachAffiliateToUserDoc(cred.user);
