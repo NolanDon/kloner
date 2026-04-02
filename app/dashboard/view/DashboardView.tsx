@@ -3143,6 +3143,10 @@ export default function PreviewPage(): JSX.Element {
         if (didStripeRestoreRef.current) return;
         didStripeRestoreRef.current = true;
 
+        if (isTrialSuccess) {
+            setShowTrialSuccessCelebration(true);
+        }
+
         void (async () => {
             if (isTrialSuccess) {
                 setStripeStatus("trialing");
