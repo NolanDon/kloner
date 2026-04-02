@@ -51,9 +51,9 @@ export default function TrialSuccessCelebration({ open, onDismiss }: TrialSucces
     };
 
     return createPortal(
-        <div className="fixed inset-0 z-[26000]">
+        <div className="fixed inset-0 z-[26000] simple-fade-in">
             <div
-                className="absolute inset-0 bg-white/72 backdrop-blur-[8px]"
+                className="absolute inset-0 bg-white/72 backdrop-blur-[8px] simple-fade-in"
                 onMouseDown={(e) => {
                     e.preventDefault();
                     handleDismiss();
@@ -64,15 +64,15 @@ export default function TrialSuccessCelebration({ open, onDismiss }: TrialSucces
                 <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden">
                     <Lottie
                         animationData={animationData}
-                        loop={true}
+                        loop={false}
                         autoplay={true}
                         className="absolute inset-0 h-full w-full opacity-70"
                     />
                 </div>
             ) : null}
-            <div className="relative z-20 flex h-full items-center justify-center px-4 py-8">
+            <div className="relative z-20 flex h-full items-center justify-center px-4 py-8 simple-fade-in">
                 <div
-                    className="pointer-events-auto relative w-full max-w-lg overflow-hidden rounded-[28px] border border-neutral-200 bg-white text-neutral-900 shadow-[0_28px_120px_rgba(15,23,42,0.16)]"
+                    className="pointer-events-auto relative w-full max-w-lg overflow-hidden rounded-[28px] border border-neutral-200 bg-white text-neutral-900 shadow-[0_28px_120px_rgba(15,23,42,0.16)] simple-fade-in"
                     onClick={(e) => e.stopPropagation()}
                 >
                     <button
@@ -100,7 +100,7 @@ export default function TrialSuccessCelebration({ open, onDismiss }: TrialSucces
                             </div>
 
                             <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#f55f2a]">
-                                Trial active
+                                Welcome
                             </p>
                             <h3 className="mt-2 text-3xl font-normal tracking-tight text-neutral-900 sm:text-4xl">
                                 Your Kloner trial is ready.
@@ -109,7 +109,6 @@ export default function TrialSuccessCelebration({ open, onDismiss }: TrialSucces
                                 <p className="text-sm font-semibold text-neutral-900">What to do next:</p>
                                 <ol className="mt-2 space-y-2 text-sm leading-6 text-neutral-700">
                                     <li>After closing this modal, click <span className="font-semibold">Generate Website</span> and choose from the following:</li>
-                                    {/* <li>1. Click <span className="font-semibold">Let&apos;s go</span>.</li> */}
                                     <li>1. Pick <span className="font-semibold text-[#f55f2a]">Website (NextJS)</span> for AI, databases, or user accounts.</li>
                                     <li>2. Pick <span className="font-semibold text-[#f55f2a]">Landing Page (HTML)</span> for something simple and fast.</li>
                                     <li>3. Try <span className="font-semibold text-[#f55f2a]">Start from template</span> if you want inspiration from the community.</li>

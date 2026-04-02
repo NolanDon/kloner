@@ -93,10 +93,10 @@ export function AnimatedCreditCard() {
                 ref={ref}
                 className="
           relative select-none
-          w-[88vw] max-w-[380px] md:max-w-[420px]
+                    w-[72vw] max-w-[270px] md:max-w-[294px]
           aspect-[85/54] rounded-2xl md:rounded-3xl
-          shadow-[0_25px_50px_-12px_rgba(0,0,0,0.35)]
-          ring-1 ring-black/5
+                                        shadow-[0_28px_70px_-18px_rgba(245,95,42,0.38),0_18px_48px_-18px_rgba(251,146,60,0.26)]
+                                        ring-1 ring-white/20
           overflow-hidden
           will-change-transform
           cursor-pointer
@@ -112,7 +112,7 @@ export function AnimatedCreditCard() {
                 <div
                     className="
             absolute inset-0
-            bg-[radial-gradient(120%_80%_at_10%_10%,#1e90ff_0%,#7b61ff_35%,#b14bff_60%,#111827_100%)]
+                    bg-[radial-gradient(120%_80%_at_10%_10%,#ffd28a_0%,#ffb347_34%,#f97316_62%,#2b160d_100%)]
           "
                 />
 
@@ -142,7 +142,7 @@ export function AnimatedCreditCard() {
                 >
                     <div className="flex items-center gap-2">
                         <div className="h-6 w-6 rounded-full bg-white/90" />
-                        <div className="h-6 w-10 rounded-full bg-white/60" />
+                        <div className="h-6 w-10 rounded-full bg-white/55" />
                     </div>
                     <div className="text-white/90 text-xs tracking-[0.18em] uppercase">
                         Kloner
@@ -156,9 +156,9 @@ export function AnimatedCreditCard() {
                             className="w-12 h-9 rounded-md"
                             style={{
                                 background:
-                                    "linear-gradient(160deg, #d9d9d9, #b8b8b8 40%, #efefef 60%, #9d9d9d)",
+                                    "linear-gradient(160deg, rgba(255,248,240,0.96), rgba(255,216,170,0.7) 42%, rgba(255,243,228,0.92) 64%, rgba(255,184,107,0.55))",
                                 boxShadow:
-                                    "inset 0 0 0 1px rgba(0,0,0,0.35), inset 0 0 0 2px rgba(255,255,255,0.35)",
+                                    "inset 0 0 0 1px rgba(255,255,255,0.32), inset 0 0 0 2px rgba(255,255,255,0.12)",
                             }}
                         />
                         <div className="text-white/80 text-[10px] tracking-wide">
@@ -210,7 +210,7 @@ export function AnimatedCreditCard() {
                     className="absolute bottom-2 md:bottom-4 right-5 w-12 h-9 rounded-md opacity-80"
                     style={{
                         background:
-                            "conic-gradient(from 90deg at 50% 50%, #b3ffcb, #6cc8ff, #ff9bf2, #b3ffcb)",
+                            "conic-gradient(from 90deg at 50% 50%, #ffd27a, #ff9f43, #f97316, #ffd27a)",
                         mixBlendMode: "screen",
                         translateZ: 40,
                     } as any}

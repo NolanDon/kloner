@@ -4,6 +4,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import NavBar from "@/components/NavBar";
 import Footer from "@/components/Footer";
+import { AnimatedCreditCard } from "@/components/AnimatedCreditCard";
 import { useModal } from "@/components/ui/ModalContext";
 import { useAuth } from "@/src/hooks/useAuth";
 import { Check, Loader2 } from "lucide-react";
@@ -81,7 +82,7 @@ const tiers: Tier[] = [
         blurb: "For shipping real client work fast without rebuilding from scratch.",
         topFeatures: [
             "100 screenshot credits (10 site captures /mo)",
-            "400 preview credits (15 site generations /mo)",
+            "400 preview credits (25 site generations /mo)",
             "AI editing support",
         ],
         allFeatures: [
@@ -520,105 +521,21 @@ export default function PriceClient(): JSX.Element {
                             <span>Kloner · Pricing</span>
                         </div>
 
-                        <div className="rounded-3xl border border-neutral-200 bg-gradient-to-br from-white via-neutral-50 to-neutral-100 px-6 py-7 sm:px-8 sm:py-9 shadow-sm">
-                            <h1 className="text-3xl sm:text-4xl tracking-tight text-neutral-900">
-                                Plans & credits
-                            </h1>
-                            <p className="mt-1 max-w-2xl text-sm text-neutral-600">
-                                Choose a plan, then top up AI credits any time you need extra runway.
-                            </p>
+                        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(220px,294px)] lg:items-center lg:gap-8">
+                            <div className="rounded-3xl border border-neutral-200 bg-gradient-to-br from-white via-neutral-50 to-neutral-100 px-6 py-7 shadow-sm sm:px-8 sm:py-9">
+                                <h1 className="text-3xl sm:text-4xl tracking-tight text-neutral-900">
+                                    Plans & credits
+                                </h1>
+                                <p className="mt-1 max-w-2xl text-sm text-neutral-600">
+                                    Choose a plan, then top up AI credits any time you need extra runway.
+                                </p>
+                            </div>
+
+                            <div className="flex justify-center lg:justify-end">
+                                <AnimatedCreditCard />
+                            </div>
                         </div>
                     </header>
-
-                    <div className="mt-8 grid gap-4 md:grid-cols-2">
-                        <div className="rounded-2xl border border-black/10 bg-white p-5 shadow-sm">
-                            <div className="flex items-start justify-between gap-4">
-                                <div className="min-w-0">
-                                    <p className="text-[11px] uppercase tracking-[0.16em] text-neutral-500">
-                                        Your plan
-                                    </p>
-                                    <p className="mt-1 text-lg font-semibold text-neutral-900">
-                                        You’re on {planLabel}
-                                    </p>
-                                    <p className="mt-1 text-[12px] text-neutral-600">
-                                        Upgrade anytime. Cancel anytime.
-                                    </p>
-                                </div>
-
-                                <a
-                                    href={manageHref}
-                                    className="inline-flex items-center justify-center rounded-full border border-neutral-200 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-800 hover:bg-neutral-50"
-                                >
-                                    Manage
-                                </a>
-                            </div>
-                        </div>
-
-                        <div className="rounded-2xl border border-black/10 bg-white p-5 shadow-sm">
-                            <div className="flex items-start justify-between gap-4">
-                                <div className="min-w-0">
-                                    <p className="text-[11px] uppercase tracking-[0.16em] text-neutral-500">
-                                        AI credits
-                                    </p>
-                                    <p className="mt-1 text-lg font-semibold text-neutral-900">
-                                        {creditsDisplay.remainingLabel} <span className="text-neutral-400">/</span>{" "}
-                                        {creditsDisplay.totalLabel}
-                                    </p>
-                                    <p className="mt-1 text-[12px] text-neutral-600">
-                                        Used for AI edits inside the builder. 1 AI edit = {AI_EDIT_CREDIT_COST} credits.
-                                    </p>
-                                </div>
-
-                                <div className="inline-flex items-center gap-2">
-                                    {TOPUP_COMING_SOON ? (
-                                        <span className="inline-flex items-center rounded-full border border-neutral-200 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-800">
-                                            Coming soon
-                                        </span>
-                                    ) : null}
-                                    <a
-                                        href="#topup"
-                                        className="inline-flex items-center justify-center rounded-full px-3 py-1.5 text-xs font-semibold text-white hover:brightness-95"
-                                        style={{ backgroundColor: ACCENT }}
-                                    >
-                                        Details
-                                    </a>
-                                </div>
-                            </div>
-
-                            {creditsDisplay.showBar ? (
-                                <div className="mt-4">
-                                    <div className="h-2 w-full overflow-hidden rounded-full bg-neutral-100">
-                                        <div
-                                            className="h-full rounded-full"
-                                            style={{ width: `${creditsDisplay.pct}%`, backgroundColor: ACCENT }}
-                                        />
-                                    </div>
-
-                                    <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-neutral-600">
-                                        {periodEndLabel ? (
-                                            <span className="inline-flex items-center gap-2">
-                                                <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ backgroundColor: ACCENT }} />
-                                                Resets {periodEndLabel}
-                                            </span>
-                                        ) : null}
-                                        {creditsDisplay.hasBonus ? (
-                                            <span className="inline-flex items-center gap-2">
-                                                <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ backgroundColor: ACCENT }} />
-                                                Includes top-ups
-                                            </span>
-                                        ) : (
-                                            <span className="inline-flex items-center gap-2">
-                                                <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ backgroundColor: ACCENT }} />
-                                                No rollover
-                                            </span>
-                                        )}
-                                    </div>
-                                </div>
-                            ) : (
-                                <div className="mt-4 h-2 w-full rounded-full bg-neutral-100" />
-                            )}
-                        </div>
-                    </div>
 
                     <div className="mt-10 grid gap-6 md:grid-cols-3">
                         {tiers.map((tier) => {
@@ -627,104 +544,123 @@ export default function PriceClient(): JSX.Element {
                             const isLoading =
                                 (isPro && loadingPlan === "pro") ||
                                 (isAgency && loadingPlan === "agency");
+                            const rows = isPro
+                                ? [
+                                      { label: "Screenshot credits", value: "100 / month" },
+                                      { label: "Preview credits", value: "400 / month" },
+                                      { label: "AI credits", value: "300 / month" },
+                                      { label: "Pages per build", value: "10" },
+                                      { label: "Support", value: "Priority" },
+                                  ]
+                                : isAgency
+                                    ? [
+                                          { label: "Screenshot credits", value: "400 / month" },
+                                          { label: "Preview credits", value: "1500 / month" },
+                                          { label: "AI credits", value: "1200 / month" },
+                                          { label: "Pages per build", value: "15" },
+                                          { label: "Support", value: "Priority" },
+                                      ]
+                                    : [
+                                          { label: "Screenshot credits", value: "30 / month" },
+                                          { label: "Preview credits", value: "Community templates" },
+                                          { label: "AI credits", value: "15 / month" },
+                                          { label: "Pages per build", value: "0" },
+                                          { label: "Support", value: "Community" },
+                                      ];
+                            const headerClass = isPro
+                                ? "bg-gradient-to-r from-[#f55f2a] via-[#ff7a38] to-[#ff9b4f] text-white"
+                                : isAgency
+                                    ? "bg-gradient-to-r from-[#fff0e3] via-[#fff7f0] to-[#ffe0c6] text-neutral-900"
+                                    : "bg-gradient-to-r from-[#fffaf6] via-[#fff2e8] to-[#fffaf3] text-neutral-900";
+                            const headerBadgeClass = isPro
+                                ? "border-white/20 bg-white/15 text-white"
+                                : "border-neutral-200 bg-white/70 text-neutral-700";
+                            const cardClass = isPro
+                                ? "relative z-10 border-[rgba(245,95,42,0.35)] shadow-[0_22px_52px_rgba(245,95,42,0.14)] md:-translate-y-2 md:scale-[1.03]"
+                                : "border-neutral-200 shadow-[0_16px_36px_rgba(15,23,42,0.07)]";
+                            const buttonClass = isPro
+                                ? "border border-[rgba(245,95,42,0.2)] bg-[#f55f2a] text-white shadow-[0_16px_30px_rgba(245,95,42,0.22)] hover:bg-[#f3602c]"
+                                : isAgency
+                                    ? "border border-[rgba(245,95,42,0.18)] bg-[#ffefe4] text-[#9a3412] hover:bg-[#ffe3cf]"
+                                    : "border border-neutral-300 bg-white text-neutral-900 hover:bg-neutral-50";
 
                             return (
                                 <article
                                     key={tier.name}
                                     className={
-                                        "flex flex-col rounded-2xl border bg-white p-6 shadow-sm " +
-                                        (tier.highlight
-                                            ? "border-[rgba(245,95,42,0.45)] shadow-md"
-                                            : "border-black/10")
+                                        "overflow-hidden rounded-[30px] border bg-white transition-transform " + cardClass
                                     }
                                 >
-                                    <div className="flex items-start justify-between gap-3">
-                                        <div>
-                                            <h2 className="text-lg font-semibold tracking-tight">{tier.name}</h2>
-                                            <p className="mt-1 text-xs text-neutral-600">{tier.blurb}</p>
-                                        </div>
+                                    <div className={"px-5 py-4 " + headerClass}>
+                                        <div className="flex items-center justify-between gap-3">
+                                            <div>
+                                                <p className={"text-[10px] font-semibold uppercase tracking-[0.22em] " + (isPro ? "text-white/85" : "text-neutral-500")}>
+                                                    {tier.badge}
+                                                </p>
+                                                <h2 className={"mt-1 text-xl font-semibold tracking-tight " + (isPro ? "text-white" : "text-neutral-900")}>
+                                                    {tier.name}
+                                                </h2>
+                                            </div>
 
-                                        <span
-                                            className={
-                                                "rounded-full px-2.5 py-1 text-[10px] whitespace-nowrap font-semibold uppercase tracking-wide " +
-                                                (tier.highlight
-                                                    ? "bg-[rgba(245,95,42,0.08)] text-[rgba(245,95,42,1)]"
-                                                    : "bg-neutral-50 text-neutral-600")
-                                            }
-                                        >
-                                            {tier.badge}
-                                        </span>
+                                            {isPro ? (
+                                                <span className={"rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide " + headerBadgeClass}>
+                                                    Recommended
+                                                </span>
+                                            ) : null}
+                                        </div>
                                     </div>
 
-                                    <div className="mt-4 flex items-end justify-between gap-3">
-                                        <div className="flex items-baseline gap-1">
-                                            <span className="text-3xl font-semibold">{tier.price}</span>
-                                            <span className="text-xs text-neutral-500">{tier.period}</span>
+                                    <div className="px-5 py-5">
+                                        <p className="text-sm text-neutral-600">{tier.blurb}</p>
+
+                                        <div className="mt-4 flex items-end justify-between gap-3">
+                                            <div className="flex items-baseline gap-1">
+                                                <span className="text-4xl font-semibold tracking-tight">{tier.price}</span>
+                                                <span className="text-sm text-neutral-500">{tier.period}</span>
+                                            </div>
+
+                                            {isPro ? (
+                                                <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[rgba(245,95,42,1)]">
+                                                    7-day free trial
+                                                </span>
+                                            ) : null}
                                         </div>
 
-                                        {isPro ? (
-                                            <span className="text-[11px] font-semibold text-neutral-900">
-                                                7-day free trial
-                                            </span>
-                                        ) : null}
-                                    </div>
-
-                                    {tier.fineprint ? (
-                                        <p className="mt-2 text-[11px] text-neutral-500">{tier.fineprint}</p>
-                                    ) : null}
-
-                                    <div className="mt-5">
-                                        <p className="text-[11px] font-semibold text-neutral-900">What you get</p>
-
-                                        <ul className="mt-2 space-y-1.5 text-xs text-neutral-700">
-                                            {tier.topFeatures.map((f) => (
-                                                <Bullet key={f}>{f}</Bullet>
+                                        <div className="mt-5 overflow-hidden rounded-2xl border border-neutral-200 bg-neutral-50/80">
+                                            {rows.map((row, index) => (
+                                                <div
+                                                    key={row.label}
+                                                    className={
+                                                        "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 px-4 py-3 " +
+                                                        (index < rows.length - 1 ? "border-b border-neutral-200" : "")
+                                                    }
+                                                >
+                                                    <span className="text-[12px] text-neutral-600">{row.label}</span>
+                                                    <span className={"text-[12px] font-semibold " + (isPro ? "text-neutral-900" : "text-neutral-800")}>
+                                                        {row.value}
+                                                    </span>
+                                                </div>
                                             ))}
-                                        </ul>
+                                        </div>
 
-                                        <details className="mt-3">
-                                            <summary className="cursor-pointer select-none text-[11px] font-semibold text-neutral-600 hover:text-neutral-900">
-                                                See all limits
-                                            </summary>
-                                            <ul className="mt-2 space-y-1.5 text-xs text-neutral-700">
-                                                {tier.allFeatures.map((f) => (
-                                                    <Bullet key={f}>{f}</Bullet>
-                                                ))}
-                                            </ul>
-                                        </details>
+                                        <button
+                                            type="button"
+                                            onClick={() => handleClick(tier.name)}
+                                            disabled={isLoading}
+                                            className={"mt-5 w-full rounded-full px-4 py-3 text-sm font-semibold transition " + buttonClass + (isLoading ? " opacity-70 cursor-not-allowed" : "")}
+                                            style={isPro ? { backgroundColor: ACCENT } : undefined}
+                                        >
+                                            {isLoading ? "Redirecting to Stripe…" : tier.cta}
+                                        </button>
+
+                                        <p className="mt-3 text-[11px] text-neutral-500">
+                                            {isPro
+                                                ? "Trial starts today. Billing begins after 7 days unless canceled."
+                                                : isAgency
+                                                    ? "Starts immediately. Cancel anytime."
+                                                    : "Start cloning immediately. Upgrade when you hit limits."}
+                                        </p>
                                     </div>
-
-                                    <div className="mt-6 flex-1" />
-
-                                    <button
-                                        type="button"
-                                        onClick={() => handleClick(tier.name)}
-                                        disabled={isLoading}
-                                        className={
-                                            "mt-2 w-full rounded-full px-4 py-2.5 text-sm font-semibold transition " +
-                                            (tier.highlight
-                                                ? "text-white"
-                                                : "text-neutral-900 border border-neutral-300 bg-white hover:bg-neutral-50") +
-                                            (isLoading ? " opacity-70 cursor-not-allowed" : "")
-                                        }
-                                        style={tier.highlight ? { backgroundColor: ACCENT } : undefined}
-                                    >
-                                        {isLoading ? "Redirecting to Stripe…" : tier.cta}
-                                    </button>
-
-                                    {isPro ? (
-                                        <p className="mt-2 text-[11px] text-neutral-500">
-                                            Trial starts today. Billing begins after 7 days unless canceled.
-                                        </p>
-                                    ) : isAgency ? (
-                                        <p className="mt-2 text-[11px] text-neutral-500">
-                                            Starts immediately. Cancel anytime.
-                                        </p>
-                                    ) : (
-                                        <p className="mt-2 text-[11px] text-neutral-500">
-                                            Start cloning immediately. Upgrade when you hit limits.
-                                        </p>
-                                    )}
                                 </article>
                             );
                         })}

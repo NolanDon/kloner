@@ -275,9 +275,16 @@ async function handler({ req, uid }: { req: NextRequest; uid: string }) {
         throw err;
     }
 
-    const activeOrTrialing = existingSubs.data.filter(
-        (sub) => sub.status === "active" || sub.status === "trialing"
-    );
+    const activeOrTrialing = existingSubs.data.filter((sub) => {
+        if (sub.status === "active") return true;
+        if (sub.status !== "trialing") return false;
+
+        // If a trial was already cancelled, let the user continue with a normal paid checkout
+        // on the same account. The new checkout will not include a trial.
+        if (sub.cancel_at_period_end === true) return false;
+
+        return true;
+    });
 
     if (activeOrTrialing.length > 0) {
         return NextResponse.json(

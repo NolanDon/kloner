@@ -540,15 +540,26 @@ function MiniDashboardEntry({
                                     </span>
                                 </div>
                                 {onManagePlan ? (
-                                    <span className="inline-flex">
+                                    <span className="ml-3 inline-flex shrink-0">
                                         <button
                                             type="button"
                                             onClick={onManagePlan}
                                             title={userTier === "free" ? "Upgrade plan" : "Manage plan"}
                                             aria-label={userTier === "free" ? "Upgrade plan" : "Manage plan"}
-                                            className="group inline-flex items-center justify-center rounded-md p-1 transition-all duration-150 hover:bg-white/10 hover:scale-[1.06] active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-[#C6F44D]/60 focus:ring-offset-2 focus:ring-offset-transparent"
+                                            className={
+                                                userTier === "free"
+                                                    ? "inline-flex items-center gap-1.5 rounded-full border border-[rgba(245,95,42,0.45)] bg-[#f55f2a] px-3 py-1.5 text-[11px] font-semibold text-white shadow-[0_12px_32px_rgba(245,95,42,0.24)] ring-1 ring-[rgba(245,95,42,0.18)] transition hover:bg-[#f3602c] hover:shadow-[0_14px_36px_rgba(245,95,42,0.3)] active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-[rgba(245,95,42,0.28)] focus:ring-offset-2"
+                                                    : "group inline-flex items-center justify-center rounded-md p-1 transition-all duration-150 hover:bg-white/10 hover:scale-[1.06] active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-[#C6F44D]/60 focus:ring-offset-2 focus:ring-offset-transparent"
+                                            }
                                         >
-                                            <Edit2 className="h-3 w-3 opacity-80 transition-opacity group-hover:opacity-100" />
+                                            {userTier === "free" ? (
+                                                <>
+                                                    <Crown className="h-3.5 w-3.5" />
+                                                    <span>Upgrade</span>
+                                                </>
+                                            ) : (
+                                                <Edit2 className="h-3 w-3 opacity-80 transition-opacity group-hover:opacity-100" />
+                                            )}
                                         </button>
                                     </span>
                                 ) : null}
@@ -3063,7 +3074,6 @@ export default function PreviewPage(): JSX.Element {
     >({});
     const [viewerOpen, setViewerOpen] = useState(false);
     const [viewerIdx, setViewerIdx] = useState(0);
-    const didStripeRestoreRef = useRef(false);
     const sessionExpiredRedirectingRef = useRef(false);
 
     const handleSessionExpired = useCallback(async (source?: string) => {
@@ -3168,18 +3178,17 @@ export default function PreviewPage(): JSX.Element {
 
     useEffect(() => {
         const billingParam = search.get("billing");
-        const isTrialSuccess = billingParam === "success" && search.get("trial") === "1";
+        const isBillingSuccess = billingParam === "success";
+        const isTrialSuccess = isBillingSuccess && search.get("trial") === "1";
         const wizardParam = search.get("wizard");
         const stepParam = search.get("step");
         const renderId = search.get("render");
         const returnAppId = search.get("appId");
 
-        if (billingParam !== "success") return;
+        if (!isBillingSuccess) return;
         if (!user) return;
-        if (didStripeRestoreRef.current) return;
-        didStripeRestoreRef.current = true;
 
-        if (isTrialSuccess) {
+        if (isBillingSuccess) {
             setShowTrialSuccessCelebration(true);
         }
 
@@ -3244,7 +3253,7 @@ export default function PreviewPage(): JSX.Element {
                     }
                     if (t === "pro" || t === "agency" || t === "enterprise") {
                         setUserTier(t as any);
-                    } else if (isTrialSuccess) {
+                            } else if (isTrialSuccess) {
                         setUserTier("pro");
                     } else {
                         setUserTier("free");
@@ -3254,7 +3263,7 @@ export default function PreviewPage(): JSX.Element {
                 // ignore; normal tier detection will run via auth effect
             }
 
-            if (isTrialSuccess) {
+            if (isBillingSuccess) {
                 setShowTrialSuccessCelebration(true);
 
                 try {
@@ -4157,7 +4166,8 @@ export default function PreviewPage(): JSX.Element {
                     typeof creditsMap.tierOverrideReason === "string"
                         ? creditsMap.tierOverrideReason.trim().toLowerCase()
                         : "";
-                if (tierOverrideReason === "trial_cancelled") {
+                const isTrialCancelledOverride = tierOverrideReason === "trial_cancelled";
+                if (isTrialCancelledOverride) {
                     setUserTier("free");
                 } else if (nextTier === "free" || nextTier === "pro" || nextTier === "agency" || nextTier === "enterprise") {
                     setUserTier(nextTier as UserTier);
@@ -4196,26 +4206,36 @@ export default function PreviewPage(): JSX.Element {
                 setExitOfferClaimed(nextExitOfferClaimed);
                 setFirstGenerationTrialPromptShown(nextTrialPromptShown);
 
-                const previewLimit =
-                    typeof previewBucket.monthlyLimit === "number" &&
+                const previewLimit = isTrialCancelledOverride
+                    ? CREDIT_LIMITS.free.previewMonthly
+                    : typeof previewBucket.monthlyLimit === "number" &&
                         previewBucket.monthlyLimit >= 0
                         ? previewBucket.monthlyLimit
                         : tierLimits.previewMonthly || 0;
 
-                const screenshotLimit =
-                    typeof snapshotBucket.monthlyLimit === "number" &&
+                const screenshotLimit = isTrialCancelledOverride
+                    ? CREDIT_LIMITS.free.screenshotMonthly
+                    : typeof snapshotBucket.monthlyLimit === "number" &&
                         snapshotBucket.monthlyLimit >= 0
                         ? snapshotBucket.monthlyLimit
                         : tierLimits.screenshotMonthly || 0;
 
-                const editLimit =
-                    typeof editBucket.monthlyLimit === "number" && editBucket.monthlyLimit >= 0
+                const editLimit = isTrialCancelledOverride
+                    ? CREDIT_LIMITS.free.editMonthly
+                    : typeof editBucket.monthlyLimit === "number" && editBucket.monthlyLimit >= 0
                         ? editBucket.monthlyLimit
                         : tierLimits.editMonthly || 0;
 
                 const previewRemaining =
                     previewLimit === 0
                         ? null
+                        : isTrialCancelledOverride
+                            ? Math.min(
+                                typeof previewBucket.remaining === "number" && Number.isFinite(previewBucket.remaining)
+                                    ? previewBucket.remaining
+                                    : previewLimit,
+                                previewLimit,
+                            )
                         : typeof previewBucket.remaining === "number"
                             ? previewBucket.remaining
                             : previewLimit;
@@ -4223,6 +4243,13 @@ export default function PreviewPage(): JSX.Element {
                 const screenshotRemaining =
                     screenshotLimit === 0
                         ? null
+                        : isTrialCancelledOverride
+                            ? Math.min(
+                                typeof snapshotBucket.remaining === "number" && Number.isFinite(snapshotBucket.remaining)
+                                    ? snapshotBucket.remaining
+                                    : screenshotLimit,
+                                screenshotLimit,
+                            )
                         : typeof snapshotBucket.remaining === "number"
                             ? snapshotBucket.remaining
                             : screenshotLimit;
@@ -4230,6 +4257,13 @@ export default function PreviewPage(): JSX.Element {
                 const editRemaining =
                     editLimit === 0
                         ? null
+                        : isTrialCancelledOverride
+                            ? Math.min(
+                                typeof editBucket.remaining === "number" && Number.isFinite(editBucket.remaining)
+                                    ? editBucket.remaining
+                                    : editLimit,
+                                editLimit,
+                            )
                         : typeof editBucket.remaining === "number"
                             ? editBucket.remaining
                             : editLimit;
@@ -11488,10 +11522,10 @@ export default function PreviewPage(): JSX.Element {
                 {/* generic paywall */}
                 {
                     showCreditsPaywall && (
-                        <div className="fixed inset-0 z-[12000]">
-                            <div className="absolute inset-0 bg-black/60" />
-                            <div className="absolute inset-0 flex items-center justify-center p-4">
-                                <div className="relative w-full max-w-md rounded-2xl bg-white shadow-xl border border-neutral-200 p-6 pt-5 text-sm text-neutral-800">
+                        <div className="fixed inset-0 z-[12000] simple-fade-in">
+                            <div className="absolute inset-0 bg-black/60 simple-fade-in" />
+                            <div className="absolute inset-0 flex items-center justify-center p-4 simple-fade-in">
+                                <div className="relative w-full max-w-md rounded-2xl bg-white shadow-xl border border-neutral-200 p-6 pt-5 text-sm text-neutral-800 simple-fade-in">
                                     <button
                                         type="button"
                                         onClick={() => setShowCreditsPaywall(null)}
@@ -11548,10 +11582,10 @@ export default function PreviewPage(): JSX.Element {
                 {/* PRO paywall for apps */}
                 {
                     showProPaywall && (
-                        <div className="fixed inset-0 z-[12000]">
-                            <div className="absolute inset-0 bg-black/60" />
-                            <div className="absolute inset-0 flex items-center justify-center p-4">
-                                <div className="w-full max-w-md rounded-2xl bg-white shadow-xl border border-neutral-200 p-6 text-sm text-neutral-800">
+                        <div className="fixed inset-0 z-[12000] simple-fade-in">
+                            <div className="absolute inset-0 bg-black/60 simple-fade-in" />
+                            <div className="absolute inset-0 flex items-center justify-center p-4 simple-fade-in">
+                                <div className="w-full max-w-md rounded-2xl bg-white shadow-xl border border-neutral-200 p-6 text-sm text-neutral-800 simple-fade-in">
                                     <div className="flex items-center gap-2 mb-2">
                                         <Crown className="h-4 w-4 text-amber-500" />
                                         <h3 className="text-base font-semibold">
