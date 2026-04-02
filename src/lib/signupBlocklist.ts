@@ -1,3 +1,5 @@
+import "server-only";
+
 export const SIGNUP_BLOCKED_EMAIL_SUBSTRINGS = ["lulavcstreaming"] as const;
 export const SIGNUP_BLOCKED_IPS = ["179.251.112.179"] as const;
 
