@@ -547,7 +547,7 @@ export default function PriceClient(): JSX.Element {
                             const rows = isPro
                                 ? [
                                       { label: "Screenshot credits", value: "100 / month" },
-                                      { label: "Preview credits", value: "400 / month" },
+                                      { label: "Preview credits", value: "450 / month" },
                                       { label: "AI credits", value: "300 / month" },
                                       { label: "Pages per build", value: "10" },
                                       { label: "Support", value: "Priority" },

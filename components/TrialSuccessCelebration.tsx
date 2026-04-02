@@ -7,6 +7,9 @@ import { CheckCircle2, X } from "lucide-react";
 
 const CONFETTI_URL = "/lotties/confetti.json";
 
+let confettiAnimationPromise: Promise<any> | null = null;
+let confettiAnimationCache: any | null = null;
+
 type TrialSuccessCelebrationProps = {
     open: boolean;
     onDismiss: () => void;
@@ -24,13 +27,33 @@ export default function TrialSuccessCelebration({ open, onDismiss }: TrialSucces
 
         let cancelled = false;
         setAnimationError(false);
+
+        if (confettiAnimationCache) {
+            setAnimationData(confettiAnimationCache);
+            return () => {
+                cancelled = true;
+            };
+        }
+
         setAnimationData(null);
 
-        void fetch(CONFETTI_URL, { cache: "no-store" })
-            .then((res) => {
-                if (!res.ok) throw new Error("missing confetti animation");
-                return res.json();
-            })
+        if (!confettiAnimationPromise) {
+            confettiAnimationPromise = fetch(CONFETTI_URL, { cache: "force-cache" })
+                .then((res) => {
+                    if (!res.ok) throw new Error("missing confetti animation");
+                    return res.json();
+                })
+                .then((json) => {
+                    confettiAnimationCache = json;
+                    return json;
+                })
+                .catch((err) => {
+                    confettiAnimationPromise = null;
+                    throw err;
+                });
+        }
+
+        void confettiAnimationPromise
             .then((json) => {
                 if (!cancelled) setAnimationData(json);
             })
@@ -41,7 +64,7 @@ export default function TrialSuccessCelebration({ open, onDismiss }: TrialSucces
         return () => {
             cancelled = true;
         };
-    }, [open, onDismiss]);
+    }, [open]);
 
     if (!open || isClosing || typeof document === "undefined") return null;
 
@@ -64,7 +87,7 @@ export default function TrialSuccessCelebration({ open, onDismiss }: TrialSucces
                 <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden">
                     <Lottie
                         animationData={animationData}
-                        loop={false}
+                        loop={true}
                         autoplay={true}
                         className="absolute inset-0 h-full w-full opacity-70"
                     />
@@ -103,7 +126,7 @@ export default function TrialSuccessCelebration({ open, onDismiss }: TrialSucces
                                 Welcome
                             </p>
                             <h3 className="mt-2 text-3xl font-normal tracking-tight text-neutral-900 sm:text-4xl">
-                                Your Kloner trial is ready.
+                                Your Kloner account is ready.
                             </h3>
                             <div className="mt-3 max-w-md rounded-[22px] border border-neutral-200 bg-white px-4 py-3 text-left shadow-sm">
                                 <p className="text-sm font-semibold text-neutral-900">What to do next:</p>

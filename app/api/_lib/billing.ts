@@ -390,6 +390,7 @@ export async function refreshTierFromStripeForUid(uid: string): Promise<Tier> {
 
     // Manual overrides (fraud/support/admin) can win over Stripe status.
     // Trial cancellation should revoke paid access immediately.
+    let hasTrialCancelledOverride = false;
     try {
         const rawTier = typeof data?.tierOverrideTier === "string" ? data.tierOverrideTier : "";
         const rawReason = typeof data?.tierOverrideReason === "string" ? data.tierOverrideReason : "";
@@ -402,9 +403,13 @@ export async function refreshTierFromStripeForUid(uid: string): Promise<Tier> {
                     ? until
                     : null;
         if (rawTier && untilDate && new Date() < untilDate) {
-            const t = rawTier.toLowerCase();
-            const overrideTier: Tier = t === "pro" || t === "agency" ? (t as Tier) : "free";
-            return overrideTier;
+            if (reason === "trial_cancelled") {
+                hasTrialCancelledOverride = true;
+            } else {
+                const t = rawTier.toLowerCase();
+                const overrideTier: Tier = t === "pro" || t === "agency" ? (t as Tier) : "free";
+                return overrideTier;
+            }
         }
     } catch {
         // ignore
@@ -509,6 +514,22 @@ export async function refreshTierFromStripeForUid(uid: string): Promise<Tier> {
         trialEnd,
         created: typeof subAny.created === "number" ? subAny.created : null,
     });
+
+    if (hasTrialCancelledOverride && status === "active") {
+        await userRef.set(
+            {
+                tierOverrideTier: admin.firestore.FieldValue.delete(),
+                tierOverrideUntil: admin.firestore.FieldValue.delete(),
+                tierOverrideReason: admin.firestore.FieldValue.delete(),
+                tierOverrideSetAt: admin.firestore.FieldValue.delete(),
+                creditsOverrideTier: admin.firestore.FieldValue.delete(),
+                creditsOverrideUntil: admin.firestore.FieldValue.delete(),
+                creditsOverrideReason: admin.firestore.FieldValue.delete(),
+                creditsOverrideSetAt: admin.firestore.FieldValue.delete(),
+            },
+            { merge: true },
+        );
+    }
 
     await setUserTierFromStripe(uid, effectiveTier, {
         customerId,

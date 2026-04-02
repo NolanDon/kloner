@@ -128,6 +128,8 @@ const CHECKOUT_FETCH_TIMEOUT_MS = 20_000;
 
 const APP_BUILDER_COOKIE_CONSENT_KEY = "kloner.appBuilder.necessaryCookiesAccepted.v1";
 const APP_BUILDER_COOKIE_CONSENT_COOKIE = "kloner_app_builder_nc";
+const BILLING_SUCCESS_COOKIE = "kloner_billing_success_seen_v1";
+const BILLING_SUCCESS_COOKIE_MAX_AGE_SEC = 5 * 60;
 
 function getCookieValueSafe(name: string): string | null {
     if (typeof document === "undefined") return null;
@@ -155,6 +157,25 @@ function persistAppBuilderNecessaryCookiesConsent(): void {
     }
     const secure = window.location.protocol === "https:" ? "; Secure" : "";
     document.cookie = `${APP_BUILDER_COOKIE_CONSENT_COOKIE}=1; Path=/; Max-Age=${60 * 60 * 24 * 365}; SameSite=Lax${secure}`;
+}
+
+function readBillingSuccessSeenAt(): number {
+    const raw = getCookieValueSafe(BILLING_SUCCESS_COOKIE);
+    if (!raw) return 0;
+    const parsed = Number.parseInt(raw, 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+}
+
+function hasRecentlyShownBillingSuccess(): boolean {
+    const seenAt = readBillingSuccessSeenAt();
+    if (!seenAt) return false;
+    return Date.now() - seenAt < BILLING_SUCCESS_COOKIE_MAX_AGE_SEC * 1000;
+}
+
+function markBillingSuccessShown(): void {
+    if (typeof window === "undefined" || typeof document === "undefined") return;
+    const secure = window.location.protocol === "https:" ? "; Secure" : "";
+    document.cookie = `${BILLING_SUCCESS_COOKIE}=${Date.now()}; Path=/; Max-Age=${BILLING_SUCCESS_COOKIE_MAX_AGE_SEC}; SameSite=Lax${secure}`;
 }
 
 function shouldShowTrialPromptForSession(storageKey: string, everyNthSession: number): boolean {
@@ -3188,7 +3209,8 @@ export default function PreviewPage(): JSX.Element {
         if (!isBillingSuccess) return;
         if (!user) return;
 
-        if (isBillingSuccess) {
+        if (!hasRecentlyShownBillingSuccess()) {
+            markBillingSuccessShown();
             setShowTrialSuccessCelebration(true);
         }
 
@@ -3263,28 +3285,24 @@ export default function PreviewPage(): JSX.Element {
                 // ignore; normal tier detection will run via auth effect
             }
 
-            if (isBillingSuccess) {
-                setShowTrialSuccessCelebration(true);
+            try {
+                const url = new URL(window.location.href);
+                const params = url.searchParams;
+                params.delete("billing");
+                params.delete("trial");
+                params.delete("wizard");
+                params.delete("step");
+                params.delete("render");
+                params.delete("appId");
 
-                try {
-                    const url = new URL(window.location.href);
-                    const params = url.searchParams;
-                    params.delete("billing");
-                    params.delete("trial");
-                    params.delete("wizard");
-                    params.delete("step");
-                    params.delete("render");
-                    params.delete("appId");
-
-                    const qs = params.toString();
-                    const next = qs ? `${url.pathname}?${qs}` : url.pathname;
-                    router.replace(next, { scroll: false });
-                } catch (e) {
-                    console.error("Failed to clear trial success params", e);
-                }
-
-                return;
+                const qs = params.toString();
+                const next = qs ? `${url.pathname}?${qs}` : url.pathname;
+                router.replace(next, { scroll: false });
+            } catch (e) {
+                console.error("Failed to clear trial success params", e);
             }
+
+            return;
 
             if (wizardParam !== "1") return;
             if (!renderId && !returnAppId) return;

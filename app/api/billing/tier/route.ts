@@ -76,9 +76,11 @@ function getActiveTierOverride(data: any, now: Date): UserTier | null {
     const rawReason = typeof data.tierOverrideReason === "string" ? data.tierOverrideReason : "";
     const reason = rawReason.trim().toLowerCase();
     const until = toDateFromFirestoreTimestampLike(data.tierOverrideUntil);
+    const stripeStatus = typeof data.stripeStatus === "string" ? data.stripeStatus.trim().toLowerCase() : "";
     if (!rawTier) return null;
 
     if (reason === "trial_cancelled") {
+        if (stripeStatus === "active") return null;
         const t = rawTier.toLowerCase();
         if (t === "free" || t === "pro" || t === "agency") return "free";
         return "free";

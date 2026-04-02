@@ -185,6 +185,40 @@ describe("GET /api/billing/tier", () => {
         expect(store.credits.aiEdits.remaining).toBe(300);
     });
 
+    it("ignores trial-cancel override once Stripe is active again", async () => {
+        const only = snap({
+            tierSource: "override",
+            tier: "free",
+            tierOverrideReason: "trial_cancelled",
+            tierOverrideTier: "free",
+            tierOverrideUntil: new Date(Date.now() + 86_400_000),
+            stripeStatus: "active",
+            stripeCancelAtPeriodEnd: false,
+            stripeSubscriptionId: "sub_123",
+        });
+
+        const adminMock: any = {
+            apps: [{}],
+            firestore: () => ({
+                collection: () => ({
+                    doc: () => ({
+                        get: async () => only,
+                        set: async () => {},
+                    }),
+                }),
+            }),
+        };
+
+        jest.doMock("firebase-admin", () => ({ __esModule: true, default: adminMock }));
+
+        const { GET } = await import("./route");
+        const res: any = await GET({ url: "https://example.com/api/billing/tier" } as any);
+        const body = await res.json();
+
+        expect(refreshTierFromStripeForUid).toHaveBeenCalledTimes(1);
+        expect(body.tier).toBe("pro");
+    });
+
     it("refresh=1 forces refresh", async () => {
         const first = snap({
             tierSource: "stripe",
