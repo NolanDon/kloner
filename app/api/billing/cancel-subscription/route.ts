@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import admin from "firebase-admin";
 import Stripe from "stripe";
+import { Resend } from "resend";
 import { getStripe } from "@/lib/stripe";
 import { requireSessionAndMaybeCsrf } from "../../_lib/route-guard";
 import { getSubscriptionIdForUid } from "../../_lib/billing";
@@ -50,9 +51,144 @@ function capToLimit(remaining: number | null, limit: number): number {
     return Math.max(0, Math.min(remaining, limit));
 }
 
+function getResend() {
+        const key = process.env.RESEND_API_KEY;
+        if (!key) throw new Error("RESEND_API_KEY env not set");
+        return new Resend(key);
+}
+
+function cleanStr(v: unknown, max = 200): string {
+        return typeof v === "string" ? v.trim().slice(0, max) : "";
+}
+
+function buildCancellationFeedbackText(args: {
+        uid: string;
+        email?: string | null;
+        name?: string | null;
+    reason?: string | null;
+        feedback: string;
+        stripeStatus: string | null;
+        cancelAtPeriodEnd: boolean;
+        subscriptionId: string;
+}) {
+        return [
+                "Kloner cancellation feedback",
+                "",
+                `uid: ${args.uid}`,
+                `email: ${args.email || "n/a"}`,
+                `name: ${args.name || "n/a"}`,
+                `reason: ${args.reason || "n/a"}`,
+                `subscriptionId: ${args.subscriptionId}`,
+                `stripeStatus: ${args.stripeStatus || "n/a"}`,
+                `cancelAtPeriodEnd: ${args.cancelAtPeriodEnd ? "yes" : "no"}`,
+                "",
+                "Feedback:",
+                args.feedback,
+        ].join("\n");
+}
+
+function buildCancellationFeedbackHtml(args: {
+        uid: string;
+        email?: string | null;
+        name?: string | null;
+    reason?: string | null;
+        feedback: string;
+        stripeStatus: string | null;
+        cancelAtPeriodEnd: boolean;
+        subscriptionId: string;
+}) {
+        const accent = "#f55f2a";
+        const dark = "#111827";
+        const muted = "#6b7280";
+
+        return `
+<!doctype html>
+<html lang="en">
+    <head><meta charSet="utf-8" /><title>Kloner cancellation feedback</title></head>
+    <body style="margin:0;padding:0;background:#ffffff;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif;">
+        <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="padding:24px 0;background:#ffffff;">
+            <tr>
+                <td align="center">
+                    <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="max-width:640px;border:1px solid #fee2d5;border-radius:16px;overflow:hidden;">
+                        <tr>
+                            <td style="padding:18px 24px;background:${accent};">
+                                <div style="font-size:14px;font-weight:700;color:#ffffff;">Cancellation feedback</div>
+                                <div style="margin-top:4px;font-size:12px;color:#ffe7dc;">A user submitted feedback before canceling.</div>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td style="padding:18px 24px;">
+                                <div style="font-size:12px;color:${muted};margin-bottom:8px;">User</div>
+                                <div style="font-size:13px;color:${dark};font-weight:600;">${args.name || args.email || args.uid}</div>
+
+                                <div style="margin-top:14px;font-size:12px;color:${muted};margin-bottom:8px;">Account</div>
+                                <div style="font-size:13px;color:${dark};line-height:1.6;">
+                                    <div><strong>UID:</strong> ${args.uid}</div>
+                                    <div><strong>Email:</strong> ${args.email || "n/a"}</div>
+                                    <div><strong>Reason:</strong> ${args.reason || "n/a"}</div>
+                                    <div><strong>Subscription:</strong> ${args.subscriptionId}</div>
+                                    <div><strong>Status:</strong> ${args.stripeStatus || "n/a"}</div>
+                                    <div><strong>Cancel at period end:</strong> ${args.cancelAtPeriodEnd ? "yes" : "no"}</div>
+                                </div>
+
+                                <div style="margin-top:14px;font-size:12px;color:${muted};margin-bottom:8px;">Feedback</div>
+                                <div style="font-size:13px;color:${dark};line-height:1.7;white-space:pre-wrap;border:1px solid #f3f4f6;border-radius:12px;padding:12px;background:#fafafa;">
+                                    ${args.feedback.replace(/[<>]/g, "")}
+                                </div>
+                            </td>
+                        </tr>
+                    </table>
+                </td>
+            </tr>
+        </table>
+    </body>
+</html>
+`;
+}
+
+async function sendCancellationFeedbackEmail(args: {
+        uid: string;
+        email?: string | null;
+        name?: string | null;
+    reason?: string | null;
+        feedback: string;
+        stripeStatus: string | null;
+        cancelAtPeriodEnd: boolean;
+        subscriptionId: string;
+}) {
+        const to = process.env.CANCELLATION_FEEDBACK_TO || process.env.SUPPORT_EMAIL || "support@kloner.app";
+        const from = process.env.SUPPORT_ESCALATION_FROM || process.env.WELCOME_EMAIL_FROM || "hello@kloner.app";
+        const resend = getResend();
+
+        const result = await resend.emails.send({
+                from,
+                to,
+                subject: `Kloner cancellation feedback from ${args.email || args.uid}`,
+                text: buildCancellationFeedbackText(args),
+                html: buildCancellationFeedbackHtml(args),
+        });
+
+        if ("error" in result && result.error) {
+                throw new Error(result.error.message || "Cancellation feedback email failed");
+        }
+}
+
 async function handler(req: NextRequest, uid: string) {
-    const body = (await req.json().catch(() => ({}))) as { atPeriodEnd?: boolean };
+    const body = (await req.json().catch(() => ({}))) as {
+        atPeriodEnd?: boolean;
+        cancellationReason?: string | null;
+        cancellationFeedback?: string;
+    };
     const atPeriodEnd = body?.atPeriodEnd !== false;
+    const cancellationReason = cleanStr(body?.cancellationReason, 80);
+        const cancellationFeedback = cleanStr(body?.cancellationFeedback, 200);
+
+    if (atPeriodEnd && !cancellationReason && !cancellationFeedback) {
+                return NextResponse.json(
+            { ok: false, error: "Cancellation reason or feedback is required." },
+                        { status: 400 },
+                );
+        }
 
     const subId = await getSubscriptionIdForUid(uid);
     if (!subId) {
@@ -198,6 +334,65 @@ async function handler(req: NextRequest, uid: string) {
             },
             { merge: true },
         );
+    }
+
+    if (atPeriodEnd && (cancellationReason || cancellationFeedback)) {
+        const feedbackDoc = db.collection("billing_cancellation_feedback").doc();
+        const authUser = await admin.auth().getUser(uid).catch(() => null);
+        const feedbackPayload = {
+            uid,
+            subscriptionId: payload.stripeSubscriptionId,
+            stripeStatus: payload.stripeStatus,
+            cancelAtPeriodEnd: payload.stripeCancelAtPeriodEnd,
+            feedback: {
+                reason: cancellationReason || null,
+                note: cancellationFeedback || null,
+            },
+            authEmail: authUser?.email || null,
+            authDisplayName: authUser?.displayName || null,
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        };
+
+        await feedbackDoc.set(feedbackPayload, { merge: false });
+
+        try {
+            await sendCancellationFeedbackEmail({
+                uid,
+                email: authUser?.email || null,
+                name: authUser?.displayName || null,
+                reason: cancellationReason || null,
+                feedback: cancellationFeedback,
+                stripeStatus: payload.stripeStatus,
+                cancelAtPeriodEnd: payload.stripeCancelAtPeriodEnd,
+                subscriptionId: payload.stripeSubscriptionId,
+            });
+
+            await feedbackDoc.set(
+                {
+                    emailedAt: admin.firestore.FieldValue.serverTimestamp(),
+                },
+                { merge: true },
+            );
+        } catch (error) {
+            await captureCriticalEvent({
+                source: "vercel",
+                severity: "critical",
+                statusCode: 500,
+                route: "/api/billing/cancel-subscription",
+                method: "POST",
+                action: "billing.cancelSubscription.feedbackEmail",
+                service: "billing-subscription",
+                userId: uid,
+                message: typeof (error as any)?.message === "string" ? (error as any).message : "Cancellation feedback email failed",
+                stack: typeof (error as any)?.stack === "string" ? (error as any).stack : undefined,
+                extra: {
+                    subscriptionId: payload.stripeSubscriptionId,
+                    reason: cancellationReason || null,
+                    feedbackPreview: cancellationFeedback.slice(0, 80),
+                },
+            });
+        }
     }
 
     return NextResponse.json({

@@ -889,6 +889,7 @@ type RenderCardProps = {
     hardLocked: boolean; // kept in props but no longer used to lock other cards
     isDeploying: boolean;
     deployLocked: boolean;
+    accessLocked: boolean;
     urlHash: string | null;
     onShareWithCommunity?: (opts: { renderId: string; remixable: boolean }) => Promise<void>;
     archiveRender: (id: string) => void;
@@ -946,6 +947,7 @@ function RenderCardInner({
     isOpening,
     isDeploying,
     deployLocked,
+    accessLocked,
     urlHash,
     continueRender,
     retryRender,
@@ -1543,11 +1545,13 @@ function RenderCardInner({
                                                 continueRender(r.id);
                                             }
                                         }}
-                                        disabled={(disableOpen || isDeleting || !r.html) && !isFailed}
+                                        disabled={((disableOpen || isDeleting || !r.html || accessLocked) && !isFailed)}
                                         className="group inline-flex min-w-0 flex-1 items-center justify-center gap-2 overflow-hidden rounded-full border border-neutral-500 px-3 py-1.5 text-[11px] text-neutral-800 shadow-sm disabled:opacity-60 min-[420px]:text-xs"
                                         title={
                                             isArchivedFlag
                                                 ? "Unarchive to customize this preview"
+                                                : accessLocked
+                                                    ? "Trial access was cancelled, so this preview is locked in the dashboard"
                                                 : isBuilding || isQueued
                                                     ? "Still building preview"
                                                     : isFailed
@@ -1921,6 +1925,7 @@ function AppCard({
     app,
     isDeleting,
     isArchiving,
+    accessLocked,
     onCustomize,
     onArchive,
     onRename,
@@ -1930,6 +1935,7 @@ function AppCard({
     app: { id: string; name: string; createdAt: any; updatedAt: any; isDeployed?: boolean; productionUrl?: string | null; lastDeployUrl?: string | null };
     isDeleting: boolean;
     isArchiving: boolean;
+    accessLocked: boolean;
     onCustomize: (appId: string) => void;
     onArchive: (appId: string) => void;
     onRename: (appId: string, name: string) => Promise<void>;
@@ -2067,12 +2073,18 @@ function AppCard({
                                     }
                                     onDeploy({ id: app.id, name: app.name });
                                 }}
-                                disabled={isDeleting || isArchiving}
+                                disabled={isDeleting || isArchiving || accessLocked}
                                 className={`group inline-flex min-w-0 flex-1 items-center justify-center gap-1.5 overflow-hidden whitespace-nowrap rounded-full px-4 py-2 text-xs ${isDeployedFlag
                                     ? "bg-emerald-500 text-white shadow-sm hover:bg-green-700"
                                     : "bg-accent text-white shadow-sm hover:bg-accent/90 disabled:opacity-60"
                                     }`}
-                                title={isDeployedFlag ? "View and manage deployments" : "Deploy this app to Vercel"}
+                                title={
+                                    accessLocked
+                                        ? "Trial access was cancelled, so this app is locked in the dashboard"
+                                        : isDeployedFlag
+                                            ? "View and manage deployments"
+                                            : "Deploy this app to Vercel"
+                                }
                             >
                                 {isDeployedFlag ? (
                                     <>
@@ -2090,9 +2102,13 @@ function AppCard({
                             <button
                                 type="button"
                                 onClick={() => onCustomize(app.id)}
-                                disabled={isDeleting}
+                                disabled={isDeleting || accessLocked}
                                 className="group inline-flex min-w-0 flex-1 items-center justify-center gap-1.5 overflow-hidden whitespace-nowrap rounded-full border border-neutral-500 px-3 py-2 text-xs font-semibold text-neutral-800 shadow-sm disabled:opacity-60"
-                                title="Open app in editor"
+                                title={
+                                    accessLocked
+                                        ? "Trial access was cancelled, so this app is locked in the dashboard"
+                                        : "Open app in editor"
+                                }
                             >
                                 <span className="shrink-0">Edit</span>
                                 <BrushIcon className="h-4 w-4 shrink-0 transform transition-transform duration-150 group-hover:-translate-y-0.5" />
@@ -2679,6 +2695,10 @@ export default function PreviewPage(): JSX.Element {
     const [userTier, setUserTier] = useState<UserTier>("unknown");
     const [stripeStatus, setStripeStatus] = useState<string | null>(null);
     const [stripeCancelAtPeriodEnd, setStripeCancelAtPeriodEnd] = useState<boolean>(false);
+    const [dashboardCompactLayout, setDashboardCompactLayout] = useState<boolean>(false);
+    const [showArchivedApps, setShowArchivedApps] = useState<boolean>(false);
+    const isTrialAccessRevoked =
+        userTier === "free" && stripeStatus === "trialing" && stripeCancelAtPeriodEnd;
 
 
     const [showCreditsPaywall, setShowCreditsPaywall] = useState<
@@ -2882,6 +2902,16 @@ export default function PreviewPage(): JSX.Element {
     const openAppBuilderWithCookieGate = useCallback((appId: string | null) => {
         const nextId = typeof appId === "string" ? appId.trim() : "";
         if (!nextId) return;
+        if (isTrialAccessRevoked) {
+            setAppBuilderOpen(false);
+            setPendingAppBuilderAppId(null);
+            setCurrentAppId(null);
+            void showAlert(
+                "Your trial was cancelled, so existing projects are locked in the dashboard.",
+                "Access locked",
+            );
+            return;
+        }
         const forceCookiePromptInDev = process.env.NODE_ENV !== "production";
 
         setCurrentAppId(nextId);
@@ -2894,17 +2924,24 @@ export default function PreviewPage(): JSX.Element {
 
         setPendingAppBuilderAppId(nextId);
         setAppBuilderCookiePromptOpen(true);
-    }, []);
+    }, [isTrialAccessRevoked, showAlert]);
 
     const openAppBuilderDirectly = useCallback((appId: string | null) => {
         const nextId = typeof appId === "string" ? appId.trim() : "";
         if (!nextId) return;
+        if (isTrialAccessRevoked) {
+            void showAlert(
+                "Your trial was cancelled, so existing projects are locked in the dashboard.",
+                "Access locked",
+            );
+            return;
+        }
 
         setCurrentAppId(nextId);
         setPendingAppBuilderAppId(null);
         setAppBuilderCookiePromptOpen(false);
         setAppBuilderOpen(true);
-    }, []);
+    }, [isTrialAccessRevoked, showAlert]);
 
     const acceptCookiesAndOpenAppBuilder = useCallback(() => {
         persistAppBuilderNecessaryCookiesConsent();
@@ -3066,10 +3103,9 @@ export default function PreviewPage(): JSX.Element {
                     ...(doc.data() as any),
                 }));
                 setHasAnyAppDoc(appList.length > 0);
-                // Keep archived apps off the main dashboard without requiring a Firestore index
-                // (and so legacy docs missing the `archived` field still show up).
+                // Keep archived apps off the main dashboard unless the user explicitly asks to see them.
                 // IMPORTANT: only treat boolean true as archived.
-                setApps(appList.filter((a: any) => a?.archived !== true));
+                setApps(showArchivedApps ? appList : appList.filter((a: any) => a?.archived !== true));
             },
             (err) => {
                 console.warn("[firestore] apps snapshot failed", err);
@@ -3092,7 +3128,7 @@ export default function PreviewPage(): JSX.Element {
                 console.warn("[firestore] apps onSnapshot unsubscribe failed", err);
             }
         };
-    }, [user, push]);
+    }, [user, push, showArchivedApps]);
 
     useEffect(() => {
         if (!user) {
@@ -4070,6 +4106,8 @@ export default function PreviewPage(): JSX.Element {
             });
             setExitOfferClaimed(false);
             setFirstGenerationTrialPromptShown(false);
+            setDashboardCompactLayout(false);
+            setShowArchivedApps(false);
             return;
         }
 
@@ -4112,6 +4150,31 @@ export default function PreviewPage(): JSX.Element {
                     creditsMap?.["credits.snapshot"] || creditsMap?.credits?.snapshot || {};
                 const editBucket =
                     creditsMap?.["credits.aiEdits"] || creditsMap?.credits?.aiEdits || {};
+
+                const nextTier =
+                    typeof creditsMap.tier === "string" ? creditsMap.tier.trim().toLowerCase() : "";
+                if (nextTier === "free" || nextTier === "pro" || nextTier === "agency" || nextTier === "enterprise") {
+                    setUserTier(nextTier as UserTier);
+                }
+
+                const nextStripeStatus =
+                    typeof creditsMap.stripeStatus === "string" && creditsMap.stripeStatus.trim()
+                        ? creditsMap.stripeStatus.trim().toLowerCase()
+                        : "";
+                if (nextStripeStatus) setStripeStatus(nextStripeStatus);
+
+                if (typeof creditsMap.stripeCancelAtPeriodEnd === "boolean") {
+                    setStripeCancelAtPeriodEnd(creditsMap.stripeCancelAtPeriodEnd);
+                }
+
+                const dashboardPrefs =
+                    (creditsMap?.dashboardPrefs && typeof creditsMap.dashboardPrefs === "object"
+                        ? creditsMap.dashboardPrefs
+                        : creditsMap?.dashboardSettings && typeof creditsMap.dashboardSettings === "object"
+                            ? creditsMap.dashboardSettings
+                            : {}) as any;
+                setDashboardCompactLayout(dashboardPrefs.compactDashboardLayout === true);
+                setShowArchivedApps(dashboardPrefs.showArchivedApps === true);
 
                 const offersBucket =
                     creditsMap?.offers && typeof creditsMap.offers === "object"
@@ -9075,7 +9138,7 @@ export default function PreviewPage(): JSX.Element {
                         onManagePlan={() => {
                             void startProCheckout();
                         }}
-                        size="compact"
+                        size={dashboardCompactLayout ? "compact" : "full"}
                         disabled={captureLocked}
                         captureStatus={captureStatus}
                         captureIssueNotice={showActiveUrlIssueWarning || isUrlProcessingError ? "" : captureIssueNotice}
@@ -9533,6 +9596,7 @@ export default function PreviewPage(): JSX.Element {
                                         app={app}
                                         isDeleting={!!deletingApp[app.id]}
                                         isArchiving={!!archivingApp[app.id]}
+                                        accessLocked={isTrialAccessRevoked}
                                         onCustomize={(appId) => {
                                             openAppBuilderWithCookieGate(appId);
                                         }}
@@ -9651,6 +9715,7 @@ export default function PreviewPage(): JSX.Element {
                                         }
                                         isDeploying={deployingRenderId === r.id}
                                         deployLocked={userTier === "free"}
+                                        accessLocked={isTrialAccessRevoked}
                                         urlHash={(docData?.urlHash as string | undefined) ?? null}
                                         continueRender={continueRender}
                                         discardRender={discardRender}
@@ -9672,6 +9737,7 @@ export default function PreviewPage(): JSX.Element {
                                         app={app}
                                         isDeleting={!!deletingApp[app.id]}
                                         isArchiving={!!archivingApp[app.id]}
+                                        accessLocked={isTrialAccessRevoked}
                                         onCustomize={(appId) => {
                                             openAppBuilderWithCookieGate(appId);
                                         }}

@@ -15,6 +15,10 @@ export const revalidate = 0;
 type Body = {
     key?: string;
     keys?: string[];
+    storageKey?: string;
+    storageKeys?: string[];
+    screenshotKey?: string;
+    screenshotKeys?: string[];
     nameHint?: string;
     url?: string; // optional: trigger generation if no keys
     controllerVersion?: string; // optional: forwarded
@@ -69,6 +73,16 @@ function keyBelongsToUser(key: string, uid: string) {
     return key.startsWith(`kloner-screenshots/${uid}/`);
 }
 
+function jsonNoStatusAlert(body: any, init: { status: number; headers?: Record<string, string> }) {
+    return NextResponse.json(body, {
+        ...init,
+        headers: {
+            ...(init.headers || {}),
+            "x-observability-skip-status-alert": "1",
+        },
+    });
+}
+
 export async function POST(req: NextRequest) {
     return requireSessionAndMaybeCsrf(
         req,
@@ -77,7 +91,7 @@ export async function POST(req: NextRequest) {
             try {
                 decoded = await verifySession(req); // { uid, email, claims?: { userTier? } }
             } catch (e: any) {
-                return NextResponse.json(
+                return jsonNoStatusAlert(
                     { error: e?.message || "Unauthorized" },
                     { status: 401 }
                 );
@@ -88,7 +102,7 @@ export async function POST(req: NextRequest) {
             try {
                 tier = await getAuthoritativeUserTier(decoded.uid);
             } catch (e: any) {
-                return NextResponse.json(
+                return jsonNoStatusAlert(
                     {
                         error:
                             e?.message ||
@@ -99,7 +113,7 @@ export async function POST(req: NextRequest) {
             }
 
             if (tier === "free") {
-                return NextResponse.json(
+                return jsonNoStatusAlert(
                     {
                         error: "Upgrade to Pro or Agency to create websites or apps from the dashboard.",
                         code: "APP_GENERATION_TIER_BLOCKED",
@@ -115,7 +129,7 @@ export async function POST(req: NextRequest) {
                 const peek = await peekUserCredit(decoded.uid, tier, "preview");
 
                 if (!peek.ok || (peek.remaining !== null && peek.remaining < 1)) {
-                    return NextResponse.json(
+                    return jsonNoStatusAlert(
                         {
                             error: "Monthly preview limit reached for your plan.",
                             code: "PREVIEW_CREDITS_EXHAUSTED",
@@ -127,7 +141,7 @@ export async function POST(req: NextRequest) {
                     );
                 }
             } catch (e: any) {
-                return NextResponse.json(
+                return jsonNoStatusAlert(
                     {
                         error:
                             e?.message ||
@@ -161,13 +175,35 @@ export async function POST(req: NextRequest) {
                 ? json.keys.filter(isNonEmptyString).map((k) => k.trim())
                 : undefined;
 
+            const storageKey = isNonEmptyString(json.storageKey)
+                ? json.storageKey.trim()
+                : undefined;
+            const storageKeys = Array.isArray(json.storageKeys)
+                ? json.storageKeys.filter(isNonEmptyString).map((k) => k.trim())
+                : undefined;
+            const screenshotKey = isNonEmptyString(json.screenshotKey)
+                ? json.screenshotKey.trim()
+                : undefined;
+            const screenshotKeys = Array.isArray(json.screenshotKeys)
+                ? json.screenshotKeys.filter(isNonEmptyString).map((k) => k.trim())
+                : undefined;
+
+            key = key || storageKey || screenshotKey;
+            keys = keys || storageKeys || screenshotKeys;
+
             // If no keys but a URL is present, generate first (longer preflight)
             if (!key && !(keys && keys.length) && incomingUrl) {
                 try {
                     const gen = await callBackend(req, {
                         path: "/generate-screenshots",
                         method: "POST",
-                        body: { url: incomingUrl },
+                        body: {
+                            url: incomingUrl,
+                            urlHash: isNonEmptyString(json.urlHash)
+                                ? json.urlHash.trim()
+                                : undefined,
+                            nameHint: incomingNameHint,
+                        },
                         timeoutMs: 180_000,
                         acceptOnTimeout: true,
                         userCtx: {
@@ -178,7 +214,7 @@ export async function POST(req: NextRequest) {
                     });
 
                     if (!gen.upstream.ok && gen.status !== 504) {
-                        return NextResponse.json(
+                            return jsonNoStatusAlert(
                             { error: gen.json?.error || "Backend error (generate)" },
                             {
                                 status: gen.status,
@@ -191,34 +227,49 @@ export async function POST(req: NextRequest) {
                     }
 
                     const g = gen.json ?? {};
-                    if (Array.isArray(g.keys) && g.keys.length) {
-                        keys = g.keys.filter(isNonEmptyString);
-                    } else if (isNonEmptyString(g.key)) {
-                        key = g.key;
-                    } else if (isNonEmptyString(g?.result?.key)) {
-                        key = g.result.key;
-                    } else if (
-                        Array.isArray(g?.result?.keys) &&
-                        g.result.keys.length
-                    ) {
-                        keys = g.result.keys.filter(isNonEmptyString);
+                    const responseKeyCandidates = [
+                        g.key,
+                        g.storageKey,
+                        g.screenshotKey,
+                        g?.result?.key,
+                        g?.result?.storageKey,
+                        g?.result?.screenshotKey,
+                    ].filter(isNonEmptyString);
+
+                    const responseKeyListCandidates = [
+                        Array.isArray(g.keys) ? g.keys : null,
+                        Array.isArray(g.storageKeys) ? g.storageKeys : null,
+                        Array.isArray(g.screenshotKeys) ? g.screenshotKeys : null,
+                        Array.isArray(g?.result?.keys) ? g.result.keys : null,
+                        Array.isArray(g?.result?.storageKeys) ? g.result.storageKeys : null,
+                        Array.isArray(g?.result?.screenshotKeys) ? g.result.screenshotKeys : null,
+                        Array.isArray(g?.items)
+                            ? g.items.map((item: any) => item?.key || item?.storageKey || item?.screenshotKey)
+                            : null,
+                    ].filter((v): v is string[] => Array.isArray(v) && v.length > 0);
+
+                    if (responseKeyListCandidates.length) {
+                        keys = responseKeyListCandidates[0].filter(isNonEmptyString).map((k) => k.trim());
+                    } else if (responseKeyCandidates.length) {
+                        key = responseKeyCandidates[0];
                     }
                 } catch (e: any) {
-                    return NextResponse.json(
+                    return jsonNoStatusAlert(
                         { error: e?.message || "Proxy failed (generate)" },
                         { status: 502 }
                     );
                 }
             }
 
-            // Consolidate keys
+            // Consolidate keys, but keep URL-only fallback available for the
+            // new backend branch when screenshot generation does not return a key.
             const outKeys = (keys && keys.length ? keys : key ? [key] : [])
                 .map((k) => k.trim())
                 .filter(Boolean)
                 .slice(0, 25); // hard cap to avoid abuse
 
-            if (!outKeys.length) {
-                return NextResponse.json(
+            if (!outKeys.length && !incomingUrl) {
+                return jsonNoStatusAlert(
                     {
                         error:
                             "Missing storage key(s); provide key/keys or a valid url",
@@ -230,7 +281,7 @@ export async function POST(req: NextRequest) {
             // Namespace check: keys must belong to this user
             for (const k of outKeys) {
                 if (!keyBelongsToUser(k, decoded.uid)) {
-                    return NextResponse.json(
+                    return jsonNoStatusAlert(
                         { error: "Forbidden key namespace" },
                         { status: 403 }
                     );
@@ -251,16 +302,22 @@ export async function POST(req: NextRequest) {
                 (incomingUrl ? new URL(incomingUrl).hostname : undefined);
 
             try {
+                const firstKey = outKeys[0];
                 const r = await callBackend(req, {
                     path: "/preview-render",
                     method: "POST",
                     body: {
                         url: incomingUrl,
-                        keys: outKeys,
+                        urlHint: incomingUrl,
+                        urlHash,
                         nameHint: nameHint ?? null,
-                        urlHint: incomingUrl, // allows backend to persist url
-                        urlHash,              // allows backend to persist urlHash
-                        controllerVersion,    // transparent forward if provided
+                        key: firstKey,
+                        keys: outKeys.length ? outKeys : undefined,
+                        storageKey: firstKey,
+                        storageKeys: outKeys.length ? outKeys : undefined,
+                        screenshotKey: firstKey,
+                        screenshotKeys: outKeys.length ? outKeys : undefined,
+                        controllerVersion, // transparent forward if provided
                         // NEW: forward retry + renderId so backend can reuse doc
                         retry: isRetry || undefined,
                         renderId: renderId || undefined,
@@ -323,7 +380,7 @@ export async function POST(req: NextRequest) {
                     }
                 );
             } catch (e: any) {
-                return NextResponse.json(
+                return jsonNoStatusAlert(
                     { error: e?.message || "Proxy failed (render)" },
                     { status: 502 }
                 );

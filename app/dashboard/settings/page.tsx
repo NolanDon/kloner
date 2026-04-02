@@ -3,18 +3,21 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { auth, db } from "@/lib/firebase";
-import { onAuthStateChanged, type User } from "firebase/auth";
+import { onAuthStateChanged, type User, updateProfile } from "firebase/auth";
 import {
     CheckCircle2,
+    ChevronDown,
     Shield,
     Bell,
+    LayoutGrid,
     Rocket,
     Plug,
     Gauge,
     Loader2,
+    ArchiveRestore,
     XCircle,
 } from "lucide-react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useVercelIntegration } from "@/src/hooks/useVercelIntegration";
 import { ensureSessionAndCsrf } from "@/lib/auth-client";
 import { doc, getDoc, setDoc } from "firebase/firestore";
@@ -60,6 +63,20 @@ type NotificationPrefs = {
     productEmails: boolean;
     securityEmails: boolean;
 };
+
+type DashboardPrefs = {
+    compactDashboardLayout: boolean;
+    showArchivedApps: boolean;
+};
+
+const CANCELLATION_REASON_OPTIONS = [
+    "Too expensive",
+    "Not accurate enough",
+    "Just checking things out",
+    "Missing features",
+    "Switching to another tool",
+    "Other",
+];
 
 function toDateFromUnixSeconds(v: number | null | undefined): Date | null {
     if (v === null || v === undefined) return null;
@@ -170,11 +187,24 @@ function btnClass({
 }
 
 export default function SettingsPage(): JSX.Element {
+    const router = useRouter();
     const searchParams = useSearchParams();
     const { showConfirm } = useModal();
 
     const [user, setUser] = useState<User | null>(null);
     const [disconnectBusy, setDisconnectBusy] = useState(false);
+    const [profileNameDraft, setProfileNameDraft] = useState("");
+    const [profileNameSaving, setProfileNameSaving] = useState(false);
+    const [profileNameError, setProfileNameError] = useState<string | null>(null);
+    const [profileNameSuccess, setProfileNameSuccess] = useState<string | null>(null);
+
+    const [dashboardPrefs, setDashboardPrefs] = useState<DashboardPrefs>({
+        compactDashboardLayout: false,
+        showArchivedApps: false,
+    });
+    const [dashboardPrefsSaving, setDashboardPrefsSaving] = useState(false);
+    const [dashboardPrefsError, setDashboardPrefsError] = useState<string | null>(null);
+    const [dashboardPrefsSaved, setDashboardPrefsSaved] = useState<string | null>(null);
 
     const [tier, setTier] = useState<BillingTier>("free");
     const [tierLoading, setTierLoading] = useState(false);
@@ -188,6 +218,9 @@ export default function SettingsPage(): JSX.Element {
     const [cancelBusy, setCancelBusy] = useState(false);
     const [cancelError, setCancelError] = useState<string | null>(null);
     const [cancelSuccess, setCancelSuccess] = useState<string | null>(null);
+    const [cancelReason, setCancelReason] = useState<string>("");
+    const [cancelFeedback, setCancelFeedback] = useState<string>("");
+    const [showCancelFeedbackPopup, setShowCancelFeedbackPopup] = useState(false);
 
     const [renewBusy, setRenewBusy] = useState(false);
     const [renewError, setRenewError] = useState<string | null>(null);
@@ -233,6 +266,118 @@ export default function SettingsPage(): JSX.Element {
         const off = onAuthStateChanged(auth, (u) => setUser(u));
         return () => off();
     }, []);
+
+    useEffect(() => {
+        if (!user) {
+            setProfileNameDraft("");
+            setDashboardPrefs({
+                compactDashboardLayout: false,
+                showArchivedApps: false,
+            });
+            return;
+        }
+
+        let cancelled = false;
+        const fallback = user.displayName || user.email?.split("@")[0] || "";
+        setProfileNameDraft(fallback);
+        setDashboardPrefs({
+            compactDashboardLayout: false,
+            showArchivedApps: false,
+        });
+
+        (async () => {
+            try {
+                const snap = await getDoc(doc(db, "kloner_users", user.uid));
+                if (cancelled) return;
+                const data = snap.exists() ? snap.data() : null;
+                const next = String((data as any)?.profileName || (data as any)?.displayName || fallback || "").trim();
+                if (next) setProfileNameDraft(next);
+
+                const dashboardPrefsData = ((data as any)?.dashboardPrefs || (data as any)?.dashboardSettings || {}) as any;
+                setDashboardPrefs({
+                    compactDashboardLayout: dashboardPrefsData.compactDashboardLayout === true,
+                    showArchivedApps: dashboardPrefsData.showArchivedApps === true,
+                });
+            } catch {
+                // leave the auth fallback in place
+            }
+        })();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [user]);
+
+    async function handleSaveProfileName() {
+        if (!user) return;
+
+        const trimmed = profileNameDraft.trim();
+        if (!trimmed) {
+            setProfileNameError("Enter a profile name.");
+            return;
+        }
+
+        setProfileNameSaving(true);
+        setProfileNameError(null);
+        setProfileNameSuccess(null);
+
+        try {
+            await updateProfile(user, { displayName: trimmed });
+            await setDoc(
+                doc(db, "kloner_users", user.uid),
+                {
+                    displayName: trimmed,
+                    profileName: trimmed,
+                    profileNameUpdatedAt: Date.now(),
+                    updatedAt: Date.now(),
+                },
+                { merge: true },
+            );
+            setProfileNameSuccess("Saved.");
+        } catch (err: any) {
+            console.error("Failed to save profile name", err);
+            setProfileNameError(err?.message || "Unable to save profile name.");
+        } finally {
+            setProfileNameSaving(false);
+        }
+    }
+
+    async function handleToggleDashboardPref(key: keyof DashboardPrefs, value: boolean) {
+        if (!user) return;
+
+        const next = {
+            ...dashboardPrefs,
+            [key]: value,
+        };
+
+        setDashboardPrefs(next);
+        setDashboardPrefsSaving(true);
+        setDashboardPrefsError(null);
+        setDashboardPrefsSaved(null);
+
+        try {
+            await setDoc(
+                doc(db, "kloner_users", user.uid),
+                {
+                    dashboardPrefs: next,
+                    dashboardSettings: next,
+                    dashboardPrefsUpdatedAt: Date.now(),
+                    updatedAt: Date.now(),
+                },
+                { merge: true },
+            );
+            setDashboardPrefsSaved("Saved.");
+        } catch (err: any) {
+            console.error("Failed to save dashboard prefs", err);
+            setDashboardPrefsError(err?.message || "Unable to save dashboard settings.");
+            setDashboardPrefs((prev) => ({
+                ...prev,
+                [key]: !value,
+            }));
+        } finally {
+            setDashboardPrefsSaving(false);
+        }
+    }
 
     const loadTier = async (signal?: AbortSignal) => {
         setTierLoading(true);
@@ -567,6 +712,18 @@ export default function SettingsPage(): JSX.Element {
         }
     }
 
+    async function handleDisconnectVercelConfirmed() {
+        if (!canDisconnectVercel) return;
+
+        const confirmed = await showConfirm(
+            "Disconnect Vercel from Kloner? You can reconnect it later.",
+            "Disconnect Vercel",
+        );
+        if (!confirmed) return;
+
+        await handleDisconnectVercel();
+    }
+
     function handleToggleDeployment(id: string) {
         setSelectedDeploymentIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
     }
@@ -640,15 +797,32 @@ export default function SettingsPage(): JSX.Element {
         }
     }
 
+    function openCancelFeedbackPopup() {
+        setCancelError(null);
+        setCancelSuccess(null);
+        setRenewError(null);
+        setRenewSuccess(null);
+        setCancelReason("");
+        setCancelFeedback("");
+        setShowCancelFeedbackPopup(true);
+    }
+
+    function applyCancellationReasonPreset(reason: string) {
+        const prefix = reason.trim();
+        if (!prefix) return;
+
+        setCancelError(null);
+        setCancelReason(prefix);
+    }
+
     async function handleCancelSubscription() {
-        const trialCancelWarning = onTrial
-            ? "You are currently in a trial. If you cancel now, website generation access will end immediately."
-            : "You’ll keep access until then.";
-        const confirmed = await showConfirm(
-            `Cancel your subscription at the end of the current period? ${trialCancelWarning}`,
-            "Cancel Subscription"
-        );
-        if (!confirmed) return;
+        const reason = cancelReason.trim();
+        const feedback = cancelFeedback.trim();
+
+        if (!reason && !feedback) {
+            setCancelError("Pick a reason, add a note, or do both.");
+            return;
+        }
 
         setCancelBusy(true);
         setCancelError(null);
@@ -666,7 +840,11 @@ export default function SettingsPage(): JSX.Element {
                     "content-type": "application/json",
                     ...(csrf ? { "x-csrf": csrf } : {}),
                 },
-                body: JSON.stringify({ atPeriodEnd: true }),
+                body: JSON.stringify({
+                    atPeriodEnd: true,
+                    cancellationReason: reason || null,
+                    cancellationFeedback: feedback,
+                }),
             });
 
             const data = await res.json().catch(() => ({}));
@@ -681,6 +859,9 @@ export default function SettingsPage(): JSX.Element {
                     ? "Cancellation scheduled. Trial access is revoked immediately and website generation is disabled."
                     : "Cancellation scheduled. You’ll keep access until the end date."
             );
+            setCancelReason("");
+            setCancelFeedback("");
+            setShowCancelFeedbackPopup(false);
             await loadTier();
         } catch (err: any) {
             console.error("Cancel subscription error", err);
@@ -688,6 +869,11 @@ export default function SettingsPage(): JSX.Element {
         } finally {
             setCancelBusy(false);
         }
+    }
+
+    function handleKeepProjectsAndClose() {
+        setShowCancelFeedbackPopup(false);
+        router.push("/dashboard/view");
     }
 
     async function handleRenewSubscription() {
@@ -779,6 +965,9 @@ export default function SettingsPage(): JSX.Element {
         stripeStatus !== "unpaid" &&
         cancelAtPeriodEnd === true;
 
+    const showRenewSubscription =
+        canRenew && stripeStatus !== "active" && stripeStatus !== "trialing";
+
     const unsubStatus = (searchParams.get("unsub") || "").toLowerCase();
     const unsubKindRaw = (searchParams.get("k") || "").toLowerCase();
     const unsubKind: "journey" | "product" | "all" =
@@ -816,7 +1005,9 @@ export default function SettingsPage(): JSX.Element {
                                 onClick={() => setActiveTab("account")}
                                 className={[
                                     "rounded-full px-3 py-1 text-[11px] font-semibold transition",
-                                    activeTab === "account" ? "bg-neutral-900 text-white" : "text-neutral-700 hover:bg-neutral-50",
+                                    activeTab === "account"
+                                        ? "bg-accent text-white shadow-sm"
+                                        : "text-neutral-900 hover:bg-neutral-100",
                                 ].join(" ")}
                             >
                                 Account
@@ -827,8 +1018,8 @@ export default function SettingsPage(): JSX.Element {
                                 className={[
                                     "rounded-full px-3 py-1 text-[11px] font-semibold transition",
                                     activeTab === "notifications"
-                                        ? "bg-neutral-900 text-white"
-                                        : "text-neutral-700 hover:bg-neutral-50",
+                                        ? "bg-accent text-white shadow-sm"
+                                        : "text-neutral-900 hover:bg-neutral-100",
                                 ].join(" ")}
                             >
                                 Notifications
@@ -847,11 +1038,52 @@ export default function SettingsPage(): JSX.Element {
                         </div>
                         <div className="min-w-0">
                             <div className="text-sm font-medium text-neutral-800 truncate">
-                                {user?.displayName || user?.email || "Signed in"}
+                                {profileNameDraft || user?.displayName || user?.email || "Signed in"}
                             </div>
                             <div className="text-xs text-neutral-500">{user && `User ID: ${user.uid.slice(0, 8)}…`}</div>
                         </div>
                     </div>
+                </section>
+
+                <section className="mt-6 rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
+                    <div className="flex items-center gap-2">
+                        <CheckCircle2 className="h-4 w-4 text-neutral-700" />
+                        <h2 className="text-sm font-semibold text-neutral-800">Profile</h2>
+                    </div>
+
+                    <p className="mt-2 text-xs text-neutral-600">
+                        Keep your account name current. This saves to your Firebase account and your Kloner user record.
+                    </p>
+
+                    <div className="mt-3 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+                        <label className="block">
+                            <span className="text-[11px] font-semibold text-neutral-700">Display name</span>
+                            <input
+                                value={profileNameDraft}
+                                onChange={(e) => setProfileNameDraft(e.target.value)}
+                                placeholder="Your name"
+                                className="mt-1 w-full rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm text-neutral-900 outline-none focus:border-neutral-400"
+                                maxLength={80}
+                            />
+                        </label>
+
+                        <button
+                            type="button"
+                            onClick={() => void handleSaveProfileName()}
+                            disabled={profileNameSaving}
+                            className={btnClass({ kind: "primary", disabled: profileNameSaving })}
+                        >
+                            {profileNameSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
+                            Save name
+                        </button>
+                    </div>
+
+                    <div className="mt-2 text-[11px] text-neutral-500">
+                        Signed in as {user?.email || "unknown"}
+                    </div>
+
+                    {profileNameError && <p className="mt-2 text-xs text-red-600">{profileNameError}</p>}
+                    {profileNameSuccess && <p className="mt-2 text-xs text-emerald-600">{profileNameSuccess}</p>}
                 </section>
 
                 {activeTab === "notifications" ? (
@@ -1005,119 +1237,6 @@ export default function SettingsPage(): JSX.Element {
                     <>
                         <section className="mt-6 rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
                             <div className="flex items-center gap-2">
-                                <Rocket className="h-4 w-4 text-neutral-700" />
-                                <h2 className="text-sm font-semibold text-neutral-800">Subscription</h2>
-                            </div>
-
-                            <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                                <div>
-                                    <div className="flex items-center gap-2">
-                                        <span className="text-sm font-medium text-neutral-800">Current plan:</span>
-                                        <span
-                                            className={
-                                                "inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] font-semibold " +
-                                                tierBadgeClasses
-                                            }
-                                        >
-                                            {tierLoading ? "Checking..." : tierLabel}
-                                        </span>
-                                    </div>
-
-                                    <p className="mt-1 text-xs text-neutral-600">
-                                        {tier === "free" && "Free tier with low daily preview and snapshot limits."}
-                                        {tier === "pro" && "Pro tier with higher limits and priority processing."}
-                                        {tier === "agency" && "Agency tier for higher volume and team workflows."}
-                                    </p>
-
-                                    {tierError && <p className="mt-1 text-xs text-red-600">{tierError}</p>}
-
-                                    {!tierError && !tierLoading && (
-                                        <div className="mt-2 space-y-1">
-                                            <p className="text-[11px] text-neutral-500">
-                                                Stripe status: <span className="font-semibold">{stripeStatusLabel}</span>
-                                                {downgradeNotice && <> · your account will fall back to the Free tier after this period.</>}
-                                            </p>
-
-                                            {onTrial && trialDaysRemaining !== null && (
-                                                <p className="text-[11px] text-neutral-500">
-                                                    Trial ends in{" "}
-                                                    <span className="font-semibold">
-                                                        {trialDaysRemaining} day{trialDaysRemaining === 1 ? "" : "s"}
-                                                    </span>{" "}
-                                                    · {formatUnixSeconds(trialEndSec)}
-                                                </p>
-                                            )}
-
-                                            {!onTrial && nextBillingLabel && (
-                                                <p className="text-[11px] text-neutral-500">
-                                                    Next billing: <span className="font-semibold">{nextBillingLabel}</span>
-                                                </p>
-                                            )}
-
-                                            {cancelAtPeriodEnd && endOfAccessDays !== null && endOfAccessSec && (
-                                                <p className="text-[11px] text-amber-700">
-                                                    Cancellation scheduled · access ends in{" "}
-                                                    <span className="font-semibold">
-                                                        {endOfAccessDays} day{endOfAccessDays === 1 ? "" : "s"}
-                                                    </span>{" "}
-                                                    · {formatUnixSeconds(endOfAccessSec)}
-                                                </p>
-                                            )}
-
-                                            {cancelError && <p className="text-[11px] text-red-600">{cancelError}</p>}
-                                            {cancelSuccess && <p className="text-[11px] text-emerald-600">{cancelSuccess}</p>}
-
-                                            {renewError && <p className="text-[11px] text-red-600">{renewError}</p>}
-                                            {renewSuccess && <p className="text-[11px] text-emerald-600">{renewSuccess}</p>}
-                                        </div>
-                                    )}
-                                </div>
-
-                                <div className="flex flex-col items-start gap-2 sm:items-end">
-                                    <a href="/price" className={btnClass({ kind: "soft", disabled: false })}>
-                                        View plans
-                                    </a>
-
-                                    <button
-                                        type="button"
-                                        onClick={() => void handleRenewSubscription()}
-                                        disabled={!canRenew || renewBusy}
-                                        className={btnClass({
-                                            kind: canRenew ? "warn" : "ghost",
-                                            disabled: !canRenew || renewBusy,
-                                        })}
-                                        title={canRenew ? "Remove scheduled cancellation" : "No cancellation scheduled"}
-                                    >
-                                        {renewBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
-                                        Renew
-                                    </button>
-
-                                    <button
-                                        type="button"
-                                        onClick={() => void handleCancelSubscription()}
-                                        disabled={!canCancel || cancelBusy}
-                                        className={btnClass({
-                                            kind: canCancel ? "danger" : "ghost",
-                                            disabled: !canCancel || cancelBusy,
-                                        })}
-                                    >
-                                        {cancelBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <XCircle className="h-3.5 w-3.5" />}
-                                        Cancel subscription
-                                    </button>
-
-                                    {onTrial && (
-                                        <p className="max-w-[18rem] text-right text-[11px] leading-5 text-amber-700 sm:max-w-[20rem]">
-                                            Cancelling during trial ends website generation access immediately.
-                                        </p>
-                                    )}
-
-                                    <span className="text-[11px] text-neutral-500">Billing managed by Stripe</span>
-                                </div>
-                            </div>
-                        </section>
-
-                        <section className="mt-6 rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
-                            <div className="flex items-center gap-2">
                                 <Plug className="h-4 w-4 text-neutral-700" />
                                 <h2 className="text-sm font-semibold text-neutral-800">Connections</h2>
                             </div>
@@ -1139,7 +1258,7 @@ export default function SettingsPage(): JSX.Element {
                                     </div>
                                     <p className="mt-1 text-xs text-neutral-600">Deploy live sites and apps directly from Kloner.</p>
 
-                                    <div className="mt-2 flex gap-2">
+                                    <div className="mt-2 flex flex-wrap items-center gap-2">
                                         <button
                                             type="button"
                                             onClick={handleConnectVercel}
@@ -1167,34 +1286,37 @@ export default function SettingsPage(): JSX.Element {
                                             )}
                                         </button>
 
-                                        <button
-                                            type="button"
-                                            onClick={() => void handleDisconnectVercel()}
-                                            disabled={!isVercelConnected || isVercelChecking || disconnectBusy}
-                                            className={btnClass({
-                                                kind: "warn",
-                                                disabled: !isVercelConnected || isVercelChecking || disconnectBusy,
-                                            })}
-                                            title={
-                                                !isVercelConnected
-                                                    ? "Already disconnected"
-                                                    : isVercelChecking
-                                                        ? "Checking integration…"
-                                                        : undefined
-                                            }
-                                        >
-                                            {disconnectBusy ? (
-                                                <>
-                                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                                    Disconnecting…
-                                                </>
-                                            ) : (
-                                                <>
-                                                    <XCircle className="h-3.5 w-3.5" />
-                                                    Disconnect
-                                                </>
-                                            )}
-                                        </button>
+                                        <details className="group relative">
+                                            <summary
+                                                className="list-none cursor-pointer select-none inline-flex items-center gap-1 text-[12px] font-medium text-neutral-700 hover:text-neutral-900 [&::-webkit-details-marker]:hidden"
+                                                title={
+                                                    !isVercelConnected
+                                                        ? "Already disconnected"
+                                                        : isVercelChecking
+                                                            ? "Checking integration…"
+                                                            : "Manage Vercel connection"
+                                                }
+                                            >
+                                                Manage
+                                                <ChevronDown className="h-3.5 w-3.5 transition-transform duration-200 group-open:rotate-180" />
+                                            </summary>
+
+                                            <div className="absolute left-0 top-full z-20 mt-2 min-w-44 rounded-2xl border border-neutral-200 bg-white p-2 shadow-xl">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => void handleDisconnectVercelConfirmed()}
+                                                    disabled={!isVercelConnected || isVercelChecking || disconnectBusy}
+                                                    className="inline-flex w-full items-center gap-2 px-2 py-1.5 text-left text-[12px] font-medium text-red-600 hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-40"
+                                                >
+                                                    {disconnectBusy ? (
+                                                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                                    ) : (
+                                                        <XCircle className="h-3.5 w-3.5" />
+                                                    )}
+                                                    Disconnect Vercel
+                                                </button>
+                                            </div>
+                                        </details>
                                     </div>
                                 </div>
 
@@ -1259,6 +1381,65 @@ export default function SettingsPage(): JSX.Element {
                             </div>
                         </section>
 
+                        <section className="mt-6 rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
+                            <div className="flex items-center gap-2">
+                                <LayoutGrid className="h-4 w-4 text-neutral-700" />
+                                <h2 className="text-sm font-semibold text-neutral-800">Workspace preferences</h2>
+                            </div>
+
+                            <p className="mt-2 text-xs text-neutral-600">
+                                Typical builder controls that change how the dashboard behaves.
+                            </p>
+
+                            <div className="mt-3 space-y-3">
+                                <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-3">
+                                    <div className="flex items-start justify-between gap-3">
+                                        <div>
+                                            <div className="text-sm font-medium text-neutral-800">Compact dashboard layout</div>
+                                            <p className="mt-1 text-xs text-neutral-600">
+                                                Shrink the main dashboard cards so more projects fit on screen.
+                                            </p>
+                                        </div>
+
+                                        <button
+                                            type="button"
+                                            disabled={dashboardPrefsSaving}
+                                            onClick={() => void handleToggleDashboardPref("compactDashboardLayout", !dashboardPrefs.compactDashboardLayout)}
+                                            className={btnClass({ kind: dashboardPrefs.compactDashboardLayout ? "primary" : "soft", disabled: dashboardPrefsSaving })}
+                                        >
+                                            {dashboardPrefs.compactDashboardLayout ? "On" : "Off"}
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-3">
+                                    <div className="flex items-start justify-between gap-3">
+                                        <div>
+                                            <div className="inline-flex items-center gap-1.5 text-sm font-medium text-neutral-800">
+                                                <ArchiveRestore className="h-4 w-4 text-neutral-700" />
+                                                Show archived apps
+                                            </div>
+                                            <p className="mt-1 text-xs text-neutral-600">
+                                                Keep archived apps visible in the dashboard list instead of hiding them.
+                                            </p>
+                                        </div>
+
+                                        <button
+                                            type="button"
+                                            disabled={dashboardPrefsSaving}
+                                            onClick={() => void handleToggleDashboardPref("showArchivedApps", !dashboardPrefs.showArchivedApps)}
+                                            className={btnClass({ kind: dashboardPrefs.showArchivedApps ? "primary" : "soft", disabled: dashboardPrefsSaving })}
+                                        >
+                                            {dashboardPrefs.showArchivedApps ? "On" : "Off"}
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {dashboardPrefsError && <p className="text-[11px] text-red-600">{dashboardPrefsError}</p>}
+                                {dashboardPrefsSaved && <p className="text-[11px] text-emerald-600">{dashboardPrefsSaved}</p>}
+                            </div>
+                        </section>
+
                         <section className="mt-6 rounded-2xl border border-neutral-200 bg-neutral-50 p-4">
                             <div className="flex items-center gap-2 text-neutral-800">
                                 <h2 className="text-sm font-semibold">Account and data</h2>
@@ -1279,6 +1460,225 @@ export default function SettingsPage(): JSX.Element {
                                 <span className="text-[11px] text-neutral-500">support@kloner.app</span>
                             </div>
                         </section>
+
+                        <section className="mt-6 rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
+                            <div className="flex items-center gap-2">
+                                <Rocket className="h-4 w-4 text-neutral-700" />
+                                <h2 className="text-sm font-semibold text-neutral-800">Billing & subscription</h2>
+                            </div>
+
+                            <details className="group mt-3 px-1 py-1">
+                                <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-[13px] font-medium text-neutral-800 [&::-webkit-details-marker]:hidden">
+                                    <span className="inline-flex items-center gap-2">
+                                        <span>Subscription status</span>
+                                        <span
+                                            className={
+                                                "inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] font-semibold " +
+                                                tierBadgeClasses
+                                            }
+                                        >
+                                            {tierLoading ? "Checking..." : tierLabel}
+                                        </span>
+                                    </span>
+
+                                    <ChevronDown className="h-4 w-4 shrink-0 text-neutral-500 transition-transform duration-200 group-open:rotate-180" />
+                                </summary>
+
+                                <div className="mt-3 space-y-3">
+                                    <p className="text-xs text-neutral-600">
+                                        {tier === "free" && "Free tier with low daily preview and snapshot limits."}
+                                        {tier === "pro" && "Pro tier with higher limits and priority processing."}
+                                        {tier === "agency" && "Agency tier for higher volume and team workflows."}
+                                    </p>
+
+                                    <p className="text-[11px] text-neutral-500">
+                                        Stripe status: <span className="font-semibold">{stripeStatusLabel}</span>
+                                        {downgradeNotice && <> · your account will fall back to the Free tier after this period.</>}
+                                    </p>
+
+                                    {onTrial && trialDaysRemaining !== null && (
+                                        <p className="text-[11px] text-neutral-500">
+                                            Trial ends in{" "}
+                                            <span className="font-semibold">
+                                                {trialDaysRemaining} day{trialDaysRemaining === 1 ? "" : "s"}
+                                            </span>{" "}
+                                            · {formatUnixSeconds(trialEndSec)}
+                                        </p>
+                                    )}
+
+                                    {!onTrial && nextBillingLabel && (
+                                        <p className="text-[11px] text-neutral-500">
+                                            Next billing: <span className="font-semibold">{nextBillingLabel}</span>
+                                        </p>
+                                    )}
+
+                                    {cancelAtPeriodEnd && endOfAccessDays !== null && endOfAccessSec && (
+                                        <p className="text-[11px] text-amber-700">
+                                            Cancellation scheduled · access ends in{" "}
+                                            <span className="font-semibold">
+                                                {endOfAccessDays} day{endOfAccessDays === 1 ? "" : "s"}
+                                            </span>{" "}
+                                            · {formatUnixSeconds(endOfAccessSec)}
+                                        </p>
+                                    )}
+
+                                    {tierError && <p className="text-[11px] text-red-600">{tierError}</p>}
+                                    {cancelError && <p className="text-[11px] text-red-600">{cancelError}</p>}
+                                    {cancelSuccess && <p className="text-[11px] text-emerald-600">{cancelSuccess}</p>}
+
+                                    {renewError && <p className="text-[11px] text-red-600">{renewError}</p>}
+                                    {renewSuccess && <p className="text-[11px] text-emerald-600">{renewSuccess}</p>}
+                                    <span className="text-[11px] text-neutral-500">Billing managed by Stripe</span>
+
+                                    <div className="flex flex-col gap-2 pt-1">
+                                        <a
+                                            href="/price"
+                                            className="inline-flex items-center gap-1 text-[12px] font-medium text-neutral-700 hover:text-neutral-900"
+                                        >
+                                            View plans
+                                        </a>
+
+                                        {showRenewSubscription && (
+                                            <button
+                                                type="button"
+                                                onClick={() => void handleRenewSubscription()}
+                                                disabled={!canRenew || renewBusy}
+                                                className="inline-flex items-center gap-1 text-[12px] font-medium text-neutral-700 hover:text-neutral-900 disabled:opacity-50 disabled:pointer-events-none"
+                                                title={canRenew ? "Remove scheduled cancellation" : "No cancellation scheduled"}
+                                            >
+                                                {renewBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
+                                                Renew
+                                            </button>
+                                        )}
+
+                                        <button
+                                            type="button"
+                                            onClick={openCancelFeedbackPopup}
+                                            disabled={!canCancel || cancelBusy}
+                                            className="inline-flex items-center gap-1 text-[12px] font-medium text-neutral-700 hover:text-neutral-900 disabled:opacity-50 disabled:pointer-events-none"
+                                        >
+                                            {cancelBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <XCircle className="h-3.5 w-3.5" />}
+                                            Cancel subscription
+                                        </button>
+
+                                        {onTrial && (
+                                            <p className="max-w-[18rem] text-right text-[11px] leading-5 text-amber-700 sm:max-w-[20rem]">
+                                                Cancelling during trial ends website generation access immediately.
+                                            </p>
+                                        )}
+                                    </div>
+                                </div>
+                            </details>
+                        </section>
+
+                        {showCancelFeedbackPopup && (
+                            <div className="fixed inset-0 z-[80] flex items-end justify-center bg-black/35 px-3 py-3 sm:items-center">
+                                <div className="w-full max-w-xl rounded-3xl border border-neutral-200 bg-white p-4 shadow-2xl sm:p-5">
+                                    <div className="flex items-start justify-between gap-3">
+                                        <div>
+                                            <h3 className="text-base font-semibold text-neutral-900">Cancel subscription</h3>
+                                            <p className="mt-1 text-sm text-neutral-600">
+                                                Tell us why you’re leaving. This helps us understand what to improve.
+                                            </p>
+                                        </div>
+
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowCancelFeedbackPopup(false)}
+                                            className="inline-flex h-8 w-8 items-center justify-center rounded-full text-neutral-500 hover:bg-neutral-100"
+                                            aria-label="Close cancellation feedback"
+                                        >
+                                            <XCircle className="h-5 w-5" />
+                                        </button>
+                                    </div>
+
+                                    <div className="mt-4 space-y-3">
+                                        <div className="space-y-2">
+                                            <p className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500">Choose a reason</p>
+                                            {CANCELLATION_REASON_OPTIONS.map((reason) => {
+                                                const selected = cancelReason.toLowerCase() === reason.toLowerCase();
+
+                                                return (
+                                                    <button
+                                                        key={reason}
+                                                        type="button"
+                                                        onClick={() => applyCancellationReasonPreset(reason)}
+                                                        className={[
+                                                            "flex w-full items-center gap-3 rounded-2xl border px-4 py-3 text-left text-sm font-medium transition",
+                                                            selected
+                                                                ? "border-neutral-900 bg-neutral-50 text-neutral-900"
+                                                                : "border-neutral-200 bg-white text-neutral-700 hover:bg-neutral-50",
+                                                        ].join(" ")}
+                                                    >
+                                                        <span
+                                                            className={[
+                                                                "grid h-5 w-5 shrink-0 place-items-center rounded-full border",
+                                                                selected
+                                                                    ? "border-neutral-900 bg-neutral-900"
+                                                                    : "border-neutral-300 bg-white",
+                                                            ].join(" ")}
+                                                        >
+                                                            <span
+                                                                className={[
+                                                                    "h-2.5 w-2.5 rounded-full bg-white transition",
+                                                                    selected ? "scale-100" : "scale-0",
+                                                                ].join(" ")}
+                                                            />
+                                                        </span>
+                                                        {reason}
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+
+                                        <label className="block">
+                                            <span className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500">Feedback</span>
+                                            <textarea
+                                                value={cancelFeedback}
+                                                onChange={(e) => setCancelFeedback(e.target.value.slice(0, 200))}
+                                                placeholder="What should we improve?"
+                                                rows={4}
+                                                maxLength={200}
+                                                className="mt-1 w-full rounded-2xl border border-neutral-200 bg-neutral-50 px-3 py-3 text-sm text-neutral-900 outline-none focus:border-neutral-400"
+                                            />
+                                            <div className="mt-1 flex items-center justify-between text-[11px] text-neutral-500">
+                                                <span>Add a note if you want, or just pick a reason.</span>
+                                                <span>{cancelFeedback.length}/200</span>
+                                            </div>
+                                        </label>
+                                    </div>
+
+                                    {cancelError && <p className="mt-3 text-xs text-red-600">{cancelError}</p>}
+
+                                    <div className="mt-5 flex items-center justify-end gap-2 border-t border-neutral-200 pt-4">
+                                        <button
+                                            type="button"
+                                            onClick={handleKeepProjectsAndClose}
+                                            className="inline-flex items-center justify-center rounded-full border border-neutral-200 px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
+                                        >
+                                            No, don&apos;t stop my projects
+                                        </button>
+
+                                        <button
+                                            type="button"
+                                            onClick={() => void handleCancelSubscription()}
+                                            disabled={cancelBusy || (!cancelReason.trim() && !cancelFeedback.trim())}
+                                            className="inline-flex items-center justify-center rounded-full bg-accent px-4 py-2 text-sm font-semibold text-white hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-50"
+                                        >
+                                            {cancelBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                                            <span className="ml-2">Confirm cancellation</span>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        <div className="mt-6 inline-flex items-center gap-2 rounded-full border border-neutral-200 bg-neutral-50 px-3 py-1.5 text-xs text-neutral-700">
+                            <Gauge className="h-3.5 w-3.5" />
+                            <span>System status:</span>
+                            <span className="font-semibold text-emerald-600">OK</span>
+                            <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+                        </div>
 
                         <section className="mt-6 rounded-2xl border border-neutral-200 bg-neutral-50 p-4">
                             <div className="mt-1">
@@ -1430,13 +1830,6 @@ export default function SettingsPage(): JSX.Element {
                                 </div>
                             )}
                         </section>
-
-                        <div className="mt-6 inline-flex items-center gap-2 rounded-full border border-neutral-200 bg-neutral-50 px-3 py-1.5 text-xs text-neutral-700">
-                            <Gauge className="h-3.5 w-3.5" />
-                            <span>System status:</span>
-                            <span className="font-semibold text-emerald-600">OK</span>
-                            <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
-                        </div>
                     </>
                 )}
             </div>

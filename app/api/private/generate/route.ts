@@ -51,6 +51,16 @@ async function captureUrlScanFailure(params: {
     });
 }
 
+function jsonNoStatusAlert(body: any, init: { status: number; headers?: Record<string, string> }) {
+    return NextResponse.json(body, {
+        ...init,
+        headers: {
+            ...(init.headers || {}),
+            "x-observability-skip-status-alert": "1",
+        },
+    });
+}
+
 export async function POST(req: NextRequest) {
     return requireSessionAndMaybeCsrf(
         req,
@@ -59,7 +69,7 @@ export async function POST(req: NextRequest) {
             try {
                 decoded = await verifySession(req);
             } catch (e: any) {
-                return NextResponse.json(
+                return jsonNoStatusAlert(
                     { error: e?.message || "Unauthorized" },
                     { status: 401 }
                 );
@@ -69,7 +79,7 @@ export async function POST(req: NextRequest) {
             const { url } = body;
 
             if (!isHttpUrl(url)) {
-                return NextResponse.json(
+                return jsonNoStatusAlert(
                     { error: "Invalid URL" },
                     { status: 400 }
                 );
@@ -79,7 +89,7 @@ export async function POST(req: NextRequest) {
             try {
                 tier = await getAuthoritativeUserTier(decoded.uid);
             } catch (e: any) {
-                return NextResponse.json(
+                return jsonNoStatusAlert(
                     {
                         error:
                             e?.message ||
@@ -93,7 +103,7 @@ export async function POST(req: NextRequest) {
             try {
                 const peek = await peekUserCredit(decoded.uid, tier, "snapshot");
                 if (!peek.ok || (peek.remaining !== null && peek.remaining <= 0)) {
-                    return NextResponse.json(
+                    return jsonNoStatusAlert(
                         {
                             error: "Monthly snapshot limit reached for your plan.",
                             remaining: peek.remaining,
@@ -102,7 +112,7 @@ export async function POST(req: NextRequest) {
                     );
                 }
             } catch {
-                return NextResponse.json(
+                return jsonNoStatusAlert(
                     { error: "Unable to check credits. Try again shortly." },
                     { status: 503 }
                 );
@@ -205,7 +215,7 @@ export async function POST(req: NextRequest) {
                         },
                     });
 
-                    return NextResponse.json(
+                    return jsonNoStatusAlert(
                         {
                             error: reason,
                             ...(totalPlanned === 0
@@ -249,7 +259,7 @@ export async function POST(req: NextRequest) {
                     },
                 });
 
-                return NextResponse.json(
+                return jsonNoStatusAlert(
                     { error: e?.message || "Proxy failed" },
                     {
                         status: 502,
