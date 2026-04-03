@@ -22,6 +22,7 @@ export function stripProtocol(input: string) {
 const DOMAIN_RE = /^(?!-)(?:[a-z0-9-]{1,63}\.)+[a-z]{2,63}$/i;
 const PRIVATE_HOST_RE =
   /^(?:localhost|::1|0\.0\.0\.0|127(?:\.\d{1,3}){0,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|169\.254\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2[0-9]|3[0-1])\.\d{1,3}\.\d{1,3})$/i;
+const BLOCKED_HOST_RE = /(^|\.)kloner\.app$/i;
 const SENSITIVE_HOST_LABELS = new Set([
   "account",
   "accounts",
@@ -103,6 +104,10 @@ export function getPublicHttpUrlRejectionReason(input: string): string | null {
 
     if (PRIVATE_HOST_RE.test(hostLower)) {
       return "Local and private-network URLs are blocked.";
+    }
+
+    if (BLOCKED_HOST_RE.test(hostLower)) {
+      return "Kloner domains are blocked from cloning.";
     }
 
     if (!DOMAIN_RE.test(hostLower)) return "Please enter a valid public http(s) URL.";

@@ -17,6 +17,7 @@ export default function HeroContent({
 }) {
   const router = useRouter();
   const [mode, setMode] = useState<"url" | "prompt">("url");
+  const promptModeEnabled = false;
   const [url, setUrl] = useState("");
   const [prompt, setPrompt] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -151,10 +152,12 @@ export default function HeroContent({
             <button
               type="button"
               onClick={() => {
+                if (!promptModeEnabled) return;
                 setMode("prompt");
                 setError(null);
                 setTimeout(() => inputRef.current?.focus(), 0);
               }}
+              disabled={!promptModeEnabled}
               className={`rounded-full px-3 py-1 ring-1 transition ${mode === "prompt" ? "bg-white/15 ring-white/30 text-white" : "bg-transparent ring-white/15 hover:bg-white/10"}`}
             >
               Prompt

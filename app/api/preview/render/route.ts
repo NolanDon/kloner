@@ -124,32 +124,6 @@ export async function POST(req: NextRequest) {
                 );
             }
 
-            // HARD GATE: do not render if out of preview credits
-            try {
-                const peek = await peekUserCredit(decoded.uid, tier, "preview");
-
-                if (!peek.ok || (peek.remaining !== null && peek.remaining < 1)) {
-                    return jsonNoStatusAlert(
-                        {
-                            error: "Monthly preview limit reached for your plan.",
-                            code: "PREVIEW_CREDITS_EXHAUSTED",
-                            reason: "preview_credits_exhausted",
-                            remaining: peek.remaining,
-                            kind: "preview",
-                        },
-                        { status: 429 }
-                    );
-                }
-            } catch (e: any) {
-                return jsonNoStatusAlert(
-                    {
-                        error:
-                            e?.message ||
-                            "Unable to check preview credits. Try again shortly.",
-                    },
-                    { status: 503 }
-                );
-            }
 
             const json = (await req.json().catch(() => ({}))) as Body;
 
@@ -191,90 +165,43 @@ export async function POST(req: NextRequest) {
             key = key || storageKey || screenshotKey;
             keys = keys || storageKeys || screenshotKeys;
 
-            // If no keys but a URL is present, generate first (longer preflight)
-            if (!key && !(keys && keys.length) && incomingUrl) {
-                try {
-                    const gen = await callBackend(req, {
-                        path: "/generate-screenshots",
-                        method: "POST",
-                        body: {
-                            url: incomingUrl,
-                            urlHash: isNonEmptyString(json.urlHash)
-                                ? json.urlHash.trim()
-                                : undefined,
-                            nameHint: incomingNameHint,
-                        },
-                        timeoutMs: 180_000,
-                        acceptOnTimeout: true,
-                        userCtx: {
-                            uid: decoded.uid,
-                            email: decoded?.email || "",
-                            tier,
-                        },
-                    });
-
-                    if (!gen.upstream.ok && gen.status !== 504) {
-                            return jsonNoStatusAlert(
-                            { error: gen.json?.error || "Backend error (generate)" },
-                            {
-                                status: gen.status,
-                                headers: {
-                                    "x-request-id": gen.reqId,
-                                    "cache-control": "no-store",
-                                },
-                            }
-                        );
-                    }
-
-                    const g = gen.json ?? {};
-                    const responseKeyCandidates = [
-                        g.key,
-                        g.storageKey,
-                        g.screenshotKey,
-                        g?.result?.key,
-                        g?.result?.storageKey,
-                        g?.result?.screenshotKey,
-                    ].filter(isNonEmptyString);
-
-                    const responseKeyListCandidates = [
-                        Array.isArray(g.keys) ? g.keys : null,
-                        Array.isArray(g.storageKeys) ? g.storageKeys : null,
-                        Array.isArray(g.screenshotKeys) ? g.screenshotKeys : null,
-                        Array.isArray(g?.result?.keys) ? g.result.keys : null,
-                        Array.isArray(g?.result?.storageKeys) ? g.result.storageKeys : null,
-                        Array.isArray(g?.result?.screenshotKeys) ? g.result.screenshotKeys : null,
-                        Array.isArray(g?.items)
-                            ? g.items.map((item: any) => item?.key || item?.storageKey || item?.screenshotKey)
-                            : null,
-                    ].filter((v): v is string[] => Array.isArray(v) && v.length > 0);
-
-                    if (responseKeyListCandidates.length) {
-                        keys = responseKeyListCandidates[0].filter(isNonEmptyString).map((k) => k.trim());
-                    } else if (responseKeyCandidates.length) {
-                        key = responseKeyCandidates[0];
-                    }
-                } catch (e: any) {
-                    return jsonNoStatusAlert(
-                        { error: e?.message || "Proxy failed (generate)" },
-                        { status: 502 }
-                    );
-                }
-            }
-
-            // Consolidate keys, but keep URL-only fallback available for the
-            // new backend branch when screenshot generation does not return a key.
             const outKeys = (keys && keys.length ? keys : key ? [key] : [])
                 .map((k) => k.trim())
                 .filter(Boolean)
                 .slice(0, 25); // hard cap to avoid abuse
 
-            if (!outKeys.length && !incomingUrl) {
+            if (!outKeys.length) {
+                return jsonNoStatusAlert(
+                    {
+                        error: "Missing keys",
+                    },
+                    { status: 400 }
+                );
+            }
+            // HARD GATE: do not render if out of preview credits
+            try {
+                const peek = await peekUserCredit(decoded.uid, tier, "preview");
+
+                if (!peek.ok || (peek.remaining !== null && peek.remaining < 1)) {
+                    return jsonNoStatusAlert(
+                        {
+                            error: "Monthly preview limit reached for your plan.",
+                            code: "PREVIEW_CREDITS_EXHAUSTED",
+                            reason: "preview_credits_exhausted",
+                            remaining: peek.remaining,
+                            kind: "preview",
+                        },
+                        { status: 429 }
+                    );
+                }
+            } catch (e: any) {
                 return jsonNoStatusAlert(
                     {
                         error:
-                            "Missing storage key(s); provide key/keys or a valid url",
+                            e?.message ||
+                            "Unable to check preview credits. Try again shortly.",
                     },
-                    { status: 400 }
+                    { status: 503 }
                 );
             }
 

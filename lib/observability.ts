@@ -253,6 +253,7 @@ function toSlackBlocks(event: StoredEvent, eventId: string) {
     const contextFields = [
         ["Caller", cleanContextValue((extra as any).callerType || (extra as any).caller || (extra as any).requestContext?.callerType, 80)],
         ["IP", cleanContextValue((extra as any).ip || (extra as any).clientIp || (extra as any).requestContext?.ip, 80)],
+        ["Browser", cleanContextValue((extra as any).browser || (extra as any).requestContext?.browser, 80)],
         ["UA", cleanContextValue((extra as any).userAgent || (extra as any).ua || (extra as any).requestContext?.userAgent, 220)],
         ["Origin", cleanContextValue((extra as any).origin || (extra as any).requestContext?.origin, 220)],
         ["Referer", cleanContextValue((extra as any).referer || (extra as any).requestContext?.referer, 220)],

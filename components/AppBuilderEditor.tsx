@@ -39,9 +39,31 @@ type AppData = {
     isDeployed?: boolean;
     productionUrl?: string | null;
     vercelProtectionBypassSecret?: string | null;
-    generationStatus?: "processing" | "ready" | "error";
-    generationError?: string;
+    generationStatus?: string | null;
+    generationError?: string | null;
     generationProgress?: number | null;
+    generation?: {
+        status?: string | null;
+        stage?: string | null;
+        progress?: number | null;
+        message?: string | null;
+        title?: string | null;
+        jobId?: string | null;
+        archiveZipPath?: string | null;
+        archiveZipUrl?: string | null;
+    } | null;
+};
+
+type NormalizedGenerationState = {
+    status: string | null;
+    stage: string | null;
+    progress: number | null;
+    message: string | null;
+    title: string | null;
+    jobId: string | null;
+    archiveZipPath: string | null;
+    archiveZipUrl: string | null;
+    error: string | null;
 };
 
 type AutoPreviewPhase =
@@ -211,6 +233,87 @@ function csrfHeaders(csrf: unknown): HeadersInit | undefined {
         return { "x-csrf": csrf };
     }
     return undefined;
+}
+
+function asTrimmedString(value: unknown): string | null {
+    if (typeof value !== "string") return null;
+    const next = value.trim();
+    return next ? next : null;
+}
+
+function asFiniteNumber(value: unknown): number | null {
+    if (typeof value !== "number" || !Number.isFinite(value)) return null;
+    return value;
+}
+
+function normalizeGenerationStage(value: unknown): string | null {
+    const stage = asTrimmedString(value);
+    return stage ? stage.toLowerCase() : null;
+}
+
+function normalizeGenerationState(data: any): NormalizedGenerationState {
+    const generation = data?.generation && typeof data.generation === "object" ? data.generation : null;
+    const legacyStatus = asTrimmedString(data?.generationStatus) || asTrimmedString(data?.status);
+    const legacyProgress = asFiniteNumber(data?.generationProgress) ?? asFiniteNumber(data?.progress);
+    const legacyError = asTrimmedString(data?.generationError) || asTrimmedString(data?.error);
+
+    return {
+        status: normalizeGenerationStage(generation?.status ?? legacyStatus),
+        stage: normalizeGenerationStage(generation?.stage),
+        progress: asFiniteNumber(generation?.progress) ?? legacyProgress,
+        message: asTrimmedString(generation?.message),
+        title: asTrimmedString(generation?.title),
+        jobId:
+            asTrimmedString(generation?.jobId) ||
+            asTrimmedString(data?.generationJobId) ||
+            asTrimmedString(data?.jobId),
+        archiveZipPath:
+            asTrimmedString(generation?.archiveZipPath) ||
+            asTrimmedString(data?.archiveZipPath),
+        archiveZipUrl:
+            asTrimmedString(generation?.archiveZipUrl) ||
+            asTrimmedString(data?.archiveZipUrl),
+        error: legacyError,
+    };
+}
+
+function generationStateChanged(
+    prev: Partial<NormalizedGenerationState> | null | undefined,
+    next: Partial<NormalizedGenerationState>,
+): boolean {
+    if (!prev) return true;
+    return (
+        prev.status !== next.status ||
+        prev.stage !== next.stage ||
+        prev.progress !== next.progress ||
+        prev.message !== next.message ||
+        prev.title !== next.title ||
+        prev.jobId !== next.jobId ||
+        prev.archiveZipPath !== next.archiveZipPath ||
+        prev.archiveZipUrl !== next.archiveZipUrl ||
+        prev.error !== next.error
+    );
+}
+
+function isGenerationInProgress(state: NormalizedGenerationState | null | undefined): boolean {
+    const status = state?.status || "";
+    return ["queued", "running", "extracting_archive", "generating", "writing_files", "processing"].includes(status);
+}
+
+function isGenerationInProgressStatus(status: string | null | undefined): boolean {
+    return ["queued", "running", "extracting_archive", "generating", "writing_files", "processing"].includes(status || "");
+}
+
+function formatGenerationStageLabel(stage: string | null): string | null {
+    if (!stage) return null;
+    switch (stage) {
+        case "extracting_archive":
+            return "Extracting archive";
+        case "writing_files":
+            return "Writing files";
+        default:
+            return stage.replace(/_/g, " ").replace(/\b\w/g, (m) => m.toUpperCase());
+    }
 }
 
 function detectNextAppDir(files: AppData["files"] | null | undefined): "src/app" | "app" | null {
@@ -1312,11 +1415,12 @@ export default function AppBuilderEditor({
         } as Record<string, { content: string }>;
     }, [app]);
 
-    const isGenerationProcessing = app?.generationStatus === "processing";
+    const activeGeneration = useMemo(() => normalizeGenerationState(app), [app]);
+    const isGenerationProcessing = isGenerationInProgress(activeGeneration);
 
     const generationErrorText = useMemo(() => {
-        return String((app as any)?.generationError || "");
-    }, [app]);
+        return String(activeGeneration.error || "");
+    }, [activeGeneration.error]);
 
     const generationErrorLooksPreviewRelated = useMemo(() => {
         const t = generationErrorText.toLowerCase();
@@ -1333,16 +1437,16 @@ export default function AppBuilderEditor({
     useEffect(() => {
         // If the backend marked generation as error due to a transient preview issue,
         // but the preview is now connected, don't hard-block the UI.
-        if (app?.generationStatus !== "error") return;
+        if (activeGeneration.status !== "error") return;
         if (!generationErrorLooksPreviewRelated) return;
         if (!isWebPreviewReady) return;
         setDismissedGenerationError(true);
-    }, [app?.generationStatus, generationErrorLooksPreviewRelated, isWebPreviewReady]);
+    }, [activeGeneration.status, generationErrorLooksPreviewRelated, isWebPreviewReady]);
     useEffect(() => {
-        if (app?.generationStatus === "processing") {
+        if (isGenerationProcessing) {
             setGenerationEver(true);
         }
-    }, [app?.generationStatus]);
+    }, [isGenerationProcessing]);
     const effectivePreviewFiles = useMemo(() => {
         if (isGenerationProcessing) return generationPlaceholderFiles;
         return (app?.files as any) || {};
@@ -2619,19 +2723,16 @@ export default function AppBuilderEditor({
                         setApp((prevApp) => {
                             if (!prevApp) return prevApp;
 
-                            const nextGenStatus = (firebaseData as any).generationStatus;
-                            const nextGenError = (firebaseData as any).generationError;
-                            const nextGenProgress =
-                                typeof (firebaseData as any).generationProgress === "number"
-                                    ? (firebaseData as any).generationProgress
-                                    : typeof (firebaseData as any).progress === "number"
-                                      ? (firebaseData as any).progress
-                                      : null;
+                            const nextGeneration = normalizeGenerationState(firebaseData);
+                            const nextGenStatus = nextGeneration.status;
+                            const nextGenError = nextGeneration.error;
+                            const nextGenProgress = nextGeneration.progress;
 
                             const generationStatusChanged =
                                 prevApp.generationStatus !== nextGenStatus ||
                                 prevApp.generationError !== nextGenError ||
-                                prevApp.generationProgress !== nextGenProgress;
+                                prevApp.generationProgress !== nextGenProgress ||
+                                generationStateChanged(prevApp.generation, nextGeneration);
 
                             const hasFilesUpdate = Boolean((firebaseData as any).files);
                             const mergedFiles = hasFilesUpdate
@@ -2649,6 +2750,7 @@ export default function AppBuilderEditor({
                                 generationStatus: nextGenStatus,
                                 generationError: nextGenError,
                                 generationProgress: nextGenProgress,
+                                generation: nextGeneration,
                                 isDeployed: Boolean((firebaseData as any).isDeployed),
                                 productionUrl: (firebaseData as any).productionUrl || null,
                                 updatedAt: (firebaseData as any).updatedAt,
@@ -2714,6 +2816,50 @@ export default function AppBuilderEditor({
             }
         };
     }, [appId, previewMode, user?.uid, queuePreviewApply, queuePreviewReloadFromFirebase, handleSessionExpired]);
+
+    const generationJobId = useMemo(() => asTrimmedString(app?.generation?.jobId), [app?.generation?.jobId]);
+
+    useEffect(() => {
+        if (!appId || !user?.uid || !generationJobId) return;
+
+        const jobRef = doc(db, "app_generation_jobs", generationJobId);
+        const unsubscribe = onSnapshot(
+            jobRef,
+            (snap) => {
+                if (!snap.exists()) return;
+                const jobGeneration = normalizeGenerationState(snap.data());
+                setApp((prevApp) => {
+                    if (!prevApp) return prevApp;
+
+                    const mergedGeneration = {
+                        ...(prevApp.generation || {}),
+                        ...jobGeneration,
+                    };
+
+                    if (!generationStateChanged(prevApp.generation, mergedGeneration)) return prevApp;
+
+                    return {
+                        ...prevApp,
+                        generation: mergedGeneration,
+                        generationStatus: mergedGeneration.status,
+                        generationError: mergedGeneration.error,
+                        generationProgress: mergedGeneration.progress,
+                    };
+                });
+            },
+            () => {
+                // Best effort only. The app doc listener still carries the legacy screenshot flow.
+            },
+        );
+
+        return () => {
+            try {
+                unsubscribe();
+            } catch (err) {
+                console.warn("Generation job listener unsubscribe error:", err);
+            }
+        };
+    }, [appId, generationJobId, user?.uid]);
 
     // Load panel width from localStorage on mount
     useEffect(() => {
@@ -2873,15 +3019,15 @@ export default function AppBuilderEditor({
     const generationBaselineFilesRef = useRef<AppData["files"] | null>(null);
     const generationRehydrateInFlightRef = useRef(false);
     useEffect(() => {
-        const status = app?.generationStatus;
+        const status = activeGeneration.status || undefined;
         const prev = lastGenStatusRef.current;
         lastGenStatusRef.current = status;
 
-        if (status === "processing" && prev !== "processing") {
+        if (isGenerationInProgress(activeGeneration) && !isGenerationInProgressStatus(prev)) {
             generationBaselineFilesRef.current = (app?.files as any) || null;
         }
 
-        if (prev === "processing" && status === "ready" && usedPlaceholderRef.current) {
+        if (isGenerationInProgressStatus(prev) && status === "ready" && usedPlaceholderRef.current) {
             if (generationRehydrateInFlightRef.current) return;
             usedPlaceholderRef.current = false;
             generationRehydrateInFlightRef.current = true;
@@ -2953,7 +3099,7 @@ export default function AppBuilderEditor({
                 }
             })();
         }
-    }, [app?.files, app?.generationStatus, appId, handleFilesReplaceFromServer, restartLocalPreview]);
+    }, [activeGeneration.status, app?.files, appId, handleFilesReplaceFromServer, restartLocalPreview]);
 
     const handleRestoreApplied = useCallback(
         async ({ previousFiles, restoredFiles }: { previousFiles: AppData["files"]; restoredFiles: AppData["files"] }) => {
@@ -3354,7 +3500,7 @@ export default function AppBuilderEditor({
     const handleFileChangeFromContainer = useCallback((path: string, content: string) => {
         // While we are in generation-processing state we may be running a placeholder template.
         // Do not persist container-origin writes during that phase.
-        if ((appRef.current as any)?.generationStatus === "processing") {
+        if (isGenerationInProgress(normalizeGenerationState(appRef.current))) {
             return;
         }
 
@@ -3838,14 +3984,14 @@ export default function AppBuilderEditor({
         );
     }
 
-    if (app.generationStatus === "error" && !dismissedGenerationError) {
+    if (activeGeneration.status === "error" && !dismissedGenerationError) {
         return (
             <div className="fixed inset-0 z-[16000] bg-black/70 backdrop-blur-sm flex items-center justify-center">
                 <div className="bg-white rounded-lg p-8 max-w-md">
                     <div className="text-center">
                         <div className="text-red-600 text-lg font-semibold mb-2">Generation Failed</div>
                         <div className="text-gray-600 text-sm mb-4">
-                            {app.generationError || "An error occurred while generating your app."}
+                            {activeGeneration.error || "An error occurred while generating your app."}
                         </div>
                         <div className="flex flex-wrap items-center justify-center gap-2">
                             <button
@@ -3920,20 +4066,28 @@ export default function AppBuilderEditor({
                     <div className="bg-white rounded-lg p-8 max-w-md">
                         <div className="text-center">
                             <KlonerLoader />
-                            <div className="text-gray-600 text-sm mt-4">
-                                Generating your app… Starting a preview machine in the background.
+                            <div className="mt-4 text-sm text-gray-600">
+                                {activeGeneration.title || "Generating your app…"}
                             </div>
 
-                            {typeof (app as any).generationProgress === "number" ? (
+                            <div className="mt-2 text-xs font-semibold uppercase tracking-[0.18em] text-[#F55F2A]">
+                                {formatGenerationStageLabel(activeGeneration.stage) || formatGenerationStageLabel(activeGeneration.status)}
+                            </div>
+
+                            <div className="mt-3 text-sm text-gray-600">
+                                {activeGeneration.message || "Working through the generation pipeline…"}
+                            </div>
+
+                            {typeof activeGeneration.progress === "number" ? (
                                 <div className="mt-4">
                                     <div className="text-xs font-semibold text-gray-700">
-                                        Progress: {Math.max(0, Math.min(100, Math.round((app as any).generationProgress)))}%
+                                        Progress: {Math.max(0, Math.min(100, Math.round(activeGeneration.progress)))}%
                                     </div>
                                     <div className="mt-2 h-2 w-full rounded-full bg-gray-200 overflow-hidden">
                                         <div
                                             className="h-full bg-[#F55F2A]"
                                             style={{
-                                                width: `${Math.max(0, Math.min(100, Math.round((app as any).generationProgress)))}%`,
+                                                width: `${Math.max(0, Math.min(100, Math.round(activeGeneration.progress)))}%`,
                                             }}
                                         />
                                     </div>

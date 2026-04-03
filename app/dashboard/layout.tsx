@@ -67,12 +67,11 @@ const BASE_NAV_SECTIONS: NavSectionConfig[] = [
             },
 
             // // external links
-            // {
-            //     href: "https://www.youtube.com/@klonerapp",
-            //     label: "Youtube",
-            //     icon: Sparkles,
-            //     external: true,
-            // },
+            {
+                href: "/price",
+                label: "Pricing",
+                icon: CreditCard,
+            },
         ],
     },
     {

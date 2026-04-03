@@ -2170,6 +2170,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
     locked,
     onClick,
     onAppClick,
+    generationPending = false,
     onCancelLocked,
     sourceUrl,
     lockedSinceMs,
@@ -2185,7 +2186,8 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
 }: {
     locked: boolean;
     onClick: () => void;
-    onAppClick?: () => void;
+    onAppClick?: () => void | Promise<void>;
+    generationPending?: boolean;
     onCancelLocked?: () => void;
     sourceUrl?: string | null;
     lockedSinceMs?: number | null;
@@ -2201,9 +2203,8 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
     compact?: boolean;
 }) {
     const router = useRouter();
-    const [localDisabled, setLocalDisabled] = useState(false);
     const [showGenerationModal, setShowGenerationModal] = useState(false);
-    const [selectedGenerationType, setSelectedGenerationType] = useState<"nextjs" | "html" | null>(null);
+    const [selectedGenerationType, setSelectedGenerationType] = useState<"nextjs" | null>(null);
     const [canOverrideLocked, setCanOverrideLocked] = useState(false);
     const lastAutoOpenNonceRef = useRef(0);
 
@@ -2228,8 +2229,6 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
         onAutoOpenMessageDismiss?.();
     }, [onAutoOpenMessageDismiss]);
 
-    const canUseSimpleHtml = canGenerateHtmlFromUrl && !sourceUrlCannotGenerate;
-
     useEffect(() => {
         if (!autoOpenNonce) return;
         if (autoOpenNonce === lastAutoOpenNonceRef.current) return;
@@ -2239,7 +2238,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
     }, [autoOpenNonce]);
 
     // Consider the card disabled if either the parent says so or we've just been clicked.
-    const effectiveLocked = locked || localDisabled;
+    const effectiveLocked = locked || generationPending;
 
     useEffect(() => {
         if (!effectiveLocked || !lockedSinceMs) {
@@ -2262,7 +2261,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
     }, [effectiveLocked, lockedSinceMs]);
 
     const handleClick = () => {
-        if (localDisabled) return;
+        if (generationPending) return;
 
         // Even when locked (e.g. snapshots processing), allow opening the modal
         // but disable the options inside so users understand what's happening.
@@ -2273,57 +2272,25 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
     const handleContinueGeneration = () => {
         if (effectiveLocked) return;
         if (selectedGenerationType === "nextjs") {
-            handleWebsiteGeneration();
-            return;
-        }
-        if (selectedGenerationType === "html") {
-            if (!canUseSimpleHtml) return;
-            handleWebsiteGeneration();
+            void handleAppGeneration();
         }
     };
 
-    const handleWebsiteGeneration = () => {
-        if (effectiveLocked || !canUseSimpleHtml) return;
-        closeGenerationModal();
-
-        // Immediately prevent further clicks to avoid double-generation.
-        setLocalDisabled(true);
-
-        // Safety: clear the local guard after 10s in case something goes wrong.
-        const t = setTimeout(() => setLocalDisabled(false), 10000);
-
-        try {
-            onClick();
-        } finally {
-            // If parent quickly reflects the pending state it will keep the button disabled;
-            // otherwise we clear the optimistic guard after the timeout above.
-            // We don't clear the timeout here to allow it to expire naturally.
-        }
-    };
-
-    const handleAppGeneration = () => {
+    const handleAppGeneration = async () => {
         if (effectiveLocked) return;
         closeGenerationModal();
 
         if (onAppClick) {
-            // Immediately prevent further clicks to avoid double-generation.
-            setLocalDisabled(true);
-
-            // Safety: clear the local guard after 10s in case something goes wrong.
-            const t = setTimeout(() => setLocalDisabled(false), 10000);
-
-            try {
-                onAppClick();
-            } finally {
-                // If parent quickly reflects the pending state it will keep the button disabled;
-                // otherwise we clear the optimistic guard after the timeout above.
-                // We don't clear the timeout here to allow it to expire naturally.
-            }
+            await onAppClick();
         }
     };
 
     const title = effectiveLocked ? "Processing…" : "Generate";
-    const subtitle = effectiveLocked
+    const isSettingUp = generationPending && !locked;
+    const displayTitle = isSettingUp ? "Setting website up…" : title;
+    const displaySubtitle = isSettingUp
+        ? "Preparing your website…"
+        : effectiveLocked
         ? canOverrideLocked
             ? "This job has been processing for a while. You can cancel it now."
             : "You have a pending job."
@@ -2344,7 +2311,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                 <button
                     type="button"
                     onClick={handleClick}
-                    disabled={localDisabled}
+                    disabled={generationPending}
                     aria-disabled={effectiveLocked}
                     className={`group flex aspect-square w-full flex-col items-center justify-center rounded-lg border-2 bg-white px-5 py-6 text-center transition ${effectiveLocked ? "opacity-70 cursor-wait" : "cursor-pointer"} ${highlight ? "border-[rgba(245,95,42,0.45)] bg-[rgba(245,95,42,0.08)] hover:border-[rgba(245,95,42,0.70)]" : "border-neutral-300 hover:border-neutral-400"}`}
                     aria-label="Generate a new website or app"
@@ -2359,8 +2326,8 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                             <Plus className="h-7 w-7 text-neutral-600" />
                         )}
                     </div>
-                    <div className="mt-4 px-2 text-sm font-semibold text-neutral-800">{title}</div>
-                    <div className="mt-1 px-2 text-sm text-neutral-500">{subtitle}</div>
+                    <div className="mt-4 px-2 text-sm font-semibold text-neutral-800">{displayTitle}</div>
+                    <div className="mt-1 px-2 text-sm text-neutral-500">{displaySubtitle}</div>
                 </button>
                 {effectiveLocked && canOverrideLocked && onCancelLocked ? (
                     <div className="absolute inset-x-0 bottom-4 flex justify-center px-4">
@@ -2531,111 +2498,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                     </div>
                                 </div>
 
-                                {/* 2) Simple HTML website */}
-                                <div className="relative">
-                                    <button
-                                        type="button"
-                                        onClick={() => setSelectedGenerationType("html")}
-                                        disabled={effectiveLocked || !canUseSimpleHtml}
-                                        className={`relative w-full rounded-xl border p-4 text-left transition disabled:opacity-60 disabled:cursor-not-allowed ${selectedGenerationType === "html"
-                                            ? "border-[rgba(245,95,42,0.65)] bg-[linear-gradient(180deg,rgba(245,95,42,0.06),rgba(255,255,255,0))]"
-                                            : "border-neutral-200 bg-white hover:bg-neutral-50 hover:border-neutral-300"
-                                            }`}
-                                    >
-                                        <div className="flex items-start gap-3 overflow-hidden">
-                                            <div
-                                                className="flex h-10 w-10 items-center justify-center rounded-lg bg-neutral-100"
-                                                aria-hidden
-                                            >
-                                                <Image
-                                                    src="/images/html.png"
-                                                    alt=""
-                                                    width={24}
-                                                    height={24}
-                                                    className="object-contain opacity-95"
-                                                    priority={false}
-                                                />
-                                            </div>
-
-                                            <div className="min-w-0 flex-1 space-y-1">
-                                                <div className="flex min-w-0 flex-wrap items-start gap-2 sm:items-center">
-                                                    <div className="min-w-0 text-sm font-semibold text-neutral-900 break-words">
-                                                        Landing Page (HTML)
-                                                    </div>
-                                                    <span className="inline-flex max-w-full items-center rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-800 whitespace-nowrap">
-                                                        15 preview credits
-                                                    </span>
-                                                </div>
-
-                                                <div className="text-xs text-neutral-600">
-                                                    Faster HTML-first flow that opens in the legacy preview editor.
-                                                </div>
-                                                <div className="mt-1 text-[11px] leading-4 text-neutral-500">
-                                                    Best for: simple landing sites, fast iterations, and projects with no auth or database requirements.
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div className="mt-2 rounded-lg border border-neutral-200 bg-neutral-50 px-2.5 py-2">
-                                            <div className="flex min-w-0 flex-wrap items-center gap-1 text-[11px]">
-                                                <span
-                                                    className="min-w-0 max-w-full flex-1 break-all font-mono font-semibold underline decoration-2 sm:truncate sm:whitespace-nowrap"
-                                                    style={{ color: ACCENT }}
-                                                    title={sourceUrlDisplay || "(none selected)"}
-                                                >
-                                                    {sourceUrlDisplay ? truncateMiddle(sourceUrlDisplay, 56) : "(none selected)"}
-                                                </span>
-                                            </div>
-                                        </div>
-                                    </button>
-                                </div>
-
-                                <div className="relative">
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            router.push("/community-builds?templateTip=1", { scroll: false });
-                                        }}
-                                        className="relative w-full rounded-xl border border-neutral-200 bg-white p-4 text-left transition hover:border-neutral-300 hover:bg-neutral-50"
-                                    >
-                                        <div className="flex items-start gap-3 overflow-hidden">
-                                            <div
-                                                className="flex h-10 w-10 items-center justify-center rounded-lg bg-[rgba(245,95,42,0.10)] text-[rgba(245,95,42,1)]"
-                                                aria-hidden
-                                            >
-                                                <svg
-                                                    xmlns="http://www.w3.org/2000/svg"
-                                                    viewBox="0 0 24 24"
-                                                    fill="none"
-                                                    stroke="currentColor"
-                                                    strokeWidth="1.8"
-                                                    className="h-5 w-5"
-                                                >
-                                                    <path d="M4.5 6.5h15v11h-15z" />
-                                                    <path d="M4.5 10h15" />
-                                                    <path d="M9 6.5v11" />
-                                                </svg>
-                                            </div>
-
-                                            <div className="min-w-0 flex-1 space-y-1">
-                                                <div className="flex min-w-0 flex-wrap items-start gap-2 sm:items-center">
-                                                    <div className="min-w-0 text-sm font-semibold text-neutral-900 break-words">
-                                                        Start from a template
-                                                    </div>
-                                                    <span className="inline-flex max-w-full items-center rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-800 whitespace-nowrap">
-                                                        free
-                                                    </span>
-                                                </div>
-
-                                                <div className="text-xs text-neutral-600">
-                                                    Browse approved websites, preview them, and remix one into your own dashboard.
-                                                </div>
-                                                <div className="mt-1 text-[11px] leading-4 text-neutral-500">
-                                                    Best for: starting from a proven layout instead of building from scratch.
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </button>
-                                </div>
+                                {/* Landing Page (HTML) and template generation are intentionally disabled right now. */}
 
                                 {/* 3) Mobile apps (coming soon) */}
                                 {/* <div className="relative">
@@ -2691,7 +2554,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                 <button
                                     type="button"
                                     onClick={handleContinueGeneration}
-                                    disabled={effectiveLocked || !selectedGenerationType || (selectedGenerationType === "html" && !canUseSimpleHtml)}
+                                    disabled={effectiveLocked || !selectedGenerationType}
                                     className="rounded-xl px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-60 disabled:cursor-not-allowed"
                                     style={{ backgroundColor: ACCENT }}
                                 >
@@ -2887,7 +2750,9 @@ export default function PreviewPage(): JSX.Element {
     const [currentAppId, setCurrentAppId] = useState<string | null>(null);
     const [appBuilderCookiePromptOpen, setAppBuilderCookiePromptOpen] = useState(false);
     const [pendingAppBuilderAppId, setPendingAppBuilderAppId] = useState<string | null>(null);
+    const [nextJsGenerationPendingUrl, setNextJsGenerationPendingUrl] = useState<string | null>(null);
     const appBuilderCookiePromptResolverRef = useRef<((accepted: boolean) => void) | null>(null);
+    const buildFromCollectionRef = useRef<((storageKeys: string[]) => Promise<void>) | null>(null);
     const previousEditorOpenRef = useRef(false);
     const previousAppBuilderOpenRef = useRef(false);
 
@@ -3628,11 +3493,20 @@ export default function PreviewPage(): JSX.Element {
         prompt?: string,
         renderId?: string,
         url?: string,
-        opts?: { screenshotKeys?: string[]; zipUrl?: string; zipPath?: string; onError?: (message: string) => void; skipCookieConsent?: boolean },
+        opts?: { screenshotKeys?: string[]; zipUrl?: string; zipPath?: string; onError?: (message: string) => void; skipCookieConsent?: boolean; openAppBuilderImmediately?: boolean },
     ) => {
         if (!user) return;
 
+        const shouldOpenAppBuilderImmediately = mode === "url" && Boolean(opts?.openAppBuilderImmediately);
+        const optimisticAppBuilderId = shouldOpenAppBuilderImmediately
+            ? `pending-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+            : null;
+
         if (!(await canProceedWithAppWizardGeneration())) {
+            if (optimisticAppBuilderId) {
+                setAppBuilderOpen(false);
+                setCurrentAppId(null);
+            }
             return null;
         }
 
@@ -3669,16 +3543,9 @@ export default function PreviewPage(): JSX.Element {
             }
 
             let appId: string;
-
             if (mode === "url" && url) {
                 // Use the new URL generation endpoint
                 const csrf = await ensureSessionAndCsrf().catch(() => null);
-
-                const screenshotKeysToSend = Array.isArray(opts?.screenshotKeys)
-                    ? opts!.screenshotKeys!.filter((p) => typeof p === "string" && p.trim()).slice(0, 6)
-                    : [];
-                const zipUrlToSend = typeof opts?.zipUrl === "string" && opts.zipUrl.trim() ? opts.zipUrl.trim() : "";
-                const zipPathToSend = typeof opts?.zipPath === "string" && opts.zipPath.trim() ? opts.zipPath.trim() : "";
 
                 const res = await fetch("/api/generate-app-from-url", {
                     method: "POST",
@@ -3686,7 +3553,7 @@ export default function PreviewPage(): JSX.Element {
                         "Content-Type": "application/json",
                         ...(csrf ? { "x-csrf": csrf } : {}),
                     },
-                    body: JSON.stringify({ url, name: appName, screenshotKeys: screenshotKeysToSend, zipUrl: zipUrlToSend, zipPath: zipPathToSend }),
+                    body: JSON.stringify({ url, name: appName, createPreview: true }),
                     credentials: "include",
                 });
 
@@ -3698,6 +3565,9 @@ export default function PreviewPage(): JSX.Element {
                         throw new Error(reqId ? `Generation accepted but no appId returned (reqId: ${reqId})` : "Generation accepted but no appId returned");
                     }
                     appId = generatedAppId;
+                    if (optimisticAppBuilderId) {
+                        setCurrentAppId(appId);
+                    }
                 } else {
                     const data = await res.json().catch(() => ({} as any));
                     throw new Error(data?.error || "Failed to generate app from URL");
@@ -3775,8 +3645,9 @@ export default function PreviewPage(): JSX.Element {
                 return next;
             });
 
-            // URL creations should finish without auto-opening the builder overlay.
-            if (mode !== "url") {
+                if (mode === "url" && opts?.openAppBuilderImmediately) {
+                    openAppBuilderDirectly(appId);
+                } else if (mode !== "url") {
                 openAppBuilderWithCookieGate(appId);
             }
 
@@ -3802,13 +3673,31 @@ export default function PreviewPage(): JSX.Element {
                     setAppWizardError(null);
                     setAppWizardBusy(false);
                 }
+                if (optimisticAppBuilderId) {
+                    setAppBuilderOpen(false);
+                    setCurrentAppId(null);
+                }
                 return null;
             }
+
+            if (mode === "url" && Array.isArray(opts?.screenshotKeys) && opts.screenshotKeys.length > 0) {
+                try {
+                    await buildFromCollectionRef.current?.(opts.screenshotKeys.slice(0, 25));
+                    return null;
+                } catch {
+                    // Fall through to the normal error path below.
+                }
+            }
+
             opts?.onError?.(message);
+            if (optimisticAppBuilderId) {
+                setAppBuilderOpen(false);
+                setCurrentAppId(null);
+            }
             push(message, "err");
             return null;
         }
-    }, [user, router, push, activeRenderId, openAppBuilderWithCookieGate, requestAppBuilderCookieConsent, appWizardOpen]);
+    }, [user, router, push, activeRenderId, openAppBuilderWithCookieGate, openAppBuilderDirectly, requestAppBuilderCookieConsent, appWizardOpen]);
 
     const startWebAppWizard = useCallback(
         (opts?: { seedRenderId?: string | null; url?: string | null }) => {
@@ -4568,14 +4457,22 @@ export default function PreviewPage(): JSX.Element {
     }, [urlParam]);
 
     const startNextJsAppBuilder = useCallback(async (url: string) => {
-        const created = await handleCreateApp("url", undefined, undefined, url, {
+        await handleCreateApp("url", undefined, undefined, url, {
             skipCookieConsent: true,
+            openAppBuilderImmediately: true,
         });
+    }, [handleCreateApp]);
 
-        if (created) {
-            openAppBuilderDirectly(created);
+    const runNextJsGhostGeneration = useCallback(async (url: string) => {
+        const pendingUrl = (url || "").trim();
+        setNextJsGenerationPendingUrl(pendingUrl || null);
+
+        try {
+            await startNextJsAppBuilder(pendingUrl);
+        } finally {
+            setNextJsGenerationPendingUrl((current) => (current === pendingUrl ? null : current));
         }
-    }, [handleCreateApp, openAppBuilderDirectly]);
+    }, [startNextJsAppBuilder]);
 
     const DUPLICATE_URL_MESSAGE =
         "This URL has already been processed.";
@@ -6929,17 +6826,17 @@ export default function PreviewPage(): JSX.Element {
         try {
             const body: any = {
                 url: targetUrl,
-                urlHash: hash64(targetUrl),
-                nameHint: (() => {
+                name: (() => {
                     try {
-                        return isHttpUrl(targetUrl) ? new URL(targetUrl).hostname : "";
+                        return new URL(targetUrl).hostname || "Clone from URL";
                     } catch {
-                        return undefined;
+                        return "Clone from URL";
                     }
                 })(),
+                createPreview: true,
             };
 
-            const r = await fetch("/api/preview/render", {
+            const r = await fetch("/api/generate-app-from-url", {
                 method: "POST",
                 headers: {
                     "content-type": "application/json",
@@ -9427,46 +9324,19 @@ export default function PreviewPage(): JSX.Element {
                 ) : null}
 
                 {isArchiveBackedUrlDoc(docData) ? (
-                    <section className="mt-4 rounded-xl border border-dashed border-neutral-300 bg-neutral-50 px-3 py-3 sm:px-4">
-                        <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-3 sm:px-4 text-emerald-900">
+                        <div className="flex items-start gap-2">
+                            <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
                             <div>
-                                <p className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500">
-                                    Archive build
+                                <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700">
+                                    URL captured successfully
                                 </p>
-                                <p className="text-sm font-medium text-neutral-800">
-                                    ZIP archive ready for {targetUrl}
+                                <p className="text-sm font-medium text-emerald-900">
+                                    This URL was captured successfully. Start generating below.
                                 </p>
                             </div>
-                            <span className="rounded-full border border-neutral-300 bg-white px-2.5 py-1 text-xs text-neutral-700">
-                                {typeof docData?.zipPageCount === "number" && docData.zipPageCount > 0
-                                    ? `${docData.zipPageCount} pages`
-                                    : "Archive ready"}
-                            </span>
                         </div>
-
-                        <div className="mt-3 flex flex-wrap items-center gap-2">
-                            {archiveDownloadUrl ? (
-                                <a
-                                    href={archiveDownloadUrl}
-                                    target="_blank"
-                                    rel="noopener noreferrer nofollow"
-                                    className="inline-flex items-center gap-1 rounded-md border border-neutral-200 bg-white px-2.5 py-1 text-xs font-semibold text-neutral-700 transition hover:bg-neutral-100"
-                                >
-                                    <span>Download ZIP</span>
-                                    <ExternalLink className="h-3 w-3" />
-                                </a>
-                            ) : null}
-                            {docData?.zipPath ? (
-                                <span className="inline-flex max-w-full items-center rounded-md border border-neutral-200 bg-white px-2 py-1 font-mono text-[11px] text-neutral-700">
-                                    {truncateMiddle(docData.zipPath, 84)}
-                                </span>
-                            ) : null}
-                        </div>
-
-                        <p className="mt-3 text-xs text-neutral-600">
-                            This build was mirrored into a zip archive instead of screenshots.
-                        </p>
-                    </section>
+                    </div>
                 ) : null}
 
                 {showDevUrlScreenshots && targetUrl ? (
@@ -9579,6 +9449,7 @@ export default function PreviewPage(): JSX.Element {
                                         lockedSinceMs={captureLockStartedAtRef.current || null}
                                         sourceUrl={targetUrl}
                                         sourceUrlCannotGenerate={activeUrlCannotGenerate}
+                                        generationPending={nextJsGenerationPendingUrl === (targetUrl || "").trim()}
                                         highlight={shouldHighlightCreateWebsiteCta}
                                         autoOpenNonce={autoOpenGenerateModalNonce}
                                         autoOpenSuccessMessage={autoOpenGenerateSuccessMessage}
@@ -9593,10 +9464,10 @@ export default function PreviewPage(): JSX.Element {
                                                 void buildFromUrl();
                                             }
                                         }}
-                                        onAppClick={() => {
+                                        onAppClick={async () => {
                                             // Next.js apps should not open the HTML PreviewEditor with empty initialHtml.
                                             // Go straight to the App Builder editor.
-                                            void startNextJsAppBuilder(targetUrl || "");
+                                            await runNextJsGhostGeneration(targetUrl || "");
                                         }}
                                         onCancelLocked={cancelQueuedCapture}
                                         isAdmin={isAdmin}
@@ -9630,13 +9501,14 @@ export default function PreviewPage(): JSX.Element {
                                                 lockedSinceMs={captureLockStartedAtRef.current || null}
                                                 sourceUrl={targetUrl}
                                                 sourceUrlCannotGenerate={activeUrlCannotGenerate}
+                                                generationPending={nextJsGenerationPendingUrl === (targetUrl || "").trim()}
                                                 highlight={shouldHighlightCreateWebsiteCta}
                                                 autoOpenNonce={autoOpenGenerateModalNonce}
                                                 autoOpenSuccessMessage={autoOpenGenerateSuccessMessage}
                                                 onAutoOpenMessageDismiss={() => setAutoOpenGenerateSuccessMessage("")}
                                                 onClick={() => buildFromCollection(collectionKeys)}
-                                                onAppClick={() => {
-                                                    void startNextJsAppBuilder(targetUrl || "");
+                                                onAppClick={async () => {
+                                                    await runNextJsGhostGeneration(targetUrl || "");
                                                 }}
                                                 onCancelLocked={cancelQueuedCapture}
                                                 isAdmin={isAdmin}
@@ -9717,6 +9589,7 @@ export default function PreviewPage(): JSX.Element {
                                                     lockedSinceMs={captureLockStartedAtRef.current || null}
                                                     sourceUrl={targetUrl}
                                                     sourceUrlCannotGenerate={activeUrlCannotGenerate}
+                                                    generationPending={nextJsGenerationPendingUrl === (targetUrl || "").trim()}
                                                     highlight={shouldHighlightCreateWebsiteCta}
                                                     autoOpenNonce={autoOpenGenerateModalNonce}
                                                     autoOpenSuccessMessage={autoOpenGenerateSuccessMessage}
@@ -9748,10 +9621,10 @@ export default function PreviewPage(): JSX.Element {
                                                             setActiveArchivedPageIds([]);
                                                         }
                                                     }}
-                                                    onAppClick={() => {
+                                                    onAppClick={async () => {
                                                         // Next.js apps should not open the HTML PreviewEditor with empty initialHtml.
                                                         // Go straight to the App Builder editor.
-                                                        void startNextJsAppBuilder(targetUrl || "");
+                                                        await runNextJsGhostGeneration(targetUrl || "");
                                                     }}
                                                     onCancelLocked={cancelQueuedCapture}
                                                     isAdmin={isAdmin}
@@ -9831,12 +9704,13 @@ export default function PreviewPage(): JSX.Element {
                                             lockedSinceMs={captureLockStartedAtRef.current || null}
                                             sourceUrl={targetUrl}
                                             sourceUrlCannotGenerate={activeUrlCannotGenerate}
+                                            generationPending={nextJsGenerationPendingUrl === (targetUrl || "").trim()}
                                             highlight={shouldHighlightCreateWebsiteCta}
                                             autoOpenNonce={autoOpenGenerateModalNonce}
                                             autoOpenSuccessMessage={autoOpenGenerateSuccessMessage}
                                             onAutoOpenMessageDismiss={() => setAutoOpenGenerateSuccessMessage("")}
                                             onClick={() => buildFromCollection(collectionKeys)}
-                                            onAppClick={() => {
+                                            onAppClick={async () => {
                                                 // Find the most recent render from this group (optional seed)
                                                 const groupRenders = renders
                                                     .filter((r) =>
@@ -9849,7 +9723,7 @@ export default function PreviewPage(): JSX.Element {
                                                             0,
                                                     );
                                                 const latestRender = groupRenders[0];
-                                                void startNextJsAppBuilder(targetUrl || "");
+                                                    await runNextJsGhostGeneration(targetUrl || "");
                                             }}
                                             onCancelLocked={cancelQueuedCapture}
                                             isAdmin={isAdmin}
@@ -10130,14 +10004,13 @@ export default function PreviewPage(): JSX.Element {
                                                 </button>
                                                 <button
                                                     type="button"
-                                                    onClick={() => setAppWizardSource("prompt")}
-                                                    className={`relative w-full rounded-xl border p-4 pb-14 text-left transition ${appWizardSource === "prompt"
-                                                        ? "border-[#f55f2a] bg-[#f55f2a]/5"
-                                                        : "border-neutral-200 bg-white hover:bg-neutral-50"
-                                                        }`}
+                                                    disabled
+                                                    aria-disabled="true"
+                                                    title="Prompt generation is disabled"
+                                                    className="relative w-full rounded-xl border border-neutral-200 bg-white/80 p-4 pb-14 text-left opacity-60 cursor-not-allowed"
                                                 >
                                                     <div className="text-sm font-semibold text-neutral-900">Build from a prompt</div>
-                                                    <div className="mt-1 text-xs text-neutral-600">Describe the app and we’ll generate the first version.</div>
+                                                    <div className="mt-1 text-xs text-neutral-600">Prompt generation is disabled for now.</div>
                                                 </button>
                                             </div>
 
@@ -10220,10 +10093,9 @@ export default function PreviewPage(): JSX.Element {
                                             type="button"
                                             onClick={() => {
                                                 if (appWizardSource === "website") return void submitAppWizardWebsite();
-                                                if (appWizardSource === "prompt") return void submitAppWizardPrompt();
-                                                setAppWizardError("Select how you want to create your website to continue.");
+                                                setAppWizardError("Prompt generation is disabled. Choose URL-based generation.");
                                             }}
-                                            disabled={appWizardBusy || !appWizardSource || (appWizardSource === "prompt" && appWizardPromptOverLimit)}
+                                            disabled={appWizardBusy || !appWizardSource}
                                             className="rounded-xl px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-60"
                                             style={{ backgroundColor: ACCENT }}
                                         >

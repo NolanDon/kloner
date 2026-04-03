@@ -2792,14 +2792,14 @@ export default function AppBuilderEditorAgentChat({ appId, files, onFileEdit, on
             </div>
 
             {/* Messages */}
-            <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4">
+            <div className="flex-1 min-h-0 overflow-y-auto px-4 py-5 space-y-4 bg-[radial-gradient(circle_at_top,_rgba(245,95,42,0.10),_transparent_36%),linear-gradient(180deg,rgba(255,250,247,0.96),rgba(255,255,255,1))]">
                 {restorePoints.length > 0 && (
-                    <div className="bg-white border border-gray-200 rounded-lg p-3">
+                    <div className="rounded-2xl border border-[#F55F2A]/12 bg-white/85 p-3 shadow-[0_10px_28px_rgba(15,23,42,0.06)] backdrop-blur-sm">
                         <div className="flex items-center justify-between">
-                            <div className="text-xs font-medium text-gray-700">Recent restore points</div>
+                            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[#F55F2A]/75">Recent restore points</div>
                             <button
                                 onClick={fetchRestorePoints}
-                                className="text-xs text-gray-600 hover:text-gray-900"
+                                className="text-xs font-medium text-neutral-600 hover:text-neutral-900"
                                 disabled={isRestoreBusy}
                             >
                                 Refresh
@@ -2836,8 +2836,8 @@ export default function AppBuilderEditorAgentChat({ appId, files, onFileEdit, on
                     </div>
                 )}
                 {messages.length === 0 && !isLoading ? (
-                    <div className="text-center text-sm text-gray-500 py-10">
-                        No chat messages yet.
+                    <div className="rounded-2xl border border-dashed border-[#F55F2A]/20 bg-white/80 px-4 py-10 text-center text-sm text-neutral-500 shadow-[0_10px_24px_rgba(15,23,42,0.05)]">
+                        No messages yet. Start with one of the suggestions below.
                     </div>
                 ) : null}
 
@@ -2848,12 +2848,14 @@ export default function AppBuilderEditorAgentChat({ appId, files, onFileEdit, on
                     >
 
                         <div
-                            className={`max-w-[80%] rounded-lg p-3 ${message.role === "user"
-                                ? "bg-purple-50 border border-purple-200 text-gray-900"
-                                : "bg-orange-50 border border-orange-200"
+                            className={`relative max-w-[82%] rounded-[1.35rem] px-4 py-3 shadow-[0_12px_28px_rgba(15,23,42,0.08)] ${message.role === "user"
+                                ? "border border-[#F55F2A]/20 bg-[linear-gradient(135deg,#F55F2A_0%,#FF8A5C_100%)] text-white"
+                                : "border border-[#F55F2A]/14 bg-[linear-gradient(180deg,rgba(255,251,248,0.98),rgba(255,255,255,0.95))] text-neutral-900"
                                 }`}
                         >
-                            <div className="whitespace-pre-wrap break-words text-sm leading-relaxed">{renderTextWithLinks(message.content)}</div>
+                            <div className={`whitespace-pre-wrap break-words text-sm leading-relaxed ${message.role === "user" ? "text-white/95" : "text-neutral-900"}`}>
+                                {renderTextWithLinks(message.content)}
+                            </div>
 
                             {message.supabaseContinuationPrompt && message.supabaseContinuationStatus === "PENDING" ? (
                                 <div className="mt-3 flex flex-wrap gap-2">
@@ -2992,7 +2994,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, onFileEdit, on
                             ) : null}
 
                             {message.id === "welcome" && message.role === "assistant" ? (
-                                <div className="mt-3 flex flex-wrap gap-2">
+                                <div className="mt-3 grid gap-2 sm:grid-cols-2">
                                     {STARTER_PROMPTS.map((starter) => (
                                         <button
                                             key={starter}
@@ -3001,7 +3003,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, onFileEdit, on
                                                 setInput(starter);
                                                 inputRef.current?.focus();
                                             }}
-                                            className="rounded-full border border-neutral-300 bg-white px-3 py-1.5 text-xs font-medium text-neutral-800 transition hover:bg-neutral-100"
+                                            className="flex min-h-[3.5rem] items-center rounded-2xl border border-[#F55F2A]/15 bg-white px-4 py-3 text-left text-sm font-medium text-neutral-900 shadow-[0_8px_18px_rgba(15,23,42,0.05)] transition hover:-translate-y-0.5 hover:border-[#F55F2A]/30 hover:shadow-[0_16px_30px_rgba(245,95,42,0.10)]"
                                             title="Use this as your prompt"
                                         >
                                             {starter}
@@ -3858,7 +3860,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, onFileEdit, on
                     </div>
                 ) : null}
 
-                <div className="flex items-stretch overflow-hidden rounded-xl border border-gray-300 bg-white">
+                <div className="flex items-stretch overflow-hidden rounded-[1.35rem] border border-[#F55F2A]/18 bg-white shadow-[0_12px_30px_rgba(15,23,42,0.08)]">
                     <textarea
                         ref={inputRef}
                         value={input}
@@ -3887,7 +3889,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, onFileEdit, on
                         }}
                         onKeyPress={handleKeyPress}
                         placeholder="Ask me to build something..."
-                        className="flex-1 resize-none bg-transparent p-3 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none"
+                        className="flex-1 resize-none bg-transparent px-4 py-3 text-sm text-neutral-900 placeholder:text-neutral-400 focus:outline-none"
                         rows={3}
                         disabled={isLoading || chatDisabled}
                     />
@@ -3897,13 +3899,13 @@ export default function AppBuilderEditorAgentChat({ appId, files, onFileEdit, on
                             void sendMessage();
                         }}
                         disabled={!input.trim() || isLoading || chatDisabled}
-                        className="flex w-14 items-center justify-center border-l border-gray-200 bg-white text-accent transition hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="flex w-16 items-center justify-center border-l border-[#F55F2A]/12 bg-[linear-gradient(180deg,rgba(245,95,42,0.98),rgba(233,94,50,0.96))] text-white transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
                         aria-label="Send message"
                     >
                         <Send className="h-6 w-6" />
                     </button>
                 </div>
-                <div className="mt-2 text-xs text-gray-500">
+                <div className="mt-2 text-xs text-neutral-500">
                     Press Enter to send, Shift+Enter for new line
                 </div>
             </div>

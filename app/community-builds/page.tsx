@@ -9,7 +9,7 @@ import logo from "@/public/images/orange_logo.png";
 export const metadata: Metadata = {
     title: "Community builds",
     description:
-        "Browse approved Kloner community builds, preview live layouts, and remix approved projects shared by other creators.",
+        "Browse approved Kloner community builds and preview live layouts shared by other creators.",
     alternates: {
         canonical: "https://kloner.app/community-builds",
     },
@@ -47,8 +47,7 @@ export default function CommunityBuildsPage() {
                             Featured builds
                         </p>
                         <p className="max-w-xl text-sm text-black/65 mt-3 mb-6">
-                            Scroll through approved layouts, open an interactive preview, or
-                            remix a project into your own Kloner workspace.
+                            Scroll through approved layouts and open an interactive preview.
                         </p>
                     </div>
                 </div>

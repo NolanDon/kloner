@@ -7,6 +7,7 @@ import { verifySession } from "../_lib/auth";
 import type { UserTier } from "@/src/lib/credits";
 import { peekUserCredit, consumeUserCredit } from "../_lib/credits-server";
 import { validateAndNormalizePublicHttpUrl, getPublicHttpUrlRejectionReason } from "@/src/lib/publicHttpUrl";
+import { captureCriticalEvent } from "@/lib/observability";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -44,6 +45,70 @@ function isBackendFetchFailed(resp: any) {
   return resp?.status === 502 && String(resp?.json?.error || "") === "Backend fetch failed";
 }
 
+function detectBrowserName(userAgent: string): string {
+  const ua = String(userAgent || "").toLowerCase();
+  if (!ua) return "unknown";
+  if (ua.includes("edg/")) return "Edge";
+  if (ua.includes("opr/") || ua.includes("opera")) return "Opera";
+  if (ua.includes("firefox/")) return "Firefox";
+  if (ua.includes("chrome/") && !ua.includes("edg/") && !ua.includes("opr/")) return "Chrome";
+  if (ua.includes("safari/") && !ua.includes("chrome/") && !ua.includes("chromium/")) return "Safari";
+  return "Other";
+}
+
+async function reportZipGenerationFailure(args: {
+  req: NextRequest;
+  uid: string;
+  url: string;
+  name: string;
+  reason: string;
+  statusCode: number;
+  reqId?: string;
+  backendUrl?: string;
+  backendStatus?: number;
+  backendMessage?: string;
+  appId?: string | null;
+}) {
+  const userAgent = args.req.headers.get("user-agent") || "";
+  const origin = args.req.headers.get("origin") || "";
+  const referer = args.req.headers.get("referer") || "";
+  const ip =
+    args.req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+    args.req.headers.get("x-real-ip") ||
+    "";
+
+  await captureCriticalEvent({
+    source: "internal",
+    severity: "error",
+    route: "/api/generate-app-from-url",
+    method: args.req.method,
+    statusCode: args.statusCode,
+    userId: args.uid,
+    requestId: args.reqId,
+    url: args.url,
+    message: `Zip generation failed: ${args.reason}`,
+    errorName: "ZipGenerationFailure",
+    service: "generate-app-from-url",
+    extra: {
+      requestContext: {
+        userAgent,
+        browser: detectBrowserName(userAgent),
+        origin,
+        referer,
+        ip,
+      },
+      appName: args.name,
+      appId: args.appId || null,
+      backend: {
+        url: args.backendUrl || null,
+        statusCode: args.backendStatus ?? null,
+        message: args.backendMessage || null,
+      },
+      reason: args.reason,
+    },
+  });
+}
+
 export async function POST(req: NextRequest) {
   return requireSessionAndMaybeCsrf(req, async ({ req }) => {
     let decoded: any;
@@ -57,13 +122,29 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { url, name, screenshotKey, screenshotKeys } = body;
+    const { url, name } = body;
 
     if (!url || typeof url !== "string") {
+      await reportZipGenerationFailure({
+        req,
+        uid: decoded.uid,
+        url: typeof url === "string" ? url : "",
+        name: typeof name === "string" ? name : "",
+        reason: "missing_url",
+        statusCode: 400,
+      }).catch(() => null);
       return NextResponse.json({ error: "URL required" }, { status: 400 });
     }
 
     if (!name || typeof name !== "string") {
+      await reportZipGenerationFailure({
+        req,
+        uid: decoded.uid,
+        url,
+        name: typeof name === "string" ? name : "",
+        reason: "missing_name",
+        statusCode: 400,
+      }).catch(() => null);
       return NextResponse.json({ error: "Name required" }, { status: 400 });
     }
 
@@ -71,6 +152,14 @@ export async function POST(req: NextRequest) {
     if (!normalizedUrl) {
       const reason = getPublicHttpUrlRejectionReason(url) || "Invalid URL";
       void reportBlockedUrlAttempt({ uid: decoded.uid, url, reason });
+      await reportZipGenerationFailure({
+        req,
+        uid: decoded.uid,
+        url,
+        name,
+        reason: "blocked_url",
+        statusCode: 400,
+      }).catch(() => null);
       return NextResponse.json(
         {
           error: reason,
@@ -80,25 +169,19 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const ownedPrefix = `kloner-screenshots/${decoded.uid}/`;
-    const providedScreenshotKey = typeof screenshotKey === "string" && screenshotKey.trim() ? screenshotKey.trim() : null;
-    const providedScreenshotKeys = Array.isArray(screenshotKeys)
-      ? (screenshotKeys.filter((k: any) => typeof k === "string" && k.trim()).map((k: string) => k.trim()))
-      : [];
-
-    if (providedScreenshotKey && !providedScreenshotKey.startsWith(ownedPrefix)) {
-      return NextResponse.json({ error: "Invalid screenshotKey" }, { status: 400 });
-    }
-    if (providedScreenshotKeys.some((k) => !k.startsWith(ownedPrefix))) {
-      return NextResponse.json({ error: "Invalid screenshotKeys" }, { status: 400 });
-    }
-
-    const preferredScreenshotKey = providedScreenshotKey || (providedScreenshotKeys.length ? providedScreenshotKeys[0] : null);
-
     let tier: UserTier;
     try {
       tier = await getAuthoritativeUserTier(decoded.uid);
     } catch (e: any) {
+      await reportZipGenerationFailure({
+        req,
+        uid: decoded.uid,
+        url: normalizedUrl,
+        name,
+        reason: "tier_lookup_failed",
+        statusCode: 500,
+        backendMessage: e?.message || "Unable to determine subscription tier. Try again shortly.",
+      }).catch(() => null);
       return NextResponse.json(
         {
           error: e?.message || "Unable to determine subscription tier. Try again shortly.",
@@ -108,21 +191,19 @@ export async function POST(req: NextRequest) {
     }
 
 
-    if (tier === "free") {
-      return NextResponse.json(
-        {
-          error: "Upgrade to Pro to create websites or apps from the dashboard.",
-          code: "APP_WIZARD_TIER_BLOCKED",
-          reason: "app_wizard_tier_blocked",
-          requiredTiers: ["trialing", "pro", "agency"],
-        },
-        { status: 403 },
-      );
-    }
     // Hard gate: app generation with createPreview consumes preview credits.
     try {
       const peek = await peekUserCredit(decoded.uid, tier, "preview");
       if (!peek.ok || (peek.remaining !== null && peek.remaining <= 0)) {
+        await reportZipGenerationFailure({
+          req,
+          uid: decoded.uid,
+          url: normalizedUrl,
+          name,
+          reason: "preview_credits_exhausted",
+          statusCode: 429,
+          backendMessage: `Remaining preview credits: ${peek.remaining ?? "unknown"}`,
+        }).catch(() => null);
         return NextResponse.json(
           {
             error: "Monthly preview limit reached for your plan.",
@@ -135,129 +216,25 @@ export async function POST(req: NextRequest) {
         );
       }
     } catch {
+      await reportZipGenerationFailure({
+        req,
+        uid: decoded.uid,
+        url: normalizedUrl,
+        name,
+        reason: "preview_credit_check_failed",
+        statusCode: 503,
+      }).catch(() => null);
       return NextResponse.json(
         { error: "Unable to check preview credits. Try again shortly." },
         { status: 503 }
       );
     }
 
-    // Check snapshot credit only if we need to capture screenshots.
-    if (!preferredScreenshotKey) {
-      try {
-        const peek = await peekUserCredit(decoded.uid, tier, "snapshot");
-        if (!peek.ok || (peek.remaining !== null && peek.remaining <= 0)) {
-          return NextResponse.json(
-            {
-              error: "Monthly snapshot limit reached for your plan.",
-              remaining: peek.remaining,
-            },
-            { status: 429 }
-          );
-        }
-      } catch {
-        return NextResponse.json(
-          { error: "Unable to check credits. Try again shortly." },
-          { status: 503 }
-        );
-      }
-    }
-
     try {
-      let finalScreenshotKey = preferredScreenshotKey;
-
-      if (!finalScreenshotKey) {
-        // First, generate screenshots
-        const screenshotResponse = await callBackend(req, {
-          path: "/generate-screenshots",
-          method: "POST",
-          body: { url: normalizedUrl },
-          userCtx: { uid: decoded.uid, email: decoded?.email || "", tier },
-          timeoutMs: 60000,
-          acceptOnTimeout: true,
-        });
-
-        if (isBackendFetchFailed(screenshotResponse)) {
-          const hint = backendConfigHint();
-          return NextResponse.json(
-            {
-              error:
-                process.env.NODE_ENV !== "production"
-                  ? `Failed to reach the backend screenshot service at ${screenshotResponse.url}. Check BACKEND_URL/BACKEND_ORIGIN and INTERNAL_API_KEY. Also try /api/internal/env-check.`
-                  : "Failed to reach the backend screenshot service.",
-              code: "BACKEND_UNREACHABLE",
-              reqId: screenshotResponse.reqId,
-              ...(process.env.NODE_ENV !== "production"
-                ? {
-                    debug: {
-                      attemptedUrl: screenshotResponse.url,
-                      env: {
-                        BACKEND_ORIGIN: hint.origin || null,
-                        BACKEND_PREFIX: hint.prefix,
-                        INTERNAL_API_KEY_SET: hint.hasInternalKey,
-                      },
-                    },
-                  }
-                : {}),
-            },
-            { status: 502 },
-          );
-        }
-
-        const screenshotPayload = screenshotResponse.json && Object.keys(screenshotResponse.json).length
-          ? screenshotResponse.json
-          : { ok: true, queued: screenshotResponse.status === 202 || screenshotResponse.status === 204 };
-
-        const hasErrorFlag = Boolean((screenshotPayload as any).error);
-        const okField = (screenshotPayload as any).ok;
-        const totalPlanned = typeof (screenshotPayload as any).totalPlanned === "number"
-          ? (screenshotPayload as any).totalPlanned
-          : null;
-
-        const logicalOk = screenshotResponse.upstream.ok &&
-          !hasErrorFlag &&
-          okField !== false &&
-          (totalPlanned === null || totalPlanned > 0);
-
-        if (!logicalOk) {
-          const status = screenshotResponse.status && screenshotResponse.status >= 400
-            ? screenshotResponse.status
-            : 502;
-
-          return NextResponse.json(
-            {
-              error: (screenshotPayload as any).error ||
-                (screenshotPayload as any).message ||
-                "Screenshot capture failed.",
-              ...(totalPlanned === 0 ? { reason: "no_captures" } : {}),
-            },
-            { status }
-          );
-        }
-
-        // Consume snapshot credit
-        try {
-          await consumeUserCredit(decoded.uid, tier, "snapshot");
-        } catch {
-          // If this fails, continue anyway
-        }
-
-        // Get the best screenshot key
-        const items = (screenshotPayload as any).items || [];
-        if (!items.length) {
-          return NextResponse.json(
-            { error: "No screenshots captured" },
-            { status: 500 }
-          );
-        }
-
-        finalScreenshotKey = items[0].key;
-      }
-
-      // Now generate the app using the screenshot
       const appResponse = await callBackend(req, {
         path: "/generate-app-from-url",
         method: "POST",
-        body: { url: normalizedUrl, name, screenshotKey: finalScreenshotKey, createPreview: true },
+        body: { url: normalizedUrl, name, createPreview: true },
         userCtx: { uid: decoded.uid, email: decoded?.email || "", tier },
         timeoutMs: 300000, // 5 minutes
         acceptOnTimeout: true,
@@ -265,6 +242,18 @@ export async function POST(req: NextRequest) {
 
       if (isBackendFetchFailed(appResponse)) {
         const hint = backendConfigHint();
+        await reportZipGenerationFailure({
+          req,
+          uid: decoded.uid,
+          url: normalizedUrl,
+          name,
+          reason: "backend_unreachable",
+          statusCode: 502,
+          reqId: appResponse.reqId,
+          backendUrl: appResponse.url,
+          backendStatus: appResponse.status,
+          backendMessage: "Backend fetch failed",
+        }).catch(() => null);
         return NextResponse.json(
           {
             error:
@@ -320,6 +309,19 @@ export async function POST(req: NextRequest) {
 
       const appData = (appResponse.json || {}) as any;
       const upstreamStatus = appResponse.status || 502;
+      await reportZipGenerationFailure({
+        req,
+        uid: decoded.uid,
+        url: normalizedUrl,
+        name,
+        reason: "backend_rejected_generation",
+        statusCode: upstreamStatus >= 400 ? upstreamStatus : 502,
+        reqId: appResponse.reqId,
+        backendUrl: appResponse.url,
+        backendStatus: appResponse.status,
+        backendMessage: appData.error || appData.message || `Backend refused app generation (HTTP ${upstreamStatus})`,
+        appId: typeof appData?.appId === "string" ? appData.appId.trim() : null,
+      }).catch(() => null);
       return NextResponse.json(
         {
           error:
@@ -333,6 +335,15 @@ export async function POST(req: NextRequest) {
       );
 
     } catch (e: any) {
+      await reportZipGenerationFailure({
+        req,
+        uid: decoded.uid,
+        url: normalizedUrl,
+        name,
+        reason: "request_failed",
+        statusCode: 502,
+        backendMessage: e?.message || "Request failed",
+      }).catch(() => null);
       return NextResponse.json(
         { error: e?.message || "Request failed" },
         { status: 502 }
