@@ -598,9 +598,6 @@ export default function CommunityBuildsClient() {
                             const firstPageHtml =
                                 derivePagesFromHtml(item.html)?.[0]?.html ?? item.html ?? "";
 
-                            // Remix is intentionally disabled for community templates right now.
-                            const canRemix = false;
-
                             return (
                                 <motion.div
                                     key={item.id}
@@ -684,7 +681,8 @@ export default function CommunityBuildsClient() {
                                                 >
                                                     Remix disabled
                                                 </button>
-                                        </div>
+                                              </div>
+                                          </div>
                                     </div>
                                 </motion.div>
                             );
@@ -721,7 +719,7 @@ export default function CommunityBuildsClient() {
                                     Confirm remix
                                 </p>
                                 <p className="mt-1 text-[15px] font-semibold text-black">
-                                    Remix “{confirmRemixBuild.name}”?
+                                    Remix “{confirmRemixBuild?.name ?? ""}”?
                                 </p>
                                 <p className="mt-2 text-[12px] leading-5 text-black/60">
                                     This will clone the build into your account as a new editable preview.
