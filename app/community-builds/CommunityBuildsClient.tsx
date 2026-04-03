@@ -576,14 +576,14 @@ export default function CommunityBuildsClient() {
 
                                 <div className="rounded-2xl border border-black/10 bg-neutral-50 p-3">
                                     <div className="text-[10px] uppercase tracking-[0.22em] text-black/45">
-                                            2. Remix
+                                        2. Remix
                                     </div>
-                                        <div className="mt-3 inline-flex items-center justify-center gap-2 rounded-full bg-black/10 px-4 py-2 text-[12px] font-semibold text-black/45">
-                                            Remix temporarily disabled
-                                        </div>
-                                        <p className="mt-3 text-[12px] leading-5 text-black/60">
-                                            We are pausing remix actions on community templates for now.
-                                        </p>
+                                    <div className="mt-3 inline-flex items-center justify-center gap-2 rounded-full bg-black/10 px-4 py-2 text-[12px] font-semibold text-black/45">
+                                        Remix temporarily disabled
+                                    </div>
+                                    <p className="mt-3 text-[12px] leading-5 text-black/60">
+                                        We are pausing remix actions on community templates for now.
+                                    </p>
                                 </div>
                             </div>
                         </motion.div>
@@ -674,50 +674,16 @@ export default function CommunityBuildsClient() {
                                                 )}
 
                                                 <span className="inline-flex items-center gap-1 rounded-full border border-black/10 bg-white px-2 py-0.5 text-black/60">
-                                                    <button
-                                                        type="button"
-                                                        disabled
-                                                        className="group inline-flex items-center justify-center gap-2 rounded-full bg-neutral-100 px-4 py-2 text-[12px] font-semibold text-black/40 shadow-none cursor-not-allowed"
-                                                    >
-                                                        Remix disabled
-                                                    </button>
-                                                        >
-                                                            <path
-                                                                d="M7 7h6a4 4 0 0 1 4 4v1"
-                                                                stroke="currentColor"
-                                                                strokeWidth="2.25"
-                                                                strokeLinecap="round"
-                                                            />
-                                                            <path
-                                                                d="M17 7l2 2-2 2"
-                                                                stroke="currentColor"
-                                                                strokeWidth="2.25"
-                                                                strokeLinecap="round"
-                                                                strokeLinejoin="round"
-                                                            />
-                                                            <path
-                                                                d="M17 17H11a4 4 0 0 1-4-4v-1"
-                                                                stroke="currentColor"
-                                                                strokeWidth="2.25"
-                                                                strokeLinecap="round"
-                                                            />
-                                                            <path
-                                                                d="M7 17l-2-2 2-2"
-                                                                stroke="currentColor"
-                                                                strokeWidth="2.25"
-                                                                strokeLinecap="round"
-                                                                strokeLinejoin="round"
-                                                            />
-                                                        </svg>
-                                                    )}
+                                                    Remix disabled
                                                 </span>
 
-                                                {remixBusyId === item.id
-                                                    ? "Remixing…"
-                                                    : canRemix
-                                                        ? "Remix"
-                                                        : "Remix disabled"}
-                                            </button>
+                                                <button
+                                                    type="button"
+                                                    disabled
+                                                    className="inline-flex items-center justify-center rounded-full bg-neutral-100 px-3 py-1.5 text-[12px] font-semibold text-black/40 shadow-none cursor-not-allowed"
+                                                >
+                                                    Remix disabled
+                                                </button>
                                         </div>
                                     </div>
                                 </motion.div>
