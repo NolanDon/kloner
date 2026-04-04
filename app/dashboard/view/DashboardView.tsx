@@ -173,6 +173,22 @@ function hasRecentlyShownBillingSuccess(): boolean {
     return Date.now() - seenAt < BILLING_SUCCESS_COOKIE_MAX_AGE_SEC * 1000;
 }
 
+function isScreenshotCreditLimitResponse(status: number, payload: any): boolean {
+    if (status !== 429) return false;
+
+    const errorText = String(payload?.error || payload?.message || "").toLowerCase();
+    const reasonText = String(payload?.reason || payload?.code || "").toLowerCase();
+    const remaining = payload?.remaining;
+
+    return (
+        errorText.includes("monthly snapshot limit reached") ||
+        errorText.includes("screenshot credits") ||
+        reasonText === "monthly_snapshot_limit" ||
+        reasonText === "snapshot_credit_limit" ||
+        (typeof remaining === "number" && remaining <= 0)
+    );
+}
+
 function markBillingSuccessShown(): void {
     if (typeof window === "undefined" || typeof document === "undefined") return;
     const secure = window.location.protocol === "https:" ? "; Secure" : "";
@@ -2509,7 +2525,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                         <button
                                             type="button"
                                             onClick={() => setSelectedGenerationType("nextjs")}
-                                            disabled={effectiveLocked || sourceUrlCannotGenerate}
+                                            disabled={effectiveLocked}
                                             className={`relative w-full overflow-hidden rounded-xl border p-4 text-left shadow-sm transition disabled:opacity-60 disabled:cursor-not-allowed ${selectedGenerationType === "nextjs"
                                                 ? "border-[rgba(245,95,42,0.65)] bg-[linear-gradient(180deg,rgba(245,95,42,0.06),rgba(255,255,255,0))]"
                                                 : "border-neutral-200 bg-white hover:bg-neutral-50 hover:border-neutral-300"
@@ -2532,7 +2548,6 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                                         priority={false}
                                                     />
                                                 </div>
-
                                                 <div className="min-w-0 flex-1 space-y-1">
                                                     <div className="flex min-w-0 flex-wrap items-start gap-2 sm:items-center">
                                                         <div className="min-w-0 text-sm font-semibold text-neutral-900 break-words">
@@ -2552,6 +2567,12 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                                     <div className="mt-1 text-[11px] leading-4 text-neutral-500">
                                                         Best for: user accounts, AI features, dashboards, web games, stores, or product-heavy content.
                                                     </div>
+
+                                                    {sourceUrlCannotGenerate ? (
+                                                        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                                                            URL scan failed earlier, but you can still start a fresh rescan from here.
+                                                        </div>
+                                                    ) : null}
                                                 </div>
                                             </div>
                                             <div className="mt-2 rounded-lg border border-neutral-200 bg-neutral-50 px-2.5 py-2">
@@ -4822,6 +4843,10 @@ export default function PreviewPage(): JSX.Element {
             const shouldClearStartParam = options?.clearStartParam !== false;
             const startRequestKey = `${user.uid}:${target}`;
 
+            if (startRequestedEnqueueAttemptRef.current === startRequestKey) {
+                return false;
+            }
+
             if (generateSucceededRef.current === startRequestKey && !forceRetry) {
                 if (shouldClearStartParam) clearStartQueryParam();
                 return false;
@@ -4831,6 +4856,7 @@ export default function PreviewPage(): JSX.Element {
                 return false;
             }
             startRequestedInFlightRef.current = startRequestKey;
+            startRequestedEnqueueAttemptRef.current = startRequestKey;
 
             setCaptureLockUrl(target);
             captureLockStartedAtRef.current = Date.now();
@@ -4945,21 +4971,11 @@ export default function PreviewPage(): JSX.Element {
                     if (cancelled) return;
 
                     if (!res.ok) {
-                        const activeCaptureForTarget = (() => {
-                            const s = String(captureStatusRef.current || "").toLowerCase();
-                            return s === "queued" || s === "processing" || s === "ready";
-                        })();
-
-                        if (res.status === 429 && activeCaptureForTarget) {
-                            shouldMarkHandled = true;
-                            setErr("");
-                            if (shouldClearStartParam) clearStartQueryParam();
-                            return;
-                        }
-
                         generateAbortedRef.current = startRequestKey;
                         setCaptureTerminalFailureUrl(normUrl(target));
                         const payload = await res.clone().json().catch(() => ({} as any));
+                        const creditLimitResponse = isScreenshotCreditLimitResponse(res.status, payload);
+
                         const serverError =
                             (typeof payload?.error === "string" && payload.error.trim())
                                 ? payload.error.trim()
@@ -4978,7 +4994,7 @@ export default function PreviewPage(): JSX.Element {
                             backendCode === "CROSS_DOMAIN_REDIRECT" ||
                             /redirect(ed)? to a different domain|cross.?domain redirect/i.test(serverError);
                         const uiError =
-                            res.status === 429
+                            creditLimitResponse
                                 ? "Monthly snapshot limit reached for your plan."
                                 : res.status === 502
                                     ? "This URL failed to process. Please try again."
@@ -4989,7 +5005,7 @@ export default function PreviewPage(): JSX.Element {
                         captureLockStartedAtRef.current = 0;
 
                         const nextUiError =
-                            res.status === 429
+                            creditLimitResponse
                                 ? (serverError || uiError)
                                 : looksCrossDomainRedirect
                                     ? "This URL redirected to a different domain and was stopped for safety. Please use the final destination URL directly."
@@ -4999,7 +5015,7 @@ export default function PreviewPage(): JSX.Element {
                         if (nextUiError !== uiError) {
                             setErr(nextUiError);
                         }
-                        if (res.status === 429) {
+                        if (creditLimitResponse) {
                             setShowCreditsPaywall("screenshot");
                         }
 
@@ -5065,6 +5081,9 @@ export default function PreviewPage(): JSX.Element {
 
                     if (startRequestedInFlightRef.current === startRequestKey) {
                         startRequestedInFlightRef.current = "";
+                    }
+                    if (startRequestedEnqueueAttemptRef.current === startRequestKey) {
+                        startRequestedEnqueueAttemptRef.current = "";
                     }
                 }
             })();
@@ -5473,6 +5492,15 @@ export default function PreviewPage(): JSX.Element {
             return;
         }
 
+        // If the active URL is now ready, clear stale failure/loading UI from a prior attempt.
+        if (captureStatus === "ready") {
+            setErr("");
+            setInfo("");
+            setCaptureIssueNotice("");
+            setHideCaptureQueueStatus(false);
+            setCaptureTerminalFailureUrl("");
+        }
+
         if (err) return;
         if (!lockMatches) return;
 
@@ -5594,7 +5622,7 @@ export default function PreviewPage(): JSX.Element {
                     >
                         {activeUrlDisplay}
                     </a>
-                    , so we can’t try it again yet.
+                    , but you can start a fresh rescan now.
                 </p>
                 <p>
                     Test the URL in a private or incognito browser tab and make sure it loads without login, captcha, geo-blocking, or a redirect.
@@ -6783,13 +6811,6 @@ export default function PreviewPage(): JSX.Element {
             return;
         }
 
-        if (activeUrlCannotGenerate) {
-            const msg = "This URL scan failed and cannot be used to create websites. Retry scan or choose a different URL.";
-            setErr(msg);
-            push(msg, "warn");
-            return;
-        }
-
         if (!canUsePreviewCredit()) {
             push(
                 "You have used all available preview credits for this month on this plan.",
@@ -6845,8 +6866,14 @@ export default function PreviewPage(): JSX.Element {
                 return;
             }
 
+            if (r.status === 429 && isScreenshotCreditLimitResponse(r.status, j)) {
+                setErr("");
+                setShowCreditsPaywall("screenshot");
+                return;
+            }
+
             if (!r.ok || !j?.ok) {
-                throw new Error(j?.error || "Render failed");
+                throw new Error(j?.error || (r.status === 429 ? "This URL failed to process. Please try again." : "Render failed"));
             }
 
             await refreshRenders();
@@ -7708,17 +7735,6 @@ export default function PreviewPage(): JSX.Element {
         }
     }, [urlsLoading, targetUrl, urls, router]);
 
-    useEffect(() => {
-        if (didAutoSelectRef.current) return;
-        if (!urlsLoading && !targetUrl && urls.length > 0) {
-            didAutoSelectRef.current = true;
-            const first = ensureHttp(urls[0].url);
-            router.replace(`/dashboard/view?u=${encodeURIComponent(first)}`, {
-                scroll: false,
-            });
-        }
-    }, [urlsLoading, targetUrl, urls, router]);
-
     // ───────── deploy wizard state: project name → vercel → deploy ─────────
 
     const autoDeployTriggeredRef = useRef(false);
@@ -8381,6 +8397,11 @@ export default function PreviewPage(): JSX.Element {
     const showDevUrlScreenshots = process.env.NODE_ENV === "development";
     const DEV_URL_SCREENSHOT_PREVIEW_LIMIT = 12;
     const devUrlScreenshotPreviews = shots.slice(0, DEV_URL_SCREENSHOT_PREVIEW_LIMIT);
+    const devZipDownloadHref = useMemo(() => {
+        if (!showDevUrlScreenshots) return "";
+        if (!isArchiveBackedUrlDoc(docData)) return "";
+        return String(docData?.zipUrl || docData?.zipPath || "").trim();
+    }, [docData, showDevUrlScreenshots]);
 
     const showUrlAccessInError = useMemo(() => {
         if (!err) return false;
@@ -9323,6 +9344,30 @@ export default function PreviewPage(): JSX.Element {
                                 {shots.length} screenshot{shots.length === 1 ? "" : "s"}
                             </span>
                         </div>
+
+                        {devZipDownloadHref ? (
+                            <div className="mt-3 rounded-lg border border-neutral-200 bg-white px-3 py-3 shadow-sm">
+                                <div className="flex flex-wrap items-center justify-between gap-3">
+                                    <div className="min-w-0">
+                                        <p className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500">
+                                            ZIP archive
+                                        </p>
+                                        <p className="mt-1 break-all text-sm text-neutral-800">
+                                            {devZipDownloadHref}
+                                        </p>
+                                    </div>
+                                    <a
+                                        href={devZipDownloadHref}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-[#f55f2a]/25 bg-[#f55f2a] px-3 py-1.5 text-xs font-semibold text-white shadow-[0_10px_24px_rgba(245,95,42,0.18)] transition hover:bg-[#ef4f19] hover:shadow-[0_12px_28px_rgba(245,95,42,0.24)]"
+                                    >
+                                        <span>Download ZIP</span>
+                                        <ArrowUpRight className="h-3.5 w-3.5" />
+                                    </a>
+                                </div>
+                            </div>
+                        ) : null}
 
                         {devUrlScreenshotPreviews.length > 0 ? (
                             <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
