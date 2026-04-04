@@ -3986,29 +3986,37 @@ export default function AppBuilderEditor({
 
     if (activeGeneration.status === "error" && !dismissedGenerationError) {
         return (
-            <div className="fixed inset-0 z-[16000] bg-black/70 backdrop-blur-sm flex items-center justify-center">
-                <div className="bg-white rounded-lg p-8 max-w-md">
-                    <div className="text-center">
-                        <div className="text-red-600 text-lg font-semibold mb-2">Generation Failed</div>
-                        <div className="text-gray-600 text-sm mb-4">
+            <div className="fixed inset-0 z-[16000] flex items-center justify-center bg-black/70 px-4 py-6 backdrop-blur-sm">
+                <div className="w-full max-w-lg overflow-hidden rounded-3xl border border-neutral-200 bg-white shadow-[0_28px_80px_rgba(15,23,42,0.22)]">
+                    <div className="border-b border-neutral-200 bg-[linear-gradient(180deg,rgba(245,95,42,0.10),rgba(255,255,255,1))] px-5 py-4 sm:px-6">
+                        <div className="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-[rgba(245,95,42,0.12)] text-[rgba(245,95,42,1)]">
+                            <X className="h-5 w-5" />
+                        </div>
+                        <div className="mt-3 text-[22px] font-semibold tracking-[-0.02em] text-neutral-950">
+                            Generation Failed
+                        </div>
+                        <div className="mt-2 max-w-md text-sm leading-6 text-neutral-600">
                             {activeGeneration.error || "An error occurred while generating your app."}
                         </div>
-                        <div className="flex flex-wrap items-center justify-center gap-2">
+                    </div>
+
+                    <div className="px-5 py-5 sm:px-6">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
                             <button
                                 onClick={handleReconnect}
-                                className="px-4 py-2 bg-accent text-white rounded-full hover:bg-accent-dark transition-colors"
+                                className="inline-flex w-full items-center justify-center rounded-full bg-[rgba(245,95,42,1)] px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-[rgba(225,82,30,1)] sm:w-auto"
                             >
                                 Reconnect preview
                             </button>
                             <button
                                 onClick={() => setDismissedGenerationError(true)}
-                                className="px-4 py-2 bg-gray-100 text-gray-900 rounded-full hover:bg-gray-200 transition-colors"
+                                className="inline-flex w-full items-center justify-center rounded-full border border-neutral-200 bg-white px-4 py-3 text-sm font-semibold text-neutral-800 transition hover:bg-neutral-50 sm:w-auto"
                             >
                                 Continue anyway
                             </button>
                             <button
                                 onClick={() => window.location.reload()}
-                                className="px-4 py-2 bg-blue-600 text-white rounded-full hover:bg-blue-700 transition-colors"
+                                className="inline-flex w-full items-center justify-center rounded-full border border-[rgba(245,95,42,0.18)] bg-[rgba(245,95,42,0.08)] px-4 py-3 text-sm font-semibold text-[rgba(145,54,14,0.98)] transition hover:bg-[rgba(245,95,42,0.14)] sm:w-auto"
                             >
                                 Retry
                             </button>

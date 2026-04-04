@@ -365,54 +365,59 @@ type AmberIssueBannerProps = {
 
 function AmberIssueBanner({ message, onDismiss, onRetry, retryDisabled = false, retryLabel = "Retry", details }: AmberIssueBannerProps) {
     const [showDetails, setShowDetails] = useState(false);
-    const detailsNode = details ?? <span>No details provided.</span>;
-    const hasDetails = details != null;
+    const hasDetails = details != null && !(typeof details === "string" && details.trim().length === 0);
 
     return (
         <motion.div
             initial={{ opacity: 0, y: -8, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             transition={{ type: "spring", stiffness: 700, damping: 28, mass: 0.55 }}
-            className="relative mt-2 overflow-hidden rounded-full border border-amber-300 bg-amber-100 px-3 py-1.5 text-xs text-amber-950 shadow-sm"
+            className="relative mt-3 overflow-hidden rounded-3xl border border-amber-300/80 bg-amber-50/95 px-3 py-3 text-xs text-amber-950 shadow-[0_14px_34px_rgba(180,108,17,0.10)] sm:px-4 sm:py-3 sm:pr-14"
         >
-            <div className={`flex items-start gap-2 ${hasDetails ? "pr-16" : "pr-8"}`}>
-                <MessageCircleWarning className="h-4 w-4 shrink-0 text-amber-700" />
-                <span className="min-w-0 flex-1 whitespace-normal break-words font-medium leading-5">{message}</span>
-                {onRetry ? (
-                    <button
-                        type="button"
-                        onClick={onRetry}
-                        disabled={retryDisabled}
-                        className="inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-1 text-[11px] font-semibold text-amber-900 transition hover:text-amber-950 disabled:cursor-not-allowed disabled:opacity-50"
-                        title="Retry this URL"
-                    >
-                        <RotateCcw className="h-3 w-3" />
-                        <span>{retryLabel}</span>
-                    </button>
-                ) : null}
-                {hasDetails ? (
-                    <button
-                        type="button"
-                        onClick={() => setShowDetails((v) => !v)}
-                        className="inline-flex shrink-0 items-center gap-1 text-[11px] font-semibold text-amber-800/90 transition hover:text-amber-950"
-                        aria-expanded={showDetails}
-                        aria-label={showDetails ? "Hide details" : "View details"}
-                        title={showDetails ? "Hide details" : "View details"}
-                    >
-                        <span>{showDetails ? "Hide details" : "View details"}</span>
-                        {showDetails ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-                    </button>
-                ) : null}
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:gap-3">
+                <div className="flex min-w-0 flex-1 items-start gap-2 sm:pt-0.5">
+                    <MessageCircleWarning className="h-4 w-4 shrink-0 text-amber-700" />
+                    <span className="min-w-0 flex-1 whitespace-normal break-words font-semibold leading-5 text-amber-950 sm:whitespace-nowrap">
+                        {message}
+                    </span>
+                </div>
+                <div className="flex flex-wrap items-center gap-2 sm:ml-auto sm:flex-nowrap sm:justify-end sm:gap-3 sm:pt-0.5 sm:pr-8">
+                    {onRetry ? (
+                        <button
+                            type="button"
+                            onClick={onRetry}
+                            disabled={retryDisabled}
+                            className="inline-flex w-full shrink-0 items-center justify-center gap-1 rounded-full border border-amber-300/80 bg-amber-100/80 px-2.5 py-1.5 text-center text-[11px] font-semibold text-amber-900 shadow-sm transition hover:border-amber-400 hover:bg-amber-100 hover:text-amber-950 disabled:cursor-not-allowed disabled:opacity-55 sm:w-auto sm:px-2.5 sm:py-1"
+                            title="Retry this URL"
+                        >
+                            <RotateCcw className="h-3 w-3 text-amber-800" />
+                            <span>{retryLabel}</span>
+                        </button>
+                    ) : null}
+                    {hasDetails ? (
+                        <button
+                            type="button"
+                            onClick={() => setShowDetails((v) => !v)}
+                            className="inline-flex w-full shrink-0 items-center justify-center gap-1 rounded-full border border-amber-300/70 bg-white px-3 py-2 text-[11px] font-semibold text-amber-800/90 transition hover:border-amber-400 hover:text-amber-950 sm:w-auto sm:border-0 sm:bg-transparent sm:px-0 sm:py-1.5 sm:mr-2"
+                            aria-expanded={showDetails}
+                            aria-label={showDetails ? "Hide details" : "View details"}
+                            title={showDetails ? "Hide details" : "View details"}
+                        >
+                            <span>{showDetails ? "Hide details" : "View details"}</span>
+                            {showDetails ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                        </button>
+                    ) : null}
+                </div>
             </div>
-            {showDetails ? (
-                <div className="absolute left-3 right-3 top-full z-10 mt-2 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] leading-5 text-amber-900 shadow-sm sm:text-xs">
-                    {detailsNode}
+            {showDetails && hasDetails ? (
+                <div className="mt-3 rounded-2xl border border-amber-200 bg-white/90 px-3 py-3 text-[11px] leading-6 text-amber-900 shadow-sm sm:text-xs">
+                    {details}
                 </div>
             ) : null}
             <button
                 type="button"
                 onClick={onDismiss}
-                className="absolute right-2 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full text-amber-700 transition hover:bg-amber-200 hover:text-amber-950"
+                className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full text-amber-700 transition hover:bg-amber-200 hover:text-amber-950 sm:right-4 sm:top-1/2 sm:-translate-y-1/2"
                 aria-label="Dismiss warning"
                 title="Dismiss"
             >
@@ -5591,29 +5596,18 @@ export default function PreviewPage(): JSX.Element {
 
     const activeUrlIssueDetails = useMemo(() => {
         if (!showActiveUrlIssueWarning) return null;
-        const reasonText =
-            activeUrlStatusUi === "stale"
-                ? "This URL is marked stale from a previous attempt, so retry has to start a fresh scan."
-                : captureTerminalFailureUrl === activeUrlIssueHref
-                    ? "This URL has a terminal failure recorded, so retry clears that state and starts a new /generate run."
-                    : "This URL is currently blocked by saved scan state, so the UI will only retry after the existing failure state is cleared.";
         return (
-            <div className="space-y-2">
-                <p className="font-semibold text-amber-950">{reasonText}</p>
-                <p>Test the URL in a private or incognito browser tab and make sure it loads without login, captcha, geo-blocking, or a redirect.</p>
-                {captureIssueDetails ? (
-                    <p className="text-amber-900/90">
-                        <span className="font-semibold">Backend response:</span> {captureIssueDetails}
-                    </p>
-                ) : (
-                    <p className="text-amber-900/90">
-                        <span className="font-semibold">Backend response:</span> No backend details were returned for this failure. That usually means the scan was stopped by a duplicate, a temporary backend error, or a site restriction before a fuller response was available.
-                    </p>
-                )}
+            <div className="space-y-3">
+                <p className="font-semibold text-amber-950">
+                    This URL is currently blocked by saved scan state, so the UI will only retry after the existing failure state is cleared.
+                </p>
+                <p>
+                    Test the URL in a private or incognito browser tab and make sure it loads without login, captcha, geo-blocking, or a redirect.
+                </p>
                 <p>If the page works in a browser but not here, the site is probably blocking automated capture.</p>
             </div>
         );
-    }, [activeUrlIssueHref, activeUrlStatusUi, captureIssueDetails, captureTerminalFailureUrl, showActiveUrlIssueWarning]);
+    }, [showActiveUrlIssueWarning]);
 
     useEffect(() => {
         if (!dismissedUrlIssueCanonical) return;
