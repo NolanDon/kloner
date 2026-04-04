@@ -117,7 +117,8 @@ const FRONTEND_TIMEOUT_DEDUPE_TTL_MS = 10 * 60 * 1000;
 const FRONTEND_TIMEOUT_DEDUPE_STORAGE_KEY = "dashboardViewFrontendTimeoutAlertsV1";
 const CAPTURE_STALE_ALERT_STORAGE_KEY = "dashboardViewCaptureStaleAlertsV1";
 const CAPTURE_STALLED_ALERT_STORAGE_KEY = "dashboardViewCaptureStalledAlertsV1";
-const URL_SCAN_RETRY_COOLDOWN_MS = 10 * 1000;
+const URL_SCAN_RETRY_BACKOFF_STORAGE_KEY = "dashboardViewUrlRetryBackoffV1";
+const URL_SCAN_RETRY_BACKOFF_SEQUENCE_MS = [10_000, 20_000, 40_000, 90_000, 180_000, 360_000, 720_000];
 const URL_ADD_SUCCESS_MESSAGE = "Successfully added your URL.";
 const APP_WIZARD_PROMPT_MAX_CHARS = 2000;
 const FIRST_GEN_TRIAL_OBSERVE_MS = 15 * 1000;
@@ -292,6 +293,13 @@ function clearCaptureStalledAlertSent(normalizedUrl: string): void {
 
 type UrlStatusUi = "queued" | "processing" | "ready" | "stale" | "error" | "unknown";
 
+type UrlRetryBackoffState = {
+    attempt: number;
+    until: number;
+};
+
+type UrlRetryBackoffMap = Record<string, UrlRetryBackoffState>;
+
 function isArchiveBackedUrlDoc(doc?: Partial<UrlDoc> | null): boolean {
     return Boolean(doc && (doc.archiveMode || doc.zipPath || doc.zipUrl));
 }
@@ -336,6 +344,64 @@ function normalizeUrlStatus(
     }
 
     return "unknown";
+}
+
+function getUrlRetryBackoffDelayMs(attempt: number): number {
+    if (attempt <= 0) return 0;
+    const index = attempt - 1;
+    if (index < URL_SCAN_RETRY_BACKOFF_SEQUENCE_MS.length) {
+        return URL_SCAN_RETRY_BACKOFF_SEQUENCE_MS[index];
+    }
+
+    const lastSequenceDelay = URL_SCAN_RETRY_BACKOFF_SEQUENCE_MS[URL_SCAN_RETRY_BACKOFF_SEQUENCE_MS.length - 1];
+    const extraSteps = index - (URL_SCAN_RETRY_BACKOFF_SEQUENCE_MS.length - 1);
+    return lastSequenceDelay * (2 ** extraSteps);
+}
+
+function formatRetryDelayLabel(totalMs: number): string {
+    const totalSeconds = Math.max(0, Math.ceil(totalMs / 1000));
+    if (totalSeconds < 60) return `${totalSeconds}s`;
+
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return seconds > 0 ? `${minutes}m ${seconds}s` : `${minutes}m`;
+}
+
+function readUrlRetryBackoffMap(): UrlRetryBackoffMap {
+    if (typeof window === "undefined") return {};
+
+    try {
+        const raw = window.localStorage.getItem(URL_SCAN_RETRY_BACKOFF_STORAGE_KEY);
+        if (!raw) return {};
+
+        const parsed = JSON.parse(raw) as unknown;
+        if (!parsed || typeof parsed !== "object") return {};
+
+        const out: UrlRetryBackoffMap = {};
+        for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
+            const entry = value as Partial<UrlRetryBackoffState>;
+            const attempt = Number(entry?.attempt || 0);
+            const until = Number(entry?.until || 0);
+            if (!key || !Number.isFinite(attempt) || attempt <= 0 || !Number.isFinite(until) || until <= 0) continue;
+            out[key] = {
+                attempt: Math.floor(attempt),
+                until: Math.floor(until),
+            };
+        }
+        return out;
+    } catch {
+        return {};
+    }
+}
+
+function writeUrlRetryBackoffMap(map: UrlRetryBackoffMap): void {
+    if (typeof window === "undefined") return;
+
+    try {
+        window.localStorage.setItem(URL_SCAN_RETRY_BACKOFF_STORAGE_KEY, JSON.stringify(map));
+    } catch {
+        // Ignore storage failures; the UI still works with in-memory state.
+    }
 }
 
 function stripHttpsUrlsFromPrompt(input: string): string {
@@ -766,7 +832,7 @@ function MiniDashboardEntry({
                             "shrink-0 rounded-full text-white transition-all active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed " +
                             (mode === "prompt"
                                 ? "h-11 w-11 grid place-items-center"
-                                : "h-full px-6 sm:px-10 max-[380px]:h-11 max-[380px]:w-11 max-[380px]:grid max-[380px]:place-items-center max-[380px]:px-0")
+                                : "grid h-8 w-8 place-items-center px-0 md:h-full md:w-auto md:px-10")
                         }
                         style={{ backgroundColor: ACCENT }}
                         aria-label={mode === "prompt" ? "Create from prompt" : "Preview from URL"}
@@ -785,8 +851,8 @@ function MiniDashboardEntry({
                             </>
                         ) : (
                             <>
-                                <Send className="hidden max-[380px]:inline h-4 w-4" />
-                                <span className="max-[380px]:hidden">Add URL</span>
+                                <Send className="h-4 w-4 md:hidden" />
+                                <span className="hidden md:inline">Add URL</span>
                                 <span className="sr-only">Add URL</span>
                             </>
                         )}
@@ -2718,9 +2784,8 @@ export default function PreviewPage(): JSX.Element {
     const [captureIssueNotice, setCaptureIssueNotice] = useState<string>("");
     const [hideCaptureQueueStatus, setHideCaptureQueueStatus] = useState<boolean>(false);
     const [dismissedUrlIssueCanonical, setDismissedUrlIssueCanonical] = useState<string>("");
-    const [retryCooldownUntil, setRetryCooldownUntil] = useState<number>(0);
+    const [retryBackoffByUrl, setRetryBackoffByUrl] = useState<UrlRetryBackoffMap>(() => readUrlRetryBackoffMap());
     const [retryCooldownTick, setRetryCooldownTick] = useState<number>(Date.now());
-    const retryCooldownTimerRef = useRef<number | null>(null);
 
     const [loading, setLoading] = useState<boolean>(true);
 
@@ -4265,6 +4330,61 @@ export default function PreviewPage(): JSX.Element {
         return out;
     }
 
+    async function deleteTrackedUrlStorageArtifacts(userId: string, urlDoc: Partial<UrlDoc> & { id?: string }) {
+        const urlHash = urlDoc.urlHash || (urlDoc.url ? hash64(urlDoc.url) : "");
+        const prefix =
+            urlDoc.screenshotsPrefix ||
+            (urlHash ? `kloner-screenshots/${userId}/${urlHash}` : "");
+
+        if (urlDoc.zipPath) {
+            await deleteObject(sRef(storage, urlDoc.zipPath)).catch(() => null);
+        }
+
+        if (Array.isArray(urlDoc.screenshotPaths) && urlDoc.screenshotPaths.length > 0) {
+            await Promise.allSettled(
+                urlDoc.screenshotPaths.map((p) => deleteObject(sRef(storage, p)))
+            );
+            return;
+        }
+
+        if (prefix) {
+            const refs = await listAllDeepSafe(sRef(storage, prefix)).catch(() => []);
+            await Promise.allSettled(refs.map((it) => deleteObject(it)));
+        }
+    }
+
+    async function purgeTrackedUrlData(userId: string, normalizedUrl: string) {
+        const urlHash = hash64(normalizedUrl);
+        const urlsCol = collection(db, "kloner_users", userId, "kloner_urls");
+        const [byUrlSnap, byHashSnap] = await Promise.all([
+            getDocs(query(urlsCol, where("url", "==", normalizedUrl))),
+            getDocs(query(urlsCol, where("urlHash", "==", urlHash))),
+        ]);
+
+        const docsToDelete = new Map<string, (typeof byUrlSnap.docs)[number]>();
+        for (const snap of [byUrlSnap, byHashSnap]) {
+            for (const docSnap of snap.docs) {
+                docsToDelete.set(docSnap.id, docSnap);
+            }
+        }
+
+        if (docsToDelete.size === 0) {
+            return false;
+        }
+
+        await Promise.allSettled(
+            [...docsToDelete.values()].map(async (docSnap) => {
+                const data = (docSnap.data() || {}) as UrlDoc;
+                await deleteTrackedUrlStorageArtifacts(userId, { id: docSnap.id, ...data });
+                await deleteDoc(docSnap.ref);
+            })
+        );
+
+        setUrls((prev) => prev.filter((u) => normUrl(String(u?.url || "")) !== normUrl(normalizedUrl)));
+        setUrlDocReloadNonce((n) => n + 1);
+        return true;
+    }
+
     async function loadShotsForDoc(
         u: FirebaseUser,
         targetUrl: string,
@@ -4479,105 +4599,6 @@ export default function PreviewPage(): JSX.Element {
         }
     }, [startNextJsAppBuilder]);
 
-    const DUPLICATE_URL_MESSAGE =
-        "This URL has already been processed.";
-
-    const isDuplicateUrlConfirmationMessage = useCallback(
-        (message: string): boolean => {
-            const m = (message || "").toLowerCase();
-            return m === DUPLICATE_URL_MESSAGE.toLowerCase() ||
-                (m.includes("already") && m.includes("url") && (m.includes("v1") || m.includes("v2") || m.includes("processed") || m.includes("exists"))) ||
-                (m.includes("website") && m.includes("already exists") && m.includes("url")) ||
-                m.includes("already has a website");
-        },
-        [],
-    );
-
-    const buildDuplicateUrlMessage = useCallback(
-        (candidateUrl: string): string => {
-            const normalizedCandidate = validateAndNormalizePublicHttpUrl(candidateUrl);
-            if (!normalizedCandidate) return DUPLICATE_URL_MESSAGE;
-
-            const canonicalCandidate = normUrl(normalizedCandidate).toLowerCase();
-            const candidateHash = hash64(canonicalCandidate);
-
-            const hasV1FromUrls = urls.some((entry) => {
-                const normalizedExisting = validateAndNormalizePublicHttpUrl(String(entry?.url || ""));
-                if (!normalizedExisting) return false;
-                return normUrl(normalizedExisting).toLowerCase() === canonicalCandidate;
-            });
-
-            const hasV1FromRenders = renders.some((render) => {
-                if (render?.archived) return false;
-                if (typeof render?.urlHash === "string" && render.urlHash === candidateHash) return true;
-                const normalizedRenderUrl = validateAndNormalizePublicHttpUrl(String(render?.url || ""));
-                if (!normalizedRenderUrl) return false;
-                return normUrl(normalizedRenderUrl).toLowerCase() === canonicalCandidate;
-            });
-
-            const hasV2FromApps = apps.some((app: any) => {
-                const rawUrlCandidates = [
-                    app?.sourceUrl,
-                    app?.url,
-                    app?.targetUrl,
-                    app?.originUrl,
-                    app?.originalUrl,
-                    app?.inputUrl,
-                    app?.websiteUrl,
-                    app?.source?.url,
-                ];
-
-                const hasMatchingUrl = rawUrlCandidates.some((raw) => {
-                    const normalizedAppUrl = validateAndNormalizePublicHttpUrl(String(raw || ""));
-                    if (!normalizedAppUrl) return false;
-                    return normUrl(normalizedAppUrl).toLowerCase() === canonicalCandidate;
-                });
-                if (hasMatchingUrl) return true;
-
-                const hashCandidates = [
-                    app?.urlHash,
-                    app?.sourceUrlHash,
-                    app?.targetUrlHash,
-                    app?.originUrlHash,
-                ]
-                    .map((v) => (typeof v === "string" ? v : ""))
-                    .filter(Boolean);
-
-                return hashCandidates.includes(candidateHash);
-            });
-
-            const hasV1 = hasV1FromUrls || hasV1FromRenders;
-            const hasV2 = hasV2FromApps;
-
-            if (hasV1 && hasV2) {
-                return "This URL already has a website. Use a different URL to create a new one.";
-            }
-            if (hasV2) {
-                return "This URL already has a website. Use a different URL to create a new one.";
-            }
-            if (hasV1) {
-                return "This URL has already been processed.";
-            }
-
-            return DUPLICATE_URL_MESSAGE;
-        },
-        [apps, renders, urls],
-    );
-
-    const hasProcessedUrl = useCallback(
-        (candidateUrl: string): boolean => {
-            const normalizedCandidate = validateAndNormalizePublicHttpUrl(candidateUrl);
-            if (!normalizedCandidate) return false;
-            const canonicalCandidate = normalizedCandidate.toLowerCase();
-
-            return urls.some((entry) => {
-                const normalizedExisting = validateAndNormalizePublicHttpUrl(String(entry?.url || ""));
-                return !!normalizedExisting && normalizedExisting.toLowerCase() === canonicalCandidate;
-            });
-        },
-        [urls],
-    );
-
     // If someone deep-links an invalid URL, fail gracefully (no Firestore errors / snapshot retries).
     useEffect(() => {
         if (!urlParam) return;
@@ -4613,43 +4634,6 @@ export default function PreviewPage(): JSX.Element {
             }
 
             const canonical = normUrl(normalized);
-            const hasDuplicateTrackedUrl = urls.some((entry) => {
-                const existing = validateAndNormalizePublicHttpUrl(String(entry?.url || ""));
-                if (!existing) return false;
-                return normUrl(existing) === canonical;
-            });
-
-            if (!hasDuplicateTrackedUrl && user) {
-                try {
-                    const existingSnap = await getDocs(
-                        query(
-                            collection(db, "kloner_users", user.uid, "kloner_urls"),
-                            where("url", "==", normalized)
-                        )
-                    );
-                    if (!existingSnap.empty) {
-                        setErr("");
-                        setInfo(
-                            "This URL has already been processed. Kloner will not queue a second scan for the same URL. Open the existing entry or use Retry from the warning."
-                        );
-                        router.push(`/dashboard/view?u=${encodeURIComponent(normalized)}`, { scroll: false });
-                        return;
-                    }
-                } catch {
-                    // If the preflight read fails, fall back to the local duplicate gate and
-                    // let the normal start flow handle any remaining cases.
-                }
-            }
-
-            if (hasDuplicateTrackedUrl) {
-                setErr("");
-                setInfo(
-                    "This URL has already been processed. Kloner will not queue a second scan for the same URL. Open the existing entry or use Retry from the warning."
-                );
-                router.push(`/dashboard/view?u=${encodeURIComponent(normalized)}`, { scroll: false });
-                return;
-            }
-
             const queued = await enqueueUrlScanRef.current?.(normalized, { clearStartParam: false });
             if (!queued) return;
 
@@ -4657,7 +4641,7 @@ export default function PreviewPage(): JSX.Element {
             setInfo("");
             router.push(`/dashboard/view?u=${encodeURIComponent(normalized)}`, { scroll: false });
         },
-        [canUseScreenshotCredit, db, push, router, urls, user]
+        [canUseScreenshotCredit, push, router]
     );
 
     const submitMiniPrompt = useCallback(
@@ -4697,22 +4681,6 @@ export default function PreviewPage(): JSX.Element {
     const captureStaleReportedForUrlRef = useRef<string>("");
     const [captureTerminalFailureUrl, setCaptureTerminalFailureUrl] = useState<string>("");
     const [captureIssueDetails, setCaptureIssueDetails] = useState<string>("");
-
-    useEffect(() => {
-        return () => {
-            if (retryCooldownTimerRef.current) {
-                clearTimeout(retryCooldownTimerRef.current);
-            }
-        };
-    }, []);
-
-    useEffect(() => {
-        if (retryCooldownUntil <= Date.now()) return;
-        const intervalId = window.setInterval(() => {
-            setRetryCooldownTick(Date.now());
-        }, 1000);
-        return () => window.clearInterval(intervalId);
-    }, [retryCooldownUntil]);
 
     const markUrlCaptureTerminalError = useCallback(
         async (uid: string, rawUrl: string, lastError: string, nextStatus: "error" | "stale" = "error") => {
@@ -4820,12 +4788,6 @@ export default function PreviewPage(): JSX.Element {
             return true;
         }
     }, []);
-
-    const buildDuplicateUrlMessageRef = useRef(buildDuplicateUrlMessage);
-
-    useEffect(() => {
-        buildDuplicateUrlMessageRef.current = buildDuplicateUrlMessage;
-    }, [buildDuplicateUrlMessage]);
 
     const enqueueUrlScanRef = useRef<((
         rawUrl: string,
@@ -4935,17 +4897,35 @@ export default function PreviewPage(): JSX.Element {
                             existingStatusUi === "processing";
 
                         if (hasExistingScanContext && !forceRetry) {
+                            const ok = await showConfirm(
+                                "This URL has already been scanned. Delete the existing Kloner URL, remove its uploaded files, and rescan from scratch?",
+                                "Delete and Rescan"
+                            );
+                            if (!ok) {
+                                shouldMarkHandled = true;
+                                return;
+                            }
+
+                            await purgeTrackedUrlData(user.uid, target);
                             if (cancelled) return;
 
-                            setErr("");
-                            setInfo(buildDuplicateUrlMessageRef.current(target));
-                            generateSucceededRef.current = startRequestKey;
-                            setCaptureTerminalFailureUrl("");
-                            captureLockMinUntilRef.current = 0;
-                            setCaptureLockUrl(null);
-                            captureLockStartedAtRef.current = 0;
-                            shouldMarkHandled = true;
-                            return;
+                            const urlHash = hash64(target);
+                            await addDoc(colRef, {
+                                url: target,
+                                urlHash,
+                                createdAt: serverTimestamp(),
+                                updatedAt: serverTimestamp(),
+                                status: "queued",
+                                screenshotsPrefix: `kloner-screenshots/${user.uid}/${urlHash}`,
+                                screenshotPaths: [],
+                            } as UrlDoc);
+
+                            setUrlDocReloadNonce((n) => n + 1);
+
+                            setUrls((prev) => {
+                                if (prev.some((u) => normUrl(u.url) === normUrl(target))) return prev;
+                                return [{ id: `local_${hash64(target)}`, url: target, urlHash: hash64(target) } as any, ...prev].slice(0, 50);
+                            });
                         }
                     }
 
@@ -5493,11 +5473,6 @@ export default function PreviewPage(): JSX.Element {
             return;
         }
 
-        if (isDuplicateUrlConfirmationMessage(info || "")) {
-            setSuccess("");
-            return;
-        }
-
         if (err) return;
         if (!lockMatches) return;
 
@@ -5511,7 +5486,7 @@ export default function PreviewPage(): JSX.Element {
         setAutoOpenGenerateSuccessMessage(URL_ADD_SUCCESS_MESSAGE);
         setAutoOpenGenerateModalNonce((n) => n + 1);
         void triggerFirstUrlNextStepsEmail(urlKey);
-    }, [captureStatus, targetUrl, lockMatches, err, info, isDuplicateUrlConfirmationMessage, triggerFirstUrlNextStepsEmail]);
+    }, [captureStatus, targetUrl, lockMatches, err, info, triggerFirstUrlNextStepsEmail]);
 
     useEffect(() => {
         function onDocClick(e: MouseEvent) {
@@ -5585,21 +5560,40 @@ export default function PreviewPage(): JSX.Element {
         return normalized ? normUrl(normalized) : "";
     }, [activeUrlDoc?.url]);
 
+    const retryCooldownUntil = activeUrlIssueHref ? (retryBackoffByUrl[activeUrlIssueHref]?.until ?? 0) : 0;
+
+    useEffect(() => {
+        if (retryCooldownUntil <= Date.now()) return;
+        const intervalId = window.setInterval(() => {
+            setRetryCooldownTick(Date.now());
+        }, 1000);
+        return () => window.clearInterval(intervalId);
+    }, [retryCooldownUntil]);
+
     const showActiveUrlIssueWarning =
         activeUrlCannotGenerate &&
         !!activeUrlIssueHref &&
         dismissedUrlIssueCanonical !== activeUrlIssueHref;
     const retryCooldownActive = retryCooldownUntil > Date.now();
     const retryCooldownRemainingMs = retryCooldownActive ? Math.max(0, retryCooldownUntil - retryCooldownTick) : 0;
-    const retryCooldownSeconds = retryCooldownActive ? Math.max(1, Math.ceil(retryCooldownRemainingMs / 1000)) : 0;
-    const retryLabel = retryCooldownActive ? `Retry in ${retryCooldownSeconds}s` : "Retry";
+    const retryLabel = retryCooldownActive ? `Retry in ${formatRetryDelayLabel(retryCooldownRemainingMs)}` : "Retry";
 
     const activeUrlIssueDetails = useMemo(() => {
         if (!showActiveUrlIssueWarning) return null;
+        const activeUrlDisplay = activeUrlDoc?.url || activeUrlIssueHref;
         return (
             <div className="space-y-3">
                 <p className="font-semibold text-amber-950">
-                    This URL is currently blocked by saved scan state, so the UI will only retry after the existing failure state is cleared.
+                    We already saved a failed result for{" "}
+                    <a
+                        href={activeUrlIssueHref || "#"}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="break-all font-semibold text-amber-900 underline decoration-amber-500 underline-offset-2 hover:text-amber-950"
+                    >
+                        {activeUrlDisplay}
+                    </a>
+                    , so we can’t try it again yet.
                 </p>
                 <p>
                     Test the URL in a private or incognito browser tab and make sure it loads without login, captcha, geo-blocking, or a redirect.
@@ -5607,7 +5601,11 @@ export default function PreviewPage(): JSX.Element {
                 <p>If the page works in a browser but not here, the site is probably blocking automated capture.</p>
             </div>
         );
-    }, [showActiveUrlIssueWarning]);
+    }, [showActiveUrlIssueWarning, activeUrlDoc?.url, activeUrlIssueHref]);
+
+    useEffect(() => {
+        writeUrlRetryBackoffMap(retryBackoffByUrl);
+    }, [retryBackoffByUrl]);
 
     useEffect(() => {
         if (!dismissedUrlIssueCanonical) return;
@@ -5717,23 +5715,7 @@ export default function PreviewPage(): JSX.Element {
             setErr("");
             setInfo("Deleting URL…");
             try {
-                const prefix =
-                    r.screenshotsPrefix ||
-                    `kloner-screenshots/${user.uid}/${urlHash}`;
-
-                if (r.zipPath) {
-                    await deleteObject(sRef(storage, r.zipPath)).catch(() => null);
-                }
-
-                if (Array.isArray(r.screenshotPaths) && r.screenshotPaths.length > 0) {
-                    await Promise.allSettled(
-                        r.screenshotPaths.map((p) => deleteObject(sRef(storage, p)))
-                    );
-                } else {
-                    const refs = await listAllDeep(sRef(storage, prefix)).catch(() => []);
-                    await Promise.allSettled(refs.map((it) => deleteObject(it)));
-                }
-
+                await deleteTrackedUrlStorageArtifacts(user.uid, r);
                 await deleteDoc(doc(db, "kloner_users", user.uid, "kloner_urls", r.id));
 
                 setUrls((prev) => prev.filter((u) => u.id !== r.id));
@@ -6510,15 +6492,17 @@ export default function PreviewPage(): JSX.Element {
     const retryTrackedUrl = useCallback(
         async (rawUrl: string) => {
             const now = Date.now();
-            if (retryCooldownUntil && now < retryCooldownUntil) {
-                return;
-            }
-
             const normalized = validateAndNormalizePublicHttpUrl(rawUrl || "");
             if (!normalized) {
                 setErr("That saved URL looks invalid. Delete it from the list to continue.");
                 return;
             }
+
+            const currentRetryState = retryBackoffByUrl[normUrl(normalized)] || null;
+            if (currentRetryState?.until && now < currentRetryState.until) {
+                return;
+            }
+
             if (!canUseScreenshotCredit()) {
                 setErr("You have used all monthly screenshot credits. Upgrade to capture more pages and monitor more sites.");
                 setInfo("");
@@ -6536,48 +6520,45 @@ export default function PreviewPage(): JSX.Element {
             setCaptureIssueDetails("");
             setUrlMenuOpen(false);
 
-            const urlHash = hash64(normalized);
             if (user) {
                 try {
-                    const urlsCol = collection(db, "kloner_users", user.uid, "kloner_urls");
-                    const [byUrlSnap, byHashSnap] = await Promise.all([
-                        getDocs(query(urlsCol, where("url", "==", normalized))),
-                        getDocs(query(urlsCol, where("urlHash", "==", urlHash))),
-                    ]);
-
-                    const docsToDelete = new Map<string, (typeof byUrlSnap.docs)[number]>();
-                    for (const snap of [byUrlSnap, byHashSnap]) {
-                        for (const docSnap of snap.docs) {
-                            docsToDelete.set(docSnap.id, docSnap);
-                        }
-                    }
-
-                    if (docsToDelete.size > 0) {
-                        await Promise.allSettled(
-                            [...docsToDelete.values()].map((docSnap) => deleteDoc(docSnap.ref))
-                        );
-                        setUrls((prev) => prev.filter((u) => normUrl(String(u?.url || "")) !== normUrl(normalized)));
-                        setUrlDocReloadNonce((n) => n + 1);
-                    }
+                    await purgeTrackedUrlData(user.uid, normalized);
                 } catch (err) {
                     console.warn("[dashboard] retry preflight delete failed", err);
                 }
             }
 
-            if (retryCooldownTimerRef.current) {
-                clearTimeout(retryCooldownTimerRef.current);
-            }
-            const nextUntil = now + URL_SCAN_RETRY_COOLDOWN_MS;
-            setRetryCooldownUntil(nextUntil);
-            retryCooldownTimerRef.current = window.setTimeout(() => {
-                setRetryCooldownUntil(0);
-                retryCooldownTimerRef.current = null;
-            }, URL_SCAN_RETRY_COOLDOWN_MS);
+            const nextAttempt = (currentRetryState?.attempt || 0) + 1;
+            const nextUntil = now + getUrlRetryBackoffDelayMs(nextAttempt);
+            setRetryBackoffByUrl((prev) => {
+                const next = {
+                    ...prev,
+                    [normUrl(normalized)]: {
+                        attempt: nextAttempt,
+                        until: nextUntil,
+                    },
+                };
+                writeUrlRetryBackoffMap(next);
+                return next;
+            });
 
             router.push(`/dashboard/view?u=${encodeURIComponent(normalized)}&start=1&retry=1`, { scroll: false });
         },
-        [canUseScreenshotCredit, db, push, router, retryCooldownUntil, user]
+        [canUseScreenshotCredit, db, push, retryBackoffByUrl, router, user]
     );
+
+    useEffect(() => {
+        if (!activeUrlIssueHref) return;
+        if (activeUrlStatusUi !== "ready") return;
+
+        setRetryBackoffByUrl((prev) => {
+            if (!prev[activeUrlIssueHref]) return prev;
+            const next = { ...prev };
+            delete next[activeUrlIssueHref];
+            writeUrlRetryBackoffMap(next);
+            return next;
+        });
+    }, [activeUrlIssueHref, activeUrlStatusUi]);
 
     const isBackendFetchFailed502 = useCallback((status: number, payload: any): boolean => {
         if (status !== 502) return false;
@@ -9305,16 +9286,9 @@ export default function PreviewPage(): JSX.Element {
                 ) : null}
 
                 {info ? (
-                    isDuplicateUrlConfirmationMessage(info) ? (
-                        <AmberIssueBanner
-                            message={info}
-                            onDismiss={() => setInfo("")}
-                        />
-                    ) : (
-                        <div className="mt-2 rounded-md border border-neutral-300 bg-neutral-50 px-3 py-2 text-sm text-neutral-800">
-                            {info}
-                        </div>
-                    )
+                    <div className="mt-2 rounded-md border border-neutral-300 bg-neutral-50 px-3 py-2 text-sm text-neutral-800">
+                        {info}
+                    </div>
                 ) : null}
 
                 {isArchiveBackedUrlDoc(docData) ? (

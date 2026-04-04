@@ -117,4 +117,30 @@ describe("observability Slack formatting", () => {
         const headerBlock = body.blocks.find((b: any) => b.type === "header");
         expect(headerBlock.text.text).toContain("502");
     });
+
+    it("still delivers url scan backend failures for suppressed users", async () => {
+        const { captureCriticalEvent } = await import("./observability");
+
+        await captureCriticalEvent({
+            source: "internal",
+            severity: "critical",
+            statusCode: 422,
+            route: "/api/private/generate",
+            action: "url_scan_failed",
+            userId: "FJPV123456",
+            requestId: "req_url_scan_422",
+            url: "https://techden.io/",
+            service: "url-generate-proxy",
+            message: "URL scan failed: Unable to reach target URL",
+            tags: ["url-scan", "generate", "backend-failure"],
+            extra: { backendStatus: 422, upstreamOk: false },
+        });
+
+        expect(global.fetch).toHaveBeenCalledTimes(1);
+        const fetchArgs = (global.fetch as jest.Mock).mock.calls[0];
+        const body = JSON.parse(String(fetchArgs[1].body));
+
+        expect(body.text).toContain("Unable to reach target URL");
+        expect(body.text).toContain("422");
+    });
 });

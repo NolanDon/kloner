@@ -189,6 +189,16 @@ function shouldSuppressSlackWebhook(event: StoredEvent): boolean {
         tags.includes("timeout") ||
         tags.includes("frontend");
 
+    const isUrlScanBackendFailure =
+        action.includes("url_scan_failed") ||
+        String(event.route || "").includes("/api/private/generate") ||
+        String(event.service || "").toLowerCase().includes("url-generate-proxy") ||
+        tags.includes("url-scan") ||
+        tags.includes("generate") ||
+        tags.includes("backend-failure");
+
+    if (isUrlScanBackendFailure) return false;
+
     // Loading incidents should always reach Slack, even for internally suppressed users.
     if (isLoadingIssue) return false;
 
