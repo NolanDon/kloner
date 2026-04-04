@@ -5573,6 +5573,7 @@ export default function PreviewPage(): JSX.Element {
     const showActiveUrlIssueWarning =
         activeUrlCannotGenerate &&
         !!activeUrlIssueHref &&
+        captureTerminalFailureUrl === activeUrlIssueHref &&
         dismissedUrlIssueCanonical !== activeUrlIssueHref;
     const retryCooldownActive = retryCooldownUntil > Date.now();
     const retryCooldownRemainingMs = retryCooldownActive ? Math.max(0, retryCooldownUntil - retryCooldownTick) : 0;
