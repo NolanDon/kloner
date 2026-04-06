@@ -6,11 +6,11 @@ function str(v: any) {
     return typeof v === "string" ? v.trim() : "";
 }
 
-export async function POST(req: NextRequest, ctx: { params: { affiliateRef: string } }) {
+export async function POST(req: NextRequest, ctx: any) {
     try {
         await requireAdmin(req);
 
-        const affiliateRef = (ctx.params.affiliateRef || "").trim();
+        const affiliateRef = ((await Promise.resolve(ctx.params))?.affiliateRef || "").trim();
         if (!affiliateRef) return NextResponse.json({ ok: false, error: "Missing affiliateRef" }, { status: 400 });
 
         const body = await req.json().catch(() => null);

@@ -49,11 +49,11 @@ function normalizeMessages(input: unknown): StoredMessage[] {
     return out.slice(-tailMax);
 }
 
-export async function GET(req: NextRequest, { params }: { params: { appId: string } }) {
+export async function GET(req: NextRequest, { params }: any) {
     return requireSessionAndMaybeCsrf(
         req,
         async ({ uid, req: authedReq }) => {
-            const appId = params.appId;
+            const appId = (await Promise.resolve(params))?.appId;
             assertAppBuilderScope(authedReq, uid, appId);
 
             const db = getAdminDb();
@@ -75,11 +75,11 @@ export async function GET(req: NextRequest, { params }: { params: { appId: strin
     );
 }
 
-export async function POST(req: NextRequest, { params }: { params: { appId: string } }) {
+export async function POST(req: NextRequest, { params }: any) {
     return requireSessionAndMaybeCsrf(
         req,
         async ({ uid, req: authedReq }) => {
-            const appId = params.appId;
+            const appId = (await Promise.resolve(params))?.appId;
             assertAppBuilderScope(authedReq, uid, appId);
 
             const body = await req.json().catch(() => null);

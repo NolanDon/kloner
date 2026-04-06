@@ -8,15 +8,17 @@ export const metadata: Metadata = {
     description: "Admin-only preview + moderation for gallery builds.",
 };
 
-export default function AdminCommunityBuildPreviewPage({
+export default async function AdminCommunityBuildPreviewPage({
     params,
 }: {
-    params: { id: string };
+    params: Promise<{ id: string }>;
 }) {
+    const { id } = await params;
+
     return (
         <main className="min-h-screen bg-white text-black">
             <section className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 pt-10 pb-16">
-                <AdminCommunityBuildPreviewClient id={params.id} />
+                <AdminCommunityBuildPreviewClient id={id} />
             </section>
         </main>
     );

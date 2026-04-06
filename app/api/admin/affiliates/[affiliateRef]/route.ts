@@ -16,11 +16,11 @@ function ms(v: any) {
     return null;
 }
 
-export async function GET(req: NextRequest, ctx: { params: { affiliateRef: string } }) {
+export async function GET(req: NextRequest, ctx: any) {
     try {
         await requireAdmin(req);
 
-        const affiliateRef = (ctx.params.affiliateRef || "").trim();
+        const affiliateRef = ((await Promise.resolve(ctx.params))?.affiliateRef || "").trim();
         if (!affiliateRef) return NextResponse.json({ ok: false, error: "Missing affiliateRef" }, { status: 400 });
 
         const url = new URL(req.url);

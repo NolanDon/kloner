@@ -2,14 +2,15 @@ import { redirect } from "next/navigation";
 
 type SearchParams = Record<string, string | string[] | undefined>;
 
-export default function DashboardPage({
+export default async function DashboardPage({
     searchParams,
 }: {
-    searchParams?: SearchParams;
+    searchParams?: Promise<SearchParams>;
 }) {
+    const resolvedSearchParams = await searchParams;
     const params = new URLSearchParams();
 
-    for (const [key, value] of Object.entries(searchParams || {})) {
+    for (const [key, value] of Object.entries(resolvedSearchParams || {})) {
         if (value == null) continue;
         if (Array.isArray(value)) {
             for (const v of value) params.append(key, v);

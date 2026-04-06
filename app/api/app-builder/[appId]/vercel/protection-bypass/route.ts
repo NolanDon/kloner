@@ -45,12 +45,12 @@ function extractBypassSecret(json: any): string | null {
     return null;
 }
 
-export async function POST(req: NextRequest, { params }: { params: { appId: string } }) {
+export async function POST(req: NextRequest, { params }: any) {
     return requireSessionAndMaybeCsrf(
         req,
         async ({ uid, req: authedReq }) => {
             const db = getAdminDb();
-            const appId = params.appId;
+            const appId = (await Promise.resolve(params))?.appId;
 
             assertAppBuilderScope(authedReq, uid, appId);
 

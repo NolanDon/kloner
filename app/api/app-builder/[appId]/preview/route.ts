@@ -7,11 +7,11 @@ export const dynamic = "force-dynamic";
 
 // Preview deployments have been removed. Only live (production) deploys are supported.
 // This route remains as a compatibility stub so old clients fail safely.
-export async function POST(req: NextRequest, { params }: { params: { appId: string } }) {
+export async function POST(req: NextRequest, { params }: any) {
     return requireSessionAndMaybeCsrf(
         req,
         async ({ uid, req: authedReq }) => {
-            const appId = params.appId;
+            const appId = (await Promise.resolve(params))?.appId;
             assertAppBuilderScope(authedReq, uid, appId);
 
             return NextResponse.json(

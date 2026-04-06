@@ -50,13 +50,13 @@ function normalizeDeploymentUrl(v: unknown): string {
 
 export async function POST(
     req: NextRequest,
-    { params }: { params: { appId: string } }
+    { params }: any
 ) {
     return requireSessionAndMaybeCsrf(
         req,
         async ({ uid, req: authedReq }) => {
         const db = getAdminDb();
-        const appId = params.appId;
+        const appId = (await Promise.resolve(params))?.appId;
 
         assertAppBuilderScope(authedReq, uid, appId);
 

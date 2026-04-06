@@ -10,17 +10,18 @@ export const dynamic = 'force-dynamic';
 // Handle HEAD requests to check if an appId is registered/running.
 export async function HEAD(
   req: NextRequest,
-  { params }: { params: { appId: string } }
+  { params }: any
 ) {
   return requireSessionAndMaybeCsrf(
     req,
     async ({ uid, req: authedReq }) => {
-      assertAppBuilderScope(authedReq, uid, params.appId);
+      const appId = (await Promise.resolve(params))?.appId;
+      assertAppBuilderScope(authedReq, uid, appId);
       
       try {
         const registry = getProcessRegistry();
 
-        const info = registry.get(params.appId);
+        const info = registry.get(appId);
         if (!info) {
           return new NextResponse(null, { status: 404 });
         }

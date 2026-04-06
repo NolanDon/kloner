@@ -13,13 +13,13 @@ function sanitizeCode(input: unknown): string | null {
     return raw;
 }
 
-export async function POST(req: NextRequest, { params }: { params: { code: string } }) {
+export async function POST(req: NextRequest, { params }: any) {
     return requireSessionAndMaybeCsrf(
         req,
         async ({ uid, req: authedReq }) => {
             const body = await authedReq.json().catch(() => ({} as any));
             const appId = typeof body?.appId === "string" ? body.appId.trim() : "";
-            const code = sanitizeCode(params.code);
+            const code = sanitizeCode((await Promise.resolve(params))?.code);
 
             if (!appId || !code) {
                 return NextResponse.json({ ok: false, error: "Missing appId or code" }, { status: 400 });

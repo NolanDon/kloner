@@ -23,11 +23,11 @@ function normalizeSecret(raw: unknown): string | null {
     return v;
 }
 
-export async function POST(req: NextRequest, { params }: { params: { appId: string } }) {
+export async function POST(req: NextRequest, { params }: any) {
     return requireSessionAndMaybeCsrf(
         req,
         async ({ uid, req: authedReq }) => {
-            const appId = params.appId;
+            const appId = (await Promise.resolve(params))?.appId;
             assertAppBuilderScope(authedReq, uid, appId);
 
             const body = (await authedReq.json().catch(() => ({}))) as Body;

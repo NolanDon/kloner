@@ -7,11 +7,11 @@ import { restartPreview } from "@/src/lib/restartPreview";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function POST(req: NextRequest, { params }: { params: { appId: string } }) {
+export async function POST(req: NextRequest, { params }: any) {
     return requireSessionAndMaybeCsrf(
         req,
         async ({ uid, req: authedReq }) => {
-            const appId = params.appId;
+            const appId = (await Promise.resolve(params))?.appId;
 
             // Prevent request tampering: must match the active app scope cookie.
             assertAppBuilderScope(authedReq, uid, appId);

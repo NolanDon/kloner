@@ -18,13 +18,14 @@ export async function OPTIONS(req: NextRequest) {
 // Handle HEAD requests for health checks
 export async function HEAD(
   req: NextRequest,
-  { params }: { params: { appId: string } }
+  { params }: any
 ) {
   try {
     const session = await verifySession(req);
-    assertAppBuilderScope(req, session.uid, params.appId);
+    const appId = (await Promise.resolve(params))?.appId;
+    assertAppBuilderScope(req, session.uid, appId);
 
-    const targetUrl = `${BACKEND_ORIGIN}/api/v1/webcontainer/${params.appId}/proxy/`;
+    const targetUrl = `${BACKEND_ORIGIN}/api/v1/webcontainer/${appId}/proxy/`;
     const upstream = await fetch(targetUrl, {
       method: 'HEAD',
       signal: AbortSignal.timeout(15000),
@@ -43,40 +44,40 @@ export async function HEAD(
 // Handle GET requests
 export async function GET(
   req: NextRequest,
-  { params }: { params: { appId: string } }
+  { params }: any
 ) {
-  return proxyRequest(req, params.appId);
+  return proxyRequest(req, (await Promise.resolve(params))?.appId);
 }
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: { appId: string } }
+  { params }: any
 ) {
-  return proxyRequest(req, params.appId);
+  return proxyRequest(req, (await Promise.resolve(params))?.appId);
 }
 
 // Handle PUT requests
 export async function PUT(
   req: NextRequest,
-  { params }: { params: { appId: string } }
+  { params }: any
 ) {
-  return proxyRequest(req, params.appId);
+  return proxyRequest(req, (await Promise.resolve(params))?.appId);
 }
 
 // Handle DELETE requests
 export async function DELETE(
   req: NextRequest,
-  { params }: { params: { appId: string } }
+  { params }: any
 ) {
-  return proxyRequest(req, params.appId);
+  return proxyRequest(req, (await Promise.resolve(params))?.appId);
 }
 
 // Handle PATCH requests
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: { appId: string } }
+  { params }: any
 ) {
-  return proxyRequest(req, params.appId);
+  return proxyRequest(req, (await Promise.resolve(params))?.appId);
 }
 
 // Generic proxy function for non-GET requests

@@ -8,13 +8,13 @@ export const dynamic = "force-dynamic";
 
 export async function POST(
     request: NextRequest,
-    { params }: { params: { appId: string } }
+    { params }: any
 ) {
     return requireSessionAndMaybeCsrf(
         request,
         async ({ uid, req: authedReq }) => {
             const db = getAdminDb();
-            const appId = params.appId;
+            const appId = (await Promise.resolve(params))?.appId;
 
             const body = await authedReq.json().catch(() => ({}));
             const archived = (body as any)?.archived;

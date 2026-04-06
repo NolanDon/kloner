@@ -17,14 +17,15 @@ export async function OPTIONS(req: NextRequest) {
 // Handle HEAD requests for health checks
 export async function HEAD(
   req: NextRequest,
-  { params }: { params: { appId: string; path?: string[] } }
+  { params }: any
 ) {
   try {
     const session = await verifySession(req);
-    assertAppBuilderScope(req, session.uid, params.appId);
+    const routeParams = await Promise.resolve(params);
+    assertAppBuilderScope(req, session.uid, routeParams.appId);
 
-    const subPath = (params.path || []).join('/');
-    const targetUrl = `${BACKEND_ORIGIN}/api/v1/webcontainer/${params.appId}/proxy/${subPath}`;
+    const subPath = (routeParams.path || []).join('/');
+    const targetUrl = `${BACKEND_ORIGIN}/api/v1/webcontainer/${routeParams.appId}/proxy/${subPath}`;
 
     try {
       const upstream = await fetch(targetUrl, {
@@ -51,14 +52,15 @@ export async function HEAD(
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: { appId: string; path?: string[] } }
+  { params }: any
 ) {
   try {
     const session = await verifySession(req);
-    assertAppBuilderScope(req, session.uid, params.appId);
+    const routeParams = await Promise.resolve(params);
+    assertAppBuilderScope(req, session.uid, routeParams.appId);
 
-    const subPath = (params.path || []).join('/');
-    const targetUrl = `${BACKEND_ORIGIN}/api/v1/webcontainer/${params.appId}/proxy/${subPath}`;
+    const subPath = (routeParams.path || []).join('/');
+    const targetUrl = `${BACKEND_ORIGIN}/api/v1/webcontainer/${routeParams.appId}/proxy/${subPath}`;
 
     console.log(`Proxying request to: ${targetUrl}`);
 
@@ -89,7 +91,7 @@ export async function GET(
       try {
         const text = await upstream.text();
         // Replace absolute localhost URLs with proxy paths, but avoid script content
-        const proxyBase = `/api/webcontainer/${params.appId}/proxy`;
+        const proxyBase = `/api/webcontainer/${routeParams.appId}/proxy`;
         
         // More targeted replacement: only in HTML attributes, not in script content
         let rewrittenHtml = text
@@ -205,7 +207,7 @@ export async function GET(
 // Handle POST requests
 export async function POST(
   req: NextRequest,
-  { params }: { params: { appId: string; path?: string[] } }
+  { params }: any
 ) {
   return proxyRequest(req, params);
 }
@@ -213,7 +215,7 @@ export async function POST(
 // Handle PUT requests
 export async function PUT(
   req: NextRequest,
-  { params }: { params: { appId: string; path?: string[] } }
+  { params }: any
 ) {
   return proxyRequest(req, params);
 }
@@ -221,7 +223,7 @@ export async function PUT(
 // Handle DELETE requests
 export async function DELETE(
   req: NextRequest,
-  { params }: { params: { appId: string; path?: string[] } }
+  { params }: any
 ) {
   return proxyRequest(req, params);
 }
@@ -229,19 +231,20 @@ export async function DELETE(
 // Handle PATCH requests
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: { appId: string; path?: string[] } }
+  { params }: any
 ) {
   return proxyRequest(req, params);
 }
 
 // Generic proxy function for non-GET requests
-async function proxyRequest(req: NextRequest, params: { appId: string; path?: string[] }) {
+async function proxyRequest(req: NextRequest, params: any) {
   try {
     const session = await verifySession(req);
-    assertAppBuilderScope(req, session.uid, params.appId);
+    const routeParams = await Promise.resolve(params);
+    assertAppBuilderScope(req, session.uid, routeParams.appId);
 
-    const subPath = (params.path || []).join('/');
-    const targetUrl = `${BACKEND_ORIGIN}/api/v1/webcontainer/${params.appId}/proxy/${subPath}`;
+    const subPath = (routeParams.path || []).join('/');
+    const targetUrl = `${BACKEND_ORIGIN}/api/v1/webcontainer/${routeParams.appId}/proxy/${subPath}`;
 
     const upstream = await fetch(targetUrl, {
       method: req.method,

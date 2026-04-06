@@ -12,10 +12,10 @@ type ArchivePayload = {
 
 export async function POST(
     req: NextRequest,
-    { params }: { params: { renderId: string } },
+    { params }: any,
 ) {
     return requireSessionAndMaybeCsrf(req, async ({ uid, req: authedReq }) => {
-        const renderId = params.renderId;
+        const renderId = (await Promise.resolve(params))?.renderId;
 
         if (!renderId || typeof renderId !== "string") {
             return NextResponse.json(

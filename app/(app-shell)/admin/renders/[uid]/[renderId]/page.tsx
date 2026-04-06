@@ -7,15 +7,17 @@ export const metadata: Metadata = {
     description: "Admin preview for a user render.",
 };
 
-export default function AdminRenderPreviewPage({
+export default async function AdminRenderPreviewPage({
     params,
 }: {
-    params: { uid: string; renderId: string };
+    params: Promise<{ uid: string; renderId: string }>;
 }) {
+    const { uid, renderId } = await params;
+
     return (
         <main className="pt-6 min-h-screen bg-white text-black">
             <section className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 pb-16">
-                <AdminRenderPreviewClient uid={params.uid} renderId={params.renderId} />
+                <AdminRenderPreviewClient uid={uid} renderId={renderId} />
             </section>
         </main>
     );

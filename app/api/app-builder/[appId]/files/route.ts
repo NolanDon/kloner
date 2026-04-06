@@ -9,11 +9,11 @@ export const dynamic = "force-dynamic";
 
 export async function GET(
     req: NextRequest,
-    { params }: { params: { appId: string } }
+    { params }: any
 ) {
     return requireSessionAndMaybeCsrf(req, async ({ uid }) => {
         const db = getAdminDb();
-        const appId = params.appId;
+        const appId = (await Promise.resolve(params))?.appId;
 
         const doc = await db.collection("kloner_users").doc(uid).collection("kloner_apps").doc(appId).get();
         if (!doc.exists) {

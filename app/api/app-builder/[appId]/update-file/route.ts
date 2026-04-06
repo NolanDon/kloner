@@ -54,13 +54,13 @@ function normalizeJsTsConfig(path: string, content: string): { ok: true; content
 
 export async function POST(
     req: NextRequest,
-    { params }: { params: { appId: string } }
+    { params }: any
 ) {
     return requireSessionAndMaybeCsrf(
         req,
         async ({ uid, req: authedReq }) => {
         const db = getAdminDb();
-        const appId = params.appId;
+        const appId = (await Promise.resolve(params))?.appId;
 
         // Prevent request tampering: must match the active app scope cookie.
         assertAppBuilderScope(authedReq, uid, appId);

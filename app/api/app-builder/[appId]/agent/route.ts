@@ -43,10 +43,10 @@ function classifyProviderError(err: unknown) {
     };
 }
 
-export async function POST(req: NextRequest, { params }: { params: { appId: string } }) {
+export async function POST(req: NextRequest, { params }: any) {
     return requireSessionAndMaybeCsrf(req, async ({ uid }) => {
         const db = getAdminDb();
-        const { appId } = params;
+        const { appId } = await Promise.resolve(params);
 
         const appDoc = await db.collection("kloner_users").doc(uid).collection("kloner_apps").doc(appId).get();
         if (!appDoc.exists) {

@@ -2,14 +2,15 @@ import { redirect } from "next/navigation";
 
 type SearchParams = Record<string, string | string[] | undefined>;
 
-export default function SettingsAliasPage({
+export default async function SettingsAliasPage({
     searchParams,
 }: {
-    searchParams?: SearchParams;
+    searchParams?: Promise<SearchParams>;
 }) {
+    const resolvedSearchParams = await searchParams;
     const sp = new URLSearchParams();
 
-    for (const [key, value] of Object.entries(searchParams || {})) {
+    for (const [key, value] of Object.entries(resolvedSearchParams || {})) {
         if (Array.isArray(value)) {
             for (const v of value) sp.append(key, v);
         } else if (typeof value === "string") {

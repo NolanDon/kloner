@@ -154,26 +154,11 @@ export default function ParallaxTypeHero({
                         <div className="mt-5 md:mt-6">
                             <div
                                 onClick={openUrlOverlay}
-                                className="
-                  group relative inline-flex items-center gap-3 whitespace-nowrap
-                  h-12 px-7 rounded-full shrink-0
-                  text-white text-[15px]
-                  bg-accent hover:bg-accent2
-                  shadow-[0_6px_18px_rgba(0,0,0,0.25)]
-                  hover:shadow-[0_14px_40px_rgba(0,0,0,0.35)]
-                  transition-all duration-200
-                  focus:outline-none focus-visible:ring-2 focus-visible:ring-white/60
-                "
+                                className="group relative inline-flex items-center gap-3 whitespace-nowrap h-12 px-7 rounded-full shrink-0 text-white text-[15px] bg-accent hover:bg-accent2 shadow-[0_6px_18px_rgba(0,0,0,0.25)] hover:shadow-[0_14px_40px_rgba(0,0,0,0.35)] transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
                                 aria-label={subcopy}
                             >
                                 <span
-                                    className="
-                    pointer-events-none absolute inset-0 rounded-full
-                    before:content-[''] before:absolute before:inset-0 before:rounded-full
-                    before:bg-white/10 before:opacity-0 before:blur-md
-                    before:transition-opacity before:duration-200
-                    group-hover:before:opacity-100
-                  "
+                                    className="pointer-events-none absolute inset-0 rounded-full before:content-[''] before:absolute before:inset-0 before:rounded-full before:bg-white/10 before:opacity-0 before:blur-md before:transition-opacity before:duration-200 group-hover:before:opacity-100"
                                 />
                                 <span className="relative px-2 py-5">{subcopy}</span>
                                 <svg

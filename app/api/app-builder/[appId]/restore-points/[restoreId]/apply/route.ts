@@ -38,15 +38,13 @@ function captureSnapshot(files: Record<string, { content: string; lastModified: 
     return { before, paths: Object.keys(before) };
 }
 
-export async function POST(
-    req: NextRequest,
-    { params }: { params: { appId: string; restoreId: string } }
-) {
+export async function POST(req: NextRequest, { params }: any) {
     return requireSessionAndMaybeCsrf(
         req,
         async ({ uid, req: authedReq }) => {
-            const appId = safeString(params.appId, 200);
-            const restoreId = safeString(params.restoreId, 200);
+            const routeParams = await Promise.resolve(params);
+            const appId = safeString(routeParams?.appId, 200);
+            const restoreId = safeString(routeParams?.restoreId, 200);
             assertAppBuilderScope(authedReq, uid, appId);
 
             const db = getAdminDb();

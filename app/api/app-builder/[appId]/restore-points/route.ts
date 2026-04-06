@@ -20,9 +20,9 @@ function safeString(v: unknown, max = 200): string {
     return typeof v === "string" ? v.trim().slice(0, max) : "";
 }
 
-export async function GET(req: NextRequest, { params }: { params: { appId: string } }) {
+export async function GET(req: NextRequest, { params }: any) {
     return requireSessionAndMaybeCsrf(req, async ({ uid, req: authedReq }) => {
-        const appId = safeString(params.appId, 200);
+        const appId = safeString((await Promise.resolve(params))?.appId, 200);
         assertAppBuilderScope(authedReq, uid, appId);
 
         const db = getAdminDb();
@@ -51,11 +51,11 @@ export async function GET(req: NextRequest, { params }: { params: { appId: strin
     });
 }
 
-export async function POST(req: NextRequest, { params }: { params: { appId: string } }) {
+export async function POST(req: NextRequest, { params }: any) {
     return requireSessionAndMaybeCsrf(
         req,
         async ({ uid, req: authedReq }) => {
-            const appId = safeString(params.appId, 200);
+            const appId = safeString((await Promise.resolve(params))?.appId, 200);
             assertAppBuilderScope(authedReq, uid, appId);
 
             const body = await req.json().catch(() => ({} as any));
