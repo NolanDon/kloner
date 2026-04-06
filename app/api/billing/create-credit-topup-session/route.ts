@@ -149,6 +149,11 @@ async function handler(req: NextRequest, uid: string) {
             allow_promotion_codes: true,
             success_url: successUrl,
             cancel_url: cancelUrl,
+            payment_method_options: {
+                card: {
+                    request_three_d_secure: "any",
+                },
+            },
             line_items: [
                 {
                     price_data: {

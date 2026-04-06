@@ -392,6 +392,11 @@ async function handler({ req, uid }: { req: NextRequest; uid: string }) {
             success_url: successUrl,
             cancel_url: cancelUrl,
             metadata: baseMeta,
+            payment_method_options: {
+                card: {
+                    request_three_d_secure: "any",
+                },
+            },
 
             ...(discounts?.length ? { discounts } : { allow_promotion_codes: true }),
 
