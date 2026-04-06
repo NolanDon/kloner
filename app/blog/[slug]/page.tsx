@@ -34,7 +34,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
       siteName: "Kloner",
       images: [
         {
-          url: "/opengraph-image",
+          url: "/images/opengraph.jpg",
           width: 1200,
           height: 630,
           alt: post.title,
@@ -45,7 +45,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
       card: "summary_large_image",
       title: post.title,
       description: post.description,
-      images: ["/opengraph-image"],
+      images: ["/images/opengraph.jpg"],
     },
   };
 }

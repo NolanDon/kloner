@@ -34,7 +34,7 @@ export const metadata: Metadata = {
     type: "website",
     images: [
       {
-        url: "/opengraph-image",
+          url: "/images/opengraph.jpg",
         width: 1200,
         height: 630,
         alt: "Kloner – AI Website Cloner",
@@ -46,7 +46,7 @@ export const metadata: Metadata = {
     title: "Kloner – AI Website Builder and Preview Tool",
     description:
       "Website cloner for high-fidelity layouts: capture, edit, and redeploy fast. Start a free preview and launch sites faster.",
-    images: ["/opengraph-image"],
+      images: ["/images/opengraph.jpg"],
   },
   robots: {
     index: true,
