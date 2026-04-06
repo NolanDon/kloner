@@ -2515,7 +2515,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                             <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain px-5 py-4">
                                 {effectiveLocked ? (
                                     <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                                        Snapshots are still processing. Generation options are temporarily disabled.
+                                        You have a job still in process. Generation options are temporarily disabled.
                                     </div>
                                 ) : null}
 
@@ -3593,7 +3593,19 @@ export default function PreviewPage(): JSX.Element {
             ? `pending-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
             : null;
 
-        if (!(await canProceedWithAppWizardGeneration())) {
+        if (shouldOpenAppBuilderImmediately) {
+            const tierNow = await refreshUserTierNow();
+            if (tierNow !== "pro" && tierNow !== "agency") {
+                if (optimisticAppBuilderId) {
+                    setAppBuilderOpen(false);
+                    setCurrentAppId(null);
+                }
+                setAppWizardBusy(false);
+                setAppWizardError(null);
+                showWebsiteExitOfferPaywall();
+                return null;
+            }
+        } else if (!(await canProceedWithAppWizardGeneration())) {
             if (optimisticAppBuilderId) {
                 setAppBuilderOpen(false);
                 setCurrentAppId(null);
