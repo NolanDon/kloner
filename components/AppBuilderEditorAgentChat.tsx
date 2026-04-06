@@ -3849,14 +3849,48 @@ export default function AppBuilderEditorAgentChat({ appId, files, onFileEdit, on
                 ) : null}
 
                 {chatDisabled ? (
-                    <div className="mb-2 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-900">
-                        Preview is still loading. Chat will unlock once the preview renders.
+                    <div className="mb-3 rounded-[1.5rem] border border-amber-200 bg-[linear-gradient(180deg,rgba(255,247,237,0.98),rgba(255,255,255,1))] px-4 py-4 shadow-[0_12px_32px_rgba(251,146,60,0.10)]">
+                        <div className="flex items-start gap-3">
+                            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-amber-100 text-amber-700 ring-1 ring-amber-200">
+                                <AlertTriangle className="h-5 w-5" />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <p className="text-sm font-semibold text-neutral-900">Preview not ready yet</p>
+                                    <span className="inline-flex items-center rounded-full border border-amber-200 bg-white px-2 py-0.5 text-[11px] font-medium text-amber-700">
+                                        Waiting
+                                    </span>
+                                </div>
+                                <p className="mt-1 text-sm leading-relaxed text-neutral-700">
+                                    Preview is still loading. Chat will unlock once the preview renders.
+                                </p>
+                                <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-amber-200 bg-white px-3 py-1 text-[11px] font-semibold text-neutral-700">
+                                    <RefreshCw className="h-3.5 w-3.5 animate-spin text-amber-500" />
+                                    Keep the preview open while it finishes booting
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 ) : null}
 
                 {freeCompileFixContext ? (
-                    <div className="mb-2 rounded border border-emerald-200 bg-emerald-50 px-3 py-2 text-[12px] text-emerald-900">
-                        Free compile-fix mode is active. Keep the payload unchanged to send a free quick fix.
+                    <div className="mb-3 rounded-[1.5rem] border border-emerald-200 bg-[linear-gradient(180deg,rgba(236,253,245,0.98),rgba(255,255,255,1))] px-4 py-4 shadow-[0_12px_32px_rgba(16,185,129,0.10)]">
+                        <div className="flex items-start gap-3">
+                            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-700 ring-1 ring-emerald-200">
+                                <Bot className="h-5 w-5" />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <p className="text-sm font-semibold text-neutral-900">Free compile-fix mode</p>
+                                    <span className="inline-flex items-center rounded-full border border-emerald-200 bg-white px-2 py-0.5 text-[11px] font-medium text-emerald-700">
+                                        Unlocked
+                                    </span>
+                                </div>
+                                <p className="mt-1 text-sm leading-relaxed text-neutral-700">
+                                    Keep the payload unchanged to send a free quick fix.
+                                </p>
+                            </div>
+                        </div>
                     </div>
                 ) : null}
 

@@ -494,7 +494,7 @@ export default function PriceClient(): JSX.Element {
         } else if (tierName === "Agency") {
             void startCheckout("agency");
         } else {
-            window.location.href = "/dashboard";
+            window.location.href = "/login?mode=signup";
         }
     }
 

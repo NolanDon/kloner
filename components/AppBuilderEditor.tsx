@@ -4696,10 +4696,16 @@ export default function AppBuilderEditor({
                                     referrerPolicy="no-referrer"
                                 />
                             ) : (
-                                <div className="h-full w-full flex items-center justify-center">
-                                    <div className="max-w-md w-full p-6 text-center">
-                                        <div className="text-lg font-semibold mb-2">Preview</div>
-                                        <div className="text-sm text-gray-600 mb-4">
+                                <div className="h-full w-full bg-[radial-gradient(circle_at_top,rgba(245,95,42,0.08),transparent_42%),linear-gradient(180deg,rgba(255,255,255,0.98),rgba(250,250,250,1))] flex items-center justify-center px-4">
+                                    <div className="w-full max-w-md rounded-[28px] border border-neutral-200 bg-white/95 p-6 text-center shadow-[0_24px_70px_rgba(15,23,42,0.08)] backdrop-blur-sm">
+                                        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-[rgba(245,95,42,0.10)] text-[#f55f2a] ring-1 ring-[rgba(245,95,42,0.16)]">
+                                            <Monitor className="h-7 w-7" />
+                                        </div>
+                                        <div className="inline-flex items-center rounded-full border border-neutral-200 bg-neutral-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-neutral-600">
+                                            Preview status
+                                        </div>
+                                        <div className="mt-3 text-lg font-semibold text-neutral-900">Preview is booting</div>
+                                        <div className="mt-2 text-sm leading-relaxed text-neutral-600">
                                             {autoPreviewPhase === "connecting"
                                                 ? "Connect Vercel to load your preview."
                                                 : autoPreviewPhase === "enabling-bypass"
@@ -4707,7 +4713,7 @@ export default function AppBuilderEditor({
                                                     : autoPreviewPhase === "building"
                                                         ? `Building preview…${autoPreviewAttempt ? ` (attempt ${autoPreviewAttempt})` : ""}`
                                                         : autoPreviewPhase === "loading"
-                                                            ? "Loading preview…"
+                                                            ? "Loading preview… Chat unlocks once the frame is ready."
                                                             : autoPreviewPhase === "error"
                                                                 ? "Could not load preview."
                                                                 : "Preparing preview…"}
@@ -4718,6 +4724,16 @@ export default function AppBuilderEditor({
                                                 {autoPreviewError || previewError}
                                             </div>
                                         ) : null}
+
+                                        <div className="mt-5 flex flex-wrap items-center justify-center gap-2 text-[11px] font-medium text-neutral-500">
+                                            <span className="inline-flex items-center gap-1.5 rounded-full border border-neutral-200 bg-neutral-50 px-3 py-1">
+                                                <Loader2 className="h-3.5 w-3.5 animate-spin text-[#f55f2a]" />
+                                                Waiting on the preview machine
+                                            </span>
+                                            <span className="inline-flex items-center rounded-full border border-neutral-200 bg-white px-3 py-1">
+                                                Chat stays locked until the preview renders
+                                            </span>
+                                        </div>
 
                                         {autoPreviewPhase === "error" && autoPreviewBypassUnsupported ? (
                                             <div className="mb-4 w-full text-left">
