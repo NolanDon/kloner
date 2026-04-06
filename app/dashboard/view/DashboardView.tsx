@@ -63,6 +63,7 @@ import {
     Clock10,
     Loader2,
     MessageCircleWarning,
+    AlertTriangle,
     Archive,
     Share2,
     WrenchIcon,
@@ -501,6 +502,64 @@ function AmberIssueBanner({ message, onDismiss, onRetry, retryDisabled = false, 
                 onClick={onDismiss}
                 className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full text-amber-700 transition hover:bg-amber-200 hover:text-amber-950 sm:right-4 sm:top-1/2 sm:-translate-y-1/2"
                 aria-label="Dismiss warning"
+                title="Dismiss"
+            >
+                <X className="h-3.5 w-3.5" />
+            </button>
+        </motion.div>
+    );
+}
+
+type RedIssueBannerProps = {
+    message: string;
+    onDismiss: () => void;
+    details?: React.ReactNode;
+};
+
+function RedIssueBanner({ message, onDismiss, details }: RedIssueBannerProps) {
+    const [showDetails, setShowDetails] = useState(false);
+    const hasDetails = details != null && !(typeof details === "string" && details.trim().length === 0);
+
+    return (
+        <motion.div
+            initial={{ opacity: 0, y: -8, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            transition={{ type: "spring", stiffness: 700, damping: 28, mass: 0.55 }}
+            className="relative mt-3 overflow-hidden rounded-3xl border border-red-300/80 bg-red-50/95 px-3 py-3 text-xs text-red-950 shadow-[0_14px_34px_rgba(185,28,28,0.10)] sm:px-4 sm:py-3 sm:pr-14"
+        >
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:gap-3">
+                <div className="flex min-w-0 flex-1 items-start gap-2 sm:pt-0.5">
+                    <AlertTriangle className="h-4 w-4 shrink-0 text-red-600" />
+                    <span className="min-w-0 flex-1 whitespace-normal break-words font-semibold leading-5 text-red-950 sm:whitespace-nowrap">
+                        {message}
+                    </span>
+                </div>
+                {hasDetails ? (
+                    <div className="flex flex-wrap items-center gap-2 sm:ml-auto sm:flex-nowrap sm:justify-end sm:gap-3 sm:pt-0.5 sm:pr-8">
+                        <button
+                            type="button"
+                            onClick={() => setShowDetails((v) => !v)}
+                            className="inline-flex w-full shrink-0 items-center justify-center gap-1 rounded-full border border-red-300/70 bg-white px-3 py-2 text-[11px] font-semibold text-red-800/90 transition hover:border-red-400 hover:text-red-950 sm:w-auto sm:border-0 sm:bg-transparent sm:px-0 sm:py-1.5 sm:mr-2"
+                            aria-expanded={showDetails}
+                            aria-label={showDetails ? "Hide details" : "View details"}
+                            title={showDetails ? "Hide details" : "View details"}
+                        >
+                            <span>{showDetails ? "Hide details" : "View details"}</span>
+                            {showDetails ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                        </button>
+                    </div>
+                ) : null}
+            </div>
+            {showDetails && hasDetails ? (
+                <div className="mt-3 rounded-2xl border border-red-200 bg-white/90 px-3 py-3 text-[11px] leading-6 text-red-900 shadow-sm sm:text-xs">
+                    {details}
+                </div>
+            ) : null}
+            <button
+                type="button"
+                onClick={onDismiss}
+                className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full text-red-700 transition hover:bg-red-200 hover:text-red-950 sm:right-4 sm:top-1/2 sm:-translate-y-1/2"
+                aria-label="Dismiss error"
                 title="Dismiss"
             >
                 <X className="h-3.5 w-3.5" />
@@ -9260,45 +9319,55 @@ export default function PreviewPage(): JSX.Element {
                 ) : null}
 
                 {err && isUrlProcessingError && !showActiveUrlIssueWarning ? (
-                    <AmberIssueBanner
+                    <RedIssueBanner
                         message={err}
                         onDismiss={() => setErr("")}
+                        details={safeErrorUrl ? (
+                            <div className="flex flex-wrap items-center gap-2">
+                                <span
+                                    className="inline-flex max-w-full items-center rounded-md border border-red-200 bg-white px-2 py-1 font-mono text-[11px] text-red-800"
+                                    title={safeErrorUrl}
+                                >
+                                    {truncateMiddle(safeErrorUrl, 76)}
+                                </span>
+                                <a
+                                    href={safeErrorUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer nofollow"
+                                    className="inline-flex items-center gap-1 rounded-md border border-red-200 bg-white px-2.5 py-1 text-xs font-semibold text-red-700 transition hover:bg-red-100"
+                                    title="Open URL in a new tab"
+                                >
+                                    <span>Open URL</span>
+                                    <ExternalLink className="h-3 w-3" />
+                                </a>
+                            </div>
+                        ) : null}
                     />
                 ) : err && !showActiveUrlIssueWarning && !(showUrlAccessInError && activeUrlCannotGenerate) ? (
-                    <div className="mt-2 flex items-start justify-between gap-3 rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">
-                        <div className="min-w-0 flex-1">
-                            <span>{err}</span>
-                            {safeErrorUrl ? (
-                                <div className="mt-2 flex flex-wrap items-center gap-2">
-                                    <span
-                                        className="inline-flex max-w-full items-center rounded-md border border-red-200 bg-white px-2 py-1 font-mono text-[11px] text-red-800"
-                                        title={safeErrorUrl}
-                                    >
-                                        {truncateMiddle(safeErrorUrl, 76)}
-                                    </span>
-                                    <a
-                                        href={safeErrorUrl}
-                                        target="_blank"
-                                        rel="noopener noreferrer nofollow"
-                                        className="inline-flex items-center gap-1 rounded-md border border-red-200 bg-white px-2.5 py-1 text-xs font-semibold text-red-700 transition hover:bg-red-100"
-                                        title="Open URL in a new tab"
-                                    >
-                                        <span>Open URL</span>
-                                        <ExternalLink className="h-3 w-3" />
-                                    </a>
-                                </div>
-                            ) : null}
-                        </div>
-                        <button
-                            type="button"
-                            onClick={() => setErr("")}
-                            className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-red-200 bg-white/70 text-red-600 transition hover:bg-white hover:text-red-700"
-                            aria-label="Dismiss error"
-                            title="Dismiss"
-                        >
-                            <X className="h-3.5 w-3.5" />
-                        </button>
-                    </div>
+                    <RedIssueBanner
+                        message={err}
+                        onDismiss={() => setErr("")}
+                        details={safeErrorUrl ? (
+                            <div className="flex flex-wrap items-center gap-2">
+                                <span
+                                    className="inline-flex max-w-full items-center rounded-md border border-red-200 bg-white px-2 py-1 font-mono text-[11px] text-red-800"
+                                    title={safeErrorUrl}
+                                >
+                                    {truncateMiddle(safeErrorUrl, 76)}
+                                </span>
+                                <a
+                                    href={safeErrorUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer nofollow"
+                                    className="inline-flex items-center gap-1 rounded-md border border-red-200 bg-white px-2.5 py-1 text-xs font-semibold text-red-700 transition hover:bg-red-100"
+                                    title="Open URL in a new tab"
+                                >
+                                    <span>Open URL</span>
+                                    <ExternalLink className="h-3 w-3" />
+                                </a>
+                            </div>
+                        ) : null}
+                    />
                 ) : null}
 
                 {success ? (
