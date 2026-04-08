@@ -4046,7 +4046,7 @@ export default function NavBar() {
             return;
           }
           if (cookieLikely) {
-            setError('Preview couldn’t load in this iframe because the required routing cookie appears blocked. Necessary cookies are required for app building and connecting this preview. We will automatically refresh the preview in a few seconds.');
+            setError('Preview couldn’t load in this iframe. The embedded preview may be blocked by browser routing/cookie settings, or it may still be starting. We will automatically refresh the preview in a few seconds.');
             setCookieRecoveryPromptVisible(true);
             setCanRetry(true);
             reportCookieIframeBlocked({
@@ -4143,7 +4143,7 @@ export default function NavBar() {
               <div className="space-y-2">
               {cookieRelated ? (
                 <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-                  Your browser privacy settings may block embedded preview routing. Use Refresh to retry, or open the preview in a separate tab for the most reliable connection.
+                  Your browser privacy settings may block embedded preview routing, or the preview may still be starting. Use Refresh to retry, or open the preview in a separate tab for the most reliable connection.
                 </div>
               ) : null}
               <button
@@ -4600,7 +4600,7 @@ export default function NavBar() {
                   switchToExternalPreviewMode(activePreviewUrl, 'safari_iframe_onerror_hub_preview');
                   return;
                 }
-                setError('Preview couldn’t load in this iframe because the required routing cookie appears blocked or not ready yet. Necessary cookies are required for app building and connecting this preview. We will automatically refresh the preview in a few seconds.');
+                setError('Preview couldn’t load in this iframe. The embedded preview may be blocked by browser routing/cookie settings, or it may still be starting. We will automatically refresh the preview in a few seconds.');
                 setCookieRecoveryPromptVisible(true);
                 setCanRetry(true);
                 reportCookieIframeBlocked({
