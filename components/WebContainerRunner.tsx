@@ -533,6 +533,15 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
       iframePostLoadTimeoutRef.current = null;
     }
   };
+  
+  useEffect(() => {
+    return () => {
+      if (automaticRetryTimeoutRef.current) {
+        clearTimeout(automaticRetryTimeoutRef.current);
+        automaticRetryTimeoutRef.current = null;
+      }
+    };
+  }, []);
 
   // Helper function to get CSRF token from cookies
   const ensureSessionAndCsrf = async (): Promise<string | null> => {
@@ -3757,12 +3766,6 @@ export default function NavBar() {
         retryTimeoutRef.current = null;
       }
 
-      // Clear any pending automatic retry timeout
-      if (automaticRetryTimeoutRef.current) {
-        clearTimeout(automaticRetryTimeoutRef.current);
-        automaticRetryTimeoutRef.current = null;
-      }
-
       // Clear any pending status polling
       if (statusPollTimeoutRef.current) {
         clearTimeout(statusPollTimeoutRef.current);
@@ -4043,7 +4046,7 @@ export default function NavBar() {
             return;
           }
           if (cookieLikely) {
-            setError('Preview couldn’t load in this iframe because the required routing cookie appears blocked. Necessary cookies are required for app building and connecting this preview. We will automatically restart the preview in a few seconds.');
+            setError('Preview couldn’t load in this iframe because the required routing cookie appears blocked. Necessary cookies are required for app building and connecting this preview. We will automatically refresh the preview in a few seconds.');
             setCookieRecoveryPromptVisible(true);
             setCanRetry(true);
             reportCookieIframeBlocked({
@@ -4152,14 +4155,6 @@ export default function NavBar() {
                 </svg>
                 Refresh
               </button>
-              {cookieRelated ? (
-                <button
-                  onClick={retryApp}
-                  className="inline-flex ml-2 items-center gap-2 px-4 py-2 rounded-full text-xs border border-amber-300 bg-white text-amber-900 hover:bg-amber-50 transition-colors"
-                >
-                  Restart preview now
-                </button>
-              ) : null}
               </div>
                 );
               })()
@@ -4605,7 +4600,7 @@ export default function NavBar() {
                   switchToExternalPreviewMode(activePreviewUrl, 'safari_iframe_onerror_hub_preview');
                   return;
                 }
-                setError('Preview couldn’t load in this iframe because the required routing cookie appears blocked or not ready yet. Necessary cookies are required for app building and connecting this preview. We will automatically restart the preview in a few seconds.');
+                setError('Preview couldn’t load in this iframe because the required routing cookie appears blocked or not ready yet. Necessary cookies are required for app building and connecting this preview. We will automatically refresh the preview in a few seconds.');
                 setCookieRecoveryPromptVisible(true);
                 setCanRetry(true);
                 reportCookieIframeBlocked({
