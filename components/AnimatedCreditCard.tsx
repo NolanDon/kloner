@@ -92,15 +92,7 @@ export function AnimatedCreditCard() {
             <motion.div
                 ref={ref}
                 className="
-          relative select-none
-                    w-[72vw] max-w-[270px] md:max-w-[294px]
-          aspect-[85/54] rounded-2xl md:rounded-3xl
-                                        shadow-[0_28px_70px_-18px_rgba(245,95,42,0.38),0_18px_48px_-18px_rgba(251,146,60,0.26)]
-                                        ring-1 ring-white/20
-          overflow-hidden
-          will-change-transform
-          cursor-pointer
-        "
+                    relative select-none flex h-full w-[72vw] max-w-[300px] flex-col overflow-hidden rounded-xl md:max-w-[320px] md:rounded-[20px] shadow-[0_26px_70px_-18px_rgba(245,95,42,0.38),0_18px_42px_-18px_rgba(253,186,116,0.28)] ring-1 ring-white/20 will-change-transform cursor-pointer"
                 style={{
                     transformStyle: "preserve-3d",
                     rotateX: finalRotX,
@@ -112,16 +104,16 @@ export function AnimatedCreditCard() {
                 <div
                     className="
             absolute inset-0
-                    bg-[radial-gradient(120%_80%_at_10%_10%,#ffd28a_0%,#ffb347_34%,#f97316_62%,#2b160d_100%)]
+                    bg-[linear-gradient(135deg,#ffd28a_0%,#ffb347_32%,#f97316_63%,#2b160d_100%)]
           "
                 />
 
                 {/* Subtle texture */}
                 <div
-                    className="absolute inset-0 opacity-[0.12] mix-blend-overlay"
+                    className="absolute inset-0 opacity-[0.14] mix-blend-overlay"
                     style={{
                         backgroundImage:
-                            "repeating-linear-gradient(135deg, rgba(255,255,255,0.18) 0px, rgba(255,255,255,0.18) 1px, transparent 1px, transparent 6px)",
+                            "repeating-linear-gradient(135deg, rgba(255,255,255,0.16) 0px, rgba(255,255,255,0.16) 1px, transparent 1px, transparent 7px)",
                     }}
                 />
 
@@ -130,97 +122,87 @@ export function AnimatedCreditCard() {
                     className="absolute inset-0 opacity-70"
                     style={{
                         background:
-                            "conic-gradient(from 180deg at 50% 50%, rgba(255,255,255,0.14), rgba(255,255,255,0.04), rgba(255,255,255,0.18), rgba(255,255,255,0.05))",
+                            "radial-gradient(circle at 22% 18%, rgba(255,255,255,0.20), rgba(255,255,255,0.06) 26%, rgba(255,255,255,0) 46%), conic-gradient(from 180deg at 50% 50%, rgba(255,255,255,0.12), rgba(255,255,255,0.04), rgba(255,255,255,0.16), rgba(255,255,255,0.05))",
                         translateZ: 30,
                     }}
                 />
 
-                {/* Brand + contactless + chip row */}
-                <div
-                    className="relative z-10 p-5 md:p-6 flex items-center justify-between"
-                    style={{ translateZ: 40 } as any}
-                >
-                    <div className="flex items-center gap-2">
-                        <div className="h-6 w-6 rounded-full bg-white/90" />
-                        <div className="h-6 w-10 rounded-full bg-white/55" />
-                    </div>
-                    <div className="text-white/90 text-xs tracking-[0.18em] uppercase">
-                        Kloner
-                    </div>
-                </div>
+                <div className="relative z-10 flex h-full flex-col px-4 py-4 md:px-5 md:py-5" style={{ translateZ: 60 } as any}>
+                    {/* Top row */}
+                    <div className="flex items-start justify-between gap-3">
+                        <div className="space-y-1">
+                            <div className="text-[0.95rem] md:text-[1.05rem] font-medium tracking-[0.02em] text-white/95">
+                                Visa Platinum
+                            </div>
+                            <div className="flex items-center gap-2 pt-1">
+                                <div
+                                    className="h-8 w-11 rounded-md bg-white/80"
+                                    style={{
+                                        boxShadow:
+                                            "inset 0 0 0 1px rgba(255,255,255,0.22), 0 1px 2px rgba(0,0,0,0.18)",
+                                        background:
+                                            "linear-gradient(160deg, rgba(255,248,240,0.96), rgba(255,216,170,0.72) 42%, rgba(255,243,228,0.92) 68%, rgba(255,184,107,0.58))",
+                                    }}
+                                />
+                            </div>
+                        </div>
 
-                {/* Chip + NFC */}
-                <div className="relative z-10 px-5 md:px-6" style={{ translateZ: 50 } as any}>
-                    <div className="flex items-center gap-3">
-                        <div
-                            className="w-12 h-9 rounded-md"
-                            style={{
-                                background:
-                                    "linear-gradient(160deg, rgba(255,248,240,0.96), rgba(255,216,170,0.7) 42%, rgba(255,243,228,0.92) 64%, rgba(255,184,107,0.55))",
-                                boxShadow:
-                                    "inset 0 0 0 1px rgba(255,255,255,0.32), inset 0 0 0 2px rgba(255,255,255,0.12)",
-                            }}
-                        />
-                        <div className="text-white/80 text-[10px] tracking-wide">
-                            tap • pay • perform
+                        <div className="flex items-center gap-[3px] pt-1 text-white/90">
+                            <span className="h-3.5 w-3.5 rounded-full border border-white/70" />
+                            <span className="h-4 w-4 rounded-full border border-white/45" />
+                            <span className="h-4 w-4 rounded-full border border-white/25" />
                         </div>
                     </div>
-                </div>
 
-                {/* Number */}
-                <div className="relative z-10 px-3 pt-3" style={{ translateZ: 60 } as any}>
+                    {/* Spacer to match the reference layout */}
+                    <div className="mt-5 flex-1" />
+
+                    {/* Card number */}
                     <div
-                        className="text-white/95 tracking-[0.28em] text-xl md:text-2xl font-semibold"
+                        className="text-center font-mono text-[1.03rem] leading-none text-white/95 md:text-[1.2rem]"
                         style={{
+                            letterSpacing: "0.20em",
                             textShadow: "0 1px 0 rgba(0,0,0,0.35)",
-                            letterSpacing: "0.28em",
                         }}
                     >
-                        5234&nbsp;8612&nbsp;0941&nbsp;7325
+                        4000&nbsp;1234&nbsp;5678&nbsp;9010
                     </div>
-                </div>
 
-                {/* Name / Expiry / Network */}
-                {/* ADDED pb-4 on mobile to lift above the rounded edge; keep original on md+ */}
-                <div
-                    className="relative z-10 px-5 md:px-6 pt-4 pb-4 md:pb-0 flex items-end justify-between"
-                    style={{ translateZ: 55 } as any}
-                >
-                    <div className="space-y-1">
-                        <div className="text-white/60 text-[10px]">CARDHOLDER</div>
-                        {/* Slightly smaller on mobile to avoid clipping in extreme rotations */}
-                        <div className="text-white/90 text-[12px] md:text-sm tracking-wide">
-                            JOHN BOXILL
+                    {/* Bottom row */}
+                    <div className="mt-auto flex items-end justify-between gap-3 pt-4">
+                        <div className="min-w-0 space-y-1 text-left">
+                            <div className="text-[8px] uppercase tracking-[0.24em] text-white/60">
+                                Cardholder Name
+                            </div>
+                            <div className="truncate text-[0.68rem] tracking-[0.28em] text-white/90 md:text-[0.78rem]">
+                                JOHN BOXILL
+                            </div>
+                        </div>
+
+                        <div className="flex shrink-0 items-end gap-8 text-right">
+                            <div className="space-y-1">
+                                <div className="text-[8px] uppercase tracking-[0.24em] text-white/60">
+                                    Good thru
+                                </div>
+                                <div className="text-[0.72rem] tracking-[0.26em] text-white/90 md:text-[0.8rem]">
+                                    02/30
+                                </div>
+                            </div>
+
+                            <img
+                                src="/images/visa.png"
+                                alt="Visa"
+                                className="h-7 w-auto origin-right object-contain scale-[1.5] md:h-8 md:scale-[1.65]"
+                            />
                         </div>
                     </div>
-                    <div className="space-y-1 text-right">
-                        <div className="text-white/60 text-[10px]">VALID THRU</div>
-                        <div className="text-white/90 text-[12px] md:text-sm tracking-wide">
-                            12/29
-                        </div>
-                    </div>
-                    <div className="text-white/90 text-[12px] md:text-sm font-semibold tracking-wider">
-                        OD
-                    </div>
                 </div>
-
-                {/* Hologram-ish badge */}
-                {/* Nudged down a touch on mobile so new pb doesn't overlap */}
-                <div
-                    className="absolute bottom-2 md:bottom-4 right-5 w-12 h-9 rounded-md opacity-80"
-                    style={{
-                        background:
-                            "conic-gradient(from 90deg at 50% 50%, #ffd27a, #ff9f43, #f97316, #ffd27a)",
-                        mixBlendMode: "screen",
-                        translateZ: 40,
-                    } as any}
-                />
 
                 {/* Bottom gloss edge */}
                 <div
                     className="absolute inset-x-0 bottom-0 h-12"
                     style={{
-                        background: "linear-gradient(to top, rgba(255,255,255,0.18), rgba(255,255,255,0))",
+                        background: "linear-gradient(to top, rgba(255,255,255,0.16), rgba(255,255,255,0))",
                         translateZ: 35,
                     } as any}
                 />
