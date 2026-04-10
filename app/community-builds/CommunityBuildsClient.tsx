@@ -15,7 +15,6 @@ import {
     Eye,
     Heart,
     MoveLeftIcon,
-    Repeat2,
 } from "lucide-react";
 
 /** ---------------- Types ---------------- */
@@ -560,7 +559,7 @@ export default function CommunityBuildsClient() {
                                 </button>
                             </div>
 
-                            <div className="grid gap-3 px-5 py-4 sm:grid-cols-2 sm:px-6">
+                            <div className="grid gap-3 px-5 py-4 sm:grid-cols-1 sm:px-6">
                                 <div className="rounded-2xl border border-black/10 bg-neutral-50 p-3">
                                     <div className="text-[10px] uppercase tracking-[0.22em] text-black/45">
                                         1. Preview
@@ -571,18 +570,6 @@ export default function CommunityBuildsClient() {
                                     </div>
                                     <p className="mt-3 text-[12px] leading-5 text-black/60">
                                         Hover and preview any of the websites before picking one.
-                                    </p>
-                                </div>
-
-                                <div className="rounded-2xl border border-black/10 bg-neutral-50 p-3">
-                                    <div className="text-[10px] uppercase tracking-[0.22em] text-black/45">
-                                        2. Remix
-                                    </div>
-                                    <div className="mt-3 inline-flex items-center justify-center gap-2 rounded-full bg-black/10 px-4 py-2 text-[12px] font-semibold text-black/45">
-                                        Remix temporarily disabled
-                                    </div>
-                                    <p className="mt-3 text-[12px] leading-5 text-black/60">
-                                        We are pausing remix actions on community templates for now.
                                     </p>
                                 </div>
                             </div>
@@ -659,29 +646,6 @@ export default function CommunityBuildsClient() {
                                                 {item.name}
                                             </p>
 
-                                            <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-black/55">
-                                                {item.remixable ? (
-                                                    <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-emerald-700">
-                                                        Remixable
-                                                    </span>
-                                                ) : (
-                                                    <span className="rounded-full bg-red-50 px-2 py-0.5 text-red-700">
-                                                        Not remixable
-                                                    </span>
-                                                )}
-
-                                                <span className="inline-flex items-center gap-1 rounded-full border border-black/10 bg-white px-2 py-0.5 text-black/60">
-                                                    Remix disabled
-                                                </span>
-
-                                                <button
-                                                    type="button"
-                                                    disabled
-                                                    className="inline-flex items-center justify-center rounded-full bg-neutral-100 px-3 py-1.5 text-[12px] font-semibold text-black/40 shadow-none cursor-not-allowed"
-                                                >
-                                                    Remix disabled
-                                                </button>
-                                              </div>
                                           </div>
                                     </div>
                                 </motion.div>
@@ -694,74 +658,6 @@ export default function CommunityBuildsClient() {
                     Showing {items.length} approved build{items.length === 1 ? "" : "s"}.
                 </div>
             </section>
-
-            {/* Remix confirm modal intentionally disabled for now. */}
-            <AnimatePresence>
-                {false && confirmRemixBuild && (
-                    <motion.div
-                        className="fixed inset-0 z-[90] flex items-center justify-center bg-black/50 p-4"
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
-                    >
-                        <motion.div
-                            className="w-full max-w-md overflow-hidden rounded-2xl border border-black/10 bg-white shadow-[0_24px_60px_rgba(15,23,42,0.22)]"
-                            initial={{ y: 14, scale: 0.98, opacity: 0 }}
-                            animate={{ y: 0, scale: 1, opacity: 1 }}
-                            exit={{ y: 10, scale: 0.985, opacity: 0 }}
-                            transition={{ type: "spring", stiffness: 140, damping: 18 }}
-                            role="dialog"
-                            aria-modal="true"
-                            aria-label="Confirm remix"
-                        >
-                            <div className="border-b border-black/10 px-5 py-4">
-                                <p className="text-[12px] uppercase tracking-[0.22em] text-black/45">
-                                    Confirm remix
-                                </p>
-                                <p className="mt-1 text-[15px] font-semibold text-black">
-                                    Remix “{confirmRemixBuild?.name ?? ""}”?
-                                </p>
-                                <p className="mt-2 text-[12px] leading-5 text-black/60">
-                                    This will clone the build into your account as a new editable preview.
-                                </p>
-                            </div>
-
-                            <div className="flex items-center justify-end gap-2 px-5 py-4">
-                                <button
-                                    type="button"
-                                    onClick={() => setConfirmRemixBuild(null)}
-                                    disabled={!!remixBusyId}
-                                    className={[
-                                        "rounded-full border px-4 py-2 text-[12px] font-semibold transition",
-                                        "border-black/10 bg-white text-black/70 hover:bg-black/[0.03]",
-                                        remixBusyId ? "opacity-60 pointer-events-none" : "",
-                                    ].join(" ")}
-                                >
-                                    Cancel
-                                </button>
-
-                                <button
-                                    type="button"
-                                    onClick={async () => {
-                                        const b = confirmRemixBuild;
-                                        setConfirmRemixBuild(null);
-                                        if (b) await runRemix(b);
-                                    }}
-                                    disabled={!!remixBusyId}
-                                    className={[
-                                        "rounded-full px-4 py-2 text-[12px] font-semibold text-white transition",
-                                        "bg-[rgba(245,95,42,1)] hover:bg-[rgba(215,75,22,1)]",
-                                        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(245,95,42,0.35)] focus-visible:ring-offset-2",
-                                        remixBusyId ? "opacity-80 pointer-events-none" : "",
-                                    ].join(" ")}
-                                >
-                                    Confirm remix
-                                </button>
-                            </div>
-                        </motion.div>
-                    </motion.div>
-                )}
-            </AnimatePresence>
 
             <AnimatePresence>
                 {previewBuild && previewBuild.html && (
@@ -825,11 +721,6 @@ export default function CommunityBuildsClient() {
                                                 />
                                                 {formatCount(previewBuild.likes)}
                                             </button>
-
-                                            <span className="inline-flex items-center gap-1 rounded-full border border-black/10 bg-white px-2 py-0.5">
-                                                <Repeat2 className="h-3.5 w-3.5" />
-                                                {formatCount(previewBuild.remixes)}
-                                            </span>
 
                                             <span className="text-black/35">·</span>
 

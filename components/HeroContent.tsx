@@ -17,7 +17,7 @@ export default function HeroContent({
 }) {
   const router = useRouter();
   const [mode, setMode] = useState<"url" | "prompt">("url");
-  const promptModeEnabled = false;
+  const promptModeEnabled = true;
   const [url, setUrl] = useState("");
   const [prompt, setPrompt] = useState("");
   const [error, setError] = useState<string | null>(null);

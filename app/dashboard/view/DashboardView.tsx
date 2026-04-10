@@ -10099,13 +10099,17 @@ export default function PreviewPage(): JSX.Element {
                                                 </button>
                                                 <button
                                                     type="button"
-                                                    disabled
-                                                    aria-disabled="true"
-                                                    title="Prompt generation is disabled"
-                                                    className="relative w-full rounded-xl border border-neutral-200 bg-white/80 p-4 pb-14 text-left opacity-60 cursor-not-allowed"
+                                                    onClick={() => {
+                                                        setAppWizardSource("prompt");
+                                                        setAppWizardError(null);
+                                                    }}
+                                                    className={`relative w-full rounded-xl border p-4 pb-14 text-left transition ${appWizardSource === "prompt"
+                                                        ? "border-[#f55f2a] bg-[#f55f2a]/5"
+                                                        : "border-neutral-200 bg-white hover:bg-neutral-50"
+                                                        }`}
                                                 >
                                                     <div className="text-sm font-semibold text-neutral-900">Build from a prompt</div>
-                                                    <div className="mt-1 text-xs text-neutral-600">Prompt generation is disabled for now.</div>
+                                                    <div className="mt-1 text-xs text-neutral-600">Describe the site you want and generate a fresh starting point.</div>
                                                 </button>
                                             </div>
 
@@ -10188,7 +10192,7 @@ export default function PreviewPage(): JSX.Element {
                                             type="button"
                                             onClick={() => {
                                                 if (appWizardSource === "website") return void submitAppWizardWebsite();
-                                                setAppWizardError("Prompt generation is disabled. Choose URL-based generation.");
+                                                return void submitAppWizardPrompt();
                                             }}
                                             disabled={appWizardBusy || !appWizardSource}
                                             className="rounded-xl px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-60"
