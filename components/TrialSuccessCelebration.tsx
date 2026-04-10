@@ -132,16 +132,16 @@ export default function TrialSuccessCelebration({ open, onDismiss }: TrialSucces
                                 <p className="text-sm font-semibold text-neutral-900">What to do next:</p>
                                 <ol className="mt-2 space-y-2 text-sm leading-6 text-neutral-700">
                                     <li>After closing this modal, click <span className="font-semibold">Generate Website</span> and choose from the following:</li>
-                                    <li>1. Pick <span className="font-semibold text-[#f55f2a]">Website (NextJS)</span> for AI, databases, or user accounts.</li>
-                                    <li>2. Pick <span className="font-semibold text-[#f55f2a]">Landing Page (HTML)</span> for something simple and fast.</li>
-                                    <li>3. Try <span className="font-semibold text-[#f55f2a]">Start from template</span> if you want inspiration from the community.</li>
+                                    <li>Pick <span className="font-semibold text-[#f55f2a]">Website (NextJS)</span> for AI, databases, or user accounts.</li>
+                                    <li>Try <span className="font-semibold text-[#f55f2a]">Start from template</span> if you want inspiration from the community.</li>
                                 </ol>
-                                <p className="mt-3 text-sm leading-6 text-neutral-600">
-                                    You&apos;re in the right place now. Kloner is built to help you move from idea to launch quickly.
-                                </p>
                             </div>
 
-                            <div className="mt-5 flex justify-center">
+                            <p className="mt-4 max-w-md px-1 text-sm leading-6 text-neutral-600">
+                                You&apos;re in the right place now. Kloner is built to help you move from idea to launch quickly.
+                            </p>
+
+                            <div className="mt-4 flex justify-center">
                                 <button
                                     type="button"
                                     onMouseDown={(e) => {
