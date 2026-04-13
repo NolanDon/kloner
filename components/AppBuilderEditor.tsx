@@ -82,6 +82,9 @@ type PreviewMode = "vercel" | "webcontainer";
 
 type LeftViewMode = "ai" | "code" | "images";
 
+const IS_PRODUCTION = process.env.NODE_ENV === "production";
+const PREVIEW_RECOVERY_MESSAGE = "Something went wrong loading the preview. We\'ll keep trying automatically.";
+
 type StagedImage = {
     id: string;
     originalFile: globalThis.File;
@@ -1080,6 +1083,12 @@ export default function AppBuilderEditor({
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [isDeploying, setIsDeploying] = useState(false);
     const [isPreviewBuilding, setIsPreviewBuilding] = useState(false);
+
+    useEffect(() => {
+        if (IS_PRODUCTION && viewMode === "code") {
+            setViewMode("ai");
+        }
+    }, [viewMode]);
     const [previewError, setPreviewError] = useState<string | null>(null);
     const [protectedPreviewUrl, setProtectedPreviewUrl] = useState<string | null>(null);
     const [vercelSecuritySettingsUrl, setVercelSecuritySettingsUrl] = useState<string | null>(null);
@@ -2519,9 +2528,7 @@ export default function AppBuilderEditor({
                                 } catch (e: any) {
                                     const coded = e as CodedError;
                                     if (coded?.code === "vercel_bypass_not_supported") {
-                                        setAutoPreviewError(
-                                            "Vercel is blocking iframe embedding for this protected preview. Showing an embedded local preview instead.",
-                                        );
+                                        setAutoPreviewError(PREVIEW_RECOVERY_MESSAGE);
                                         setPreviewMode("webcontainer");
                                         setAutoPreviewPhase("error");
                                         return;
@@ -2559,8 +2566,7 @@ export default function AppBuilderEditor({
                 } catch (err: any) {
                     if (autoPreviewRunIdRef.current !== runId) return;
 
-                    const msg = err?.message || "Failed to build preview.";
-                    setAutoPreviewError(msg);
+                    setAutoPreviewError(PREVIEW_RECOVERY_MESSAGE);
                     setAutoPreviewPhase("error");
 
                     // Retry automatically on likely transient network failures.
@@ -3731,7 +3737,7 @@ export default function AppBuilderEditor({
     const startVercelOAuthForPreview = useCallback(() => {
         if (!VERCEL_INTEGRATION_SLUG) {
             console.error("Missing NEXT_PUBLIC_VERCEL_INTEGRATION_SLUG");
-            setPreviewError("Vercel integration is not configured.");
+            setPreviewError(PREVIEW_RECOVERY_MESSAGE);
             return;
         }
 
@@ -3770,7 +3776,7 @@ export default function AppBuilderEditor({
             window.location.assign(link);
         } catch (e) {
             console.error("Failed to start Vercel OAuth", e);
-            setPreviewError("Could not open Vercel. Try again in a moment.");
+            setPreviewError(PREVIEW_RECOVERY_MESSAGE);
             setVercelConnectOpening(false);
         }
     }, [appId]);
@@ -4152,14 +4158,16 @@ export default function AppBuilderEditor({
 
                         {/* Project controls (moved off top-right) */}
                         <div className="ml-2 hidden md:flex items-center gap-2">
-                            <button
-                                onClick={() => void handleSave(true)}
-                                disabled={isSaving}
-                                className="px-4 py-2 bg-[#F55F2A] text-xs font-semibold text-white rounded hover:bg-[#E04E1B] disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-all rounded-full"
-                            >
-                                <Upload className="w-4 h-4" />
-                                {isSaving ? "Saving..." : "Save"}
-                            </button>
+                            {!IS_PRODUCTION ? (
+                                <button
+                                    onClick={() => void handleSave(true)}
+                                    disabled={isSaving}
+                                    className="px-4 py-2 bg-[#F55F2A] text-xs font-semibold text-white rounded hover:bg-[#E04E1B] disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-all rounded-full"
+                                >
+                                    <Upload className="w-4 h-4" />
+                                    {isSaving ? "Saving..." : "Save"}
+                                </button>
+                            ) : null}
 
                             <button
                                 onClick={() => void openDatabaseConnect()}
@@ -4348,7 +4356,7 @@ export default function AppBuilderEditor({
                     >
                         {/* View Mode Toggle */}
                         <div className="p-3 border-b sticky top-0 z-10 bg-gray-50">
-                            <div className="grid grid-cols-3 gap-2">
+                            <div className={`grid gap-2 ${IS_PRODUCTION ? "grid-cols-2" : "grid-cols-3"}`}>
                                 <button
                                     onClick={() => setViewMode("ai")}
                                     className={`flex-1 px-4 py-2 text-xs font-semibold rounded-full flex items-center justify-center gap-2 transition-colors ${
@@ -4361,18 +4369,20 @@ export default function AppBuilderEditor({
                                     <MessageSquare className="w-4 h-4" />
                                     UI
                                 </button>
-                                <button
-                                    onClick={() => setViewMode("code")}
-                                    className={`flex-1 px-4 py-2 text-xs font-semibold rounded-full flex items-center justify-center gap-2 transition-colors ${
-                                        viewMode === "code"
-                                            ? "bg-[#F55F2A] text-white hover:bg-[#E04E1B]"
-                                            : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-100"
-                                    }`}
-                                    title="Code"
-                                >
-                                    <Code className="w-4 h-4" />
-                                    Code
-                                </button>
+                                {!IS_PRODUCTION ? (
+                                    <button
+                                        onClick={() => setViewMode("code")}
+                                        className={`flex-1 px-4 py-2 text-xs font-semibold rounded-full flex items-center justify-center gap-2 transition-colors ${
+                                            viewMode === "code"
+                                                ? "bg-[#F55F2A] text-white hover:bg-[#E04E1B]"
+                                                : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-100"
+                                        }`}
+                                        title="Code"
+                                    >
+                                        <Code className="w-4 h-4" />
+                                        Code
+                                    </button>
+                                ) : null}
                                 <button
                                     onClick={() => setViewMode("images")}
                                     className={`flex-1 px-4 py-2 text-xs font-semibold rounded-full flex items-center justify-center gap-2 transition-colors ${
@@ -4526,7 +4536,7 @@ export default function AppBuilderEditor({
                                                             </details>
 
                                                             {item.error ? (
-                                                                <div className="mt-2 text-[11px] text-red-600">{item.error}</div>
+                                                                <div className="mt-2 text-[11px] text-amber-700">{item.error}</div>
                                                             ) : null}
                                                         </div>
                                                         <button
@@ -4720,8 +4730,8 @@ export default function AppBuilderEditor({
                                         </div>
 
                                         {(autoPreviewError || previewError) ? (
-                                            <div className="mb-3 text-sm text-red-600">
-                                                {autoPreviewError || previewError}
+                                            <div className="mb-3 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                                                {PREVIEW_RECOVERY_MESSAGE}
                                             </div>
                                         ) : null}
 
@@ -4926,19 +4936,21 @@ export default function AppBuilderEditor({
                                     Machine: {isPreviewBuilding ? "Starting" : isRefreshing ? "Refreshing" : isWebPreviewReady ? "Ready" : "Idle"}
                                 </div>
 
-                                <div className="grid grid-cols-2 gap-2">
-                                    <button
-                                        onClick={() => {
-                                            setMobileControlsOpen(false);
-                                            void handleSave(true);
-                                        }}
-                                        disabled={isSaving}
-                                        className="inline-flex items-center justify-center gap-2 rounded-full px-4 py-2 text-sm font-semibold bg-[#F55F2A] text-white disabled:opacity-60"
-                                        title="Save"
-                                    >
-                                        <Upload className="h-4 w-4" />
-                                        <span>{isSaving ? "Saving…" : "Save"}</span>
-                                    </button>
+                                <div className={`grid gap-2 ${IS_PRODUCTION ? "grid-cols-1" : "grid-cols-2"}`}>
+                                    {!IS_PRODUCTION ? (
+                                        <button
+                                            onClick={() => {
+                                                setMobileControlsOpen(false);
+                                                void handleSave(true);
+                                            }}
+                                            disabled={isSaving}
+                                            className="inline-flex items-center justify-center gap-2 rounded-full px-4 py-2 text-sm font-semibold bg-[#F55F2A] text-white disabled:opacity-60"
+                                            title="Save"
+                                        >
+                                            <Upload className="h-4 w-4" />
+                                            <span>{isSaving ? "Saving…" : "Save"}</span>
+                                        </button>
+                                    ) : null}
 
                                     <button
                                         onClick={() => {
