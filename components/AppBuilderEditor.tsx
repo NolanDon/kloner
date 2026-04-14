@@ -4,7 +4,7 @@
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import Editor from "@monaco-editor/react";
 import Image from "next/image";
-import { Folder, File, Upload, X, RefreshCw, MessageSquare, Code, Check, RotateCcw, Database, Rocket, Monitor, SlidersHorizontal, Images, Send, Pencil, Loader2 } from "lucide-react";
+import { Folder, File, Upload, X, RefreshCw, MessageSquare, Code, Check, RotateCcw, Database, Rocket, Monitor, SlidersHorizontal, Images, Send, Pencil, Loader2, Share2, ExternalLink, Copy } from "lucide-react";
 import AppBuilderEditorAgentChat from "./AppBuilderEditorAgentChat";
 import KlonerLoader from "./KlonerLoader";
 import WebContainerRunner from "./WebContainerRunner";
@@ -168,6 +168,29 @@ function formatDeployUrlShortLabel(url: string | null): string {
         return `${parsed.hostname}${shortPath}`;
     } catch {
         return url.length > 28 ? `${url.slice(0, 28)}…` : url;
+    }
+}
+
+function copyTextToClipboard(text: string): Promise<boolean> {
+    if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+        return navigator.clipboard.writeText(text).then(() => true).catch(() => false);
+    }
+
+    if (typeof document === "undefined") return Promise.resolve(false);
+
+    try {
+        const textarea = document.createElement("textarea");
+        textarea.value = text;
+        textarea.setAttribute("readonly", "true");
+        textarea.style.position = "fixed";
+        textarea.style.opacity = "0";
+        document.body.appendChild(textarea);
+        textarea.select();
+        const ok = document.execCommand("copy");
+        document.body.removeChild(textarea);
+        return Promise.resolve(ok);
+    } catch {
+        return Promise.resolve(false);
     }
 }
 
@@ -1082,6 +1105,7 @@ export default function AppBuilderEditor({
     const [isSaving, setIsSaving] = useState(false);
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [isDeploying, setIsDeploying] = useState(false);
+    const [isSharingPreview, setIsSharingPreview] = useState(false);
     const [isPreviewBuilding, setIsPreviewBuilding] = useState(false);
 
     useEffect(() => {
@@ -1657,6 +1681,7 @@ export default function AppBuilderEditor({
         }
     }, [getHasUnsavedChanges, showConfirm]);
     const [deployChoiceError, setDeployChoiceError] = useState<string | null>(null);
+    const [shareChoiceError, setShareChoiceError] = useState<string | null>(null);
 
     // Lock chat until the preview iframe has successfully loaded.
     // Any reload/restart/reconnect should re-lock until we see another successful iframe load.
@@ -1668,8 +1693,11 @@ export default function AppBuilderEditor({
         setIsWebPreviewReady(false);
     }, [previewMode, refreshKey, localRestartKey, reconnectKey]);
     const [lastDeployLiveUrl, setLastDeployLiveUrl] = useState<string | null>(null);
+    const [lastSharePreviewUrl, setLastSharePreviewUrl] = useState<string | null>(null);
     const [showDeploySuccess, setShowDeploySuccess] = useState(false);
+    const [showShareSuccess, setShowShareSuccess] = useState(false);
     const deployUrlShortLabel = useMemo(() => formatDeployUrlShortLabel(lastDeployLiveUrl), [lastDeployLiveUrl]);
+    const sharePreviewUrlShortLabel = useMemo(() => formatDeployUrlShortLabel(lastSharePreviewUrl), [lastSharePreviewUrl]);
     const [leftPanelWidth, setLeftPanelWidth] = useState(500); // Default wider AI chat panel
     const [isResizing, setIsResizing] = useState(false);
     const autoSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -1775,6 +1803,12 @@ export default function AppBuilderEditor({
         const withBypass = addVercelProtectionBypass(base, app?.vercelProtectionBypassSecret || null);
         return addCacheBust(withBypass, refreshKey);
     }, [app?.previewUrl, app?.vercelProtectionBypassSecret, refreshKey]);
+
+    useEffect(() => {
+        const base = (app?.previewUrl || "").trim();
+        if (!base) return;
+        setLastSharePreviewUrl(addVercelProtectionBypass(base, app?.vercelProtectionBypassSecret || null));
+    }, [app?.previewUrl, app?.vercelProtectionBypassSecret]);
 
     function isLikelyNetworkError(err: unknown): boolean {
         if (!err || typeof err !== "object") return false;
@@ -2640,6 +2674,8 @@ export default function AppBuilderEditor({
                 setApp(data);
                 const liveUrl = typeof data?.productionUrl === "string" ? data.productionUrl.trim() : "";
                 setLastDeployLiveUrl(liveUrl || null);
+                const previewShareUrl = typeof data?.previewUrl === "string" ? data.previewUrl.trim() : "";
+                setLastSharePreviewUrl(previewShareUrl || null);
                 buildFileTree(data.files);
             } catch (err: any) {
                 if (didCancel) return;
@@ -3669,6 +3705,75 @@ export default function AppBuilderEditor({
         void runVercelDeployLive();
     };
 
+    const handleSharePreview = async () => {
+        if (!app || isSharingPreview) return;
+
+        setIsSharingPreview(true);
+        setShareChoiceError(null);
+        setShowShareSuccess(false);
+
+        try {
+            if (!isVercelConnected) {
+                setVercelConnectOpen(true);
+                throw new Error("Vercel is not connected yet.");
+            }
+
+            const csrf = await ensureSessionAndCsrf().catch(() => null);
+            const doShare = async () => {
+                const res = await fetch(`/api/app-builder/${appId}/preview`, {
+                    method: "POST",
+                    headers: csrfHeaders(csrf),
+                    credentials: "include",
+                });
+                const data = await res.json().catch(() => ({} as any));
+                return { res, data };
+            };
+
+            let { res, data } = await doShare();
+
+            const code = String((data as any)?.code || "").trim();
+            const isScopeProblem = code === "MISSING_APP_SCOPE" || code === "INVALID_APP_SCOPE";
+
+            if ((!res.ok || !data?.ok) && isScopeProblem) {
+                await fetch(`/api/app-builder/${appId}/scope`, {
+                    method: "GET",
+                    credentials: "include",
+                }).catch(() => null);
+
+                ({ res, data } = await doShare());
+            }
+
+            if (!res.ok || !data?.ok) {
+                const msg = (data as any)?.error || `Share preview failed (HTTP ${res.status})`;
+                const debugBits = [
+                    (data as any)?.code ? `code=${String((data as any).code)}` : "",
+                    (data as any)?.reqId ? `reqId=${String((data as any).reqId)}` : "",
+                ].filter(Boolean);
+                throw new Error(debugBits.length ? `${msg} (${debugBits.join(", ")})` : msg);
+            }
+
+            const url = (data?.previewUrl || data?.url || "").toString().trim();
+            if (!url) throw new Error("Share preview completed but no URL was returned.");
+
+            const shareUrl = addVercelProtectionBypass(url, appRef.current?.vercelProtectionBypassSecret || null);
+            setLastSharePreviewUrl(shareUrl);
+            setShowShareSuccess(true);
+            setTimeout(() => setShowShareSuccess(false), 12000);
+            setApp((prev) => (prev ? { ...prev, previewUrl: url } : prev));
+
+            const copied = await copyTextToClipboard(shareUrl);
+            if (copied) {
+                void showAlert("Share preview link copied to clipboard.", "Share preview");
+            } else {
+                void showAlert(`Share preview ready:\n\n${shareUrl}`, "Share preview");
+            }
+        } catch (err: any) {
+            setShareChoiceError(err?.message || "Share preview failed.");
+        } finally {
+            setTimeout(() => setIsSharingPreview(false), 5000);
+        }
+    };
+
     const runVercelDeployLive = useCallback(async () => {
         if (!appId) return;
         if (isDeploying) return;
@@ -4301,17 +4406,47 @@ export default function AppBuilderEditor({
                             </div>
                         ) : null}
 
+                        {showShareSuccess && !(isRenaming && isMobile) ? (
+                            <div className="md:hidden rounded-xl border border-blue-200 bg-blue-50/70 px-2.5 py-2 text-[11px] text-blue-900">
+                                <div className="font-semibold">Share preview created</div>
+                                <div className="mt-0.5 text-blue-800/90">This link stays saved in the editor.</div>
+                                {lastSharePreviewUrl ? (
+                                    <button
+                                        type="button"
+                                        onClick={() => window.open(lastSharePreviewUrl, "_blank", "noopener,noreferrer")}
+                                        className="mt-1 inline-flex items-center gap-1 font-semibold underline underline-offset-2"
+                                        title="Open preview link"
+                                    >
+                                        View preview: {sharePreviewUrlShortLabel}
+                                    </button>
+                                ) : null}
+                            </div>
+                        ) : null}
+
                         {!(isRenaming && isMobile) ? (
-                            <button
-                                onClick={handleDeploy}
-                                disabled={isDeploying}
-                                className="inline-flex h-8 items-center gap-1.5 rounded-full border border-[#f55f2a] bg-[#f55f2a] px-3 py-1 text-[13px] font-semibold text-white shadow-md transition hover:opacity-90 disabled:opacity-60"
-                                title="Deploy"
-                                aria-label="Deploy"
-                            >
-                                <Rocket className="h-3.5 w-3.5" aria-hidden="true" />
-                                <span>{isDeploying ? "Deploying…" : "Deploy"}</span>
-                            </button>
+                            <>
+                                <button
+                                    onClick={() => void handleSharePreview()}
+                                    disabled={isSharingPreview}
+                                    className="inline-flex h-8 items-center gap-1.5 rounded-full border border-neutral-300 bg-white px-3 py-1 text-[13px] font-semibold text-neutral-700 shadow-md transition hover:bg-neutral-50 disabled:opacity-60"
+                                    title={shareChoiceError || "Create a shareable preview link"}
+                                    aria-label="Share preview"
+                                >
+                                    <Share2 className="h-3.5 w-3.5" aria-hidden="true" />
+                                    <span>{isSharingPreview ? "Sharing…" : "Share"}</span>
+                                </button>
+
+                                <button
+                                    onClick={handleDeploy}
+                                    disabled={isDeploying}
+                                    className="inline-flex h-8 items-center gap-1.5 rounded-full border border-[#f55f2a] bg-[#f55f2a] px-3 py-1 text-[13px] font-semibold text-white shadow-md transition hover:opacity-90 disabled:opacity-60"
+                                    title="Deploy"
+                                    aria-label="Deploy"
+                                >
+                                    <Rocket className="h-3.5 w-3.5" aria-hidden="true" />
+                                    <span>{isDeploying ? "Deploying…" : "Deploy"}</span>
+                                </button>
+                            </>
                         ) : null}
 
                         <button
@@ -4628,6 +4763,35 @@ export default function AppBuilderEditor({
                                     >
                                         Attach custom domain
                                     </a>
+                                </div>
+                            ) : null}
+
+                            {lastSharePreviewUrl ? (
+                                <div className="ml-2 flex items-center gap-2 text-xs">
+                                    <button
+                                        onClick={() => window.open(lastSharePreviewUrl, "_blank", "noopener,noreferrer")}
+                                        className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-blue-900 hover:bg-blue-100"
+                                        title="Open shareable preview"
+                                    >
+                                        <ExternalLink className="h-3.5 w-3.5" />
+                                        <span>View preview: {sharePreviewUrlShortLabel}</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={async () => {
+                                            const copied = await copyTextToClipboard(lastSharePreviewUrl);
+                                            if (copied) {
+                                                void showAlert("Preview link copied to clipboard.", "Share preview");
+                                            } else {
+                                                void showAlert(`Preview link:\n\n${lastSharePreviewUrl}`, "Share preview");
+                                            }
+                                        }}
+                                        className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-white px-3 py-1 text-blue-900 hover:bg-blue-50"
+                                        title="Copy shareable preview link"
+                                    >
+                                        <Copy className="h-3.5 w-3.5" />
+                                        <span>Copy</span>
+                                    </button>
                                 </div>
                             ) : null}
 
@@ -5042,6 +5206,36 @@ export default function AppBuilderEditor({
                                         <Rocket className="h-4 w-4" />
                                         <span>View live</span>
                                     </button>
+                                ) : null}
+
+                                <button
+                                    onClick={() => {
+                                        setMobileControlsOpen(false);
+                                        void handleSharePreview();
+                                    }}
+                                    disabled={isSharingPreview}
+                                    className="w-full inline-flex items-center justify-center gap-2 rounded-full px-4 py-2 text-sm font-semibold border border-neutral-300 bg-white text-neutral-800 disabled:opacity-60"
+                                    title={shareChoiceError || "Create a shareable preview link"}
+                                >
+                                    <Share2 className="h-4 w-4" />
+                                    <span>{isSharingPreview ? "Sharing…" : "Share preview"}</span>
+                                </button>
+
+                                {showShareSuccess ? (
+                                    <div className="rounded-xl border border-blue-200 bg-blue-50/70 px-3 py-2 text-xs text-blue-900">
+                                        <div className="font-semibold">Share preview created</div>
+                                        <div className="mt-0.5 text-[11px] text-blue-800/90">Saved in the editor for later reuse.</div>
+                                        {lastSharePreviewUrl ? (
+                                            <button
+                                                type="button"
+                                                onClick={() => window.open(lastSharePreviewUrl, "_blank", "noopener,noreferrer")}
+                                                className="mt-1 inline-flex items-center gap-1 text-[11px] font-semibold underline underline-offset-2"
+                                                title="Open preview link"
+                                            >
+                                                View preview: {sharePreviewUrlShortLabel}
+                                            </button>
+                                        ) : null}
+                                    </div>
                                 ) : null}
                             </div>
                         </div>
