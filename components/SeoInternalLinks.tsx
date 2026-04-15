@@ -4,6 +4,7 @@ type LinkItem = { label: string; href: string };
 
 const CORE_LINKS: LinkItem[] = [
   { label: "Home", href: "/" },
+  { label: "Tools", href: "/tools" },
   { label: "Blog", href: "/blog" },
   { label: "Pricing", href: "/price" },
   { label: "Compare", href: "/compare" },
@@ -89,6 +90,20 @@ const AFFECTED_BLOG_POSTS: LinkItem[] = [
   },
 ];
 
+const TOOL_LINKS: LinkItem[] = [
+  { label: "Tools hub", href: "/tools" },
+  { label: "QR Code Generator", href: "/tools/qr-code-generator" },
+  { label: "Percentage Calculator", href: "/tools/percentage-calculator" },
+  { label: "Age Calculator", href: "/tools/age-calculator" },
+  { label: "JSON Formatter", href: "/tools/json-formatter" },
+  { label: "Password Generator", href: "/tools/password-generator" },
+  { label: "Image Resizer", href: "/tools/image-resizer" },
+  { label: "Text Case Converter", href: "/tools/text-case-converter" },
+  { label: "Username Generator", href: "/tools/username-generator" },
+  { label: "Color Picker Tool", href: "/tools/color-picker-tool" },
+  { label: "Time Zone Converter", href: "/tools/time-zone-converter" },
+];
+
 function InlineLinks({ links }: { links: LinkItem[] }) {
   return (
     <ul className="flex flex-wrap items-center gap-x-3 gap-y-2">
@@ -130,6 +145,11 @@ export default function SeoInternalLinks({
         <div className="mt-5 text-xs text-neutral-500">Popular guides</div>
         <div className="mt-2 text-sm">
           <InlineLinks links={AFFECTED_BLOG_POSTS} />
+        </div>
+
+        <div className="mt-5 text-xs text-neutral-500">Tools</div>
+        <div className="mt-2 text-sm">
+          <InlineLinks links={TOOL_LINKS} />
         </div>
       </div>
     </div>

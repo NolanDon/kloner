@@ -16,6 +16,13 @@ const nextConfig = {
     async headers() {
         return [
             {
+                source: '/tools/:path*',
+                headers: [
+                    { key: 'X-Frame-Options', value: 'DENY' },
+                    { key: 'Content-Security-Policy', value: "frame-ancestors 'none';" },
+                ],
+            },
+            {
                 // Keep COOP for popup behavior on dashboard routes.
                 // Do not force COEP here; strict COEP blocks cross-origin preview iframes
                 // (including redirects) in Safari and other strict browsers.

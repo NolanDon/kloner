@@ -96,6 +96,7 @@ export default function NavBar(): JSX.Element {
   const baseNav: NavItem[] = br?.nav ?? [];
 
   const extraNav: NavItem[] = [
+    { label: "Tools", href: "/tools" },
     { label: "Community", href: "/community-builds" },
     { label: "Docs", href: "/dashboard/docs" },
     { label: "Blog", href: "/blog" },
@@ -136,6 +137,7 @@ export default function NavBar(): JSX.Element {
     const s = label.toLowerCase().trim();
 
     if (s === "home") return Home;
+    if (s.includes("tools")) return Hammer;
     if (s.includes("community")) return Sparkles;
     if (s.includes("docs") || s.includes("documentation")) return BookText;
     if (s.includes("pricing") || s.includes("price") || s.includes("plans"))
