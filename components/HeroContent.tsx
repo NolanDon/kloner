@@ -228,21 +228,22 @@ export default function HeroContent({
               type="submit"
               disabled={mode === "prompt" ? !prompt.trim() || !!error : !url || !!error}
               className={
-                "shrink-0 rounded-full bg-[#f26522] hover:bg-[#ff7a3d] text-white transition-all active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed " +
+                "shrink-0 self-center rounded-full bg-[#f26522] hover:bg-[#ff7a3d] text-white transition-all active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed " +
                 (mode === "prompt"
-                  ? "h-11 w-11 grid place-items-center"
-                  : "h-full px-6 sm:px-10")
+                  ? "h-11 w-11 grid place-items-center md:h-full md:w-auto md:px-6"
+                  : "h-11 w-11 grid place-items-center md:h-full md:w-auto md:px-6")
               }
               aria-label={mode === "prompt" ? "Create from prompt" : "Preview from URL"}
             >
-              {mode === "prompt" ? (
-                <>
+              <span className="md:hidden">
+                {mode === "prompt" ? (
                   <Send className="h-4 w-4" />
-                  <span className="sr-only">Create</span>
-                </>
-              ) : (
-                "Preview"
-              )}
+                ) : (
+                  <ArrowRightSquare className="h-4 w-4" />
+                )}
+                <span className="sr-only">{mode === "prompt" ? "Create" : "Preview"}</span>
+              </span>
+              <span className="hidden md:inline">{mode === "prompt" ? "Create" : "Preview"}</span>
             </button>
           </div>
 

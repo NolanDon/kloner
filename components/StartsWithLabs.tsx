@@ -287,21 +287,21 @@ export default function PreviewDashboard({
                                                     <input
                                                         readOnly
                                                         value={typed || "https://bettertherapy.ca"}
-                                                        className="flex-1 bg-transparent outline-none text-neutral-700 text-base sm:text-lg placeholder:text-neutral-400 font-medium"
+                                                        className="flex-1 bg-transparent outline-none text-neutral-700 text-base sm:text-lg placeholder:text-neutral-400 font-medium pr-16 sm:pr-18 md:pr-0"
                                                         placeholder="bettertherapy.ca"
                                                         aria-label="URL preview"
                                                     />
 
                                                     <motion.button
                                                         aria-disabled
-                                                        className="pointer-events-none shrink-0 h-full w-12 sm:w-auto rounded-full bg-[#f26522] text-white px-0 sm:px-10 inline-flex items-center justify-center gap-2"
+                                                        className="pointer-events-none absolute inset-y-2 right-2 h-auto w-10 rounded-full bg-[#f26522] text-white px-0 inline-flex items-center justify-center gap-2 sm:static sm:h-full sm:w-auto sm:inset-y-auto sm:px-10"
                                                         animate={{
                                                             scale: phase === "highlight" ? 0.94 : 1,
                                                             y: phase === "highlight" ? 1 : 0,
                                                         }}
                                                         transition={{ duration: 0.14, ease: "easeOut" }}
                                                     >
-                                                        <ArrowRight className="h-5 w-5 sm:hidden" />
+                                                        <ArrowRight className="h-4.5 w-4.5 sm:hidden" />
                                                         <span className="hidden sm:inline">Preview</span>
                                                     </motion.button>
                                                 </div>
@@ -339,7 +339,7 @@ export default function PreviewDashboard({
                                                         type="button"
                                                         aria-disabled
                                                         className={[
-                                                            "pointer-events-none inline-flex h-8 items-center gap-1.5 rounded-full px-3 py-1 text-[13px] font-semibold text-white transition",
+                                                            "pointer-events-none inline-flex h-8 w-8 md:w-auto items-center justify-center gap-1.5 rounded-full px-0 md:px-3 py-1 text-[13px] font-semibold text-white transition",
                                                             isDeployedState
                                                                 ? "border border-emerald-600 bg-emerald-600"
                                                                 : "border border-[#f55f2a] bg-[#f55f2a]",
@@ -351,11 +351,11 @@ export default function PreviewDashboard({
                                                         transition={{ duration: 0.14, ease: "easeOut" }}
                                                     >
                                                         {isDeployedState ? (
-                                                            <CheckCircle2 className="h-3.5 w-3.5" />
+                                                            <CheckCircle2 className="h-3.5 w-3.5 md:mr-1" />
                                                         ) : (
-                                                            <Rocket className="h-3.5 w-3.5" />
+                                                            <Rocket className="h-3.5 w-3.5 md:mr-1" />
                                                         )}
-                                                        <span>{deployCtaLabel}</span>
+                                                        <span className="hidden md:inline">{deployCtaLabel}</span>
                                                     </motion.button>
                                                 </div>
 
