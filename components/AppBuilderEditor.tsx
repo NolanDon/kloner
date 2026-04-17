@@ -681,7 +681,7 @@ export default function AppBuilderEditor({
     onTrialPromptStartCheckout?: (appId: string) => void;
 }) {
     const { user, loading: authLoading } = useAuth();
-    const { showConfirm, showAlert } = useModal();
+    const { showConfirm, showAlert, hideModal } = useModal();
 
     const faviconInputRef = useRef<HTMLInputElement | null>(null);
     const imageInputRef = useRef<HTMLInputElement | null>(null);
@@ -1725,6 +1725,49 @@ export default function AppBuilderEditor({
     const [showShareSuccess, setShowShareSuccess] = useState(false);
     const deployUrlShortLabel = useMemo(() => formatDeployUrlShortLabel(lastDeployLiveUrl), [lastDeployLiveUrl]);
     const sharePreviewUrlShortLabel = useMemo(() => formatDeployUrlShortLabel(lastSharePreviewUrl), [lastSharePreviewUrl]);
+
+    const openShareSuccessModal = useCallback((shareUrl: string) => {
+        const content = (
+            <div className="space-y-3 text-left">
+                <div className="text-sm text-neutral-700">
+                    Your share link is ready.
+                </div>
+                <div className="rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs font-mono break-all text-neutral-700">
+                    {shareUrl}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                    <button
+                        type="button"
+                        onClick={async () => {
+                            await copyTextToClipboard(shareUrl).catch(() => null);
+                        }}
+                        className="inline-flex items-center justify-center rounded-full border border-neutral-300 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-700 shadow-sm hover:bg-neutral-50"
+                    >
+                        Copy link
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => window.open(shareUrl, "_blank", "noopener,noreferrer")}
+                        className="inline-flex items-center justify-center rounded-full border border-neutral-300 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-700 shadow-sm hover:bg-neutral-50"
+                    >
+                        Open link
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => hideModal()}
+                        className="inline-flex items-center justify-center rounded-full border border-neutral-300 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-700 shadow-sm hover:bg-neutral-50"
+                    >
+                        Close
+                    </button>
+                </div>
+                <div className="text-xs text-neutral-500">
+                    The link is also saved in the editor for later reuse.
+                </div>
+            </div>
+        );
+
+        void showAlert(content, "Share preview");
+    }, [hideModal, showAlert]);
     const [leftPanelWidth, setLeftPanelWidth] = useState(500); // Default wider AI chat panel
     const [isResizing, setIsResizing] = useState(false);
     const autoSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -3789,19 +3832,11 @@ export default function AppBuilderEditor({
             setShowShareSuccess(true);
             setTimeout(() => setShowShareSuccess(false), 12000);
             setApp((prev) => (prev ? { ...prev, previewUrl: url } : prev));
-
-            const copied = await copyTextToClipboard(shareUrl);
-            if (copied) {
-                void showAlert("Share preview link copied to clipboard.", "Share preview");
-            } else {
-                void showAlert(`Share preview ready:\n\n${shareUrl}`, "Share preview");
-            }
+            openShareSuccessModal(shareUrl);
         } catch (err: any) {
             setShareChoiceError(err?.message || "Share preview failed.");
         } finally {
-            if (isVercelConnected) {
-                setTimeout(() => setIsSharingPreview(false), 5000);
-            }
+            setIsSharingPreview(false);
         }
     };
 
