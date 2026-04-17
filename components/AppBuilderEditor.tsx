@@ -1154,19 +1154,13 @@ export default function AppBuilderEditor({
 
         try {
             window.localStorage.setItem(
-                "kloner_vercel_pending_app_deploy",
-                JSON.stringify({
-                    appId,
-                    appName: app?.name || null,
-                    returnTo,
-                    startedAt: Date.now(),
-                    source: "share",
-                }),
+                APP_BUILDER_PENDING_SHARE_KEY,
+                JSON.stringify({ appId, returnTo, startedAt: Date.now() }),
             );
         } catch {
             // ignore
         }
-    }, [app?.name, appId]);
+    }, [appId]);
 
     const handleCompileErrorFixRequest = useCallback((payload: {
         appId: string;
@@ -3939,7 +3933,7 @@ export default function AppBuilderEditor({
                 .map((b) => b.toString(16).padStart(2, "0"))
                 .join("");
 
-            const returnTo = `/dashboard/view?appVercel=connected&flow=appDeploy${appId ? `&appId=${encodeURIComponent(appId)}` : ""}`;
+            const returnTo = buildCurrentVercelOAuthReturnPath();
             persistPendingVercelShareFlow(returnTo);
 
             localStorage.setItem("kloner_vercel_latest_csrf", state);
@@ -3965,7 +3959,7 @@ export default function AppBuilderEditor({
             setShareChoiceError("Could not open Vercel connect.");
             setVercelConnectOpening(false);
         }
-    }, [appId, persistPendingVercelShareFlow]);
+    }, [buildCurrentVercelOAuthReturnPath, persistPendingVercelShareFlow]);
 
     const tryEmbedExistingPreview = useCallback(() => {
         const url = (protectedPreviewUrl || "").trim();
@@ -4521,14 +4515,33 @@ export default function AppBuilderEditor({
                                 <div className="font-semibold">Share preview created</div>
                                 <div className="mt-0.5 text-blue-800/90">This link stays saved in the editor.</div>
                                 {lastSharePreviewUrl ? (
-                                    <button
-                                        type="button"
-                                        onClick={() => window.open(lastSharePreviewUrl, "_blank", "noopener,noreferrer")}
-                                        className="mt-1 inline-flex items-center gap-1 font-semibold underline underline-offset-2"
-                                        title="Open preview link"
-                                    >
-                                        View preview: {sharePreviewUrlShortLabel}
-                                    </button>
+                                    <div className="mt-1 flex flex-wrap items-center gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => window.open(lastSharePreviewUrl, "_blank", "noopener,noreferrer")}
+                                            className="inline-flex items-center gap-1.5 rounded-full border border-blue-200 bg-white px-2.5 py-1 font-semibold text-blue-900"
+                                            title="Open site link"
+                                        >
+                                            <ExternalLink className="h-3.5 w-3.5" />
+                                            <span>Site link</span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={async () => {
+                                                const copied = await copyTextToClipboard(lastSharePreviewUrl);
+                                                if (copied) {
+                                                    void showAlert("Site link copied to clipboard.", "Share preview");
+                                                } else {
+                                                    void showAlert(`Site link:\n\n${lastSharePreviewUrl}`, "Share preview");
+                                                }
+                                            }}
+                                            className="inline-flex items-center gap-1.5 rounded-full border border-blue-200 bg-white px-2.5 py-1 font-semibold text-blue-900"
+                                            title="Copy site link"
+                                        >
+                                            <Copy className="h-3.5 w-3.5" />
+                                            <span>Copy</span>
+                                        </button>
+                                    </div>
                                 ) : null}
                             </div>
                         ) : null}
@@ -4881,23 +4894,23 @@ export default function AppBuilderEditor({
                                     <button
                                         onClick={() => window.open(lastSharePreviewUrl, "_blank", "noopener,noreferrer")}
                                         className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-blue-900 hover:bg-blue-100"
-                                        title="Open shareable preview"
+                                        title="Open site link"
                                     >
                                         <ExternalLink className="h-3.5 w-3.5" />
-                                        <span>View preview: {sharePreviewUrlShortLabel}</span>
+                                        <span>Site link: {sharePreviewUrlShortLabel}</span>
                                     </button>
                                     <button
                                         type="button"
                                         onClick={async () => {
                                             const copied = await copyTextToClipboard(lastSharePreviewUrl);
                                             if (copied) {
-                                                void showAlert("Preview link copied to clipboard.", "Share preview");
+                                                void showAlert("Site link copied to clipboard.", "Share preview");
                                             } else {
-                                                void showAlert(`Preview link:\n\n${lastSharePreviewUrl}`, "Share preview");
+                                                void showAlert(`Site link:\n\n${lastSharePreviewUrl}`, "Share preview");
                                             }
                                         }}
                                         className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-white px-3 py-1 text-blue-900 hover:bg-blue-50"
-                                        title="Copy shareable preview link"
+                                        title="Copy site link"
                                     >
                                         <Copy className="h-3.5 w-3.5" />
                                         <span>Copy</span>
@@ -5336,14 +5349,33 @@ export default function AppBuilderEditor({
                                         <div className="font-semibold">Share preview created</div>
                                         <div className="mt-0.5 text-[11px] text-blue-800/90">Saved in the editor for later reuse.</div>
                                         {lastSharePreviewUrl ? (
-                                            <button
-                                                type="button"
-                                                onClick={() => window.open(lastSharePreviewUrl, "_blank", "noopener,noreferrer")}
-                                                className="mt-1 inline-flex items-center gap-1 text-[11px] font-semibold underline underline-offset-2"
-                                                title="Open preview link"
-                                            >
-                                                View preview: {sharePreviewUrlShortLabel}
-                                            </button>
+                                            <div className="mt-1 flex flex-wrap items-center gap-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => window.open(lastSharePreviewUrl, "_blank", "noopener,noreferrer")}
+                                                    className="inline-flex items-center gap-1.5 rounded-full border border-blue-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-blue-900"
+                                                    title="Open site link"
+                                                >
+                                                    <ExternalLink className="h-3 w-3" />
+                                                    <span>Site link</span>
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={async () => {
+                                                        const copied = await copyTextToClipboard(lastSharePreviewUrl);
+                                                        if (copied) {
+                                                            void showAlert("Site link copied to clipboard.", "Share preview");
+                                                        } else {
+                                                            void showAlert(`Site link:\n\n${lastSharePreviewUrl}`, "Share preview");
+                                                        }
+                                                    }}
+                                                    className="inline-flex items-center gap-1.5 rounded-full border border-blue-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-blue-900"
+                                                    title="Copy site link"
+                                                >
+                                                    <Copy className="h-3 w-3" />
+                                                    <span>Copy</span>
+                                                </button>
+                                            </div>
                                         ) : null}
                                     </div>
                                 ) : null}

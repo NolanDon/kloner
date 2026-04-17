@@ -70,6 +70,7 @@ import {
     Sparkles,
     CheckCheck,
     ExternalLink,
+    Copy,
     ArrowUpRight,
     Plus,
     CrownIcon,
@@ -3010,6 +3011,14 @@ export default function PreviewPage(): JSX.Element {
     const [appDeployWizardLiveUrl, setAppDeployWizardLiveUrl] = useState<string | null>(null);
     const appDeployWizardErrorText = appDeployWizardError || "";
     const autoAppDeployTriggeredRef = useRef(false);
+    const deployWizardPermissionError = /don't have permission to create the project/i.test(deployWizardError || "");
+    const deployWizardResolvedErrorText = useMemo(() => {
+        if (!deployWizardError) return "";
+        if (deployWizardPermissionError) {
+            return "This Vercel account cannot create a new project here. Reconnect Vercel with the right team or account, then try again.";
+        }
+        return deployWizardError;
+    }, [deployWizardError, deployWizardPermissionError]);
 
     const refreshUserTierNow = useCallback(async (): Promise<UserTier> => {
         // Deploy gating should never rely on a stale cached tier.
@@ -7488,6 +7497,9 @@ export default function PreviewPage(): JSX.Element {
 
             if (!r.ok || !j?.url) {
                 const msg = j?.error || "Vercel deploy failed";
+                const friendlyMsg = /don't have permission to create the project/i.test(msg)
+                    ? "This Vercel account cannot create a new project here. Reconnect Vercel with the right team or account, then try again."
+                    : msg;
                 const deployDurationMs = Date.now() - deployStartMs;
                 const funnelDurationMs = Date.now() - funnelStartMs;
 
@@ -7505,10 +7517,10 @@ export default function PreviewPage(): JSX.Element {
                     ["deployErrorCount"],
                 );
 
-                setDeployWizardError(msg);
+                setDeployWizardError(friendlyMsg);
                 setDeployWizardLiveUrl(null);
-                push(msg, "err");
-                console.error("Deploy failed", msg);
+                push(friendlyMsg, "err");
+                console.error("Deploy failed", friendlyMsg);
                 return;
             }
 
@@ -7586,6 +7598,9 @@ export default function PreviewPage(): JSX.Element {
 
         } catch (err: any) {
             const msg = err?.message || "Vercel deploy failed";
+            const friendlyMsg = /don't have permission to create the project/i.test(msg)
+                ? "This Vercel account cannot create a new project here. Reconnect Vercel with the right team or account, then try again."
+                : msg;
             const deployDurationMs = Date.now() - deployStartMs;
             const funnelDurationMs = Date.now() - funnelStartMs;
 
@@ -7603,9 +7618,9 @@ export default function PreviewPage(): JSX.Element {
                 ["deployErrorCount"],
             );
 
-            setDeployWizardError(msg);
+            setDeployWizardError(friendlyMsg);
             setDeployWizardLiveUrl(null);
-            push(msg, "err");
+            push(friendlyMsg, "err");
             console.error("Deploy failed", err);
         } finally {
             setDeployingRenderId(null);
@@ -10927,37 +10942,36 @@ export default function PreviewPage(): JSX.Element {
                                                         We&apos;re sending this preview to Vercel as a new deployment.
                                                     </p>
 
-                                                    <div className="flex items-center gap-3 rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-3 text-sm text-neutral-700">
+                                                    <div className={`flex items-start gap-3 rounded-xl border px-3 py-3 text-sm ${deployWizardError ? "border-amber-200 bg-amber-50 text-amber-900" : "border-neutral-200 bg-neutral-50 text-neutral-700"}`}>
                                                         <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-white border border-neutral-300">
                                                             {deployWizardError ? (
-                                                                <span className="text-sm text-red-500 font-semibold">!</span>
+                                                                <AlertTriangle className="h-5 w-5 text-amber-600" />
                                                             ) : deployWizardBusy ? (
                                                                 <div className="h-4 w-4 animate-spin rounded-full border-2 border-neutral-300 border-t-[rgba(245,95,42,0.95)]" />
                                                             ) : (
                                                                 <CheckCircle2 className="h-5 w-5 text-emerald-500" />
                                                             )}
                                                         </div>
-                                                        <div>
+                                                        <div className="min-w-0">
                                                             <p className="text-neutral-900">
                                                                 {deployWizardError
-                                                                    ? "Deploy failed"
+                                                                    ? "Fix the issues before deploying this"
                                                                     : deployWizardBusy
                                                                         ? "Deploying to Vercel…"
                                                                         : autoDeployTriggeredRef.current
                                                                             ? "Deployment created"
                                                                             : "Ready to deploy"}
                                                             </p>
-                                                            <p className="text-[11px] text-neutral-600">
-                                                                {deployWizardError && deployWizardError}
-                                                                {!deployWizardError &&
-                                                                    deployWizardBusy &&
-                                                                    "This can take up to a minute depending on your project."}
-                                                                {!deployWizardError &&
-                                                                    !deployWizardBusy &&
-                                                                    autoDeployTriggeredRef.current &&
-                                                                    (deployWizardLiveUrl
-                                                                        ? "Your site is live. You can open it in a new tab."
-                                                                        : "Open the Deployments tab to see build status and your live URL.")}
+                                                            <p className={`text-[11px] ${deployWizardError ? "text-amber-800" : "text-neutral-600"}`}>
+                                                                {deployWizardError
+                                                                    ? deployWizardResolvedErrorText
+                                                                    : deployWizardBusy
+                                                                        ? "This can take up to a minute depending on your project."
+                                                                        : autoDeployTriggeredRef.current
+                                                                            ? (deployWizardLiveUrl
+                                                                                ? "Your site is live. You can open it in a new tab."
+                                                                                : "Open the Deployments tab to see build status and your live URL.")
+                                                                            : "Connect Vercel and enter a deployable project name to continue."}
                                                             </p>
                                                         </div>
                                                     </div>
@@ -10971,9 +10985,19 @@ export default function PreviewPage(): JSX.Element {
                                                             Close
                                                         </button>
 
-                                                        {!deployWizardBusy &&
-                                                            !deployWizardError &&
-                                                            deployWizardLiveUrl && (
+                                                        {deployWizardError ? (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    setDeployWizardError(null);
+                                                                    handleConnectVercelFromWizard();
+                                                                }}
+                                                                className="rounded-full px-3 py-1.5 text-xs font-semibold text-white"
+                                                                style={{ backgroundColor: ACCENT }}
+                                                            >
+                                                                Reconnect Vercel
+                                                            </button>
+                                                        ) : !deployWizardBusy && deployWizardLiveUrl ? (
                                                                 <a
                                                                     href={deployWizardLiveUrl}
                                                                     target="_blank"
@@ -10984,7 +11008,17 @@ export default function PreviewPage(): JSX.Element {
                                                                     <span>View site</span>
                                                                     <Rocket className="h-4 w-4 transform transition-transform duration-150 group-hover:translate-x-0.5" />
                                                                 </a>
-                                                            )}
+                                                        ) : (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => void deployAppLive()}
+                                                                disabled={deployWizardBusy}
+                                                                className="rounded-full px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-60"
+                                                                style={{ backgroundColor: ACCENT }}
+                                                            >
+                                                                {deployWizardBusy ? "Deploying…" : "Deploy"}
+                                                            </button>
+                                                        )}
                                                     </div>
                                                 </motion.div>
                                             )}

@@ -41,6 +41,32 @@ function inferReturnPathFromLocalStorage(): string | null {
     if (typeof window === "undefined") return null;
     try {
         // Prefer more specific flows first.
+        const pendingAppShare = window.localStorage.getItem("kloner_vercel_pending_app_share");
+        if (pendingAppShare) {
+            try {
+                const parsed = JSON.parse(pendingAppShare) as any;
+                const appId = typeof parsed?.appId === "string" ? parsed.appId.trim() : "";
+                const returnTo = typeof parsed?.returnTo === "string" ? parsed.returnTo.trim() : "";
+
+                const startedAt = Number(parsed?.startedAt || 0);
+                const MAX_AGE_MS = 15 * 60 * 1000;
+                if (startedAt && Number.isFinite(startedAt) && Date.now() - startedAt > MAX_AGE_MS) {
+                    try {
+                        window.localStorage.removeItem("kloner_vercel_pending_app_share");
+                    } catch {
+                        // ignore
+                    }
+                    return null;
+                }
+
+                if (appId && returnTo) return returnTo;
+                if (returnTo) return returnTo;
+                return "/dashboard/view";
+            } catch {
+                return "/dashboard/view";
+            }
+        }
+
         const pendingAppDeploy = window.localStorage.getItem("kloner_vercel_pending_app_deploy");
         if (pendingAppDeploy) {
             try {
@@ -52,31 +78,6 @@ function inferReturnPathFromLocalStorage(): string | null {
                 if (startedAt && Number.isFinite(startedAt) && Date.now() - startedAt > MAX_AGE_MS) {
                     try {
                         window.localStorage.removeItem("kloner_vercel_pending_app_deploy");
-                    } catch {
-                        // ignore
-                    }
-                    return null;
-                }
-
-                return appId
-                    ? `/dashboard/view?appVercel=connected&flow=appDeploy&appId=${encodeURIComponent(appId)}`
-                    : "/dashboard/view?appVercel=connected&flow=appDeploy";
-            } catch {
-                return "/dashboard/view?appVercel=connected&flow=appDeploy";
-            }
-        }
-
-        const pendingAppShare = window.localStorage.getItem("kloner_vercel_pending_app_share");
-        if (pendingAppShare) {
-            try {
-                const parsed = JSON.parse(pendingAppShare) as any;
-                const appId = typeof parsed?.appId === "string" ? parsed.appId.trim() : "";
-
-                const startedAt = Number(parsed?.startedAt || 0);
-                const MAX_AGE_MS = 15 * 60 * 1000;
-                if (startedAt && Number.isFinite(startedAt) && Date.now() - startedAt > MAX_AGE_MS) {
-                    try {
-                        window.localStorage.removeItem("kloner_vercel_pending_app_share");
                     } catch {
                         // ignore
                     }
