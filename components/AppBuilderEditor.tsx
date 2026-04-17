@@ -22,6 +22,7 @@ import { motion } from "framer-motion";
 
 const VERCEL_INTEGRATION_SLUG =
     process.env.NEXT_PUBLIC_VERCEL_INTEGRATION_SLUG || "kloner";
+const APP_BUILDER_PENDING_SHARE_KEY = "kloner_vercel_pending_app_share";
 
 type FileNode = {
     name: string;
@@ -79,6 +80,8 @@ type AutoPreviewPhase =
 type CodedError = Error & { code?: string };
 
 type PreviewMode = "vercel" | "webcontainer";
+
+type VercelOAuthFlow = "preview" | "share";
 
 type LeftViewMode = "ai" | "code" | "images";
 
@@ -1127,6 +1130,7 @@ export default function AppBuilderEditor({
     const [previewMode, setPreviewMode] = useState<PreviewMode>("webcontainer");
     const [vercelConnectOpen, setVercelConnectOpen] = useState(false);
     const [vercelConnectOpening, setVercelConnectOpening] = useState(false);
+    const [vercelConnectFlow, setVercelConnectFlow] = useState<VercelOAuthFlow>("preview");
     const [generationEver, setGenerationEver] = useState(false);
     const appBuilderSessionStartedAtRef = useRef<number>(Date.now());
     const appBuilderAiMessagesSentRef = useRef<number>(0);
@@ -1134,6 +1138,35 @@ export default function AppBuilderEditor({
     const previousViewModeRef = useRef<LeftViewMode>("ai");
     const [showAppBuilderTrialPrompt, setShowAppBuilderTrialPrompt] = useState(false);
     const appBuilderTrialShownThisOpenRef = useRef(false);
+    const pendingShareResumeRef = useRef(false);
+
+    const buildCurrentVercelOAuthReturnPath = useCallback((): string => {
+        if (typeof window === "undefined") return "/dashboard/view";
+
+        const url = new URL(window.location.href);
+        url.searchParams.delete("vercel");
+        url.searchParams.delete("vercelShare");
+        return `${url.pathname}${url.search}${url.hash}` || "/dashboard/view";
+    }, []);
+
+    const persistPendingVercelShareFlow = useCallback((returnTo: string) => {
+        if (typeof window === "undefined") return;
+
+        try {
+            window.localStorage.setItem(
+                "kloner_vercel_pending_app_deploy",
+                JSON.stringify({
+                    appId,
+                    appName: app?.name || null,
+                    returnTo,
+                    startedAt: Date.now(),
+                    source: "share",
+                }),
+            );
+        } catch {
+            // ignore
+        }
+    }, [app?.name, appId]);
 
     const handleCompileErrorFixRequest = useCallback((payload: {
         appId: string;
@@ -3707,16 +3740,18 @@ export default function AppBuilderEditor({
 
     const handleSharePreview = async () => {
         if (!app || isSharingPreview) return;
-
-        setIsSharingPreview(true);
         setShareChoiceError(null);
         setShowShareSuccess(false);
 
         try {
             if (!isVercelConnected) {
+                persistPendingVercelShareFlow(buildCurrentVercelOAuthReturnPath());
+                setVercelConnectFlow("share");
                 setVercelConnectOpen(true);
-                throw new Error("Vercel is not connected yet.");
+                return;
             }
+
+            setIsSharingPreview(true);
 
             const csrf = await ensureSessionAndCsrf().catch(() => null);
             const doShare = async () => {
@@ -3770,7 +3805,9 @@ export default function AppBuilderEditor({
         } catch (err: any) {
             setShareChoiceError(err?.message || "Share preview failed.");
         } finally {
-            setTimeout(() => setIsSharingPreview(false), 5000);
+            if (isVercelConnected) {
+                setTimeout(() => setIsSharingPreview(false), 5000);
+            }
         }
     };
 
@@ -3785,6 +3822,7 @@ export default function AppBuilderEditor({
         try {
             // Ensure Vercel is connected before attempting either deploy.
             if (!isVercelConnected) {
+                setVercelConnectFlow("preview");
                 setVercelConnectOpen(true);
                 throw new Error("Vercel is not connected yet.");
             }
@@ -3886,6 +3924,49 @@ export default function AppBuilderEditor({
         }
     }, [appId]);
 
+    const startVercelOAuthForSharePreview = useCallback(() => {
+        if (!VERCEL_INTEGRATION_SLUG) {
+            console.error("Missing NEXT_PUBLIC_VERCEL_INTEGRATION_SLUG");
+            setShareChoiceError("Missing Vercel integration configuration.");
+            return;
+        }
+
+        try {
+            setVercelConnectOpening(true);
+            const bytes = new Uint8Array(16);
+            crypto.getRandomValues(bytes);
+            const state = Array.from(bytes)
+                .map((b) => b.toString(16).padStart(2, "0"))
+                .join("");
+
+            const returnTo = `/dashboard/view?appVercel=connected&flow=appDeploy${appId ? `&appId=${encodeURIComponent(appId)}` : ""}`;
+            persistPendingVercelShareFlow(returnTo);
+
+            localStorage.setItem("kloner_vercel_latest_csrf", state);
+
+            document.cookie = [
+                `vercel_oauth_state=${state}`,
+                "Path=/",
+                "Max-Age=600",
+                "SameSite=Lax",
+            ].join("; ");
+
+            document.cookie = [
+                `vercel_oauth_return=${encodeURIComponent(returnTo)}`,
+                "Path=/",
+                "Max-Age=600",
+                "SameSite=Lax",
+            ].join("; ");
+
+            const link = `https://vercel.com/integrations/${VERCEL_INTEGRATION_SLUG}/new?state=${state}`;
+            window.location.assign(link);
+        } catch (e) {
+            console.error("Failed to start Vercel OAuth for share preview", e);
+            setShareChoiceError("Could not open Vercel connect.");
+            setVercelConnectOpening(false);
+        }
+    }, [appId, persistPendingVercelShareFlow]);
+
     const tryEmbedExistingPreview = useCallback(() => {
         const url = (protectedPreviewUrl || "").trim();
         if (!url) return;
@@ -3898,6 +3979,9 @@ export default function AppBuilderEditor({
     useEffect(() => {
         if (!isVercelConnected) return;
         if (!appId) return;
+        if (!app || loading) return;
+
+        if (pendingShareResumeRef.current) return;
 
         let pending: any = null;
         try {
@@ -3905,6 +3989,26 @@ export default function AppBuilderEditor({
             if (raw) pending = JSON.parse(raw);
         } catch {
             pending = null;
+        }
+
+        let pendingShare: any = null;
+        try {
+            const raw = localStorage.getItem(APP_BUILDER_PENDING_SHARE_KEY);
+            if (raw) pendingShare = JSON.parse(raw);
+        } catch {
+            pendingShare = null;
+        }
+
+        if (pendingShare && pendingShare.appId === appId) {
+            pendingShareResumeRef.current = true;
+            try {
+                localStorage.removeItem(APP_BUILDER_PENDING_SHARE_KEY);
+            } catch {
+                // ignore
+            }
+
+            void handleSharePreview();
+            return;
         }
 
         if (!pending || pending.appId !== appId) return;
@@ -3916,7 +4020,13 @@ export default function AppBuilderEditor({
         }
 
         // No-op for embedded preview; deploy actions will work after connect.
-    }, [isVercelConnected, appId]);
+    }, [isVercelConnected, appId, app, loading]);
+
+    useEffect(() => {
+        if (!isVercelConnected) {
+            pendingShareResumeRef.current = false;
+        }
+    }, [isVercelConnected]);
 
     // On editor open: automatically build and show the preview (with retries + automatic bypass).
     useEffect(() => {
@@ -5359,7 +5469,7 @@ export default function AppBuilderEditor({
 
                                 <div className="mt-3 flex gap-2">
                                     <button
-                                        onClick={startVercelOAuthForPreview}
+                                        onClick={vercelConnectFlow === "share" ? startVercelOAuthForSharePreview : startVercelOAuthForPreview}
                                         disabled={isVercelChecking || vercelConnectOpening}
                                         className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2 bg-[#F55F2A] text-xs font-semibold text-white rounded-full hover:opacity-90 disabled:opacity-50"
                                     >
