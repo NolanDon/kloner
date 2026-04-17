@@ -3933,7 +3933,7 @@ export default function AppBuilderEditor({
                 .map((b) => b.toString(16).padStart(2, "0"))
                 .join("");
 
-            const returnTo = buildCurrentVercelOAuthReturnPath();
+            const returnTo = `/dashboard/view?vercel=connected&shareResume=1&appId=${encodeURIComponent(appId)}`;
             persistPendingVercelShareFlow(returnTo);
 
             localStorage.setItem("kloner_vercel_latest_csrf", state);
@@ -3959,7 +3959,7 @@ export default function AppBuilderEditor({
             setShareChoiceError("Could not open Vercel connect.");
             setVercelConnectOpening(false);
         }
-    }, [buildCurrentVercelOAuthReturnPath, persistPendingVercelShareFlow]);
+    }, [appId, persistPendingVercelShareFlow]);
 
     const tryEmbedExistingPreview = useCallback(() => {
         const url = (protectedPreviewUrl || "").trim();

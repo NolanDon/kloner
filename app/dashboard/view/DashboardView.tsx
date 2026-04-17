@@ -7974,6 +7974,29 @@ export default function PreviewPage(): JSX.Element {
         void (async () => {
             await refreshVercelStatus();
 
+            const shareResume = searchParams.get("shareResume") === "1";
+            const shareResumeAppId = searchParams.get("appId");
+            if (shareResume) {
+                if (shareResumeAppId) {
+                    openAppBuilderWithCookieGate(shareResumeAppId);
+                }
+
+                try {
+                    const url = new URL(window.location.href);
+                    const params = url.searchParams;
+                    params.delete("vercel");
+                    params.delete("shareResume");
+                    params.delete("appId");
+                    const qs = params.toString();
+                    const next = qs ? `${url.pathname}?${qs}` : url.pathname;
+                    router.replace(next, { scroll: false });
+                } catch {
+                    // ignore
+                }
+
+                return;
+            }
+
             // If the user was in the *App Deploy* wizard when they connected Vercel,
             // resume that flow even if the callback landed on the legacy `vercel=connected` param.
             // This protects against older return URLs and cross-flow connects.
@@ -8119,6 +8142,7 @@ export default function PreviewPage(): JSX.Element {
         refreshVercelStatus,
         refreshUserTierNow,
         router,
+        openAppBuilderWithCookieGate,
         appDeployWizardOpen,
         appDeployWizardAppId,
         appDeployWizardAppName,
