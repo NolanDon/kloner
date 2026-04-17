@@ -3010,6 +3010,14 @@ export default function PreviewPage(): JSX.Element {
     const [appDeployWizardAppName, setAppDeployWizardAppName] = useState<string>("");
     const [appDeployWizardLiveUrl, setAppDeployWizardLiveUrl] = useState<string | null>(null);
     const appDeployWizardErrorText = appDeployWizardError || "";
+    const appDeployWizardPermissionError = /don't have permission to create the project/i.test(appDeployWizardErrorText);
+    const appDeployWizardResolvedErrorText = useMemo(() => {
+        if (!appDeployWizardErrorText) return "";
+        if (appDeployWizardPermissionError) {
+            return "This Vercel account or team cannot create a new project here. Reconnect Vercel with the correct account or team, then retry the deploy.";
+        }
+        return appDeployWizardErrorText;
+    }, [appDeployWizardErrorText, appDeployWizardPermissionError]);
     const autoAppDeployTriggeredRef = useRef(false);
     const deployWizardPermissionError = /don't have permission to create the project/i.test(deployWizardError || "");
     const deployWizardResolvedErrorText = useMemo(() => {
@@ -3514,7 +3522,11 @@ export default function PreviewPage(): JSX.Element {
             }
 
             if (!res.ok || !data?.ok) {
-                throw new Error(data?.error || `Deploy failed (HTTP ${res.status})`);
+                const rawMsg = data?.error || `Deploy failed (HTTP ${res.status})`;
+                const friendlyMsg = /don't have permission to create the project/i.test(rawMsg)
+                    ? "This Vercel account or team cannot create a new project here. Reconnect Vercel with the correct account or team, then retry the deploy."
+                    : rawMsg;
+                throw new Error(friendlyMsg);
             }
 
             const url = String(data?.url || data?.previewUrl || "").trim();
@@ -7597,7 +7609,11 @@ export default function PreviewPage(): JSX.Element {
             }
 
         } catch (err: any) {
-            const msg = err?.message || "Vercel deploy failed";
+            const rawMsg = e?.message || "Deploy failed.";
+            const friendlyMsg = /don't have permission to create the project/i.test(rawMsg)
+                ? "This Vercel account or team cannot create a new project here. Reconnect Vercel with the correct account or team, then retry the deploy."
+                : rawMsg;
+            setAppDeployWizardError(friendlyMsg);
             const friendlyMsg = /don't have permission to create the project/i.test(msg)
                 ? "This Vercel account cannot create a new project here. Reconnect Vercel with the right team or account, then try again."
                 : msg;
@@ -10294,14 +10310,14 @@ export default function PreviewPage(): JSX.Element {
                                         </div>
 
                                         {appDeployWizardErrorText ? (
-                                            <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+                                            <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
                                                 {/already exists/i.test(appDeployWizardErrorText) ? (
                                                     <div>
                                                         <div className="font-semibold">Project name already exists</div>
-                                                        <div className="mt-1 text-sm text-red-700">
+                                                        <div className="mt-1 text-sm text-amber-800">
                                                             {appDeployWizardErrorText}
                                                         </div>
-                                                        <div className="mt-2 text-[12px] leading-relaxed text-red-700">
+                                                        <div className="mt-2 text-[12px] leading-relaxed text-amber-800">
                                                             Fix: open your app in the editor by clicking <span className="font-semibold">Customize app</span> on your project,
                                                             then rename it in the <span className="font-semibold">top left</span>. After that, retry deploy.
                                                         </div>
@@ -10322,14 +10338,14 @@ export default function PreviewPage(): JSX.Element {
                                                             <button
                                                                 type="button"
                                                                 onClick={() => setAppDeployWizardError(null)}
-                                                                className="rounded-xl border border-red-200 bg-transparent px-3 py-2 text-sm font-semibold text-red-700 hover:bg-red-100/60"
+                                                                className="rounded-xl border border-amber-200 bg-transparent px-3 py-2 text-sm font-semibold text-amber-800 hover:bg-amber-100/60"
                                                             >
                                                                 Dismiss
                                                             </button>
                                                         </div>
                                                     </div>
                                                 ) : (
-                                                    <div className="text-sm text-red-700">{appDeployWizardErrorText}</div>
+                                                    <div className="text-sm text-amber-800">{appDeployWizardResolvedErrorText}</div>
                                                 )}
                                             </div>
                                         ) : null}
@@ -10516,16 +10532,20 @@ export default function PreviewPage(): JSX.Element {
                                         {appDeployWizardStep === 3 ? (
                                             <div className="space-y-4">
                                                 <p className="text-sm text-neutral-600">
-                                                    {appDeployWizardBusy
-                                                        ? "Deploying to Vercel…"
-                                                        : appDeployWizardLiveUrl
-                                                            ? "Your website is live."
-                                                            : "Ready to deploy."}
+                                                    {appDeployWizardError
+                                                        ? "Fix the issues before deploying this."
+                                                        : appDeployWizardBusy
+                                                            ? "Deploying to Vercel…"
+                                                            : appDeployWizardLiveUrl
+                                                                ? "Your website is live."
+                                                                : "Ready to deploy."}
                                                 </p>
 
-                                                <div className="flex items-center gap-3 rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-3 text-sm text-neutral-700">
+                                                <div className={`flex items-start gap-3 rounded-xl border px-3 py-3 text-sm ${appDeployWizardError ? "border-amber-200 bg-amber-50 text-amber-900" : "border-neutral-200 bg-neutral-50 text-neutral-700"}`}>
                                                     <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-white border border-neutral-300">
-                                                        {appDeployWizardBusy ? (
+                                                        {appDeployWizardError ? (
+                                                            <AlertTriangle className="h-5 w-5 text-amber-600" />
+                                                        ) : appDeployWizardBusy ? (
                                                             <div className="h-4 w-4 animate-spin rounded-full border-2 border-neutral-300 border-t-[rgba(245,95,42,0.95)]" />
                                                         ) : appDeployWizardLiveUrl ? (
                                                             <span className="text-base">🎉</span>
@@ -10535,15 +10555,21 @@ export default function PreviewPage(): JSX.Element {
                                                     </div>
                                                     <div className="min-w-0">
                                                         <p className="text-neutral-900">
-                                                            {appDeployWizardBusy
-                                                                ? "Deploying…"
-                                                                : appDeployWizardLiveUrl
-                                                                    ? "Deployed"
-                                                                    : "Ready"}
+                                                            {appDeployWizardError
+                                                                ? "Deployment blocked"
+                                                                : appDeployWizardBusy
+                                                                    ? "Deploying…"
+                                                                    : appDeployWizardLiveUrl
+                                                                        ? "Deployed"
+                                                                        : "Ready"}
                                                         </p>
                                                         {appDeployWizardLiveUrl ? (
                                                             <p className="text-[11px] text-neutral-600 break-all">
                                                                 {appDeployWizardLiveUrl}
+                                                            </p>
+                                                        ) : appDeployWizardError ? (
+                                                            <p className="text-[11px] text-amber-800">
+                                                                {appDeployWizardResolvedErrorText}
                                                             </p>
                                                         ) : (
                                                             <p className="text-[11px] text-neutral-600">
@@ -10562,7 +10588,19 @@ export default function PreviewPage(): JSX.Element {
                                                         Close
                                                     </button>
 
-                                                    {appDeployWizardLiveUrl ? (
+                                                    {appDeployWizardError ? (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                setAppDeployWizardError(null);
+                                                                handleConnectVercelFromWizard();
+                                                            }}
+                                                            className="rounded-full px-3 py-1.5 text-xs font-semibold text-white"
+                                                            style={{ backgroundColor: ACCENT }}
+                                                        >
+                                                            Reconnect Vercel
+                                                        </button>
+                                                    ) : appDeployWizardLiveUrl ? (
                                                         <a
                                                             href={appDeployWizardLiveUrl}
                                                             target="_blank"
@@ -10570,7 +10608,7 @@ export default function PreviewPage(): JSX.Element {
                                                             className="group flex flex-inline items-center gap-1 rounded-full px-3 py-1.5 text-sm text-white"
                                                             style={{ backgroundColor: ACCENT }}
                                                         >
-                                                            <span>View site</span>
+                                                            <span>Site link</span>
                                                             <Rocket className="h-4 w-4 transform transition-transform duration-150 group-hover:translate-x-0.5" />
                                                         </a>
                                                     ) : (
