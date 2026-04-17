@@ -7609,14 +7609,11 @@ export default function PreviewPage(): JSX.Element {
             }
 
         } catch (err: any) {
-            const rawMsg = e?.message || "Deploy failed.";
+            const rawMsg = err?.message || "Deploy failed.";
             const friendlyMsg = /don't have permission to create the project/i.test(rawMsg)
                 ? "This Vercel account or team cannot create a new project here. Reconnect Vercel with the correct account or team, then retry the deploy."
                 : rawMsg;
             setAppDeployWizardError(friendlyMsg);
-            const friendlyMsg = /don't have permission to create the project/i.test(msg)
-                ? "This Vercel account cannot create a new project here. Reconnect Vercel with the right team or account, then try again."
-                : msg;
             const deployDurationMs = Date.now() - deployStartMs;
             const funnelDurationMs = Date.now() - funnelStartMs;
 
