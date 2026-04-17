@@ -3962,7 +3962,7 @@ export default function NavBar() {
               statusCode: 200,
               status: 'iframe_load_timeout_waiting_for_ready',
               reason: 'preview_slow_start_waiting_for_ready',
-              message: 'Preview is still starting; iframe was not interactive at warn threshold while backend remained in a recoverable state.',
+              message: 'Preview is still starting. We’ll keep trying in the background.',
               elapsedMs,
               previewUrl,
               backendStatusData: lastBackendStatusRef.current,
@@ -4000,7 +4000,7 @@ export default function NavBar() {
                 statusCode: 504,
                 status: 'iframe_load_timeout_waiting_for_ready',
                 reason: signal.timeoutReason || 'iframe_load_timeout_waiting_for_ready',
-                message: 'Preview iframe remained unavailable beyond critical timeout and backend still was not ready.',
+                message: 'Preview is taking longer than expected. We’ll keep checking in the background.',
                 elapsedMs: criticalElapsedMs,
                 previewUrl,
                 requestId: signal.requestId,
@@ -4021,13 +4021,13 @@ export default function NavBar() {
                   ...prev,
                   uiStage: prev?.uiStage || 'waiting_for_preview',
                   uiTitle: prev?.uiTitle || 'Starting preview',
-                  uiMessage: prev?.uiMessage || 'Preview is still loading in the embedded frame. If it stays stuck, click Refresh for a light restart or Rebuild app for a full restart.',
+                  uiMessage: prev?.uiMessage || 'Preview is still loading. If it stays stuck, click Refresh for a light restart or Rebuild app for a full restart.',
                   updatedAt: Date.now(),
                 }
                 : {
                   uiStage: 'waiting_for_preview',
                   uiTitle: 'Starting preview',
-                  uiMessage: 'Preview is still loading in the embedded frame. If it stays stuck, click Refresh for a light restart or Rebuild app for a full restart.',
+                  uiMessage: 'Preview is still loading. If it stays stuck, click Refresh for a light restart or Rebuild app for a full restart.',
                   updatedAt: Date.now(),
                   status: 'starting',
                   uiProgress: 0,
@@ -4046,13 +4046,13 @@ export default function NavBar() {
             return;
           }
           if (cookieLikely) {
-            setError('Preview couldn’t load in this iframe. The embedded preview may be blocked by browser routing/cookie settings, or it may still be starting. We will automatically refresh the preview in a few seconds.');
+            setError('We couldn’t load the preview yet. It may still be starting. We’ll try again automatically in a few seconds.');
             setCookieRecoveryPromptVisible(true);
             setCanRetry(true);
             reportCookieIframeBlocked({
               previewUrl,
               reason: 'iframe_load_timeout_cookie_likely',
-              message: 'Preview couldn’t load in iframe due to likely routing-cookie block.',
+              message: 'We couldn’t load the preview yet. It may still be starting.',
             });
             scheduleAutomaticPreviewRestart('iframe_load_timeout_cookie_likely', 6000);
           } else {
@@ -4061,7 +4061,7 @@ export default function NavBar() {
               code: pollingCodeRef.current || undefined,
               status: 'iframe_load_timeout_backend_ready_unreachable',
               reason: 'iframe_load_timeout_backend_ready_unreachable',
-              message: 'Preview iframe timed out after backend reported ready; preview URL appears unreachable from the embedded frame.',
+              message: 'Preview timed out after it should have been ready, and the preview still looks unreachable.',
               ageMs: pollStartedAtRef.current ? Date.now() - pollStartedAtRef.current : undefined,
               previewUrl,
               browser: detectBrowserLabel(),
@@ -4342,9 +4342,9 @@ export default function NavBar() {
           {externalPreviewMode ? (
             <div className="h-full w-full flex items-center justify-center p-6">
               <div className="w-full max-w-xl rounded-2xl border border-black/10 bg-white p-6 text-center shadow-sm">
-                <div className="text-lg font-semibold text-black/90">Preview opened outside iframe</div>
+                <div className="text-lg font-semibold text-black/90">Preview opened in a separate tab</div>
                 <div className="mt-2 text-sm text-black/70">
-                  Safari may block embedded preview routing in iframes, so we opened your live preview in a separate tab automatically.
+                  Your browser may not allow the preview to load here, so we opened it in a separate tab automatically.
                 </div>
                 <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
                   <button
@@ -4358,12 +4358,12 @@ export default function NavBar() {
                       setIframeKey((k) => k + 1);
                       setIsLoading(true);
                       setIsPolling(true);
-                      setLoadingStatus('Retrying embedded preview…');
+                      setLoadingStatus('Retrying preview…');
                       try { onPreviewReadyChange?.(false); } catch { }
                     }}
                     className="inline-flex items-center rounded-full border border-black/10 bg-white px-4 py-2 text-xs font-semibold text-black/80 hover:bg-black/5"
                   >
-                    Try embedded preview
+                    Try again here
                   </button>
                   <button
                     type="button"
@@ -4512,7 +4512,7 @@ export default function NavBar() {
                   }
 
                   setCanRetry(true);
-                  setError('Preview loaded but did not become interactive. Refresh first. If it still stays blank, use Rebuild to start a fresh machine.');
+                  setError('Preview loaded but is still not responding. Refresh first. If it still stays blank, use Rebuild to start over.');
                 }, 12000);
               }
               // Reset asset failure count on successful load
@@ -4600,13 +4600,13 @@ export default function NavBar() {
                   switchToExternalPreviewMode(activePreviewUrl, 'safari_iframe_onerror_hub_preview');
                   return;
                 }
-                setError('Preview couldn’t load in this iframe. The embedded preview may be blocked by browser routing/cookie settings, or it may still be starting. We will automatically refresh the preview in a few seconds.');
+                setError('We couldn’t load the preview yet. It may still be starting. We’ll try again automatically in a few seconds.');
                 setCookieRecoveryPromptVisible(true);
                 setCanRetry(true);
                 reportCookieIframeBlocked({
                   previewUrl,
                   reason: 'iframe_onerror_hub_cookie_or_routing_issue',
-                  message: 'Iframe onError on hub preview URL; likely cookie/routing block in embedded context.',
+                  message: 'Preview could not load yet and may still be starting.',
                 });
                 setIsLoading(false);
                 setIsPolling(false);
