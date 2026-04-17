@@ -7519,7 +7519,7 @@ export default function PreviewPage(): JSX.Element {
                     user,
                     {
                         lastExportFlowStatus: "deploy_failed",
-                        lastDeployError: msg,
+                        lastDeployError: friendlyMsg,
                         lastDeployEndedAt: serverTimestamp(),
                         lastDeployDurationMs: deployDurationMs,
                         lastExportFlowEndedAt: serverTimestamp(),
@@ -7621,7 +7621,7 @@ export default function PreviewPage(): JSX.Element {
                 user,
                 {
                     lastExportFlowStatus: "deploy_error",
-                    lastDeployError: msg,
+                    lastDeployError: friendlyMsg,
                     lastDeployEndedAt: serverTimestamp(),
                     lastDeployDurationMs: deployDurationMs,
                     lastExportFlowEndedAt: serverTimestamp(),
