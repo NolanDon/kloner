@@ -2,7 +2,7 @@
 
 import QRCode from "qrcode";
 import { createPortal } from "react-dom";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { CheckCircle2, X } from "lucide-react";
 
 type QrMode = "text" | "url" | "wifi";
@@ -174,12 +174,16 @@ const TOOL_SHOWCASE = [
   },
 ];
 
+const KLONER_POPUP_HREF = "https://kloner.app/?utm_source=kloner&utm_medium=popup&utm_campaign=tool_promo&utm_content=built_in_tool_popup";
+
 function ToolPromoModal({
   open,
   onDismiss,
+  preview,
 }: {
   open: boolean;
   onDismiss: () => void;
+  preview?: ReactNode;
 }) {
   useEffect(() => {
     if (!open) return;
@@ -217,9 +221,9 @@ function ToolPromoModal({
         onClick={onDismiss}
       />
 
-      <div className="relative z-20 flex h-full items-center justify-center px-4 py-8 simple-fade-in">
+      <div className="relative z-20 flex h-full items-center justify-center px-2 py-2 sm:px-4 sm:py-8 simple-fade-in">
         <div
-          className="pointer-events-auto relative w-full max-w-2xl overflow-hidden rounded-[28px] border border-neutral-200 bg-white text-neutral-900 shadow-[0_28px_120px_rgba(15,23,42,0.16)] simple-fade-in"
+          className="pointer-events-auto relative flex max-h-[calc(100vh-1rem)] w-full max-w-2xl flex-col overflow-hidden rounded-[24px] border border-neutral-200 bg-white text-neutral-900 shadow-[0_28px_120px_rgba(15,23,42,0.16)] simple-fade-in sm:max-h-[calc(100vh-2rem)] sm:rounded-[28px]"
           onClick={(e) => e.stopPropagation()}
         >
           <button
@@ -234,31 +238,42 @@ function ToolPromoModal({
               e.stopPropagation();
               onDismiss();
             }}
-            className="absolute right-4 top-4 z-30 inline-flex h-8 w-8 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-500 transition hover:bg-neutral-50 hover:text-neutral-800"
+            className="absolute right-3 top-3 z-30 inline-flex h-8 w-8 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-500 shadow-[0_8px_24px_rgba(15,23,42,0.08)] transition hover:bg-neutral-50 hover:text-neutral-800 sm:right-4 sm:top-4"
             aria-label="Close prompt"
           >
             <X className="h-4 w-4" />
           </button>
 
-          <div className="px-6 pb-6 pt-8 sm:px-8 sm:pb-8">
+          <div className="flex-1 overflow-y-auto px-4 pb-4 pt-10 sm:px-8 sm:pb-5 sm:pt-8">
             <div className="flex flex-col items-center text-center">
-              <div className="mb-2 inline-flex h-12 w-12 items-center justify-center rounded-full border border-amber-100 bg-amber-50 text-[#f55f2a]">
-                <CheckCircle2 className="h-6 w-6" />
+              <div className="mb-2 inline-flex h-10 w-10 items-center justify-center rounded-full border border-amber-100 bg-amber-50 text-[#f55f2a] sm:h-12 sm:w-12">
+                <CheckCircle2 className="h-5 w-5 sm:h-6 sm:w-6" />
               </div>
 
-              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#f55f2a]">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#f55f2a] sm:text-xs sm:tracking-[0.24em]">
                 Try Kloner
               </p>
-              <h3 className="mt-2 text-3xl font-normal tracking-tight text-neutral-900 sm:text-4xl">
+              <h3 className="mt-2 max-w-xl text-[1.55rem] font-normal leading-tight tracking-tight text-neutral-900 sm:text-4xl">
                 Create websites and web apps in minutes.
               </h3>
-              <p className="mt-3 max-w-xl text-sm leading-6 text-neutral-600">
+              <p className="mt-3 max-w-xl text-sm leading-5 text-neutral-600 sm:leading-6">
                 Kloner helps you turn a URL or idea into a fast, editable website or web app.
                 If this tool helped, try the full workflow and launch your own product faster.
               </p>
 
-              <div className="mt-5 w-full overflow-hidden rounded-[24px] bg-white/95 px-4 py-4 shadow-[0_18px_50px_rgba(15,23,42,0.08)]">
-                <div className="mb-3 text-left text-xs font-semibold uppercase tracking-[0.22em] text-neutral-500">
+              {preview ? (
+                <div className="mt-4 w-full overflow-hidden rounded-[18px] border border-neutral-200 bg-neutral-50 px-3 py-3 text-left shadow-[0_18px_50px_rgba(15,23,42,0.06)] sm:mt-5 sm:rounded-[24px] sm:px-4 sm:py-4">
+                  <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.2em] text-neutral-500 sm:text-xs sm:tracking-[0.22em]">
+                    Your result
+                  </div>
+                  <div className="max-h-[14rem] overflow-auto rounded-[16px] bg-white p-3 shadow-[0_10px_24px_rgba(15,23,42,0.06)] sm:max-h-[18rem] sm:rounded-[20px] sm:p-4">
+                    {preview}
+                  </div>
+                </div>
+              ) : null}
+
+              <div className="mt-4 w-full overflow-hidden rounded-[18px] bg-white/95 px-3 py-3 shadow-[0_18px_50px_rgba(15,23,42,0.08)] sm:mt-5 sm:rounded-[24px] sm:px-4 sm:py-4">
+                <div className="mb-3 text-left text-[11px] font-semibold uppercase tracking-[0.2em] text-neutral-500 sm:text-xs sm:tracking-[0.22em]">
                   What you can build with Kloner
                 </div>
                 <div className="overflow-hidden">
@@ -267,13 +282,13 @@ function ToolPromoModal({
                       TOOL_SHOWCASE.map((item, index) => (
                         <div
                           key={`${rowIndex}-${item.title}`}
-                          className="w-[240px] shrink-0 rounded-[22px] bg-white p-3 text-left shadow-[0_16px_38px_rgba(15,23,42,0.10)]"
+                          className="w-[160px] shrink-0 rounded-[18px] bg-white p-2 text-left shadow-[0_16px_38px_rgba(15,23,42,0.10)] sm:w-[240px] sm:p-3"
                         >
-                          <div className="overflow-hidden rounded-[18px] shadow-[0_10px_24px_rgba(15,23,42,0.06)]">
+                          <div className="overflow-hidden rounded-[16px] shadow-[0_10px_24px_rgba(15,23,42,0.06)]">
                             <img
                               src={item.src}
                               alt={item.alt}
-                              className="h-[160px] w-full object-cover"
+                              className="h-[104px] w-full object-cover sm:h-[160px]"
                             />
                           </div>
                         </div>
@@ -282,27 +297,29 @@ function ToolPromoModal({
                   </div>
                 </div>
               </div>
+            </div>
+          </div>
 
-              <div className="mt-6 flex flex-wrap justify-center gap-3">
-                <a
-                  href="https://kloner.app"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex min-w-[200px] items-center justify-center rounded-full bg-[#f55f2a] px-7 py-4 text-base font-semibold text-white shadow-[0_16px_36px_rgba(245,95,42,0.24)] transition hover:bg-[#f3602c] hover:shadow-[0_20px_42px_rgba(245,95,42,0.28)]"
-                >
-                  Try Kloner
-                </a>
-              </div>
+          <div className="shrink-0 border-t border-neutral-200 bg-white px-4 py-4 sm:px-8 sm:py-5">
+            <div className="flex w-full flex-col items-stretch justify-center gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+              <a
+                href={KLONER_POPUP_HREF}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex w-full min-w-0 items-center justify-center rounded-full bg-[#f55f2a] px-7 py-3.5 text-base font-semibold text-white shadow-[0_16px_36px_rgba(245,95,42,0.24)] transition hover:bg-[#f3602c] hover:shadow-[0_20px_42px_rgba(245,95,42,0.28)] sm:min-w-[200px]"
+              >
+                Try Kloner
+              </a>
+            </div>
 
-              <div className="mt-3 text-center">
-                <button
-                  type="button"
-                  onClick={onDismiss}
-                  className="text-sm font-medium text-neutral-500 underline underline-offset-4 decoration-neutral-300 transition hover:text-neutral-700 hover:decoration-neutral-500"
-                >
-                  Keep using this tool
-                </button>
-              </div>
+            <div className="mt-3 text-center">
+              <button
+                type="button"
+                onClick={onDismiss}
+                className="text-sm font-medium text-neutral-500 underline underline-offset-4 decoration-neutral-300 transition hover:text-neutral-700 hover:decoration-neutral-500"
+              >
+                Keep using this tool
+              </button>
             </div>
           </div>
         </div>
@@ -370,10 +387,34 @@ export function QrCodeTool() {
   }, [payload]);
 
   const downloadName = safeFilename(mode === "wifi" ? ssid : text.slice(0, 24));
+  const promoPreview = qrDataUrl ? (
+    <div className="space-y-3">
+      <img src={qrDataUrl} alt="Generated QR code" className="mx-auto w-56 max-w-full rounded-3xl border border-neutral-100 bg-white p-3" />
+      <div className="rounded-2xl border border-neutral-200 bg-neutral-50 p-4 text-left text-xs leading-relaxed text-neutral-600 break-all">
+        {payload || "—"}
+      </div>
+      <div className="sticky bottom-0 mt-1 flex flex-wrap justify-center gap-2 bg-white/95 px-1 py-2 backdrop-blur-sm">
+        <button
+          type="button"
+          onClick={() => triggerDownload(qrDataUrl, `${downloadName || "qr-code"}.png`)}
+          className="rounded-full bg-[#f55f2a] px-3 py-1.5 text-sm font-medium text-white"
+        >
+          Download PNG first
+        </button>
+        <button
+          type="button"
+          onClick={() => copyToClipboard(payload)}
+          className="rounded-full border border-neutral-200 px-3 py-1.5 text-sm text-neutral-700"
+        >
+          Copy payload
+        </button>
+      </div>
+    </div>
+  ) : null;
 
   return (
     <div className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr] items-start">
-      <ToolPromoModal open={promoOpen} onDismiss={() => setPromoOpen(false)} />
+      <ToolPromoModal open={promoOpen} onDismiss={() => setPromoOpen(false)} preview={promoPreview} />
       <div className="space-y-4">
         <div className="flex flex-wrap gap-2">
           <button className={buttonClass(mode === "text")} onClick={() => setMode("text")} type="button">Text</button>
@@ -492,10 +533,24 @@ export function PercentageCalculatorTool() {
 
   const format = (value: number) => (Number.isFinite(value) ? `${value > 0 ? "+" : ""}${value.toFixed(2)}%` : "—");
   const summary = `Change: ${format(changePercent)} · Reverse: ${format(reversePercent)} · Difference: ${format(percentageDifference)}`;
+  const promoPreview = (
+    <div className="grid gap-3 sm:grid-cols-3">
+      {[
+        { label: "Percentage change", value: format(changePercent) },
+        { label: "Reverse percentage", value: format(reversePercent) },
+        { label: "Percentage difference", value: format(percentageDifference) },
+      ].map((item) => (
+        <div key={item.label} className="rounded-[1.25rem] border border-neutral-200 bg-neutral-50 p-4">
+          <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">{item.label}</div>
+          <div className="mt-2 text-2xl font-semibold text-neutral-900">{item.value}</div>
+        </div>
+      ))}
+    </div>
+  );
 
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_1fr] items-start">
-      <ToolPromoModal open={promoOpen} onDismiss={() => setPromoOpen(false)} />
+      <ToolPromoModal open={promoOpen} onDismiss={() => setPromoOpen(false)} preview={promoPreview} />
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="block space-y-2">
           <span className="text-sm font-medium text-neutral-700">Starting number</span>
@@ -580,10 +635,24 @@ export function AgeCalculatorTool() {
     return { years, months, days };
   }, [dob]);
   const summary = age ? `Age: ${age.years} years, ${age.months} months, ${age.days} days` : "";
+  const promoPreview = age ? (
+    <div className="grid gap-3 sm:grid-cols-3">
+      {[
+        { label: "Years", value: age.years },
+        { label: "Months", value: age.months },
+        { label: "Days", value: age.days },
+      ].map((item) => (
+        <div key={item.label} className="rounded-[1.25rem] border border-neutral-200 bg-neutral-50 p-4">
+          <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">{item.label}</div>
+          <div className="mt-2 text-2xl font-semibold text-neutral-900">{item.value}</div>
+        </div>
+      ))}
+    </div>
+  ) : null;
 
   return (
     <div className="grid gap-6 lg:grid-cols-[0.8fr_1.2fr] items-start">
-      <ToolPromoModal open={promoOpen} onDismiss={() => setPromoOpen(false)} />
+      <ToolPromoModal open={promoOpen} onDismiss={() => setPromoOpen(false)} preview={promoPreview} />
       <div className="grid gap-3 sm:grid-cols-3">
         <label className="block space-y-2">
           <span className="text-sm font-medium text-neutral-700">Year</span>
@@ -688,10 +757,19 @@ export function JsonFormatterTool() {
       return { value: "", error: error instanceof Error ? error.message : "Invalid JSON" };
     }
   }, [rawJson]);
+  const promoPreview = formatted.value ? (
+    <pre className="max-h-[22rem] overflow-auto rounded-[1.25rem] border border-neutral-200 bg-neutral-950 p-4 text-sm text-neutral-100">
+      {formatted.value}
+    </pre>
+  ) : (
+    <div className="rounded-[1.25rem] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+      {formatted.error || "Invalid JSON"}
+    </div>
+  );
 
   return (
     <div className="grid gap-6 lg:grid-cols-2 items-start">
-      <ToolPromoModal open={promoOpen} onDismiss={() => setPromoOpen(false)} />
+      <ToolPromoModal open={promoOpen} onDismiss={() => setPromoOpen(false)} preview={promoPreview} />
       <div className="space-y-3">
         <textarea
           value={rawJson}
@@ -769,10 +847,24 @@ export function PasswordGeneratorTool() {
     if (/[A-Z]/.test(password) && /[a-z]/.test(password)) score += 1;
     return score;
   }, [includeNumbers, includeSymbols, length, password]);
+  const promoPreview = (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-neutral-200 bg-neutral-50 px-4 py-3">
+        <div className="min-w-0 flex-1 break-all font-mono text-base text-neutral-900">{password}</div>
+        <button type="button" onClick={() => copyToClipboard(password)} className="rounded-full border border-neutral-200 bg-white px-3 py-1.5 text-sm text-neutral-700">
+          Copy
+        </button>
+      </div>
+      <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">Strength score {strength}/5</div>
+      <div className="h-2 rounded-full bg-neutral-200">
+        <div className="h-2 rounded-full bg-[#f55f2a]" style={{ width: `${Math.min((strength / 5) * 100, 100)}%` }} />
+      </div>
+    </div>
+  );
 
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_1fr] items-start">
-      <ToolPromoModal open={promoOpen} onDismiss={() => setPromoOpen(false)} />
+      <ToolPromoModal open={promoOpen} onDismiss={() => setPromoOpen(false)} preview={promoPreview} />
       <div className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-3">
           <label className="block space-y-2 sm:col-span-1">
@@ -911,10 +1003,23 @@ export function ImageResizerTool() {
     setDimensions({ width: targetWidth, height: targetHeight });
     setOriginalSize(bytesToLabel(file.size));
   };
+  const promoPreview = resultUrl ? (
+    <div className="space-y-3">
+      <img src={resultUrl} alt="Resized image preview" className="max-h-80 w-full rounded-3xl border border-neutral-100 object-contain bg-neutral-50" />
+      <div className="grid gap-2 text-sm text-neutral-600 sm:grid-cols-2">
+        <div>Original size: <span className="font-medium text-neutral-900">{originalSize || "—"}</span></div>
+        <div>Output size: <span className="font-medium text-neutral-900">{resultSize || "—"}</span></div>
+        <div className="sm:col-span-2">Output dimensions: <span className="font-medium text-neutral-900">{dimensions ? `${dimensions.width} × ${dimensions.height}` : "—"}</span></div>
+      </div>
+      <button type="button" onClick={() => triggerDownload(resultUrl, `resized-${file?.name || "image"}`)} className="rounded-full bg-[#f55f2a] px-4 py-2 text-sm font-medium text-white">
+        Download result first
+      </button>
+    </div>
+  ) : null;
 
   return (
     <div className="grid gap-6 lg:grid-cols-[0.95fr_1.05fr] items-start">
-      <ToolPromoModal open={promoOpen} onDismiss={() => setPromoOpen(false)} />
+      <ToolPromoModal open={promoOpen} onDismiss={() => setPromoOpen(false)} preview={promoPreview} />
       <div className="space-y-4">
         <input
           type="file"
@@ -998,10 +1103,20 @@ export function TextCaseConverterTool() {
     { label: "Lowercase", value: text.toLowerCase() },
     { label: "Capitalized", value: capitalizeWords(text) },
   ];
+  const promoPreview = (
+    <div className="grid gap-3">
+      {variants.map((variant) => (
+        <div key={variant.label} className="rounded-[1.25rem] border border-neutral-200 bg-neutral-50 p-4">
+          <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">{variant.label}</div>
+          <div className="mt-2 break-words text-base text-neutral-900">{variant.value}</div>
+        </div>
+      ))}
+    </div>
+  );
 
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_1fr] items-start">
-      <ToolPromoModal open={promoOpen} onDismiss={() => setPromoOpen(false)} />
+      <ToolPromoModal open={promoOpen} onDismiss={() => setPromoOpen(false)} preview={promoPreview} />
       <textarea
         value={text}
         onChange={(event) => setText(event.target.value)}
@@ -1064,10 +1179,19 @@ export function UsernameGeneratorTool() {
   useEffect(() => {
     setResults(buildUsernames());
   }, [count, includeNumbers, style, seed]);
+  const promoPreview = (
+    <div className="grid gap-2 sm:grid-cols-2">
+      {results.map((item) => (
+        <button key={item} type="button" onClick={() => copyToClipboard(item)} className="rounded-[1.25rem] border border-neutral-200 bg-neutral-50 px-4 py-3 text-left text-sm text-neutral-800 hover:border-[#f55f2a]">
+          {item}
+        </button>
+      ))}
+    </div>
+  );
 
   return (
     <div className="grid gap-6 lg:grid-cols-[0.95fr_1.05fr] items-start">
-      <ToolPromoModal open={promoOpen} onDismiss={() => setPromoOpen(false)} />
+      <ToolPromoModal open={promoOpen} onDismiss={() => setPromoOpen(false)} preview={promoPreview} />
       <div className="space-y-4">
         <label className="block space-y-2">
           <span className="text-sm font-medium text-neutral-700">Seed keyword</span>
@@ -1132,10 +1256,25 @@ export function ColorPickerTool() {
   }, [r, g, b]);
 
   const rgbLabel = `rgb(${r}, ${g}, ${b})`;
+  const promoPreview = (
+    <div className="space-y-3">
+      <div className="h-24 rounded-[1.25rem] border border-white/50 shadow-inner" style={{ background: hex }} />
+      <div className="grid gap-2 sm:grid-cols-2 text-sm">
+        <div className="rounded-2xl border border-neutral-200 bg-white p-4">
+          <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">HEX</div>
+          <div className="mt-2 font-mono text-lg text-neutral-900">{hex}</div>
+        </div>
+        <div className="rounded-2xl border border-neutral-200 bg-white p-4">
+          <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">RGB</div>
+          <div className="mt-2 font-mono text-lg text-neutral-900">{rgbLabel}</div>
+        </div>
+      </div>
+    </div>
+  );
 
   return (
     <div className="grid gap-6 lg:grid-cols-[0.9fr_1.1fr] items-start">
-      <ToolPromoModal open={promoOpen} onDismiss={() => setPromoOpen(false)} />
+      <ToolPromoModal open={promoOpen} onDismiss={() => setPromoOpen(false)} preview={promoPreview} />
       <div className="space-y-4">
         <input type="color" value={hex} onChange={(event) => setHex(event.target.value)} className="h-20 w-full cursor-pointer rounded-[1.5rem] border border-neutral-200 bg-white p-2" />
         <div className="grid gap-3 sm:grid-cols-3">
@@ -1223,10 +1362,19 @@ export function TimeZoneConverterTool() {
       targetLabel: `${targetParts.year}-${String(targetParts.month).padStart(2, "0")}-${String(targetParts.day).padStart(2, "0")} ${String(targetParts.hour).padStart(2, "0")}:${String(targetParts.minute).padStart(2, "0")}`,
     };
   }, [sourceTime, sourceZone, targetZone]);
+  const promoPreview = converted ? (
+    <div className="space-y-3 rounded-[1.25rem] border border-neutral-200 bg-neutral-50 p-4">
+      <div className="text-2xl font-semibold text-neutral-900">{converted.formatted}</div>
+      <div className="grid gap-2 text-sm text-neutral-600">
+        <div>Source wall time: <span className="font-medium text-neutral-900">{converted.sourceLabel}</span></div>
+        <div>Target wall time: <span className="font-medium text-neutral-900">{converted.targetLabel}</span></div>
+      </div>
+    </div>
+  ) : null;
 
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_1fr] items-start">
-      <ToolPromoModal open={promoOpen} onDismiss={() => setPromoOpen(false)} />
+      <ToolPromoModal open={promoOpen} onDismiss={() => setPromoOpen(false)} preview={promoPreview} />
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="block space-y-2 sm:col-span-2">
           <span className="text-sm font-medium text-neutral-700">Source date and time</span>
