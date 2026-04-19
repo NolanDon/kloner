@@ -4,6 +4,7 @@ import { createContext, useContext, useEffect, useMemo, useState, type ReactNode
 import { createPortal } from "react-dom";
 import { CheckCircle2, Copy, Download, X } from "lucide-react";
 import type { ToolConfig } from "./toolRegistry";
+import SuccessConfetti from "./SuccessConfetti";
 
 type CopyFeedbackValue = {
   copied: boolean;
@@ -13,9 +14,16 @@ type CopyFeedbackValue = {
   copyValue: string | null;
   setCopyValue: (value: string | null) => void;
   inPromoModal: boolean;
+  announceSuccess: (title: string, message: string) => void;
 };
 
 const CopyFeedbackContext = createContext<CopyFeedbackValue | null>(null);
+
+let announceToolSuccess: ((title: string, message: string) => void) | null = null;
+
+function notifyToolSuccess(title: string, message: string) {
+  announceToolSuccess?.(title, message);
+}
 
 function useCopyFeedback() {
   const context = useContext(CopyFeedbackContext);
@@ -58,6 +66,43 @@ function randomInt(max: number) {
   return Math.floor(Math.random() * Math.max(1, max));
 }
 
+const WORD_THEMES: Record<string, string[]> = {
+  neutral: ["focus", "signal", "launch", "build", "simple", "clear", "ready", "fast", "sharp", "flow", "pulse", "stack", "frame", "draft", "logic", "native", "cloud", "stable", "plain", "steady"],
+  creative: ["spark", "drift", "pixel", "orbit", "vibe", "sketch", "stitch", "prism", "pulse", "nova", "glow", "ripple", "canvas", "story", "muse", "ribbon", "echo", "color", "verse", "tempo"],
+  nature: ["river", "cedar", "stone", "meadow", "forest", "cloud", "reef", "bloom", "dune", "rain", "pine", "willow", "brook", "petal", "ridge", "harbor", "moss", "pebble", "field", "hollow"],
+  tech: ["binary", "vector", "stack", "module", "kernel", "render", "signal", "compile", "cache", "server", "bridge", "thread", "pixel", "stream", "socket", "native", "query", "cloud", "logic", "system"],
+  brand: ["nova", "atlas", "lumen", "orbit", "acorn", "ember", "signal", "verge", "drift", "forge", "anchor", "pilot", "cinder", "harbor", "rally", "nexus", "drizzle", "foundry", "bloom", "prism"],
+};
+
+const WORD_PREFIXES = ["mini", "neo", "ultra", "hyper", "prime", "north", "bright", "quick", "fresh", "pixel", "clear", "motion"];
+const WORD_SUFFIXES = ["lab", "flow", "grid", "forge", "studio", "pulse", "shift", "works", "kit", "mode", "path", "house"];
+const HEADLINE_TONES = {
+  direct: [
+    "How to build {subject} without friction",
+    "A faster way to ship {subject}",
+    "The practical guide to {subject}",
+    "What most teams miss about {subject}",
+    "Turn {subject} into a clean result",
+    "Make {subject} easier to launch",
+  ],
+  bold: [
+    "{subject} deserves a better workflow",
+    "The fastest path to {subject}",
+    "Why {subject} works when it stays simple",
+    "{subject}: built to move faster",
+    "Ship {subject} with less overhead",
+    "{subject} without the usual drag",
+  ],
+  playful: [
+    "A sharper way to make {subject} happen",
+    "{subject} is about to get interesting",
+    "Big results from a small {subject} setup",
+    "{subject}, but make it easier",
+    "Say less, build more with {subject}",
+    "The nicer way to work on {subject}",
+  ],
+};
+
 function makeRandomNumbers(count: number, min: number, max: number) {
   const low = Math.min(min, max);
   const high = Math.max(min, max);
@@ -66,13 +111,25 @@ function makeRandomNumbers(count: number, min: number, max: number) {
 }
 
 function makeRandomWords(count: number, theme: string) {
-  const pools: Record<string, string[]> = {
-    neutral: ["focus", "signal", "launch", "build", "simple", "clear", "ready", "fast", "sharp", "flow"],
-    creative: ["spark", "drift", "pixel", "orbit", "vibe", "sketch", "stitch", "prism", "pulse", "nova"],
-    nature: ["river", "cedar", "stone", "meadow", "forest", "cloud", "reef", "bloom", "dune", "rain"],
-  };
-  const pool = pools[theme] ?? pools.neutral;
-  return Array.from({ length: count }, () => randomFrom(pool));
+  const pool = WORD_THEMES[theme] ?? WORD_THEMES.neutral;
+
+  const variants = new Set<string>();
+  while (variants.size < Math.max(1, count)) {
+    const base = randomFrom(pool);
+    const mode = randomInt(4);
+
+    if (mode === 0) {
+      variants.add(base);
+    } else if (mode === 1) {
+      variants.add(`${randomFrom(WORD_PREFIXES)} ${base}`);
+    } else if (mode === 2) {
+      variants.add(`${base} ${randomFrom(WORD_SUFFIXES)}`);
+    } else {
+      variants.add(`${randomFrom(WORD_PREFIXES)} ${base} ${randomFrom(WORD_SUFFIXES)}`);
+    }
+  }
+
+  return Array.from(variants).slice(0, count);
 }
 
 function makeLorem(paragraphs: number, sentences: number) {
@@ -231,184 +288,6 @@ function makeBarcodeSvg(value: string) {
 function makeWordCloudWords(input: string) {
   const words = input.split(/[,\n]+/).map((word) => word.trim()).filter(Boolean);
   const expanded = words.length ? words : ["ideas", "build", "launch", "design", "ship"];
-  return expanded.map((word, index) => ({ word, size: 18 + ((index * 7) % 22) }));
-}
-
-function makeTitleIdeas(topic: string) {
-  const base = topic.trim() || "your project";
-  return [
-    `${slugLabel(base)}: a quick way to get started`,
-    `How to build ${base} without slowing down`,
-    `A simple guide to ${base}`,
-    `What to know before you ship ${base}`,
-  ];
-}
-
-function makePlotIdeas(topic: string) {
-  const base = topic.trim() || "a fresh idea";
-  const subject = slugLabel(base);
-  const protagonistOptions = ["a designer with a deadline", "a founder chasing proof", "an outsider with one shot", "a builder trying to fix a mistake", "a skeptic who is forced to lead"];
-  const settingOptions = ["a city that moves too fast", "a cramped workshop full of unfinished plans", "a small team under pressure", "a place where everyone expects a shortcut", "a world that rewards speed over care"];
-  const obstacleOptions = ["the easiest path keeps making things worse", "a public failure raises the stakes", "a missing piece changes the whole plan", "a rival solves the problem first", "the original goal turns out to be the wrong one"];
-  const stakesOptions = ["If they miss the window, the opportunity disappears.", "If they choose wrong, they lose trust and momentum.", "If they hesitate, someone else defines the outcome.", "If they fail here, the next chance will not come quickly."];
-  const titleIdeas = [`${subject}: The First Attempt`, `What It Takes to Build ${subject}`, `The Day ${subject} Got Complicated`, `How ${subject} Almost Worked`];
-  return {
-    topic: subject,
-    logline: `When ${randomFrom(protagonistOptions)} takes on ${base}, the plan looks simple until ${randomFrom(obstacleOptions)}.`,
-    premise: `${subject} unfolds in ${randomFrom(settingOptions)}, where every decision makes the next one harder.`,
-    protagonist: randomFrom(protagonistOptions),
-    setting: randomFrom(settingOptions),
-    obstacle: randomFrom(obstacleOptions),
-    stakes: randomFrom(stakesOptions),
-    beats: [
-      `Open with a clear goal tied to ${base}.`,
-      `Introduce the first win, then let ${randomFrom(obstacleOptions)}.`,
-      `Force a decision that costs more than expected.`,
-      `End with a choice that changes the direction of the whole story.`,
-    ],
-    titleIdeas,
-    prompt: `A story about ${base} that starts with momentum, hits a setback, and ends with a sharper choice.`,
-  };
-}
-
-function makeRandomWordsToolCopy(theme: string, count: number) {
-  return makeRandomWords(count, theme).join(", ");
-}
-
-function makeRandomNumberList(min: number, max: number, count: number) {
-  return makeRandomNumbers(count, min, max);
-}
-
-const LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
-const ANIMALS = ["otter", "falcon", "badger", "lynx", "sparrow", "fox", "walrus", "koala", "orca", "panda", "hare", "tiger", "moth", "eagle", "heron"];
-const CITIES = ["Austin", "Lisbon", "Reykjavik", "Seoul", "Cairo", "Portland", "Tokyo", "Nairobi", "Berlin", "Dublin", "Melbourne", "Marrakesh", "Vancouver", "Helsinki"];
-const COUNTRIES = ["Japan", "Canada", "Portugal", "Kenya", "Iceland", "Chile", "Australia", "Mexico", "Norway", "Greece", "Brazil", "Spain", "India", "New Zealand"];
-const FANTASY_ROOTS = ["ember", "ash", "thorn", "rune", "silver", "storm", "moon", "star", "wolf", "ivory", "dusk", "spire"];
-const HERO_TITLES = ["Sentinel", "Pulse", "Nova", "Vanguard", "Cipher", "Mirage", "Volt", "Specter", "Beacon", "Comet"];
-const RHYME_SUFFIXES = ["ight", "ake", "oom", "all", "ime", "ore", "een", "own", "air", "ust"];
-
-function capitalizeSentence(value: string) {
-  const trimmed = value.trim();
-  if (!trimmed) return "";
-  return trimmed[0]!.toUpperCase() + trimmed.slice(1);
-}
-
-function shuffle<T>(values: readonly T[]) {
-  return [...values].sort(() => Math.random() - 0.5);
-}
-
-function uniqueSlice(values: string[], count: number) {
-  return Array.from(new Set(values)).slice(0, count);
-}
-
-function makeRandomLetters(count: number) {
-  return Array.from({ length: count }, () => randomFrom(LETTERS));
-}
-
-function makeAnimals(count: number) {
-  return shuffle(ANIMALS).slice(0, count).map((animal) => capitalizeSentence(animal));
-}
-
-function makeCities(count: number, seed: string) {
-  const prefix = seed.trim() ? seed.trim().split(/\s+/)[0]!.toLowerCase() : "north";
-  const variants = shuffle(CITIES).map((city, index) => `${capitalizeSentence(prefix)} ${city}${index % 3 === 0 ? "" : ""}`);
-  return uniqueSlice(variants, count);
-}
-
-function makeCountries(count: number, seed: string) {
-  const focus = seed.trim() || "global";
-  const variants = shuffle(COUNTRIES).map((country, index) => `${country}${index < 3 ? ` (${focus})` : ""}`);
-  return uniqueSlice(variants, count);
-}
-
-function makeFantasyNames(count: number, seed: string) {
-  const base = seed.trim().toLowerCase() || "ember";
-  return Array.from({ length: count }, (_, index) => `${capitalizeSentence(randomFrom(FANTASY_ROOTS))}${capitalizeSentence(base.slice(0, 3) || randomFrom(FANTASY_ROOTS))}${index % 2 === 0 ? " of the Vale" : ""}`);
-}
-
-function makeSuperheroNames(count: number, seed: string) {
-  const base = seed.trim().toLowerCase() || "nova";
-  return Array.from({ length: count }, (_, index) => `${capitalizeSentence(base)} ${randomFrom(HERO_TITLES)}${index % 2 === 0 ? "" : " Prime"}`);
-}
-
-function makeRandomRows(count: number) {
-  const firstNames = ["Ava", "Noah", "Mila", "Ethan", "Iris", "Leo", "Zoe", "Mason", "Luna", "Owen"];
-  const roles = ["Designer", "Founder", "Engineer", "Writer", "Analyst", "Operator"];
-  return Array.from({ length: count }, (_, index) => {
-    const name = `${randomFrom(firstNames)} ${randomFrom(["Stone", "River", "Lopez", "Kim", "Patel", "Reed", "Bennett", "Cole"])}`;
-    const role = randomFrom(roles);
-    const email = `${name.toLowerCase().replace(/[^a-z]+/g, ".")}${index + 1}@example.com`;
-    return `${name} | ${role} | ${email}`;
-  });
-}
-
-function makeSecretSantaPairs(names: string[]) {
-  const cleaned = names.map((name) => name.trim()).filter(Boolean);
-  const shuffled = shuffle(cleaned);
-  if (shuffled.length < 2) {
-    return [];
-  }
-  return shuffled.map((giver, index) => `${giver} -> ${shuffled[(index + 1) % shuffled.length]}`);
-}
-
-function makeBingoCard(words: string[]) {
-  const pool = uniqueSlice(words.map((word) => word.trim()).filter(Boolean), 24);
-  while (pool.length < 24) {
-    pool.push(randomFrom(["launch", "design", "copy", "feedback", "debug", "ship", "iterate", "focus", "share", "build"]));
-  }
-  const card = [...pool.slice(0, 12), "FREE", ...pool.slice(12, 24)];
-  return card;
-}
-
-function makeTruthTable(operation: string) {
-  const rows = [
-    { a: false, b: false },
-    { a: false, b: true },
-    { a: true, b: false },
-    { a: true, b: true },
-  ];
-  return rows.map(({ a, b }) => {
-    const value = operation === "AND" ? a && b : operation === "OR" ? a || b : operation === "XOR" ? a !== b : operation === "NAND" ? !(a && b) : operation === "NOR" ? !(a || b) : !a || b;
-    return `${Number(a)} ${operation} ${Number(b)} = ${Number(Boolean(value))}`;
-  });
-}
-
-function makeRhymes(word: string, count: number) {
-  const base = word.trim().toLowerCase() || "light";
-  const root = base.replace(/[^a-z]/g, "").slice(0, 4) || "light";
-  return RHYME_SUFFIXES.map((suffix) => `${root}${suffix}`).slice(0, count).map((item) => capitalizeSentence(item));
-}
-
-function makeColorSchemes(seed: string, count: number) {
-  return Array.from({ length: count }, (_, index) => {
-    const palette = makePalette(`${seed}-${index}`);
-    return palette;
-  });
-}
-
-function makeHeadlines(topic: string, count: number) {
-  const subject = topic.trim() || "your idea";
-  return [
-    `How to build ${subject} without slowing down`,
-    `A better way to launch ${subject}`,
-    `What most people miss about ${subject}`,
-    `${capitalizeSentence(subject)}: a faster path to results`,
-    `Turn ${subject} into something people want`,
-    `The practical guide to ${subject}`,
-  ].slice(0, count);
-}
-
-function makeTheses(topic: string, count: number) {
-  const subject = topic.trim() || "the topic";
-  return [
-    `Although ${subject} looks simple, it works best when you focus on clarity, evidence, and steady execution.`,
-    `${capitalizeSentence(subject)} matters because it changes how people work, decide, and prioritize.`,
-    `A strong approach to ${subject} starts with a clear claim, a specific reason, and a defensible direction.`,
-  ].slice(0, count);
-}
-
-function makeRestaurantNames(cuisine: string, count: number) {
-  const base = capitalizeSentence(cuisine.trim() || "Kitchen");
   return [`${base} Table`, `${base} House`, `${base} Market`, `${base} Garden`, `${base} Bar`, `${base} Bistro`].slice(0, count);
 }
 
@@ -570,7 +449,7 @@ function ListToolShell({
   countLabel = "Count",
   defaultCount = 6,
   minCount = 3,
-  maxCount = 12,
+  maxCount = 120,
   actionLabel = "Generate",
   resultLabel = "Results",
   generate,
@@ -604,7 +483,16 @@ function ListToolShell({
                 <span className="text-sm font-medium text-neutral-700">{countLabel}</span>
                 <input value={count} onChange={(event) => setCount(Math.max(minCount, Math.min(maxCount, Number(event.target.value))))} type="number" min={minCount} max={maxCount} className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#f55f2a]" />
               </label>
-              <button type="button" onClick={() => setResults(generate(seed, count))} className="rounded-full bg-[#f55f2a] px-4 py-2 text-sm font-medium text-white">{actionLabel}</button>
+              <button
+                type="button"
+                onClick={() => {
+                  setResults(generate(seed, count));
+                  notifyToolSuccess(headline, summary);
+                }}
+                className="rounded-full bg-[#f55f2a] px-4 py-2 text-sm font-medium text-white"
+              >
+                {actionLabel}
+              </button>
             </div>
           </GenericPanel>
           <GenericPanel title="Quick Copy">
@@ -652,7 +540,16 @@ function PreformattedToolShell({ tool, headline, summary, seedLabel, defaultSeed
               <span className="text-sm font-medium text-neutral-700">{seedLabel}</span>
               <input value={seed} onChange={(event) => setSeed(event.target.value)} className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#f55f2a]" />
             </label>
-            <button type="button" onClick={() => setResults(generator(seed))} className="rounded-full bg-[#f55f2a] px-4 py-2 text-sm font-medium text-white">{actionLabel}</button>
+            <button
+              type="button"
+              onClick={() => {
+                setResults(generator(seed));
+                notifyToolSuccess(headline, summary);
+              }}
+              className="rounded-full bg-[#f55f2a] px-4 py-2 text-sm font-medium text-white"
+            >
+              {actionLabel}
+            </button>
           </div>
         </GenericPanel>
       }
@@ -1104,11 +1001,30 @@ function ToolShell({
   const [copied, setCopied] = useState(false);
   const [nextStepHighlighted, setNextStepHighlighted] = useState(false);
   const [copyValue, setCopyValue] = useState<string | null>(null);
+  const [successOpen, setSuccessOpen] = useState(false);
+  const [successTitle, setSuccessTitle] = useState(headline);
+  const [successMessage, setSuccessMessage] = useState(summary);
+
+  const announceSuccess = (title: string, message: string) => {
+    setSuccessTitle(title);
+    setSuccessMessage(message);
+    setSuccessOpen(true);
+  };
+
+  useEffect(() => {
+    announceToolSuccess = announceSuccess;
+    return () => {
+      if (announceToolSuccess === announceSuccess) {
+        announceToolSuccess = null;
+      }
+    };
+  }, [announceSuccess]);
 
   return (
-    <CopyFeedbackContext.Provider value={{ copied, setCopied, nextStepHighlighted, setNextStepHighlighted, copyValue, setCopyValue, inPromoModal: false }}>
+    <CopyFeedbackContext.Provider value={{ copied, setCopied, nextStepHighlighted, setNextStepHighlighted, copyValue, setCopyValue, inPromoModal: false, announceSuccess }}>
       <div className="grid gap-6 lg:grid-cols-[1fr_1fr] items-start">
         <ToolPromoModal open={promoOpen} onDismiss={() => setPromoOpen(false)} headline={headline} summary={summary} preview={right} />
+        <SuccessConfetti open={successOpen} title={successTitle} message={successMessage} onDismiss={() => setSuccessOpen(false)} />
         <div className="space-y-4">{left}</div>
         <div className="space-y-4">{right}</div>
         <div className="lg:col-span-2 flex justify-end">
@@ -1122,7 +1038,7 @@ function ToolShell({
 }
 
 function CopyRow({ value, onCopied }: { value: string; onCopied?: () => void }) {
-  const { copied, setCopied, setNextStepHighlighted, setCopyValue, inPromoModal } = useCopyFeedback();
+  const { copied, setCopied, setNextStepHighlighted, setCopyValue, inPromoModal, announceSuccess } = useCopyFeedback();
 
   useEffect(() => {
     setCopyValue(value);
@@ -1134,7 +1050,7 @@ function CopyRow({ value, onCopied }: { value: string; onCopied?: () => void }) 
   }
 
   return (
-    <button type="button" onClick={async () => { await copyToClipboard(value); setCopied(true); setNextStepHighlighted(true); window.setTimeout(() => setCopied(false), 1200); onCopied?.(); }} className={`inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-sm transition ${copied ? "border border-[#f55f2a] bg-[#f55f2a] text-white shadow-[0_12px_28px_rgba(245,95,42,0.18)]" : "border border-neutral-200 bg-white text-neutral-700 hover:border-[#f55f2a] hover:text-[#f55f2a]"}`}>
+    <button type="button" onClick={async () => { await copyToClipboard(value); setCopied(true); setNextStepHighlighted(true); announceSuccess("Copied to clipboard", "Your result is ready to paste."); window.setTimeout(() => setCopied(false), 1200); onCopied?.(); }} className={`inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-sm transition ${copied ? "border border-[#f55f2a] bg-[#f55f2a] text-white shadow-[0_12px_28px_rgba(245,95,42,0.18)]" : "border border-neutral-200 bg-white text-neutral-700 hover:border-[#f55f2a] hover:text-[#f55f2a]"}`}>
       <Copy className="h-3.5 w-3.5" />
       {copied ? "Copied" : "Copy"}
     </button>
@@ -1162,6 +1078,366 @@ function GenericPanel({ title, children }: { title: string; children: React.Reac
   );
 }
 
+function RandomNumberTool({ tool }: { tool: ToolConfig }) {
+  const [min, setMin] = useState(1);
+  const [max, setMax] = useState(100);
+  const [count, setCount] = useState(24);
+  const [unique, setUnique] = useState(true);
+  const [results, setResults] = useState<number[]>(() => makeUniqueRandomNumbers(24, 1, 100));
+
+  const regenerate = (nextMin = min, nextMax = max, nextCount = count, nextUnique = unique) => {
+    const nextResults = nextUnique ? makeUniqueRandomNumbers(nextCount, nextMin, nextMax) : makeRandomNumbers(nextCount, nextMin, nextMax);
+    setResults(nextResults);
+    notifyToolSuccess("Random numbers are ready", `${nextResults.length} values generated.`);
+  };
+
+  return (
+    <ToolShell
+      tool={tool}
+      headline="Random numbers are ready"
+      summary="Generate bigger batches with tighter ranges, uniqueness, and quick presets."
+      left={
+        <GenericPanel title="Controls">
+          <div className="space-y-4">
+            <div className="flex flex-wrap gap-2">
+              {[
+                { label: "1-10", min: 1, max: 10 },
+                { label: "1-100", min: 1, max: 100 },
+                { label: "100-999", min: 100, max: 999 },
+                { label: "0-50", min: 0, max: 50 },
+              ].map((preset) => (
+                <button
+                  key={preset.label}
+                  type="button"
+                  onClick={() => {
+                    setMin(preset.min);
+                    setMax(preset.max);
+                    regenerate(preset.min, preset.max, count, unique);
+                  }}
+                  className="rounded-full border border-neutral-200 bg-white px-3 py-1.5 text-sm text-neutral-700 transition hover:border-[#f55f2a] hover:text-[#f55f2a]"
+                >
+                  {preset.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="block space-y-2">
+                <span className="text-sm font-medium text-neutral-700">Minimum</span>
+                <input value={min} onChange={(event) => setMin(Number(event.target.value))} type="number" className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#f55f2a]" />
+              </label>
+              <label className="block space-y-2">
+                <span className="text-sm font-medium text-neutral-700">Maximum</span>
+                <input value={max} onChange={(event) => setMax(Number(event.target.value))} type="number" className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#f55f2a]" />
+              </label>
+              <label className="block space-y-2">
+                <span className="text-sm font-medium text-neutral-700">Count</span>
+                <input value={count} onChange={(event) => setCount(Math.max(1, Math.min(200, Number(event.target.value))))} type="number" min={1} max={200} className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#f55f2a]" />
+              </label>
+              <label className="flex items-center gap-3 rounded-2xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm text-neutral-700">
+                <input type="checkbox" checked={unique} onChange={(event) => setUnique(event.target.checked)} className="h-4 w-4 accent-[#f55f2a]" />
+                Unique values
+              </label>
+            </div>
+
+            <button type="button" onClick={() => regenerate()} className="rounded-full bg-[#f55f2a] px-4 py-2 text-sm font-medium text-white">
+              Generate numbers
+            </button>
+
+            <CopyRow value={results.join(", ")} />
+          </div>
+        </GenericPanel>
+      }
+      right={
+        <GenericPanel title="Results">
+          <div className="grid max-h-[26rem] gap-2 overflow-y-auto pr-1 sm:grid-cols-2">
+            {results.map((number, index) => (
+              <span key={`${number}-${index}`} className="rounded-2xl border border-neutral-200 bg-neutral-50 px-4 py-3 font-mono text-sm text-neutral-900">
+                {number}
+              </span>
+            ))}
+          </div>
+        </GenericPanel>
+      }
+    />
+  );
+}
+
+function RandomWordTool({ tool }: { tool: ToolConfig }) {
+  const [theme, setTheme] = useState<keyof typeof WORD_THEMES>("creative");
+  const [style, setStyle] = useState<"mixed" | "title" | "upper">("title");
+  const [count, setCount] = useState(36);
+  const [results, setResults] = useState<string[]>(() => makeRandomWords(36, "creative"));
+
+  const regenerate = (nextTheme = theme, nextStyle = style, nextCount = count) => {
+    const nextWords = makeRandomWords(nextCount, nextTheme);
+    const formatted = nextWords.map((word) => {
+      if (nextStyle === "upper") {
+        return word.toUpperCase();
+      }
+
+      if (nextStyle === "mixed") {
+        return word;
+      }
+
+      return capitalizeSentence(word);
+    });
+
+    setResults(formatted);
+    notifyToolSuccess("Random words are ready", `${formatted.length} ideas generated.`);
+  };
+
+  return (
+    <ToolShell
+      tool={tool}
+      headline="Random words are ready"
+      summary="Choose a theme, switch the text style, and generate large batches of words or short phrases."
+      left={
+        <GenericPanel title="Controls">
+          <div className="space-y-4">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="block space-y-2">
+                <span className="text-sm font-medium text-neutral-700">Theme</span>
+                <select value={theme} onChange={(event) => setTheme(event.target.value as keyof typeof WORD_THEMES)} className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#f55f2a]">
+                  <option value="neutral">Neutral</option>
+                  <option value="creative">Creative</option>
+                  <option value="nature">Nature</option>
+                  <option value="tech">Tech</option>
+                  <option value="brand">Brand</option>
+                </select>
+              </label>
+              <label className="block space-y-2">
+                <span className="text-sm font-medium text-neutral-700">Style</span>
+                <select value={style} onChange={(event) => setStyle(event.target.value as "mixed" | "title" | "upper")} className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#f55f2a]">
+                  <option value="title">Title case</option>
+                  <option value="mixed">Mixed phrases</option>
+                  <option value="upper">Uppercase</option>
+                </select>
+              </label>
+              <label className="block space-y-2 sm:col-span-2">
+                <span className="text-sm font-medium text-neutral-700">Count</span>
+                <input value={count} onChange={(event) => setCount(Math.max(1, Math.min(200, Number(event.target.value))))} type="number" min={1} max={200} className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#f55f2a]" />
+              </label>
+            </div>
+
+            <button type="button" onClick={() => regenerate()} className="rounded-full bg-[#f55f2a] px-4 py-2 text-sm font-medium text-white">
+              Generate words
+            </button>
+
+            <CopyRow value={results.join("\n")} />
+          </div>
+        </GenericPanel>
+      }
+      right={
+        <GenericPanel title="Results">
+          <div className="grid max-h-[26rem] gap-2 overflow-y-auto pr-1 sm:grid-cols-2">
+            {results.map((word, index) => (
+              <button
+                key={`${word}-${index}`}
+                type="button"
+                onClick={async () => {
+                  await copyToClipboard(word);
+                  announceSuccess("Copied word", "The selected idea is ready to paste.");
+                }}
+                className="rounded-2xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-left text-sm text-neutral-800 transition hover:border-[#f55f2a] hover:bg-white"
+              >
+                {word}
+              </button>
+            ))}
+          </div>
+        </GenericPanel>
+      }
+    />
+  );
+}
+
+function FaviconGeneratorTool({ tool }: { tool: ToolConfig }) {
+  const [label, setLabel] = useState("K");
+  const [background, setBackground] = useState("#f55f2a");
+  const [foreground, setForeground] = useState("#ffffff");
+  const [shape, setShape] = useState<"square" | "rounded" | "circle">("rounded");
+  const [promoOpen, setPromoOpen] = useState(false);
+  const [promoHeadline, setPromoHeadline] = useState("Favicon generated.");
+  const [promoMessage, setPromoMessage] = useState("Your favicon is ready to download.");
+
+  const svg = useMemo(() => makeFaviconSvg({ label, background, foreground, shape }), [background, foreground, label, shape]);
+  const displayLabel = label.trim().slice(0, 2).toUpperCase() || "K";
+  const previewRadius = shape === "circle" ? "9999px" : shape === "rounded" ? "28px" : "8px";
+  const previewSizeClass = displayLabel.length === 1 ? "text-[3.75rem]" : "text-[2.6rem]";
+
+  const promoPreview = (
+    <div className="space-y-3">
+      <div className="flex items-center justify-center rounded-[1.5rem] border border-neutral-200 bg-neutral-50 p-6">
+        <div
+          className="flex h-40 w-40 items-center justify-center border border-white/50 shadow-sm"
+          style={{ background, color: foreground, borderRadius: previewRadius }}
+        >
+          <span className={`font-semibold leading-none tracking-[-0.08em] ${previewSizeClass}`}>
+            {displayLabel}
+          </span>
+        </div>
+      </div>
+      <div className="grid gap-2 text-sm text-neutral-700 sm:grid-cols-2">
+        <div className="rounded-2xl border border-neutral-200 bg-white p-3">Label: <span className="font-semibold text-neutral-900">{label.toUpperCase() || "K"}</span></div>
+        <div className="rounded-2xl border border-neutral-200 bg-white p-3">Shape: <span className="font-semibold text-neutral-900">{shape}</span></div>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <button type="button" onClick={() => downloadText(svg, "favicon.svg", "image/svg+xml")} className="rounded-full bg-[#f55f2a] px-4 py-2 text-sm font-medium text-white">Download SVG</button>
+        <button type="button" onClick={async () => { await copyToClipboard(svg); setPromoHeadline("Favicon copied."); setPromoMessage("Your SVG favicon is ready to paste."); setPromoOpen(true); }} className="rounded-full border border-neutral-200 px-4 py-2 text-sm text-neutral-700">Copy SVG</button>
+      </div>
+    </div>
+  );
+
+  return (
+    <ToolShell
+      tool={tool}
+      headline="Favicon is ready"
+      summary="Edit the label, colors, and shape to generate a real SVG favicon." 
+      left={
+        <GenericPanel title="Controls">
+          <div className="space-y-4">
+            <label className="block space-y-2">
+              <span className="text-sm font-medium text-neutral-700">Label or initials</span>
+              <input
+                value={label}
+                onChange={(event) => setLabel(event.target.value.slice(0, 2))}
+                maxLength={2}
+                placeholder="K"
+                className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm uppercase outline-none focus:border-[#f55f2a]"
+              />
+              <p className="text-xs leading-5 text-neutral-500">Use 1 or 2 characters. This becomes the visible favicon mark.</p>
+            </label>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="block space-y-2">
+                <span className="text-sm font-medium text-neutral-700">Background</span>
+                <input
+                  value={background}
+                  onChange={(event) => setBackground(event.target.value)}
+                  type="color"
+                  className="h-12 w-full cursor-pointer rounded-2xl border border-neutral-200 bg-white p-1"
+                />
+              </label>
+              <label className="block space-y-2">
+                <span className="text-sm font-medium text-neutral-700">Foreground</span>
+                <input
+                  value={foreground}
+                  onChange={(event) => setForeground(event.target.value)}
+                  type="color"
+                  className="h-12 w-full cursor-pointer rounded-2xl border border-neutral-200 bg-white p-1"
+                />
+              </label>
+            </div>
+
+            <label className="block space-y-2">
+              <span className="text-sm font-medium text-neutral-700">Shape</span>
+              <select value={shape} onChange={(event) => setShape(event.target.value as "square" | "rounded" | "circle")} className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#f55f2a]">
+                <option value="square">Square</option>
+                <option value="rounded">Rounded</option>
+                <option value="circle">Circle</option>
+              </select>
+            </label>
+
+            <div className="space-y-2">
+              <span className="text-sm font-medium text-neutral-700">Quick presets</span>
+              <div className="flex flex-wrap gap-2">
+                {[
+                  { label: "K", background: "#f55f2a", foreground: "#ffffff", shape: "rounded" as const },
+                  { label: "KL", background: "#111827", foreground: "#ffffff", shape: "circle" as const },
+                  { label: "A", background: "#0f766e", foreground: "#ecfeff", shape: "square" as const },
+                  { label: "AI", background: "#1d4ed8", foreground: "#ffffff", shape: "rounded" as const },
+                ].map((preset) => (
+                  <button
+                    key={preset.label}
+                    type="button"
+                    onClick={() => {
+                      setLabel(preset.label);
+                      setBackground(preset.background);
+                      setForeground(preset.foreground);
+                      setShape(preset.shape);
+                    }}
+                    className="rounded-full border border-neutral-200 bg-white px-3 py-1.5 text-sm text-neutral-700 transition hover:border-[#f55f2a] hover:text-[#f55f2a]"
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setLabel("K");
+                  setBackground("#f55f2a");
+                  setForeground("#ffffff");
+                  setShape("rounded");
+                }}
+                className="rounded-full border border-neutral-200 bg-white px-4 py-2 text-sm text-neutral-700"
+              >
+                Reset
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setPromoHeadline("Favicon generated.");
+                  setPromoMessage("Your favicon is ready to download.");
+                  setPromoOpen(true);
+                }}
+                className="rounded-full bg-[#f55f2a] px-4 py-2 text-sm font-medium text-white"
+              >
+                Generate favicon
+              </button>
+            </div>
+          </div>
+        </GenericPanel>
+      }
+      right={
+        <GenericPanel title="Preview">
+          <div className="space-y-4">
+            <div className="flex items-center justify-center rounded-[1.75rem] border border-neutral-200 bg-neutral-50 p-8">
+              <div
+                className="flex h-64 w-64 items-center justify-center border border-white/60 shadow-[0_18px_40px_rgba(15,23,42,0.10)]"
+                style={{ background, color: foreground, borderRadius: previewRadius }}
+              >
+                <span className={`font-semibold leading-none tracking-[-0.08em] ${displayLabel.length === 1 ? "text-[6.5rem]" : "text-[4.6rem]"}`}>
+                  {displayLabel}
+                </span>
+              </div>
+            </div>
+            <div className="rounded-[1.25rem] border border-neutral-200 bg-white px-4 py-3 text-sm text-neutral-700">
+              <div className="font-medium text-neutral-900">Live preview</div>
+              <div className="mt-1">This icon updates as you type, so you can see the final favicon before downloading.</div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  downloadText(svg, "favicon.svg", "image/svg+xml");
+                  setPromoHeadline("Favicon downloaded.");
+                  setPromoMessage("Your SVG favicon is ready to use.");
+                  setPromoOpen(true);
+                }}
+                className="inline-flex items-center gap-1 rounded-full border border-neutral-200 bg-white px-3 py-1.5 text-sm text-neutral-700"
+              >
+                <Download className="h-3.5 w-3.5" />
+                Download SVG
+              </button>
+              <CopyRow
+                value={svg}
+                onCopied={() => {
+                  setPromoHeadline("Favicon copied.");
+                  setPromoMessage("Your SVG favicon is ready to paste.");
+                }}
+              />
+            </div>
+          </div>
+        </GenericPanel>
+      }
+    />
+  );
+}
+
 function RenderGeneratedTool({ tool }: { tool: ToolConfig }) {
   if (tool.slug === "random-letter-generator") {
     return (
@@ -1173,7 +1449,7 @@ function RenderGeneratedTool({ tool }: { tool: ToolConfig }) {
         seedPlaceholder="letters"
         defaultSeed="letters"
         defaultCount={12}
-        maxCount={26}
+        maxCount={52}
         actionLabel="Generate letters"
         resultLabel="Letters"
         generate={(_, count) => makeRandomLetters(count)}
@@ -1191,6 +1467,7 @@ function RenderGeneratedTool({ tool }: { tool: ToolConfig }) {
         seedPlaceholder="wild"
         defaultSeed="wild"
         defaultCount={8}
+        maxCount={24}
         actionLabel="Generate animals"
         resultLabel="Animals"
         generate={(_, count) => makeAnimals(count)}
@@ -1208,6 +1485,7 @@ function RenderGeneratedTool({ tool }: { tool: ToolConfig }) {
         seedPlaceholder="north"
         defaultSeed="north"
         defaultCount={8}
+        maxCount={60}
         actionLabel="Generate cities"
         resultLabel="Cities"
         generate={(seed, count) => makeCities(count, seed)}
@@ -1225,6 +1503,7 @@ function RenderGeneratedTool({ tool }: { tool: ToolConfig }) {
         seedPlaceholder="world"
         defaultSeed="world"
         defaultCount={8}
+        maxCount={60}
         actionLabel="Generate countries"
         resultLabel="Countries"
         generate={(seed, count) => makeCountries(count, seed)}
@@ -1242,6 +1521,7 @@ function RenderGeneratedTool({ tool }: { tool: ToolConfig }) {
         seedPlaceholder="ember"
         defaultSeed="ember"
         defaultCount={8}
+        maxCount={40}
         actionLabel="Generate names"
         resultLabel="Fantasy names"
         generate={(seed, count) => makeFantasyNames(count, seed)}
@@ -1259,6 +1539,7 @@ function RenderGeneratedTool({ tool }: { tool: ToolConfig }) {
         seedPlaceholder="nova"
         defaultSeed="nova"
         defaultCount={8}
+        maxCount={40}
         actionLabel="Generate heroes"
         resultLabel="Hero names"
         generate={(seed, count) => makeSuperheroNames(count, seed)}
@@ -1292,6 +1573,7 @@ function RenderGeneratedTool({ tool }: { tool: ToolConfig }) {
         seedPlaceholder="light"
         defaultSeed="light"
         defaultCount={8}
+        maxCount={30}
         actionLabel="Generate rhymes"
         resultLabel="Rhymes"
         generate={(seed, count) => makeRhymes(seed, count)}
@@ -1309,7 +1591,7 @@ function RenderGeneratedTool({ tool }: { tool: ToolConfig }) {
         seedPlaceholder="fresh"
         defaultSeed="fresh"
         defaultCount={3}
-        maxCount={6}
+        maxCount={12}
         actionLabel="Generate schemes"
         resultLabel="Schemes"
         previewCopyJoiner="\n\n"
@@ -1338,7 +1620,8 @@ function RenderGeneratedTool({ tool }: { tool: ToolConfig }) {
         seedLabel="Topic"
         seedPlaceholder="launch a product"
         defaultSeed="launch a product"
-        defaultCount={6}
+        defaultCount={8}
+        maxCount={18}
         actionLabel="Generate headlines"
         resultLabel="Headlines"
         generate={(seed, count) => makeHeadlines(seed, count)}
@@ -1580,6 +1863,14 @@ function RenderGeneratedTool({ tool }: { tool: ToolConfig }) {
     );
   }
 
+  if (tool.slug === "random-number-generator") {
+    return <RandomNumberTool tool={tool} />;
+  }
+
+  if (tool.slug === "random-word-generator") {
+    return <RandomWordTool tool={tool} />;
+  }
+
   const [copyValue, setCopyValue] = useState<string>(tool.intro);
 
   const content = useMemo(() => {
@@ -1618,15 +1909,6 @@ function RenderGeneratedTool({ tool }: { tool: ToolConfig }) {
           summary: "A five-color palette is ready to copy.",
           left: <GenericPanel title="Seed">Warm</GenericPanel>,
           right: <GenericPanel title="Palette"><div className="grid grid-cols-5 gap-2">{palette.map((color) => <div key={color} className="overflow-hidden rounded-[1.2rem] border border-neutral-200 bg-white"><div style={{ background: color }} className="h-20" /><div className="px-2 py-2 text-center text-[11px] font-mono text-neutral-700">{color}</div></div>)}</div><div className="mt-4"><CopyRow value={palette.join(", ")} onCopied={() => setCopyValue(palette.join(", "))} /></div></GenericPanel>,
-        };
-      }
-      case "favicon-generator": {
-        const svg = makeBarcodeSvg("K");
-        return {
-          headline: "Favicon is ready",
-          summary: "A quick icon preview is ready.",
-          left: <GenericPanel title="Label">K</GenericPanel>,
-          right: <GenericPanel title="Preview"><img src={svg} alt="Favicon preview" className="h-24 w-24 rounded-3xl border border-neutral-100 bg-neutral-50 p-2" /><div className="mt-4 flex gap-2"><button type="button" onClick={() => downloadText(svg, "favicon.svg", "image/svg+xml")} className="inline-flex items-center gap-1 rounded-full border border-neutral-200 bg-white px-3 py-1.5 text-sm text-neutral-700"><Download className="h-3.5 w-3.5" />Download SVG</button><CopyRow value={svg} onCopied={() => setCopyValue(svg)} /></div></GenericPanel>,
         };
       }
       case "font-generator-tool": {

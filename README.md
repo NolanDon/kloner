@@ -143,3 +143,6 @@ This prevents silent/destructive schema changes.
 - Replace `/public/hero.mp4` with your real video.
 - Replace placeholder images in `/public/images` as needed.
 - Colors and copy live in `lib/config.ts`.
+
+## kill
+ cmd.exe /c taskkill /PID 411940 /F

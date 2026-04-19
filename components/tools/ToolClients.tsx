@@ -4,6 +4,8 @@ import QRCode from "qrcode";
 import { createPortal } from "react-dom";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { CheckCircle2, X } from "lucide-react";
+import Lottie from "lottie-react";
+import { useConfettiAnimation } from "./SuccessConfetti";
 
 type QrMode = "text" | "url" | "wifi";
 
@@ -180,11 +182,17 @@ function ToolPromoModal({
   open,
   onDismiss,
   preview,
+  headline = "Create websites and web apps in minutes.",
+  message = "Kloner helps you turn a URL or idea into a fast, editable website or web app. If this tool helped, try the full workflow and launch your own product faster.",
 }: {
   open: boolean;
   onDismiss: () => void;
   preview?: ReactNode;
+  headline?: string;
+  message?: string;
 }) {
+  const { animationData, animationError } = useConfettiAnimation(open);
+
   useEffect(() => {
     if (!open) return;
 
@@ -221,6 +229,12 @@ function ToolPromoModal({
         onClick={onDismiss}
       />
 
+      {animationData && !animationError ? (
+        <div className="pointer-events-none absolute inset-0 overflow-hidden">
+          <Lottie animationData={animationData} loop autoplay className="absolute inset-x-0 bottom-[-10%] h-[22rem] opacity-70" />
+        </div>
+      ) : null}
+
       <div className="relative z-20 flex h-full items-center justify-center px-2 py-2 sm:px-4 sm:py-8 simple-fade-in">
         <div
           className="pointer-events-auto relative flex max-h-[calc(100vh-1rem)] w-full max-w-2xl flex-col overflow-hidden rounded-[24px] border border-neutral-200 bg-white text-neutral-900 shadow-[0_28px_120px_rgba(15,23,42,0.16)] simple-fade-in sm:max-h-[calc(100vh-2rem)] sm:rounded-[28px]"
@@ -245,7 +259,7 @@ function ToolPromoModal({
           </button>
 
           <div className="flex-1 overflow-y-auto px-4 pb-4 pt-10 sm:px-8 sm:pb-5 sm:pt-8">
-            <div className="flex flex-col items-center text-center">
+            <div className="flex flex-col items-center text-center website-paywall-feature" style={{ animationDelay: "40ms" }}>
               <div className="mb-2 inline-flex h-10 w-10 items-center justify-center rounded-full border border-amber-100 bg-amber-50 text-[#f55f2a] sm:h-12 sm:w-12">
                 <CheckCircle2 className="h-5 w-5 sm:h-6 sm:w-6" />
               </div>
@@ -254,15 +268,14 @@ function ToolPromoModal({
                 Try Kloner
               </p>
               <h3 className="mt-2 max-w-xl text-[1.55rem] font-normal leading-tight tracking-tight text-neutral-900 sm:text-4xl">
-                Create websites and web apps in minutes.
+                {headline}
               </h3>
               <p className="mt-3 max-w-xl text-sm leading-5 text-neutral-600 sm:leading-6">
-                Kloner helps you turn a URL or idea into a fast, editable website or web app.
-                If this tool helped, try the full workflow and launch your own product faster.
+                {message}
               </p>
 
               {preview ? (
-                <div className="mt-4 w-full overflow-hidden rounded-[18px] border border-neutral-200 bg-neutral-50 px-3 py-3 text-left shadow-[0_18px_50px_rgba(15,23,42,0.06)] sm:mt-5 sm:rounded-[24px] sm:px-4 sm:py-4">
+                <div className="mt-4 w-full overflow-hidden rounded-[18px] border border-neutral-200 bg-neutral-50 px-3 py-3 text-left shadow-[0_18px_50px_rgba(15,23,42,0.06)] sm:mt-5 sm:rounded-[24px] sm:px-4 sm:py-4 website-paywall-feature" style={{ animationDelay: "80ms" }}>
                   <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.2em] text-neutral-500 sm:text-xs sm:tracking-[0.22em]">
                     Your result
                   </div>
@@ -272,7 +285,7 @@ function ToolPromoModal({
                 </div>
               ) : null}
 
-              <div className="mt-4 w-full overflow-hidden rounded-[18px] bg-white/95 px-3 py-3 shadow-[0_18px_50px_rgba(15,23,42,0.08)] sm:mt-5 sm:rounded-[24px] sm:px-4 sm:py-4">
+              <div className="mt-4 w-full overflow-hidden rounded-[18px] bg-white/95 px-3 py-3 shadow-[0_18px_50px_rgba(15,23,42,0.08)] sm:mt-5 sm:rounded-[24px] sm:px-4 sm:py-4 website-paywall-feature" style={{ animationDelay: "120ms" }}>
                 <div className="mb-3 text-left text-[11px] font-semibold uppercase tracking-[0.2em] text-neutral-500 sm:text-xs sm:tracking-[0.22em]">
                   What you can build with Kloner
                 </div>
@@ -338,6 +351,8 @@ export function QrCodeTool() {
   const [qrDataUrl, setQrDataUrl] = useState("");
   const [status, setStatus] = useState("Ready to generate.");
   const [promoOpen, setPromoOpen] = useState(false);
+  const [promoHeadline, setPromoHeadline] = useState("QR code is ready to download.");
+  const [promoMessage, setPromoMessage] = useState("Your QR code is ready to scan and share.");
 
   const payload = useMemo(() => {
     if (mode === "wifi") {
@@ -414,7 +429,7 @@ export function QrCodeTool() {
 
   return (
     <div className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr] items-start">
-      <ToolPromoModal open={promoOpen} onDismiss={() => setPromoOpen(false)} preview={promoPreview} />
+      <ToolPromoModal open={promoOpen} onDismiss={() => setPromoOpen(false)} preview={promoPreview} headline={promoHeadline} message={promoMessage} />
       <div className="space-y-4">
         <div className="flex flex-wrap gap-2">
           <button className={buttonClass(mode === "text")} onClick={() => setMode("text")} type="button">Text</button>
@@ -484,6 +499,8 @@ export function QrCodeTool() {
                 type="button"
                 onClick={() => {
                   triggerDownload(qrDataUrl, `${downloadName || "qr-code"}.png`);
+                  setPromoHeadline("QR code downloaded.");
+                  setPromoMessage("Your QR code is ready to scan and share.");
                   setPromoOpen(true);
                 }}
                 className="rounded-full bg-[#f55f2a] px-4 py-2 text-sm font-medium text-white"
@@ -494,6 +511,8 @@ export function QrCodeTool() {
                 type="button"
                 onClick={async () => {
                   await copyToClipboard(payload);
+                  setPromoHeadline("QR payload copied.");
+                  setPromoMessage("The encoded payload is ready to paste.");
                   setPromoOpen(true);
                 }}
                 className="rounded-full border border-neutral-200 px-4 py-2 text-sm text-neutral-700"
@@ -516,6 +535,8 @@ export function PercentageCalculatorTool() {
   const [start, setStart] = useState("100");
   const [end, setEnd] = useState("125");
   const [promoOpen, setPromoOpen] = useState(false);
+  const [promoHeadline, setPromoHeadline] = useState("Percentage results are ready.");
+  const [promoMessage, setPromoMessage] = useState("Your calculation is ready to copy.");
 
   const startNumber = Number(start);
   const endNumber = Number(end);
@@ -550,7 +571,7 @@ export function PercentageCalculatorTool() {
 
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_1fr] items-start">
-      <ToolPromoModal open={promoOpen} onDismiss={() => setPromoOpen(false)} preview={promoPreview} />
+      <ToolPromoModal open={promoOpen} onDismiss={() => setPromoOpen(false)} preview={promoPreview} headline={promoHeadline} message={promoMessage} />
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="block space-y-2">
           <span className="text-sm font-medium text-neutral-700">Starting number</span>
@@ -578,6 +599,8 @@ export function PercentageCalculatorTool() {
             type="button"
             onClick={async () => {
               await copyToClipboard(summary);
+              setPromoHeadline("Percentage results copied.");
+              setPromoMessage("Your calculation is ready to paste.");
               setPromoOpen(true);
             }}
             className="rounded-full bg-[#f55f2a] px-4 py-2 text-sm font-medium text-white"
@@ -595,6 +618,8 @@ export function AgeCalculatorTool() {
   const [month, setMonth] = useState(1);
   const [day, setDay] = useState(1);
   const [promoOpen, setPromoOpen] = useState(false);
+  const [promoHeadline, setPromoHeadline] = useState("Age has been calculated.");
+  const [promoMessage, setPromoMessage] = useState("Your age result is ready to copy.");
   const maxYear = new Date().getFullYear();
 
   const daysInSelectedMonth = new Date(year, month, 0).getDate();
@@ -652,7 +677,7 @@ export function AgeCalculatorTool() {
 
   return (
     <div className="grid gap-6 lg:grid-cols-[0.8fr_1.2fr] items-start">
-      <ToolPromoModal open={promoOpen} onDismiss={() => setPromoOpen(false)} preview={promoPreview} />
+      <ToolPromoModal open={promoOpen} onDismiss={() => setPromoOpen(false)} preview={promoPreview} headline={promoHeadline} message={promoMessage} />
       <div className="grid gap-3 sm:grid-cols-3">
         <label className="block space-y-2">
           <span className="text-sm font-medium text-neutral-700">Year</span>
@@ -732,6 +757,8 @@ export function AgeCalculatorTool() {
             onClick={async () => {
               if (!summary) return;
               await copyToClipboard(summary);
+              setPromoHeadline("Age calculated and copied.");
+              setPromoMessage("Your age result is ready to paste.");
               setPromoOpen(true);
             }}
             className="rounded-full bg-[#f55f2a] px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
@@ -748,6 +775,8 @@ export function JsonFormatterTool() {
   const [rawJson, setRawJson] = useState('{"name":"Kloner","tools":["qr","json"]}');
   const [copied, setCopied] = useState(false);
   const [promoOpen, setPromoOpen] = useState(false);
+  const [promoHeadline, setPromoHeadline] = useState("JSON is formatted.");
+  const [promoMessage, setPromoMessage] = useState("Your prettified JSON is ready to copy.");
 
   const formatted = useMemo(() => {
     try {
@@ -769,7 +798,7 @@ export function JsonFormatterTool() {
 
   return (
     <div className="grid gap-6 lg:grid-cols-2 items-start">
-      <ToolPromoModal open={promoOpen} onDismiss={() => setPromoOpen(false)} preview={promoPreview} />
+      <ToolPromoModal open={promoOpen} onDismiss={() => setPromoOpen(false)} preview={promoPreview} headline={promoHeadline} message={promoMessage} />
       <div className="space-y-3">
         <textarea
           value={rawJson}
@@ -784,6 +813,8 @@ export function JsonFormatterTool() {
               if (!formatted.value) return;
               await copyToClipboard(formatted.value);
               setCopied(true);
+              setPromoHeadline("JSON formatted and copied.");
+              setPromoMessage("Your prettified JSON is ready to paste.");
               setPromoOpen(true);
               window.setTimeout(() => setCopied(false), 1200);
             }}
@@ -819,6 +850,8 @@ export function PasswordGeneratorTool() {
   const [includeSymbols, setIncludeSymbols] = useState(true);
   const [password, setPassword] = useState("");
   const [promoOpen, setPromoOpen] = useState(false);
+  const [promoHeadline, setPromoHeadline] = useState("Password generated.");
+  const [promoMessage, setPromoMessage] = useState("Your password is ready to copy.");
 
   const buildPassword = () => {
     const letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
@@ -864,7 +897,7 @@ export function PasswordGeneratorTool() {
 
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_1fr] items-start">
-      <ToolPromoModal open={promoOpen} onDismiss={() => setPromoOpen(false)} preview={promoPreview} />
+      <ToolPromoModal open={promoOpen} onDismiss={() => setPromoOpen(false)} preview={promoPreview} headline={promoHeadline} message={promoMessage} />
       <div className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-3">
           <label className="block space-y-2 sm:col-span-1">
@@ -882,6 +915,8 @@ export function PasswordGeneratorTool() {
         </div>
         <button type="button" onClick={() => {
           setPassword(buildPassword());
+          setPromoHeadline("Password generated.");
+          setPromoMessage("Your new password is ready to copy.");
         }} className="rounded-full bg-[#f55f2a] px-4 py-2 text-sm font-medium text-white">
           Generate password
         </button>
@@ -895,6 +930,8 @@ export function PasswordGeneratorTool() {
             type="button"
             onClick={async () => {
               await copyToClipboard(password);
+              setPromoHeadline("Password copied.");
+              setPromoMessage("Your password is ready to paste.");
               setPromoOpen(true);
             }}
             className="rounded-full border border-neutral-200 bg-white px-3 py-1.5 text-sm text-neutral-700 transition hover:border-[#f55f2a] hover:text-[#f55f2a]"
@@ -924,6 +961,8 @@ export function ImageResizerTool() {
   const [dimensions, setDimensions] = useState<{ width: number; height: number } | null>(null);
   const [originalDimensions, setOriginalDimensions] = useState<{ width: number; height: number } | null>(null);
   const [promoOpen, setPromoOpen] = useState(false);
+  const [promoHeadline, setPromoHeadline] = useState("Image resized.");
+  const [promoMessage, setPromoMessage] = useState("Your resized image is ready to download.");
   const originalObjectUrl = useRef("");
 
   useEffect(() => {
@@ -1019,7 +1058,7 @@ export function ImageResizerTool() {
 
   return (
     <div className="grid gap-6 lg:grid-cols-[0.95fr_1.05fr] items-start">
-      <ToolPromoModal open={promoOpen} onDismiss={() => setPromoOpen(false)} preview={promoPreview} />
+      <ToolPromoModal open={promoOpen} onDismiss={() => setPromoOpen(false)} preview={promoPreview} headline={promoHeadline} message={promoMessage} />
       <div className="space-y-4">
         <input
           type="file"
@@ -1079,6 +1118,8 @@ export function ImageResizerTool() {
             <img src={resultUrl} alt="Resized image preview" className="max-h-80 w-full rounded-3xl border border-neutral-100 object-contain bg-neutral-50" />
             <button type="button" onClick={() => {
               triggerDownload(resultUrl, `resized-${file?.name || "image"}`);
+              setPromoHeadline("Image downloaded.");
+              setPromoMessage("Your resized image is ready to use.");
               setPromoOpen(true);
             }} className="inline-flex rounded-full bg-[#f55f2a] px-4 py-2 text-sm font-medium text-white">
               Download result
@@ -1097,6 +1138,8 @@ export function ImageResizerTool() {
 export function TextCaseConverterTool() {
   const [text, setText] = useState("Build tools like this with Kloner.");
   const [promoOpen, setPromoOpen] = useState(false);
+  const [promoHeadline, setPromoHeadline] = useState("Text transformed.");
+  const [promoMessage, setPromoMessage] = useState("Your text variants are ready to copy.");
 
   const variants = [
     { label: "Uppercase", value: text.toUpperCase() },
@@ -1116,7 +1159,7 @@ export function TextCaseConverterTool() {
 
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_1fr] items-start">
-      <ToolPromoModal open={promoOpen} onDismiss={() => setPromoOpen(false)} preview={promoPreview} />
+      <ToolPromoModal open={promoOpen} onDismiss={() => setPromoOpen(false)} preview={promoPreview} headline={promoHeadline} message={promoMessage} />
       <textarea
         value={text}
         onChange={(event) => setText(event.target.value)}
@@ -1130,6 +1173,8 @@ export function TextCaseConverterTool() {
               <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">{variant.label}</div>
               <button type="button" onClick={async () => {
                 await copyToClipboard(variant.value);
+                setPromoHeadline("Text copied.");
+                setPromoMessage("Your transformed text is ready to paste.");
                 setPromoOpen(true);
               }} className="rounded-full border border-neutral-200 bg-white px-3 py-1.5 text-sm text-neutral-700">Copy</button>
             </div>
@@ -1156,6 +1201,8 @@ export function UsernameGeneratorTool() {
   const [includeNumbers, setIncludeNumbers] = useState(true);
   const [results, setResults] = useState<string[]>([]);
   const [promoOpen, setPromoOpen] = useState(false);
+  const [promoHeadline, setPromoHeadline] = useState("Usernames generated.");
+  const [promoMessage, setPromoMessage] = useState("Your username set is ready to copy.");
 
   const buildUsernames = () => {
     const seen = new Set<string>();
@@ -1191,7 +1238,7 @@ export function UsernameGeneratorTool() {
 
   return (
     <div className="grid gap-6 lg:grid-cols-[0.95fr_1.05fr] items-start">
-      <ToolPromoModal open={promoOpen} onDismiss={() => setPromoOpen(false)} preview={promoPreview} />
+      <ToolPromoModal open={promoOpen} onDismiss={() => setPromoOpen(false)} preview={promoPreview} headline={promoHeadline} message={promoMessage} />
       <div className="space-y-4">
         <label className="block space-y-2">
           <span className="text-sm font-medium text-neutral-700">Seed keyword</span>
@@ -1217,6 +1264,8 @@ export function UsernameGeneratorTool() {
         </label>
         <button type="button" onClick={() => {
           setResults(buildUsernames());
+          setPromoHeadline("Usernames generated.");
+          setPromoMessage("Your username set is ready to copy.");
         }} className="rounded-full bg-[#f55f2a] px-4 py-2 text-sm font-medium text-white">
           Generate usernames
         </button>
@@ -1226,6 +1275,8 @@ export function UsernameGeneratorTool() {
         {results.map((item) => (
           <button key={item} type="button" onClick={async () => {
             await copyToClipboard(item);
+            setPromoHeadline("Username copied.");
+            setPromoMessage("Your selected username is ready to paste.");
             setPromoOpen(true);
           }} className="rounded-[1.25rem] border border-neutral-200 bg-neutral-50 px-4 py-3 text-left text-sm text-neutral-800 hover:border-[#f55f2a]">
             {item}
@@ -1243,6 +1294,8 @@ export function ColorPickerTool() {
   const [g, setG] = useState(rgb.g);
   const [b, setB] = useState(rgb.b);
   const [promoOpen, setPromoOpen] = useState(false);
+  const [promoHeadline, setPromoHeadline] = useState("Color is ready.");
+  const [promoMessage, setPromoMessage] = useState("Your hex and RGB values are ready to copy.");
 
   useEffect(() => {
     const next = hexToRgb(hex);
@@ -1274,7 +1327,7 @@ export function ColorPickerTool() {
 
   return (
     <div className="grid gap-6 lg:grid-cols-[0.9fr_1.1fr] items-start">
-      <ToolPromoModal open={promoOpen} onDismiss={() => setPromoOpen(false)} preview={promoPreview} />
+      <ToolPromoModal open={promoOpen} onDismiss={() => setPromoOpen(false)} preview={promoPreview} headline={promoHeadline} message={promoMessage} />
       <div className="space-y-4">
         <input type="color" value={hex} onChange={(event) => setHex(event.target.value)} className="h-20 w-full cursor-pointer rounded-[1.5rem] border border-neutral-200 bg-white p-2" />
         <div className="grid gap-3 sm:grid-cols-3">
@@ -1299,6 +1352,8 @@ export function ColorPickerTool() {
             <div className="mt-2 font-mono text-lg text-neutral-900">{hex}</div>
             <button type="button" onClick={async () => {
               await copyToClipboard(hex);
+              setPromoHeadline("Hex color copied.");
+              setPromoMessage("Your hex value is ready to paste.");
               setPromoOpen(true);
             }} className="mt-3 rounded-full border border-neutral-200 px-3 py-1.5 text-sm text-neutral-700">Copy</button>
           </div>
@@ -1307,6 +1362,8 @@ export function ColorPickerTool() {
             <div className="mt-2 font-mono text-lg text-neutral-900">{rgbLabel}</div>
             <button type="button" onClick={async () => {
               await copyToClipboard(rgbLabel);
+              setPromoHeadline("RGB color copied.");
+              setPromoMessage("Your RGB value is ready to paste.");
               setPromoOpen(true);
             }} className="mt-3 rounded-full border border-neutral-200 px-3 py-1.5 text-sm text-neutral-700">Copy</button>
           </div>
@@ -1339,6 +1396,8 @@ export function TimeZoneConverterTool() {
     return now.toISOString().slice(0, 16);
   });
   const [promoOpen, setPromoOpen] = useState(false);
+  const [promoHeadline, setPromoHeadline] = useState("Time converted.");
+  const [promoMessage, setPromoMessage] = useState("Your converted time is ready to copy.");
 
   const converted = useMemo(() => {
     if (!sourceTime) return null;
@@ -1374,7 +1433,7 @@ export function TimeZoneConverterTool() {
 
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_1fr] items-start">
-      <ToolPromoModal open={promoOpen} onDismiss={() => setPromoOpen(false)} preview={promoPreview} />
+      <ToolPromoModal open={promoOpen} onDismiss={() => setPromoOpen(false)} preview={promoPreview} headline={promoHeadline} message={promoMessage} />
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="block space-y-2 sm:col-span-2">
           <span className="text-sm font-medium text-neutral-700">Source date and time</span>
@@ -1408,6 +1467,8 @@ export function TimeZoneConverterTool() {
             onClick={async () => {
               if (!converted) return;
               await copyToClipboard(`${converted.sourceLabel} → ${converted.targetLabel} (${converted.formatted})`);
+              setPromoHeadline("Time converted and copied.");
+              setPromoMessage("Your converted time is ready to paste.");
               setPromoOpen(true);
             }}
             className="rounded-full bg-[#f55f2a] px-4 py-2 text-sm font-medium text-white disabled:opacity-50"

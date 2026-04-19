@@ -363,17 +363,19 @@ export default function PreviewDashboard({
                                                     <Image
                                                         src="/images/showcase/mobile_showcase2.jpg"
                                                         alt="Website showcase"
-                                                        fill
-                                                        sizes="100vw"
-                                                        className="object-cover object-top md:hidden"
+                                                        width={900}
+                                                        height={1200}
+                                                        sizes="(max-width: 768px) calc(100vw - 1.5rem), 0px"
+                                                        className="absolute inset-0 h-full w-full object-cover object-top md:hidden"
                                                         priority
                                                     />
                                                     <Image
                                                         src="/images/showcase/showcase2.jpg"
                                                         alt="Website showcase"
-                                                        fill
-                                                        sizes="(max-width: 768px) 100vw, 1100px"
-                                                        className="hidden object-cover md:block"
+                                                        width={1600}
+                                                        height={900}
+                                                        sizes="(max-width: 768px) 0px, 1100px"
+                                                        className="hidden md:block absolute inset-0 h-full w-full object-cover"
                                                         priority
                                                     />
                                                     <div className="absolute inset-0 hidden bg-black/10 md:block" />

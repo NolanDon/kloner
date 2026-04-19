@@ -1,6 +1,10 @@
+import path from "path";
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+    outputFileTracingRoot: path.resolve("."),
     images: {
+        qualities: [75, 82],
         remotePatterns: [
             {
                 protocol: "https",

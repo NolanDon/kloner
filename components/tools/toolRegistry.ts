@@ -13,7 +13,6 @@ export type ToolSlug =
   | "random-word-generator"
   | "lorem-ipsum-generator"
   | "color-palette-generator"
-  | "favicon-generator"
   | "font-generator-tool"
   | "hashtag-generator"
   | "slogan-generator"
@@ -542,24 +541,7 @@ export const TOOL_CONFIGS: ToolConfig[] = [
       { q: "Is this random or themed?", a: "It can work as a quick random color generator with a consistent palette feel." },
       { q: "Does it include multiple colors?", a: "Yes. It generates a small set of matching swatches." },
     ],
-    related: ["color-picker-tool", "favicon-generator", "font-generator-tool"],
-  },
-  {
-    slug: "favicon-generator",
-    h1: "Favicon Generator",
-    title: "Favicon Generator Tool",
-    description: "Create a simple favicon preview and download an SVG icon.",
-    keyword: "favicon generator",
-    intro: "Use this favicon generator to make a small icon quickly for a site, project, or draft app.",
-    howTo: ["Enter a short label.", "Choose a background color.", "Generate and download the icon."],
-    useCases: ["Create a quick site icon.", "Make a placeholder for a draft project.", "Use it in internal tools or demos."],
-    whyUseful: ["It gives you a simple icon without opening a design tool.", "The output is small and easy to reuse.", "It is useful when you need a favicon fast."],
-    faqs: [
-      { q: "Can I download the icon?", a: "Yes. The SVG download is ready once you generate it." },
-      { q: "Can I change the label?", a: "Yes. Use one or two characters for the icon mark." },
-      { q: "Is this good for a starter site?", a: "Yes. It is a quick placeholder or a lightweight final icon." },
-    ],
-    related: ["color-palette-generator", "ascii-art-generator", "business-name-generator"],
+    related: ["color-picker-tool", "font-generator-tool", "random-word-generator"],
   },
   {
     slug: "font-generator-tool",
@@ -678,7 +660,7 @@ export const TOOL_CONFIGS: ToolConfig[] = [
       { q: "Is this good for mockups?", a: "Yes. It is a simple preview for layout work." },
       { q: "Can I change the value?", a: "Yes. The preview updates from your input." },
     ],
-    related: ["favicon-generator", "uuid-generator", "word-cloud-generator"],
+    related: ["uuid-generator", "word-cloud-generator", "color-palette-generator"],
   },
   {
     slug: "word-cloud-generator",
@@ -746,7 +728,7 @@ export const TOOL_CONFIGS: ToolConfig[] = [
       { q: "Is this good for fun text?", a: "Yes. It is meant for simple, playful banners." },
       { q: "Can I change the text?", a: "Yes. Enter any short label or phrase." },
     ],
-    related: ["favicon-generator", "acronym-generator", "plot-generator"],
+    related: ["acronym-generator", "plot-generator", "title-generator"],
   },
   {
     slug: "plot-generator",
@@ -953,7 +935,7 @@ export const TOOL_CONFIGS: ToolConfig[] = [
     useCases: ["Pick brand colors.", "Explore page palettes.", "Test visual direction."],
     whyUseful: ["It gives a few palette directions fast.", "The colors are easy to compare.", "It keeps early design work moving."],
     faqs: [{ q: "Are the colors stable?", a: "They are generated from the seed and vary by input." }, { q: "Can I copy the hex values?", a: "Yes. The output includes the codes." }, { q: "Is this good for mockups?", a: "Yes. It is useful for early visual exploration." }],
-    related: ["color-palette-generator", "color-picker-tool", "favicon-generator"],
+    related: ["color-palette-generator", "color-picker-tool", "font-generator-tool"],
   },
   {
     slug: "headline-generator",
@@ -1210,7 +1192,6 @@ const TOOL_HUB_BADGES: Record<ToolSlug, string> = {
   "random-word-generator": "WORD",
   "lorem-ipsum-generator": "TXT",
   "color-palette-generator": "PAL",
-  "favicon-generator": "ICO",
   "font-generator-tool": "FONT",
   "hashtag-generator": "#",
   "slogan-generator": "SLOG",
@@ -1341,12 +1322,6 @@ const TOOL_HUB_TINTS: Record<ToolSlug, { ring: string; glow: string; badge: stri
     glow: "rgba(34,197,94,0.10)",
     badge: "bg-emerald-600 text-white",
     accent: "bg-emerald-600",
-  },
-  "favicon-generator": {
-    ring: "rgba(168,85,247,0.16)",
-    glow: "rgba(168,85,247,0.10)",
-    badge: "bg-violet-600 text-white",
-    accent: "bg-violet-600",
   },
   "font-generator-tool": {
     ring: "rgba(202,138,4,0.16)",

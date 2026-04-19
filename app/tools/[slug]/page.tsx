@@ -31,7 +31,6 @@ const TOOL_RENDERERS: Partial<Record<ToolSlug, JSX.Element>> = {
   "random-word-generator": <GeneratedToolClient tool={TOOL_BY_SLUG["random-word-generator"]} />,
   "lorem-ipsum-generator": <GeneratedToolClient tool={TOOL_BY_SLUG["lorem-ipsum-generator"]} />,
   "color-palette-generator": <GeneratedToolClient tool={TOOL_BY_SLUG["color-palette-generator"]} />,
-  "favicon-generator": <GeneratedToolClient tool={TOOL_BY_SLUG["favicon-generator"]} />,
   "font-generator-tool": <GeneratedToolClient tool={TOOL_BY_SLUG["font-generator-tool"]} />,
   "hashtag-generator": <GeneratedToolClient tool={TOOL_BY_SLUG["hashtag-generator"]} />,
   "slogan-generator": <GeneratedToolClient tool={TOOL_BY_SLUG["slogan-generator"]} />,

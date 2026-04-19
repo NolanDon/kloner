@@ -24,11 +24,12 @@ export default function Hero() {
             <Image
               src="/images/hero_bg.jpg"
               alt="Hero background"
-              fill
+              width={2400}
+              height={1600}
               priority
               fetchPriority="high"
               sizes="100vw"
-              className="object-cover select-none pointer-events-none"
+              className="absolute inset-0 h-full w-full object-cover select-none pointer-events-none"
             />
             <div className="absolute inset-0 bg-gradient-to-b from-black/10 via-black/30 to-black/10" />
           </div>

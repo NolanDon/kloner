@@ -36,29 +36,56 @@ export default function ToolsHubPage() {
   return (
     <main className="min-h-screen bg-white text-neutral-900">
       <NavBar />
-      <section className="pt-28 pb-20 px-4 sm:px-6">
+      <section className="relative overflow-hidden pt-28 pb-20 px-4 sm:px-6">
+        <div
+          className="pointer-events-none absolute left-1/2 top-4 h-72 w-72 -translate-x-1/2 rounded-full opacity-40 blur-3xl"
+          aria-hidden
+          style={{ background: "radial-gradient(circle, rgba(245,95,42,0.18), transparent 70%)" }}
+        />
+        <div
+          className="pointer-events-none absolute right-[-6rem] top-28 h-64 w-64 rounded-full opacity-30 blur-3xl"
+          aria-hidden
+          style={{ background: "radial-gradient(circle, rgba(14,165,233,0.16), transparent 68%)" }}
+        />
         <div className="mx-auto max-w-6xl">
-          <header className="mb-10 max-w-4xl">
-            <div className="inline-flex items-center gap-2 rounded-full bg-accent text-neutral-50 px-3 py-1 text-[11px] mb-4">
+          <header className="mb-10 max-w-4xl website-paywall-feature" style={{ animationDelay: "20ms" }}>
+            <div className="inline-flex items-center gap-2 rounded-full bg-accent text-neutral-50 px-3 py-1 text-[11px] mb-4 shadow-[0_12px_24px_rgba(245,95,42,0.16)]">
               <span>Kloner · Tools</span>
             </div>
 
-            <div className="rounded-3xl border border-neutral-200 bg-gradient-to-br from-white via-neutral-50 to-neutral-100 px-6 py-7 sm:px-8 sm:py-9 shadow-sm">
+            <div className="rounded-3xl border border-neutral-200 bg-gradient-to-br from-white via-neutral-50 to-neutral-100 px-6 py-7 shadow-[0_24px_72px_rgba(15,23,42,0.08)] sm:px-8 sm:py-9">
               <h1 className="text-3xl sm:text-4xl tracking-tight text-neutral-900">
-                Simple tools in one place
+                Simple tools in one place, built for quick wins
               </h1>
               <p className="mt-1 max-w-2xl text-sm text-neutral-600">
                 A small collection of quick utilities, all in one crawlable hub. If you want to build tools like this, you can use <a href="https://kloner.app" className="text-[#f55f2a] font-medium">kloner.app</a> to launch apps faster and create your own.
               </p>
+              <div className="mt-4 flex flex-wrap gap-2">
+                {[
+                  "Copy-ready",
+                  "Fast previews",
+                  "More variants",
+                  "Browser local",
+                ].map((chip, index) => (
+                  <span
+                    key={chip}
+                    className="rounded-full border border-neutral-200 bg-white px-3 py-1 text-xs font-medium text-neutral-700 shadow-[0_8px_18px_rgba(15,23,42,0.05)] website-paywall-feature"
+                    style={{ animationDelay: `${60 + index * 35}ms` }}
+                  >
+                    {chip}
+                  </span>
+                ))}
+              </div>
             </div>
           </header>
 
           <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {TOOL_HUB_ITEMS.map((tool) => (
+            {TOOL_HUB_ITEMS.map((tool, index) => (
               <Link
                 key={tool.href}
                 href={tool.href}
-                className="group relative overflow-hidden rounded-[2rem] border border-neutral-200 bg-white p-5 shadow-[0_16px_36px_rgba(15,23,42,0.07)] transition duration-300 ease-out hover:-translate-y-2 hover:scale-[1.035] focus:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(245,95,42,0.25)] focus-visible:ring-offset-2"
+                className="group relative overflow-hidden rounded-[2rem] border border-neutral-200 bg-white p-5 shadow-[0_16px_36px_rgba(15,23,42,0.07)] transition duration-300 ease-out hover:-translate-y-2 hover:scale-[1.035] focus:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(245,95,42,0.25)] focus-visible:ring-offset-2 website-paywall-feature"
+                style={{ animationDelay: `${100 + index * 38}ms` }}
               >
                 <div
                   className="pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-300 group-hover:opacity-100"
