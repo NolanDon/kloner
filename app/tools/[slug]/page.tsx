@@ -16,7 +16,7 @@ import { GeneratedToolClient } from "@/components/tools/GeneratedToolClient";
 import { ToolPageShell } from "@/components/tools/ToolPageShell";
 import { TOOL_BY_SLUG, TOOL_CONFIGS, type ToolSlug } from "@/components/tools/toolRegistry";
 
-const TOOL_RENDERERS: Record<ToolSlug, JSX.Element> = {
+const TOOL_RENDERERS: Partial<Record<ToolSlug, JSX.Element>> = {
   "qr-code-generator": <QrCodeTool />,
   "percentage-calculator": <PercentageCalculatorTool />,
   "age-calculator": <AgeCalculatorTool />,
@@ -36,7 +36,6 @@ const TOOL_RENDERERS: Record<ToolSlug, JSX.Element> = {
   "hashtag-generator": <GeneratedToolClient tool={TOOL_BY_SLUG["hashtag-generator"]} />,
   "slogan-generator": <GeneratedToolClient tool={TOOL_BY_SLUG["slogan-generator"]} />,
   "business-name-generator": <GeneratedToolClient tool={TOOL_BY_SLUG["business-name-generator"]} />,
-  "gamertag-generator": <GeneratedToolClient tool={TOOL_BY_SLUG["gamertag-generator"]} />,
   "email-generator": <GeneratedToolClient tool={TOOL_BY_SLUG["email-generator"]} />,
   "uuid-generator": <GeneratedToolClient tool={TOOL_BY_SLUG["uuid-generator"]} />,
   "barcode-generator": <GeneratedToolClient tool={TOOL_BY_SLUG["barcode-generator"]} />,

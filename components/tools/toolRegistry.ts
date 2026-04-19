@@ -18,7 +18,6 @@ export type ToolSlug =
   | "hashtag-generator"
   | "slogan-generator"
   | "business-name-generator"
-  | "gamertag-generator"
   | "email-generator"
   | "uuid-generator"
   | "barcode-generator"
@@ -631,23 +630,6 @@ export const TOOL_CONFIGS: ToolConfig[] = [
     related: ["slogan-generator", "username-generator", "title-generator"],
   },
   {
-    slug: "gamertag-generator",
-    h1: "Gamertag Generator",
-    title: "Nickname Generator Tool",
-    description: "Generate handles and nicknames for games, profiles, or test accounts.",
-    keyword: "gamertag generator",
-    intro: "Use this gamertag generator when you need a short handle or nickname in a hurry.",
-    howTo: ["Enter a base word.", "Choose how many ideas you want.", "Generate and copy the handles."],
-    useCases: ["Find a gaming alias.", "Create a test username.", "Brainstorm a short online handle."],
-    whyUseful: ["It gives you quick options without overthinking the name.", "The output is ready to paste into sign-up fields.", "It is useful when a username is already taken."],
-    faqs: [
-      { q: "Can I include numbers?", a: "Yes. The generator can add simple numbers when needed." },
-      { q: "Is this the same as a nickname tool?", a: "Yes. It works well as a nickname generator too." },
-      { q: "Can I generate several at once?", a: "Yes. It creates a short list quickly." },
-    ],
-    related: ["username-generator", "password-generator", "random-word-generator"],
-  },
-  {
     slug: "email-generator",
     h1: "Email Generator",
     title: "Random Email Generator",
@@ -1233,7 +1215,6 @@ const TOOL_HUB_BADGES: Record<ToolSlug, string> = {
   "hashtag-generator": "#",
   "slogan-generator": "SLOG",
   "business-name-generator": "NAME",
-  "gamertag-generator": "TAG",
   "email-generator": "MAIL",
   "uuid-generator": "ID",
   "barcode-generator": "BAR",
@@ -1390,12 +1371,6 @@ const TOOL_HUB_TINTS: Record<ToolSlug, { ring: string; glow: string; badge: stri
     glow: "rgba(245,95,42,0.10)",
     badge: "bg-[#f55f2a] text-white",
     accent: "bg-[#f55f2a]",
-  },
-  "gamertag-generator": {
-    ring: "rgba(14,165,233,0.16)",
-    glow: "rgba(14,165,233,0.10)",
-    badge: "bg-sky-600 text-white",
-    accent: "bg-sky-600",
   },
   "email-generator": {
     ring: "rgba(107,114,128,0.18)",

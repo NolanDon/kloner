@@ -279,6 +279,635 @@ function makeRandomNumberList(min: number, max: number, count: number) {
   return makeRandomNumbers(count, min, max);
 }
 
+const LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
+const ANIMALS = ["otter", "falcon", "badger", "lynx", "sparrow", "fox", "walrus", "koala", "orca", "panda", "hare", "tiger", "moth", "eagle", "heron"];
+const CITIES = ["Austin", "Lisbon", "Reykjavik", "Seoul", "Cairo", "Portland", "Tokyo", "Nairobi", "Berlin", "Dublin", "Melbourne", "Marrakesh", "Vancouver", "Helsinki"];
+const COUNTRIES = ["Japan", "Canada", "Portugal", "Kenya", "Iceland", "Chile", "Australia", "Mexico", "Norway", "Greece", "Brazil", "Spain", "India", "New Zealand"];
+const FANTASY_ROOTS = ["ember", "ash", "thorn", "rune", "silver", "storm", "moon", "star", "wolf", "ivory", "dusk", "spire"];
+const HERO_TITLES = ["Sentinel", "Pulse", "Nova", "Vanguard", "Cipher", "Mirage", "Volt", "Specter", "Beacon", "Comet"];
+const RHYME_SUFFIXES = ["ight", "ake", "oom", "all", "ime", "ore", "een", "own", "air", "ust"];
+
+function capitalizeSentence(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  return trimmed[0]!.toUpperCase() + trimmed.slice(1);
+}
+
+function shuffle<T>(values: readonly T[]) {
+  return [...values].sort(() => Math.random() - 0.5);
+}
+
+function uniqueSlice(values: string[], count: number) {
+  return Array.from(new Set(values)).slice(0, count);
+}
+
+function makeRandomLetters(count: number) {
+  return Array.from({ length: count }, () => randomFrom(LETTERS));
+}
+
+function makeAnimals(count: number) {
+  return shuffle(ANIMALS).slice(0, count).map((animal) => capitalizeSentence(animal));
+}
+
+function makeCities(count: number, seed: string) {
+  const prefix = seed.trim() ? seed.trim().split(/\s+/)[0]!.toLowerCase() : "north";
+  const variants = shuffle(CITIES).map((city, index) => `${capitalizeSentence(prefix)} ${city}${index % 3 === 0 ? "" : ""}`);
+  return uniqueSlice(variants, count);
+}
+
+function makeCountries(count: number, seed: string) {
+  const focus = seed.trim() || "global";
+  const variants = shuffle(COUNTRIES).map((country, index) => `${country}${index < 3 ? ` (${focus})` : ""}`);
+  return uniqueSlice(variants, count);
+}
+
+function makeFantasyNames(count: number, seed: string) {
+  const base = seed.trim().toLowerCase() || "ember";
+  return Array.from({ length: count }, (_, index) => `${capitalizeSentence(randomFrom(FANTASY_ROOTS))}${capitalizeSentence(base.slice(0, 3) || randomFrom(FANTASY_ROOTS))}${index % 2 === 0 ? " of the Vale" : ""}`);
+}
+
+function makeSuperheroNames(count: number, seed: string) {
+  const base = seed.trim().toLowerCase() || "nova";
+  return Array.from({ length: count }, (_, index) => `${capitalizeSentence(base)} ${randomFrom(HERO_TITLES)}${index % 2 === 0 ? "" : " Prime"}`);
+}
+
+function makeRandomRows(count: number) {
+  const firstNames = ["Ava", "Noah", "Mila", "Ethan", "Iris", "Leo", "Zoe", "Mason", "Luna", "Owen"];
+  const roles = ["Designer", "Founder", "Engineer", "Writer", "Analyst", "Operator"];
+  return Array.from({ length: count }, (_, index) => {
+    const name = `${randomFrom(firstNames)} ${randomFrom(["Stone", "River", "Lopez", "Kim", "Patel", "Reed", "Bennett", "Cole"])}`;
+    const role = randomFrom(roles);
+    const email = `${name.toLowerCase().replace(/[^a-z]+/g, ".")}${index + 1}@example.com`;
+    return `${name} | ${role} | ${email}`;
+  });
+}
+
+function makeSecretSantaPairs(names: string[]) {
+  const cleaned = names.map((name) => name.trim()).filter(Boolean);
+  const shuffled = shuffle(cleaned);
+  if (shuffled.length < 2) {
+    return [];
+  }
+  return shuffled.map((giver, index) => `${giver} -> ${shuffled[(index + 1) % shuffled.length]}`);
+}
+
+function makeBingoCard(words: string[]) {
+  const pool = uniqueSlice(words.map((word) => word.trim()).filter(Boolean), 24);
+  while (pool.length < 24) {
+    pool.push(randomFrom(["launch", "design", "copy", "feedback", "debug", "ship", "iterate", "focus", "share", "build"]));
+  }
+  const card = [...pool.slice(0, 12), "FREE", ...pool.slice(12, 24)];
+  return card;
+}
+
+function makeTruthTable(operation: string) {
+  const rows = [
+    { a: false, b: false },
+    { a: false, b: true },
+    { a: true, b: false },
+    { a: true, b: true },
+  ];
+  return rows.map(({ a, b }) => {
+    const value = operation === "AND" ? a && b : operation === "OR" ? a || b : operation === "XOR" ? a !== b : operation === "NAND" ? !(a && b) : operation === "NOR" ? !(a || b) : !a || b;
+    return `${Number(a)} ${operation} ${Number(b)} = ${Number(Boolean(value))}`;
+  });
+}
+
+function makeRhymes(word: string, count: number) {
+  const base = word.trim().toLowerCase() || "light";
+  const root = base.replace(/[^a-z]/g, "").slice(0, 4) || "light";
+  return RHYME_SUFFIXES.map((suffix) => `${root}${suffix}`).slice(0, count).map((item) => capitalizeSentence(item));
+}
+
+function makeColorSchemes(seed: string, count: number) {
+  return Array.from({ length: count }, (_, index) => {
+    const palette = makePalette(`${seed}-${index}`);
+    return palette;
+  });
+}
+
+function makeHeadlines(topic: string, count: number) {
+  const subject = topic.trim() || "your idea";
+  return [
+    `How to build ${subject} without slowing down`,
+    `A better way to launch ${subject}`,
+    `What most people miss about ${subject}`,
+    `${capitalizeSentence(subject)}: a faster path to results`,
+    `Turn ${subject} into something people want`,
+    `The practical guide to ${subject}`,
+  ].slice(0, count);
+}
+
+function makeTheses(topic: string, count: number) {
+  const subject = topic.trim() || "the topic";
+  return [
+    `Although ${subject} looks simple, it works best when you focus on clarity, evidence, and steady execution.`,
+    `${capitalizeSentence(subject)} matters because it changes how people work, decide, and prioritize.`,
+    `A strong approach to ${subject} starts with a clear claim, a specific reason, and a defensible direction.`,
+  ].slice(0, count);
+}
+
+function makeRestaurantNames(cuisine: string, count: number) {
+  const base = capitalizeSentence(cuisine.trim() || "Kitchen");
+  return [`${base} Table`, `${base} House`, `${base} Market`, `${base} Garden`, `${base} Bar`, `${base} Bistro`].slice(0, count);
+}
+
+function makeFancyTextVariants(text: string) {
+  const base = text.trim() || "Kloner";
+  return [
+    base,
+    base.toUpperCase(),
+    base.toLowerCase(),
+    base.split("").map((char) => `${char}͟`).join(""),
+    base.split("").map((char) => `${char}⃒`).join(""),
+    base.replace(/[a-z]/gi, (char) => char === char.toUpperCase() ? char : char.toUpperCase()),
+  ];
+}
+
+function makeGlitchTextVariants(text: string) {
+  const base = text.trim() || "KLONER";
+  return [
+    base.split("").map((char, index) => `${char}${index % 2 === 0 ? "̷" : "̸"}`).join(""),
+    `█ ${base} █`,
+    base.replace(/./g, (char, index) => (index % 3 === 0 ? `${char}█` : char)),
+  ];
+}
+
+function makeMlaCitation(author: string, title: string, source: string, year: string) {
+  const parts = [author.trim(), `"${title.trim()}"`, source.trim(), year.trim()].filter(Boolean);
+  return `${parts[0] || "Unknown"}. ${parts[1] || "Untitled."} ${parts[2] || "Web."} ${parts[3] || "n.d."}.`;
+}
+
+function makeBusinessNiches(seed: string, count: number) {
+  const subject = seed.trim() || "apps";
+  return [
+    `Small ${subject} for busy teams`,
+    `AI tools for ${subject} workflows`,
+    `Local-first ${subject} for creators`,
+    `A lightweight dashboard for ${subject}`,
+    `A fast browser tool for ${subject}`,
+    `A niche service around ${subject}`,
+  ].slice(0, count);
+}
+
+function makeProductNames(seed: string, count: number) {
+  const subject = capitalizeSentence(seed.trim() || "Product");
+  return [`${subject} Flow`, `${subject} Studio`, `${subject} Kit`, `${subject} Spark`, `${subject} Lab`, `${subject} Pro`].slice(0, count);
+}
+
+function makeStartupIdeas(seed: string, count: number) {
+  const subject = seed.trim() || "a new app";
+  return [
+    `A browser tool that makes ${subject} faster to launch`,
+    `A lightweight platform for ${subject} teams`,
+    `A simple workflow app for ${subject}`,
+    `A creator-first product around ${subject}`,
+    `A focused SaaS that solves ${subject}`,
+  ].slice(0, count);
+}
+
+function makeStoryPrompts(seed: string, count: number) {
+  const subject = seed.trim() || "a small decision";
+  return [
+    `A character has to make ${subject} before sunrise.`,
+    `The wrong message changes ${subject} forever.`,
+    `Someone discovers ${subject} is not what it seems.`,
+    `A plan built around ${subject} starts to fail.`,
+  ].slice(0, count);
+}
+
+function makePlotTwists(seed: string, count: number) {
+  const subject = seed.trim() || "the mission";
+  return [
+    `The ally everyone trusts is the reason ${subject} fails.`,
+    `The win turns out to be a trap inside ${subject}.`,
+    `The biggest obstacle is actually the hidden goal of ${subject}.`,
+    `The plan works, but only for the wrong person in ${subject}.`,
+  ].slice(0, count);
+}
+
+function makeWordMixes(seed: string, count: number) {
+  const parts = seed.split(/[\s,/|-]+/).map((part) => part.trim()).filter(Boolean);
+  const [a = "flow", b = "spark"] = parts;
+  return [
+    `${a.slice(0, 3)}${b.slice(0, 3)}`,
+    `${a.slice(0, 4)}${b.slice(-3)}`,
+    `${b.slice(0, 2)}${a.slice(0, 4)}`,
+    `${a}${b.slice(0, 2)}`,
+  ].slice(0, count);
+}
+
+function makeSequences(start: number, step: number, count: number) {
+  return Array.from({ length: count }, (_, index) => String(start + step * index));
+}
+
+function makeIconLabels(seed: string, count: number) {
+  const subject = capitalizeSentence(seed.trim() || "Icon");
+  return [`${subject}`, `${subject} Pro`, `${subject} Lite`, `${subject} Hub`, `${subject} Go`, `${subject} Plus`].slice(0, count);
+}
+
+function makeCharacterNames(seed: string, count: number) {
+  const subject = seed.trim() || "Ash";
+  return [
+    `${capitalizeSentence(subject)} Vale`,
+    `Nova ${capitalizeSentence(subject)}`,
+    `${capitalizeSentence(subject)} Ember`,
+    `Mara ${capitalizeSentence(subject)}`,
+    `Rune ${capitalizeSentence(subject)}`,
+  ].slice(0, count);
+}
+
+function makeTeamNames(seed: string, count: number) {
+  const subject = capitalizeSentence(seed.trim() || "Team");
+  return [`${subject} Crew`, `${subject} Force`, `${subject} Squad`, `${subject} Union`, `${subject} Collective`, `${subject} Signal`].slice(0, count);
+}
+
+function makePromptStarters(seed: string, count: number) {
+  const subject = seed.trim() || "the task";
+  return [
+    `Help me plan ${subject} with clear next steps.`,
+    `Create a concise strategy for ${subject}.`,
+    `Turn ${subject} into a simple action plan.`,
+    `Suggest three better ways to approach ${subject}.`,
+  ].slice(0, count);
+}
+
+function makeTaglines(seed: string, count: number) {
+  const subject = capitalizeSentence(seed.trim() || "Kloner");
+  return [
+    `${subject} makes the next step obvious.`,
+    `Built to move ideas forward.`,
+    `Fast tools for focused work.`,
+    `A cleaner way to ship.`,
+  ].slice(0, count);
+}
+
+type ListToolShellProps = {
+  tool: ToolConfig;
+  headline: string;
+  summary: string;
+  seedLabel: string;
+  seedPlaceholder: string;
+  defaultSeed: string;
+  countLabel?: string;
+  defaultCount?: number;
+  minCount?: number;
+  maxCount?: number;
+  actionLabel?: string;
+  resultLabel?: string;
+  generate: (seed: string, count: number) => string[];
+  renderItem?: (value: string) => ReactNode;
+  previewCopyJoiner?: string;
+};
+
+function ListToolShell({
+  tool,
+  headline,
+  summary,
+  seedLabel,
+  seedPlaceholder,
+  defaultSeed,
+  countLabel = "Count",
+  defaultCount = 6,
+  minCount = 3,
+  maxCount = 12,
+  actionLabel = "Generate",
+  resultLabel = "Results",
+  generate,
+  renderItem,
+  previewCopyJoiner = "\n",
+}: ListToolShellProps) {
+  const [seed, setSeed] = useState(defaultSeed);
+  const [count, setCount] = useState(defaultCount);
+  const [results, setResults] = useState<string[]>(() => generate(defaultSeed, defaultCount));
+
+  useEffect(() => {
+    setResults(generate(seed, count));
+  }, [count, seed]);
+
+  const copyValue = results.join(previewCopyJoiner);
+
+  return (
+    <ToolShell
+      tool={tool}
+      headline={headline}
+      summary={summary}
+      left={
+        <div className="space-y-4">
+          <GenericPanel title="Controls">
+            <div className="space-y-4">
+              <label className="block space-y-2">
+                <span className="text-sm font-medium text-neutral-700">{seedLabel}</span>
+                <input value={seed} onChange={(event) => setSeed(event.target.value)} placeholder={seedPlaceholder} className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#f55f2a]" />
+              </label>
+              <label className="block space-y-2">
+                <span className="text-sm font-medium text-neutral-700">{countLabel}</span>
+                <input value={count} onChange={(event) => setCount(Math.max(minCount, Math.min(maxCount, Number(event.target.value))))} type="number" min={minCount} max={maxCount} className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#f55f2a]" />
+              </label>
+              <button type="button" onClick={() => setResults(generate(seed, count))} className="rounded-full bg-[#f55f2a] px-4 py-2 text-sm font-medium text-white">{actionLabel}</button>
+            </div>
+          </GenericPanel>
+          <GenericPanel title="Quick Copy">
+            <p className="text-sm leading-6 text-neutral-700">Generate a new batch, then copy individual items or the full set.</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <CopyRow value={copyValue} />
+            </div>
+          </GenericPanel>
+        </div>
+      }
+      right={
+        <GenericPanel title={resultLabel}>
+          <div className="grid gap-2">
+            {results.map((item) => (
+              <button key={item} type="button" onClick={async () => copyToClipboard(item)} className="rounded-2xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-left text-sm text-neutral-800 transition hover:border-[#f55f2a] hover:bg-white">
+                {renderItem ? renderItem(item) : item}
+              </button>
+            ))}
+          </div>
+        </GenericPanel>
+      }
+    />
+  );
+}
+
+function PreformattedToolShell({ tool, headline, summary, seedLabel, defaultSeed, generator, actionLabel = "Generate" }: { tool: ToolConfig; headline: string; summary: string; seedLabel: string; defaultSeed: string; generator: (seed: string) => string[]; actionLabel?: string; }) {
+  const [seed, setSeed] = useState(defaultSeed);
+  const [results, setResults] = useState<string[]>(() => generator(defaultSeed));
+
+  useEffect(() => {
+    setResults(generator(seed));
+  }, [seed]);
+
+  const copyValue = results.join("\n");
+
+  return (
+    <ToolShell
+      tool={tool}
+      headline={headline}
+      summary={summary}
+      left={
+        <GenericPanel title="Control">
+          <div className="space-y-4">
+            <label className="block space-y-2">
+              <span className="text-sm font-medium text-neutral-700">{seedLabel}</span>
+              <input value={seed} onChange={(event) => setSeed(event.target.value)} className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#f55f2a]" />
+            </label>
+            <button type="button" onClick={() => setResults(generator(seed))} className="rounded-full bg-[#f55f2a] px-4 py-2 text-sm font-medium text-white">{actionLabel}</button>
+          </div>
+        </GenericPanel>
+      }
+      right={
+        <GenericPanel title="Result">
+          <pre className="overflow-auto rounded-2xl border border-neutral-200 bg-neutral-950 p-4 font-mono text-sm leading-6 text-neutral-100">{results.join("\n")}</pre>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <CopyRow value={copyValue} />
+          </div>
+        </GenericPanel>
+      }
+    />
+  );
+}
+
+function SecretSantaTool({ tool }: { tool: ToolConfig }) {
+  const [namesText, setNamesText] = useState("Ava\nNoah\nMila\nLeo\nZoe\nEthan");
+  const [pairs, setPairs] = useState<string[]>(() => makeSecretSantaPairs(namesText.split(/\n+/)));
+
+  const names = namesText.split(/\n+/).map((name) => name.trim()).filter(Boolean);
+
+  return (
+    <ToolShell
+      tool={tool}
+      headline="Secret Santa pairings are ready"
+      summary="Paste names, generate pairings, and copy the list for your group."
+      left={
+        <GenericPanel title="Participants">
+          <div className="space-y-4">
+            <textarea value={namesText} onChange={(event) => setNamesText(event.target.value)} rows={10} className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#f55f2a]" />
+            <button type="button" onClick={() => setPairs(makeSecretSantaPairs(namesText.split(/\n+/)))} className="rounded-full bg-[#f55f2a] px-4 py-2 text-sm font-medium text-white">Generate pairings</button>
+            <CopyRow value={pairs.join("\n")} />
+          </div>
+        </GenericPanel>
+      }
+      right={
+        <GenericPanel title="Pairings">
+          {names.length < 2 ? (
+            <p className="text-sm text-neutral-600">Add at least two names to create a pairing list.</p>
+          ) : (
+            <div className="grid gap-2">
+              {pairs.map((pair) => (
+                <div key={pair} className="rounded-2xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm text-neutral-800">{pair}</div>
+              ))}
+            </div>
+          )}
+        </GenericPanel>
+      }
+    />
+  );
+}
+
+function BingoCardTool({ tool }: { tool: ToolConfig }) {
+  const [wordsText, setWordsText] = useState("launch\ndesign\ncopy\nfeedback\ndebug\nship\niterate\nfocus\nbuild\nshare\nplan\nreview\nmeet\nwrite\ncode\ncoffee\nasync\nwallet\nlayout\nmobile\napi\nship fast\nclean UI\nnew idea");
+  const [card, setCard] = useState<string[]>(() => makeBingoCard(wordsText.split(/\n+/)));
+
+  return (
+    <ToolShell
+      tool={tool}
+      headline="Bingo card is ready"
+      summary="Turn a list of words into a simple 5x5 card with a free center square."
+      left={
+        <GenericPanel title="Word Bank">
+          <div className="space-y-4">
+            <textarea value={wordsText} onChange={(event) => setWordsText(event.target.value)} rows={12} className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#f55f2a]" />
+            <button type="button" onClick={() => setCard(makeBingoCard(wordsText.split(/\n+/)))} className="rounded-full bg-[#f55f2a] px-4 py-2 text-sm font-medium text-white">Generate card</button>
+            <CopyRow value={card.join("\n")} />
+          </div>
+        </GenericPanel>
+      }
+      right={
+        <GenericPanel title="Card">
+          <div className="grid grid-cols-5 gap-2">
+            {card.map((item, index) => (
+              <div key={`${item}-${index}`} className={`flex min-h-[4.5rem] items-center justify-center rounded-2xl border px-3 py-3 text-center text-xs font-medium uppercase tracking-[0.12em] ${item === "FREE" ? "border-[#f55f2a] bg-[#fff4ef] text-[#f55f2a]" : "border-neutral-200 bg-neutral-50 text-neutral-800"}`}>
+                {item}
+              </div>
+            ))}
+          </div>
+        </GenericPanel>
+      }
+    />
+  );
+}
+
+function TruthTableTool({ tool }: { tool: ToolConfig }) {
+  const [operation, setOperation] = useState("AND");
+  const rows = makeTruthTable(operation);
+
+  return (
+    <ToolShell
+      tool={tool}
+      headline="Truth table is ready"
+      summary="Switch between common boolean operations and copy the results." 
+      left={
+        <GenericPanel title="Operation">
+          <div className="space-y-4">
+            <select value={operation} onChange={(event) => setOperation(event.target.value)} className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#f55f2a]">
+              <option value="AND">AND</option>
+              <option value="OR">OR</option>
+              <option value="XOR">XOR</option>
+              <option value="NAND">NAND</option>
+              <option value="NOR">NOR</option>
+              <option value="IMPLIES">IMPLIES</option>
+            </select>
+            <CopyRow value={rows.join("\n")} />
+          </div>
+        </GenericPanel>
+      }
+      right={
+        <GenericPanel title="Table">
+          <div className="grid gap-2">
+            {rows.map((row) => (
+              <div key={row} className="rounded-2xl border border-neutral-200 bg-neutral-50 px-4 py-3 font-mono text-sm text-neutral-800">{row}</div>
+            ))}
+          </div>
+        </GenericPanel>
+      }
+    />
+  );
+}
+
+function FakeDataTool({ tool }: { tool: ToolConfig }) {
+  const [count, setCount] = useState(8);
+  const [rows, setRows] = useState<string[]>(() => makeRandomRows(8));
+
+  return (
+    <ToolShell
+      tool={tool}
+      headline="Mock data is ready"
+      summary="Generate quick placeholder rows for testing tables, forms, and dashboards."
+      left={
+        <GenericPanel title="Controls">
+          <div className="space-y-4">
+            <label className="block space-y-2">
+              <span className="text-sm font-medium text-neutral-700">Rows</span>
+              <input type="number" min={3} max={20} value={count} onChange={(event) => setCount(Math.max(3, Math.min(20, Number(event.target.value))))} className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#f55f2a]" />
+            </label>
+            <button type="button" onClick={() => setRows(makeRandomRows(count))} className="rounded-full bg-[#f55f2a] px-4 py-2 text-sm font-medium text-white">Generate data</button>
+            <CopyRow value={rows.join("\n")} />
+          </div>
+        </GenericPanel>
+      }
+      right={
+        <GenericPanel title="Rows">
+          <div className="overflow-auto rounded-2xl border border-neutral-200 bg-white">
+            <table className="w-full text-left text-sm">
+              <thead className="bg-neutral-50 text-xs uppercase tracking-[0.16em] text-neutral-500">
+                <tr>
+                  <th className="px-4 py-3">Name</th>
+                  <th className="px-4 py-3">Role</th>
+                  <th className="px-4 py-3">Email</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row) => {
+                  const [name, role, email] = row.split(" | ");
+                  return (
+                    <tr key={row} className="border-t border-neutral-200">
+                      <td className="px-4 py-3 text-neutral-900">{name}</td>
+                      <td className="px-4 py-3 text-neutral-700">{role}</td>
+                      <td className="px-4 py-3 font-mono text-xs text-neutral-700">{email}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </GenericPanel>
+      }
+    />
+  );
+}
+
+function MlaCitationTool({ tool }: { tool: ToolConfig }) {
+  const [author, setAuthor] = useState("Copilot, GitHub");
+  const [title, setTitle] = useState("Building faster browser tools");
+  const [source, setSource] = useState("kloner.app");
+  const [year, setYear] = useState(String(new Date().getFullYear()));
+  const citation = makeMlaCitation(author, title, source, year);
+
+  return (
+    <ToolShell
+      tool={tool}
+      headline="MLA citation is ready"
+      summary="Fill the source details, then copy the citation line into your notes."
+      left={
+        <GenericPanel title="Fields">
+          <div className="space-y-3">
+            {[{ label: "Author", value: author, set: setAuthor }, { label: "Title", value: title, set: setTitle }, { label: "Source", value: source, set: setSource }, { label: "Year", value: year, set: setYear }].map((field) => (
+              <label key={field.label} className="block space-y-2">
+                <span className="text-sm font-medium text-neutral-700">{field.label}</span>
+                <input value={field.value} onChange={(event) => field.set(event.target.value)} className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#f55f2a]" />
+              </label>
+            ))}
+            <CopyRow value={citation} />
+          </div>
+        </GenericPanel>
+      }
+      right={
+        <GenericPanel title="Citation">
+          <pre className="whitespace-pre-wrap rounded-2xl border border-neutral-200 bg-neutral-50 p-4 text-sm leading-7 text-neutral-800">{citation}</pre>
+        </GenericPanel>
+      }
+    />
+  );
+}
+
+function SequenceTool({ tool }: { tool: ToolConfig }) {
+  const [start, setStart] = useState(1);
+  const [step, setStep] = useState(2);
+  const [count, setCount] = useState(12);
+  const results = makeSequences(start, step, count);
+
+  return (
+    <ToolShell
+      tool={tool}
+      headline="Sequence is ready"
+      summary="Generate a simple numeric run with start, step, and count controls."
+      left={
+        <GenericPanel title="Controls">
+          <div className="grid gap-3 sm:grid-cols-3">
+            <label className="block space-y-2"><span className="text-sm font-medium text-neutral-700">Start</span><input type="number" value={start} onChange={(event) => setStart(Number(event.target.value))} className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#f55f2a]" /></label>
+            <label className="block space-y-2"><span className="text-sm font-medium text-neutral-700">Step</span><input type="number" value={step} onChange={(event) => setStep(Number(event.target.value))} className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#f55f2a]" /></label>
+            <label className="block space-y-2"><span className="text-sm font-medium text-neutral-700">Count</span><input type="number" min={3} max={30} value={count} onChange={(event) => setCount(Math.max(3, Math.min(30, Number(event.target.value))))} className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#f55f2a]" /></label>
+          </div>
+          <div className="mt-4"><CopyRow value={results.join(", ")} /></div>
+        </GenericPanel>
+      }
+      right={
+        <GenericPanel title="Sequence">
+          <div className="flex flex-wrap gap-2">
+            {results.map((number) => <span key={number} className="rounded-full border border-neutral-200 bg-neutral-50 px-3 py-2 font-mono text-sm text-neutral-900">{number}</span>)}
+          </div>
+        </GenericPanel>
+      }
+    />
+  );
+}
+
+function TextTransformTool({ tool }: { tool: ToolConfig }) {
+  const [text, setText] = useState(tool.keyword);
+  const variants = tool.slug === "fancy-text-generator" ? makeFancyTextVariants(text) : makeGlitchTextVariants(text);
+
+  return (
+    <ToolShell
+      tool={tool}
+      headline={tool.slug === "fancy-text-generator" ? "Fancy text is ready" : "Glitch text is ready"}
+      summary={tool.slug === "fancy-text-generator" ? "Turn plain text into a few stylized text variations." : "Create a glitched text effect for short phrases."}
+      left={<GenericPanel title="Text"><textarea value={text} onChange={(event) => setText(event.target.value)} rows={6} className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#f55f2a]" /><div className="mt-4"><CopyRow value={variants.join("\n")} /></div></GenericPanel>}
+      right={<GenericPanel title="Variants"><div className="grid gap-2">{variants.map((variant) => <div key={variant} className="rounded-2xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm text-neutral-800">{variant}</div>)}</div></GenericPanel>}
+    />
+  );
+}
+
 const TOOL_SHOWCASE = [
   {
     title: "Preview in browser",
@@ -534,6 +1163,423 @@ function GenericPanel({ title, children }: { title: string; children: React.Reac
 }
 
 function RenderGeneratedTool({ tool }: { tool: ToolConfig }) {
+  if (tool.slug === "random-letter-generator") {
+    return (
+      <ListToolShell
+        tool={tool}
+        headline="Random letters are ready"
+        summary="Generate short letter sets for puzzles, placeholders, and quick naming work."
+        seedLabel="Alphabet hint"
+        seedPlaceholder="letters"
+        defaultSeed="letters"
+        defaultCount={12}
+        maxCount={26}
+        actionLabel="Generate letters"
+        resultLabel="Letters"
+        generate={(_, count) => makeRandomLetters(count)}
+      />
+    );
+  }
+
+  if (tool.slug === "random-animal-generator") {
+    return (
+      <ListToolShell
+        tool={tool}
+        headline="Random animals are ready"
+        summary="Create a fast animal list for prompts, games, or themed drafts."
+        seedLabel="Theme"
+        seedPlaceholder="wild"
+        defaultSeed="wild"
+        defaultCount={8}
+        actionLabel="Generate animals"
+        resultLabel="Animals"
+        generate={(_, count) => makeAnimals(count)}
+      />
+    );
+  }
+
+  if (tool.slug === "random-city-generator") {
+    return (
+      <ListToolShell
+        tool={tool}
+        headline="Random cities are ready"
+        summary="Generate city-style names for mockups, maps, and creative notes."
+        seedLabel="Seed"
+        seedPlaceholder="north"
+        defaultSeed="north"
+        defaultCount={8}
+        actionLabel="Generate cities"
+        resultLabel="Cities"
+        generate={(seed, count) => makeCities(count, seed)}
+      />
+    );
+  }
+
+  if (tool.slug === "random-country-generator") {
+    return (
+      <ListToolShell
+        tool={tool}
+        headline="Random countries are ready"
+        summary="Create quick country lists for quizzes, forms, and sample content."
+        seedLabel="Context"
+        seedPlaceholder="world"
+        defaultSeed="world"
+        defaultCount={8}
+        actionLabel="Generate countries"
+        resultLabel="Countries"
+        generate={(seed, count) => makeCountries(count, seed)}
+      />
+    );
+  }
+
+  if (tool.slug === "fantasy-name-generator") {
+    return (
+      <ListToolShell
+        tool={tool}
+        headline="Fantasy names are ready"
+        summary="Generate character-leaning fantasy names with a softer worldbuilding feel."
+        seedLabel="Theme"
+        seedPlaceholder="ember"
+        defaultSeed="ember"
+        defaultCount={8}
+        actionLabel="Generate names"
+        resultLabel="Fantasy names"
+        generate={(seed, count) => makeFantasyNames(count, seed)}
+      />
+    );
+  }
+
+  if (tool.slug === "superhero-name-generator") {
+    return (
+      <ListToolShell
+        tool={tool}
+        headline="Superhero names are ready"
+        summary="Generate bold hero-style names that feel usable in stories and games."
+        seedLabel="Hero seed"
+        seedPlaceholder="nova"
+        defaultSeed="nova"
+        defaultCount={8}
+        actionLabel="Generate heroes"
+        resultLabel="Hero names"
+        generate={(seed, count) => makeSuperheroNames(count, seed)}
+      />
+    );
+  }
+
+  if (tool.slug === "fake-data-generator") {
+    return <FakeDataTool tool={tool} />;
+  }
+
+  if (tool.slug === "secret-santa-generator") {
+    return <SecretSantaTool tool={tool} />;
+  }
+
+  if (tool.slug === "bingo-card-generator") {
+    return <BingoCardTool tool={tool} />;
+  }
+
+  if (tool.slug === "truth-table-generator") {
+    return <TruthTableTool tool={tool} />;
+  }
+
+  if (tool.slug === "rhyming-word-generator") {
+    return (
+      <ListToolShell
+        tool={tool}
+        headline="Rhyming words are ready"
+        summary="Generate rhyme-style alternatives for lyrics, poems, and playful drafts."
+        seedLabel="Target word"
+        seedPlaceholder="light"
+        defaultSeed="light"
+        defaultCount={8}
+        actionLabel="Generate rhymes"
+        resultLabel="Rhymes"
+        generate={(seed, count) => makeRhymes(seed, count)}
+      />
+    );
+  }
+
+  if (tool.slug === "color-scheme-generator") {
+    return (
+      <ListToolShell
+        tool={tool}
+        headline="Color schemes are ready"
+        summary="Generate quick palette directions for brands, pages, and UI systems."
+        seedLabel="Seed word"
+        seedPlaceholder="fresh"
+        defaultSeed="fresh"
+        defaultCount={3}
+        maxCount={6}
+        actionLabel="Generate schemes"
+        resultLabel="Schemes"
+        previewCopyJoiner="\n\n"
+        renderItem={(value) => {
+          const colors = value.split(" ");
+          return (
+            <div className="flex items-center gap-3">
+              {colors.map((color) => (
+                <span key={color} className="h-6 w-6 rounded-full border border-neutral-200" style={{ backgroundColor: color }} />
+              ))}
+              <span className="font-mono text-xs text-neutral-700">{value}</span>
+            </div>
+          );
+        }}
+        generate={(seed, count) => makeColorSchemes(seed, count).map((palette) => palette.join(" "))}
+      />
+    );
+  }
+
+  if (tool.slug === "headline-generator") {
+    return (
+      <ListToolShell
+        tool={tool}
+        headline="Headline ideas are ready"
+        summary="Generate sharper headline directions for pages, posts, and launches."
+        seedLabel="Topic"
+        seedPlaceholder="launch a product"
+        defaultSeed="launch a product"
+        defaultCount={6}
+        actionLabel="Generate headlines"
+        resultLabel="Headlines"
+        generate={(seed, count) => makeHeadlines(seed, count)}
+      />
+    );
+  }
+
+  if (tool.slug === "thesis-statement-generator") {
+    return (
+      <ListToolShell
+        tool={tool}
+        headline="Thesis statements are ready"
+        summary="Generate a concise argument line for essays and research drafts."
+        seedLabel="Topic"
+        seedPlaceholder="technology and learning"
+        defaultSeed="technology and learning"
+        defaultCount={3}
+        maxCount={3}
+        actionLabel="Generate theses"
+        resultLabel="Thesis statements"
+        generate={(seed, count) => makeTheses(seed, count)}
+      />
+    );
+  }
+
+  if (tool.slug === "restaurant-name-generator") {
+    return (
+      <ListToolShell
+        tool={tool}
+        headline="Restaurant names are ready"
+        summary="Generate warm, usable restaurant-style names for menus and concepts."
+        seedLabel="Cuisine or style"
+        seedPlaceholder="modern kitchen"
+        defaultSeed="modern kitchen"
+        defaultCount={6}
+        actionLabel="Generate names"
+        resultLabel="Restaurant names"
+        generate={(seed, count) => makeRestaurantNames(seed, count)}
+      />
+    );
+  }
+
+  if (tool.slug === "fancy-text-generator" || tool.slug === "glitch-text-generator") {
+    return <TextTransformTool tool={tool} />;
+  }
+
+  if (tool.slug === "mla-citation-generator") {
+    return <MlaCitationTool tool={tool} />;
+  }
+
+  if (tool.slug === "business-niche-generator") {
+    return (
+      <ListToolShell
+        tool={tool}
+        headline="Business niches are ready"
+        summary="Generate practical niche ideas for tools, products, and services."
+        seedLabel="Seed word"
+        seedPlaceholder="apps"
+        defaultSeed="apps"
+        defaultCount={6}
+        actionLabel="Generate niches"
+        resultLabel="Niches"
+        generate={(seed, count) => makeBusinessNiches(seed, count)}
+      />
+    );
+  }
+
+  if (tool.slug === "product-name-generator") {
+    return (
+      <ListToolShell
+        tool={tool}
+        headline="Product names are ready"
+        summary="Generate compact product-style names that are easier to scan and compare."
+        seedLabel="Seed word"
+        seedPlaceholder="launch"
+        defaultSeed="launch"
+        defaultCount={6}
+        actionLabel="Generate names"
+        resultLabel="Product names"
+        generate={(seed, count) => makeProductNames(seed, count)}
+      />
+    );
+  }
+
+  if (tool.slug === "startup-idea-generator") {
+    return (
+      <ListToolShell
+        tool={tool}
+        headline="Startup ideas are ready"
+        summary="Generate a few focused startup angles instead of vague brainstorming noise."
+        seedLabel="Seed topic"
+        seedPlaceholder="design tools"
+        defaultSeed="design tools"
+        defaultCount={5}
+        actionLabel="Generate ideas"
+        resultLabel="Ideas"
+        generate={(seed, count) => makeStartupIdeas(seed, count)}
+      />
+    );
+  }
+
+  if (tool.slug === "story-prompt-generator") {
+    return (
+      <ListToolShell
+        tool={tool}
+        headline="Story prompts are ready"
+        summary="Generate quick prompt starters for scenes, roleplay, or warmups."
+        seedLabel="Seed idea"
+        seedPlaceholder="a small decision"
+        defaultSeed="a small decision"
+        defaultCount={4}
+        actionLabel="Generate prompts"
+        resultLabel="Prompts"
+        generate={(seed, count) => makeStoryPrompts(seed, count)}
+      />
+    );
+  }
+
+  if (tool.slug === "plot-twist-generator") {
+    return (
+      <ListToolShell
+        tool={tool}
+        headline="Plot twists are ready"
+        summary="Generate a few sharp turns that push a story in a better direction."
+        seedLabel="Seed idea"
+        seedPlaceholder="the mission"
+        defaultSeed="the mission"
+        defaultCount={4}
+        actionLabel="Generate twists"
+        resultLabel="Twists"
+        generate={(seed, count) => makePlotTwists(seed, count)}
+      />
+    );
+  }
+
+  if (tool.slug === "word-mixer-generator") {
+    return (
+      <ListToolShell
+        tool={tool}
+        headline="Word mixes are ready"
+        summary="Blend two words into compact mashups for labels, names, and concepts."
+        seedLabel="Word pair"
+        seedPlaceholder="flow / spark"
+        defaultSeed="flow / spark"
+        defaultCount={4}
+        actionLabel="Generate mixes"
+        resultLabel="Mixes"
+        generate={(seed, count) => makeWordMixes(seed, count)}
+      />
+    );
+  }
+
+  if (tool.slug === "sequence-generator") {
+    return <SequenceTool tool={tool} />;
+  }
+
+  if (tool.slug === "icon-label-generator") {
+    return (
+      <ListToolShell
+        tool={tool}
+        headline="Icon labels are ready"
+        summary="Generate short labels that stay readable inside small UI surfaces."
+        seedLabel="Seed word"
+        seedPlaceholder="settings"
+        defaultSeed="settings"
+        defaultCount={6}
+        actionLabel="Generate labels"
+        resultLabel="Labels"
+        generate={(seed, count) => makeIconLabels(seed, count)}
+      />
+    );
+  }
+
+  if (tool.slug === "character-name-generator") {
+    return (
+      <ListToolShell
+        tool={tool}
+        headline="Character names are ready"
+        summary="Generate fictional character names that feel more grounded than random noise."
+        seedLabel="Seed name"
+        seedPlaceholder="Ash"
+        defaultSeed="Ash"
+        defaultCount={5}
+        actionLabel="Generate names"
+        resultLabel="Character names"
+        generate={(seed, count) => makeCharacterNames(seed, count)}
+      />
+    );
+  }
+
+  if (tool.slug === "team-name-generator") {
+    return (
+      <ListToolShell
+        tool={tool}
+        headline="Team names are ready"
+        summary="Generate names that feel usable for project teams, clubs, or squads."
+        seedLabel="Seed word"
+        seedPlaceholder="launch"
+        defaultSeed="launch"
+        defaultCount={6}
+        actionLabel="Generate teams"
+        resultLabel="Team names"
+        generate={(seed, count) => makeTeamNames(seed, count)}
+      />
+    );
+  }
+
+  if (tool.slug === "ai-prompt-starter-generator") {
+    return (
+      <ListToolShell
+        tool={tool}
+        headline="Prompt starters are ready"
+        summary="Generate practical starting points for planning, writing, and AI tasks."
+        seedLabel="Task or idea"
+        seedPlaceholder="write a landing page"
+        defaultSeed="write a landing page"
+        defaultCount={4}
+        actionLabel="Generate starters"
+        resultLabel="Prompt starters"
+        generate={(seed, count) => makePromptStarters(seed, count)}
+      />
+    );
+  }
+
+  if (tool.slug === "tagline-generator") {
+    return (
+      <ListToolShell
+        tool={tool}
+        headline="Taglines are ready"
+        summary="Generate short taglines that stay readable in hero sections and ads."
+        seedLabel="Seed word"
+        seedPlaceholder="Kloner"
+        defaultSeed="Kloner"
+        defaultCount={4}
+        actionLabel="Generate taglines"
+        resultLabel="Taglines"
+        generate={(seed, count) => makeTaglines(seed, count)}
+      />
+    );
+  }
+
   const [copyValue, setCopyValue] = useState<string>(tool.intro);
 
   const content = useMemo(() => {
