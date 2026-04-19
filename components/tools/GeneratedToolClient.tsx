@@ -161,6 +161,243 @@ function makePalette(seed: string) {
   });
 }
 
+function makeColorSchemes(seed: string, count: number) {
+  return Array.from({ length: Math.max(1, count) }, (_, index) => makePalette(`${seed}-${index}`));
+}
+
+function makeHeadlines(seed: string, count: number) {
+  const subject = seed.trim() || "this";
+  const tones = [HEADLINE_TONES.direct, HEADLINE_TONES.bold, HEADLINE_TONES.playful];
+  const headlines = Array.from({ length: Math.max(1, count) }, (_, index) => {
+    const tone = tones[index % tones.length]!;
+    return tone[index % tone.length]!.replaceAll("{subject}", subject);
+  });
+  return headlines.slice(0, count);
+}
+
+function makeTitleIdeas(seed: string, count = 6) {
+  const subject = capitalizeSentence(seed.trim() || "Idea");
+  return [
+    `${subject} made simple`,
+    `The ${subject} guide`,
+    `Building better ${subject.toLowerCase()}`,
+    `A cleaner way to handle ${subject.toLowerCase()}`,
+    `${subject}: a practical playbook`,
+    `Fast notes for ${subject.toLowerCase()}`,
+  ].slice(0, count);
+}
+
+function makeTheses(seed: string, count: number) {
+  const subject = seed.trim() || "technology";
+  return [
+    `${subject} works best when it reduces friction instead of adding more steps.`,
+    `Teams get better outcomes from ${subject} when the process stays visible and simple.`,
+    `${subject} succeeds when people can understand the next move without extra explanation.`,
+  ].slice(0, count);
+}
+
+function makeRestaurantNames(seed: string, count: number) {
+  const subject = capitalizeSentence(seed.trim() || "North");
+  return [
+    `${subject} Kitchen`,
+    `The ${subject} Table`,
+    `${subject} Bistro`,
+    `${subject} House`,
+    `${subject} Diner`,
+    `${subject} Market`,
+  ].slice(0, count);
+}
+
+function makeRandomLetters(count: number) {
+  return Array.from({ length: Math.max(1, count) }, (_, index) => String.fromCharCode(65 + (index * 7 + randomInt(26)) % 26));
+}
+
+function makeAnimals(count: number) {
+  const animals = ["fox", "wolf", "otter", "falcon", "lynx", "badger", "panda", "koala", "hare", "heron", "tiger", "whale"];
+  return Array.from({ length: Math.max(1, count) }, (_, index) => animals[index % animals.length]!);
+}
+
+function makeCities(count: number, seed: string) {
+  const base = capitalizeSentence(seed.trim() || "North");
+  return [
+    `${base} City`,
+    `New ${base}`,
+    `${base} Bay`,
+    `${base} Harbor`,
+    `${base} Springs`,
+    `${base} Point`,
+    `${base} Falls`,
+    `${base} Heights`,
+  ].slice(0, count);
+}
+
+function makeCountries(count: number, seed: string) {
+  const base = capitalizeSentence(seed.trim() || "Aurora");
+  return [
+    `Republic of ${base}`,
+    `${base} Federation`,
+    `United ${base}`,
+    `${base} Coast`,
+    `${base} Isles`,
+    `${base} Dominion`,
+    `${base} Union`,
+    `${base} Kingdom`,
+  ].slice(0, count);
+}
+
+function makeFantasyNames(count: number, seed: string) {
+  const base = capitalizeSentence(seed.trim() || "ember");
+  return [
+    `${base} Vale`,
+    `Lyra ${base}`,
+    `${base} Thorn`,
+    `Mira ${base}`,
+    `${base} Night`,
+    `Alden ${base}`,
+    `${base} Wren`,
+    `Seren ${base}`,
+  ].slice(0, count);
+}
+
+function makeSuperheroNames(count: number, seed: string) {
+  const base = capitalizeSentence(seed.trim() || "Nova");
+  return [
+    `Captain ${base}`,
+    `${base} Force`,
+    `The ${base}`,
+    `${base} Vanguard`,
+    `Agent ${base}`,
+    `${base} Prime`,
+    `${base} Storm`,
+    `${base} Shield`,
+  ].slice(0, count);
+}
+
+function makeRhymes(seed: string, count: number) {
+  const base = seed.trim().toLowerCase() || "light";
+  const ending = base.slice(-3);
+  const rhymeMap: Record<string, string[]> = {
+    ight: ["bright", "flight", "night", "sight", "might", "light"],
+    ay: ["day", "play", "stay", "way", "bray", "array"],
+    ee: ["free", "tree", "see", "bee", "glee", "knee"],
+    ow: ["glow", "flow", "show", "slow", "grow", "snow"],
+    ake: ["make", "bake", "shake", "lake", "wake", "stake"],
+    ine: ["shine", "line", "brine", "twine", "mine", "vine"],
+    ore: ["more", "shore", "glore", "roar", "core", "before"],
+  };
+  const bucket = rhymeMap[ending] ?? rhymeMap[base.slice(-2)] ?? ["bright", "light", "night", "flight", "moonlight"];
+  return Array.from({ length: Math.max(1, count) }, (_, index) => bucket[index % bucket.length]!);
+}
+
+function makeBingoCard(wordsInput: string[]) {
+  const words = wordsInput.map((word) => word.trim()).filter(Boolean);
+  const pool = words.length ? words : makeRandomWords(24, "creative");
+  const shuffled = [...pool];
+
+  for (let index = shuffled.length - 1; index > 0; index -= 1) {
+    const swapIndex = randomInt(index + 1);
+    [shuffled[index], shuffled[swapIndex]] = [shuffled[swapIndex]!, shuffled[index]!];
+  }
+
+  const cells = Array.from({ length: 24 }, (_, index) => shuffled[index % shuffled.length]!);
+  cells.splice(12, 0, "FREE");
+  return cells.slice(0, 25);
+}
+
+function makeTruthTable(operation: string) {
+  const combos = [
+    [0, 0],
+    [0, 1],
+    [1, 0],
+    [1, 1],
+  ] as const;
+
+  const evaluate = (left: number, right: number) => {
+    const a = Boolean(left);
+    const b = Boolean(right);
+
+    switch (operation) {
+      case "OR":
+        return a || b;
+      case "XOR":
+        return a !== b;
+      case "NAND":
+        return !(a && b);
+      case "NOR":
+        return !(a || b);
+      case "IMPLIES":
+        return !a || b;
+      default:
+        return a && b;
+    }
+  };
+
+  return ["A | B | RESULT", ...combos.map(([left, right]) => `${left} | ${right} | ${evaluate(left, right) ? 1 : 0}`)];
+}
+
+function makeRandomRows(count: number) {
+  const names = ["Ava", "Noah", "Mila", "Leo", "Zoe", "Ethan", "Maya", "Theo", "Ivy", "Owen"];
+  const roles = ["Designer", "Engineer", "Writer", "Analyst", "Founder", "Manager", "Producer", "Researcher"];
+  const domains = ["example.com", "kloner.app", "mail.test", "inbox.dev"];
+
+  return Array.from({ length: Math.max(1, count) }, (_, index) => {
+    const name = `${names[index % names.length]} ${String.fromCharCode(65 + (index % 26))}.`;
+    const role = roles[index % roles.length]!;
+    const email = `${name.toLowerCase().replace(/[^a-z]+/g, ".").replace(/\.+/g, ".").replace(/^\.|\.$/g, "")}.${index + 1}@${domains[index % domains.length]}`;
+    return `${name} | ${role} | ${email}`;
+  });
+}
+
+function makeUniqueRandomNumbers(count: number, min: number, max: number) {
+  const low = Math.min(min, max);
+  const high = Math.max(min, max);
+  const values = Array.from({ length: high - low + 1 }, (_, index) => low + index);
+
+  for (let index = values.length - 1; index > 0; index -= 1) {
+    const swapIndex = randomInt(index + 1);
+    [values[index], values[swapIndex]] = [values[swapIndex]!, values[index]!];
+  }
+
+  return values.slice(0, Math.min(Math.max(1, count), values.length));
+}
+
+function makeRandomWordsToolCopy(theme: string, count: number) {
+  return makeRandomWords(count, theme).join(", ");
+}
+
+function makeFaviconSvg(options: { label: string; background: string; foreground: string; shape: "square" | "rounded" | "circle" }) {
+  const label = options.label.trim().slice(0, 2).toUpperCase() || "K";
+  const radius = options.shape === "circle" ? "9999" : options.shape === "rounded" ? "28" : "8";
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+      <rect width="512" height="512" rx="${radius}" ry="${radius}" fill="${options.background}" />
+      <text x="50%" y="54%" text-anchor="middle" dominant-baseline="middle" font-family="Arial, Helvetica, sans-serif" font-size="220" font-weight="700" fill="${options.foreground}">${label}</text>
+    </svg>
+  `;
+  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg.trim())}`;
+}
+
+function makePlotIdeas(seed: string) {
+  const topic = seed.trim() || "launching a product";
+  const titleIdeas = makeTitleIdeas(topic, 3);
+  return {
+    topic,
+    logline: `A focused team races to solve ${topic} before the window closes.`,
+    premise: `The story follows the pressure, tradeoffs, and small wins that come with ${topic}.`,
+    protagonist: `A practical builder trying to keep ${topic} moving forward.`,
+    setting: `A fast-moving world where deadlines keep shifting around ${topic}.`,
+    obstacle: `Hidden friction keeps pushing ${topic} off course.`,
+    stakes: `If ${topic} fails, the team loses more than momentum.`,
+    beats: [
+      `A clear goal is set for ${topic}.`,
+      `The plan hits a hidden problem.`,
+      `A better approach emerges under pressure.`,
+      `The team finds a way to finish strong.`,
+    ],
+    titleIdeas,
+  };
+}
+
 function hslToHex(hue: number, saturation: number, lightness: number) {
   const normalizedHue = (((hue % 360) + 360) % 360) / 360;
   const normalizedSaturation = saturation / 100;
@@ -294,11 +531,11 @@ function makeBarcodeSvg(value: string) {
 function makeWordCloudWords(input: string) {
   const words = input.split(/[,\n]+/).map((word) => word.trim()).filter(Boolean);
   const expanded = words.length ? words : ["ideas", "build", "launch", "design", "ship"];
-  return expanded.flatMap((word) => [
-    word,
-    `${word} ideas`,
-    `${word} launch`,
-    `${word} design`,
+  return expanded.flatMap((word, index) => [
+    { word, size: 34 - index * 3 },
+    { word: `${word} ideas`, size: 22 - index * 2 },
+    { word: `${word} launch`, size: 20 - index * 2 },
+    { word: `${word} design`, size: 18 - index },
   ]).slice(0, 8);
 }
 
@@ -343,6 +580,30 @@ function makeBusinessNiches(seed: string, count: number) {
 function makeProductNames(seed: string, count: number) {
   const subject = capitalizeSentence(seed.trim() || "Product");
   return [`${subject} Flow`, `${subject} Studio`, `${subject} Kit`, `${subject} Spark`, `${subject} Lab`, `${subject} Pro`].slice(0, count);
+}
+
+function makeSecretSantaPairs(namesInput: string[]) {
+  const names = namesInput.map((name) => name.trim()).filter(Boolean);
+
+  if (names.length < 2) {
+    return names;
+  }
+
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const shuffled = [...names];
+
+    for (let index = shuffled.length - 1; index > 0; index -= 1) {
+      const swapIndex = randomInt(index + 1);
+      [shuffled[index], shuffled[swapIndex]] = [shuffled[swapIndex]!, shuffled[index]!];
+    }
+
+    if (shuffled.every((recipient, index) => recipient !== names[index])) {
+      return names.map((name, index) => `${name} -> ${shuffled[index]}`);
+    }
+  }
+
+  const rotated = [...names.slice(1), names[0]];
+  return names.map((name, index) => `${name} -> ${rotated[index]}`);
 }
 
 function makeStartupIdeas(seed: string, count: number) {
@@ -1248,7 +1509,7 @@ function RandomWordTool({ tool }: { tool: ToolConfig }) {
                 type="button"
                 onClick={async () => {
                   await copyToClipboard(word);
-                  announceSuccess("Copied word", "The selected idea is ready to paste.");
+                  notifyToolSuccess("Copied word", "The selected idea is ready to paste.");
                 }}
                 className="rounded-2xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-left text-sm text-neutral-800 transition hover:border-[#f55f2a] hover:bg-white"
               >
