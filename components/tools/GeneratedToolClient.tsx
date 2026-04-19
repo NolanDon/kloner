@@ -58,6 +58,12 @@ function slugLabel(slug: string) {
     .join(" ");
 }
 
+function capitalizeSentence(value: string) {
+  const text = value.trim();
+  if (!text) return "";
+  return text[0]!.toUpperCase() + text.slice(1);
+}
+
 function randomFrom<T>(values: readonly T[]): T {
   return values[Math.floor(Math.random() * values.length)]!;
 }
