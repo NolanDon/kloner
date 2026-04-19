@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import HomeClient from "./HomeClient";
 
 export const metadata: Metadata = {
-  title: "Kloner – Website Cloner & Builder",
+  title: "Clone Website Fast | Website Cloner & Website Copier | Kloner",
   description:
-    "Clone, customize, and deploy high‑fidelity website layouts. Drop a link or enter a description to generate an editable preview, export clean HTML, and ship faster.",
+    "Clone a website instantly with Kloner, a website cloner and website copier online that helps you copy a website, customize the layout, and launch fast.",
   alternates: {
     canonical: "https://kloner.app/",
   },

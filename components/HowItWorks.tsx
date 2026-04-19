@@ -267,29 +267,29 @@ type ModalPlain = React.ComponentType;
 
 const items = [
   {
-    title: "Link or description",
-    text: "Point us at any site. We'll analyze the structure and create you a base layout.",
+    title: "Paste a URL",
+    text: "Drop in any public website you want to copy and we’ll build a clean starting point.",
     step: 1,
     Modal: UrlInputModal as ModalPlain,
     needsProgress: false,
   },
   {
-    title: "Preview",
-    text: "Choose to generate a simple html page or start from a sentence describing your ideal website.",
+    title: "Preview the clone",
+    text: "Review the layout, sections, and structure before you change a single detail.",
     step: 2,
     Modal: PreviewGridModal as ModalPlain,
     needsProgress: false,
   },
   {
-    title: "Customize",
-    text: "When your preview is complete, our agent will fine-tune it to your liking with your simple instruction.",
+    title: "Make it your own",
+    text: "Swap copy, colors, images, and sections until the site feels like your brand.",
     step: 3,
     Modal: EditBlocksModal as ModalPlain,
     needsProgress: false,
   },
   {
-    title: "Deploy",
-    text: "Finally, name and deploy your website with just a few clicks and have your live project within minutes.",
+    title: "Deploy the new site",
+    text: "Publish the finished version when the cloned layout is ready to go live.",
     step: 4,
     Modal: DeployModal as ModalWithProgress,
     needsProgress: true,
@@ -462,7 +462,7 @@ export default function HowItWorks() {
 
           <div className="md:sticky md:top-44">
             <h2 className="text-4xl md:text-6xl mb-10 text-black/80">
-              How it works
+              How to copy a website
             </h2>
 
             <div className="relative">

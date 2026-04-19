@@ -124,16 +124,19 @@ export default function HeroContent({
         transition={{ duration: 0.8 }}
         className="w-full max-w-[720px] text-center"
       >
+        <div className="mb-3 inline-flex rounded-full border border-white/20 bg-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-white/85 backdrop-blur-sm">
+          Website cloner
+        </div>
         <h1
           className={`${displayClassName} leading-[0.95] font-bold tracking-tight text-white`}
           style={{ fontSize: "clamp(3rem, min(12vw, 8.8vh), 5.5rem)" }}
         >
-          Clone, Customize <br /> & Deploy.
+          Clone any website <br /> instantly.
         </h1>
 
         <p className="mt-[clamp(0.75rem,2.2vh,1.5rem)] text-white/90 text-base sm:text-lg md:text-xl max-w-xl mx-auto font-medium">
-          Enter a description, or drop a link
-          to generate your next ready-to-ship project.
+          Use Kloner as a website cloner to copy a website, preview the layout,
+          and make it your own without starting from scratch.
         </p>
 
         <form onSubmit={onSubmit} className="mt-[clamp(1rem,3.2vh,2.5rem)] w-full max-w-2xl mx-auto">
@@ -233,22 +236,22 @@ export default function HeroContent({
                   ? "h-11 w-11 grid place-items-center md:h-full md:w-auto md:px-6"
                   : "h-11 w-11 grid place-items-center md:h-full md:w-auto md:px-6")
               }
-              aria-label={mode === "prompt" ? "Create from prompt" : "Preview from URL"}
+              aria-label={mode === "prompt" ? "Create from prompt" : "Clone website from URL"}
             >
-              <span className="md:hidden">
-                {mode === "prompt" ? (
-                  <Send className="h-4 w-4" />
-                ) : (
-                  <ArrowRightSquare className="h-4 w-4" />
-                )}
-                <span className="sr-only">{mode === "prompt" ? "Create" : "Preview"}</span>
-              </span>
-              <span className="hidden md:inline">{mode === "prompt" ? "Create" : "Preview"}</span>
+                  <span className="md:hidden">
+                    {mode === "prompt" ? (
+                      <Send className="h-4 w-4" />
+                    ) : (
+                      <ArrowRightSquare className="h-4 w-4" />
+                    )}
+                    <span className="sr-only">{mode === "prompt" ? "Preview" : "Clone website"}</span>
+                  </span>
+                  <span className="hidden md:inline">{mode === "prompt" ? "Preview" : "Clone website"}</span>
             </button>
           </div>
 
           <div className="mt-3 sm:mt-4 text-xs sm:text-sm text-white font-medium">
-            {error ?? "Site cloning technology • No credit card required to generate previews"}
+            {error ?? "Clone any public website • No credit card required to preview"}
           </div>
         </form>
 

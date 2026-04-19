@@ -163,10 +163,10 @@ type CardData = {
 };
 
 const CARDS: CardData[] = [
-  { title: 'Clean dashboard', sub: 'All your URLs organized in one simple view.', Mini: MiniPlan },
-  { title: 'Accuracy', sub: 'Pixel-perfect captures, ready to ship for any business type.', Mini: MiniData },
-  { title: 'Previews', sub: 'Rescan anytime until the result feels right.', Mini: MiniUpload },
-  { title: 'Customization', sub: 'Full creative control at your fingertips, with options to modify and remove blocks, upload assets and change code.', Mini: MiniClinic },
+  { title: 'Simple dashboard', sub: 'Keep every site copy project organized in one place.', Mini: MiniPlan },
+  { title: 'Website accuracy', sub: 'Capture the structure clearly so the clone feels familiar right away.', Mini: MiniData },
+  { title: 'Editable previews', sub: 'Rescan and refine until the copied layout feels right.', Mini: MiniUpload },
+  { title: 'Full customization', sub: 'Change text, visuals, blocks, and code until the site is yours.', Mini: MiniClinic },
   // { title: 'Quick actions', sub: 'Jump straight to deployment or customization with instant tools.', Mini: MiniAddons },
   // { title: 'Capture Engine', sub: 'Built by strong engineers with the power to capture long, multi-section pages.', Mini: MiniConcierge },
 ];
@@ -185,12 +185,12 @@ export default function MembershipSticky() {
           <div className="lg:col-span-4">
             <div className="md:sticky top-24">
               <h2 className="text-4xl md:text-6xl md:mb-10 text-black/80 bg-white pt-40 md:py-15 mt-20">
-                What&apos;s included
+                What&apos;s included in the website cloner
               </h2>
 
               <div className="mt-20">
                 <p className="mt-[-40px] md:mt-3 max-w-md text-neutral-600">
-                  Capture any public site, edit in a live preview, export a clean HTML project, and deploy with one click.
+                  Clone or copy a website, edit it in a live preview, export a clean project, and deploy with one click.
                 </p>
               </div>
 

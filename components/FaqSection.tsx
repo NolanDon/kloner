@@ -10,44 +10,36 @@ type Group = { heading: string; items: QA[] };
 
 const GROUPS: Group[] = [
     {
-        heading: 'How it works',
+        heading: 'How to clone a website',
         items: [
             {
-                q: 'Will it copy entire web applications, or mobile applications?',
-                a: 'Kloner generates Next.js websites and web apps. It does not generate native mobile apps.'
+                q: 'Can I copy a website from a URL?',
+                a: 'Yes. Paste a public URL and Kloner builds an editable website preview you can customize.'
             },
             {
-                q: 'How can I customize or change fonts, colors after generating a preview?',
-                a: 'After your site is generated, you can customize fonts, colors, images, and SEO by chatting with the AI agent, which applies those changes directly to your project.'
+                q: 'How do I make the cloned site my own?',
+                a: 'Change the copy, colors, images, sections, and domain so the final site matches your brand.'
             },
             {
-                q: 'How long does the process take from entering a URL to deployment?',
-                a: 'Your site can be generated and live in as little as 5 minutes.'
+                q: 'How long does it take to copy a website?',
+                a: 'Most previews are ready in minutes, so you can move from URL to editable clone fast.'
             },
             {
-                q: 'What exactly gets exported?',
-                a: 'A clean, production-ready Next.js project (V2) with structured routes/components, optimized assets, and integration scaffolding.'
+                q: 'What do I get after cloning?',
+                a: 'A clean Next.js project with structured routes, components, and a preview you can keep editing.'
             },
             {
                 q: 'Can I attach my own domain?',
-                a: 'Yes, Kloner deploys to Vercel, and from Vercel you can manage custom domains, analytics and much more.'
+                a: 'Yes, you can deploy to Vercel and connect your own domain once the cloned version is ready.'
             },
             {
-                q: 'Will forms and client scripts work?',
-                a: 'Yes. V2 projects are generated as functional Next.js apps, so forms and client/server logic can be implemented with Supabase, MCP tools, and other integrations.'
-            },
-            {
-                q: 'Do internal links keep working?',
-                a: 'Links are rewritten to local routes. External links stay external. We warn on dead links and provide a mapping file so you can review any edge cases.'
-            },
-            {
-                q: 'Can I run the exported project anywhere?',
-                a: 'V2 output is Next.js and optimized for Vercel deployments, including one-click Vercel connection in the product flow.'
+                q: 'Will forms and internal links still work?',
+                a: 'Yes. Kloner rewrites links to local routes and supports functional Next.js app flows.'
             },
         ],
     },
     {
-        heading: 'Membership & billing',
+        heading: 'Pricing & access',
         items: [
             {
                 q: 'Do I need a card to try the preview?',
