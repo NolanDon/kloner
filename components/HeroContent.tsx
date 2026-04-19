@@ -244,9 +244,9 @@ export default function HeroContent({
                     ) : (
                       <ArrowRightSquare className="h-4 w-4" />
                     )}
-                    <span className="sr-only">{mode === "prompt" ? "Preview" : "Clone website"}</span>
+                    <span className="sr-only">{mode === "prompt" ? "Preview" : "Clone"}</span>
                   </span>
-                  <span className="hidden md:inline">{mode === "prompt" ? "Preview" : "Clone website"}</span>
+                  <span className="hidden md:inline">{mode === "prompt" ? "Preview" : "Clone"}</span>
             </button>
           </div>
 

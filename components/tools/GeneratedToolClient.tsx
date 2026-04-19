@@ -288,7 +288,12 @@ function makeBarcodeSvg(value: string) {
 function makeWordCloudWords(input: string) {
   const words = input.split(/[,\n]+/).map((word) => word.trim()).filter(Boolean);
   const expanded = words.length ? words : ["ideas", "build", "launch", "design", "ship"];
-  return [`${base} Table`, `${base} House`, `${base} Market`, `${base} Garden`, `${base} Bar`, `${base} Bistro`].slice(0, count);
+  return expanded.flatMap((word) => [
+    word,
+    `${word} ideas`,
+    `${word} launch`,
+    `${word} design`,
+  ]).slice(0, 8);
 }
 
 function makeFancyTextVariants(text: string) {
