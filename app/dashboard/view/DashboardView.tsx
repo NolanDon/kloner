@@ -8407,6 +8407,9 @@ export default function PreviewPage(): JSX.Element {
         return !hasAnyRenderDoc && !hasAnyAppDoc;
     }, [hasAnyAppDoc, hasAnyRenderDoc, successfulScannedUrls, targetUrl]);
 
+    const shouldPulseCreateWebsitePlus =
+        !!targetUrl && !nextJsGenerationPendingUrl && !hasAnyRenderDoc && !hasAnyAppDoc;
+
     const forceTrialPromptInDev = process.env.NODE_ENV !== "production";
     const isFreeTierNotTrialing = userTier === "free" && stripeStatus !== "trialing";
 
@@ -9581,7 +9584,7 @@ export default function PreviewPage(): JSX.Element {
                                 setAutoOpenGenerateModalNonce((n: number) => n + 1);
                             }}
                             disabled={!targetUrl || nextJsGenerationPendingUrl === (targetUrl || "").trim()}
-                            className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-[rgba(245,95,42,0.18)] bg-accent text-white shadow-sm transition hover:bg-accent2 disabled:cursor-not-allowed disabled:opacity-60"
+                            className={`relative inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-[rgba(245,95,42,0.18)] bg-accent text-white shadow-sm transition hover:bg-accent2 disabled:cursor-not-allowed disabled:opacity-60 ${shouldPulseCreateWebsitePlus ? "dashboard-create-plus-pulse border-[rgba(245,95,42,0.42)] ring-4 ring-[rgba(245,95,42,0.14)] shadow-[0_0_0_0_rgba(245,95,42,0.14),0_14px_36px_rgba(245,95,42,0.28)]" : ""}`}
                             aria-label="Generate new website"
                             title="Generate new website"
                         >
@@ -11291,6 +11294,20 @@ export default function PreviewPage(): JSX.Element {
                 .ghost-hammer-swing {
                     animation: ghost-hammer-swing 0.8s ease-in-out infinite;
                     transform-origin: 25% 10%;
+                }
+                @keyframes dashboard-create-plus-pulse {
+                    0%, 100% {
+                        transform: scale(1);
+                        box-shadow: 0 0 0 0 rgba(245, 95, 42, 0.14), 0 14px 36px rgba(245, 95, 42, 0.28);
+                    }
+                    50% {
+                        transform: scale(1.16);
+                        box-shadow: 0 0 0 14px rgba(245, 95, 42, 0.05), 0 20px 50px rgba(245, 95, 42, 0.36);
+                    }
+                }
+                .dashboard-create-plus-pulse {
+                    animation: dashboard-create-plus-pulse 1.7s ease-in-out infinite;
+                    transform-origin: center;
                 }
                 @keyframes ghost-generate-pulse {
                     0%, 100% {
