@@ -71,22 +71,22 @@ type AutoPreviewPhase =
     | "idle"
     | "checking"
     | "connecting"
-    | "building"
-    | "enabling-bypass"
     | "loading"
     | "ready"
+    | "building"
+    | "enabling-bypass"
     | "error";
-
-type CodedError = Error & { code?: string };
-
-type PreviewMode = "vercel" | "webcontainer";
-
-type VercelOAuthFlow = "preview" | "share";
 
 type LeftViewMode = "ai" | "code" | "images";
 
-const IS_PRODUCTION = process.env.NODE_ENV === "production";
-const PREVIEW_RECOVERY_MESSAGE = "Something went wrong loading the preview. We\'ll keep trying automatically.";
+type PreviewMode = "webcontainer" | "vercel";
+
+type VercelOAuthFlow = "preview" | "share";
+
+type CodedError = Error & {
+    code?: string;
+    statusCode?: number;
+};
 
 type StagedImage = {
     id: string;
@@ -127,6 +127,8 @@ const IMAGE_PLACEMENT_PLACEHOLDERS = [
 const APP_BUILDER_COOKIE_CONSENT_KEY = "kloner.appBuilder.necessaryCookiesAccepted.v1";
 const APP_BUILDER_COOKIE_CONSENT_COOKIE = "kloner_app_builder_nc";
 const APP_BUILDER_TRIAL_DWELL_MS = 15 * 1000;
+const IS_PRODUCTION = process.env.NODE_ENV === "production";
+const PREVIEW_RECOVERY_MESSAGE = "Something went wrong while preparing the preview. Please try again.";
 
 function getCookieValue(name: string): string | null {
     if (typeof document === "undefined") return null;
@@ -5454,6 +5456,14 @@ export default function AppBuilderEditor({
                                 Unlock Next.js 16 app deploys, HTML website deploys, and higher generation credits.
                             </p>
 
+                            {trialCheckoutBusy ? (
+                                <div className="mt-4 flex items-center justify-center gap-2 rounded-2xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-[#f55f2a]">
+                                    <Image src="/images/stripe.png" alt="Stripe" width={28} height={28} className="h-7 w-7 object-contain" />
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                    <span className="text-sm font-semibold">Opening secure Stripe checkout...</span>
+                                </div>
+                            ) : null}
+
                             <ul className="mt-4 list-disc list-inside space-y-1 text-sm text-neutral-700">
                                 <li>7 days free, cancel anytime</li>
                                 <li>One-click deploy to live URL</li>
@@ -5491,7 +5501,7 @@ export default function AppBuilderEditor({
 
                                 {trialCheckoutBusy ? (
                                     <p className="text-center text-xs text-neutral-500">
-                                        Opening secure Stripe checkout...
+                                        Please wait while we prepare your Stripe session.
                                     </p>
                                 ) : null}
                             </div>

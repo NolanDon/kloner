@@ -9161,12 +9161,20 @@ export default function PreviewPage(): JSX.Element {
                 </>
             ) : null}
             {checkoutBusy ? (
-                <div className="fixed inset-0 z-[13000] flex items-center justify-center bg-black/55 px-4 backdrop-blur-sm">
-                    <div className="flex flex-col items-center gap-3 rounded-3xl border border-white/10 bg-neutral-950/95 px-6 py-5 text-center text-white shadow-[0_20px_80px_rgba(0,0,0,0.45)]">
-                        <Loader2 className="h-6 w-6 animate-spin text-[#f55f2a]" />
-                        <div>
+                <div className="fixed inset-0 z-[13000] flex items-center justify-center bg-white/70 px-4 backdrop-blur-md">
+                    <div className="w-full max-w-sm rounded-[28px] border border-neutral-200 bg-white px-6 py-6 text-center text-neutral-900 shadow-[0_24px_80px_rgba(15,23,42,0.16)]">
+                        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-neutral-200 bg-neutral-50">
+                            <Image src="/images/stripe.png" alt="Stripe" width={36} height={36} className="h-9 w-9 object-contain" />
+                        </div>
+                        <div className="mt-4 flex items-center justify-center gap-2 text-[#f55f2a]">
+                            <Loader2 className="h-4 w-4 animate-spin" />
                             <p className="text-sm font-semibold">Opening secure Stripe checkout...</p>
-                            <p className="mt-1 text-xs text-neutral-300">Please wait while we prepare your session.</p>
+                        </div>
+                        <p className="mt-2 text-xs leading-5 text-neutral-500">Please wait while we prepare your session.</p>
+                        <div className="mt-4 flex justify-center">
+                            <span className="inline-flex items-center rounded-full border border-neutral-200 bg-neutral-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-600">
+                                Secure payment
+                            </span>
                         </div>
                     </div>
                 </div>
