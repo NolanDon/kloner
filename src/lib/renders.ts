@@ -24,6 +24,8 @@ export type RenderForBuilder = {
     urlHash?: string | null;
     key?: string | null;
     source?: string | null;
+    html?: string | null;
+    controllerVersion?: string | null;
     archived?: boolean;
 };
 
