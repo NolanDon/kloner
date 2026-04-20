@@ -83,7 +83,16 @@ export function filterRendersForBuilder<T extends RenderForBuilder>(params: {
         // Community remixes don't have url/urlHash; show them regardless (lenient mode only).
         const byCommunityRemix = !strict && r.source === "community_remix";
 
-        return byUrl || byHash || byKeyHash || byOptimisticKey || byCommunityRemix;
+        // Legacy HTML websites can be unarchived and should stay visible even when
+        // the dashboard is in strict URL mode. These older docs often do not carry
+        // the newer controllerVersion metadata used by v2 apps.
+        const byLegacyHtml =
+            typeof r.html === "string" &&
+            r.html.trim().length > 0 &&
+            !r.controllerVersion &&
+            r.source !== "community_remix";
+
+        return byUrl || byHash || byKeyHash || byOptimisticKey || byCommunityRemix || byLegacyHtml;
     });
 
     // Severity-1 guardrail (lenient mode only): if the user only has one render, never hide it.

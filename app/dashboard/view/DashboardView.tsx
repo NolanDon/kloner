@@ -1580,12 +1580,9 @@ function RenderCardInner({
                     </div>
                 ) : (
                     <a className="block h-full w-full relative" title="Open the base screenshot">
-                        <Image
+                        <img
                             src={refImgUrl}
                             alt={r.nameHint || "preview"}
-                            fill
-                            sizes="(min-width: 1024px) 420px, 100vw"
-                            priority
                             onError={refImgErr}
                             className={`pointer-events-none select-none object-cover opacity-[0.25] ${isArchivedFlag ? "grayscale" : ""
                                 }`}
@@ -2125,7 +2122,17 @@ function AppCard({
     const showVersionBadge = process.env.NODE_ENV !== "production";
 
     const isDeployedFlag = Boolean((app as any)?.isDeployed) || Boolean((app as any)?.productionUrl) || Boolean((app as any)?.lastDeployUrl);
-    const appDisplayName = String(app.name || app.id.slice(0, 10)).trim();
+    const rawAppDisplayName = String(app.name || app.id.slice(0, 10)).trim();
+    const appDisplayName = rawAppDisplayName.replace(/^Clone of\s+/i, "").trim() || rawAppDisplayName;
+    const appBadgeLabel = useMemo(() => {
+        const cleanedName = appDisplayName.replace(/^Clone of\s+/i, "").trim();
+        const parts = cleanedName.split(/[^a-zA-Z0-9]+/).filter(Boolean);
+        if (parts.length >= 2) {
+            return parts.slice(0, 2).map((part) => part.slice(0, 1)).join("").toUpperCase();
+        }
+        const compact = cleanedName.replace(/[^a-zA-Z0-9]/g, "").slice(0, 3).toUpperCase();
+        return compact || "APP";
+    }, [appDisplayName]);
     const [isEditingName, setIsEditingName] = useState(false);
     const [nameDraft, setNameDraft] = useState(appDisplayName);
 
@@ -2151,158 +2158,183 @@ function AppCard({
     }, [app.id, appDisplayName, nameDraft, onRename]);
 
     return (
-        <div className="relative flex flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm hover:shadow-md transition-shadow">
-            {/* Delete button - positioned inside the card for better visibility */}
-            <button
-                onClick={() => onDelete(app.id)}
-                disabled={isDeleting}
-                aria-label="Delete app"
-                title="Delete this app"
-                className="absolute right-2 top-2 z-50 inline-flex h-6 w-6 items-center justify-center rounded-full border shadow-sm transition-all duration-150 bg-white/85 border-neutral-200 text-neutral-400 hover:bg-red-600 hover:border-red-600 hover:text-white hover:shadow-md hover:scale-[1.04] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300 focus-visible:ring-offset-2 disabled:opacity-60 disabled:pointer-events-none"
-            >
-                <X className="h-3.5 w-3.5 transition-colors" />
-            </button>
+        <div className="group relative mx-auto w-full max-w-[240px] px-2 pt-2 pb-4 sm:pb-5">
+            <div className="flex flex-col items-center gap-4 text-center">
+                <div className="flex w-full items-center justify-center pt-8">
+                    <div
+                        className="grid h-36 w-36 place-items-center rounded-[2.6rem] bg-gradient-to-br from-[#f55f2a] via-[#ff6f3d] to-[#ff986e] text-[48px] font-black text-white shadow-[0_10px_20px_rgba(245,95,42,0.10)] transition-all duration-300 ease-out group-hover:scale-[1.14] group-hover:shadow-[0_14px_26px_rgba(245,95,42,0.12)]"
+                        style={{ fontFamily: "ui-rounded, 'SF Pro Rounded', 'Avenir Next Rounded', 'Trebuchet MS', sans-serif" }}
+                        title={appDisplayName || "App"}
+                    >
+                        {appBadgeLabel}
+                    </div>
+                </div>
 
-            {/* App badge - dev only for testing */}
-            {showVersionBadge ? (
-                <span
-                    className="absolute left-2 top-2 z-40 inline-flex items-center rounded-full border border-neutral-200 bg-[#f55f2a]/10 px-2 py-0.5 text-[10px] font-semibold text-[#f55f2a] shadow-sm"
-                    title="v2"
-                >
-                    v2
-                </span>
-            ) : null}
-
-            {/* Main visual area */}
-            <div className="relative aspect-[3/3] w-full overflow-hidden flex flex-col items-center justify-center bg-gradient-to-br from-neutral-50 to-neutral-100">
-                {/* Action buttons overlay */}
-                <div className="pointer-events-none absolute inset-0 z-20 grid place-items-center">
-                    <div className="pointer-events-auto flex w-[calc(100%-1rem)] max-w-xs flex-col items-stretch rounded-xl border border-neutral-200 bg-white/80 p-3 text-[11px] shadow-lg backdrop-blur-sm min-[420px]:w-auto min-[420px]:text-xs">
-                        <div className="mb-3 rounded-lg border border-neutral-300 bg-white/90 px-2.5 py-1.5 shadow-sm">
-                            {isEditingName ? (
-                                <div className="flex items-center gap-2">
-                                    <input
-                                        value={nameDraft}
-                                        onChange={(e) => setNameDraft(e.target.value)}
-                                        onKeyDown={(e) => {
-                                            if (e.key === "Enter") {
-                                                e.preventDefault();
-                                                void submitAppRename();
-                                            }
-                                            if (e.key === "Escape") {
-                                                e.preventDefault();
-                                                setNameDraft(appDisplayName);
-                                                setIsEditingName(false);
-                                            }
-                                        }}
-                                        className="min-w-0 flex-1 rounded-md border border-neutral-300 bg-white px-2 py-1 text-sm font-medium text-neutral-900 outline-none focus:border-neutral-400"
-                                        aria-label="Rename app"
-                                        maxLength={80}
-                                        autoFocus
-                                    />
-                                    <button
-                                        type="button"
-                                        onClick={() => void submitAppRename()}
-                                        className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-neutral-300 bg-white text-neutral-700 hover:bg-neutral-50"
-                                        aria-label="Save app name"
-                                        title="Save"
-                                    >
-                                        <CheckCheck className="h-3.5 w-3.5" />
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            setNameDraft(appDisplayName);
-                                            setIsEditingName(false);
-                                        }}
-                                        className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-neutral-300 bg-white text-neutral-700 hover:bg-neutral-50"
-                                        aria-label="Cancel rename"
-                                        title="Cancel"
-                                    >
-                                        <X className="h-3.5 w-3.5" />
-                                    </button>
-                                </div>
-                            ) : (
-                                <div className="flex items-center gap-2">
-                                    <div
-                                        className="min-w-0 flex-1 truncate text-center text-sm font-semibold text-neutral-900"
-                                        title={appDisplayName || "App"}
-                                    >
-                                        {appDisplayName || "App"}
-                                    </div>
-                                    <button
-                                        type="button"
-                                        onClick={() => setIsEditingName(true)}
-                                        className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-neutral-300 bg-white text-neutral-700 hover:bg-neutral-50"
-                                        aria-label="Edit app name"
-                                        title="Edit name"
-                                    >
-                                        <Edit2 className="h-3.5 w-3.5" />
-                                    </button>
-                                </div>
-                            )}
-                        </div>
-                        <div className="flex w-full flex-row flex-nowrap items-stretch font-semibold gap-2">
+                <div className="mt-1 flex w-full items-center justify-center gap-2 px-1">
+                    {isEditingName ? (
+                        <div className="flex w-full items-center gap-2 rounded-full border border-neutral-200 bg-white px-3 py-2 shadow-sm">
+                            <input
+                                value={nameDraft}
+                                onChange={(e) => setNameDraft(e.target.value)}
+                                onKeyDown={(e) => {
+                                    if (e.key === "Enter") {
+                                        e.preventDefault();
+                                        void submitAppRename();
+                                    }
+                                    if (e.key === "Escape") {
+                                        e.preventDefault();
+                                        setNameDraft(appDisplayName);
+                                        setIsEditingName(false);
+                                    }
+                                }}
+                                className="min-w-0 flex-1 bg-transparent text-sm font-medium text-neutral-900 outline-none"
+                                aria-label="Rename app"
+                                maxLength={80}
+                                autoFocus
+                            />
+                            <button
+                                type="button"
+                                onClick={() => void submitAppRename()}
+                                className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-700 hover:bg-neutral-50"
+                                aria-label="Save app name"
+                                title="Save"
+                            >
+                                <CheckCheck className="h-3.5 w-3.5" />
+                            </button>
                             <button
                                 type="button"
                                 onClick={() => {
-                                    if (isDeployedFlag) {
-                                        router.push("/dashboard/deployments");
-                                        return;
-                                    }
-                                    onDeploy({ id: app.id, name: app.name });
+                                    setNameDraft(appDisplayName);
+                                    setIsEditingName(false);
                                 }}
-                                disabled={isDeleting || isArchiving || accessLocked}
-                                className={`group inline-flex min-w-0 flex-1 items-center justify-center gap-1.5 overflow-hidden whitespace-nowrap rounded-full px-4 py-2 text-xs ${isDeployedFlag
-                                    ? "bg-emerald-500 text-white shadow-sm hover:bg-green-700"
-                                    : "bg-accent text-white shadow-sm hover:bg-accent/90 disabled:opacity-60"
-                                    }`}
-                                title={
-                                    accessLocked
-                                        ? "Trial access was cancelled, so this app is locked in the dashboard"
-                                        : isDeployedFlag
-                                            ? "View and manage deployments"
-                                            : "Deploy this app to Vercel"
-                                }
+                                className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-700 hover:bg-neutral-50"
+                                aria-label="Cancel rename"
+                                title="Cancel"
                             >
-                                {isDeployedFlag ? (
-                                    <>
-                                        <span className="shrink-0">Deployed</span>
-                                        <ExternalLink className="h-4 w-4 shrink-0" />
-                                    </>
-                                ) : (
-                                    <>
-                                        <span className="shrink-0">Deploy</span>
-                                        <Rocket className="h-4 w-4 shrink-0 transform transition-transform duration-150 group-hover:-translate-y-0.5" />
-                                    </>
-                                )}
-                            </button>
-
-                            <button
-                                type="button"
-                                onClick={() => onCustomize(app.id)}
-                                disabled={isDeleting || accessLocked}
-                                className="group inline-flex min-w-0 flex-1 items-center justify-center gap-1.5 overflow-hidden whitespace-nowrap rounded-full border border-neutral-500 px-3 py-2 text-xs font-semibold text-neutral-800 shadow-sm disabled:opacity-60"
-                                title={
-                                    accessLocked
-                                        ? "Trial access was cancelled, so this app is locked in the dashboard"
-                                        : "Open app in editor"
-                                }
-                            >
-                                <span className="shrink-0">Edit</span>
-                                <BrushIcon className="h-4 w-4 shrink-0 transform transition-transform duration-150 group-hover:-translate-y-0.5" />
+                                <X className="h-3.5 w-3.5" />
                             </button>
                         </div>
+                    ) : (
+                        <>
+                            <div className="group/rename relative flex w-full items-center justify-center px-8 text-center">
+                                <div className="w-full truncate text-[15px] font-medium leading-tight text-neutral-900" title={appDisplayName || "App"}>
+                                    {appDisplayName || "App"}
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setIsEditingName(true)}
+                                    className="absolute right-0 inline-flex h-7 w-7 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-600 shadow-sm transition-all duration-150 hover:bg-neutral-50 md:opacity-0 md:group-hover/rename:opacity-100 md:group-focus-within/rename:opacity-100"
+                                    aria-label="Edit app name"
+                                    title="Edit"
+                                >
+                                    <Edit2 className="h-3 w-3" />
+                                </button>
+                            </div>
+                        </>
+                    )}
+                </div>
 
+                <div className="mt-2 grid w-full grid-cols-4 gap-1.5 sm:mt-3 sm:gap-2">
+                    <div
+                        className="relative flex justify-center transition-all duration-500 ease-out md:translate-y-3 md:scale-90 md:opacity-0 md:pointer-events-none md:blur-[1px] md:group-hover:translate-y-0 md:group-hover:scale-100 md:group-hover:opacity-100 md:group-hover:pointer-events-auto md:group-hover:blur-0"
+                        style={{ transitionDelay: "0ms" }}
+                    >
+                        <span className="pointer-events-none absolute -bottom-6 left-1/2 -translate-x-1/2 whitespace-nowrap text-[10px] font-medium text-neutral-800 opacity-100 transition-opacity duration-150 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
+                            {isDeployedFlag ? "Deploy" : "Deploy"}
+                        </span>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                if (isDeployedFlag) {
+                                    router.push("/dashboard/deployments");
+                                    return;
+                                }
+                                onDeploy({ id: app.id, name: app.name });
+                            }}
+                            disabled={isDeleting || isArchiving || accessLocked}
+                            className={`inline-flex h-8 w-8 items-center justify-center rounded-2xl border text-neutral-800 shadow-sm transition-all duration-300 ease-out disabled:opacity-60 ${isDeployedFlag
+                                ? "border-emerald-200 bg-emerald-500 text-white hover:bg-green-700"
+                                : "border-transparent bg-accent text-white hover:bg-accent/90"
+                                }`}
+                            title={
+                                accessLocked
+                                    ? "Trial access was cancelled, so this app is locked in the dashboard"
+                                    : isDeployedFlag
+                                        ? "View and manage deployments"
+                                        : "Deploy this app to Vercel"
+                            }
+                            aria-label={isDeployedFlag ? "View deployments" : "Deploy app"}
+                        >
+                            {isDeployedFlag ? (
+                                <ExternalLink className="h-3.5 w-3.5 shrink-0" />
+                            ) : (
+                                <Rocket className="h-3.5 w-3.5 shrink-0 transform transition-transform duration-150 group-hover:-translate-y-0.5" />
+                            )}
+                        </button>
+                    </div>
+
+                    <div
+                        className="relative flex justify-center transition-all duration-500 ease-out md:translate-y-3 md:scale-90 md:opacity-0 md:pointer-events-none md:blur-[1px] md:group-hover:translate-y-0 md:group-hover:scale-100 md:group-hover:opacity-100 md:group-hover:pointer-events-auto md:group-hover:blur-0"
+                        style={{ transitionDelay: "120ms" }}
+                    >
+                        <span className="pointer-events-none absolute -bottom-6 left-1/2 -translate-x-1/2 whitespace-nowrap text-[10px] font-medium text-neutral-800 opacity-100 transition-opacity duration-150 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
+                            Edit
+                        </span>
+                        <button
+                            type="button"
+                            onClick={() => onCustomize(app.id)}
+                            disabled={isDeleting || accessLocked}
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-2xl border border-neutral-300 bg-white text-neutral-800 shadow-sm transition-all duration-300 ease-out hover:border-neutral-400 disabled:opacity-60"
+                            title={
+                                accessLocked
+                                    ? "Trial access was cancelled, so this app is locked in the dashboard"
+                                    : "Open app in editor"
+                            }
+                            aria-label="Open app editor"
+                        >
+                            <BrushIcon className="h-3.5 w-3.5 shrink-0 transform transition-transform duration-150 group-hover:-translate-y-0.5" />
+                        </button>
+                    </div>
+
+                    <div
+                        className="relative flex justify-center transition-all duration-500 ease-out md:translate-y-3 md:scale-90 md:opacity-0 md:pointer-events-none md:blur-[1px] md:group-hover:translate-y-0 md:group-hover:scale-100 md:group-hover:opacity-100 md:group-hover:pointer-events-auto md:group-hover:blur-0"
+                        style={{ transitionDelay: "240ms" }}
+                    >
+                        <span className="pointer-events-none absolute -bottom-6 left-1/2 -translate-x-1/2 whitespace-nowrap text-[10px] font-medium text-neutral-800 opacity-100 transition-opacity duration-150 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
+                            Archive
+                        </span>
                         <button
                             type="button"
                             onClick={() => onArchive(app.id)}
                             disabled={isDeleting || isArchiving}
-                            className="mt-2 inline-flex items-center justify-center gap-1.5 rounded-full border border-neutral-300 bg-white/60 px-3 py-2 text-xs font-medium text-neutral-700 shadow-sm hover:border-neutral-400 disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-2xl border border-neutral-300 bg-white text-neutral-700 shadow-sm transition-all duration-300 ease-out hover:border-neutral-400 disabled:cursor-not-allowed disabled:opacity-50"
                             title="Move this app into your archive"
+                            aria-label={isArchiving ? "Archiving app" : "Archive app"}
                         >
-                            <span>{isArchiving ? "Archiving…" : "Archive"}</span>
-                            <Archive className="h-3.5 w-3.5" />
+                            {isArchiving ? (
+                                <span className="text-[10px] font-semibold">…</span>
+                            ) : (
+                                <Archive className="h-3.5 w-3.5" />
+                            )}
+                        </button>
+                    </div>
+
+                    <div
+                        className="relative flex justify-center transition-all duration-500 ease-out md:translate-y-3 md:scale-90 md:opacity-0 md:pointer-events-none md:blur-[1px] md:group-hover:translate-y-0 md:group-hover:scale-100 md:group-hover:opacity-100 md:group-hover:pointer-events-auto md:group-hover:blur-0"
+                        style={{ transitionDelay: "360ms" }}
+                    >
+                        <span className="pointer-events-none absolute -bottom-6 left-1/2 -translate-x-1/2 whitespace-nowrap text-[10px] font-medium text-neutral-800 opacity-100 transition-opacity duration-150 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
+                            Delete
+                        </span>
+                        <button
+                            type="button"
+                            onClick={() => onDelete(app.id)}
+                            disabled={isDeleting}
+                            aria-label="Delete app"
+                            title="Delete"
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-2xl border border-neutral-300 bg-white text-neutral-700 shadow-sm transition-all duration-300 ease-out hover:border-red-500 hover:bg-red-600 hover:text-white disabled:pointer-events-none disabled:opacity-60"
+                        >
+                            <Trash2 className="h-3.5 w-3.5" />
                         </button>
                     </div>
                 </div>
@@ -3111,7 +3143,7 @@ export default function PreviewPage(): JSX.Element {
     >([]);
     const [hasAnyRenderDoc, setHasAnyRenderDoc] = useState(false);
     const [hasAnyAppDoc, setHasAnyAppDoc] = useState(false);
-    const [autoOpenGenerateModalNonce, setAutoOpenGenerateModalNonce] = useState(0);
+    const [autoOpenGenerateModalNonce, setAutoOpenGenerateModalNonce] = useState<number>(0);
     const [autoOpenGenerateSuccessMessage, setAutoOpenGenerateSuccessMessage] = useState("");
     const [loadingRenders, setLoadingRenders] = useState(false);
     const [deletingApp, setDeletingApp] = useState<Record<string, boolean>>({});
@@ -3705,9 +3737,9 @@ export default function PreviewPage(): JSX.Element {
                 try {
                     const u = new URL(raw);
                     const host = u.hostname.replace(/^www\./, "");
-                    return `Clone of ${host}`;
+                    return host || "Website";
                 } catch {
-                    return "Clone from URL";
+                    return "Website";
                 }
             }
 
@@ -3883,7 +3915,7 @@ export default function PreviewPage(): JSX.Element {
     }, [user, router, push, activeRenderId, openAppBuilderWithCookieGate, openAppBuilderDirectly, requestAppBuilderCookieConsent, appWizardOpen]);
 
     const startWebAppWizard = useCallback(
-        (opts?: { seedRenderId?: string | null; url?: string | null }) => {
+        (opts?: { seedRenderId?: string | null; url?: string | null; source?: "website" | "prompt" | null }) => {
             // Always refresh Vercel status when opening the wizard so we don't
             // accidentally auto-advance from stale "connected" state.
             void refreshVercelStatus();
@@ -3891,8 +3923,7 @@ export default function PreviewPage(): JSX.Element {
             setAppWizardUrl(url);
             setAppWizardShotsUrl(url);
             setAppWizardSeedRenderId(opts?.seedRenderId ?? null);
-            // Require explicit source selection in the wizard.
-            setAppWizardSource(null);
+            setAppWizardSource(opts?.source ?? null);
             setAppWizardPrompt("");
             setAppWizardError(null);
             setAppWizardBusy(false);
@@ -9019,7 +9050,7 @@ export default function PreviewPage(): JSX.Element {
                     <button
                         type="button"
                         onClick={() => setShowDevQuickMenu((v) => !v)}
-                        className="fixed right-3 top-1/2 z-[25000] -translate-y-1/2 rounded-l-2xl rounded-r-none border border-r-0 border-neutral-200 bg-white px-3 py-3 text-left shadow-[0_16px_45px_rgba(15,23,42,0.14)] transition hover:bg-neutral-50"
+                        className="fixed bottom-4 right-4 z-[25000] rounded-full border border-neutral-200 bg-white px-3 py-3 text-left shadow-[0_16px_45px_rgba(15,23,42,0.14)] transition hover:bg-neutral-50 sm:bottom-auto sm:right-3 sm:top-1/2 sm:-translate-y-1/2 sm:rounded-l-2xl sm:rounded-r-none sm:border-r-0"
                         aria-label="Open dev quick menu"
                         title="Dev quick menu"
                     >
@@ -9529,22 +9560,33 @@ export default function PreviewPage(): JSX.Element {
                 ) : null}
 
                 <section className="mt-10 rounded-3xl border border-neutral-200 bg-white/70 px-4 py-5 sm:px-5 sm:py-6 shadow-sm">
-                    <div className="mb-3 flex items-center justify-between">
-                        <div className="space-y-1">
-                            <div className="inline-flex items-center gap-2 rounded-full border border-neutral-200 bg-white/80 px-3 py-1.5 text-xs sm:text-sm text-neutral-700 shadow-sm">
-                                <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-accent text-[11px] font-semibold text-white shadow-sm">
-                                    2
+                    <div className="mb-3 flex items-center gap-3">
+                        <div className="inline-flex items-center gap-2 rounded-full border border-neutral-200 bg-white/80 px-3 py-1.5 text-xs sm:text-sm text-neutral-700 shadow-sm">
+                            <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-accent text-[11px] font-semibold text-white shadow-sm">
+                                2
+                            </span>
+                            <div className="flex flex-col leading-tight">
+                                <span className="text-[10px] uppercase tracking-[0.18em] text-neutral-400">
+                                    CREATE
                                 </span>
-                                <div className="flex flex-col leading-tight">
-                                    <span className="text-[10px] uppercase tracking-[0.18em] text-neutral-400">
-                                        CREATE
-                                    </span>
-                                    <span className="text-[13px] sm:text-[14px] text-neutral-800">
-                                        Websites
-                                    </span>
-                                </div>
+                                <span className="text-[13px] sm:text-[14px] text-neutral-800">
+                                    Websites
+                                </span>
                             </div>
                         </div>
+
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setAutoOpenGenerateModalNonce((n: number) => n + 1);
+                            }}
+                            disabled={!targetUrl || nextJsGenerationPendingUrl === (targetUrl || "").trim()}
+                            className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-[rgba(245,95,42,0.18)] bg-accent text-white shadow-sm transition hover:bg-accent2 disabled:cursor-not-allowed disabled:opacity-60"
+                            aria-label="Generate new website"
+                            title="Generate new website"
+                        >
+                            <Plus className="h-7 w-7" strokeWidth={2.75} />
+                        </button>
                     </div>
 
                     {/* <p className="mt-1 mb-2 text-sm text-neutral-500">
@@ -9555,6 +9597,27 @@ export default function PreviewPage(): JSX.Element {
 
                     {(renders.length === 0 || hasGhostPending) ? (
                         <>
+                            <div className="relative h-0 w-0 overflow-visible" aria-hidden="true">
+                                <div className="absolute -left-[9999px] top-0">
+                                    <GhostGeneratePreviewCard
+                                        locked={captureLocked}
+                                        onClick={() => {
+                                            setAutoOpenGenerateModalNonce((n: number) => n + 1);
+                                        }}
+                                        generationPending={nextJsGenerationPendingUrl === (targetUrl || "").trim()}
+                                        sourceUrl={targetUrl}
+                                        sourceUrlCannotGenerate={showActiveUrlIssueWarning || isUrlProcessingError}
+                                        highlight={shouldHighlightCreateWebsiteCta}
+                                        autoOpenNonce={autoOpenGenerateModalNonce}
+                                        autoOpenSuccessMessage={autoOpenGenerateSuccessMessage}
+                                        onAutoOpenMessageDismiss={() => setAutoOpenGenerateSuccessMessage("")}
+                                        isAdmin={isAdmin}
+                                        user={user}
+                                        onAppClick={() => void runNextJsGhostGeneration(targetUrl || "")}
+                                    />
+                                </div>
+                            </div>
+
                             {/* <div className="mt-3 rounded-xl border border-dashed border-neutral-300 bg-neutral-50 px-4 py-2 text-sm text-neutral-700 flex flex-wrap items-center gap-2 my-4">
                                 <div className="flex items-center gap-1">
                                     <strong className="inline-flex items-center gap-2 text-neutral-800 font-semibold">
@@ -9575,83 +9638,6 @@ export default function PreviewPage(): JSX.Element {
                                 className="mt-4 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4"
                                 aria-label="Editable previews list"
                             >
-                                {groupedShots.length === 0 ? (
-                                    <GhostGeneratePreviewCard
-                                        locked={captureLocked}
-                                        lockedSinceMs={captureLockStartedAtRef.current || null}
-                                        sourceUrl={targetUrl}
-                                        sourceUrlCannotGenerate={activeUrlCannotGenerate}
-                                        generationPending={nextJsGenerationPendingUrl === (targetUrl || "").trim()}
-                                        highlight={shouldHighlightCreateWebsiteCta}
-                                        autoOpenNonce={autoOpenGenerateModalNonce}
-                                        autoOpenSuccessMessage={autoOpenGenerateSuccessMessage}
-                                        onAutoOpenMessageDismiss={() => setAutoOpenGenerateSuccessMessage("")}
-                                        onClick={() => {
-                                            if (groupedShots.length > 0) {
-                                                const firstGroup = groupedShots[0];
-                                                const collectionKeys = firstGroup.items.map((s) => s.path);
-                                                buildFromCollection(collectionKeys);
-                                            } else {
-                                                // No screenshots yet; use the url-only flow which triggers screenshot generation server-side.
-                                                void buildFromUrl();
-                                            }
-                                        }}
-                                        onAppClick={async () => {
-                                            // Next.js apps should not open the HTML PreviewEditor with empty initialHtml.
-                                            // Go straight to the App Builder editor.
-                                            await runNextJsGhostGeneration(targetUrl || "");
-                                        }}
-                                        onCancelLocked={cancelQueuedCapture}
-                                        isAdmin={isAdmin}
-                                        onStartFromTemplate={handleCreateTemplateApp}
-                                        onStartFromCommunityBuild={() => router.push("/community-builds")}
-                                        user={user}
-                                    />
-                                ) : (
-                                    groupedShots.map((group, groupIndex) => {
-                                        if (groupIndex > 0) return null;
-
-                                        const first = group.items[0];
-                                        if (!first) return null;
-
-                                        const collectionKeys = group.items.map((s) => s.path);
-
-                                        const locked = group.items.some((s) => {
-                                            if (pendingByKey[s.path]) return true;
-                                            return renders.some(
-                                                (r) =>
-                                                    r.key === s.path &&
-                                                    (r.status === "queued" || r.status === "processing") &&
-                                                    !r.archived,
-                                            );
-                                        });
-
-                                        return (
-                                            <GhostGeneratePreviewCard
-                                                key={`ghost-${group.snapshotId || first.path}`}
-                                                locked={captureLocked || locked}
-                                                lockedSinceMs={captureLockStartedAtRef.current || null}
-                                                sourceUrl={targetUrl}
-                                                sourceUrlCannotGenerate={activeUrlCannotGenerate}
-                                                generationPending={nextJsGenerationPendingUrl === (targetUrl || "").trim()}
-                                                highlight={shouldHighlightCreateWebsiteCta}
-                                                autoOpenNonce={autoOpenGenerateModalNonce}
-                                                autoOpenSuccessMessage={autoOpenGenerateSuccessMessage}
-                                                onAutoOpenMessageDismiss={() => setAutoOpenGenerateSuccessMessage("")}
-                                                onClick={() => buildFromCollection(collectionKeys)}
-                                                onAppClick={async () => {
-                                                    await runNextJsGhostGeneration(targetUrl || "");
-                                                }}
-                                                onCancelLocked={cancelQueuedCapture}
-                                                isAdmin={isAdmin}
-                                                onStartFromTemplate={handleCreateTemplateApp}
-                                                onStartFromCommunityBuild={() => router.push("/community-builds")}
-                                                user={user}
-                                            />
-                                        );
-                                    })
-                                )}
-
                                 {apps.map((app) => (
                                     <AppCard
                                         key={app.id}
@@ -9712,60 +9698,7 @@ export default function PreviewPage(): JSX.Element {
                                 aria-label="Editable previews list"
                             >
                                 {renders.length === 0 && (
-                                    <>
-                                        {(() => {
-                                            const locked = captureLocked;
-                                            return (
-                                                <GhostGeneratePreviewCard
-                                                    locked={locked}
-                                                    lockedSinceMs={captureLockStartedAtRef.current || null}
-                                                    sourceUrl={targetUrl}
-                                                    sourceUrlCannotGenerate={activeUrlCannotGenerate}
-                                                    generationPending={nextJsGenerationPendingUrl === (targetUrl || "").trim()}
-                                                    highlight={shouldHighlightCreateWebsiteCta}
-                                                    autoOpenNonce={autoOpenGenerateModalNonce}
-                                                    autoOpenSuccessMessage={autoOpenGenerateSuccessMessage}
-                                                    onAutoOpenMessageDismiss={() => setAutoOpenGenerateSuccessMessage("")}
-                                                    onClick={() => {
-                                                        if (groupedShots.length > 0) {
-                                                            const firstGroup = groupedShots[0];
-                                                            const collectionKeys = firstGroup.items.map((s) => s.path);
-                                                            buildFromCollection(collectionKeys);
-                                                        } else {
-                                                            // Start with blank website
-                                                            setEditorMode("website");
-                                                            setEditorOpen(true);
-                                                            setEditorHtml(`<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>New Website</title>
-</head>
-<body>
-    <h1>Welcome to your new website</h1>
-    <p>Start editing to customize it.</p>
-</body>
-</html>`);
-                                                            setEditorRefImg("");
-                                                            setActiveRenderId(undefined);
-                                                            setActiveSeoMetaByPage(null);
-                                                            setActiveArchivedPageIds([]);
-                                                        }
-                                                    }}
-                                                    onAppClick={async () => {
-                                                        // Next.js apps should not open the HTML PreviewEditor with empty initialHtml.
-                                                        // Go straight to the App Builder editor.
-                                                        await runNextJsGhostGeneration(targetUrl || "");
-                                                    }}
-                                                    onCancelLocked={cancelQueuedCapture}
-                                                    isAdmin={isAdmin}
-                                                    onStartFromTemplate={handleCreateTemplateApp}
-                                                    user={user}
-                                                />
-                                            );
-                                        })()}
-                                    </>
+                                    <></>
                                 )}
                                 {renders.map((r) => (
                                     <RenderCard
@@ -9811,59 +9744,6 @@ export default function PreviewPage(): JSX.Element {
                                     />
                                 ))}
 
-                                {groupedShots.map((group, groupIndex) => {
-                                    if (groupIndex > 0) return null;
-
-                                    const first = group.items[0];
-                                    if (!first) return null;
-
-                                    const collectionKeys = group.items.map((s) => s.path);
-
-                                    const locked = group.items.some((s) => {
-                                        if (pendingByKey[s.path]) return true;
-                                        return renders.some(
-                                            (r) =>
-                                                r.key === s.path &&
-                                                (r.status === "queued" || r.status === "processing") &&
-                                                !r.archived,
-                                        );
-                                    });
-
-                                    return (
-                                        <GhostGeneratePreviewCard
-                                            key={`ghost-${group.snapshotId || first.path}`}
-                                            locked={captureLocked || locked}
-                                            lockedSinceMs={captureLockStartedAtRef.current || null}
-                                            sourceUrl={targetUrl}
-                                            sourceUrlCannotGenerate={activeUrlCannotGenerate}
-                                            generationPending={nextJsGenerationPendingUrl === (targetUrl || "").trim()}
-                                            highlight={shouldHighlightCreateWebsiteCta}
-                                            autoOpenNonce={autoOpenGenerateModalNonce}
-                                            autoOpenSuccessMessage={autoOpenGenerateSuccessMessage}
-                                            onAutoOpenMessageDismiss={() => setAutoOpenGenerateSuccessMessage("")}
-                                            onClick={() => buildFromCollection(collectionKeys)}
-                                            onAppClick={async () => {
-                                                // Find the most recent render from this group (optional seed)
-                                                const groupRenders = renders
-                                                    .filter((r) =>
-                                                        group.items.some((s) => s.path === r.key) && !r.archived,
-                                                    )
-                                                    .sort(
-                                                        (a, b) =>
-                                                            b.createdAt?.toMillis?.() -
-                                                            a.createdAt?.toMillis?.() ||
-                                                            0,
-                                                    );
-                                                const latestRender = groupRenders[0];
-                                                    await runNextJsGhostGeneration(targetUrl || "");
-                                            }}
-                                            onCancelLocked={cancelQueuedCapture}
-                                            isAdmin={isAdmin}
-                                            onStartFromCommunityBuild={() => router.push("/community-builds")}
-                                            user={user}
-                                        />
-                                    );
-                                })}
                             </div>
                         </>
                     )}

@@ -110,6 +110,30 @@ describe("filterRendersForBuilder", () => {
     expect(out.map((r) => r.id)).toEqual([]);
   });
 
+  it("strict mode: keeps legacy html renders visible", () => {
+    const all: R[] = [
+      {
+        id: "r1",
+        url: null,
+        urlHash: null,
+        key: null,
+        source: "website",
+        archived: false,
+        html: "<html><body>Legacy</body></html>",
+        controllerVersion: null,
+      } as any,
+    ];
+
+    const out = filterRendersForBuilder({
+      all,
+      targetUrl: "https://example.com",
+      targetHash: "zzz",
+      strict: true,
+    });
+
+    expect(out.map((r) => r.id)).toEqual(["r1"]);
+  });
+
   it("excludes archived renders", () => {
     const all: R[] = [
       { id: "r1", url: "https://example.com", archived: true },

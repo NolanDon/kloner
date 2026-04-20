@@ -5,7 +5,6 @@ import { useEffect, useState, useCallback } from "react";
 import { getUserRenders, RenderRecord, unarchiveRender, useResolvedImg } from "@/src/lib/renders";
 import { Trash2 as DeleteIcon } from "lucide-react";
 import { ensureSessionAndCsrf } from "@/lib/auth-client";
-import Image from 'next/image'
 import { useModal } from "@/components/ui/ModalContext";
 import { onAuthStateChanged, User as FirebaseUser } from "firebase/auth";
 import {
@@ -56,12 +55,10 @@ function ArchiveCard({ r, onUnarchive, onDiscard, isDeleting }: ArchiveCardProps
 
             <div className="relative">
                 {refImgUrl ? (
-                    <Image
+                    <img
                         src={refImgUrl}
                         alt={name}
                         loading="lazy"
-                        width={704}
-                        height={176}
                         onError={refImgErr}
                         className="h-40 w-full object-cover opacity-70"
                         draggable={false}
