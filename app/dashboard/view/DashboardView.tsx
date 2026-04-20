@@ -736,17 +736,17 @@ function MiniDashboardEntry({
                     </div>
 
                     <div className={"my-4 flex flex-wrap gap-2 " + (isCompact ? "text-[11px]" : "text-xs")}>
-                        <span className="inline-flex items-center rounded-full bg-neutral-100 px-2.5 py-1 text-neutral-700">
+                        {/* <span className="inline-flex items-center rounded-full bg-neutral-100 px-2.5 py-1 text-neutral-700">
                             Screenshot credits:&nbsp;
                             <span className="font-semibold text-neutral-900">
                                 {screenshotRemaining === null || !screenshotLimitDisplay
                                     ? "-"
                                     : `${screenshotRemaining}/${screenshotLimitDisplay}`}
                             </span>
-                        </span>
+                        </span> */}
 
                         <span className="inline-flex items-center rounded-full bg-neutral-100 px-2.5 py-1 text-neutral-700">
-                            Preview credits:&nbsp;
+                            Generation credits:&nbsp;
                             <span className="font-semibold text-neutral-900">
                                 {previewRemaining === null || !previewLimitDisplay
                                     ? "-"
@@ -2351,7 +2351,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
 }) {
     const router = useRouter();
     const [showGenerationModal, setShowGenerationModal] = useState(false);
-    const [selectedGenerationType, setSelectedGenerationType] = useState<"nextjs" | null>(null);
+    const [selectedGenerationType, setSelectedGenerationType] = useState<"nextjs" | null>("nextjs");
     const [canOverrideLocked, setCanOverrideLocked] = useState(false);
     const lastAutoOpenNonceRef = useRef(0);
 
@@ -2380,7 +2380,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
         if (!autoOpenNonce) return;
         if (autoOpenNonce === lastAutoOpenNonceRef.current) return;
         lastAutoOpenNonceRef.current = autoOpenNonce;
-        setSelectedGenerationType(null);
+        setSelectedGenerationType("nextjs");
         setShowGenerationModal(true);
     }, [autoOpenNonce]);
 
@@ -2412,7 +2412,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
 
         // Even when locked (e.g. snapshots processing), allow opening the modal
         // but disable the options inside so users understand what's happening.
-        setSelectedGenerationType(null);
+        setSelectedGenerationType("nextjs");
         setShowGenerationModal(true);
     };
 
@@ -2497,9 +2497,9 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
-                        className="fixed inset-0 z-[9999] flex items-start justify-center overflow-y-auto bg-black/40 p-4 sm:items-center"
+                        className="fixed inset-0 z-[9999] flex items-end justify-center overflow-y-auto bg-black/40 p-4 sm:items-center"
                         style={{
-                            paddingTop: "calc(1rem + env(safe-area-inset-top))",
+                            paddingTop: "calc(0.75rem + env(safe-area-inset-top))",
                             paddingBottom: "calc(1rem + env(safe-area-inset-bottom))",
                         }}
                         onMouseDown={(e) => {
@@ -2511,7 +2511,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                             animate={{ opacity: 1, y: 0, scale: 1 }}
                             exit={{ opacity: 0, y: 10, scale: 0.98 }}
                             transition={{ duration: 0.18, ease: "easeOut" }}
-                            className="flex w-full max-w-md flex-col overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-2xl"
+                            className="flex w-full max-w-md flex-col overflow-hidden rounded-t-3xl border border-neutral-200 bg-white shadow-2xl sm:rounded-2xl"
                             style={{
                                 maxHeight:
                                     "calc(100dvh - 2rem - env(safe-area-inset-top) - env(safe-area-inset-bottom))",

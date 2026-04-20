@@ -132,7 +132,7 @@ export function AnimatedCreditCard() {
                     <div className="flex items-start justify-between gap-3">
                         <div className="space-y-1">
                             <div className="text-[0.95rem] md:text-[1.05rem] font-medium tracking-[0.02em] text-white/95">
-                                Visa Platinum
+                                Kloner
                             </div>
                             <div className="flex items-center gap-2 pt-1">
                                 <div

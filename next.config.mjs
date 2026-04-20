@@ -41,6 +41,26 @@ const nextConfig = {
     async redirects() {
         return [
             {
+                source: '/tools/gamertag-generator',
+                destination: '/tools/username-generator',
+                permanent: true,
+            },
+            {
+                source: '/tools/nickname-generator',
+                destination: '/tools/username-generator',
+                permanent: true,
+            },
+            {
+                source: '/tools/brand-name-generator',
+                destination: '/tools/business-name-generator',
+                permanent: true,
+            },
+            {
+                source: '/tools/json-beautifier',
+                destination: '/tools/json-formatter',
+                permanent: true,
+            },
+            {
                 source: '/blog/app/sitemap.ts',
                 destination: '/sitemap.xml',
                 permanent: true,

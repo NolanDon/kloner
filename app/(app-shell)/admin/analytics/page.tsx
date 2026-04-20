@@ -192,11 +192,11 @@ function getAiChatMessageDate(m: any): Date | null {
     return tsToDate(m?.timestamp);
 }
 
-function normalizeAiChatText(v: unknown, max = 420): string {
+function normalizeAiChatText(v: unknown, max = Number.POSITIVE_INFINITY): string {
     if (typeof v !== "string") return "";
     const oneLine = v.replace(/\s+/g, " ").trim();
     if (!oneLine) return "";
-    return oneLine.length > max ? `${oneLine.slice(0, max - 1)}...` : oneLine;
+    return Number.isFinite(max) && oneLine.length > max ? `${oneLine.slice(0, max - 1)}...` : oneLine;
 }
 
 function extractRecentAiChatEntries(data: any, appId: string): AiChatAuditEntry[] {
@@ -355,6 +355,7 @@ export default function AdminAnalyticsPage() {
 
     // returning users list controls
     const [returningOnly, setReturningOnly] = useState(true);
+    const [expandedAuditEntries, setExpandedAuditEntries] = useState<Record<string, boolean>>({});
 
     // ---- hard exclusions ----
     const EXCLUDE_UIDS = useMemo(() => new Set(["FJPVD2BuHrXBLhOFOBWi9oW7Apt1"]), []);
@@ -366,6 +367,13 @@ export default function AdminAnalyticsPage() {
         if (e && EXCLUDE_EMAILS.has(e)) return true;
         return false;
     }, [EXCLUDE_EMAILS, EXCLUDE_UIDS]);
+
+    const toggleAuditEntry = useCallback((entryKey: string) => {
+        setExpandedAuditEntries((prev) => ({
+            ...prev,
+            [entryKey]: !prev[entryKey],
+        }));
+    }, []);
 
     // ---- auth / admin gate ----
     useEffect(() => {
@@ -1202,39 +1210,68 @@ export default function AdminAnalyticsPage() {
                                             <p className="mt-3 text-xs text-neutral-500">No AI chat entries found for this filter.</p>
                                         ) : (
                                             <div className="mt-3 space-y-2">
-                                                {appAiChatAuditEntries.slice(0, 8).map((entry, idx) => (
-                                                    <div
-                                                        key={`overview:${entry.uid}:${entry.appId}:${entry.at?.getTime() || 0}:${idx}`}
-                                                        className="rounded-lg border border-neutral-100 bg-neutral-50 p-3"
-                                                    >
-                                                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-neutral-600">
-                                                            <span className="font-medium text-neutral-800">{entry.email || entry.uid}</span>
-                                                            <span>App: {entry.appId}</span>
-                                                            <span>
-                                                                {entry.at
-                                                                    ? entry.at.toLocaleString(undefined, {
-                                                                        dateStyle: "medium",
-                                                                        timeStyle: "short",
-                                                                    })
-                                                                    : "Unknown time"}
-                                                            </span>
-                                                        </div>
-                                                        <div className="mt-2 grid gap-2 md:grid-cols-2">
-                                                            <div className="rounded-md border border-amber-200 bg-amber-50 px-2.5 py-2">
-                                                                <p className="text-[10px] uppercase tracking-[0.12em] text-amber-800">User prompt</p>
-                                                                <p className="mt-1 whitespace-pre-wrap break-words text-xs text-amber-900">
-                                                                    {entry.userPrompt || "(empty)"}
-                                                                </p>
+                                                {appAiChatAuditEntries.slice(0, 8).map((entry, idx) => {
+                                                    const entryKey = `overview:${entry.uid}:${entry.appId}:${entry.at?.getTime() || 0}:${idx}`;
+                                                    const isExpanded = expandedAuditEntries[entryKey] ?? false;
+                                                    const promptText = entry.userPrompt || "(empty)";
+                                                    const replyText = entry.assistantReply || "(no assistant response captured)";
+                                                    const canExpand = promptText.length > 240 || replyText.length > 240;
+
+                                                    return (
+                                                        <div
+                                                            key={entryKey}
+                                                            className="rounded-lg border border-neutral-100 bg-neutral-50 p-3"
+                                                        >
+                                                            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-neutral-600">
+                                                                <span className="font-medium text-neutral-800">{entry.email || entry.uid}</span>
+                                                                <span>App: {entry.appId}</span>
+                                                                <span>
+                                                                    {entry.at
+                                                                        ? entry.at.toLocaleString(undefined, {
+                                                                            dateStyle: "medium",
+                                                                            timeStyle: "short",
+                                                                        })
+                                                                        : "Unknown time"}
+                                                                </span>
                                                             </div>
-                                                            <div className="rounded-md border border-blue-200 bg-blue-50 px-2.5 py-2">
-                                                                <p className="text-[10px] uppercase tracking-[0.12em] text-blue-800">Assistant response</p>
-                                                                <p className="mt-1 whitespace-pre-wrap break-words text-xs text-blue-900">
-                                                                    {entry.assistantReply || "(no assistant response captured)"}
-                                                                </p>
+                                                            <div className="mt-2 grid gap-2 md:grid-cols-2">
+                                                                <div className="rounded-md border border-amber-200 bg-amber-50 px-2.5 py-2">
+                                                                    <p className="text-[10px] uppercase tracking-[0.12em] text-amber-800">User prompt</p>
+                                                                    <p
+                                                                        className={
+                                                                            "mt-1 whitespace-pre-wrap break-words text-xs text-amber-900 " +
+                                                                            (isExpanded ? "" : "max-h-24 overflow-hidden")
+                                                                        }
+                                                                    >
+                                                                        {promptText}
+                                                                    </p>
+                                                                </div>
+                                                                <div className="rounded-md border border-blue-200 bg-blue-50 px-2.5 py-2">
+                                                                    <p className="text-[10px] uppercase tracking-[0.12em] text-blue-800">Assistant response</p>
+                                                                    <p
+                                                                        className={
+                                                                            "mt-1 whitespace-pre-wrap break-words text-xs text-blue-900 " +
+                                                                            (isExpanded ? "" : "max-h-24 overflow-hidden")
+                                                                        }
+                                                                    >
+                                                                        {replyText}
+                                                                    </p>
+                                                                </div>
                                                             </div>
+                                                            {canExpand ? (
+                                                                <div className="mt-2 flex justify-end">
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => toggleAuditEntry(entryKey)}
+                                                                        className="inline-flex items-center rounded-full border border-neutral-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-neutral-700 transition hover:border-neutral-300 hover:text-neutral-900"
+                                                                    >
+                                                                        {isExpanded ? "View less" : "View more"}
+                                                                    </button>
+                                                                </div>
+                                                            ) : null}
                                                         </div>
-                                                    </div>
-                                                ))}
+                                                    );
+                                                })}
                                             </div>
                                         )}
                                     </section>

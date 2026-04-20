@@ -198,7 +198,7 @@ export const TOOL_CONFIGS: ToolConfig[] = [
   {
     slug: "json-formatter",
     h1: "JSON Formatter",
-    title: "JSON Beautifier",
+    title: "JSON Formatter Tool",
     description:
       "Format raw JSON into readable output with a JSON formatter, JSON beautifier, and JSON pretty print workflow.",
     keyword: "json beautifier",
@@ -358,7 +358,7 @@ export const TOOL_CONFIGS: ToolConfig[] = [
   {
     slug: "username-generator",
     h1: "Username Generator",
-    title: "Cool Username Generator",
+    title: "Username Generator Tool",
     description:
       "Generate creative handles with a username generator, cool username generator, and random username generator workflow.",
     keyword: "random username generator",
@@ -546,7 +546,7 @@ export const TOOL_CONFIGS: ToolConfig[] = [
   {
     slug: "font-generator-tool",
     h1: "Font Generator Tool",
-    title: "Fancy Font Generator",
+    title: "Font Generator Tool",
     description: "Preview simple font styles and copy a basic font-family snippet.",
     keyword: "fancy font generator",
     intro: "Use this font generator tool when you want to compare a few quick font styles for a title or page.",
@@ -597,7 +597,7 @@ export const TOOL_CONFIGS: ToolConfig[] = [
   {
     slug: "business-name-generator",
     h1: "Business Name Generator",
-    title: "Brand Name Generator Tool",
+    title: "Business Name Generator Tool",
     description: "Generate quick business and brand name ideas from a short topic.",
     keyword: "business name generator",
     intro: "Use this business name generator to get a quick set of brand-style names from a short topic or niche.",
@@ -614,7 +614,7 @@ export const TOOL_CONFIGS: ToolConfig[] = [
   {
     slug: "email-generator",
     h1: "Email Generator",
-    title: "Random Email Generator",
+    title: "Email Generator Tool",
     description: "Generate temporary-style email addresses for tests and demos.",
     keyword: "email generator",
     intro: "Use this email generator when you need sample addresses for testing, signup flows, or demos.",

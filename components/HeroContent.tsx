@@ -231,22 +231,20 @@ export default function HeroContent({
               type="submit"
               disabled={mode === "prompt" ? !prompt.trim() || !!error : !url || !!error}
               className={
-                "shrink-0 self-center rounded-full bg-[#f26522] hover:bg-[#ff7a3d] text-white transition-all active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed " +
-                (mode === "prompt"
-                  ? "h-11 w-11 grid place-items-center md:h-full md:w-auto md:px-6"
-                  : "h-11 w-11 grid place-items-center md:h-full md:w-auto md:px-6")
+                "inline-flex h-11 shrink-0 items-center justify-center rounded-full bg-[#f26522] px-4 text-white transition-all active:scale-95 hover:bg-[#ff7a3d] disabled:cursor-not-allowed disabled:opacity-60 md:px-6 " +
+                (mode === "prompt" ? " gap-2" : "")
               }
               aria-label={mode === "prompt" ? "Create from prompt" : "Clone website from URL"}
             >
-                  <span className="md:hidden">
-                    {mode === "prompt" ? (
-                      <Send className="h-4 w-4" />
-                    ) : (
-                      <ArrowRightSquare className="h-4 w-4" />
-                    )}
-                    <span className="sr-only">{mode === "prompt" ? "Preview" : "Clone"}</span>
-                  </span>
-                  <span className="hidden md:inline">{mode === "prompt" ? "Preview" : "Clone"}</span>
+              <span className="inline-flex items-center gap-2">
+                {mode === "prompt" ? (
+                  <Send className="h-4 w-4" />
+                ) : (
+                  <ArrowRightSquare className="h-4 w-4" />
+                )}
+                <span className="sr-only">{mode === "prompt" ? "Preview" : "Clone"}</span>
+                <span className="hidden md:inline">{mode === "prompt" ? "Preview" : "Clone"}</span>
+              </span>
             </button>
           </div>
 

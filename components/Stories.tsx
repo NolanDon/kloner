@@ -122,7 +122,7 @@ export default function Stories() {
       <div className="container-soft">
         <div className="mb-8 flex items-center justify-between gap-4 sm:mb-6">
           <h2 className="mt-1 flex flex-wrap items-center justify-start gap-x-3 gap-y-1 text-base text-neutral-600 sm:text-lg">
-            <span className="block text-[13px] uppercase leading-tight tracking-[0.1em] text-neutral-500 sm:text-[14px]">
+            <span className="block text-[16px] uppercase tracking-[0.1em] text-neutral-500">
               Join
               <span className="mx-1 text-[rgba(245,95,42,1)]">5,000+</span>
               Kloner members shipping sites in minutes

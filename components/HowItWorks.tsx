@@ -268,7 +268,7 @@ type ModalPlain = React.ComponentType;
 const items = [
   {
     title: "Paste a URL",
-    text: "Drop in any public website you want to copy and we’ll build a clean starting point.",
+    text: "Drop in a website you want to copy and we’ll build a clean starting point.",
     step: 1,
     Modal: UrlInputModal as ModalPlain,
     needsProgress: false,
@@ -282,7 +282,7 @@ const items = [
   },
   {
     title: "Make it your own",
-    text: "Swap copy, colors, images, and sections until the site feels like your brand.",
+    text: "Swap copy, colors, images, and sections until the site feels right.",
     step: 3,
     Modal: EditBlocksModal as ModalPlain,
     needsProgress: false,
@@ -445,7 +445,7 @@ export default function HowItWorks() {
             style={{ opacity: hintOpacity }}
             className="pointer-events-none fixed inset-x-0 bottom-6 z-40 hidden md:flex justify-center"
           >
-            <div className="pointer-events-auto inline-flex items-center gap-1 border border-neutral-700 rounded-full px-3 py-2 text-xs text-neutral-800 shadow-lg sm:text-sm">
+            <div className="pointer-events-auto inline-flex items-center gap-1 rounded-full bg-accent px-4 py-2 text-xs font-semibold text-white shadow-lg sm:text-sm">
               <span>Scroll to continue</span>
               <motion.div
                 animate={{ y: [0, 6, 0] }}

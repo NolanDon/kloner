@@ -3,6 +3,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { motion, useMotionValueEvent, useScroll, useTransform, useSpring } from 'framer-motion';
+import Image from 'next/image';
 import { useUrlOverlay } from './UrlOverlayProvider';
 
 const clamp = (n: number, min: number, max: number) => Math.min(Math.max(n, min), max);
@@ -60,70 +61,16 @@ export default function ParallaxTypeHero({
             <motion.div aria-hidden className="absolute inset-0 z-0 overflow-hidden" style={{ y, scale }}>
                 <div className="absolute -inset-[6vh]">
                     <div className="relative h-full w-full">
-                        <div className="absolute inset-0 bg-black" />
-                        <div className="absolute inset-0 bg-[#2a1b3e]" />
-
-                        {/* Abstract grid / lines (CSS-only for performance) */}
-                        <div
-                            className="absolute inset-0"
-                            style={{
-                                transform: 'perspective(900px) rotateX(62deg) translateY(18%)',
-                                transformOrigin: '50% 20%',
-                                willChange: 'transform',
-                                WebkitMaskImage:
-                                    'radial-gradient(70% 55% at 50% 45%, rgba(0,0,0,1) 0%, rgba(0,0,0,0.92) 45%, rgba(0,0,0,0) 78%)',
-                                maskImage:
-                                    'radial-gradient(70% 55% at 50% 45%, rgba(0,0,0,1) 0%, rgba(0,0,0,0.92) 45%, rgba(0,0,0,0) 78%)',
-                            }}
-                        >
-                            <div
-                                className="absolute -inset-[30%]"
-                                style={{
-                                    backgroundImage:
-                                        [
-                                            // primary grid
-                                            'repeating-linear-gradient(0deg, rgba(255,255,254,0.16) 0px, rgba(255,255,254,0.16) 1px, transparent 1px, transparent 64px)',
-                                            'repeating-linear-gradient(90deg, rgba(255,255,254,0.10) 0px, rgba(255,255,254,0.10) 1px, transparent 1px, transparent 44px)',
-                                            // offset micro-lines for depth (different from Hero)
-                                            'repeating-linear-gradient(0deg, rgba(0,255,153,0.10) 0px, rgba(0,255,153,0.10) 1px, transparent 1px, transparent 180px)',
-                                            // diagonal “wire” hints
-                                            'repeating-linear-gradient(135deg, rgba(255,255,255,0.06) 0px, rgba(255,255,255,0.06) 1px, transparent 1px, transparent 22px)',
-                                        ].join(', '),
-                                    backgroundPosition: '0 0, 18px 10px, 0 0, 0 0',
-                                    backgroundSize: 'auto, auto, auto, auto',
-                                    opacity: 0.9,
-                                }}
-                            />
-                        </div>
-
-                        {/* Accent blooms (keep subtle, no heavy filters) */}
-                        <div
-                            className="absolute inset-0"
-                            style={{
-                                background:
-                                    'radial-gradient(65% 55% at 18% 34%, rgba(245,95,42,0.28) 0%, rgba(245,95,42,0.10) 24%, rgba(0,0,0,0) 62%)',
-                                opacity: 0.9,
-                            }}
+                        <Image
+                            src="/images/hero_bg.jpg"
+                            alt="Hero background"
+                            fill
+                            priority={false}
+                            sizes="100vw"
+                            className="absolute inset-0 h-full w-full object-cover select-none pointer-events-none"
                         />
-                        <div
-                            className="absolute inset-0"
-                            style={{
-                                background:
-                                    'radial-gradient(55% 50% at 78% 30%, rgba(255,138,76,0.18) 0%, rgba(255,138,76,0.07) 30%, rgba(0,0,0,0) 64%)',
-                                opacity: 0.9,
-                            }}
-                        />
-
-                        {/* Subtle scanlines (very low alpha) */}
-                        <div
-                            className="absolute inset-0"
-                            style={{
-                                background:
-                                    'repeating-linear-gradient(0deg, rgba(255,255,255,0.05) 0px, rgba(255,255,255,0.05) 1px, transparent 1px, transparent 7px)',
-                                opacity: 0.08,
-                                mixBlendMode: 'overlay',
-                            }}
-                        />
+                        <div className="absolute inset-0 bg-gradient-to-b from-black/10 via-black/30 to-black/10" />
+                        <div className="absolute inset-0 bg-gradient-to-tr from-black/25 via-transparent to-black/15" />
                     </div>
                 </div>
                 <div
