@@ -4239,8 +4239,17 @@ export default function AppBuilderEditor({
     if (activeGeneration.status === "error" && !dismissedGenerationError) {
         return (
             <div className="fixed inset-0 z-[16000] flex items-center justify-center bg-black/70 px-4 py-6 backdrop-blur-sm">
-                <div className="w-full max-w-lg overflow-hidden rounded-3xl border border-neutral-200 bg-white shadow-[0_28px_80px_rgba(15,23,42,0.22)]">
-                    <div className="border-b border-neutral-200 bg-[linear-gradient(180deg,rgba(245,95,42,0.10),rgba(255,255,255,1))] px-5 py-4 sm:px-6">
+                <div className="relative w-full max-w-lg overflow-hidden rounded-3xl border border-neutral-200 bg-white shadow-[0_28px_80px_rgba(15,23,42,0.22)]">
+                    <button
+                        type="button"
+                        onClick={() => setDismissedGenerationError(true)}
+                        className="absolute right-3 top-3 z-30 inline-flex h-8 w-8 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-500 shadow-[0_8px_24px_rgba(15,23,42,0.08)] transition hover:bg-neutral-50 hover:text-neutral-800 sm:right-4 sm:top-4"
+                        aria-label="Close generation error"
+                    >
+                        <X className="h-4 w-4" />
+                    </button>
+
+                    <div className="border-b border-neutral-200 bg-[linear-gradient(180deg,rgba(245,95,42,0.10),rgba(255,255,255,1))] px-5 py-4 pr-12 sm:px-6 sm:pr-14">
                         <div className="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-[rgba(245,95,42,0.12)] text-[rgba(245,95,42,1)]">
                             <X className="h-5 w-5" />
                         </div>
@@ -4255,18 +4264,14 @@ export default function AppBuilderEditor({
                     <div className="px-5 py-5 sm:px-6">
                         <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
                             <button
+                                type="button"
                                 onClick={handleReconnect}
                                 className="inline-flex w-full items-center justify-center rounded-full bg-[rgba(245,95,42,1)] px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-[rgba(225,82,30,1)] sm:w-auto"
                             >
                                 Reconnect preview
                             </button>
                             <button
-                                onClick={() => setDismissedGenerationError(true)}
-                                className="inline-flex w-full items-center justify-center rounded-full border border-neutral-200 bg-white px-4 py-3 text-sm font-semibold text-neutral-800 transition hover:bg-neutral-50 sm:w-auto"
-                            >
-                                Continue anyway
-                            </button>
-                            <button
+                                type="button"
                                 onClick={() => window.location.reload()}
                                 className="inline-flex w-full items-center justify-center rounded-full border border-[rgba(245,95,42,0.18)] bg-[rgba(245,95,42,0.08)] px-4 py-3 text-sm font-semibold text-[rgba(145,54,14,0.98)] transition hover:bg-[rgba(245,95,42,0.14)] sm:w-auto"
                             >
