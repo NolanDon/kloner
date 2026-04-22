@@ -5997,21 +5997,23 @@ export default function PreviewPage(): JSX.Element {
         return (
             <div className="space-y-3">
                 <p className="font-semibold text-amber-950">
-                    We already saved a failed result for{" "}
+                    Test the URL in a private or incognito browser tab and make sure it loads without login, captcha, geo-blocking, or a redirect.
+                </p>
+                <p>If the page works in a browser but not here, the site is probably blocking automated capture.</p>
+                <div className="pt-2 border-t border-amber-200/80">
+                    <div className="text-[11px] font-semibold uppercase tracking-wide text-amber-800/80">
+                        URL
+                    </div>
                     <a
                         href={activeUrlIssueHref || "#"}
                         target="_blank"
                         rel="noreferrer"
-                        className="break-all font-semibold text-amber-900 underline decoration-amber-500 underline-offset-2 hover:text-amber-950"
+                        className="mt-1 inline-flex max-w-full items-center gap-1.5 break-all font-semibold text-amber-900 underline decoration-amber-500 underline-offset-2 hover:text-amber-950"
                     >
-                        {activeUrlDisplay}
+                        <span>{activeUrlDisplay}</span>
+                        <ExternalLink className="h-3.5 w-3.5 shrink-0" />
                     </a>
-                    , but you can start a fresh rescan now.
-                </p>
-                <p>
-                    Test the URL in a private or incognito browser tab and make sure it loads without login, captcha, geo-blocking, or a redirect.
-                </p>
-                <p>If the page works in a browser but not here, the site is probably blocking automated capture.</p>
+                </div>
             </div>
         );
     }, [showActiveUrlIssueWarning, activeUrlDoc?.url, activeUrlIssueHref]);
