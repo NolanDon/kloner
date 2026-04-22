@@ -9738,7 +9738,7 @@ export default function PreviewPage(): JSX.Element {
                             <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
                             <div>
                                 <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700">
-                                    URL captured successfully. Start Generations Below.
+                                    URL captured successfully. Start Generating Below.
                                 </p>
                             </div>
                         </div>
