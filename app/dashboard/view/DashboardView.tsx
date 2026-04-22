@@ -846,7 +846,7 @@ function MiniDashboardEntry({
                             disabled={disabled}
                             className={
                                 "flex-1 bg-transparent outline-none text-neutral-700 placeholder:text-neutral-400 font-medium resize-none h-full leading-snug " +
-                                (isCompact ? "text-[13px] sm:text-sm py-2" : "text-base sm:text-lg py-3")
+                                (isCompact ? "text-[13px] sm:text-sm py-2" : "text-[15px] sm:text-base py-3")
                             }
                             autoComplete="off"
                         />
@@ -874,7 +874,7 @@ function MiniDashboardEntry({
                             disabled={disabled}
                             className={
                                 "flex-1 bg-transparent outline-none text-neutral-700 placeholder:text-neutral-400 font-medium " +
-                                (isCompact ? "text-[13px] sm:text-sm" : "text-base sm:text-lg")
+                                (isCompact ? "text-[13px] sm:text-sm" : "text-[15px] sm:text-base")
                             }
                             autoComplete="off"
                         />
@@ -897,7 +897,7 @@ function MiniDashboardEntry({
                                     transition={{ duration: 0.35, ease: "easeOut" }}
                                     className={
                                         "block ml-[0.65ch] text-neutral-400/90 font-medium leading-snug max-h-[4.4em] overflow-hidden " +
-                                        (isCompact ? "text-[13px] sm:text-sm" : "text-base sm:text-lg")
+                                        (isCompact ? "text-[13px] sm:text-sm" : "text-[15px] sm:text-base")
                                     }
                                 >
                                     {PROMPT_PLACEHOLDERS[promptPlaceholderIdx]}
@@ -6122,7 +6122,7 @@ export default function PreviewPage(): JSX.Element {
 
             const displayUrl = r.url && r.url.length > 64 ? `${r.url.slice(0, 61)}...` : r.url;
             const ok = await showConfirm(
-                `Delete this tracked URL?\n\n${displayUrl}\n\nThis removes the URL and its screenshots.`,
+                `Delete this tracked URL?\n\n${displayUrl}\n\nThis removes the URL and any associated assets`,
                 "Delete URL"
             );
             if (!ok) return;
@@ -8671,7 +8671,11 @@ export default function PreviewPage(): JSX.Element {
     }, [hasAnyAppDoc, hasAnyRenderDoc, successfulScannedUrls, targetUrl]);
 
     const shouldPulseCreateWebsitePlus =
-        !!targetUrl && !nextJsGenerationPendingUrl && !hasAnyRenderDoc && !hasAnyAppDoc;
+        !!targetUrl &&
+        captureStatus === "ready" &&
+        !nextJsGenerationPendingUrl &&
+        !hasAnyRenderDoc &&
+        !hasAnyAppDoc;
 
     const forceTrialPromptInDev = process.env.NODE_ENV !== "production";
     const isFreeTierNotTrialing = userTier === "free" && stripeStatus !== "trialing";
@@ -9734,10 +9738,7 @@ export default function PreviewPage(): JSX.Element {
                             <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
                             <div>
                                 <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700">
-                                    URL captured successfully
-                                </p>
-                                <p className="text-sm font-medium text-emerald-900">
-                                    This URL was captured successfully. Start generating below.
+                                    URL captured successfully. Start Generations Below.
                                 </p>
                             </div>
                         </div>
