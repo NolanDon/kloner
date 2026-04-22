@@ -92,10 +92,10 @@ export default function ParallaxTypeHero({
 
             <div className="relative z-10 sticky top-0 flex h-screen items-center">
                 <div className="mx-auto w-full max-w-6xl px-6">
-                    <h1 className="max-w-2xl text-5xl font-semibold leading-tight tracking-tight text-white md:text-6xl">
+                    <h2 className="max-w-2xl text-5xl font-semibold leading-tight tracking-tight text-white md:text-6xl">
                         <span className="align-middle">{typed}</span>
                         <span className="ml-1 inline-block h-[1.1em] w-[0.06em] translate-y-[0.06em] bg-white opacity-80 animate-[blink_1s_steps(1)_infinite]" />
-                    </h1>
+                    </h2>
 
                     <motion.div initial={{ opacity: 0, y: 8 }} style={{ opacity: subOpacity }}>
                         <div className="mt-5 md:mt-6">

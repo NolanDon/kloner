@@ -3087,7 +3087,7 @@ A clone site is the fastest legitimate path from idea to deployable first versio
   },
   {
     slug: "website-copier-online",
-    title: "Website Copier Online: Clone a Site From a URL Without the Mess",
+    title: "Website Copier Online: Quickly Clone a Site From a URL",
     description:
       "A practical guide to choosing a website copier online, what it should produce, and why editable output matters more than a raw snapshot.",
     publishedAt: "2026-04-10",
@@ -3268,7 +3268,7 @@ A website downloader is a useful tool in the right context, but it is not the sa
   },
   {
     slug: "website-cloning-guide",
-    title: "Website Cloning: The Practical Workflow for Fast, Editable Builds",
+    title: "Website Cloning Guide: Fast, Editable Build Workflow",
     description:
       "A high-intent guide to website cloning for teams that want a fast baseline, clean structure, and a path to an editable project.",
     publishedAt: "2026-04-10",
@@ -3319,7 +3319,7 @@ Website cloning is best when it compresses the boring part of starting, not the 
   },
   {
     slug: "site-copier",
-    title: "Site Copier: How to Recreate a Layout Without Rebuilding Everything",
+    title: "Site Copier: Recreate a Layout Without Rebuilding It",
     description:
       "A site copier guide for turning a reference page into an editable project with cleaner structure, faster iteration, and better ownership.",
     publishedAt: "2026-04-10",
