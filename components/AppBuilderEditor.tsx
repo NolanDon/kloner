@@ -52,6 +52,10 @@ type AppData = {
         jobId?: string | null;
         archiveZipPath?: string | null;
         archiveZipUrl?: string | null;
+        errorCode?: string | null;
+        retryable?: boolean | null;
+        needsRescan?: boolean | null;
+        nextAction?: string | null;
     } | null;
 };
 
@@ -65,6 +69,10 @@ type NormalizedGenerationState = {
     archiveZipPath: string | null;
     archiveZipUrl: string | null;
     error: string | null;
+    errorCode: string | null;
+    retryable: boolean | null;
+    needsRescan: boolean | null;
+    nextAction: string | null;
 };
 
 type AutoPreviewPhase =
@@ -277,6 +285,11 @@ function asFiniteNumber(value: unknown): number | null {
     return value;
 }
 
+function asBoolean(value: unknown): boolean | null {
+    if (typeof value !== "boolean") return null;
+    return value;
+}
+
 function normalizeGenerationStage(value: unknown): string | null {
     const stage = asTrimmedString(value);
     return stage ? stage.toLowerCase() : null;
@@ -287,6 +300,7 @@ function normalizeGenerationState(data: any): NormalizedGenerationState {
     const legacyStatus = asTrimmedString(data?.generationStatus) || asTrimmedString(data?.status);
     const legacyProgress = asFiniteNumber(data?.generationProgress) ?? asFiniteNumber(data?.progress);
     const legacyError = asTrimmedString(data?.generationError) || asTrimmedString(data?.error);
+    const legacyErrorCode = asTrimmedString(data?.generationErrorCode) || asTrimmedString(data?.errorCode);
 
     return {
         status: normalizeGenerationStage(generation?.status ?? legacyStatus),
@@ -305,6 +319,22 @@ function normalizeGenerationState(data: any): NormalizedGenerationState {
             asTrimmedString(generation?.archiveZipUrl) ||
             asTrimmedString(data?.archiveZipUrl),
         error: legacyError,
+        errorCode:
+            asTrimmedString(generation?.errorCode) ||
+            asTrimmedString(data?.generationErrorCode) ||
+            legacyErrorCode,
+        retryable:
+            asBoolean(generation?.retryable) ??
+            asBoolean(data?.generationRetryable) ??
+            asBoolean(data?.retryable),
+        needsRescan:
+            asBoolean(generation?.needsRescan) ??
+            asBoolean(data?.generationNeedsRescan) ??
+            asBoolean(data?.needsRescan),
+        nextAction:
+            asTrimmedString(generation?.nextAction) ||
+            asTrimmedString(data?.generationNextAction) ||
+            asTrimmedString(data?.nextAction),
     };
 }
 
@@ -322,7 +352,11 @@ function generationStateChanged(
         prev.jobId !== next.jobId ||
         prev.archiveZipPath !== next.archiveZipPath ||
         prev.archiveZipUrl !== next.archiveZipUrl ||
-        prev.error !== next.error
+        prev.error !== next.error ||
+        prev.errorCode !== next.errorCode ||
+        prev.retryable !== next.retryable ||
+        prev.needsRescan !== next.needsRescan ||
+        prev.nextAction !== next.nextAction
     );
 }
 
@@ -684,6 +718,10 @@ export default function AppBuilderEditor({
 }) {
     const { user, loading: authLoading } = useAuth();
     const { showConfirm, showAlert, hideModal } = useModal();
+    const sourceUrlToRescan = useMemo(() => {
+        if (agentWelcomeContext?.source !== "url") return "";
+        return String(agentWelcomeContext?.url || "").trim();
+    }, [agentWelcomeContext?.source, agentWelcomeContext?.url]);
 
     const faviconInputRef = useRef<HTMLInputElement | null>(null);
     const imageInputRef = useRef<HTMLInputElement | null>(null);
@@ -1495,6 +1533,72 @@ export default function AppBuilderEditor({
             t.includes("render_failed")
         );
     }, [generationErrorText]);
+
+    const generationFailureUi = useMemo(() => {
+        if (activeGeneration.status !== "error") return null;
+
+        const errorCode = String(activeGeneration.errorCode || "").trim().toUpperCase();
+        const retryable = activeGeneration.retryable === true;
+        const needsRescan = activeGeneration.needsRescan === true;
+        const nextAction = String(activeGeneration.nextAction || "").trim().toLowerCase();
+        const explicitRescan = needsRescan === true;
+        const explicitRetry = nextAction === "retry_generation" || (retryable && !needsRescan);
+        const explicitSupport = nextAction === "contact_support";
+
+        let message = generationErrorText || "Generation failed. Please try again.";
+        let actionLabel = "Dismiss";
+        let actionKind: "dismiss" | "retry" | "rescan" = "dismiss";
+
+        if (explicitRescan) {
+            message =
+                errorCode === "ARCHIVE_ZIP_MISSING"
+                    ? "We couldn't start this app because the archived site files are not ready yet. Please rescan this URL and try again."
+                    : "This URL needs to be rescanned before it can be used for generation.";
+            actionLabel = "Rescan URL";
+            actionKind = "rescan";
+        } else if (explicitRetry) {
+            switch (errorCode) {
+                case "GEMINI_API_UNAVAILABLE":
+                    message = "The model is temporarily unavailable. Try again in a moment.";
+                    break;
+                case "GEMINI_TIMEOUT":
+                    message = "The model timed out. Please retry.";
+                    break;
+                case "GEMINI_BAD_RESPONSE":
+                    message = "The model returned an invalid response. Please retry.";
+                    break;
+                case "GENERATION_FAILED":
+                    message = "Generation failed. Please retry.";
+                    break;
+                default:
+                    message = "Generation failed. Please retry.";
+                    break;
+            }
+            actionLabel = "Retry";
+            actionKind = "retry";
+        } else if (explicitSupport) {
+            message = generationErrorText || "Generation failed. Please contact support.";
+            actionLabel = "Dismiss";
+            actionKind = "dismiss";
+        } else if (retryable && !needsRescan) {
+            message = "Generation failed. Please retry.";
+            actionLabel = "Retry";
+            actionKind = "retry";
+        } else if (needsRescan) {
+            message = "This URL needs to be rescanned before it can be used for generation.";
+            actionLabel = "Rescan URL";
+            actionKind = "rescan";
+        }
+
+        return {
+            message,
+            actionLabel,
+            actionKind,
+            isRetryableNoRescan: explicitRetry,
+            isRescanRequired: explicitRescan,
+            isSupportState: explicitSupport,
+        };
+    }, [activeGeneration.errorCode, activeGeneration.needsRescan, activeGeneration.nextAction, activeGeneration.retryable, activeGeneration.status, generationErrorText]);
 
     useEffect(() => {
         // If the backend marked generation as error due to a transient preview issue,
@@ -4106,6 +4210,14 @@ export default function AppBuilderEditor({
         setReconnectKey((k) => k + 1);
     };
 
+    const handleRescanSourceUrl = useCallback(() => {
+        const nextUrl = sourceUrlToRescan.trim();
+        setDismissedGenerationError(true);
+        if (!nextUrl || typeof window === "undefined") return;
+
+        window.location.assign(`/dashboard/view?u=${encodeURIComponent(nextUrl)}&start=1&retry=1`);
+    }, [sourceUrlToRescan]);
+
     const handleRename = async () => {
         if (!app || !tempName.trim()) return;
 
@@ -4249,15 +4361,12 @@ export default function AppBuilderEditor({
                         <X className="h-4 w-4" />
                     </button>
 
-                    <div className="border-b border-neutral-200 bg-[linear-gradient(180deg,rgba(245,95,42,0.10),rgba(255,255,255,1))] px-5 py-4 pr-12 sm:px-6 sm:pr-14">
-                        <div className="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-[rgba(245,95,42,0.12)] text-[rgba(245,95,42,1)]">
-                            <X className="h-5 w-5" />
-                        </div>
+                    <div className="border-b border-neutral-200 bg-[linear-gradient(180deg,rgba(245,95,42,0.10),rgba(255,255,255,1))] px-5 py-4 sm:px-6">
                         <div className="mt-3 text-[22px] font-semibold tracking-[-0.02em] text-neutral-950">
                             Generation Failed
                         </div>
                         <div className="mt-2 max-w-md text-sm leading-6 text-neutral-600">
-                            {activeGeneration.error || "An error occurred while generating your app."}
+                            {generationFailureUi?.message || "Generation failed. Please retry."}
                         </div>
                     </div>
 
@@ -4265,18 +4374,34 @@ export default function AppBuilderEditor({
                         <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
                             <button
                                 type="button"
-                                onClick={handleReconnect}
-                                className="inline-flex w-full items-center justify-center rounded-full bg-[rgba(245,95,42,1)] px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-[rgba(225,82,30,1)] sm:w-auto"
+                                onClick={() => setDismissedGenerationError(true)}
+                                className="inline-flex w-full items-center justify-center rounded-full border border-neutral-200 bg-white px-4 py-3 text-sm font-semibold text-neutral-700 shadow-sm transition hover:bg-neutral-50 sm:w-auto"
                             >
-                                Reconnect preview
+                                Dismiss
                             </button>
-                            <button
-                                type="button"
-                                onClick={() => window.location.reload()}
-                                className="inline-flex w-full items-center justify-center rounded-full border border-[rgba(245,95,42,0.18)] bg-[rgba(245,95,42,0.08)] px-4 py-3 text-sm font-semibold text-[rgba(145,54,14,0.98)] transition hover:bg-[rgba(245,95,42,0.14)] sm:w-auto"
-                            >
-                                Retry
-                            </button>
+                            {generationFailureUi?.actionKind === "rescan" ? (
+                                <button
+                                    type="button"
+                                    onClick={handleRescanSourceUrl}
+                                    disabled={!sourceUrlToRescan}
+                                    className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-accent px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-accent-dark disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
+                                >
+                                    <RotateCcw className="h-4 w-4" />
+                                    <span>Rescan URL</span>
+                                </button>
+                            ) : generationFailureUi?.actionKind === "retry" ? (
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setDismissedGenerationError(true);
+                                        window.location.reload();
+                                    }}
+                                    className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-accent px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-accent-dark sm:w-auto"
+                                >
+                                    <RefreshCw className="h-4 w-4" />
+                                    <span>Retry</span>
+                                </button>
+                            ) : null}
                         </div>
                     </div>
                 </div>

@@ -362,6 +362,7 @@ export default function LoginPage(): JSX.Element {
     const [mode, setMode] = useState<Mode>(initialMode);
     const [loading, setLoading] = useState<boolean>(false);
     const [err, setErr] = useState<string>("");
+    const [resetSuccess, setResetSuccess] = useState<string>("");
 
     const [email, setEmail] = useState<string>("");
     const [pw, setPw] = useState<string>("");
@@ -377,6 +378,7 @@ export default function LoginPage(): JSX.Element {
         setMode("signin");
         setLoading(false);
         setErr("Your session expired. Please sign in again.");
+        setResetSuccess("");
     }, [search]);
 
     // Initialize pendingUrl/pendingPrompt from query or localStorage
@@ -503,6 +505,7 @@ export default function LoginPage(): JSX.Element {
 
     const signInWithGoogle = async (): Promise<void> => {
         setErr("");
+        setResetSuccess("");
 
         if (mode === "signup" && !acceptedTerms) {
             setErr("You must accept the Terms and Conditions to create an account.");
@@ -549,6 +552,7 @@ export default function LoginPage(): JSX.Element {
     const submitEmail: React.FormEventHandler<HTMLFormElement> = async (e) => {
         e.preventDefault();
         setErr("");
+        setResetSuccess("");
 
         if (mode === "signup" && !acceptedTerms) {
             setErr("You must accept the Terms and Conditions to create an account.");
@@ -594,13 +598,14 @@ export default function LoginPage(): JSX.Element {
 
     const doReset = async (): Promise<void> => {
         setErr("");
+        setResetSuccess("");
         if (!email) {
             setErr("Enter your email, then tap Reset.");
             return;
         }
         try {
             await sendPasswordResetEmail(auth, email.trim());
-            setErr("Password reset email sent.");
+            setResetSuccess("Password reset email sent.");
         } catch (e) {
             setErr(normalizeError(e));
         }
@@ -812,6 +817,10 @@ export default function LoginPage(): JSX.Element {
                 {err ? (
                     <p className="mt-4 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">
                         {err}
+                    </p>
+                ) : resetSuccess ? (
+                    <p className="mt-4 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+                        {resetSuccess}
                     </p>
                 ) : null}
 

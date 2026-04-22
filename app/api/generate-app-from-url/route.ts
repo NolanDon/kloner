@@ -283,9 +283,50 @@ export async function POST(req: NextRequest) {
       if (appResponse.status >= 200 && appResponse.status < 300) {
         const appData = (appResponse.json || {}) as any;
         const acceptedAppId = typeof appData.appId === "string" ? appData.appId.trim() : "";
+        const acceptedJobId = typeof appData.jobId === "string" ? appData.jobId.trim() : "";
+        const isTerminalFailure =
+          appData?.accepted === false ||
+          appData?.code === "ARCHIVE_ZIP_MISSING" ||
+          appData?.details?.stage === "archive_preflight";
+
+        if (isTerminalFailure || !acceptedAppId || !acceptedJobId) {
+          const message =
+            typeof appData?.error === "string" && appData.error.trim()
+              ? appData.error.trim()
+              : typeof appData?.message === "string" && appData.message.trim()
+                ? appData.message.trim()
+                : !acceptedJobId
+                  ? "App generation started without a job id."
+                  : "App generation could not be started.";
+
+          await reportZipGenerationFailure({
+            req,
+            uid: decoded.uid,
+            url: normalizedUrl,
+            name,
+            reason: isTerminalFailure ? "backend_terminal_failure" : "missing_job_id",
+            statusCode: isTerminalFailure ? 409 : 502,
+            reqId: appResponse.reqId,
+            backendUrl: appResponse.url,
+            backendStatus: appResponse.status,
+            backendMessage: message,
+            appId: acceptedAppId || null,
+          }).catch(() => null);
+
+          return NextResponse.json(
+            {
+              error: message,
+              code: appData?.code || (isTerminalFailure ? "ARCHIVE_ZIP_MISSING" : "INVALID_ACCEPTED_RESPONSE"),
+              reqId: appResponse.reqId,
+              upstreamStatus: appResponse.status,
+              ...(typeof appData?.details === "object" && appData.details ? { details: appData.details } : {}),
+            },
+            { status: isTerminalFailure ? 409 : 502 },
+          );
+        }
 
         // Charge one preview credit when generation is accepted with an appId.
-        if (acceptedAppId) {
+        if (acceptedAppId && acceptedJobId) {
           try {
             await consumeUserCredit(decoded.uid, tier, "preview");
           } catch (err: any) {
@@ -301,6 +342,8 @@ export async function POST(req: NextRequest) {
             message: appData.message || "App generation started. Check back later.",
             status: appData.status || "processing",
             appId: acceptedAppId || appData.appId,
+            jobId: acceptedJobId,
+            accepted: true,
             reqId: appResponse.reqId,
           },
           { status: 202 },

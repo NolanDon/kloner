@@ -73,7 +73,7 @@ describe("POST /api/generate-app-from-url", () => {
         consumeUserCredit.mockResolvedValue(undefined);
         callBackend.mockResolvedValue({
             status: 202,
-            json: { appId: "app_123", status: "queued", message: "Accepted" },
+            json: { appId: "app_123", jobId: "job_123", accepted: true, status: "queued", message: "Accepted" },
             reqId: "req_1",
             url: "https://backend.example/api/v1/generate-app-from-url",
         });
@@ -94,6 +94,8 @@ describe("POST /api/generate-app-from-url", () => {
 
         expect(res.status).toBe(202);
         expect(body.appId).toBe("app_123");
+        expect(body.jobId).toBe("job_123");
+        expect(body.accepted).toBe(true);
         expect(callBackend).toHaveBeenCalledTimes(1);
         expect(callBackend.mock.calls[0][1]).toMatchObject({
             path: "/generate-app-from-url",
@@ -106,5 +108,35 @@ describe("POST /api/generate-app-from-url", () => {
         });
         expect(peekUserCredit).toHaveBeenCalledWith("uid_1", "pro", "preview");
         expect(consumeUserCredit).toHaveBeenCalledWith("uid_1", "pro", "preview");
+    });
+
+    it("does not burn preview credits when the backend response is terminal failure shaped", async () => {
+        callBackend.mockResolvedValueOnce({
+            status: 202,
+            json: {
+                appId: "app_123",
+                accepted: false,
+                code: "ARCHIVE_ZIP_MISSING",
+                details: { stage: "archive_preflight" },
+                error: "Archive zip missing",
+            },
+            reqId: "req_2",
+            url: "https://backend.example/api/v1/generate-app-from-url",
+        });
+
+        const { POST } = await import("./route");
+        const req: any = {
+            json: async () => ({
+                url: "https://example.com",
+                name: "Example",
+            }),
+        };
+
+        const res: any = await POST(req);
+        const body = await res.json();
+
+        expect(res.status).toBe(409);
+        expect(body.code).toBe("ARCHIVE_ZIP_MISSING");
+        expect(consumeUserCredit).not.toHaveBeenCalled();
     });
 });

@@ -131,9 +131,9 @@ export default function TrialSuccessCelebration({ open, onDismiss }: TrialSucces
                             <div className="mt-3 max-w-md rounded-[22px] border border-neutral-200 bg-white px-4 py-3 text-left shadow-sm">
                                 <p className="text-sm font-semibold text-neutral-900">What to do next:</p>
                                 <ol className="mt-2 space-y-2 text-sm leading-6 text-neutral-700">
-                                    <li>After closing this modal, click <span className="font-semibold">Generate Website</span> and choose from the following:</li>
+                                    <li>After closing this modal, click <span className="font-semibold">Generate Website</span> and choose the following:</li>
                                     <li>Pick <span className="font-semibold text-[#f55f2a]">Website (NextJS)</span> for AI, databases, or user accounts.</li>
-                                    <li>Try <span className="font-semibold text-[#f55f2a]">Start from template</span> if you want inspiration from the community.</li>
+                                    {/* <li>Try <span className="font-semibold text-[#f55f2a]">Start from template</span> if you want inspiration from the community.</li> */}
                                 </ol>
                             </div>
 

@@ -82,6 +82,7 @@ import {
     X,
     Send,
     Trash2,
+    LayoutGrid,
 } from "lucide-react";
 import {
     isHttpUrl,
@@ -638,6 +639,10 @@ function MiniDashboardEntry({
     const badgeTextClassName = isActiveTrial
         ? "text-[9px] font-semibold uppercase tracking-wide text-blue-700"
         : "text-[9px] font-semibold uppercase tracking-wide text-accent";
+    const showQueuedScanStatus =
+        !hideCaptureQueueStatus &&
+        disabled &&
+        (captureStatus === "queued" || captureStatus === "processing");
 
     async function handleSubmit(e: React.FormEvent) {
         e.preventDefault();
@@ -913,7 +918,7 @@ function MiniDashboardEntry({
                         style={{ backgroundColor: ACCENT }}
                         aria-label={mode === "prompt" ? "Create from prompt" : "Preview from URL"}
                     >
-                        {disabled && (captureStatus === "queued" || captureStatus === "processing") ? (
+                        {showQueuedScanStatus ? (
                             <>
                                 <Loader2 className="h-4 w-4 animate-spin" />
                                 <span className="sr-only">
@@ -942,16 +947,12 @@ function MiniDashboardEntry({
                         message={captureIssueNotice}
                         onDismiss={() => setDismissedCaptureIssueNotice(true)}
                     />
-                ) : !hideCaptureQueueStatus && disabled && (captureStatus === "queued" || captureStatus === "processing") ? (
+                ) : showQueuedScanStatus ? (
                     <div className="mt-4 inline-flex items-center gap-2 text-xs text-neutral-600">
-                        {captureStatus === "queued" ? (
-                            <Clock3 className="h-3.5 w-3.5" />
-                        ) : (
-                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        )}
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
                         {captureStatus === "queued"
-                            ? "Queued scan… "
-                            : "Processing your URL… This may take a few minutes. After processing, you can begin website generation."}
+                            ? "Queued scan… this can take a few minutes."
+                            : "Processing your URL…"}
                     </div>
                 ) : null}
 
@@ -2101,6 +2102,8 @@ function AppCard({
     app,
     isDeleting,
     isArchiving,
+    isPendingCreation,
+    disableActions,
     accessLocked,
     onCustomize,
     onArchive,
@@ -2111,6 +2114,8 @@ function AppCard({
     app: { id: string; name: string; createdAt: any; updatedAt: any; isDeployed?: boolean; productionUrl?: string | null; lastDeployUrl?: string | null };
     isDeleting: boolean;
     isArchiving: boolean;
+    isPendingCreation: boolean;
+    disableActions: boolean;
     accessLocked: boolean;
     onCustomize: (appId: string) => void;
     onArchive: (appId: string) => void;
@@ -2162,11 +2167,14 @@ function AppCard({
             <div className="flex flex-col items-center gap-4 text-center">
                 <div className="flex w-full items-center justify-center pt-8">
                     <div
-                        className="grid h-36 w-36 place-items-center rounded-[2.6rem] bg-gradient-to-br from-[#f55f2a] via-[#ff6f3d] to-[#ff986e] text-[48px] font-black text-white shadow-[0_10px_20px_rgba(245,95,42,0.10)] transition-all duration-300 ease-out group-hover:scale-[1.14] group-hover:shadow-[0_14px_26px_rgba(245,95,42,0.12)]"
+                        className={isPendingCreation
+                            ? "grid h-36 w-36 place-items-center rounded-[2.6rem] border border-dashed border-neutral-300 bg-neutral-100 text-neutral-400 shadow-[0_10px_20px_rgba(15,23,42,0.06)] transition-all duration-300 ease-out"
+                            : "grid h-36 w-36 place-items-center rounded-[2.6rem] bg-gradient-to-br from-[#f55f2a] via-[#ff6f3d] to-[#ff986e] text-[48px] font-black text-white shadow-[0_10px_20px_rgba(245,95,42,0.10)] transition-all duration-300 ease-out group-hover:scale-[1.14] group-hover:shadow-[0_14px_26px_rgba(245,95,42,0.12)]"
+                        }
                         style={{ fontFamily: "ui-rounded, 'SF Pro Rounded', 'Avenir Next Rounded', 'Trebuchet MS', sans-serif" }}
                         title={appDisplayName || "App"}
                     >
-                        {appBadgeLabel}
+                        {isPendingCreation ? <LayoutGrid className="h-12 w-12" /> : appBadgeLabel}
                     </div>
                 </div>
 
@@ -2195,7 +2203,8 @@ function AppCard({
                             <button
                                 type="button"
                                 onClick={() => void submitAppRename()}
-                                className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-700 hover:bg-neutral-50"
+                                disabled={disableActions || isPendingCreation}
+                                className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-700 hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50"
                                 aria-label="Save app name"
                                 title="Save"
                             >
@@ -2207,7 +2216,8 @@ function AppCard({
                                     setNameDraft(appDisplayName);
                                     setIsEditingName(false);
                                 }}
-                                className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-700 hover:bg-neutral-50"
+                                disabled={disableActions || isPendingCreation}
+                                className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-700 hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50"
                                 aria-label="Cancel rename"
                                 title="Cancel"
                             >
@@ -2220,19 +2230,32 @@ function AppCard({
                                 <div className="w-full truncate text-[15px] font-medium leading-tight text-neutral-900" title={appDisplayName || "App"}>
                                     {appDisplayName || "App"}
                                 </div>
-                                <button
-                                    type="button"
-                                    onClick={() => setIsEditingName(true)}
-                                    className="absolute right-0 inline-flex h-7 w-7 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-600 shadow-sm transition-all duration-150 hover:bg-neutral-50 md:opacity-0 md:group-hover/rename:opacity-100 md:group-focus-within/rename:opacity-100"
-                                    aria-label="Edit app name"
-                                    title="Edit"
-                                >
-                                    <Edit2 className="h-3 w-3" />
-                                </button>
+                                {isPendingCreation ? (
+                                    <div className="absolute right-0 inline-flex h-7 w-7 items-center justify-center rounded-full border border-neutral-200 bg-neutral-100 text-neutral-500 shadow-sm">
+                                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                    </div>
+                                ) : (
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsEditingName(true)}
+                                        className="absolute right-0 inline-flex h-7 w-7 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-600 shadow-sm transition-all duration-150 hover:bg-neutral-50 md:opacity-0 md:group-hover/rename:opacity-100 md:group-focus-within/rename:opacity-100"
+                                        aria-label="Edit app name"
+                                        title="Edit"
+                                    >
+                                        <Edit2 className="h-3 w-3" />
+                                    </button>
+                                )}
                             </div>
                         </>
                     )}
                 </div>
+
+                {isPendingCreation ? (
+                    <div className="inline-flex items-center gap-1.5 rounded-full border border-neutral-200 bg-neutral-100 px-3 py-1 text-[11px] font-semibold text-neutral-600">
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        Creating app…
+                    </div>
+                ) : null}
 
                 <div className="mt-2 grid w-full grid-cols-4 gap-1.5 sm:mt-3 sm:gap-2">
                     <div
@@ -2245,19 +2268,22 @@ function AppCard({
                         <button
                             type="button"
                             onClick={() => {
+                                if (disableActions || isPendingCreation) return;
                                 if (isDeployedFlag) {
                                     router.push("/dashboard/deployments");
                                     return;
                                 }
                                 onDeploy({ id: app.id, name: app.name });
                             }}
-                            disabled={isDeleting || isArchiving || accessLocked}
+                            disabled={isDeleting || isArchiving || accessLocked || disableActions || isPendingCreation}
                             className={`inline-flex h-8 w-8 items-center justify-center rounded-2xl border text-neutral-800 shadow-sm transition-all duration-300 ease-out disabled:opacity-60 ${isDeployedFlag
                                 ? "border-emerald-200 bg-emerald-500 text-white hover:bg-green-700"
                                 : "border-transparent bg-accent text-white hover:bg-accent/90"
                                 }`}
                             title={
-                                accessLocked
+                                isPendingCreation
+                                    ? "This app is still being created"
+                                    : accessLocked
                                     ? "Trial access was cancelled, so this app is locked in the dashboard"
                                     : isDeployedFlag
                                         ? "View and manage deployments"
@@ -2282,11 +2308,16 @@ function AppCard({
                         </span>
                         <button
                             type="button"
-                            onClick={() => onCustomize(app.id)}
-                            disabled={isDeleting || accessLocked}
+                            onClick={() => {
+                                if (disableActions || isPendingCreation) return;
+                                onCustomize(app.id);
+                            }}
+                            disabled={isDeleting || accessLocked || disableActions || isPendingCreation}
                             className="inline-flex h-8 w-8 items-center justify-center rounded-2xl border border-neutral-300 bg-white text-neutral-800 shadow-sm transition-all duration-300 ease-out hover:border-neutral-400 disabled:opacity-60"
                             title={
-                                accessLocked
+                                isPendingCreation
+                                    ? "This app is still being created"
+                                    : accessLocked
                                     ? "Trial access was cancelled, so this app is locked in the dashboard"
                                     : "Open app in editor"
                             }
@@ -2305,8 +2336,11 @@ function AppCard({
                         </span>
                         <button
                             type="button"
-                            onClick={() => onArchive(app.id)}
-                            disabled={isDeleting || isArchiving}
+                            onClick={() => {
+                                if (disableActions || isPendingCreation) return;
+                                onArchive(app.id);
+                            }}
+                            disabled={isDeleting || isArchiving || disableActions || isPendingCreation}
                             className="inline-flex h-8 w-8 items-center justify-center rounded-2xl border border-neutral-300 bg-white text-neutral-700 shadow-sm transition-all duration-300 ease-out hover:border-neutral-400 disabled:cursor-not-allowed disabled:opacity-50"
                             title="Move this app into your archive"
                             aria-label={isArchiving ? "Archiving app" : "Archive app"}
@@ -2328,8 +2362,11 @@ function AppCard({
                         </span>
                         <button
                             type="button"
-                            onClick={() => onDelete(app.id)}
-                            disabled={isDeleting}
+                            onClick={() => {
+                                if (disableActions || isPendingCreation) return;
+                                onDelete(app.id);
+                            }}
+                            disabled={isDeleting || disableActions || isPendingCreation}
                             aria-label="Delete app"
                             title="Delete"
                             className="inline-flex h-8 w-8 items-center justify-center rounded-2xl border border-neutral-300 bg-white text-neutral-700 shadow-sm transition-all duration-300 ease-out hover:border-red-500 hover:bg-red-600 hover:text-white disabled:pointer-events-none disabled:opacity-60"
@@ -2742,7 +2779,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                     className="rounded-xl px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-60 disabled:cursor-not-allowed"
                                     style={{ backgroundColor: ACCENT }}
                                 >
-                                    Continue
+                                    Create
                                 </button>
                             </div>
                         </motion.div>
@@ -2934,6 +2971,12 @@ export default function PreviewPage(): JSX.Element {
     const [appBuilderCookiePromptOpen, setAppBuilderCookiePromptOpen] = useState(false);
     const [pendingAppBuilderAppId, setPendingAppBuilderAppId] = useState<string | null>(null);
     const [nextJsGenerationPendingUrl, setNextJsGenerationPendingUrl] = useState<string | null>(null);
+    const [pendingCreatedApp, setPendingCreatedApp] = useState<{
+        id: string;
+        name: string;
+        createdAt: number;
+    } | null>(null);
+    const pendingCreatedAppLaunchRequestedRef = useRef<string | null>(null);
     const appBuilderCookiePromptResolverRef = useRef<((accepted: boolean) => void) | null>(null);
     const buildFromCollectionRef = useRef<((storageKeys: string[]) => Promise<void>) | null>(null);
     const previousEditorOpenRef = useRef(false);
@@ -3114,6 +3157,15 @@ export default function PreviewPage(): JSX.Element {
     const [appWizardPrompt, setAppWizardPrompt] = useState<string>("");
     const [appWizardPromptFocused, setAppWizardPromptFocused] = useState(false);
     const [appWizardSeedRenderId, setAppWizardSeedRenderId] = useState<string | null>(null);
+    const [urlGenerationRescanModal, setUrlGenerationRescanModal] = useState<{
+        open: boolean;
+        message: string;
+        url: string;
+    }>({
+        open: false,
+        message: "",
+        url: "",
+    });
     const appWizardPromptPlaceholderIdx = useRotatingPlaceholderIndex({
         enabled: appWizardOpen && appWizardSource === "prompt" && !appWizardPrompt.trim(),
         length: PROMPT_PLACEHOLDERS.length,
@@ -3691,6 +3743,96 @@ export default function PreviewPage(): JSX.Element {
         );
     }
 
+    const closeUrlGenerationRescanModal = useCallback(() => {
+        setUrlGenerationRescanModal({ open: false, message: "", url: "" });
+    }, []);
+
+    const openUrlGenerationRescanModal = useCallback((opts: { message: string; url?: string | null }) => {
+        setUrlGenerationRescanModal({
+            open: true,
+            message: opts.message,
+            url: typeof opts.url === "string" ? opts.url.trim() : "",
+        });
+        setAppWizardBusy(false);
+        setAppWizardError(null);
+        setAppWizardOpen(false);
+        setPendingCreatedApp(null);
+        pendingCreatedAppLaunchRequestedRef.current = null;
+    }, []);
+
+    type UrlGenerationAcceptedResponse = {
+        kind: "accepted";
+        appId: string;
+        jobId: string;
+        requestId: string | null;
+    };
+
+    type UrlGenerationTerminalResponse = {
+        kind: "terminal_failure";
+        message: string;
+        code: string | null;
+        requestId: string | null;
+        url: string | null;
+    };
+
+    type UrlGenerationResponse = UrlGenerationAcceptedResponse | UrlGenerationTerminalResponse;
+
+    function parseUrlGenerationResponse(res: Response, data: any): UrlGenerationResponse {
+        const requestId = typeof data?.requestId === "string" && data.requestId.trim() ? data.requestId.trim() : null;
+        const urlValue = typeof data?.url === "string" && data.url.trim() ? data.url.trim() : null;
+        const code = typeof data?.code === "string" && data.code.trim() ? data.code.trim() : null;
+        const accepted = data?.accepted === true;
+
+        if (res.status === 202 && res.ok) {
+            const appId = typeof data?.appId === "string" ? data.appId.trim() : "";
+            const jobId = typeof data?.jobId === "string" ? data.jobId.trim() : "";
+            if (!appId || !jobId) {
+                return {
+                    kind: "terminal_failure",
+                    message: "Failed to start app generation.",
+                    code: code || null,
+                    requestId,
+                    url: urlValue,
+                };
+            }
+
+            return {
+                kind: "accepted",
+                appId,
+                jobId,
+                requestId,
+            };
+        }
+
+        if (code === "ARCHIVE_ZIP_MISSING") {
+            return {
+                kind: "terminal_failure",
+                message: "We couldn't start this app because the archived site files are not ready yet.",
+                code,
+                requestId,
+                url: urlValue,
+            };
+        }
+
+        if (accepted === false || res.status !== 202 || !res.ok) {
+            return {
+                kind: "terminal_failure",
+                message: typeof data?.error === "string" && data.error.trim() ? data.error.trim() : "Failed to start app generation.",
+                code,
+                requestId,
+                url: urlValue,
+            };
+        }
+
+        return {
+            kind: "terminal_failure",
+            message: "Failed to start app generation.",
+            code,
+            requestId,
+            url: urlValue,
+        };
+    }
+
     const handleCreateApp = useCallback(async (
         mode: "clone" | "url" | "prompt",
         prompt?: string,
@@ -3757,6 +3899,19 @@ export default function PreviewPage(): JSX.Element {
                 finalRenderId = undefined; // No render for prompt mode
             }
 
+            const shouldShowPendingAppUi = mode !== "url" || !opts?.openAppBuilderImmediately;
+            const pendingCreatedAppId = shouldShowPendingAppUi && mode !== "url"
+                ? `pending-app-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+                : "";
+
+            if (shouldShowPendingAppUi && mode !== "url") {
+                setPendingCreatedApp({
+                    id: pendingCreatedAppId,
+                    name: appName,
+                    createdAt: Date.now(),
+                });
+            }
+
             let appId: string;
             if (mode === "url" && url) {
                 // Use the new URL generation endpoint
@@ -3772,20 +3927,40 @@ export default function PreviewPage(): JSX.Element {
                     credentials: "include",
                 });
 
-                if (res.status === 202) {
-                    const data: any = await res.json().catch(() => ({} as any));
-                    const generatedAppId = typeof data?.appId === "string" ? data.appId.trim() : "";
-                    if (!generatedAppId) {
-                        const reqId = typeof data?.reqId === "string" ? data.reqId : "";
-                        throw new Error(reqId ? `Generation accepted but no appId returned (reqId: ${reqId})` : "Generation accepted but no appId returned");
+                const data = await res.json().catch(() => ({} as any));
+                const parsed = parseUrlGenerationResponse(res, data);
+
+                if (parsed.kind === "accepted") {
+                    if (shouldShowPendingAppUi) {
+                        setPendingCreatedApp({
+                            id: parsed.appId,
+                            name: appName,
+                            createdAt: Date.now(),
+                        });
                     }
-                    appId = generatedAppId;
+
+                    appId = parsed.appId;
                     if (optimisticAppBuilderId) {
                         setCurrentAppId(appId);
                     }
                 } else {
-                    const data = await res.json().catch(() => ({} as any));
-                    throw new Error(data?.error || "Failed to generate app from URL");
+                    if (mode === "url") {
+                        openUrlGenerationRescanModal({
+                            message: parsed.code === "ARCHIVE_ZIP_MISSING"
+                                ? "We couldn't start this app because the archived site files are not ready yet. Please rescan this URL and try again."
+                                : "This site needs a fresh URL rescan before you can continue building it.",
+                            url: parsed.url || url,
+                        });
+
+                        if (optimisticAppBuilderId) {
+                            setAppBuilderOpen(false);
+                            setCurrentAppId(null);
+                        }
+
+                        return null;
+                    }
+
+                    throw new Error(parsed.message);
                 }
             } else if (mode === "prompt" && prompt) {
                 const sanitizedPrompt = stripHttpsUrlsFromPrompt(prompt).trim();
@@ -3860,11 +4035,17 @@ export default function PreviewPage(): JSX.Element {
                 return next;
             });
 
+            if (shouldShowPendingAppUi && mode !== "url") {
+                setPendingCreatedApp({
+                    id: appId,
+                    name: appName,
+                    createdAt: Date.now(),
+                });
+            }
+
                 if (mode === "url" && opts?.openAppBuilderImmediately) {
                     openAppBuilderDirectly(appId);
-                } else if (mode !== "url") {
-                openAppBuilderWithCookieGate(appId);
-            }
+                }
 
             // No agent application for new modes, as they are full generations
 
@@ -3879,6 +4060,7 @@ export default function PreviewPage(): JSX.Element {
                     setAppWizardError(null);
                     setAppWizardBusy(false);
                 }
+                setPendingCreatedApp(null);
                 return null;
             }
             if (isPreviewCreditsLimitErrorMessage(message)) {
@@ -3892,6 +4074,16 @@ export default function PreviewPage(): JSX.Element {
                     setAppBuilderOpen(false);
                     setCurrentAppId(null);
                 }
+                setPendingCreatedApp(null);
+                return null;
+            }
+
+            if (mode === "url" && Boolean((error as any)?.terminalUrlGenerationFailure)) {
+                if (optimisticAppBuilderId) {
+                    setAppBuilderOpen(false);
+                    setCurrentAppId(null);
+                }
+                setPendingCreatedApp(null);
                 return null;
             }
 
@@ -3909,10 +4101,70 @@ export default function PreviewPage(): JSX.Element {
                 setAppBuilderOpen(false);
                 setCurrentAppId(null);
             }
+            setPendingCreatedApp(null);
             push(message, "err");
             return null;
         }
     }, [user, router, push, activeRenderId, openAppBuilderWithCookieGate, openAppBuilderDirectly, requestAppBuilderCookieConsent, appWizardOpen]);
+
+    useEffect(() => {
+        if (!pendingCreatedApp) {
+            pendingCreatedAppLaunchRequestedRef.current = null;
+            return;
+        }
+
+        const pendingAppExists = apps.some((app) => app.id === pendingCreatedApp.id);
+        if (!pendingAppExists) return;
+
+        if (appBuilderOpen && currentAppId === pendingCreatedApp.id) {
+            pendingCreatedAppLaunchRequestedRef.current = null;
+            setPendingCreatedApp(null);
+            return;
+        }
+
+        if (appBuilderCookiePromptOpen && pendingAppBuilderAppId === pendingCreatedApp.id) {
+            return;
+        }
+
+        if (pendingCreatedAppLaunchRequestedRef.current !== pendingCreatedApp.id) {
+            pendingCreatedAppLaunchRequestedRef.current = pendingCreatedApp.id;
+            openAppBuilderWithCookieGate(pendingCreatedApp.id);
+            return;
+        }
+
+        if (!appBuilderOpen && !appBuilderCookiePromptOpen && currentAppId !== pendingCreatedApp.id && pendingAppBuilderAppId !== pendingCreatedApp.id) {
+            pendingCreatedAppLaunchRequestedRef.current = null;
+            setPendingCreatedApp(null);
+        }
+    }, [
+        apps,
+        appBuilderCookiePromptOpen,
+        appBuilderOpen,
+        currentAppId,
+        openAppBuilderWithCookieGate,
+        pendingAppBuilderAppId,
+        pendingCreatedApp,
+    ]);
+
+    const visibleApps = useMemo(() => {
+        if (!pendingCreatedApp) return apps;
+        if (apps.some((app) => app.id === pendingCreatedApp.id)) return apps;
+
+        return [
+            {
+                id: pendingCreatedApp.id,
+                name: pendingCreatedApp.name,
+                createdAt: pendingCreatedApp.createdAt,
+                updatedAt: pendingCreatedApp.createdAt,
+                isPendingCreation: true,
+            } as any,
+            ...apps,
+        ];
+    }, [apps, pendingCreatedApp]);
+
+    const isAppCreationPending = Boolean(pendingCreatedApp);
+    const pendingCreatedAppId = pendingCreatedApp?.id ?? null;
+    const createWebsitePlusBusy = Boolean(nextJsGenerationPendingUrl);
 
     const startWebAppWizard = useCallback(
         (opts?: { seedRenderId?: string | null; url?: string | null; source?: "website" | "prompt" | null }) => {
@@ -5335,6 +5587,15 @@ export default function PreviewPage(): JSX.Element {
         !hasAbortedStartForTarget &&
         lockMatches &&
         (captureStatus === "queued" || captureStatus === "processing");
+
+    const showQueuedScanStatus =
+        !hideCaptureQueueStatus &&
+        !!targetUrl &&
+        !err &&
+        (captureStatus === "queued" ||
+            captureStatus === "processing" ||
+            (startRequested && forceRetryRequested));
+    const retryRescanPending = !!targetUrl && startRequested && forceRetryRequested;
 
     useEffect(() => {
         if (!err) return;
@@ -9233,7 +9494,7 @@ export default function PreviewPage(): JSX.Element {
                             void startProCheckout();
                         }}
                         size={dashboardCompactLayout ? "compact" : "full"}
-                        disabled={captureLocked}
+                        disabled={captureLocked || retryRescanPending}
                         captureStatus={captureStatus}
                         captureIssueNotice={showActiveUrlIssueWarning || isUrlProcessingError ? "" : captureIssueNotice}
                         hideCaptureQueueStatus={hideCaptureQueueStatus}
@@ -9583,12 +9844,17 @@ export default function PreviewPage(): JSX.Element {
                             onClick={() => {
                                 setAutoOpenGenerateModalNonce((n: number) => n + 1);
                             }}
-                            disabled={!targetUrl || nextJsGenerationPendingUrl === (targetUrl || "").trim()}
-                            className={`relative inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-[rgba(245,95,42,0.18)] bg-accent text-white shadow-sm transition hover:bg-accent2 disabled:cursor-not-allowed disabled:opacity-60 ${shouldPulseCreateWebsitePlus ? "dashboard-create-plus-pulse border-[rgba(245,95,42,0.42)] ring-4 ring-[rgba(245,95,42,0.14)] shadow-[0_0_0_0_rgba(245,95,42,0.14),0_14px_36px_rgba(245,95,42,0.28)]" : ""}`}
+                            disabled={createWebsitePlusBusy}
+                            aria-busy={createWebsitePlusBusy}
+                            className={`relative inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-[rgba(245,95,42,0.18)] bg-accent text-white shadow-sm transition hover:bg-accent2 disabled:cursor-not-allowed disabled:opacity-60 ${shouldPulseCreateWebsitePlus && !createWebsitePlusBusy ? "dashboard-create-plus-pulse border-[rgba(245,95,42,0.42)] ring-4 ring-[rgba(245,95,42,0.14)] shadow-[0_0_0_0_rgba(245,95,42,0.14),0_14px_36px_rgba(245,95,42,0.28)]" : ""}`}
                             aria-label="Generate new website"
                             title="Generate new website"
                         >
-                            <Plus className="h-7 w-7" strokeWidth={2.75} />
+                            {createWebsitePlusBusy ? (
+                                <Loader2 className="h-7 w-7 animate-spin" strokeWidth={2.75} />
+                            ) : (
+                                <Plus className="h-7 w-7" strokeWidth={2.75} />
+                            )}
                         </button>
                     </div>
 
@@ -9598,157 +9864,103 @@ export default function PreviewPage(): JSX.Element {
                             'These are the website previews generated from your url.')}
                     </p> */}
 
+                    <div className="relative h-0 w-0 overflow-visible" aria-hidden="true">
+                        <div className="absolute -left-[9999px] top-0">
+                            <GhostGeneratePreviewCard
+                                locked={captureLocked}
+                                onClick={() => {
+                                    setAutoOpenGenerateModalNonce((n: number) => n + 1);
+                                }}
+                                generationPending={nextJsGenerationPendingUrl === (targetUrl || "").trim()}
+                                sourceUrl={targetUrl}
+                                sourceUrlCannotGenerate={showActiveUrlIssueWarning || isUrlProcessingError}
+                                highlight={shouldHighlightCreateWebsiteCta}
+                                autoOpenNonce={autoOpenGenerateModalNonce}
+                                autoOpenSuccessMessage={autoOpenGenerateSuccessMessage}
+                                onAutoOpenMessageDismiss={() => setAutoOpenGenerateSuccessMessage("")}
+                                isAdmin={isAdmin}
+                                user={user}
+                                onAppClick={() => void runNextJsGhostGeneration(targetUrl || "")}
+                            />
+                        </div>
+                    </div>
+
                     {(renders.length === 0 || hasGhostPending) ? (
-                        <>
-                            <div className="relative h-0 w-0 overflow-visible" aria-hidden="true">
-                                <div className="absolute -left-[9999px] top-0">
-                                    <GhostGeneratePreviewCard
-                                        locked={captureLocked}
-                                        onClick={() => {
-                                            setAutoOpenGenerateModalNonce((n: number) => n + 1);
-                                        }}
-                                        generationPending={nextJsGenerationPendingUrl === (targetUrl || "").trim()}
-                                        sourceUrl={targetUrl}
-                                        sourceUrlCannotGenerate={showActiveUrlIssueWarning || isUrlProcessingError}
-                                        highlight={shouldHighlightCreateWebsiteCta}
-                                        autoOpenNonce={autoOpenGenerateModalNonce}
-                                        autoOpenSuccessMessage={autoOpenGenerateSuccessMessage}
-                                        onAutoOpenMessageDismiss={() => setAutoOpenGenerateSuccessMessage("")}
-                                        isAdmin={isAdmin}
-                                        user={user}
-                                        onAppClick={() => void runNextJsGhostGeneration(targetUrl || "")}
-                                    />
-                                </div>
-                            </div>
-
-                            {/* <div className="mt-3 rounded-xl border border-dashed border-neutral-300 bg-neutral-50 px-4 py-2 text-sm text-neutral-700 flex flex-wrap items-center gap-2 my-4">
-                                <div className="flex items-center gap-1">
-                                    <strong className="inline-flex items-center gap-2 text-neutral-800 font-semibold">
-                                        {step3Done ? (
-                                            <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-                                        ) : (
-                                            <Clock10 className="h-4 w-4 text-amber-500" />
-                                        )}
-                                        <span>Step 2</span>
-                                    </strong>
-                                    <span className="text-neutral-800">
-                                        — Generate a preview.
-                                    </span>
-                                </div>
-                            </div> */}
-
-                            <div
-                                className="mt-4 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4"
-                                aria-label="Editable previews list"
-                            >
-                                {apps.map((app) => (
-                                    <AppCard
-                                        key={app.id}
-                                        app={app}
-                                        isDeleting={!!deletingApp[app.id]}
-                                        isArchiving={!!archivingApp[app.id]}
-                                        accessLocked={isTrialAccessRevoked}
-                                        onCustomize={(appId) => {
-                                            openAppBuilderWithCookieGate(appId);
-                                        }}
-                                        onArchive={handleArchiveApp}
-                                        onRename={handleRenameAppCard}
-                                        onDeploy={(app) => openAppDeployWizard(app)}
-                                        onDelete={handleDeleteApp}
-                                    />
-                                ))}
-                            </div>
-                        </>
-
+                        <div
+                            className="mt-4 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4"
+                            aria-label="Editable previews list"
+                        >
+                            {visibleApps.map((app) => (
+                                <AppCard
+                                    key={app.id}
+                                    app={app}
+                                    isDeleting={!!deletingApp[app.id]}
+                                    isArchiving={!!archivingApp[app.id]}
+                                    isPendingCreation={app.id === pendingCreatedAppId}
+                                    disableActions={isTrialAccessRevoked || isAppCreationPending}
+                                    accessLocked={isTrialAccessRevoked}
+                                    onCustomize={(appId) => {
+                                        openAppBuilderWithCookieGate(appId);
+                                    }}
+                                    onArchive={handleArchiveApp}
+                                    onRename={handleRenameAppCard}
+                                    onDeploy={(app) => openAppDeployWizard(app)}
+                                    onDelete={handleDeleteApp}
+                                />
+                            ))}
+                        </div>
                     ) : (
-                        <>
-                            {/* <div className="mt-3 rounded-xl border border-dashed border-neutral-300 bg-neutral-50 px-4 py-1 text-sm text-neutral-700 flex flex-wrap items-center gap-1 my-4">
-                                <strong className="text-neutral-800 font-semibold inline-flex items-center gap-1">
-                                    {step3Done ? (
-                                        <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-                                    ) : (
-                                        <Clock10 className="h-4 w-4 text-amber-500" />
-                                    )}
-                                    Step 2
-                                </strong>
+                        <div
+                            className="mt-4 grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4"
+                            aria-label="Editable previews list"
+                        >
+                            {renders.map((r) => (
+                                <RenderCard
+                                    key={r.id}
+                                    r={r}
+                                    isDeleting={!!deletingRender[r.id] || !!archivingRender[r.id]}
+                                    isOpening={loading}
+                                    hardLocked={
+                                        !!lockUntilByRender[r.id] && lockUntilByRender[r.id] > Date.now()
+                                    }
+                                    isDeploying={deployingRenderId === r.id}
+                                    deployLocked={userTier === "free"}
+                                    accessLocked={isTrialAccessRevoked}
+                                    urlHash={(docData?.urlHash as string | undefined) ?? null}
+                                    continueRender={continueRender}
+                                    discardRender={discardRender}
+                                    startDeployWizard={startDeployWizard}
+                                    setShowCreditsPaywall={setShowCreditsPaywall}
+                                    push={push as any}
+                                    archiveRender={handleArchiveRender}
+                                    unarchiveRender={handleUnarchiveRender}
+                                    onShareWithCommunity={handleShareWithCommunity}
+                                    retryRender={retryRender}
+                                    onRenameRender={handleRenameRenderCard}
+                                />
 
-                                {step4Done ? (
-                                    <>
-                                        <span>— Render deployed.</span>
-                                    </>
-                                ) : step3Done ? (
-                                    <>
-                                        <span>— Customize your preview, then deploy it by clicking </span>
+                            ))}
 
-                                        <button
-                                            type="button"
-                                            className="ml-1 inline-flex items-center rounded-full border border-neutral-400 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-800 shadow-sm"
-                                            disabled
-                                        >
-                                            Deploy
-                                            <Rocket className="ml-1 h-3 w-3" />
-                                        </button>
-                                    </>
-                                ) : (
-                                    <span className="text-neutral-800">
-                                        — Generate previews from the collections above.
-                                    </span>
-                                )}
-                            </div> */}
+                            {visibleApps.map((app) => (
+                                <AppCard
+                                    key={app.id}
+                                    app={app}
+                                    isDeleting={!!deletingApp[app.id]}
+                                    isArchiving={!!archivingApp[app.id]}
+                                    isPendingCreation={app.id === pendingCreatedAppId}
+                                    disableActions={isTrialAccessRevoked || isAppCreationPending}
+                                    accessLocked={isTrialAccessRevoked}
+                                    onCustomize={(appId) => {
+                                        openAppBuilderWithCookieGate(appId);
+                                    }}
+                                    onArchive={handleArchiveApp}
+                                    onRename={handleRenameAppCard}
+                                    onDeploy={(app) => openAppDeployWizard(app)}
+                                    onDelete={handleDeleteApp}
+                                />
+                            ))}
 
-                            <div
-                                className="mt-4 grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4"
-                                aria-label="Editable previews list"
-                            >
-                                {renders.length === 0 && (
-                                    <></>
-                                )}
-                                {renders.map((r) => (
-                                    <RenderCard
-                                        key={r.id}
-                                        r={r}
-                                        isDeleting={!!deletingRender[r.id] || !!archivingRender[r.id]}
-                                        isOpening={loading}
-                                        hardLocked={
-                                            !!lockUntilByRender[r.id] && lockUntilByRender[r.id] > Date.now()
-                                        }
-                                        isDeploying={deployingRenderId === r.id}
-                                        deployLocked={userTier === "free"}
-                                        accessLocked={isTrialAccessRevoked}
-                                        urlHash={(docData?.urlHash as string | undefined) ?? null}
-                                        continueRender={continueRender}
-                                        discardRender={discardRender}
-                                        startDeployWizard={startDeployWizard}
-                                        setShowCreditsPaywall={setShowCreditsPaywall}
-                                        push={push as any}
-                                        archiveRender={handleArchiveRender}
-                                        unarchiveRender={handleUnarchiveRender}
-                                        onShareWithCommunity={handleShareWithCommunity}
-                                        retryRender={retryRender}
-                                        onRenameRender={handleRenameRenderCard}
-                                    />
-
-                                ))}
-
-                                {apps.map((app) => (
-                                    <AppCard
-                                        key={app.id}
-                                        app={app}
-                                        isDeleting={!!deletingApp[app.id]}
-                                        isArchiving={!!archivingApp[app.id]}
-                                        accessLocked={isTrialAccessRevoked}
-                                        onCustomize={(appId) => {
-                                            openAppBuilderWithCookieGate(appId);
-                                        }}
-                                        onArchive={handleArchiveApp}
-                                        onRename={handleRenameAppCard}
-                                        onDeploy={(app) => openAppDeployWizard(app)}
-                                        onDelete={handleDeleteApp}
-                                    />
-                                ))}
-
-                            </div>
-                        </>
+                        </div>
                     )}
                 </section>
 
@@ -10119,6 +10331,98 @@ export default function PreviewPage(): JSX.Element {
                                             style={{ backgroundColor: ACCENT }}
                                         >
                                             {appWizardBusy ? "Creating…" : "Continue"}
+                                        </button>
+                                    </div>
+                                </motion.div>
+                            </div>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
+
+                <AnimatePresence>
+                    {urlGenerationRescanModal.open && (
+                        <motion.div
+                            key="url-generation-rescan-modal"
+                            className="fixed inset-0 z-[18125]"
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                        >
+                            <motion.div
+                                className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+                                onClick={closeUrlGenerationRescanModal}
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                exit={{ opacity: 0 }}
+                                transition={{ duration: 0.18 }}
+                            />
+
+                            <div className="absolute inset-0 flex items-center justify-center p-4">
+                                <motion.div
+                                    className="w-full max-w-[520px] rounded-2xl border border-neutral-200 bg-white shadow-2xl"
+                                    initial={{ opacity: 0, y: 10, scale: 0.98 }}
+                                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                                    exit={{ opacity: 0, y: 10, scale: 0.98 }}
+                                    transition={{ duration: 0.18, ease: "easeOut" }}
+                                >
+                                    <div className="flex items-start justify-between gap-4 border-b border-neutral-200 px-5 py-4">
+                                        <div className="space-y-1">
+                                            <div className="text-sm font-semibold text-neutral-900">Generation failed</div>
+                                            <div className="text-xs text-neutral-600">
+                                                {urlGenerationRescanModal.message}
+                                            </div>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={closeUrlGenerationRescanModal}
+                                            className="inline-flex h-9 w-9 min-h-9 min-w-9 shrink-0 aspect-square items-center justify-center rounded-full bg-neutral-100 hover:bg-neutral-200"
+                                            title="Close"
+                                        >
+                                            <svg
+                                                xmlns="http://www.w3.org/2000/svg"
+                                                viewBox="0 0 20 20"
+                                                fill="currentColor"
+                                                className="h-4 w-4 text-neutral-700"
+                                            >
+                                                <path
+                                                    fillRule="evenodd"
+                                                    d="M4.47 4.47a.75.75 0 011.06 0L10 8.94l4.47-4.47a.75.75 0 111.06 1.06L11.06 10l4.47 4.47a.75.75 0 11-1.06 1.06L10 11.06l-4.47 4.47a.75.75 0 11-1.06-1.06L8.94 10 4.47 5.53a.75.75 0 010-1.06z"
+                                                    clipRule="evenodd"
+                                                />
+                                            </svg>
+                                        </button>
+                                    </div>
+
+                                    <div className="px-5 py-4">
+                                        <p className="text-sm leading-6 text-neutral-700">
+                                            This URL needs to be rescanned before it can be used for generation.
+                                        </p>
+                                    </div>
+
+                                    <div className="flex items-center justify-end gap-2 border-t border-neutral-200 px-5 py-4">
+                                        <button
+                                            type="button"
+                                            onClick={closeUrlGenerationRescanModal}
+                                            className="rounded-xl border border-neutral-200 bg-white px-4 py-2 text-sm font-semibold text-neutral-800 hover:bg-neutral-50"
+                                        >
+                                            Not now
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                const nextUrl = urlGenerationRescanModal.url.trim();
+                                                closeUrlGenerationRescanModal();
+                                                if (!nextUrl) return;
+                                                void enqueueUrlScanRef.current?.(nextUrl, {
+                                                    forceRetry: true,
+                                                    clearStartParam: false,
+                                                });
+                                            }}
+                                            className="inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold text-white hover:opacity-90"
+                                            style={{ backgroundColor: ACCENT }}
+                                        >
+                                            <RotateCcw className="h-4 w-4" />
+                                            Rescan URL
                                         </button>
                                     </div>
                                 </motion.div>
