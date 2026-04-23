@@ -287,6 +287,7 @@ export async function POST(req: NextRequest) {
         const isTerminalFailure =
           appData?.accepted === false ||
           appData?.code === "ARCHIVE_ZIP_MISSING" ||
+          appData?.code === "gemini_input_too_large" ||
           appData?.details?.stage === "archive_preflight";
 
         if (isTerminalFailure || !acceptedAppId || !acceptedJobId) {
@@ -321,7 +322,7 @@ export async function POST(req: NextRequest) {
               upstreamStatus: appResponse.status,
               ...(typeof appData?.details === "object" && appData.details ? { details: appData.details } : {}),
             },
-            { status: isTerminalFailure ? 409 : 502 },
+            { status: appData?.code === "gemini_input_too_large" ? 413 : isTerminalFailure ? 409 : 502 },
           );
         }
 
@@ -345,6 +346,10 @@ export async function POST(req: NextRequest) {
             jobId: acceptedJobId,
             accepted: true,
             reqId: appResponse.reqId,
+            warnings: Array.isArray(appData.warnings) ? appData.warnings : [],
+            rescanRecommended: appData.rescanRecommended === true,
+            archiveZipPath: typeof appData.archiveZipPath === "string" ? appData.archiveZipPath : null,
+            generationFormat: appData.generationFormat === "html" ? "html" : "nextjs",
           },
           { status: 202 },
         );

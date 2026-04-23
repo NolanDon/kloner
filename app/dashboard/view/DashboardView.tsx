@@ -3235,6 +3235,16 @@ export default function PreviewPage(): JSX.Element {
     const [appWizardPrompt, setAppWizardPrompt] = useState<string>("");
     const [appWizardPromptFocused, setAppWizardPromptFocused] = useState(false);
     const [appWizardSeedRenderId, setAppWizardSeedRenderId] = useState<string | null>(null);
+    const [urlGenerationHealthWarning, setUrlGenerationHealthWarning] = useState<null | {
+        url: string;
+        generationFormat: "nextjs" | "html";
+        warnings: Array<{
+            code: string;
+            message: string;
+            severity: string;
+            rescanRecommended: boolean;
+        }>;
+    }>(null);
     const [urlGenerationRescanModal, setUrlGenerationRescanModal] = useState<{
         open: boolean;
         message: string;
@@ -3829,6 +3839,7 @@ export default function PreviewPage(): JSX.Element {
         setPendingAppBuilderAppId(null);
         setPendingCreatedApp(null);
         pendingCreatedAppLaunchRequestedRef.current = null;
+        setUrlGenerationHealthWarning(null);
     }, []);
 
     const openUrlGenerationRescanModal = useCallback((opts: { message: string; url?: string | null }) => {
@@ -3856,6 +3867,7 @@ export default function PreviewPage(): JSX.Element {
         setPendingAppBuilderAppId(null);
         setPendingCreatedApp(null);
         pendingCreatedAppLaunchRequestedRef.current = null;
+        setUrlGenerationHealthWarning(null);
     }, [currentAppId, pendingCreatedApp?.id]);
 
     type UrlGenerationAcceptedResponse = {
@@ -3863,6 +3875,15 @@ export default function PreviewPage(): JSX.Element {
         appId: string;
         jobId: string;
         requestId: string | null;
+        warnings: Array<{
+            code: string;
+            message: string;
+            severity: string;
+            rescanRecommended: boolean;
+        }>;
+        rescanRecommended: boolean;
+        archiveZipPath: string | null;
+        generationFormat: "nextjs" | "html";
     };
 
     type UrlGenerationTerminalResponse = {
@@ -3871,6 +3892,7 @@ export default function PreviewPage(): JSX.Element {
         code: string | null;
         requestId: string | null;
         url: string | null;
+        status: number;
     };
 
     type UrlGenerationResponse = UrlGenerationAcceptedResponse | UrlGenerationTerminalResponse;
@@ -3879,18 +3901,19 @@ export default function PreviewPage(): JSX.Element {
         const requestId = typeof data?.requestId === "string" && data.requestId.trim() ? data.requestId.trim() : null;
         const urlValue = typeof data?.url === "string" && data.url.trim() ? data.url.trim() : null;
         const code = typeof data?.code === "string" && data.code.trim() ? data.code.trim() : null;
-        const accepted = data?.accepted === true;
+        const hardFailureCode = code === "ARCHIVE_ZIP_MISSING" || code === "gemini_input_too_large";
 
         if (res.status === 202 && res.ok) {
             const appId = typeof data?.appId === "string" ? data.appId.trim() : "";
             const jobId = typeof data?.jobId === "string" ? data.jobId.trim() : "";
-            if (!appId || !jobId) {
+            if (hardFailureCode || !appId || !jobId) {
                 return {
                     kind: "terminal_failure",
-                    message: "Failed to start app generation.",
+                    message: "Something went wrong. Please rescan the URL and try again.",
                     code: code || null,
                     requestId,
                     url: urlValue,
+                    status: res.status,
                 };
             }
 
@@ -3899,35 +3922,31 @@ export default function PreviewPage(): JSX.Element {
                 appId,
                 jobId,
                 requestId,
+                warnings: Array.isArray(data?.warnings) ? data.warnings : [],
+                rescanRecommended: data?.rescanRecommended === true,
+                archiveZipPath: typeof data?.archiveZipPath === "string" ? data.archiveZipPath : null,
+                generationFormat: data?.generationFormat === "html" ? "html" : "nextjs",
             };
         }
 
-        if (code === "ARCHIVE_ZIP_MISSING") {
+        if (hardFailureCode || res.status === 400 || res.status === 409 || res.status === 413 || !res.ok) {
             return {
                 kind: "terminal_failure",
-                message: "We couldn't start this app because the archived site files are not ready yet.",
+                message: "Something went wrong. Please rescan the URL and try again.",
                 code,
                 requestId,
                 url: urlValue,
-            };
-        }
-
-        if (accepted === false || res.status !== 202 || !res.ok) {
-            return {
-                kind: "terminal_failure",
-                message: typeof data?.error === "string" && data.error.trim() ? data.error.trim() : "Failed to start app generation.",
-                code,
-                requestId,
-                url: urlValue,
+                status: res.status,
             };
         }
 
         return {
             kind: "terminal_failure",
-            message: "Failed to start app generation.",
+            message: "Something went wrong. Please rescan the URL and try again.",
             code,
             requestId,
             url: urlValue,
+            status: res.status,
         };
     }
 
@@ -4031,6 +4050,16 @@ export default function PreviewPage(): JSX.Element {
 
                 if (parsed.kind === "accepted") {
                     pendingUrlGenerationAppIdRef.current = parsed.appId;
+                    if (parsed.rescanRecommended) {
+                        const warnings = Array.isArray(parsed.warnings) ? parsed.warnings : [];
+                        setUrlGenerationHealthWarning({
+                            url: url,
+                            generationFormat: parsed.generationFormat,
+                            warnings,
+                        });
+                    } else {
+                        setUrlGenerationHealthWarning(null);
+                    }
                     if (shouldShowPendingAppUi) {
                         setPendingCreatedApp({
                             id: parsed.appId,
@@ -4044,11 +4073,20 @@ export default function PreviewPage(): JSX.Element {
                         setCurrentAppId(appId);
                     }
                 } else {
+                    setUrlGenerationHealthWarning(null);
                     if (mode === "url") {
+                        if (parsed.status === 403) {
+                            setErr("");
+                            showWebsiteExitOfferPaywall();
+                            return null;
+                        }
+
+                        pendingUrlGenerationAppIdRef.current = null;
+                        setPendingCreatedApp(null);
+                        setAppBuilderOpen(false);
+                        setCurrentAppId(null);
                         openUrlGenerationRescanModal({
-                            message: parsed.code === "ARCHIVE_ZIP_MISSING"
-                                ? "We couldn't start this app because the archived site files are not ready yet. Please rescan this URL and try again."
-                                : "This site needs a fresh URL rescan before you can continue building it.",
+                            message: "Something went wrong. Please rescan the URL and try again.",
                             url: parsed.url || url,
                         });
 
@@ -7374,6 +7412,18 @@ export default function PreviewPage(): JSX.Element {
                 return;
             }
 
+            if (r.status === 400 || r.status === 409 || r.status === 413 || !r.ok || j?.code === "gemini_input_too_large") {
+                pendingUrlGenerationAppIdRef.current = null;
+                setPendingCreatedApp(null);
+                setAppBuilderOpen(false);
+                setCurrentAppId(null);
+                openUrlGenerationRescanModal({
+                    message: "Something went wrong. Please rescan the URL and try again.",
+                    url: targetUrl,
+                });
+                return;
+            }
+
             if (isBackendFetchFailed502(r.status, j)) {
                 recoverFromTransientRenderStart("Website generation");
                 return;
@@ -10005,6 +10055,55 @@ export default function PreviewPage(): JSX.Element {
                             )}
                         </button>
                     </div>
+
+                    {urlGenerationHealthWarning?.warnings?.length ? (
+                        <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-amber-950 shadow-sm">
+                            <div className="flex items-start gap-3">
+                                <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-amber-100">
+                                    <AlertTriangle className="h-4 w-4 text-amber-700" />
+                                </div>
+                                <div className="min-w-0 flex-1 space-y-2">
+                                    <div className="text-sm font-semibold">
+                                        The crawl looks sparse or is missing stylesheets/assets. A rescan is recommended.
+                                    </div>
+                                    <div className="text-sm leading-6 text-amber-900/90">
+                                        The generated result may be incomplete until the site is rescanned.
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        {urlGenerationHealthWarning.warnings.map((warning, idx) => (
+                                            <div
+                                                key={`${warning.code}-${idx}`}
+                                                className="rounded-xl border border-amber-200 bg-white/80 px-3 py-2 text-sm text-amber-950"
+                                            >
+                                                {warning.message}
+                                            </div>
+                                        ))}
+                                    </div>
+                                    <div className="flex flex-wrap items-center gap-2 pt-1">
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                const nextUrl = urlGenerationHealthWarning.url.trim();
+                                                if (!nextUrl) return;
+                                                setUrlGenerationHealthWarning(null);
+                                                void enqueueUrlScanRef.current?.(nextUrl, {
+                                                    forceRetry: true,
+                                                    clearStartParam: false,
+                                                });
+                                            }}
+                                            className="inline-flex items-center gap-2 rounded-xl bg-amber-600 px-3.5 py-2 text-sm font-semibold text-white hover:bg-amber-700"
+                                        >
+                                            <RotateCcw className="h-4 w-4" />
+                                            Rescan URL
+                                        </button>
+                                        <span className="text-xs font-medium text-amber-800">
+                                            {urlGenerationHealthWarning.generationFormat === "html" ? "HTML" : "Next.js"} generation
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    ) : null}
 
                     {/* <p className="mt-1 mb-2 text-sm text-neutral-500">
                         {(renders.length === 0 ? 'This section will host your editable websites'

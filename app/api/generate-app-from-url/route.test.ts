@@ -139,4 +139,35 @@ describe("POST /api/generate-app-from-url", () => {
         expect(body.code).toBe("ARCHIVE_ZIP_MISSING");
         expect(consumeUserCredit).not.toHaveBeenCalled();
     });
+
+    it("returns a hard 413 when the backend reports gemini_input_too_large", async () => {
+        callBackend.mockResolvedValueOnce({
+            status: 202,
+            json: {
+                appId: "app_123",
+                jobId: "job_123",
+                accepted: false,
+                code: "gemini_input_too_large",
+                error: "Input too large",
+            },
+            reqId: "req_3",
+            url: "https://backend.example/api/v1/generate-app-from-url",
+        });
+
+        const { POST } = await import("./route");
+        const req: any = {
+            json: async () => ({
+                url: "https://example.com",
+                name: "Example",
+            }),
+        };
+
+        const res: any = await POST(req);
+        const body = await res.json();
+
+        expect(res.status).toBe(413);
+        expect(body.code).toBe("gemini_input_too_large");
+        expect(body.error).toBe("Input too large");
+        expect(consumeUserCredit).not.toHaveBeenCalled();
+    });
 });
