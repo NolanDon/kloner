@@ -769,8 +769,7 @@ export default function LoginPage(): JSX.Element {
                                     >
                                         Privacy Policy
                                     </a>
-                                    . I am responsible for any URLs I submit and for how I use any
-                                    cloned or generated sites.
+                                    .
                                 </span>
                             </label>
                         </div>

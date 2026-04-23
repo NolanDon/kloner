@@ -136,6 +136,10 @@ export default function TermsPage(): JSX.Element {
                                 By submitting any URL, domain, or source site to Kloner, you
                                 represent and warrant that:
                             </p>
+                            <p className="mt-2">
+                                You are responsible for any URLs you submit and for how you
+                                use any cloned or generated sites.
+                            </p>
                             <ul className="mt-2 list-disc pl-5 space-y-1.5">
                                 <li>
                                     You own the website or have all rights, licenses,
