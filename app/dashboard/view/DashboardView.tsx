@@ -9147,7 +9147,8 @@ export default function PreviewPage(): JSX.Element {
     const step5Time = formatMMSS(step5SaleRemainingSec);
     const step5SaleActive = step5SaleRemainingSec > 0;
     const allowOfferInDev = process.env.NODE_ENV !== "production";
-    const canUseExitOffer = step5SaleActive && (allowOfferInDev || !exitOfferClaimed);
+    const exitOfferDisabled = true; // temporary kill switch for DEPLOY40
+    const canUseExitOffer = !exitOfferDisabled && step5SaleActive && (allowOfferInDev || !exitOfferClaimed);
     const websitePaywallShowcaseImages = [
         "/images/showcase/showcase1.jpg",
         "/images/showcase/showcase2.jpg",
@@ -9207,6 +9208,20 @@ export default function PreviewPage(): JSX.Element {
     }
 
     function showWebsiteExitOfferPaywall() {
+        if (exitOfferDisabled) {
+            setShowCreditsPaywall(null);
+            setShowProPaywall(false);
+            setShowAppExitOffer(false);
+            setShowExitOffer(false);
+            setExitOfferReason(null);
+            setAppExitOfferReason(null);
+            setShowWebsitePrePaywall(false);
+            setAppWizardOpen(false);
+            setAppWizardBusy(false);
+            setAppWizardError(null);
+            return;
+        }
+
         setShowCreditsPaywall(null);
         setShowProPaywall(false);
         setShowAppExitOffer(false);
@@ -10927,7 +10942,7 @@ export default function PreviewPage(): JSX.Element {
                 </AnimatePresence>
 
                 <AnimatePresence>
-                    {showAppExitOffer && (
+                    {canUseExitOffer && showAppExitOffer && (
                         <motion.div
                             key="app-exit-offer"
                             initial={{ opacity: 0 }}
@@ -11487,7 +11502,7 @@ export default function PreviewPage(): JSX.Element {
 
                                                     {/* Exit offer modal (ONLY place you show the discount) */}
                                                     <AnimatePresence>
-                                                        {showExitOffer && (
+                                                        {canUseExitOffer && showExitOffer && (
                                                             <motion.div
                                                                 key="exit-offer"
                                                                 initial={{ opacity: 0 }}

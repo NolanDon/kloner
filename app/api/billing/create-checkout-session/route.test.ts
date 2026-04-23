@@ -485,7 +485,7 @@ describe("POST /api/billing/create-checkout-session", () => {
         expect(userDoc.stripeCustomerId).toBe("cus_new");
     });
 
-    it("applies exit-offer discount using promo id and omits allow_promotion_codes", async () => {
+    it("ignores exit-offer discount requests while the promo is disabled", async () => {
         (process.env as any).NODE_ENV = "production";
         process.env.NEXT_PUBLIC_APP_ORIGIN = "https://kloner.app";
         process.env.STRIPE_PRICE_PRO_PROD = "price_live_pro";
@@ -548,14 +548,14 @@ describe("POST /api/billing/create-checkout-session", () => {
 
         const payload = sessionsCreate.mock.calls[0]?.[0];
         expect(payload).toBeTruthy();
-        expect(payload.discounts).toEqual([{ promotion_code: "promo_123" }]);
-        expect(payload.allow_promotion_codes).toBeUndefined();
+        expect(payload.discounts).toBeUndefined();
+        expect(payload.allow_promotion_codes).toBe(true);
         expect(payload.payment_method_options?.card?.request_three_d_secure).toBe("any");
-        expect(payload.metadata.exitOffer).toBe("exit40");
-        expect(payload.subscription_data?.metadata?.exitOffer).toBe("exit40");
+        expect(payload.metadata.exitOffer).toBeUndefined();
+        expect(payload.subscription_data?.metadata?.exitOffer).toBeUndefined();
     });
 
-    it("applies exit-offer discount only once per user", async () => {
+    it("does not mark the user as claimed when the promo is disabled", async () => {
         (process.env as any).NODE_ENV = "production";
         process.env.NEXT_PUBLIC_APP_ORIGIN = "https://kloner.app";
         process.env.STRIPE_PRICE_PRO_PROD = "price_live_pro";
@@ -615,7 +615,9 @@ describe("POST /api/billing/create-checkout-session", () => {
         expect(first.status).toBe(200);
         expect(firstBody.url).toBe("https://stripe/checkout");
         const firstPayload = sessionsCreate.mock.calls[0]?.[0];
-        expect(firstPayload.discounts).toEqual([{ promotion_code: "promo_123" }]);
+        expect(firstPayload.discounts).toBeUndefined();
+        expect(firstPayload.allow_promotion_codes).toBe(true);
+        expect(firstPayload.metadata.exitOffer).toBeUndefined();
 
         const second: any = await POST(makeReq());
         const secondBody = await second.json();
@@ -624,9 +626,9 @@ describe("POST /api/billing/create-checkout-session", () => {
         const secondPayload = sessionsCreate.mock.calls[1]?.[0];
         expect(secondPayload.discounts).toBeUndefined();
         expect(secondPayload.allow_promotion_codes).toBe(true);
-        expect(secondPayload.metadata.exitOffer).toBe("exit40_blocked_already_claimed");
+        expect(secondPayload.metadata.exitOffer).toBeUndefined();
 
         const userDoc = store.get("kloner_users/uid_1") || {};
-        expect(userDoc.offers?.exitOffer40Claimed).toBe(true);
+        expect(userDoc.offers?.exitOffer40Claimed).not.toBe(true);
     });
 });

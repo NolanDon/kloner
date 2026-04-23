@@ -17,6 +17,7 @@ const TRIAL_DAYS = 7;
 // Exit-offer rules
 const EXIT_OFFER_MS = 15 * 60 * 1000;
 const EXIT_OFFER_SKEW_MS = 30 * 1000; // client clock tolerance
+const EXIT_OFFER_DISABLED = true; // temporary kill switch for DEPLOY40
 
 async function notifyStripeSubscriptionError(params: {
     action: string;
@@ -76,6 +77,7 @@ function pickExitPromoId(isProd: boolean) {
 }
 
 function isValidExitOfferPayload(payload: { offer?: unknown; offerEndsAt?: unknown }) {
+    if (EXIT_OFFER_DISABLED) return false;
     if (payload.offer !== "exit40") return false;
 
     const endsAt = typeof payload.offerEndsAt === "number" ? payload.offerEndsAt : NaN;
