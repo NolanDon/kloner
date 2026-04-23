@@ -9184,7 +9184,7 @@ export default function PreviewPage(): JSX.Element {
         },
     ];
 
-    const websitePrePaywallWeeklyPrice = 16.99 / 4;
+    const websitePrePaywallWeeklyPrice = 19.99 / 4;
     const websitePrePaywallDismissLabel = targetUrl
         ? `No, I don't want to clone ${truncateMiddle(targetUrl, 42)}.`
         : "No thanks, skip cloning for now.";

@@ -216,7 +216,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, onFileEdit, on
     const AI_EDIT_COST = 3;
     const PRO_MONTHLY_PRICE_USD = Number.isFinite(Number(process.env.NEXT_PUBLIC_PRO_MONTHLY_PRICE_USD))
         ? Math.max(1, Number(process.env.NEXT_PUBLIC_PRO_MONTHLY_PRICE_USD))
-        : 29;
+        : 19.99;
     const TOPUP_COMING_SOON = false;
     // Supabase OAuth setup is safe to expose in production (still requires session + CSRF on the server).
     const allowDatabaseSetupUi = true;
@@ -3799,7 +3799,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, onFileEdit, on
                                             Pro alternative
                                         </div>
                                         <div className="mt-1 text-sm font-semibold text-neutral-900">
-                                            Upgrade to Pro for ${PRO_MONTHLY_PRICE_USD.toFixed(0)}/month
+                                            Upgrade to Pro for ${PRO_MONTHLY_PRICE_USD.toFixed(2)}/month
                                         </div>
                                         <div className="mt-1 text-[12px] text-neutral-700">
                                             {proSavingsPct > 0

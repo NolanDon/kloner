@@ -14,6 +14,7 @@ const AI_EDIT_CREDIT_COST = 3;
 
 /* ───────── CSRF helper (reuse / centralize later) ───────── */
 
+
 let csrfPromise: Promise<string | null> | null = null;
 
 async function fetchCsrf(): Promise<string | null> {
@@ -44,6 +45,7 @@ type Tier = {
     badge: string;
     price: string;
     period: string;
+    billedAs?: string;
     highlight: boolean;
     blurb: string;
     topFeatures: string[];
@@ -76,8 +78,9 @@ const tiers: Tier[] = [
     {
         name: "Pro",
         badge: "Most popular",
-        price: "$4.25",
+        price: "$4.99",
         period: "/week",
+        billedAs: "Billed as $19.99/month",
         highlight: true,
         blurb: "For shipping real client work fast without rebuilding from scratch.",
         topFeatures: [
@@ -95,13 +98,14 @@ const tiers: Tier[] = [
             "Email support with faster response targets",
         ],
         cta: "Start 7-day free trial",
-        fineprint: "Billed monthly at $16.99/month. Cancel anytime. Secure checkout via Stripe.",
+        fineprint: "Billed monthly at $19.99/month. Cancel anytime. Secure checkout via Stripe.",
     },
     {
         name: "Agency",
         badge: "Scale",
         price: "$1.90",
         period: "/week",
+        billedAs: "Billed as $99/year",
         highlight: false,
         blurb: "For higher volume teams managing multiple projects and iterations.",
         topFeatures: [
@@ -625,6 +629,12 @@ export default function PriceClient(): JSX.Element {
                                                 </span>
                                             ) : null}
                                         </div>
+
+                                        {tier.billedAs ? (
+                                            <p className="mt-1 text-[11px] font-medium text-neutral-500">
+                                                {tier.billedAs}
+                                            </p>
+                                        ) : null}
 
                                         <div className="mt-5 overflow-hidden rounded-2xl border border-neutral-200 bg-neutral-50/80">
                                             {rows.map((row, index) => (
