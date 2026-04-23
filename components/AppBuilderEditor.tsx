@@ -700,6 +700,7 @@ export default function AppBuilderEditor({
     trialCheckoutBusy = false,
     onTrialPromptShown,
     onTrialPromptStartCheckout,
+    previewDebugScenario = null,
 }: {
     appId: string;
     onClose: () => void;
@@ -715,6 +716,7 @@ export default function AppBuilderEditor({
     trialCheckoutBusy?: boolean;
     onTrialPromptShown?: (appId: string) => void;
     onTrialPromptStartCheckout?: (appId: string) => void;
+    previewDebugScenario?: { mode: 'terminal-error' | 'terminal-error-auto-fix'; nonce: number } | null;
 }) {
     const { user, loading: authLoading } = useAuth();
     const { showConfirm, showAlert, hideModal } = useModal();
@@ -1040,6 +1042,25 @@ export default function AppBuilderEditor({
             if (!confirmed) return;
 
             const csrf = await ensureSessionAndCsrf().catch(() => null);
+                                                        <button
+                                                            type="button"
+                                                            onClick={handlePickFavicon}
+                                                            disabled={faviconUploading}
+                                                            className="inline-flex items-center gap-2 rounded-full border border-gray-300 bg-white px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+                                                            title="Upload a favicon.ico for this app"
+                                                        >
+                                                            {faviconUploading ? "Uploading favicon…" : "Upload favicon"}
+                                                        </button>
+                                                        {faviconUrl ? (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => window.open(faviconUrl, "_blank", "noopener,noreferrer")}
+                                                                className="text-[11px] font-semibold text-[#F55F2A] hover:text-[#E04E1B]"
+                                                                title="Open current favicon"
+                                                            >
+                                                                View favicon
+                                                            </button>
+                                                        ) : null}
             const res = await fetch("/api/supabase/disconnect", {
                 method: "POST",
                 headers: {
@@ -1165,6 +1186,7 @@ export default function AppBuilderEditor({
     const [enablingVercelProtectionBypass, setEnablingVercelProtectionBypass] = useState(false);
     const [autoPreviewPhase, setAutoPreviewPhase] = useState<AutoPreviewPhase>("idle");
     const [autoPreviewError, setAutoPreviewError] = useState<string | null>(null);
+    const [previewIssue, setPreviewIssue] = useState<string | null>(null);
     const [autoPreviewAttempt, setAutoPreviewAttempt] = useState<number>(0);
     const [autoPreviewBypassUnsupported, setAutoPreviewBypassUnsupported] = useState(false);
     const [previewMode, setPreviewMode] = useState<PreviewMode>("webcontainer");
@@ -1179,6 +1201,11 @@ export default function AppBuilderEditor({
     const [showAppBuilderTrialPrompt, setShowAppBuilderTrialPrompt] = useState(false);
     const appBuilderTrialShownThisOpenRef = useRef(false);
     const pendingShareResumeRef = useRef(false);
+    const previewActionThrottleRef = useRef<{ refreshAt: number; rebuildAt: number; saveAt: number }>({
+        refreshAt: 0,
+        rebuildAt: 0,
+        saveAt: 0,
+    });
 
     const buildCurrentVercelOAuthReturnPath = useCallback((): string => {
         if (typeof window === "undefined") return "/dashboard/view";
@@ -2021,6 +2048,11 @@ export default function AppBuilderEditor({
 
     const restartLocalPreview = useCallback(async (forceFresh: boolean = false) => {
         if (isPreviewBuilding) return;
+        const now = Date.now();
+        const throttleKey = forceFresh ? "rebuildAt" : "refreshAt";
+        const cooldownMs = forceFresh ? 5000 : 1500;
+        if (now - previewActionThrottleRef.current[throttleKey] < cooldownMs) return;
+        previewActionThrottleRef.current[throttleKey] = now;
         setIsPreviewBuilding(true);
         try {
             setPreviewMode("webcontainer");
@@ -3826,6 +3858,9 @@ export default function AppBuilderEditor({
 
     const handleSave = async (interactive: boolean = true) => {
         if (!currentFile || !app || isSaving) return;
+        const now = Date.now();
+        if (now - previewActionThrottleRef.current.saveAt < 1200) return;
+        previewActionThrottleRef.current.saveAt = now;
 
         setIsSaving(true);
         try {
@@ -4180,6 +4215,11 @@ export default function AppBuilderEditor({
 
     const handleRefresh = async (forceFresh: boolean = false) => {
         if (isRefreshing) return;
+        const now = Date.now();
+        const throttleKey = forceFresh ? "rebuildAt" : "refreshAt";
+        const cooldownMs = forceFresh ? 5000 : 1500;
+        if (now - previewActionThrottleRef.current[throttleKey] < cooldownMs) return;
+        previewActionThrottleRef.current[throttleKey] = now;
         
         if (forceFresh) {
             // Show confirmation dialog for force fresh start
@@ -4538,7 +4578,7 @@ export default function AppBuilderEditor({
                                 <button
                                     onClick={() => void handleSave(true)}
                                     disabled={isSaving}
-                                    className="px-4 py-2 bg-[#F55F2A] text-xs font-semibold text-white rounded hover:bg-[#E04E1B] disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-all rounded-full"
+                                    className="px-4 py-2 bg-white text-xs font-semibold text-neutral-800 border border-neutral-300 rounded-full hover:bg-neutral-50 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-all"
                                 >
                                     <Upload className="w-4 h-4" />
                                     {isSaving ? "Saving..." : "Save"}
@@ -4786,8 +4826,8 @@ export default function AppBuilderEditor({
                                     onClick={() => setViewMode("ai")}
                                     className={`flex-1 px-4 py-2 text-xs font-semibold rounded-full flex items-center justify-center gap-2 transition-colors ${
                                         viewMode === "ai"
-                                            ? "bg-[#F55F2A] text-white hover:bg-[#E04E1B]"
-                                            : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-100"
+                                            ? "bg-neutral-100 text-neutral-900 border border-neutral-300 shadow-sm"
+                                            : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50"
                                     }`}
                                     title="UI"
                                 >
@@ -4799,8 +4839,8 @@ export default function AppBuilderEditor({
                                         onClick={() => setViewMode("code")}
                                         className={`flex-1 px-4 py-2 text-xs font-semibold rounded-full flex items-center justify-center gap-2 transition-colors ${
                                             viewMode === "code"
-                                                ? "bg-[#F55F2A] text-white hover:bg-[#E04E1B]"
-                                                : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-100"
+                                                ? "bg-neutral-100 text-neutral-900 border border-neutral-300 shadow-sm"
+                                                : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50"
                                         }`}
                                         title="Code"
                                     >
@@ -4812,8 +4852,8 @@ export default function AppBuilderEditor({
                                     onClick={() => setViewMode("images")}
                                     className={`flex-1 px-4 py-2 text-xs font-semibold rounded-full flex items-center justify-center gap-2 transition-colors ${
                                         viewMode === "images"
-                                            ? "bg-[#F55F2A] text-white hover:bg-[#E04E1B]"
-                                            : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-100"
+                                            ? "bg-neutral-100 text-neutral-900 border border-neutral-300 shadow-sm"
+                                            : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50"
                                     }`}
                                     title="Images"
                                 >
@@ -4835,6 +4875,7 @@ export default function AppBuilderEditor({
                                     onRestoreApplied={handleRestoreApplied}
                                     creditError={agentCreditError}
                                     previewReady={previewMode !== "webcontainer" ? true : isWebPreviewReady}
+                                    previewIssue={previewMode !== "webcontainer" ? null : (previewIssue || autoPreviewError || previewError)}
                                     onUserMessageSent={() => {
                                         appBuilderAiMessagesSentRef.current += 1;
                                     }}
@@ -4905,6 +4946,25 @@ export default function AppBuilderEditor({
                                                 <Upload className="w-3.5 h-3.5" />
                                                 Upload
                                             </button>
+                                            <button
+                                                type="button"
+                                                onClick={handlePickFavicon}
+                                                disabled={faviconUploading}
+                                                className="inline-flex items-center gap-2 rounded-full border border-gray-300 bg-white px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+                                                title="Upload a favicon.ico for this app"
+                                            >
+                                                {faviconUploading ? "Uploading favicon…" : "Upload favicon"}
+                                            </button>
+                                            {faviconUrl ? (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => window.open(faviconUrl, "_blank", "noopener,noreferrer")}
+                                                    className="text-[11px] font-semibold text-[#F55F2A] hover:text-[#E04E1B]"
+                                                    title="Open current favicon"
+                                                >
+                                                    View favicon
+                                                </button>
+                                            ) : null}
                                             <label className="inline-flex items-center gap-2 text-[11px] text-gray-500">
                                                 <input
                                                     type="checkbox"
@@ -5135,7 +5195,9 @@ export default function AppBuilderEditor({
                                         files={effectivePreviewFiles}
                                         onFileChange={handleFileChangeFromContainer}
                                         onPreviewReadyChange={setIsWebPreviewReady}
+                                        onPreviewIssueChange={setPreviewIssue}
                                         onCompileErrorFixRequest={handleCompileErrorFixRequest}
+                                        debugPreviewScenario={previewDebugScenario}
                                         onBackendReady={() => {
                                             // Keep mode pinned to webcontainer, but do not auto-reconnect.
                                             // Auto-incrementing reconnectKey here causes a reconnect loop

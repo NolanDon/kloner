@@ -71,6 +71,7 @@ type AppBuilderEditorAgentChatProps = {
     }) => void | Promise<void>;
     creditError?: string | null;
     previewReady?: boolean;
+    previewIssue?: string | null;
     onUserMessageSent?: () => void;
     welcomeContext?: {
         source?: "prompt" | "url" | "quickstart" | "template" | "sample" | "unknown";
@@ -210,7 +211,7 @@ function buildCompileFixPrefill(ctx: CompileErrorQuickFixContext): string {
     ].join("\n");
 }
 
-export default function AppBuilderEditorAgentChat({ appId, files, onFileEdit, onFilesReplace, onRestoreApplied, creditError, previewReady, onUserMessageSent, welcomeContext }: AppBuilderEditorAgentChatProps) {
+export default function AppBuilderEditorAgentChat({ appId, files, onFileEdit, onFilesReplace, onRestoreApplied, creditError, previewReady, previewIssue, onUserMessageSent, welcomeContext }: AppBuilderEditorAgentChatProps) {
     const { user, userTier } = useAuth();
     const { showConfirm, showAlert } = useModal();
     const AI_EDIT_COST = 3;
@@ -431,8 +432,10 @@ export default function AppBuilderEditorAgentChat({ appId, files, onFileEdit, on
     const scopeRecoveryNoticeAtRef = useRef(0);
     const migrationFailureSeenAtRef = useRef<Record<string, number>>({});
     const previewReadyRef = useRef(Boolean(previewReady));
+    const previewIssueText = String(previewIssue || '').trim();
+    const hasPreviewIssue = Boolean(previewIssueText);
 
-    const chatDisabled = previewReady === false && !freeCompileFixContext;
+    const chatDisabled = previewReady === false && !freeCompileFixContext && !hasPreviewIssue;
 
     const didSyncSupabasePreviewEnvRef = useRef(false);
 
@@ -3867,6 +3870,31 @@ export default function AppBuilderEditorAgentChat({ appId, files, onFileEdit, on
                                 <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-amber-200 bg-white px-3 py-1 text-[11px] font-semibold text-neutral-700">
                                     <RefreshCw className="h-3.5 w-3.5 animate-spin text-amber-500" />
                                     Keep the preview open while it finishes booting
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                ) : hasPreviewIssue ? (
+                    <div className="mb-3 rounded-[1.5rem] border border-rose-200 bg-[linear-gradient(180deg,rgba(255,241,242,0.98),rgba(255,255,255,1))] px-4 py-4 shadow-[0_12px_32px_rgba(244,63,94,0.10)]">
+                        <div className="flex items-start gap-3">
+                            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-rose-100 text-rose-700 ring-1 ring-rose-200">
+                                <AlertTriangle className="h-5 w-5" />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <p className="text-sm font-semibold text-neutral-900">Preview hit an error</p>
+                                    {/* <span className="inline-flex items-center rounded-full border border-rose-200 bg-white px-2 py-0.5 text-[11px] font-medium text-rose-700">
+                                        Chat stays open
+                                    </span> */}
+                                </div>
+                                <p className="mt-1 text-sm leading-relaxed text-neutral-700">
+                                    The preview ran into a problem, but you can still chat here to debug it or ask for help.
+                                </p>
+                                <div className="mt-3 inline-flex max-w-full items-center gap-2 rounded-full border border-rose-200 bg-white px-3 py-1 text-[11px] font-semibold text-neutral-700">
+                                    <AlertTriangle className="h-3.5 w-3.5 text-rose-500" />
+                                    <span className="truncate" title={previewIssueText}>
+                                        {previewIssueText}
+                                    </span>
                                 </div>
                             </div>
                         </div>

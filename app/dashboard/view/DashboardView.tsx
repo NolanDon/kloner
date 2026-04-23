@@ -83,6 +83,7 @@ import {
     Send,
     Trash2,
     LayoutGrid,
+    MessageSquare,
 } from "lucide-react";
 import {
     isHttpUrl,
@@ -2886,6 +2887,7 @@ export default function PreviewPage(): JSX.Element {
     const [showWebsitePrePaywall, setShowWebsitePrePaywall] = useState(false);
     const [showTrialSuccessCelebration, setShowTrialSuccessCelebration] = useState(false);
     const [showDevQuickMenu, setShowDevQuickMenu] = useState(false);
+    const [previewDebugScenario, setPreviewDebugScenario] = useState<{ mode: 'terminal-error' | 'terminal-error-auto-fix'; nonce: number } | null>(null);
     const isDev = process.env.NODE_ENV !== "production";
 
     const [archivingRender, setArchivingRender] = useState<Record<string, boolean>>({});
@@ -9663,6 +9665,36 @@ export default function PreviewPage(): JSX.Element {
                                         <span>Open first-trial popup</span>
                                         <Sparkles className="h-4 w-4 text-sky-500" />
                                     </button>
+
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setShowDevQuickMenu(false);
+                                            setPreviewDebugScenario((prev) => ({
+                                                mode: 'terminal-error',
+                                                nonce: (prev?.nonce || 0) + 1,
+                                            }));
+                                        }}
+                                        className="flex w-full items-center justify-between rounded-2xl border border-neutral-200 bg-white px-3 py-2.5 text-left text-sm font-medium text-neutral-800 transition hover:bg-neutral-50"
+                                    >
+                                        <span>Test terminal error card</span>
+                                        <AlertTriangle className="h-4 w-4 text-slate-500" />
+                                    </button>
+
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setShowDevQuickMenu(false);
+                                            setPreviewDebugScenario((prev) => ({
+                                                mode: 'terminal-error-auto-fix',
+                                                nonce: (prev?.nonce || 0) + 1,
+                                            }));
+                                        }}
+                                        className="flex w-full items-center justify-between rounded-2xl border border-neutral-200 bg-white px-3 py-2.5 text-left text-sm font-medium text-neutral-800 transition hover:bg-neutral-50"
+                                    >
+                                        <span>Test Fix with AI</span>
+                                        <Send className="h-4 w-4 text-slate-500" />
+                                    </button>
                                 </div>
                             </motion.aside>
                         ) : null}
@@ -10326,6 +10358,7 @@ export default function PreviewPage(): JSX.Element {
                         onTrialPromptStartCheckout={(appId) => {
                             void startProCheckoutForAppDeploy({ returnAppId: appId });
                         }}
+                        previewDebugScenario={previewDebugScenario}
                     />
                 )}
 

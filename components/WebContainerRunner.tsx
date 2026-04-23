@@ -108,6 +108,7 @@ interface WebContainerRunnerProps {
   files: { [path: string]: { content: string; lastModified: number } };
   onFileChange?: (path: string, content: string) => void;
   onPreviewReadyChange?: (ready: boolean) => void;
+  onPreviewIssueChange?: (issue: string | null) => void;
   onBackendReady?: (args: { appId: string; code: string; url: string }) => void;
   onRequestRebuild?: () => void | Promise<void>;
   reloadToken?: number;
@@ -133,11 +134,12 @@ interface WebContainerRunnerProps {
       fingerprint: string;
     };
   }) => void;
+  debugPreviewScenario?: { mode: 'terminal-error' | 'terminal-error-auto-fix'; nonce: number } | null;
   navigatePath?: string | null;
   navigatePathToken?: number;
 }
 
-export default function WebContainerRunner({ appId, files, onFileChange, onPreviewReadyChange, onBackendReady, onRequestRebuild, onCompileErrorFixRequest, reloadToken, applyToken, restartToken, reconnectToken, forceFreshStart, pollingConfig, navigatePath, navigatePathToken }: WebContainerRunnerProps) {
+export default function WebContainerRunner({ appId, files, onFileChange, onPreviewReadyChange, onPreviewIssueChange, onBackendReady, onRequestRebuild, onCompileErrorFixRequest, debugPreviewScenario, reloadToken, applyToken, restartToken, reconnectToken, forceFreshStart, pollingConfig, navigatePath, navigatePathToken }: WebContainerRunnerProps) {
 
   type DebugEvent = {
     ts: number;
@@ -253,6 +255,7 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
   const [pollNetworkWarning, setPollNetworkWarning] = useState<string | null>(null);
   const [currentStatusData, setCurrentStatusData] = useState<any>(null); // Store latest status data for UI
   const [connectingToExisting, setConnectingToExisting] = useState(false); // Track if connecting to existing machine
+  const lastDebugPreviewScenarioRef = useRef<string>('');
   // Prevent duplicate starts for the *same* set of inputs. This avoids the
   // original "start/stop" thrash bug while still allowing reconnect/retry tokens.
   const lastStartKeyRef = useRef<string | null>(null);
@@ -308,6 +311,10 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
   const lastTimeoutReportKeyRef = useRef<string>('');
   const lastBackendStatusRef = useRef<any>(null);
   const iframeWarnContextRef = useRef<{ key: string; code: string; previewUrl: string; warnedAt: number } | null>(null);
+  const previewActionThrottleRef = useRef<{ refreshAt: number; rebuildAt: number }>({
+    refreshAt: 0,
+    rebuildAt: 0,
+  });
 
   const PREVIEW_IFRAME_WARN_MS = parsePreviewTimeoutMs(
     process.env.NEXT_PUBLIC_PREVIEW_IFRAME_WARN_MS || process.env.PREVIEW_IFRAME_WARN_MS,
@@ -324,7 +331,7 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
   // Default status polling interval while the preview is booting/compiling.
   // We keep this relatively infrequent; readiness is primarily driven by the
   // preview URL/iframe once available.
-  const POLL_INTERVAL_MS = 2_500;
+  const POLL_INTERVAL_MS = 10_000;
 
   // Throttle: regardless of code path, never issue status checks more frequently
   // than this (prevents duplicate loops and tight retry paths from spamming).
@@ -1131,6 +1138,10 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
     }
   };
   const retryApp = () => {
+    const now = Date.now();
+    if (now - previewActionThrottleRef.current.refreshAt < 1500) return;
+    previewActionThrottleRef.current.refreshAt = now;
+
     console.log('[WebContainerRunner] Manual refresh requested', {
       appId,
       startAttempt,
@@ -1185,6 +1196,10 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
   };
 
   const rebuildPreview = async () => {
+    const now = Date.now();
+    if (now - previewActionThrottleRef.current.rebuildAt < 5000) return;
+    previewActionThrottleRef.current.rebuildAt = now;
+
     console.log('[WebContainerRunner] Manual rebuild requested', {
       appId,
       startAttempt,
@@ -3131,7 +3146,7 @@ export default function NavBar() {
               setConnectingToExisting(false);
               setLoadingStatus('');
               setPreviewUrl(null);
-              setError('Preview startup failed before the app became reachable. Try Refresh first, and if it still fails, please contact support.');
+              setError('Preview startup failed before the app became reachable.');
               setCanRetry(true);
               return;
             }
@@ -4166,69 +4181,169 @@ export default function NavBar() {
   const showTerminalPreviewErrorCard = Boolean(error) || terminalPreviewStatus;
   const terminalPreviewErrorMessage =
     error ||
-    'Something went wrong while starting the preview. You can rebuild the machine or refresh the current preview.';
+    'Something went wrong while starting the preview. Use Fix with AI to send the locked technical issue to the agent.';
+
+  useEffect(() => {
+    try {
+      onPreviewIssueChange?.(showTerminalPreviewErrorCard ? terminalPreviewErrorMessage : null);
+    } catch {
+      // ignore
+    }
+  }, [onPreviewIssueChange, showTerminalPreviewErrorCard, terminalPreviewErrorMessage]);
+
+  useEffect(() => {
+    if (!debugPreviewScenario) return;
+    const scenarioKey = `${debugPreviewScenario.mode}:${debugPreviewScenario.nonce}`;
+    if (lastDebugPreviewScenarioRef.current === scenarioKey) return;
+    lastDebugPreviewScenarioRef.current = scenarioKey;
+
+    const fakeTerminalStatus = {
+      status: 'error',
+      uiStage: 'machine_failed',
+      uiTitle: 'Machine failed to start',
+      uiMessage: 'This is a terminal machine error test payload for the dev quick tests panel.',
+      error: 'Terminal machine failure test payload',
+      machineId: 'dev-terminal-error',
+      requestId: `dev-terminal-${debugPreviewScenario.nonce}`,
+      jobId: `dev-terminal-job-${debugPreviewScenario.nonce}`,
+      generationFormat: 'nextjs',
+      archiveZipPath: null,
+      warnings: [
+        {
+          code: 'terminal_error_test',
+          message: 'Dev quick test: terminal machine error surfaced to the runner.',
+        },
+      ],
+    };
+
+    setError('Something went wrong while starting the preview. Fix with AI is the primary action.');
+    setCanRetry(true);
+    setIsPolling(false);
+    setIsLoading(false);
+    setLoadingStatus('');
+    setCurrentStatusData(fakeTerminalStatus);
+    setPreviewUrl(null);
+
+    if (debugPreviewScenario.mode === 'terminal-error-auto-fix') {
+      onCompileErrorFixRequest?.({
+        appId,
+        code: 'dev-terminal-error',
+        actionType: 'quick_fix_compile',
+        fixAction: 'terminal_machine_failure_fix',
+        autoSend: true,
+        compileError: {
+          summary: fakeTerminalStatus.uiTitle,
+          detail:
+            `${fakeTerminalStatus.uiMessage}\n\n` +
+            JSON.stringify(
+              {
+                status: fakeTerminalStatus.status,
+                uiStage: fakeTerminalStatus.uiStage,
+                uiTitle: fakeTerminalStatus.uiTitle,
+                uiMessage: fakeTerminalStatus.uiMessage,
+                error: fakeTerminalStatus.error,
+                machineId: fakeTerminalStatus.machineId,
+                requestId: fakeTerminalStatus.requestId,
+                jobId: fakeTerminalStatus.jobId,
+                generationFormat: fakeTerminalStatus.generationFormat,
+                archiveZipPath: fakeTerminalStatus.archiveZipPath,
+                warnings: fakeTerminalStatus.warnings,
+              },
+              null,
+              2,
+            ),
+          fingerprint: `terminal_machine_failure:${appId}:${debugPreviewScenario.nonce}`,
+        },
+      });
+    }
+  }, [appId, debugPreviewScenario, onCompileErrorFixRequest]);
 
   return (
     <div className="h-full flex flex-col bg-white text-black/90 border border-black/10 rounded-2xl shadow">
       {showTerminalPreviewErrorCard ? (
         <div className="p-4 border-b border-black/10">
-          <div className="rounded-2xl border border-red-200 bg-red-50/70 p-4 shadow-sm">
+          <div className="rounded-2xl border border-amber-200 bg-amber-50/90 p-4 shadow-sm">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0 space-y-1">
-                <div className="text-sm font-semibold text-red-900">Something went wrong</div>
-                <div className="text-xs text-red-900/80">
-                  Please rebuild the preview or refresh it and try again.
+                <div className="text-sm font-semibold text-amber-950">Something went wrong</div>
+                <div className="text-xs text-amber-800">
+                  Something in the generation went wrong. We're here to help fix it.
                 </div>
               </div>
-              <div className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-red-100 text-red-700">
+              <div className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-amber-100 text-amber-700">
                 <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M4.93 19h14.14a2 2 0 001.73-3L14.73 5a2 2 0 00-1.73-1H11a2 2 0 00-1.73 1L3.2 16a2 2 0 001.73 3z" />
                 </svg>
               </div>
             </div>
 
-            <div className="mt-3 flex flex-wrap items-center gap-2">
+            <div className="mt-4 flex flex-wrap items-center gap-2">
               <button
                 type="button"
                 onClick={() => {
-                  void rebuildPreview();
+                  onCompileErrorFixRequest?.({
+                    appId,
+                    code: 'terminal-machine-error',
+                    actionType: 'quick_fix_compile',
+                    fixAction: 'terminal_machine_failure_fix',
+                    autoSend: true,
+                    compileError: {
+                      summary: terminalPreviewStatusData?.uiTitle || 'Machine failed to start',
+                      detail: JSON.stringify(
+                        {
+                          status: terminalPreviewStatusData?.status || previewStatus || 'unknown',
+                          uiStage: terminalPreviewStatusData?.uiStage || null,
+                          uiTitle: terminalPreviewStatusData?.uiTitle || null,
+                          uiMessage: terminalPreviewStatusData?.uiMessage || null,
+                          error: terminalPreviewStatusData?.error || null,
+                          machineId: terminalPreviewStatusData?.machineId || null,
+                          requestId: terminalPreviewStatusData?.requestId || null,
+                          jobId: terminalPreviewStatusData?.jobId || null,
+                          generationFormat: terminalPreviewStatusData?.generationFormat || null,
+                          archiveZipPath: terminalPreviewStatusData?.archiveZipPath || null,
+                          warnings: terminalPreviewStatusData?.warnings || null,
+                        },
+                        null,
+                        2,
+                      ),
+                      fingerprint: `terminal_machine_error:${appId}:${terminalPreviewStatusData?.requestId || terminalPreviewStatusData?.jobId || previewStatus || 'unknown'}`,
+                    },
+                  });
                 }}
-                className="inline-flex items-center gap-2 rounded-full bg-accent px-4 py-2 text-xs font-semibold text-white hover:bg-[#e54f1a] transition-colors"
+                className="inline-flex items-center gap-2 rounded-full bg-[#F55F2A] px-4 py-2 text-xs font-semibold text-white hover:bg-[#E04E1B] transition-colors"
               >
-                Rebuild
-              </button>
-              <button
-                type="button"
-                onClick={retryApp}
-                className="inline-flex items-center gap-2 rounded-full border border-black/15 bg-white px-4 py-2 text-xs font-semibold text-black/80 hover:bg-black/5 transition-colors"
-              >
-                Refresh
+                Fix with AI
               </button>
             </div>
 
-            <details className="mt-3 rounded-xl border border-red-200 bg-white/80 px-3 py-2">
-              <summary className="cursor-pointer select-none text-xs font-medium text-red-800">Technical details</summary>
-              <pre className="mt-2 whitespace-pre-wrap break-words text-[11px] leading-5 text-red-950">
-                {terminalPreviewStatusData
-                  ? JSON.stringify(
-                      {
-                        status: terminalPreviewStatusData?.status || previewStatus || 'unknown',
-                        uiStage: terminalPreviewStatusData?.uiStage || null,
-                        uiTitle: terminalPreviewStatusData?.uiTitle || null,
-                        uiMessage: terminalPreviewStatusData?.uiMessage || null,
-                        error: terminalPreviewStatusData?.error || null,
-                        machineId: terminalPreviewStatusData?.machineId || null,
-                        requestId: terminalPreviewStatusData?.requestId || null,
-                        jobId: terminalPreviewStatusData?.jobId || null,
-                        url: terminalPreviewStatusData?.url || previewUrlRef.current || null,
-                        compileError: terminalPreviewStatusData?.compileError || null,
-                      },
-                      null,
-                      2,
-                    )
-                  : terminalPreviewErrorMessage}
-              </pre>
-            </details>
+            {process.env.NODE_ENV !== 'production' ? (
+              <details className="mt-3 rounded-xl border border-amber-200 bg-amber-50/80 px-3 py-2">
+                <summary className="cursor-pointer select-none text-xs font-medium text-amber-900">Technical details</summary>
+                <pre className="mt-2 whitespace-pre-wrap break-words text-[11px] leading-5 text-amber-950">
+                  {terminalPreviewStatusData
+                    ? JSON.stringify(
+                        {
+                          status: terminalPreviewStatusData?.status || previewStatus || 'unknown',
+                          uiStage: terminalPreviewStatusData?.uiStage || null,
+                          uiTitle: terminalPreviewStatusData?.uiTitle || null,
+                          uiMessage: terminalPreviewStatusData?.uiMessage || null,
+                          error: terminalPreviewStatusData?.error || null,
+                          machineId: terminalPreviewStatusData?.machineId || null,
+                          requestId: terminalPreviewStatusData?.requestId || null,
+                          jobId: terminalPreviewStatusData?.jobId || null,
+                          url: terminalPreviewStatusData?.url || previewUrlRef.current || null,
+                          compileError: terminalPreviewStatusData?.compileError || null,
+                          generationFormat: terminalPreviewStatusData?.generationFormat || null,
+                          archiveZipPath: terminalPreviewStatusData?.archiveZipPath || null,
+                          warnings: terminalPreviewStatusData?.warnings || null,
+                        },
+                        null,
+                        2,
+                      )
+                    : terminalPreviewErrorMessage}
+                </pre>
+              </details>
+            ) : null}
           </div>
         </div>
       ) : null}
