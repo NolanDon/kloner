@@ -14,6 +14,90 @@ import {
   shouldDedupeAlert,
 } from './previewAlertPolicy';
 
+const getStoredContainerCode = async (appId: string, user: any): Promise<string | null> => {
+  try {
+    const stored = localStorage.getItem(`webcontainer_${appId}`);
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      if (parsed.code && Date.now() - parsed.timestamp < 24 * 60 * 60 * 1000) {
+        return parsed.code;
+      }
+    }
+  } catch {
+    // Ignore localStorage errors
+  }
+
+  try {
+    if (user?.uid) {
+      const docRef = doc(db, 'kloner_users', user.uid, 'kloner_apps', appId);
+      const docSnap = await getDoc(docRef);
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        if (data?.containerCode && data?.containerCodeTimestamp && Date.now() - data.containerCodeTimestamp < 24 * 60 * 60 * 1000) {
+          try {
+            localStorage.setItem(
+              `webcontainer_${appId}`,
+              JSON.stringify({ code: data.containerCode, timestamp: data.containerCodeTimestamp })
+            );
+          } catch {
+            // Ignore localStorage errors
+          }
+          return data.containerCode;
+        }
+      }
+    }
+  } catch (error) {
+    console.error('Failed to check Firebase for container code:', error);
+  }
+
+  return null;
+};
+
+const storeContainerCode = async (appId: string, code: string, user: any) => {
+  try {
+    localStorage.setItem(`webcontainer_${appId}`, JSON.stringify({ code, timestamp: Date.now() }));
+  } catch {
+    // Ignore storage errors
+  }
+
+  try {
+    if (user?.uid) {
+      const docRef = doc(db, 'kloner_users', user.uid, 'kloner_apps', appId);
+      await updateDoc(docRef, {
+        containerCode: code,
+        containerCodeTimestamp: Date.now(),
+        updatedAt: new Date(),
+      });
+    }
+  } catch (error) {
+    console.error('Failed to store container code in Firebase:', error);
+  }
+};
+
+const clearStoredContainerCode = (appId: string) => {
+  try {
+    localStorage.removeItem(`webcontainer_${appId}`);
+  } catch {
+    // Ignore storage errors
+  }
+};
+
+const clearStoredContainerCodeEverywhere = async (appId: string, user: any) => {
+  clearStoredContainerCode(appId);
+  try {
+    if (user?.uid) {
+      const docRef = doc(db, 'kloner_users', user.uid, 'kloner_apps', appId);
+      await updateDoc(docRef, {
+        containerCode: null,
+        containerCodeTimestamp: null,
+        updatedAt: new Date(),
+      });
+    }
+  } catch (error) {
+    console.error('Failed to clear container code in Firebase:', error);
+  }
+};
+
 // React 18 StrictMode in dev intentionally mounts/unmounts twice.
 // If we eagerly stop the local runner on unmount, we create a start/stop/start loop.
 // This small scheduler avoids killing the process when a remount happens immediately.
@@ -924,99 +1008,6 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
     };
   }, []);
 
-  // Helper function to get stored container code for this app
-  const getStoredContainerCode = async (appId: string, user: any): Promise<string | null> => {
-    // First try localStorage
-    try {
-      const stored = localStorage.getItem(`webcontainer_${appId}`);
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (parsed.code && Date.now() - parsed.timestamp < 24 * 60 * 60 * 1000) { // 24 hours
-          return parsed.code;
-        }
-      }
-    } catch {
-      // Ignore localStorage errors
-    }
-
-    // Also check Firebase for stored container codes
-    try {
-      if (user?.uid) {
-        const docRef = doc(db, 'kloner_users', user.uid, 'kloner_apps', appId);
-        const docSnap = await getDoc(docRef);
-        if (docSnap.exists()) {
-          const data = docSnap.data();
-          if (data?.containerCode && data?.containerCodeTimestamp &&
-            Date.now() - data.containerCodeTimestamp < 24 * 60 * 60 * 1000) { // 24 hours
-            // Store it back in localStorage for faster access next time
-            try {
-              localStorage.setItem(`webcontainer_${appId}`, JSON.stringify({
-                code: data.containerCode,
-                timestamp: data.containerCodeTimestamp
-              }));
-            } catch {
-              // Ignore localStorage errors
-            }
-            return data.containerCode;
-          }
-        }
-      }
-    } catch (error) {
-      console.error('Failed to check Firebase for container code:', error);
-    }
-
-    return null;
-  };
-
-  // Helper function to store container code for this app
-  const storeContainerCode = async (appId: string, code: string, user: any) => {
-    try {
-      localStorage.setItem(`webcontainer_${appId}`, JSON.stringify({ code, timestamp: Date.now() }));
-    } catch {
-      // Ignore storage errors
-    }
-
-    // Also store in Firebase for persistence across browsers/sessions
-    try {
-      if (user?.uid) {
-        const docRef = doc(db, 'kloner_users', user.uid, 'kloner_apps', appId);
-        await updateDoc(docRef, {
-          containerCode: code,
-          containerCodeTimestamp: Date.now(),
-          updatedAt: new Date(),
-        });
-        console.log(`💾 Stored container code ${code} for app ${appId} in Firebase`);
-      }
-    } catch (error) {
-      console.error('Failed to store container code in Firebase:', error);
-    }
-  };
-
-  // Helper function to clear stored container code
-  const clearStoredContainerCode = (appId: string) => {
-    try {
-      localStorage.removeItem(`webcontainer_${appId}`);
-    } catch {
-      // Ignore storage errors
-    }
-  };
-
-  const clearStoredContainerCodeEverywhere = async (appId: string, user: any) => {
-    clearStoredContainerCode(appId);
-    try {
-      if (user?.uid) {
-        const docRef = doc(db, 'kloner_users', user.uid, 'kloner_apps', appId);
-        await updateDoc(docRef, {
-          containerCode: null,
-          containerCodeTimestamp: null,
-          updatedAt: new Date(),
-        });
-      }
-    } catch (error) {
-      console.error('Failed to clear container code in Firebase:', error);
-    }
-  };
-
   type ProbeResult = {
     ok: boolean;
     reachable: boolean;
@@ -1191,6 +1182,65 @@ export default function WebContainerRunner({ appId, files, onFileChange, onPrevi
 
     // Do not clear stored container code on retry.
     // Retry should attempt to reconnect to the saved machine first.
+  };
+
+  const rebuildPreview = async () => {
+    console.log('[WebContainerRunner] Manual rebuild requested', {
+      appId,
+      startAttempt,
+      reconnectOnly: reconnectOnlyRef.current,
+    });
+    recordDebugEvent('manual_rebuild_requested', {
+      appId,
+      startAttempt,
+      reconnectOnly: reconnectOnlyRef.current,
+      previewUrl: previewUrlRef.current,
+      backendStatus: lastBackendStatusRef.current,
+    });
+
+    stopAllTimers();
+
+    setStartAttempt(0);
+    setError(null);
+    setCompileErrorState(null);
+    setCookieRecoveryPromptVisible(false);
+    setIsPolling(false);
+    setIsLoading(true);
+    setPreviewUrl(null);
+    previewUrlFirstSeenAtRef.current = 0;
+    setCanRetry(false);
+    setLoadingStatus('Rebuilding preview…');
+    setCurrentStatusData(null);
+    setPollNetworkWarning(null);
+    setConnectingToExisting(false);
+    lastStartKeyRef.current = null;
+    retryScheduledRef.current = false;
+    totalAttemptsRef.current = 0;
+    assetFailureCountRef.current = 0;
+    appLoadedSuccessfullyRef.current = false;
+    iframeLoadedSuccessfullyRef.current = false;
+    pollingCodeRef.current = null;
+    activePollCodeRef.current = null;
+    previewRegistrationGraceUntilRef.current = 0;
+    compileErrorActiveFingerprintRef.current = null;
+    iframePostLoadRecoveryCountRef.current = 0;
+    pollFetchFailureCountRef.current = 0;
+    lastPollFailureSignatureRef.current = '';
+    repeatedPollFailureCountRef.current = 0;
+    lastPollIssueReportKeyRef.current = '';
+    if (iframePostLoadTimeoutRef.current) {
+      clearTimeout(iframePostLoadTimeoutRef.current);
+      iframePostLoadTimeoutRef.current = null;
+    }
+
+    try {
+      await onRequestRebuild?.();
+      return;
+    } catch (err) {
+      console.warn('[WebContainerRunner] rebuild callback failed; falling back to refresh', err);
+    }
+
+    retryApp();
   };
 
   const scheduleAutomaticPreviewRestart = (reason: string, delayMs: number = 6000) => {
@@ -3180,7 +3230,7 @@ export default function NavBar() {
               setIsLoading(false);
               setConnectingToExisting(false);
               setLoadingStatus('');
-              setError('Preview stopped. Try Refresh first, if it still fails, please contact support.');
+              setError('Something went wrong while starting the preview. Please rebuild or refresh it.');
               setCanRetry(true);
               setPreviewUrl(null);
               return;
@@ -3195,7 +3245,7 @@ export default function NavBar() {
               setConnectingToExisting(false);
               setLoadingStatus('');
               setPreviewUrl(null);
-              setError('Preview failed before becoming ready. Try Refresh first, and if it still fails, please contact support.');
+              setError('Something went wrong while starting the preview. Please rebuild or refresh it.');
               setCanRetry(true);
               return;
             }
@@ -3413,21 +3463,8 @@ export default function NavBar() {
                 Number(flyApi?.status) === 401 &&
                 /missing third-party discharge token/i.test(flyBody);
 
-              // IMPORTANT:
-              // If backend reports status=error, do NOT keep retrying and showing "Still building".
-              // Stop polling and show the actual error, with a clear next action.
-              const reqId = typeof flyApi?.requestId === 'string' ? flyApi.requestId : '';
-              const userFacing = buildUserFacingPreviewError({
-                uiTitle: statusData?.uiTitle,
-                uiMessage: statusData?.uiMessage,
-                errorMessage,
-                reqId,
-                flyIsDischargeMissing,
-              });
-
               console.error('Backend reported error status:', { errorMessage, statusData, flyApi });
 
-              // This preview won't become ready; clear the stored code so we don't loop.
               await clearStoredContainerCodeEverywhere(appId, user);
               stopAllTimers();
 
@@ -3435,12 +3472,9 @@ export default function NavBar() {
               setIsLoading(false);
               setConnectingToExisting(false);
               setLoadingStatus('');
-              setError(userFacing);
+              setError('Something went wrong while starting the preview. Please rebuild or refresh it.');
               setCanRetry(true);
-              setCurrentStatusData(null);
               setPreviewUrl(null);
-              // Keep the status data available for the inline status component if needed.
-              // (Error banner uses `error` above.)
               return;
 
             } else if (status === 'ready' && !readyFlag) {
@@ -4098,6 +4132,7 @@ export default function NavBar() {
   }, [previewUrl, onPreviewReadyChange, externalPreviewMode, PREVIEW_IFRAME_WARN_MS, PREVIEW_IFRAME_CRITICAL_MS]);
 
   const previewStatus = String((currentStatusData as any)?.status || '').toLowerCase();
+  const terminalPreviewStatus = ['error', 'stopped', 'failed', 'canceled', 'cancelled', 'timeout'].includes(previewStatus);
   const previewInteractiveByStatus = [
     'ready',
     'running',
@@ -4124,44 +4159,79 @@ export default function NavBar() {
     hmrWsStatus === 'ok' ||
     previewInteractiveByStatus ||
     stuckConnectingWithUrl;
-  const showPreviewSurface = Boolean(previewUrl) && !error && !compileErrorState && (externalPreviewMode || canRenderEmbeddedFrame);
+  const showPreviewSurface = Boolean(previewUrl) && !error && !compileErrorState && !terminalPreviewStatus && (externalPreviewMode || canRenderEmbeddedFrame);
   const activePreviewUrl = previewUrl || '';
   const showApplyRefreshingOverlay = showPreviewSurface && isApplyRefreshing;
+  const terminalPreviewStatusData = terminalPreviewStatus ? (currentStatusData || lastBackendStatusRef.current || null) : null;
+  const showTerminalPreviewErrorCard = Boolean(error) || terminalPreviewStatus;
+  const terminalPreviewErrorMessage =
+    error ||
+    'Something went wrong while starting the preview. You can rebuild the machine or refresh the current preview.';
 
   return (
     <div className="h-full flex flex-col bg-white text-black/90 border border-black/10 rounded-2xl shadow">
-      {error && (
+      {showTerminalPreviewErrorCard ? (
         <div className="p-4 border-b border-black/10">
-          <div className="space-y-3">
-            <p className="text-red-600 text-sm whitespace-pre-line">{error}</p>
-            {canRetry && (
-              (() => {
-                const normalized = String(error || '').toLowerCase();
-                const cookieRelated = cookieRecoveryPromptVisible || looksLikeCookieIframeIssue(normalized);
-
-                return (
-              <div className="space-y-2">
-              {cookieRelated ? (
-                <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-                  Your browser privacy settings may block embedded preview routing, or the preview may still be starting. Use Refresh to retry, or open the preview in a separate tab for the most reliable connection.
+          <div className="rounded-2xl border border-red-200 bg-red-50/70 p-4 shadow-sm">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0 space-y-1">
+                <div className="text-sm font-semibold text-red-900">Something went wrong</div>
+                <div className="text-xs text-red-900/80">
+                  Please rebuild the preview or refresh it and try again.
                 </div>
-              ) : null}
-              <button
-                onClick={retryApp}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-xs bg-accent text-white hover:bg-[#e54f1a] transition-colors"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </div>
+              <div className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-red-100 text-red-700">
+                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M4.93 19h14.14a2 2 0 001.73-3L14.73 5a2 2 0 00-1.73-1H11a2 2 0 00-1.73 1L3.2 16a2 2 0 001.73 3z" />
                 </svg>
+              </div>
+            </div>
+
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  void rebuildPreview();
+                }}
+                className="inline-flex items-center gap-2 rounded-full bg-accent px-4 py-2 text-xs font-semibold text-white hover:bg-[#e54f1a] transition-colors"
+              >
+                Rebuild
+              </button>
+              <button
+                type="button"
+                onClick={retryApp}
+                className="inline-flex items-center gap-2 rounded-full border border-black/15 bg-white px-4 py-2 text-xs font-semibold text-black/80 hover:bg-black/5 transition-colors"
+              >
                 Refresh
               </button>
-              </div>
-                );
-              })()
-            )}
+            </div>
+
+            <details className="mt-3 rounded-xl border border-red-200 bg-white/80 px-3 py-2">
+              <summary className="cursor-pointer select-none text-xs font-medium text-red-800">Technical details</summary>
+              <pre className="mt-2 whitespace-pre-wrap break-words text-[11px] leading-5 text-red-950">
+                {terminalPreviewStatusData
+                  ? JSON.stringify(
+                      {
+                        status: terminalPreviewStatusData?.status || previewStatus || 'unknown',
+                        uiStage: terminalPreviewStatusData?.uiStage || null,
+                        uiTitle: terminalPreviewStatusData?.uiTitle || null,
+                        uiMessage: terminalPreviewStatusData?.uiMessage || null,
+                        error: terminalPreviewStatusData?.error || null,
+                        machineId: terminalPreviewStatusData?.machineId || null,
+                        requestId: terminalPreviewStatusData?.requestId || null,
+                        jobId: terminalPreviewStatusData?.jobId || null,
+                        url: terminalPreviewStatusData?.url || previewUrlRef.current || null,
+                        compileError: terminalPreviewStatusData?.compileError || null,
+                      },
+                      null,
+                      2,
+                    )
+                  : terminalPreviewErrorMessage}
+              </pre>
+            </details>
           </div>
         </div>
-      )}
+      ) : null}
       {compileErrorState && !error ? (
         <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/20 px-4">
           <div className="w-full max-w-2xl rounded-2xl border border-black/10 bg-white shadow-2xl">
@@ -4651,10 +4721,10 @@ export default function NavBar() {
           />
           )}
         </div>
-      ) : !error && !compileErrorState ? (
+      ) : !showTerminalPreviewErrorCard && !compileErrorState ? (
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center max-w-md">
-            {isPolling ? (
+            {isPolling && !terminalPreviewStatus ? (
               // Simple, clean polling state with 3-dot loader
               <div className="space-y-4">
                 <div className="kloner-dots" aria-hidden="true"><span className="kloner-dot" /><span className="kloner-dot" /><span className="kloner-dot" /></div>
