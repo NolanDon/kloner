@@ -2402,7 +2402,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
 }: {
     locked: boolean;
     onClick: () => void;
-    onAppClick?: () => void | Promise<void>;
+    onAppClick?: (generationType: "nextjs" | "html") => void | Promise<void>;
     generationPending?: boolean;
     onCancelLocked?: () => void;
     sourceUrl?: string | null;
@@ -2420,9 +2420,10 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
 }) {
     const router = useRouter();
     const [showGenerationModal, setShowGenerationModal] = useState(false);
-    const [selectedGenerationType, setSelectedGenerationType] = useState<"nextjs" | null>("nextjs");
+    const [selectedGenerationType, setSelectedGenerationType] = useState<"nextjs" | "html" | null>("nextjs");
     const [canOverrideLocked, setCanOverrideLocked] = useState(false);
     const lastAutoOpenNonceRef = useRef(0);
+    const isDev = process.env.NODE_ENV !== "production";
 
     const sourceUrlDisplay = useMemo(() => {
         const raw = (sourceUrl || "").trim();
@@ -2487,18 +2488,11 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
 
     const handleContinueGeneration = () => {
         if (effectiveLocked) return;
-        if (selectedGenerationType === "nextjs") {
-            void handleAppGeneration();
-        }
-    };
+        if (!selectedGenerationType) return;
+        if (selectedGenerationType === "html" && !canGenerateHtmlFromUrl) return;
 
-    const handleAppGeneration = async () => {
-        if (effectiveLocked) return;
         closeGenerationModal();
-
-        if (onAppClick) {
-            await onAppClick();
-        }
+        void onAppClick?.(selectedGenerationType);
     };
 
     const title = effectiveLocked ? "Processing…" : "Generate";
@@ -2719,7 +2713,76 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                     </div>
                                 </div>
 
-                                {/* Landing Page (HTML) and template generation are intentionally disabled right now. */}
+                                {isDev ? (
+                                    <div className="space-y-3">
+                                        <div className="relative">
+                                            <button
+                                                type="button"
+                                                onClick={() => setSelectedGenerationType("html")}
+                                                disabled={effectiveLocked || !canGenerateHtmlFromUrl}
+                                                className={`relative w-full overflow-hidden rounded-xl border p-4 text-left shadow-sm transition disabled:opacity-60 disabled:cursor-not-allowed ${selectedGenerationType === "html"
+                                                    ? "border-[rgba(245,95,42,0.65)] bg-[linear-gradient(180deg,rgba(245,95,42,0.06),rgba(255,255,255,0))]"
+                                                    : "border-neutral-200 bg-white hover:bg-neutral-50 hover:border-neutral-300"
+                                                    }`}
+                                            >
+                                                <span className="pointer-events-none absolute right-3 top-3 inline-flex items-center rounded-full border border-[rgba(245,95,42,0.3)] bg-white px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[rgba(245,95,42,1)] shadow-sm">
+                                                    Dev only
+                                                </span>
+                                                <div className="flex items-start gap-3">
+                                                    <div
+                                                        className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-lg bg-neutral-900"
+                                                        aria-hidden
+                                                    >
+                                                        <Image
+                                                            src="/images/html.png"
+                                                            alt=""
+                                                            width={24}
+                                                            height={24}
+                                                            className="h-6 w-6 object-contain"
+                                                            priority={false}
+                                                        />
+                                                    </div>
+                                                    <div className="min-w-0 flex-1 space-y-1">
+                                                        <div className="flex min-w-0 flex-wrap items-start gap-2 sm:items-center">
+                                                            <div className="min-w-0 text-sm font-semibold text-neutral-900 break-words">
+                                                                Website (HTML)
+                                                            </div>
+                                                            <span className="inline-flex max-w-full items-center rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-800 whitespace-nowrap">
+                                                                15 preview credits
+                                                            </span>
+                                                        </div>
+
+                                                        <div className="text-xs text-neutral-600">
+                                                            Best for fast, close-to-original HTML recreations.
+                                                        </div>
+                                                        <div className="mt-1 text-[11px] leading-4 text-neutral-500">
+                                                            Uses the archived site zip as source material and lets the AI stitch pages together without rewriting the whole app.
+                                                        </div>
+
+                                                        {sourceUrlCannotGenerate ? (
+                                                            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                                                                URL scan failed earlier, but you can still start a fresh rescan from here.
+                                                            </div>
+                                                        ) : null}
+                                                    </div>
+                                                </div>
+                                                <div className="mt-2 rounded-lg border border-neutral-200 bg-neutral-50 px-2.5 py-2">
+                                                    <div className="flex min-w-0 flex-wrap items-center gap-1 text-[11px]">
+                                                        <span
+                                                            className="min-w-0 max-w-full flex-1 break-all font-mono font-semibold underline decoration-2 sm:truncate sm:whitespace-nowrap"
+                                                            style={{ color: ACCENT }}
+                                                            title={sourceUrlDisplay || "(none selected)"}
+                                                        >
+                                                            {sourceUrlDisplay ? truncateMiddle(sourceUrlDisplay, 56) : "(none selected)"}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            </button>
+                                        </div>
+                                    </div>
+                                ) : null}
+
+                                {/* Template generation is intentionally disabled right now. */}
 
                                 {/* 3) Mobile apps (coming soon) */}
                                 {/* <div className="relative">
@@ -2775,7 +2838,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                 <button
                                     type="button"
                                     onClick={handleContinueGeneration}
-                                    disabled={effectiveLocked || !selectedGenerationType}
+                                    disabled={effectiveLocked || !selectedGenerationType || (selectedGenerationType === "html" && !canGenerateHtmlFromUrl)}
                                     className="rounded-xl px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-60 disabled:cursor-not-allowed"
                                     style={{ backgroundColor: ACCENT }}
                                 >
@@ -2971,6 +3034,7 @@ export default function PreviewPage(): JSX.Element {
     const [appBuilderCookiePromptOpen, setAppBuilderCookiePromptOpen] = useState(false);
     const [pendingAppBuilderAppId, setPendingAppBuilderAppId] = useState<string | null>(null);
     const [nextJsGenerationPendingUrl, setNextJsGenerationPendingUrl] = useState<string | null>(null);
+    const [htmlGenerationPendingUrl, setHtmlGenerationPendingUrl] = useState<string | null>(null);
     const [pendingCreatedApp, setPendingCreatedApp] = useState<{
         id: string;
         name: string;
@@ -3838,7 +3902,7 @@ export default function PreviewPage(): JSX.Element {
         prompt?: string,
         renderId?: string,
         url?: string,
-        opts?: { screenshotKeys?: string[]; zipUrl?: string; zipPath?: string; onError?: (message: string) => void; skipCookieConsent?: boolean; openAppBuilderImmediately?: boolean },
+        opts?: { screenshotKeys?: string[]; zipUrl?: string; zipPath?: string; onError?: (message: string) => void; skipCookieConsent?: boolean; openAppBuilderImmediately?: boolean; generationFormat?: "nextjs" | "html" },
     ) => {
         if (!user) return;
 
@@ -3916,6 +3980,7 @@ export default function PreviewPage(): JSX.Element {
             if (mode === "url" && url) {
                 // Use the new URL generation endpoint
                 const csrf = await ensureSessionAndCsrf().catch(() => null);
+                const generationFormat = opts?.generationFormat || "nextjs";
 
                 const res = await fetch("/api/generate-app-from-url", {
                     method: "POST",
@@ -3923,7 +3988,7 @@ export default function PreviewPage(): JSX.Element {
                         "Content-Type": "application/json",
                         ...(csrf ? { "x-csrf": csrf } : {}),
                     },
-                    body: JSON.stringify({ url, name: appName, createPreview: true }),
+                    body: JSON.stringify({ url, name: appName, createPreview: true, generationFormat }),
                     credentials: "include",
                 });
 
@@ -4164,7 +4229,7 @@ export default function PreviewPage(): JSX.Element {
 
     const isAppCreationPending = Boolean(pendingCreatedApp);
     const pendingCreatedAppId = pendingCreatedApp?.id ?? null;
-    const createWebsitePlusBusy = Boolean(nextJsGenerationPendingUrl);
+    const createWebsitePlusBusy = Boolean(nextJsGenerationPendingUrl || htmlGenerationPendingUrl);
 
     const startWebAppWizard = useCallback(
         (opts?: { seedRenderId?: string | null; url?: string | null; source?: "website" | "prompt" | null }) => {
@@ -4981,6 +5046,15 @@ export default function PreviewPage(): JSX.Element {
         await handleCreateApp("url", undefined, undefined, url, {
             skipCookieConsent: true,
             openAppBuilderImmediately: true,
+            generationFormat: "nextjs",
+        });
+    }, [handleCreateApp]);
+
+    const startHtmlAppBuilder = useCallback(async (url: string) => {
+        await handleCreateApp("url", undefined, undefined, url, {
+            skipCookieConsent: true,
+            openAppBuilderImmediately: true,
+            generationFormat: "html",
         });
     }, [handleCreateApp]);
 
@@ -4994,6 +5068,17 @@ export default function PreviewPage(): JSX.Element {
             setNextJsGenerationPendingUrl((current) => (current === pendingUrl ? null : current));
         }
     }, [startNextJsAppBuilder]);
+
+    const runHtmlGhostGeneration = useCallback(async (url: string) => {
+        const pendingUrl = (url || "").trim();
+        setHtmlGenerationPendingUrl(pendingUrl || null);
+
+        try {
+            await startHtmlAppBuilder(pendingUrl);
+        } finally {
+            setHtmlGenerationPendingUrl((current) => (current === pendingUrl ? null : current));
+        }
+    }, [startHtmlAppBuilder]);
 
     // If someone deep-links an invalid URL, fail gracefully (no Firestore errors / snapshot retries).
     useEffect(() => {
@@ -9874,7 +9959,10 @@ export default function PreviewPage(): JSX.Element {
                                 onClick={() => {
                                     setAutoOpenGenerateModalNonce((n: number) => n + 1);
                                 }}
-                                generationPending={nextJsGenerationPendingUrl === (targetUrl || "").trim()}
+                                generationPending={Boolean(
+                                    nextJsGenerationPendingUrl === (targetUrl || "").trim() ||
+                                    htmlGenerationPendingUrl === (targetUrl || "").trim()
+                                )}
                                 sourceUrl={targetUrl}
                                 sourceUrlCannotGenerate={showActiveUrlIssueWarning || isUrlProcessingError}
                                 highlight={shouldHighlightCreateWebsiteCta}
@@ -9883,7 +9971,14 @@ export default function PreviewPage(): JSX.Element {
                                 onAutoOpenMessageDismiss={() => setAutoOpenGenerateSuccessMessage("")}
                                 isAdmin={isAdmin}
                                 user={user}
-                                onAppClick={() => void runNextJsGhostGeneration(targetUrl || "")}
+                                onAppClick={(generationType) => {
+                                    if (generationType === "html") {
+                                        void runHtmlGhostGeneration(targetUrl || "");
+                                        return;
+                                    }
+
+                                    void runNextJsGhostGeneration(targetUrl || "");
+                                }}
                             />
                         </div>
                     </div>
