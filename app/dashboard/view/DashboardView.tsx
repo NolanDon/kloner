@@ -2420,7 +2420,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
 }) {
     const router = useRouter();
     const [showGenerationModal, setShowGenerationModal] = useState(false);
-    const [selectedGenerationType, setSelectedGenerationType] = useState<"nextjs" | "html" | null>("nextjs");
+    const [selectedGenerationType, setSelectedGenerationType] = useState<"nextjs" | "html" | null>("html");
     const [canOverrideLocked, setCanOverrideLocked] = useState(false);
     const lastAutoOpenNonceRef = useRef(0);
     const isDev = process.env.NODE_ENV !== "production";
@@ -2450,7 +2450,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
         if (!autoOpenNonce) return;
         if (autoOpenNonce === lastAutoOpenNonceRef.current) return;
         lastAutoOpenNonceRef.current = autoOpenNonce;
-        setSelectedGenerationType("nextjs");
+        setSelectedGenerationType("html");
         setShowGenerationModal(true);
     }, [autoOpenNonce]);
 
@@ -2482,7 +2482,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
 
         // Even when locked (e.g. snapshots processing), allow opening the modal
         // but disable the options inside so users understand what's happening.
-        setSelectedGenerationType("nextjs");
+        setSelectedGenerationType("html");
         setShowGenerationModal(true);
     };
 
@@ -2642,77 +2642,6 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                     </div>
                                 ) : null}
 
-                                {/* 1) Website (Next.js) */}
-                                <div className="space-y-3">
-                                    <div className="relative">
-                                        <button
-                                            type="button"
-                                            onClick={() => setSelectedGenerationType("nextjs")}
-                                            disabled={effectiveLocked}
-                                            className={`relative w-full overflow-hidden rounded-xl border p-4 text-left shadow-sm transition disabled:opacity-60 disabled:cursor-not-allowed ${selectedGenerationType === "nextjs"
-                                                ? "border-[rgba(245,95,42,0.65)] bg-[linear-gradient(180deg,rgba(245,95,42,0.06),rgba(255,255,255,0))]"
-                                                : "border-neutral-200 bg-white hover:bg-neutral-50 hover:border-neutral-300"
-                                                }`}
-                                        >
-                                            {/* <span className="pointer-events-none absolute -right-2 -top-2 z-10 inline-flex items-center rounded-full border border-[rgba(245,95,42,0.45)] bg-white px-2 py-0.5 text-[11px] font-semibold text-[rgba(245,95,42,1)] shadow-sm">
-                                                Recommended
-                                            </span> */}
-                                            <div className="flex items-start gap-3">
-                                                <div
-                                                    className="flex h-10 w-10 items-center justify-center rounded-lg bg-neutral-900"
-                                                    aria-hidden
-                                                >
-                                                    <Image
-                                                        src="/images/nextjs.webp"
-                                                        alt=""
-                                                        width={24}
-                                                        height={24}
-                                                        className="object-contain opacity-95"
-                                                        priority={false}
-                                                    />
-                                                </div>
-                                                <div className="min-w-0 flex-1 space-y-1">
-                                                    <div className="flex min-w-0 flex-wrap items-start gap-2 sm:items-center">
-                                                        <div className="min-w-0 text-sm font-semibold text-neutral-900 break-words">
-                                                            Website (NextJS)
-                                                        </div>
-                                                        <span className="inline-flex max-w-full items-center rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-800 whitespace-nowrap">
-                                                            15 preview credits
-                                                        </span>
-                                                    </div>
-
-                                                    <div className="text-xs text-neutral-600">
-                                                        Recommended for complex multi‑page websites.
-                                                    </div>
-                                                    {/* <div className="mt-1 text-[11px] leading-4 text-neutral-500">
-                                                        From: <span className="font-mono underline text-accent font-semibold">{sourceUrlDisplay || "(no URL selected)"}</span>
-                                                    </div> */}
-                                                    <div className="mt-1 text-[11px] leading-4 text-neutral-500">
-                                                        Best for: user accounts, AI features, dashboards, web games, stores, or product-heavy content.
-                                                    </div>
-
-                                                    {sourceUrlCannotGenerate ? (
-                                                        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                                                            URL scan failed earlier, but you can still start a fresh rescan from here.
-                                                        </div>
-                                                    ) : null}
-                                                </div>
-                                            </div>
-                                            <div className="mt-2 rounded-lg border border-neutral-200 bg-neutral-50 px-2.5 py-2">
-                                                <div className="flex min-w-0 flex-wrap items-center gap-1 text-[11px]">
-                                                    <span
-                                                        className="min-w-0 max-w-full flex-1 break-all font-mono font-semibold underline decoration-2 sm:truncate sm:whitespace-nowrap"
-                                                        style={{ color: ACCENT }}
-                                                        title={sourceUrlDisplay || "(none selected)"}
-                                                    >
-                                                        {sourceUrlDisplay ? truncateMiddle(sourceUrlDisplay, 56) : "(none selected)"}
-                                                    </span>
-                                                </div>
-                                            </div>
-                                        </button>
-                                    </div>
-                                </div>
-
                                 {isDev ? (
                                     <div className="space-y-3">
                                         <div className="relative">
@@ -2725,9 +2654,6 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                                     : "border-neutral-200 bg-white hover:bg-neutral-50 hover:border-neutral-300"
                                                     }`}
                                             >
-                                                <span className="pointer-events-none absolute right-3 top-3 inline-flex items-center rounded-full border border-[rgba(245,95,42,0.3)] bg-white px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[rgba(245,95,42,1)] shadow-sm">
-                                                    Dev only
-                                                </span>
                                                 <div className="flex items-start gap-3">
                                                     <div
                                                         className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-lg bg-neutral-900"
@@ -2753,10 +2679,10 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                                         </div>
 
                                                         <div className="text-xs text-neutral-600">
-                                                            Best for fast, close-to-original HTML recreations.
+                                                            Best for landing pages and simple sites.
                                                         </div>
                                                         <div className="mt-1 text-[11px] leading-4 text-neutral-500">
-                                                            Uses the archived site zip as source material and lets the AI stitch pages together without rewriting the whole app.
+                                                            Ideal for brochure sites, one-pagers, and straightforward pages that do not need a full app structure.
                                                         </div>
 
                                                         {sourceUrlCannotGenerate ? (
@@ -2768,8 +2694,76 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                                 </div>
                                                 <div className="mt-2 rounded-lg border border-neutral-200 bg-neutral-50 px-2.5 py-2">
                                                     <div className="flex min-w-0 flex-wrap items-center gap-1 text-[11px]">
+                                                        <span className="shrink-0 font-medium text-neutral-500">
+                                                            Cloning:
+                                                        </span>
                                                         <span
-                                                            className="min-w-0 max-w-full flex-1 break-all font-mono font-semibold underline decoration-2 sm:truncate sm:whitespace-nowrap"
+                                                            className="min-w-0 max-w-full flex-1 break-all font-mono font-medium sm:truncate sm:whitespace-nowrap"
+                                                            style={{ color: ACCENT }}
+                                                            title={sourceUrlDisplay || "(none selected)"}
+                                                        >
+                                                            {sourceUrlDisplay ? truncateMiddle(sourceUrlDisplay, 56) : "(none selected)"}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            </button>
+                                        </div>
+
+                                        <div className="relative">
+                                            <button
+                                                type="button"
+                                                onClick={() => setSelectedGenerationType("nextjs")}
+                                                disabled={effectiveLocked}
+                                                className={`relative w-full overflow-hidden rounded-xl border p-4 text-left shadow-sm transition disabled:opacity-60 disabled:cursor-not-allowed ${selectedGenerationType === "nextjs"
+                                                    ? "border-[rgba(245,95,42,0.65)] bg-[linear-gradient(180deg,rgba(245,95,42,0.06),rgba(255,255,255,0))]"
+                                                    : "border-neutral-200 bg-white hover:bg-neutral-50 hover:border-neutral-300"
+                                                    }`}
+                                            >
+                                                <div className="flex items-start gap-3">
+                                                    <div
+                                                        className="flex h-10 w-10 items-center justify-center rounded-lg bg-neutral-900"
+                                                        aria-hidden
+                                                    >
+                                                        <Image
+                                                            src="/images/nextjs.webp"
+                                                            alt=""
+                                                            width={24}
+                                                            height={24}
+                                                            className="object-contain opacity-95"
+                                                            priority={false}
+                                                        />
+                                                    </div>
+                                                    <div className="min-w-0 flex-1 space-y-1">
+                                                        <div className="flex min-w-0 flex-wrap items-start gap-2 sm:items-center">
+                                                            <div className="min-w-0 text-sm font-semibold text-neutral-900 break-words">
+                                                                Website (NextJS)
+                                                            </div>
+                                                            <span className="inline-flex max-w-full items-center rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-800 whitespace-nowrap">
+                                                                15 preview credits
+                                                            </span>
+                                                        </div>
+
+                                                        <div className="text-xs text-neutral-600">
+                                                            Recommended for complex multi‑page websites.
+                                                        </div>
+                                                        <div className="mt-1 text-[11px] leading-4 text-neutral-500">
+                                                            Best for: user accounts, AI features, dashboards, web games, stores, or product-heavy content.
+                                                        </div>
+
+                                                        {sourceUrlCannotGenerate ? (
+                                                            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                                                                URL scan failed earlier, but you can still start a fresh rescan from here.
+                                                            </div>
+                                                        ) : null}
+                                                    </div>
+                                                </div>
+                                                <div className="mt-2 rounded-lg border border-neutral-200 bg-neutral-50 px-2.5 py-2">
+                                                    <div className="flex min-w-0 flex-wrap items-center gap-1 text-[11px]">
+                                                        <span className="shrink-0 font-medium text-neutral-500">
+                                                            Cloning:
+                                                        </span>
+                                                        <span
+                                                            className="min-w-0 max-w-full flex-1 break-all font-mono font-medium sm:truncate sm:whitespace-nowrap"
                                                             style={{ color: ACCENT }}
                                                             title={sourceUrlDisplay || "(none selected)"}
                                                         >
@@ -3035,12 +3029,14 @@ export default function PreviewPage(): JSX.Element {
     const [pendingAppBuilderAppId, setPendingAppBuilderAppId] = useState<string | null>(null);
     const [nextJsGenerationPendingUrl, setNextJsGenerationPendingUrl] = useState<string | null>(null);
     const [htmlGenerationPendingUrl, setHtmlGenerationPendingUrl] = useState<string | null>(null);
+    const [blockedUrlGenerationAppId, setBlockedUrlGenerationAppId] = useState<string | null>(null);
     const [pendingCreatedApp, setPendingCreatedApp] = useState<{
         id: string;
         name: string;
         createdAt: number;
     } | null>(null);
     const pendingCreatedAppLaunchRequestedRef = useRef<string | null>(null);
+    const pendingUrlGenerationAppIdRef = useRef<string | null>(null);
     const appBuilderCookiePromptResolverRef = useRef<((accepted: boolean) => void) | null>(null);
     const buildFromCollectionRef = useRef<((storageKeys: string[]) => Promise<void>) | null>(null);
     const previousEditorOpenRef = useRef(false);
@@ -3089,6 +3085,12 @@ export default function PreviewPage(): JSX.Element {
     const openAppBuilderWithCookieGate = useCallback((appId: string | null) => {
         const nextId = typeof appId === "string" ? appId.trim() : "";
         if (!nextId) return;
+        if (blockedUrlGenerationAppId && nextId === blockedUrlGenerationAppId) {
+            setAppBuilderOpen(false);
+            setPendingAppBuilderAppId(null);
+            setCurrentAppId(null);
+            return;
+        }
         if (isTrialAccessRevoked) {
             setAppBuilderOpen(false);
             setPendingAppBuilderAppId(null);
@@ -3111,11 +3113,17 @@ export default function PreviewPage(): JSX.Element {
 
         setPendingAppBuilderAppId(nextId);
         setAppBuilderCookiePromptOpen(true);
-    }, [isTrialAccessRevoked, showAlert]);
+    }, [blockedUrlGenerationAppId, isTrialAccessRevoked, showAlert]);
 
     const openAppBuilderDirectly = useCallback((appId: string | null) => {
         const nextId = typeof appId === "string" ? appId.trim() : "";
         if (!nextId) return;
+        if (blockedUrlGenerationAppId && nextId === blockedUrlGenerationAppId) {
+            setAppBuilderOpen(false);
+            setPendingAppBuilderAppId(null);
+            setCurrentAppId(null);
+            return;
+        }
         if (isTrialAccessRevoked) {
             void showAlert(
                 "Your trial was cancelled, so existing projects are locked in the dashboard.",
@@ -3128,17 +3136,23 @@ export default function PreviewPage(): JSX.Element {
         setPendingAppBuilderAppId(null);
         setAppBuilderCookiePromptOpen(false);
         setAppBuilderOpen(true);
-    }, [isTrialAccessRevoked, showAlert]);
+    }, [blockedUrlGenerationAppId, isTrialAccessRevoked, showAlert]);
 
     const acceptCookiesAndOpenAppBuilder = useCallback(() => {
         persistAppBuilderNecessaryCookiesConsent();
         const nextId = pendingAppBuilderAppId || currentAppId;
         resolveAppBuilderCookiePrompt(true);
         if (nextId) {
+            if (blockedUrlGenerationAppId && nextId === blockedUrlGenerationAppId) {
+                setAppBuilderOpen(false);
+                setPendingAppBuilderAppId(null);
+                setCurrentAppId(null);
+                return;
+            }
             setCurrentAppId(nextId);
             setAppBuilderOpen(true);
         }
-    }, [pendingAppBuilderAppId, currentAppId, resolveAppBuilderCookiePrompt]);
+    }, [blockedUrlGenerationAppId, pendingAppBuilderAppId, currentAppId, resolveAppBuilderCookiePrompt]);
 
     // ───────── app deploy wizard (first deploy) ─────────
     const [appDeployWizardOpen, setAppDeployWizardOpen] = useState(false);
@@ -3809,9 +3823,25 @@ export default function PreviewPage(): JSX.Element {
 
     const closeUrlGenerationRescanModal = useCallback(() => {
         setUrlGenerationRescanModal({ open: false, message: "", url: "" });
+        setAppBuilderOpen(false);
+        setCurrentAppId(null);
+        setAppBuilderCookiePromptOpen(false);
+        setPendingAppBuilderAppId(null);
+        setPendingCreatedApp(null);
+        pendingCreatedAppLaunchRequestedRef.current = null;
     }, []);
 
     const openUrlGenerationRescanModal = useCallback((opts: { message: string; url?: string | null }) => {
+        const failedAppId =
+            pendingUrlGenerationAppIdRef.current ||
+            currentAppId ||
+            pendingCreatedApp?.id ||
+            null;
+
+        if (failedAppId) {
+            setBlockedUrlGenerationAppId(failedAppId);
+        }
+
         setUrlGenerationRescanModal({
             open: true,
             message: opts.message,
@@ -3820,9 +3850,13 @@ export default function PreviewPage(): JSX.Element {
         setAppWizardBusy(false);
         setAppWizardError(null);
         setAppWizardOpen(false);
+        setAppBuilderOpen(false);
+        setCurrentAppId(null);
+        setAppBuilderCookiePromptOpen(false);
+        setPendingAppBuilderAppId(null);
         setPendingCreatedApp(null);
         pendingCreatedAppLaunchRequestedRef.current = null;
-    }, []);
+    }, [currentAppId, pendingCreatedApp?.id]);
 
     type UrlGenerationAcceptedResponse = {
         kind: "accepted";
@@ -3996,6 +4030,7 @@ export default function PreviewPage(): JSX.Element {
                 const parsed = parseUrlGenerationResponse(res, data);
 
                 if (parsed.kind === "accepted") {
+                    pendingUrlGenerationAppIdRef.current = parsed.appId;
                     if (shouldShowPendingAppUi) {
                         setPendingCreatedApp({
                             id: parsed.appId,
@@ -4178,6 +4213,12 @@ export default function PreviewPage(): JSX.Element {
             return;
         }
 
+        if (blockedUrlGenerationAppId && pendingCreatedApp.id === blockedUrlGenerationAppId) {
+            pendingCreatedAppLaunchRequestedRef.current = null;
+            setPendingCreatedApp(null);
+            return;
+        }
+
         const pendingAppExists = apps.some((app) => app.id === pendingCreatedApp.id);
         if (!pendingAppExists) return;
 
@@ -4209,6 +4250,7 @@ export default function PreviewPage(): JSX.Element {
         openAppBuilderWithCookieGate,
         pendingAppBuilderAppId,
         pendingCreatedApp,
+        blockedUrlGenerationAppId,
     ]);
 
     const visibleApps = useMemo(() => {
@@ -10527,6 +10569,8 @@ export default function PreviewPage(): JSX.Element {
                                             type="button"
                                             onClick={() => {
                                                 const nextUrl = urlGenerationRescanModal.url.trim();
+                                                setBlockedUrlGenerationAppId(null);
+                                                pendingUrlGenerationAppIdRef.current = null;
                                                 closeUrlGenerationRescanModal();
                                                 if (!nextUrl) return;
                                                 void enqueueUrlScanRef.current?.(nextUrl, {
