@@ -3225,9 +3225,9 @@ export default function PreviewPage(): JSX.Element {
 
         setAppWizardBusy(false);
         setAppWizardError(null);
-        showWebsiteExitOfferPaywall();
+        setShowWebsitePrePaywall(true);
         return false;
-    }, [refreshUserTierNow, showWebsiteExitOfferPaywall]);
+    }, [refreshUserTierNow]);
 
     // ───────── web app wizard (new) ─────────
     const [appWizardOpen, setAppWizardOpen] = useState(false);
@@ -9989,7 +9989,7 @@ export default function PreviewPage(): JSX.Element {
                                     URL captured successfully. 
                                 </p>
                                  <p className="text-[13px] font-semibold tracking-wide text-emerald-700">
-                                    URL captured successfully. Start Generating Below.
+                                    URL captured successfully. Start generating below.
                                 </p>
                             </div>
                         </div>
@@ -10187,6 +10187,11 @@ export default function PreviewPage(): JSX.Element {
                                 isAdmin={isAdmin}
                                 user={user}
                                 onAppClick={(generationType) => {
+                                    if (isFreeTierNotTrialing) {
+                                        setShowWebsitePrePaywall(true);
+                                        return;
+                                    }
+
                                     if (generationType === "html") {
                                         void runHtmlGhostGeneration(targetUrl || "");
                                         return;
@@ -12288,7 +12293,7 @@ export default function PreviewPage(): JSX.Element {
                                                     ✓
                                                 </span>
                                                 <span className="font-semibold text-neutral-900">
-                                                    {`Memberships starting at just $${websitePrePaywallWeeklyPrice.toFixed(2)} per week.`}
+                                                    {`Memberships starting at only $4.99/wk.`}
                                                 </span>
                                             </div>
                                         </div>
