@@ -2916,11 +2916,13 @@ export default function PreviewPage(): JSX.Element {
     async function handleDeleteApp(appId: string) {
         if (!user) return;
 
-        const ok = await showConfirm(
-            "Delete this app? This action cannot be undone.",
-            "Delete App"
-        );
-        if (!ok) return;
+        if (!isDev) {
+            const ok = await showConfirm(
+                "Delete this app? This action cannot be undone.",
+                "Delete App"
+            );
+            if (!ok) return;
+        }
 
         setDeletingApp((prev) => ({ ...prev, [appId]: true }));
         try {
@@ -3223,9 +3225,9 @@ export default function PreviewPage(): JSX.Element {
 
         setAppWizardBusy(false);
         setAppWizardError(null);
-        setShowProPaywall(true);
+        showWebsiteExitOfferPaywall();
         return false;
-    }, [refreshUserTierNow]);
+    }, [refreshUserTierNow, showWebsiteExitOfferPaywall]);
 
     // ───────── web app wizard (new) ─────────
     const [appWizardOpen, setAppWizardOpen] = useState(false);
@@ -4035,7 +4037,7 @@ export default function PreviewPage(): JSX.Element {
             if (mode === "url" && url) {
                 // Use the new URL generation endpoint
                 const csrf = await ensureSessionAndCsrf().catch(() => null);
-                const generationFormat = opts?.generationFormat || "nextjs";
+                const generationType = opts?.generationFormat || "nextjs";
 
                 const res = await fetch("/api/generate-app-from-url", {
                     method: "POST",
@@ -4043,7 +4045,13 @@ export default function PreviewPage(): JSX.Element {
                         "Content-Type": "application/json",
                         ...(csrf ? { "x-csrf": csrf } : {}),
                     },
-                    body: JSON.stringify({ url, name: appName, createPreview: true, generationFormat }),
+                    body: JSON.stringify({
+                        url,
+                        name: appName,
+                        createPreview: true,
+                        generationType,
+                        generationFormat: generationType,
+                    }),
                     credentials: "include",
                 });
 

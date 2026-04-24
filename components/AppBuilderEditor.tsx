@@ -4809,7 +4809,7 @@ export default function AppBuilderEditor({
 
                 {isGenerationProcessing && previewMode === "webcontainer" ? (
                     <div className="border-b bg-amber-50 px-4 py-2 text-xs text-amber-900">
-                        {"Generating your app. Preview will update automatically when it's ready."}
+                        {"Generating your website. Preview will update automatically when it's ready."}
                     </div>
                 ) : null}
 

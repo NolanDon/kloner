@@ -104,10 +104,34 @@ describe("POST /api/generate-app-from-url", () => {
                 url: "https://example.com",
                 name: "Example",
                 createPreview: true,
+                generationType: "nextjs",
+                generationFormat: "nextjs",
             },
         });
         expect(peekUserCredit).toHaveBeenCalledWith("uid_1", "pro", "preview");
         expect(consumeUserCredit).toHaveBeenCalledWith("uid_1", "pro", "preview");
+    });
+
+    it("forwards html generation type when requested", async () => {
+        const { POST } = await import("./route");
+        const req: any = {
+            json: async () => ({
+                url: "https://example.com",
+                name: "Example",
+                generationType: "html",
+            }),
+        };
+
+        const res: any = await POST(req);
+        await res.json();
+
+        expect(res.status).toBe(202);
+        expect(callBackend.mock.calls[0][1]).toMatchObject({
+            body: {
+                generationType: "html",
+                generationFormat: "html",
+            },
+        });
     });
 
     it("does not burn preview credits when the backend response is terminal failure shaped", async () => {

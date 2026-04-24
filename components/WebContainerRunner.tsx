@@ -4267,7 +4267,7 @@ export default function NavBar() {
               <div className="min-w-0 space-y-1">
                 <div className="text-sm font-semibold text-amber-950">Something went wrong</div>
                 <div className="text-xs text-amber-800">
-                  Something in the generation went wrong. We're here to help fix it.
+                  The preview failed during the build process. We're here to help fix it.
                 </div>
               </div>
               <div className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-amber-100 text-amber-700">

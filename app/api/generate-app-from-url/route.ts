@@ -123,6 +123,10 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json();
     const { url, name } = body;
+    const generationType =
+      body?.generationType === "html" || body?.generationFormat === "html"
+        ? "html"
+        : "nextjs";
 
     if (!url || typeof url !== "string") {
       await reportZipGenerationFailure({
@@ -234,7 +238,13 @@ export async function POST(req: NextRequest) {
       const appResponse = await callBackend(req, {
         path: "/generate-app-from-url",
         method: "POST",
-        body: { url: normalizedUrl, name, createPreview: true },
+        body: {
+          url: normalizedUrl,
+          name,
+          createPreview: true,
+          generationType,
+          generationFormat: generationType,
+        },
         userCtx: { uid: decoded.uid, email: decoded?.email || "", tier },
         timeoutMs: 300000, // 5 minutes
         acceptOnTimeout: true,
