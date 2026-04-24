@@ -374,9 +374,8 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
             "",
             contextLine,
             "",
-            "I can help with layout, styling, images, copy, and features.",
-            "Pick a direction below, or type your own request.",
-            "Tell me what direction you want, and I’ll implement it.",
+            "I can help with layout, styling, copy, and features.",
+            "Choose a direction below or type your own request.",
         ]
             .filter(Boolean)
             .join("\n");
@@ -2856,7 +2855,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                                 <button
                                     type="button"
                                     onClick={() => void copyMessageText(message)}
-                                    className="rounded p-1 text-gray-500 hover:text-gray-900 hover:bg-black/5"
+                                    className={`rounded p-1 transition-colors ${message.role === "user" ? "text-white/90 hover:text-white hover:bg-white/15" : "text-gray-500 hover:text-gray-900 hover:bg-black/5"}`}
                                     title={copiedMessageId === message.id ? "Copied" : "Copy message"}
                                     aria-label={copiedMessageId === message.id ? "Copied" : "Copy message"}
                                 >
@@ -2869,7 +2868,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                                 <button
                                     type="button"
                                     onClick={() => dismissMessage(message.id)}
-                                    className="rounded p-1 text-gray-500 hover:text-gray-900 hover:bg-black/5"
+                                    className={`rounded p-1 transition-colors ${message.role === "user" ? "text-white/90 hover:text-white hover:bg-white/15" : "text-gray-500 hover:text-gray-900 hover:bg-black/5"}`}
                                     title="Dismiss message"
                                     aria-label="Dismiss message"
                                 >
@@ -3016,7 +3015,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                             ) : null}
 
                             {message.id === "welcome" && message.role === "assistant" ? (
-                                <div className="mt-3 flex flex-wrap gap-2">
+                                <div className="mt-3 flex w-full flex-col gap-2">
                                     {STARTER_PROMPTS.map((starter) => (
                                         <button
                                             key={starter}
@@ -3025,7 +3024,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                                                 setInput(starter);
                                                 inputRef.current?.focus();
                                             }}
-                                            className="rounded-full border border-neutral-300 bg-white px-3 py-1.5 text-xs font-medium text-neutral-800 transition hover:bg-neutral-100"
+                                            className="w-full rounded-full border border-neutral-300 bg-white px-4 py-2 text-left text-sm font-medium text-neutral-800 whitespace-normal break-words transition hover:bg-neutral-100 sm:text-sm"
                                             title="Use this as your prompt"
                                         >
                                             {starter}

@@ -5,6 +5,7 @@ import { assertAppBuilderScope } from "../../../_lib/appBuilderScope";
 import { upsertVercelProjectEnvVar } from "../../../_lib/vercel-env";
 import { decryptString, type EncryptedBlobV1 } from "../../../_lib/crypto";
 import { refreshTierFromStripeForUid } from "../../../_lib/billing";
+import { hydrateAppBuilderFiles } from "../../../_lib/htmlStorage";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -137,7 +138,18 @@ export async function POST(req: NextRequest, { params }: any) {
             }
 
             const appName = data.name || `app-${appId}`;
-            const files = data.files || {};
+            const files = await hydrateAppBuilderFiles({
+                db,
+                uid,
+                appId,
+                files: (data.files || {}) as any,
+                fileManifest: (data as any).fileManifest || null,
+                fileStorageCollection: typeof (data as any).fileStorageCollection === "string" ? (data as any).fileStorageCollection : null,
+                fileStorageMode: typeof (data as any).fileStorageMode === "string" ? (data as any).fileStorageMode : null,
+                containerCode: typeof (data as any).containerCode === "string" ? (data as any).containerCode : null,
+                htmlStoragePath: (data as any).htmlStoragePath || null,
+                htmlEditIndex: (data as any).htmlEditIndex,
+            });
 
             let vercelProjectId: string | null = data.vercelProjectId ?? null;
             let vercelProjectName: string | null = data.vercelProjectName ?? null;

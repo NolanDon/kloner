@@ -194,4 +194,40 @@ describe("POST /api/generate-app-from-url", () => {
         expect(body.error).toBe("Input too large");
         expect(consumeUserCredit).not.toHaveBeenCalled();
     });
+
+    it("maps upstream 404 responses to route mismatch errors", async () => {
+        callBackend.mockResolvedValueOnce({
+            status: 404,
+            json: {
+                error: "Not found",
+                scope: "api.v1",
+                path: "/api/v1/generate-app-from-url",
+            },
+            reqId: "req_4",
+            url: "https://backend.example/api/v1/generate-app-from-url",
+        });
+
+        const { POST } = await import("./route");
+        const req: any = {
+            json: async () => ({
+                url: "https://example.com",
+                name: "Example",
+            }),
+        };
+
+        const res: any = await POST(req);
+        const body = await res.json();
+
+        expect(res.status).toBe(404);
+        expect(body.code).toBe("BACKEND_ROUTE_NOT_FOUND");
+        expect(body.error).toBe("The generation service is temporarily unavailable. Please try again in a bit.");
+        expect(body.scope).toBe("api.v1");
+        expect(body.path).toBe("/api/v1/generate-app-from-url");
+        expect(body.details).toMatchObject({
+            backendError: "Not found",
+            scope: "api.v1",
+            path: "/api/v1/generate-app-from-url",
+        });
+        expect(consumeUserCredit).not.toHaveBeenCalled();
+    });
 });

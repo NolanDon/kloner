@@ -1,39 +1,27 @@
 import { motion } from "framer-motion";
 
-const ACCENT = "#f55f2a";
+type KlonerLoaderProps = {
+    title?: string;
+};
 
-export default function KlonerLoader() {
+export default function KlonerLoader({ title = "Loading preview..." }: KlonerLoaderProps) {
 
     return (
         <div className="fixed inset-0 z-[9999] grid place-items-center bg-white">
             <motion.div
-                className="relative h-20 w-20"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
+                className="flex flex-col items-center justify-center text-center"
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.25 }}
             >
-                {/* outer ring */}
-                <span
-                    className="absolute inset-0"
-                    style={{ borderColor: "rgba(245,95,42,0.18)" }}
-                />
-
-                {/* spinning accent ring */}
-                <motion.span
-                    className="absolute inset-1 rounded-full border-2 border-t-transparent"
-                    style={{
-                        borderColor: ACCENT,
-                        borderTopColor: "transparent",
-                    }}
-                    initial={{ rotate: 0 }}
-                    animate={{ rotate: 360 }}
-                    transition={{
-                        duration: 1.1,
-                        repeat: Infinity,
-                        repeatType: "loop",
-                        ease: "linear",
-                    }}
-                />
+                <div className="kloner-dots" aria-hidden="true">
+                    <span className="kloner-dot" />
+                    <span className="kloner-dot" />
+                    <span className="kloner-dot" />
+                </div>
+                <div className="text-sm font-semibold uppercase tracking-[0.18em] text-neutral-600">
+                    {title}
+                </div>
             </motion.div>
         </div>
     );

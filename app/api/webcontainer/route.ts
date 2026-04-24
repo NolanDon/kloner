@@ -6,6 +6,7 @@ import { assertAppBuilderScope } from '../_lib/appBuilderScope';
 import { getAdminDb } from '../_lib/auth';
 import { FieldValue } from 'firebase-admin/firestore';
 import crypto from 'node:crypto';
+import { captureCriticalEvent } from '@/lib/observability';
 
 function backendConfigHint() {
   const origin = process.env.BACKEND_ORIGIN || process.env.BACKEND_URL || process.env.PUBLIC_ORIGIN || '';
@@ -98,7 +99,29 @@ async function handleWebcontainerPost(body: any, uid?: string) {
       return NextResponse.json({ error: 'Invalid file content' }, { status: 400 });
     }
     totalBytes += Buffer.byteLength(content, 'utf8');
-    if (totalBytes > 10_000_000) {
+    if (totalBytes > 25_000_000) {
+      void captureCriticalEvent({
+        source: 'internal',
+        severity: 'critical',
+        route: '/api/webcontainer',
+        method: 'POST',
+        statusCode: 400,
+        userId: uid,
+        action: 'webcontainer_files_too_large',
+        message: 'Files too large',
+        errorName: 'WebcontainerFilesTooLarge',
+        service: 'webcontainer',
+        extra: {
+          appId,
+          mode: mode || null,
+          fileCount: paths.length,
+          totalBytes,
+          limitBytes: 25_000_000,
+        },
+      }).catch((err) => {
+        console.warn('[webcontainer] failed to report oversize payload', err);
+      });
+
       return NextResponse.json({ error: 'Files too large' }, { status: 400 });
     }
   }

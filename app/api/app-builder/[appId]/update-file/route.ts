@@ -96,11 +96,39 @@ export async function POST(
             return NextResponse.json({ error: "App data not found" }, { status: 404 });
         }
 
-        const files = data?.files || {};
-        files[sanitizedPath] = { content: normalized.content, lastModified: Date.now() };
+        const nextFiles = { ...(data?.files || {}) };
+        nextFiles[sanitizedPath] = { content: normalized.content, lastModified: Date.now() };
+
+        const usesShardedFiles = data?.fileStorageMode === "sharded" || Boolean(data?.fileManifest) || Boolean(data?.fileStorageCollection);
+        if (usesShardedFiles) {
+            const collectionName = typeof data?.fileStorageCollection === "string" && data.fileStorageCollection.trim()
+                ? data.fileStorageCollection.trim()
+                : "file_blobs";
+            const blobCol = docRef.collection(collectionName);
+            const existing = await blobCol.where("path", "==", sanitizedPath).limit(1).get();
+
+            const existingDoc = !existing.empty ? existing.docs[0] : null;
+            const existingData = existingDoc?.data() || {};
+            const payload = {
+                ...existingData,
+                path: sanitizedPath,
+                content: normalized.content,
+                encoding: "utf8",
+                inline: typeof existingData?.inline === "boolean" ? existingData.inline : true,
+                kind: typeof existingData?.kind === "string" ? existingData.kind : "text",
+                lastModified: Date.now(),
+                updatedAt: new Date(),
+            };
+
+            if (existingDoc) {
+                await existingDoc.ref.set(payload, { merge: true });
+            } else {
+                await blobCol.add(payload);
+            }
+        }
 
         await docRef.update({
-            files,
+            files: nextFiles,
             updatedAt: new Date(),
         });
 

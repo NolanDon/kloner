@@ -2,6 +2,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { AlertTriangle } from 'lucide-react';
 import { db } from "@/lib/firebase";
 import { doc, onSnapshot, updateDoc, getDoc } from "firebase/firestore";
 import { useAuth } from "@/src/hooks/useAuth";
@@ -106,6 +107,7 @@ const pendingCleanupTimers = new Map<string, number>();
 interface WebContainerRunnerProps {
   appId: string;
   files: { [path: string]: { content: string; lastModified: number } };
+  filesReady?: boolean;
   onFileChange?: (path: string, content: string) => void;
   onPreviewReadyChange?: (ready: boolean) => void;
   onPreviewIssueChange?: (issue: string | null) => void;
@@ -139,7 +141,7 @@ interface WebContainerRunnerProps {
   navigatePathToken?: number;
 }
 
-export default function WebContainerRunner({ appId, files, onFileChange, onPreviewReadyChange, onPreviewIssueChange, onBackendReady, onRequestRebuild, onCompileErrorFixRequest, debugPreviewScenario, reloadToken, applyToken, restartToken, reconnectToken, forceFreshStart, pollingConfig, navigatePath, navigatePathToken }: WebContainerRunnerProps) {
+export default function WebContainerRunner({ appId, files, filesReady = true, onFileChange, onPreviewReadyChange, onPreviewIssueChange, onBackendReady, onRequestRebuild, onCompileErrorFixRequest, debugPreviewScenario, reloadToken, applyToken, restartToken, reconnectToken, forceFreshStart, pollingConfig, navigatePath, navigatePathToken }: WebContainerRunnerProps) {
 
   type DebugEvent = {
     ts: number;
@@ -2187,6 +2189,11 @@ export default function NavBar() {
 
     const startApp = async () => {
       try {
+        if (!filesReady) {
+          console.log('⏳ Waiting for hydrated files before starting webcontainer');
+          return;
+        }
+
         // Reset duplicate-start guard if force fresh start is requested
         const isForceFreshStart = forceFreshStart && forceFreshStart > lastForceFreshStartRef.current;
         if (isForceFreshStart) {
@@ -3880,7 +3887,7 @@ export default function NavBar() {
       const timer = window.setTimeout(cleanup, delayMs);
       pendingCleanupTimers.set(appId, timer);
     };
-  }, [appId, startAttempt, manualStartNonce, restartToken, reconnectToken, forceFreshStart]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [appId, filesReady, startAttempt, manualStartNonce, restartToken, reconnectToken, forceFreshStart]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Reload the iframe without tearing down the underlying server/process.
   useEffect(() => {
@@ -4260,93 +4267,6 @@ export default function NavBar() {
 
   return (
     <div className="h-full flex flex-col bg-white text-black/90 border border-black/10 rounded-2xl shadow">
-      {showTerminalPreviewErrorCard ? (
-        <div className="p-4 border-b border-black/10">
-          <div className="rounded-2xl border border-amber-200 bg-amber-50/90 p-4 shadow-sm">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0 space-y-1">
-                <div className="text-sm font-semibold text-amber-950">Something went wrong</div>
-                <div className="text-xs text-amber-800">
-                  The preview failed during the build process. We're here to help fix it.
-                </div>
-              </div>
-              <div className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-amber-100 text-amber-700">
-                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M4.93 19h14.14a2 2 0 001.73-3L14.73 5a2 2 0 00-1.73-1H11a2 2 0 00-1.73 1L3.2 16a2 2 0 001.73 3z" />
-                </svg>
-              </div>
-            </div>
-
-            <div className="mt-4 flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  onCompileErrorFixRequest?.({
-                    appId,
-                    code: 'terminal-machine-error',
-                    actionType: 'quick_fix_compile',
-                    fixAction: 'terminal_machine_failure_fix',
-                    autoSend: true,
-                    compileError: {
-                      summary: terminalPreviewStatusData?.uiTitle || 'Machine failed to start',
-                      detail: JSON.stringify(
-                        {
-                          status: terminalPreviewStatusData?.status || previewStatus || 'unknown',
-                          uiStage: terminalPreviewStatusData?.uiStage || null,
-                          uiTitle: terminalPreviewStatusData?.uiTitle || null,
-                          uiMessage: terminalPreviewStatusData?.uiMessage || null,
-                          error: terminalPreviewStatusData?.error || null,
-                          machineId: terminalPreviewStatusData?.machineId || null,
-                          requestId: terminalPreviewStatusData?.requestId || null,
-                          jobId: terminalPreviewStatusData?.jobId || null,
-                          generationFormat: terminalPreviewStatusData?.generationFormat || null,
-                          archiveZipPath: terminalPreviewStatusData?.archiveZipPath || null,
-                          warnings: terminalPreviewStatusData?.warnings || null,
-                        },
-                        null,
-                        2,
-                      ),
-                      fingerprint: `terminal_machine_error:${appId}:${terminalPreviewStatusData?.requestId || terminalPreviewStatusData?.jobId || previewStatus || 'unknown'}`,
-                    },
-                  });
-                }}
-                className="inline-flex items-center gap-2 rounded-full bg-[#F55F2A] px-4 py-2 text-xs font-semibold text-white hover:bg-[#E04E1B] transition-colors"
-              >
-                Fix with AI
-              </button>
-            </div>
-
-            {process.env.NODE_ENV !== 'production' ? (
-              <details className="mt-3 rounded-xl border border-amber-200 bg-amber-50/80 px-3 py-2">
-                <summary className="cursor-pointer select-none text-xs font-medium text-amber-900">Technical details</summary>
-                <pre className="mt-2 whitespace-pre-wrap break-words text-[11px] leading-5 text-amber-950">
-                  {terminalPreviewStatusData
-                    ? JSON.stringify(
-                        {
-                          status: terminalPreviewStatusData?.status || previewStatus || 'unknown',
-                          uiStage: terminalPreviewStatusData?.uiStage || null,
-                          uiTitle: terminalPreviewStatusData?.uiTitle || null,
-                          uiMessage: terminalPreviewStatusData?.uiMessage || null,
-                          error: terminalPreviewStatusData?.error || null,
-                          machineId: terminalPreviewStatusData?.machineId || null,
-                          requestId: terminalPreviewStatusData?.requestId || null,
-                          jobId: terminalPreviewStatusData?.jobId || null,
-                          url: terminalPreviewStatusData?.url || previewUrlRef.current || null,
-                          compileError: terminalPreviewStatusData?.compileError || null,
-                          generationFormat: terminalPreviewStatusData?.generationFormat || null,
-                          archiveZipPath: terminalPreviewStatusData?.archiveZipPath || null,
-                          warnings: terminalPreviewStatusData?.warnings || null,
-                        },
-                        null,
-                        2,
-                      )
-                    : terminalPreviewErrorMessage}
-                </pre>
-              </details>
-            ) : null}
-          </div>
-        </div>
-      ) : null}
       {compileErrorState && !error ? (
         <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/20 px-4">
           <div className="w-full max-w-2xl rounded-2xl border border-black/10 bg-white shadow-2xl">
@@ -4836,7 +4756,17 @@ export default function NavBar() {
           />
           )}
         </div>
-      ) : !showTerminalPreviewErrorCard && !compileErrorState ? (
+      ) : showTerminalPreviewErrorCard || compileErrorState ? (
+        <div className="flex-1 flex items-center justify-center px-4">
+          <div className="w-full max-w-md rounded-2xl bg-white px-5 py-5 text-center">
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-100 text-amber-700 ring-1 ring-amber-200">
+              <AlertTriangle className="h-6 w-6" />
+            </div>
+            <div className="mt-4 text-lg font-semibold text-neutral-900">Something went wrong</div>
+            <div className="mt-2 text-sm leading-relaxed text-neutral-600">Check chat for details.</div>
+          </div>
+        </div>
+      ) : (
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center max-w-md">
             {isPolling && !terminalPreviewStatus ? (
@@ -4888,7 +4818,7 @@ export default function NavBar() {
             )}
           </div>
         </div>
-      ) : null}
+      )}
     </div>
   );
 }

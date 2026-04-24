@@ -35,4 +35,25 @@ export interface UrlDoc {
     lastError?: string | null;
     retry?: boolean;
     id?: string;
+    archiveHealth?: {
+        needsRescan?: boolean;
+        warning?: any;
+        warningCode?: string | null;
+        warningMessage?: string | null;
+        warningAction?: string | null;
+        errorCode?: string | null;
+        errorReason?: string | null;
+        userMessage?: string | null;
+        retryable?: boolean | null;
+        details?: any;
+    } | null;
+    warning?: any;
+    warningCode?: string | null;
+    warningMessage?: string | null;
+    warningAction?: string | null;
+    errorCode?: string | null;
+    errorReason?: string | null;
+    userMessage?: string | null;
+    retryable?: boolean | null;
+    details?: any;
 }

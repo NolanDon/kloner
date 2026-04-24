@@ -20,7 +20,7 @@ function classifyProviderError(err: unknown) {
     if (statusFromMsg === 429 || lower.includes("quota") || lower.includes("rate")) {
         return {
             statusCode: 429,
-            userMessage: "AI usage is temporarily rate-limited. Please try again shortly.",
+            userMessage: "Google AI is currently overwhelmed by requests. Please check back in a bit and try again.",
             code: "AI_RATE_LIMITED",
             providerMessage: message,
         };

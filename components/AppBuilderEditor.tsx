@@ -4,7 +4,7 @@
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import Editor from "@monaco-editor/react";
 import Image from "next/image";
-import { Folder, File, Upload, X, RefreshCw, MessageSquare, Code, Check, RotateCcw, Database, Rocket, Monitor, SlidersHorizontal, Images, Send, Pencil, Loader2, Share2, ExternalLink, Copy } from "lucide-react";
+import { Folder, File, Upload, X, RefreshCw, MessageSquare, Code, Check, RotateCcw, Database, Rocket, Monitor, SlidersHorizontal, Images, Send, Pencil, Loader2, Share2, ExternalLink, Copy, ChevronDown, ChevronRight } from "lucide-react";
 import AppBuilderEditorAgentChat from "./AppBuilderEditorAgentChat";
 import KlonerLoader from "./KlonerLoader";
 import WebContainerRunner from "./WebContainerRunner";
@@ -12,6 +12,7 @@ import { bootstrapServerSession, ensureSessionAndCsrf, resetAuthClientCaches } f
 import { useVercelIntegration } from "@/src/hooks/useVercelIntegration";
 import { auth, db } from "@/lib/firebase";
 import { doc, onSnapshot } from "firebase/firestore";
+import { resolveStorageUrl } from "@/src/lib/renders";
 import { signOut as firebaseSignOut } from "firebase/auth";
 import { useAuth } from "@/src/hooks/useAuth";
 import { useModal } from "@/components/ui/ModalContext";
@@ -35,6 +36,10 @@ type AppData = {
     id: string;
     name: string;
     files: { [path: string]: { content: string; lastModified: number } };
+    htmlStoragePath?: string | null;
+    htmlByteLength?: number | null;
+    htmlEditIndex?: unknown;
+    updatedAt?: unknown;
     vercelProjectId?: string;
     previewUrl?: string;
     isDeployed?: boolean;
@@ -50,9 +55,11 @@ type AppData = {
         message?: string | null;
         title?: string | null;
         jobId?: string | null;
+        requestId?: string | null;
         archiveZipPath?: string | null;
         archiveZipUrl?: string | null;
         errorCode?: string | null;
+        details?: unknown;
         retryable?: boolean | null;
         needsRescan?: boolean | null;
         nextAction?: string | null;
@@ -66,10 +73,12 @@ type NormalizedGenerationState = {
     message: string | null;
     title: string | null;
     jobId: string | null;
+    requestId: string | null;
     archiveZipPath: string | null;
     archiveZipUrl: string | null;
     error: string | null;
     errorCode: string | null;
+    details: unknown;
     retryable: boolean | null;
     needsRescan: boolean | null;
     nextAction: string | null;
@@ -94,6 +103,23 @@ type VercelOAuthFlow = "preview" | "share";
 type CodedError = Error & {
     code?: string;
     statusCode?: number;
+};
+
+type ObservabilityFrontendIngestPayload = {
+    source: "frontend";
+    severity: "critical" | "error" | "warning" | "info";
+    statusCode?: number;
+    route?: string;
+    method?: string;
+    action?: string;
+    userId?: string;
+    requestId?: string;
+    message: string;
+    errorName?: string;
+    stack?: string;
+    url?: string;
+    service?: string;
+    extra?: Record<string, unknown>;
 };
 
 type StagedImage = {
@@ -290,39 +316,61 @@ function asBoolean(value: unknown): boolean | null {
     return value;
 }
 
-function normalizeGenerationStage(value: unknown): string | null {
-    const stage = asTrimmedString(value);
-    return stage ? stage.toLowerCase() : null;
-}
-
 function normalizeGenerationState(data: any): NormalizedGenerationState {
     const generation = data?.generation && typeof data.generation === "object" ? data.generation : null;
-    const legacyStatus = asTrimmedString(data?.generationStatus) || asTrimmedString(data?.status);
-    const legacyProgress = asFiniteNumber(data?.generationProgress) ?? asFiniteNumber(data?.progress);
-    const legacyError = asTrimmedString(data?.generationError) || asTrimmedString(data?.error);
-    const legacyErrorCode = asTrimmedString(data?.generationErrorCode) || asTrimmedString(data?.errorCode);
+    const legacyError = asTrimmedString(data?.error) || asTrimmedString(data?.generationError);
 
     return {
-        status: normalizeGenerationStage(generation?.status ?? legacyStatus),
-        stage: normalizeGenerationStage(generation?.stage),
-        progress: asFiniteNumber(generation?.progress) ?? legacyProgress,
-        message: asTrimmedString(generation?.message),
-        title: asTrimmedString(generation?.title),
+        status:
+            asTrimmedString(generation?.status) ||
+            asTrimmedString(generation?.stage) ||
+            asTrimmedString(data?.generationStatus) ||
+            asTrimmedString(data?.status),
+        stage:
+            asTrimmedString(generation?.stage) ||
+            asTrimmedString(data?.generationStage) ||
+            asTrimmedString(data?.stage),
+        progress:
+            asFiniteNumber(generation?.progress) ??
+            asFiniteNumber(data?.generationProgress) ??
+            asFiniteNumber(data?.progress),
+        message:
+            asTrimmedString(generation?.message) ||
+            asTrimmedString(data?.generationMessage) ||
+            asTrimmedString(data?.message),
+        title:
+            asTrimmedString(generation?.title) ||
+            asTrimmedString(data?.generationTitle) ||
+            asTrimmedString(data?.title),
         jobId:
             asTrimmedString(generation?.jobId) ||
             asTrimmedString(data?.generationJobId) ||
             asTrimmedString(data?.jobId),
+        requestId:
+            asTrimmedString(generation?.requestId) ||
+            asTrimmedString(data?.generationRequestId) ||
+            asTrimmedString(data?.requestId) ||
+            asTrimmedString(data?.reqId),
         archiveZipPath:
             asTrimmedString(generation?.archiveZipPath) ||
             asTrimmedString(data?.archiveZipPath),
         archiveZipUrl:
             asTrimmedString(generation?.archiveZipUrl) ||
             asTrimmedString(data?.archiveZipUrl),
-        error: legacyError,
+        error:
+            asTrimmedString(generation?.error) ||
+            asTrimmedString(generation?.errorMessage) ||
+            legacyError,
         errorCode:
             asTrimmedString(generation?.errorCode) ||
             asTrimmedString(data?.generationErrorCode) ||
-            legacyErrorCode,
+            asTrimmedString(data?.errorCode) ||
+            null,
+        details:
+            generation?.details ??
+            data?.generationDetails ??
+            data?.details ??
+            null,
         retryable:
             asBoolean(generation?.retryable) ??
             asBoolean(data?.generationRetryable) ??
@@ -350,10 +398,12 @@ function generationStateChanged(
         prev.message !== next.message ||
         prev.title !== next.title ||
         prev.jobId !== next.jobId ||
+        prev.requestId !== next.requestId ||
         prev.archiveZipPath !== next.archiveZipPath ||
         prev.archiveZipUrl !== next.archiveZipUrl ||
         prev.error !== next.error ||
         prev.errorCode !== next.errorCode ||
+        prev.details !== next.details ||
         prev.retryable !== next.retryable ||
         prev.needsRescan !== next.needsRescan ||
         prev.nextAction !== next.nextAction
@@ -382,80 +432,43 @@ function formatGenerationStageLabel(stage: string | null): string | null {
 }
 
 function detectNextAppDir(files: AppData["files"] | null | undefined): "src/app" | "app" | null {
-    if (!files) return null;
-    const keys = Object.keys(files);
-    if (keys.some((k) => k === "src/app/layout.tsx" || k.startsWith("src/app/"))) return "src/app";
-    if (keys.some((k) => k === "app/layout.tsx" || k.startsWith("app/"))) return "app";
+    const keys = Object.keys(files || {});
+    if (keys.some((key) => key === "src/app" || key.startsWith("src/app/"))) return "src/app";
+    if (keys.some((key) => key === "app" || key.startsWith("app/"))) return "app";
     return null;
 }
 
 function buildHeadTsxWithFavicon(faviconUrl: string): string {
-    const localHrefLiteral = JSON.stringify("/favicon.ico");
-    return (
-        `export default function Head() {\n` +
-        `  return (\n` +
-        `    <>\n` +
-        `      {/* kloner:favicon */}\n` +
-        `      <link rel="icon" href=${localHrefLiteral} />\n` +
-        `    </>\n` +
-        `  );\n` +
-        `}\n`
-    );
+    return [
+        "export default function Head() {",
+        "  return (",
+        "    <>",
+        `      <link rel=\"icon\" href=\"${faviconUrl}\" />`,
+        "    </>",
+        "  );",
+        "}",
+        "",
+    ].join("\n");
 }
 
 function appHasStripeConfig(files: AppData["files"] | null | undefined): boolean {
-    if (!files || typeof files !== "object") return false;
-
-    const keyHints = [
-        "STRIPE_SECRET_KEY",
-        "NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY",
-        "STRIPE_PUBLISHABLE_KEY",
-        "STRIPE_WEBHOOK_SECRET",
-    ];
-
-    for (const [path, file] of Object.entries(files)) {
-        const lower = String(path || "").toLowerCase();
-        if (!lower.endsWith(".env") && !lower.endsWith(".env.local") && !lower.endsWith(".env.production") && !lower.endsWith(".env.development")) {
-            continue;
-        }
-        const content = typeof file?.content === "string" ? file.content : "";
-        if (!content) continue;
-        if (keyHints.some((k) => content.includes(k))) {
-            return true;
-        }
-    }
-
-    return false;
+    const haystack = Object.values(files || {})
+        .map((file) => String(file?.content || ""))
+        .join("\n");
+    return /STRIPE_(SECRET|PUBLISHABLE|PUBLIC)|NEXT_PUBLIC_STRIPE|stripe/i.test(haystack);
 }
 
 function upsertFaviconInHeadTsx(existing: string, faviconUrl: string): string {
-    const nextHref = JSON.stringify("/favicon.ico");
-
-    // Prefer updating our marker line if present.
-    if (existing.includes("kloner:favicon")) {
-        const lines = existing.split(/\r?\n/);
-        let changed = false;
-        const out = lines.map((line) => {
-            if (line.includes("kloner:favicon")) {
-                changed = true;
-                return line;
-            }
-            if (changed && /<link\s+[^>]*rel=["']icon["'][^>]*>/i.test(line)) {
-                return `      <link rel="icon" href=${nextHref} />`;
-            }
-            return line;
-        });
-        return out.join("\n");
-    }
+    const nextHref = faviconUrl;
 
     // Replace an existing rel="icon" href="..." in either attribute order.
     const r1 = /(<link\s+[^>]*rel=["']icon["'][^>]*href=["'])([^"']*)(["'][^>]*>)/i;
     if (r1.test(existing)) {
-        return existing.replace(r1, `$1/favicon.ico$3`);
+        return existing.replace(r1, `$1${nextHref}$3`);
     }
     const r2 = /(<link\s+[^>]*href=["'])([^"']*)(["'][^>]*rel=["']icon["'][^>]*>)/i;
     if (r2.test(existing)) {
-        return existing.replace(r2, `$1/favicon.ico$3`);
+        return existing.replace(r2, `$1${nextHref}$3`);
     }
 
     // If it's a TSX file with a return fragment, insert our link near the top.
@@ -467,14 +480,14 @@ function upsertFaviconInHeadTsx(existing: string, faviconUrl: string): string {
             const after = existing.slice(idx + 2);
             return (
                 before +
-                `\n      {/* kloner:favicon */}\n      <link rel=\"icon\" href=${nextHref} />` +
+                `\n      {/* kloner:favicon */}\n      <link rel=\"icon\" href=\"${nextHref}\" />` +
                 after
             );
         }
     }
 
     // Fallback: preserve existing and append a safe link.
-    return existing + `\n\n{/* kloner:favicon */}\n<link rel=\"icon\" href=${nextHref} />\n`;
+    return existing + `\n\n{/* kloner:favicon */}\n<link rel=\"icon\" href=\"${nextHref}\" />\n`;
 }
 
 function buildFaviconIcoRouteTs(faviconUrl: string): string {
@@ -506,6 +519,128 @@ function buildFaviconIcoRouteTs(faviconUrl: string): string {
         `  return new Response(null, { status: res.status, headers: res.headers });\n` +
         `}\n`
     );
+}
+
+const htmlStorageContentCache = new Map<string, Promise<string | null>>();
+
+function isHtmlPath(path: string): boolean {
+    return /\.(html?|xhtml)$/i.test(String(path || ""));
+}
+
+function isLikelyHtmlPathHint(value: string): boolean {
+    const raw = String(value || "").trim();
+    if (!raw) return false;
+    if (raw.length > 200) return false;
+    if (/\s/.test(raw)) return false;
+    return /(^|\/)[^/]+\.(html?|xhtml)$/i.test(raw);
+}
+
+function collectHtmlCandidatePaths(value: unknown, out: Set<string>) {
+    if (!value || out.size > 50) return;
+
+    if (typeof value === "string") {
+        const trimmed = value.trim();
+        if (isLikelyHtmlPathHint(trimmed)) {
+            out.add(trimmed.replace(/^\/+/, ""));
+        }
+        return;
+    }
+
+    if (Array.isArray(value)) {
+        for (const item of value) collectHtmlCandidatePaths(item, out);
+        return;
+    }
+
+    if (typeof value === "object") {
+        const record = value as Record<string, unknown>;
+        for (const [key, nested] of Object.entries(record)) {
+            if (isLikelyHtmlPathHint(key)) {
+                out.add(key.replace(/^\/+/, ""));
+            }
+            if (key === "path" || key === "filePath" || key === "targetPath" || key === "htmlPath" || key === "entryPath") {
+                if (typeof nested === "string" && isLikelyHtmlPathHint(nested)) {
+                    out.add(nested.replace(/^\/+/, ""));
+                }
+            }
+            collectHtmlCandidatePaths(nested, out);
+        }
+    }
+}
+
+function pickHtmlTargetPaths(files: AppData["files"], htmlEditIndex: unknown): string[] {
+    const hinted = new Set<string>();
+    collectHtmlCandidatePaths(htmlEditIndex, hinted);
+
+    for (const path of Object.keys(files || {})) {
+        if (isHtmlPath(path)) hinted.add(path);
+    }
+
+    if (hinted.size === 0) {
+        hinted.add("index.html");
+    }
+
+    return Array.from(hinted);
+}
+
+async function readHtmlFromStorage(storagePath: string): Promise<string | null> {
+    const path = String(storagePath || "").trim();
+    if (!path) return null;
+
+    const cached = htmlStorageContentCache.get(path);
+    if (cached) return cached;
+
+    const pending = (async () => {
+        const resolved = await resolveStorageUrl(path);
+        if (!resolved) return null;
+
+        const res = await fetch(resolved, { method: "GET", cache: "no-store", credentials: "include" });
+        if (!res.ok) return null;
+
+        const html = (await res.text()).trim();
+        return html || null;
+    })().catch(() => null);
+
+    htmlStorageContentCache.set(path, pending);
+    return pending;
+}
+
+async function hydrateHtmlFilesForApp(data: AppData): Promise<AppData> {
+    const storagePath = typeof data.htmlStoragePath === "string" ? data.htmlStoragePath.trim() : "";
+    if (!storagePath) return data;
+
+    const targetPaths = pickHtmlTargetPaths(data.files || {}, data.htmlEditIndex);
+    const needsHydration = targetPaths.some((path) => !String(data.files?.[path]?.content || "").trim());
+    if (!needsHydration) return data;
+
+    const html = await readHtmlFromStorage(storagePath);
+    if (!html) return data;
+
+    const nextFiles: AppData["files"] = { ...(data.files || {}) };
+    let applied = false;
+
+    for (const path of targetPaths) {
+        const current = nextFiles[path];
+        if (current && String(current.content || "").trim()) continue;
+
+        nextFiles[path] = {
+            content: html,
+            lastModified: current?.lastModified || Date.now(),
+        };
+        applied = true;
+
+        if (Object.prototype.hasOwnProperty.call(data.files || {}, path)) {
+            break;
+        }
+    }
+
+    if (!applied && !Object.keys(data.files || {}).some((path) => isHtmlPath(path))) {
+        nextFiles["index.html"] = {
+            content: html,
+            lastModified: Date.now(),
+        };
+    }
+
+    return { ...data, files: nextFiles };
 }
 
 function addCacheBust(url: string, token: string | number): string {
@@ -657,37 +792,73 @@ function insertSnippetIntoContent(content: string, snippet: string, position: Pl
     );
 }
 
-function FileTree({ nodes, onFileSelect, prefix = "" }: {
+function FileTree({ nodes, onFileSelect, expandedFolders, onToggleFolder, prefix = "", depth = 0 }: {
     nodes: FileNode[];
     onFileSelect: (path: string) => void;
+    expandedFolders: Record<string, boolean>;
+    onToggleFolder: (path: string) => void;
     prefix?: string;
+    depth?: number;
 }) {
     return (
         <ul>
             {nodes.map((node) => (
                 <li key={node.name}>
-                    <div
-                        className="flex items-center gap-2 py-1 cursor-pointer hover:bg-gray-100"
-                        onClick={() => node.type === "file" && onFileSelect(prefix + node.name)}
-                    >
-                        {node.type === "folder" ? (
-                            <Folder className="w-4 h-4" />
-                        ) : (
-                            <File className="w-4 h-4" />
-                        )}
-                        <span>{node.name}</span>
-                    </div>
-                    {node.children && (
+                    {node.type === "folder" ? (
+                        <button
+                            type="button"
+                            onClick={() => onToggleFolder(prefix + node.name)}
+                            className="flex w-full items-center gap-2 rounded-md py-1 text-left hover:bg-gray-100"
+                            style={{ paddingLeft: depth * 16 + 4 }}
+                        >
+                            <span className="inline-flex h-4 w-4 items-center justify-center text-gray-500">
+                                {(expandedFolders[prefix + node.name] ?? true) ? (
+                                    <ChevronDown className="h-4 w-4" />
+                                ) : (
+                                    <ChevronRight className="h-4 w-4" />
+                                )}
+                            </span>
+                            <Folder className="h-4 w-4 shrink-0" />
+                            <span>{node.name}</span>
+                        </button>
+                    ) : (
+                        <button
+                            type="button"
+                            onClick={() => onFileSelect(prefix + node.name)}
+                            className="flex w-full items-center gap-2 rounded-md py-1 text-left hover:bg-gray-100"
+                            style={{ paddingLeft: depth * 16 + 4 }}
+                        >
+                            <span className="inline-flex h-4 w-4 items-center justify-center" aria-hidden="true" />
+                            <File className="h-4 w-4 shrink-0" />
+                            <span className="truncate">{node.name}</span>
+                        </button>
+                    )}
+                    {node.children && (expandedFolders[prefix + node.name] ?? true) && (
                         <FileTree
                             nodes={node.children}
                             onFileSelect={onFileSelect}
+                            expandedFolders={expandedFolders}
+                            onToggleFolder={onToggleFolder}
                             prefix={prefix + node.name + "/"}
+                            depth={depth + 1}
                         />
                     )}
                 </li>
             ))}
         </ul>
     );
+}
+
+function getEditorLanguageForPath(path: string | null): string {
+    const lower = String(path || "").toLowerCase();
+    if (lower.endsWith(".html") || lower.endsWith(".htm")) return "html";
+    if (lower.endsWith(".css")) return "css";
+    if (lower.endsWith(".json")) return "json";
+    if (lower.endsWith(".md") || lower.endsWith(".mdx")) return "markdown";
+    if (lower.endsWith(".tsx") || lower.endsWith(".jsx")) return "typescriptreact";
+    if (lower.endsWith(".ts")) return "typescript";
+    if (lower.endsWith(".js")) return "javascript";
+    return "javascript";
 }
 
 export default function AppBuilderEditor({
@@ -1042,25 +1213,6 @@ export default function AppBuilderEditor({
             if (!confirmed) return;
 
             const csrf = await ensureSessionAndCsrf().catch(() => null);
-                                                        <button
-                                                            type="button"
-                                                            onClick={handlePickFavicon}
-                                                            disabled={faviconUploading}
-                                                            className="inline-flex items-center gap-2 rounded-full border border-gray-300 bg-white px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60"
-                                                            title="Upload a favicon.ico for this app"
-                                                        >
-                                                            {faviconUploading ? "Uploading favicon…" : "Upload favicon"}
-                                                        </button>
-                                                        {faviconUrl ? (
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => window.open(faviconUrl, "_blank", "noopener,noreferrer")}
-                                                                className="text-[11px] font-semibold text-[#F55F2A] hover:text-[#E04E1B]"
-                                                                title="Open current favicon"
-                                                            >
-                                                                View favicon
-                                                            </button>
-                                                        ) : null}
             const res = await fetch("/api/supabase/disconnect", {
                 method: "POST",
                 headers: {
@@ -1095,7 +1247,7 @@ export default function AppBuilderEditor({
                 // (silent=false so the user gets a clear message.)
                 const stillConnected = await verifySupabaseConnection({ silent: false });
                 if (!stillConnected) return;
-                const label = supabaseProjectName ? `Supabase is connected (\"${supabaseProjectName}\").` : "Supabase is connected.";
+                const label = supabaseProjectName ? `Supabase is connected ("${supabaseProjectName}").` : "Supabase is connected.";
                 const confirmed = await showConfirm(
                     `${label}\n\nOpen the Supabase dashboard in a new tab?`,
                     "Database",
@@ -1114,8 +1266,10 @@ export default function AppBuilderEditor({
             setViewMode("ai");
             window.dispatchEvent(new CustomEvent("kloner:open-db-connect", { detail: { provider: "supabase" } }));
         }, [showAlert, showConfirm, supabaseConnected, supabaseProjectName, supabaseProjectRef, user?.uid, verifySupabaseConnection]);
+
     const [app, setApp] = useState<AppData | null>(null);
     const [loading, setLoading] = useState(true);
+    const [filesHydrated, setFilesHydrated] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
     const onCloseRef = useRef(onClose);
@@ -1141,8 +1295,57 @@ export default function AppBuilderEditor({
             }
         }
     }, []);
+
+    const fetchAndHydrateAppFiles = useCallback(
+        async (opts?: { forceRefreshToken?: boolean; signal?: AbortSignal | null }): Promise<AppData | null> => {
+            if (!user?.uid) {
+                await handleSessionExpired("app_builder_missing_user");
+                return null;
+            }
+
+            const forceRefreshToken = Boolean(opts?.forceRefreshToken);
+            await bootstrapServerSession({
+                forceRefresh: forceRefreshToken,
+                minIntervalMs: forceRefreshToken ? 0 : 10 * 60 * 1000,
+                timeoutMs: 12_000,
+                reason: "app_builder_load",
+            }).catch(() => false);
+
+            const idToken = await user.getIdToken(forceRefreshToken);
+            const res = await fetch(`/api/app-builder/${appId}/files`, {
+                method: "GET",
+                credentials: "include",
+                cache: "no-store",
+                signal: opts?.signal || undefined,
+                headers: {
+                    authorization: `Bearer ${idToken}`,
+                },
+            });
+
+            if (res.status === 401 || res.status === 403) {
+                await handleSessionExpired("app_builder_load_unauthorized");
+                return null;
+            }
+
+            if (!res.ok) {
+                if (res.status === 404) {
+                    console.error("App not found, closing editor");
+                    onCloseRef.current?.();
+                    return null;
+                }
+                throw new Error(`Failed to load app: ${res.status} ${res.statusText}`);
+            }
+
+            const data = await res.json();
+            const hydratedData = await hydrateHtmlFilesForApp(data as AppData);
+            return hydratedData;
+        },
+        [appId, handleSessionExpired, user],
+    );
+
     const [currentFile, setCurrentFile] = useState<string | null>(null);
     const [fileTree, setFileTree] = useState<FileNode[]>([]);
+    const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({});
     const [code, setCode] = useState<string>("");
     const [refreshKey, setRefreshKey] = useState(0);
     const [applyCompleteKey, setApplyCompleteKey] = useState(0);
@@ -1250,6 +1453,24 @@ export default function AppBuilderEditor({
             // ignore
         }
     }, [isMobile]);
+
+    const handlePreviewIssueFixRequest = useCallback(() => {
+        const issue = String(previewIssue || autoPreviewError || previewError || "").trim();
+        if (!issue) return;
+
+        handleCompileErrorFixRequest({
+            appId,
+            code: "preview_issue",
+            actionType: "quick_fix_compile",
+            fixAction: "preview_issue_fix",
+            autoSend: true,
+            compileError: {
+                summary: "Preview hit an error",
+                detail: issue,
+                fingerprint: `preview_issue:${appId}:${issue.slice(0, 120)}`,
+            },
+        });
+    }, [appId, autoPreviewError, handleCompileErrorFixRequest, previewError, previewIssue]);
 
     useEffect(() => {
         appBuilderTrialShownThisOpenRef.current = false;
@@ -1375,6 +1596,32 @@ export default function AppBuilderEditor({
             url: String(j.url),
             path: typeof j.path === "string" ? j.path : null,
         };
+    }, [appId]);
+
+    const handlePickFavicon = useCallback(() => {
+        if (faviconUploading) return;
+        faviconInputRef.current?.click();
+    }, [faviconUploading]);
+
+    const uploadFaviconToUserBlob = useCallback(async (file: globalThis.File): Promise<{ url: string; path?: string }> => {
+        const csrf = await ensureSessionAndCsrf().catch(() => null);
+        const url = `/api/user-blob/upload-url?filename=${encodeURIComponent("favicon.ico")}&renderId=${encodeURIComponent(appId)}`;
+
+        const res = await fetch(url, {
+            method: "POST",
+            headers: {
+                "content-type": file.type || "application/octet-stream",
+                ...(typeof csrf === "string" && csrf ? { "x-csrf": csrf } : {}),
+            },
+            credentials: "include",
+            body: file,
+        });
+
+        const j = await res.json().catch(() => ({} as any));
+        if (!res.ok || !j?.url) {
+            throw new Error(j?.error || `upload_failed_${res.status}`);
+        }
+        return { url: String(j.url), path: typeof j.path === "string" ? j.path : undefined };
     }, [appId]);
 
     const deleteUserBlobPaths = useCallback(async (paths: string[]) => {
@@ -1569,21 +1816,30 @@ export default function AppBuilderEditor({
         const needsRescan = activeGeneration.needsRescan === true;
         const nextAction = String(activeGeneration.nextAction || "").trim().toLowerCase();
         const explicitRescan = needsRescan === true;
+        const explicitHydrationFailure = errorCode === "HTML_PREVIEW_HYDRATION_FAILED";
         const explicitRetry = nextAction === "retry_generation" || (retryable && !needsRescan);
         const explicitSupport = nextAction === "contact_support";
 
         let message = generationErrorText || "Generation failed. Please try again.";
         let actionLabel = "Dismiss";
         let actionKind: "dismiss" | "retry" | "rescan" = "dismiss";
+        let secondaryMessage: string | null = null;
 
-        if (explicitRescan) {
+        if (explicitHydrationFailure) {
+            message = "We couldn’t save the generated website files. Please try regenerating.";
+            secondaryMessage = "If this keeps happening, the backend may not be writing the full file tree to the Firebase entry.";
+            actionLabel = "Try again";
+            actionKind = "retry";
+        }
+
+        if (!explicitHydrationFailure && explicitRescan) {
             message =
                 errorCode === "ARCHIVE_ZIP_MISSING"
                     ? "We couldn't start this app because the archived site files are not ready yet. Please rescan this URL and try again."
                     : "This URL needs to be rescanned before it can be used for generation.";
             actionLabel = "Rescan URL";
             actionKind = "rescan";
-        } else if (explicitRetry) {
+        } else if (!explicitHydrationFailure && explicitRetry) {
             switch (errorCode) {
                 case "GEMINI_API_UNAVAILABLE":
                     message = "The model is temporarily unavailable. Try again in a moment.";
@@ -1603,15 +1859,15 @@ export default function AppBuilderEditor({
             }
             actionLabel = "Retry";
             actionKind = "retry";
-        } else if (explicitSupport) {
+        } else if (!explicitHydrationFailure && explicitSupport) {
             message = generationErrorText || "Generation failed. Please contact support.";
             actionLabel = "Dismiss";
             actionKind = "dismiss";
-        } else if (retryable && !needsRescan) {
+        } else if (!explicitHydrationFailure && retryable && !needsRescan) {
             message = "Generation failed. Please retry.";
             actionLabel = "Retry";
             actionKind = "retry";
-        } else if (needsRescan) {
+        } else if (!explicitHydrationFailure && needsRescan) {
             message = "This URL needs to be rescanned before it can be used for generation.";
             actionLabel = "Rescan URL";
             actionKind = "rescan";
@@ -1619,13 +1875,81 @@ export default function AppBuilderEditor({
 
         return {
             message,
+            secondaryMessage,
             actionLabel,
             actionKind,
+            requestId: activeGeneration.requestId,
+            details: activeGeneration.details,
             isRetryableNoRescan: explicitRetry,
             isRescanRequired: explicitRescan,
+            isHydrationFailure: explicitHydrationFailure,
             isSupportState: explicitSupport,
         };
-    }, [activeGeneration.errorCode, activeGeneration.needsRescan, activeGeneration.nextAction, activeGeneration.retryable, activeGeneration.status, generationErrorText]);
+    }, [activeGeneration.details, activeGeneration.errorCode, activeGeneration.needsRescan, activeGeneration.nextAction, activeGeneration.requestId, activeGeneration.retryable, activeGeneration.status, generationErrorText]);
+
+    const generationFailureDebugDetails = useMemo(() => {
+        if (IS_PRODUCTION) return null;
+        if (!generationFailureUi) return null;
+
+        const parts: string[] = [];
+        const requestId = String(generationFailureUi.requestId || "").trim();
+        if (requestId) parts.push(`reqId: ${requestId}`);
+
+        const details = generationFailureUi.details;
+        if (details != null) {
+            if (typeof details === "string") {
+                const text = details.trim();
+                if (text) parts.push(text);
+            } else {
+                try {
+                    parts.push(JSON.stringify(details, null, 2));
+                } catch {
+                    parts.push(String(details));
+                }
+            }
+        }
+
+        return parts.length ? parts.join("\n\n") : null;
+    }, [generationFailureUi]);
+
+    const generationFailureLogKeyRef = useRef<string | null>(null);
+    useEffect(() => {
+        if (activeGeneration.status !== "error") return;
+        if (!generationFailureUi?.isHydrationFailure) return;
+
+        const dedupeKey = `${generationFailureUi.requestId || ""}:${String(generationFailureUi.message || "")}`;
+        if (generationFailureLogKeyRef.current === dedupeKey) return;
+        generationFailureLogKeyRef.current = dedupeKey;
+
+        const payload: ObservabilityFrontendIngestPayload = {
+            source: "frontend",
+            severity: "error",
+            route: "/components/AppBuilderEditor",
+            method: "render",
+            statusCode: 500,
+            message: "html_preview_hydration_failed",
+            errorName: "HtmlPreviewHydrationFailed",
+            service: "app-builder-editor",
+            extra: {
+                errorCode: activeGeneration.errorCode || null,
+                requestId: generationFailureUi.requestId || null,
+                details: generationFailureUi.details || null,
+                nextAction: activeGeneration.nextAction || null,
+            },
+        };
+
+        void fetch("/api/internal/observability/ingest", {
+            method: "POST",
+            headers: {
+                "content-type": "application/json",
+            },
+            body: JSON.stringify(payload),
+            keepalive: true,
+            credentials: "include",
+        }).catch((err) => {
+            console.warn("[observability] failed to send hydration failure event", err);
+        });
+    }, [activeGeneration.errorCode, activeGeneration.nextAction, activeGeneration.status, generationFailureUi]);
 
     useEffect(() => {
         // If the backend marked generation as error due to a transient preview issue,
@@ -1642,8 +1966,9 @@ export default function AppBuilderEditor({
     }, [isGenerationProcessing]);
     const effectivePreviewFiles = useMemo(() => {
         if (isGenerationProcessing) return generationPlaceholderFiles;
+        if (!filesHydrated) return {};
         return (app?.files as any) || {};
-    }, [app?.files, generationPlaceholderFiles, isGenerationProcessing]);
+    }, [app?.files, filesHydrated, generationPlaceholderFiles, isGenerationProcessing]);
 
     const usedPlaceholderRef = useRef(false);
     useEffect(() => {
@@ -2879,12 +3204,29 @@ export default function AppBuilderEditor({
                 }
                 const data = await res.json();
                 if (didCancel) return;
-                setApp(data);
-                const liveUrl = typeof data?.productionUrl === "string" ? data.productionUrl.trim() : "";
+                const rawApp = data as AppData;
+                setFilesHydrated(false);
+                setApp(rawApp);
+                const liveUrl = typeof rawApp?.productionUrl === "string" ? rawApp.productionUrl.trim() : "";
                 setLastDeployLiveUrl(liveUrl || null);
-                const previewShareUrl = typeof data?.previewUrl === "string" ? data.previewUrl.trim() : "";
+                const previewShareUrl = typeof rawApp?.previewUrl === "string" ? rawApp.previewUrl.trim() : "";
                 setLastSharePreviewUrl(previewShareUrl || null);
-                buildFileTree(data.files);
+                buildFileTree(rawApp.files);
+                if (!didCancel) setLoading(false);
+
+                void (async () => {
+                    try {
+                        const hydratedData = await hydrateHtmlFilesForApp(rawApp);
+                        if (didCancel) return;
+                        setApp(hydratedData);
+                        buildFileTree(hydratedData.files);
+                        setFilesHydrated(true);
+                    } catch (hydrationErr) {
+                        if (didCancel) return;
+                        console.warn("[app-builder] background file hydration failed", hydrationErr);
+                        setFilesHydrated(true);
+                    }
+                })();
             } catch (err: any) {
                 if (didCancel) return;
                 if (err?.name === "AbortError") return;
@@ -2898,6 +3240,7 @@ export default function AppBuilderEditor({
                 // For network errors or server errors, don't close immediately.
                 // Show error state instead.
                 setError(err instanceof Error ? err.message : "Failed to load app");
+                setFilesHydrated(true);
             } finally {
                 if (!didCancel) setLoading(false);
             }
@@ -2908,143 +3251,150 @@ export default function AppBuilderEditor({
             didCancel = true;
             controller.abort();
         };
-    }, [appId, authLoading, user, handleSessionExpired]);
-
-    // Derive current favicon URL from head.tsx if we created/updated one.
-    useEffect(() => {
-        const files = app?.files;
-        const appDir = detectNextAppDir(files);
-        if (!files || !appDir) {
-            setFaviconUrl(null);
-            return;
-        }
-
-        const headPath = `${appDir}/head.tsx`;
-        const head = (files as any)?.[headPath]?.content;
-        if (typeof head !== "string") {
-            setFaviconUrl(null);
-            return;
-        }
-
-        const m = head.match(/rel=["']icon["'][^>]*href=["']([^"']+)["']/i) ||
-            head.match(/href=["']([^"']+)["'][^>]*rel=["']icon["']/i);
-        const next = m && m[1] ? String(m[1]).trim() : "";
-        setFaviconUrl(next || null);
-    }, [app?.files]);
-
-    const handlePickFavicon = useCallback(() => {
-        if (faviconUploading) return;
-        faviconInputRef.current?.click();
-    }, [faviconUploading]);
-
-    const uploadFaviconToUserBlob = useCallback(async (file: globalThis.File): Promise<{ url: string; path?: string }> => {
-        const csrf = await ensureSessionAndCsrf().catch(() => null);
-        const url = `/api/user-blob/upload-url?filename=${encodeURIComponent("favicon.ico")}&renderId=${encodeURIComponent(appId)}`;
-
-        const res = await fetch(url, {
-            method: "POST",
-            headers: {
-                "content-type": file.type || "application/octet-stream",
-                ...(typeof csrf === "string" && csrf ? { "x-csrf": csrf } : {}),
-            },
-            credentials: "include",
-            body: file,
-        });
-
-        const j = await res.json().catch(() => ({} as any));
-        if (!res.ok || !j?.url) {
-            throw new Error(j?.error || `upload_failed_${res.status}`);
-        }
-        return { url: String(j.url), path: typeof j.path === "string" ? j.path : undefined };
-    }, [appId]);
+    }, [authLoading]);
 
     // Firebase real-time listener for instant UI updates when files change
     useEffect(() => {
         if (!appId || !user?.uid) return;
 
         const unsubscribe = onSnapshot(
-            doc(db, 'kloner_users', user.uid, 'kloner_apps', appId),
+            doc(db, "kloner_users", user.uid, "kloner_apps", appId),
             (docSnapshot) => {
-                if (docSnapshot.exists()) {
-                    const firebaseData = docSnapshot.data();
-                    if (firebaseData) {
-                        // Update local state immediately when Firebase changes.
-                        // Important: generationStatus may update BEFORE files are written.
-                        setApp((prevApp) => {
-                            if (!prevApp) return prevApp;
+                if (!docSnapshot.exists()) return;
 
-                            const nextGeneration = normalizeGenerationState(firebaseData);
-                            const nextGenStatus = nextGeneration.status;
-                            const nextGenError = nextGeneration.error;
-                            const nextGenProgress = nextGeneration.progress;
+                const firebaseData = docSnapshot.data();
+                if (!firebaseData) return;
 
-                            const generationStatusChanged =
-                                prevApp.generationStatus !== nextGenStatus ||
-                                prevApp.generationError !== nextGenError ||
-                                prevApp.generationProgress !== nextGenProgress ||
-                                generationStateChanged(prevApp.generation, nextGeneration);
-
-                            const hasFilesUpdate = Boolean((firebaseData as any).files);
-                            const mergedFiles = hasFilesUpdate
-                                ? mergeFilesPreferNewest(prevApp.files, (firebaseData as any).files)
-                                : prevApp.files;
-                            const filesChanged = hasFilesUpdate
-                                ? !filesShallowEqualByContentAndTimestamp(prevApp.files, mergedFiles)
-                                : false;
-
-                            if (!filesChanged && !generationStatusChanged) return prevApp;
-
-                            const updatedApp: any = {
-                                ...prevApp,
-                                files: mergedFiles,
-                                generationStatus: nextGenStatus,
-                                generationError: nextGenError,
-                                generationProgress: nextGenProgress,
-                                generation: nextGeneration,
-                                isDeployed: Boolean((firebaseData as any).isDeployed),
-                                productionUrl: (firebaseData as any).productionUrl || null,
-                                updatedAt: (firebaseData as any).updatedAt,
-                            };
-
-                            const nextLiveUrl = typeof (firebaseData as any).productionUrl === "string"
-                                ? (firebaseData as any).productionUrl.trim()
-                                : "";
-                            setLastDeployLiveUrl(nextLiveUrl || null);
-
-                            if (filesChanged) {
-                                buildFileTree(mergedFiles);
-
-                                const openPath = currentFileRef.current;
-                                if (openPath && (mergedFiles as any)[openPath]) {
-                                    setCode((mergedFiles as any)[openPath].content);
-                                }
-
-                                if (previewMode !== "webcontainer") {
-                                    queuePreviewReloadFromFirebase();
-                                    try {
-                                        const changes: Array<{ path: string; content: string }> = [];
-                                        const prevFiles = prevApp.files || ({} as any);
-                                        const nextFiles = mergedFiles || ({} as any);
-                                        for (const p of Object.keys(nextFiles)) {
-                                            const nextContent = (nextFiles as any)?.[p]?.content;
-                                            if (typeof nextContent !== "string") continue;
-                                            const prevContent = (prevFiles as any)?.[p]?.content;
-                                            if (typeof prevContent === "string" && prevContent === nextContent) continue;
-                                            changes.push({ path: p, content: nextContent });
-                                        }
-                                        if (changes.length) {
-                                            queuePreviewApply(changes, { interactive: false });
-                                        }
-                                    } catch {
-                                        // ignore
-                                    }
-                                }
-                            }
-
-                            return updatedApp;
-                        });
+                void (async () => {
+                    const prevApp = appRef.current;
+                    if (!prevApp) {
+                        const initialApp: AppData = {
+                            id: appId,
+                            name: typeof (firebaseData as any).name === "string" ? String((firebaseData as any).name) : "Untitled Project",
+                            files: ((firebaseData as any).files || {}) as AppData["files"],
+                            htmlStoragePath: (firebaseData as any).htmlStoragePath || null,
+                            htmlByteLength:
+                                typeof (firebaseData as any).htmlByteLength === "number"
+                                    ? (firebaseData as any).htmlByteLength
+                                    : null,
+                            htmlEditIndex: (firebaseData as any).htmlEditIndex,
+                            generationStatus: (firebaseData as any).generationStatus || null,
+                            generationError: (firebaseData as any).generationError || null,
+                            generationProgress:
+                                typeof (firebaseData as any).generationProgress === "number"
+                                    ? (firebaseData as any).generationProgress
+                                    : null,
+                            generation: normalizeGenerationState(firebaseData) as AppData["generation"],
+                            isDeployed: Boolean((firebaseData as any).isDeployed),
+                            productionUrl: (firebaseData as any).productionUrl || null,
+                            previewUrl: (firebaseData as any).previewUrl || null,
+                            vercelProjectId: (firebaseData as any).vercelProjectId || undefined,
+                            vercelProtectionBypassSecret: (firebaseData as any).vercelProtectionBypassSecret || null,
+                            updatedAt: (firebaseData as any).updatedAt,
+                        };
+                        setApp(initialApp);
+                        buildFileTree(initialApp.files);
+                        const nextLiveUrl = typeof (firebaseData as any).productionUrl === "string"
+                            ? (firebaseData as any).productionUrl.trim()
+                            : "";
+                        setLastDeployLiveUrl(nextLiveUrl || null);
+                        const previewUrl = typeof (firebaseData as any).previewUrl === "string"
+                            ? (firebaseData as any).previewUrl.trim()
+                            : "";
+                        setLastSharePreviewUrl(previewUrl || null);
+                        if (loading) setLoading(false);
+                        return;
                     }
-                }
+
+                    const nextGeneration = normalizeGenerationState(firebaseData);
+                    const nextGenStatus = nextGeneration.status;
+                    const nextGenError = nextGeneration.error;
+                    const nextGenProgress = nextGeneration.progress;
+
+                    const generationStatusChanged =
+                        prevApp.generationStatus !== nextGenStatus ||
+                        prevApp.generationError !== nextGenError ||
+                        prevApp.generationProgress !== nextGenProgress ||
+                        generationStateChanged(prevApp.generation, nextGeneration);
+
+                    const hasFilesUpdate = Boolean((firebaseData as any).files);
+                    const mergedFiles = hasFilesUpdate
+                        ? mergeFilesPreferNewest(prevApp.files, (firebaseData as any).files)
+                        : prevApp.files;
+
+                    const hydratedApp = hasFilesUpdate
+                        ? await hydrateHtmlFilesForApp({
+                            ...prevApp,
+                            files: mergedFiles,
+                            htmlStoragePath: (firebaseData as any).htmlStoragePath || prevApp.htmlStoragePath || null,
+                            htmlEditIndex: (firebaseData as any).htmlEditIndex ?? prevApp.htmlEditIndex,
+                            htmlByteLength:
+                                typeof (firebaseData as any).htmlByteLength === "number"
+                                    ? (firebaseData as any).htmlByteLength
+                                    : prevApp.htmlByteLength ?? null,
+                        })
+                        : prevApp;
+
+                    const filesChanged = hasFilesUpdate
+                        ? !filesShallowEqualByContentAndTimestamp(prevApp.files, hydratedApp.files)
+                        : false;
+
+                    if (!filesChanged && !generationStatusChanged) return;
+
+                    const updatedApp: AppData = {
+                        ...hydratedApp,
+                        htmlStoragePath: (firebaseData as any).htmlStoragePath || hydratedApp.htmlStoragePath || null,
+                        htmlByteLength:
+                            typeof (firebaseData as any).htmlByteLength === "number"
+                                ? (firebaseData as any).htmlByteLength
+                                : hydratedApp.htmlByteLength ?? null,
+                        htmlEditIndex: (firebaseData as any).htmlEditIndex ?? hydratedApp.htmlEditIndex,
+                        generationStatus: nextGenStatus,
+                        generationError: nextGenError,
+                        generationProgress: nextGenProgress,
+                        generation: nextGeneration,
+                        isDeployed: Boolean((firebaseData as any).isDeployed),
+                        productionUrl: (firebaseData as any).productionUrl || null,
+                        updatedAt: (firebaseData as any).updatedAt,
+                    };
+
+                    const nextLiveUrl = typeof (firebaseData as any).productionUrl === "string"
+                        ? (firebaseData as any).productionUrl.trim()
+                        : "";
+                    setLastDeployLiveUrl(nextLiveUrl || null);
+
+                    if (filesChanged) {
+                        buildFileTree(updatedApp.files);
+
+                        const openPath = currentFileRef.current;
+                        if (openPath && (updatedApp.files as any)[openPath]) {
+                            setCode((updatedApp.files as any)[openPath].content);
+                        }
+
+                        if (previewMode !== "webcontainer") {
+                            queuePreviewReloadFromFirebase();
+                            try {
+                                const changes: Array<{ path: string; content: string }> = [];
+                                const prevFiles = prevApp.files || ({} as any);
+                                const nextFiles = updatedApp.files || ({} as any);
+                                for (const p of Object.keys(nextFiles)) {
+                                    const nextContent = (nextFiles as any)?.[p]?.content;
+                                    if (typeof nextContent !== "string") continue;
+                                    const prevContent = (prevFiles as any)?.[p]?.content;
+                                    if (typeof prevContent === "string" && prevContent === nextContent) continue;
+                                    changes.push({ path: p, content: nextContent });
+                                }
+                                if (changes.length) {
+                                    queuePreviewApply(changes, { interactive: false });
+                                }
+                            } catch {
+                                // ignore
+                            }
+                        }
+                    }
+
+                    setApp(updatedApp);
+                })();
             },
             (error) => {
                 const code = String((error as any)?.code || "").toLowerCase();
@@ -3052,7 +3402,7 @@ export default function AppBuilderEditor({
                     void handleSessionExpired("app_builder_doc_listener_permission_denied");
                     return;
                 }
-                console.error('Firebase listener error:', error);
+                console.error("Firebase listener error:", error);
             }
         );
 
@@ -3065,7 +3415,7 @@ export default function AppBuilderEditor({
                 console.warn("Firebase listener unsubscribe error:", err);
             }
         };
-    }, [appId, previewMode, user?.uid, queuePreviewApply, queuePreviewReloadFromFirebase, handleSessionExpired]);
+    }, [appId, loading, previewMode, user?.uid, queuePreviewApply, queuePreviewReloadFromFirebase, handleSessionExpired]);
 
     const generationJobId = useMemo(() => asTrimmedString(app?.generation?.jobId), [app?.generation?.jobId]);
 
@@ -3201,6 +3551,13 @@ export default function AppBuilderEditor({
             setCode(app.files[path].content);
         }
     };
+
+    const handleToggleFolder = useCallback((path: string) => {
+        setExpandedFolders((prev) => ({
+            ...prev,
+            [path]: !(prev[path] ?? true),
+        }));
+    }, []);
 
     const handleCodeChange = (value: string | undefined) => {
         const newCode = value || "";
@@ -4150,6 +4507,7 @@ export default function AppBuilderEditor({
         if (!isVercelConnected) return;
         if (!appId) return;
         if (!app || loading) return;
+        if (!filesHydrated) return;
 
         if (pendingShareResumeRef.current) return;
 
@@ -4190,7 +4548,7 @@ export default function AppBuilderEditor({
         }
 
         // No-op for embedded preview; deploy actions will work after connect.
-    }, [isVercelConnected, appId, app, loading]);
+    }, [isVercelConnected, appId, app, filesHydrated, loading]);
 
     useEffect(() => {
         if (!isVercelConnected) {
@@ -4202,6 +4560,7 @@ export default function AppBuilderEditor({
     useEffect(() => {
         if (!appId) return;
         if (loading) return;
+        if (!filesHydrated) return;
         if (isVercelChecking) return;
         if (didAutoPreviewStartRef.current) return;
 
@@ -4211,7 +4570,7 @@ export default function AppBuilderEditor({
         setPreviewMode("webcontainer");
         // Kick the runner once to ensure it starts.
         setRefreshKey((k) => k + 1);
-    }, [appId, loading, isVercelChecking]);
+    }, [appId, filesHydrated, loading, isVercelChecking]);
 
     const handleRefresh = async (forceFresh: boolean = false) => {
         if (isRefreshing) return;
@@ -4220,7 +4579,13 @@ export default function AppBuilderEditor({
         const cooldownMs = forceFresh ? 5000 : 1500;
         if (now - previewActionThrottleRef.current[throttleKey] < cooldownMs) return;
         previewActionThrottleRef.current[throttleKey] = now;
+        setFilesHydrated(false);
         
+        void fetchAndHydrateAppFiles({ forceRefreshToken: forceFresh }).catch((err) => {
+            console.warn("[app-builder] background file sync failed", err);
+            setFilesHydrated(true);
+        });
+
         if (forceFresh) {
             // Show confirmation dialog for force fresh start
             const confirmed = await showConfirm(
@@ -4403,11 +4768,26 @@ export default function AppBuilderEditor({
 
                     <div className="border-b border-neutral-200 bg-[linear-gradient(180deg,rgba(245,95,42,0.10),rgba(255,255,255,1))] px-5 py-4 sm:px-6">
                         <div className="mt-3 text-[22px] font-semibold tracking-[-0.02em] text-neutral-950">
-                            Generation Failed
+                            Generation failed
                         </div>
                         <div className="mt-2 max-w-md text-sm leading-6 text-neutral-600">
                             {generationFailureUi?.message || "Generation failed. Please retry."}
                         </div>
+                        {generationFailureUi?.secondaryMessage ? (
+                            <div className="mt-3 max-w-md text-sm leading-6 text-neutral-700">
+                                {generationFailureUi.secondaryMessage}
+                            </div>
+                        ) : null}
+                        {generationFailureDebugDetails ? (
+                            <details className="mt-3 rounded-2xl border border-neutral-200 bg-white/80 px-4 py-3 text-sm text-neutral-700">
+                                <summary className="cursor-pointer list-none font-medium text-neutral-900">
+                                    Debug details
+                                </summary>
+                                <pre className="mt-3 whitespace-pre-wrap break-words font-mono text-[11px] leading-5 text-neutral-700">
+                                    {generationFailureDebugDetails}
+                                </pre>
+                            </details>
+                        ) : null}
                     </div>
 
                     <div className="px-5 py-5 sm:px-6">
@@ -4439,7 +4819,7 @@ export default function AppBuilderEditor({
                                     className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-accent px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-accent-dark sm:w-auto"
                                 >
                                     <RefreshCw className="h-4 w-4" />
-                                    <span>Retry</span>
+                                    <span>{generationFailureUi?.actionLabel || "Retry"}</span>
                                 </button>
                             ) : null}
                         </div>
@@ -4807,7 +5187,7 @@ export default function AppBuilderEditor({
                     onChange={handleImageFileChange}
                 />
 
-                {isGenerationProcessing && previewMode === "webcontainer" ? (
+                {isGenerationProcessing && activeGeneration.status !== "error" && previewMode === "webcontainer" ? (
                     <div className="border-b bg-amber-50 px-4 py-2 text-xs text-amber-900">
                         {"Generating your website. Preview will update automatically when it's ready."}
                     </div>
@@ -4876,6 +5256,7 @@ export default function AppBuilderEditor({
                                     creditError={agentCreditError}
                                     previewReady={previewMode !== "webcontainer" ? true : isWebPreviewReady}
                                     previewIssue={previewMode !== "webcontainer" ? null : (previewIssue || autoPreviewError || previewError)}
+                                    onPreviewIssueFixRequest={handlePreviewIssueFixRequest}
                                     onUserMessageSent={() => {
                                         appBuilderAiMessagesSentRef.current += 1;
                                     }}
@@ -4887,7 +5268,12 @@ export default function AppBuilderEditor({
                                     {/* File Tree */}
                                     <div className="flex-1 border-b p-3 overflow-auto">
                                         <h3 className="font-medium mb-2 text-sm">Files</h3>
-                                        <FileTree nodes={fileTree} onFileSelect={handleFileSelect} />
+                                        <FileTree
+                                            nodes={fileTree}
+                                            onFileSelect={handleFileSelect}
+                                            expandedFolders={expandedFolders}
+                                            onToggleFolder={handleToggleFolder}
+                                        />
                                     </div>
 
                                     {/* Code Editor */}
@@ -4895,7 +5281,7 @@ export default function AppBuilderEditor({
                                         {currentFile ? (
                                             <Editor
                                                 height="100%"
-                                                language="javascript"
+                                                language={getEditorLanguageForPath(currentFile)}
                                                 value={code}
                                                 onChange={handleCodeChange}
                                                 theme="vs-dark"
@@ -5189,30 +5575,44 @@ export default function AppBuilderEditor({
                         {/* App Content */}
                         <div className="flex-1 bg-white">
                             {previewMode === "webcontainer" ? (
-                                <div className="h-full w-full p-3">
-                                    <WebContainerRunner
-                                        appId={appId}
-                                        files={effectivePreviewFiles}
-                                        onFileChange={handleFileChangeFromContainer}
-                                        onPreviewReadyChange={setIsWebPreviewReady}
-                                        onPreviewIssueChange={setPreviewIssue}
-                                        onCompileErrorFixRequest={handleCompileErrorFixRequest}
-                                        debugPreviewScenario={previewDebugScenario}
-                                        onBackendReady={() => {
-                                            // Keep mode pinned to webcontainer, but do not auto-reconnect.
-                                            // Auto-incrementing reconnectKey here causes a reconnect loop
-                                            // immediately after the iframe becomes visible.
-                                            setPreviewMode("webcontainer");
-                                        }}
-                                        onRequestRebuild={() => void handleRefresh(true)}
-                                        reloadToken={refreshKey}
-                                        applyToken={applyCompleteKey}
-                                        restartToken={localRestartKey}
-                                        reconnectToken={reconnectKey}
-                                        forceFreshStart={forceFreshStartKey.current}
-                                        pollingConfig={generationEver ? { maxPollingRetries: 480, maxContainerNotFound: 10 } : undefined}
-                                    />
-                                </div>
+                                filesHydrated ? (
+                                    <div className="h-full w-full p-3">
+                                        <WebContainerRunner
+                                            appId={appId}
+                                            files={effectivePreviewFiles}
+                                            filesReady={filesHydrated}
+                                            onFileChange={handleFileChangeFromContainer}
+                                            onPreviewReadyChange={setIsWebPreviewReady}
+                                            onPreviewIssueChange={setPreviewIssue}
+                                            onCompileErrorFixRequest={handleCompileErrorFixRequest}
+                                            debugPreviewScenario={previewDebugScenario}
+                                            onBackendReady={() => {
+                                                // Keep mode pinned to webcontainer, but do not auto-reconnect.
+                                                // Auto-incrementing reconnectKey here causes a reconnect loop
+                                                // immediately after the iframe becomes visible.
+                                                setPreviewMode("webcontainer");
+                                            }}
+                                            onRequestRebuild={() => void handleRefresh(true)}
+                                            reloadToken={refreshKey}
+                                            applyToken={applyCompleteKey}
+                                            restartToken={localRestartKey}
+                                            reconnectToken={reconnectKey}
+                                            forceFreshStart={forceFreshStartKey.current}
+                                            pollingConfig={generationEver ? { maxPollingRetries: 480, maxContainerNotFound: 10 } : undefined}
+                                        />
+                                    </div>
+                                ) : (
+                                    <div className="h-full w-full bg-[radial-gradient(circle_at_top,rgba(245,95,42,0.08),transparent_42%),linear-gradient(180deg,rgba(255,255,255,0.98),rgba(250,250,250,1))] flex items-center justify-center px-4">
+                                        <div className="flex flex-col items-center justify-center text-center">
+                                            <div className="kloner-dots" aria-hidden="true">
+                                                <span className="kloner-dot" />
+                                                <span className="kloner-dot" />
+                                                <span className="kloner-dot" />
+                                            </div>
+                                            <div className="text-sm text-black/60">Hydrating files...</div>
+                                        </div>
+                                    </div>
+                                )
                             ) : previewSrc ? (
                                 <iframe
                                     title="App preview"
@@ -5244,12 +5644,6 @@ export default function AppBuilderEditor({
                                                                 ? "Could not load preview."
                                                                 : "Preparing preview…"}
                                         </div>
-
-                                        {(autoPreviewError || previewError) ? (
-                                            <div className="mb-3 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-                                                {PREVIEW_RECOVERY_MESSAGE}
-                                            </div>
-                                        ) : null}
 
                                         <div className="mt-5 flex flex-wrap items-center justify-center gap-2 text-[11px] font-medium text-neutral-500">
                                             <span className="inline-flex items-center gap-1.5 rounded-full border border-neutral-200 bg-neutral-50 px-3 py-1">

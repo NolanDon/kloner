@@ -367,6 +367,43 @@ export async function POST(req: NextRequest) {
 
       const appData = (appResponse.json || {}) as any;
       const upstreamStatus = appResponse.status || 502;
+
+      if (upstreamStatus === 404) {
+        const routePath = typeof appData?.path === "string" && appData.path.trim() ? appData.path.trim() : null;
+        const routeScope = typeof appData?.scope === "string" && appData.scope.trim() ? appData.scope.trim() : null;
+        const backendMessage = appData.error || appData.message || "Not found";
+
+        await reportZipGenerationFailure({
+          req,
+          uid: decoded.uid,
+          url: normalizedUrl,
+          name,
+          reason: "backend_route_not_found",
+          statusCode: 404,
+          reqId: appResponse.reqId,
+          backendUrl: appResponse.url,
+          backendStatus: appResponse.status,
+          backendMessage,
+        }).catch(() => null);
+
+        return NextResponse.json(
+          {
+            error: "The generation service is temporarily unavailable. Please try again in a bit.",
+            code: "BACKEND_ROUTE_NOT_FOUND",
+            reqId: appResponse.reqId,
+            upstreamStatus,
+            scope: routeScope,
+            path: routePath,
+            details: {
+              backendError: backendMessage,
+              scope: routeScope,
+              path: routePath,
+            },
+          },
+          { status: 404 },
+        );
+      }
+
       await reportZipGenerationFailure({
         req,
         uid: decoded.uid,

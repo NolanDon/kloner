@@ -366,6 +366,192 @@ function normalizeUrlStatus(
     return "unknown";
 }
 
+type UrlRescanWarningState = {
+    blocking: boolean;
+    code: string | null;
+    message: string;
+    details: string | null;
+    action: string | null;
+    retryable: boolean | null;
+};
+
+function stringifyWarningDetails(value: unknown): string | null {
+    if (typeof value === "string") {
+        const trimmed = value.trim();
+        return trimmed || null;
+    }
+
+    if (typeof value === "number" || typeof value === "boolean") {
+        return String(value);
+    }
+
+    if (!value || typeof value !== "object") return null;
+
+    try {
+        return JSON.stringify(value, null, 2);
+    } catch {
+        return null;
+    }
+}
+
+function extractUrlRescanWarning(source: any): UrlRescanWarningState | null {
+    if (!source || typeof source !== "object") return null;
+
+    const archiveHealth = source.archiveHealth && typeof source.archiveHealth === "object" ? source.archiveHealth : null;
+    const warning = source.warning && typeof source.warning === "object" ? source.warning : null;
+
+    const codeCandidates = [
+        warning?.code,
+        warning?.warningCode,
+        source.warningCode,
+        source.errorCode,
+        source.errorReason,
+        source.code,
+        archiveHealth?.warningCode,
+        archiveHealth?.errorCode,
+        archiveHealth?.errorReason,
+    ];
+    const rawCode = codeCandidates.map((value) => String(value || "").trim()).find(Boolean) || null;
+    const normalizedCode = rawCode ? rawCode.toLowerCase() : "";
+
+    const actionCandidates = [
+        warning?.warningAction,
+        source.warningAction,
+        source.warning_action,
+        archiveHealth?.warningAction,
+    ];
+    const action = actionCandidates.map((value) => String(value || "").trim()).find(Boolean) || null;
+    const normalizedAction = action ? action.toLowerCase() : "";
+
+    const needsRescan =
+        archiveHealth?.needsRescan === true ||
+        source.needsRescan === true ||
+        source.rescanRequired === true ||
+        normalizedCode === "archive_rescan_required" ||
+        normalizedCode === "rescan_url" ||
+        normalizedAction.includes("rescan") ||
+        normalizedCode.includes("rescan");
+
+    const messageCandidates = [
+        warning?.message,
+        warning?.warningMessage,
+        source.warningMessage,
+        source.userMessage,
+        source.message,
+        source.errorMessage,
+        source.errorReason,
+        archiveHealth?.warningMessage,
+        archiveHealth?.userMessage,
+        archiveHealth?.errorReason,
+    ];
+    const detailsCandidates = [
+        warning?.details,
+        source.details,
+        archiveHealth?.details,
+    ];
+
+    const message =
+        messageCandidates.map((value) => String(value || "").trim()).find(Boolean) ||
+        (needsRescan
+            ? "The scan is incomplete or stale. Rescan before generating to avoid bad output."
+            : "");
+
+    const details = detailsCandidates
+        .map((value) => stringifyWarningDetails(value))
+        .find(Boolean) || null;
+
+    const retryableValue =
+        typeof source.retryable === "boolean"
+            ? source.retryable
+            : typeof warning?.retryable === "boolean"
+                ? warning.retryable
+                : typeof archiveHealth?.retryable === "boolean"
+                    ? archiveHealth.retryable
+                    : null;
+
+    if (!needsRescan && !message && !details) return null;
+
+    return {
+        blocking: needsRescan,
+        code: rawCode,
+        message,
+        details,
+        action,
+        retryable: retryableValue,
+    };
+}
+
+function hasPersistedUrlRescanFields(source: any): boolean {
+    if (!source || typeof source !== "object") return false;
+    const archiveHealth = source.archiveHealth && typeof source.archiveHealth === "object" ? source.archiveHealth : null;
+
+    return Boolean(
+        archiveHealth?.needsRescan === true &&
+        typeof archiveHealth?.warningCode !== "undefined" &&
+        typeof archiveHealth?.warningMessage !== "undefined" &&
+        typeof archiveHealth?.warningAction !== "undefined" &&
+        typeof archiveHealth?.errorCode !== "undefined" &&
+        typeof archiveHealth?.errorReason !== "undefined" &&
+        typeof archiveHealth?.userMessage !== "undefined" &&
+        typeof archiveHealth?.retryable !== "undefined" &&
+        typeof archiveHealth?.details !== "undefined" &&
+        typeof source.warningCode !== "undefined" &&
+        typeof source.warningMessage !== "undefined" &&
+        typeof source.warningAction !== "undefined" &&
+        typeof source.errorCode !== "undefined" &&
+        typeof source.errorReason !== "undefined" &&
+        typeof source.userMessage !== "undefined" &&
+        typeof source.retryable !== "undefined" &&
+        typeof source.details !== "undefined"
+    );
+}
+
+function buildUrlRescanBackfillPatch(source: any, warning: UrlRescanWarningState | null): Partial<UrlDoc> | null {
+    if (!warning?.blocking || !source || typeof source !== "object") return null;
+
+    const archiveHealth = source.archiveHealth && typeof source.archiveHealth === "object" ? source.archiveHealth : null;
+    const warningObject = source.warning && typeof source.warning === "object" ? source.warning : null;
+    const nextWarningCode = source.warningCode ?? warningObject?.code ?? archiveHealth?.warningCode ?? warning.code ?? source.errorCode ?? source.errorReason ?? null;
+    const nextWarningMessage = source.warningMessage ?? warningObject?.message ?? archiveHealth?.warningMessage ?? warning.message ?? source.userMessage ?? source.errorReason ?? null;
+    const nextWarningAction = source.warningAction ?? warningObject?.warningAction ?? archiveHealth?.warningAction ?? warning.action ?? null;
+    const nextErrorCode = source.errorCode ?? warningObject?.code ?? archiveHealth?.errorCode ?? warning.code ?? null;
+    const nextErrorReason = source.errorReason ?? warningObject?.message ?? archiveHealth?.errorReason ?? warning.message ?? null;
+    const nextUserMessage = source.userMessage ?? warningObject?.message ?? archiveHealth?.userMessage ?? warning.message ?? null;
+    const nextRetryable = typeof source.retryable === "boolean"
+        ? source.retryable
+        : typeof warningObject?.retryable === "boolean"
+            ? warningObject.retryable
+            : typeof archiveHealth?.retryable === "boolean"
+                ? archiveHealth.retryable
+                : warning.retryable;
+    const nextDetails = source.details ?? warningObject?.details ?? archiveHealth?.details ?? warning.details ?? null;
+
+    return {
+        archiveHealth: {
+            needsRescan: true,
+            warning: warningObject ?? null,
+            warningCode: nextWarningCode,
+            warningMessage: nextWarningMessage,
+            warningAction: nextWarningAction,
+            errorCode: nextErrorCode,
+            errorReason: nextErrorReason,
+            userMessage: nextUserMessage,
+            retryable: nextRetryable,
+            details: nextDetails,
+        },
+        warning: warningObject ?? null,
+        warningCode: nextWarningCode,
+        warningMessage: nextWarningMessage,
+        warningAction: nextWarningAction,
+        errorCode: nextErrorCode,
+        errorReason: nextErrorReason,
+        userMessage: nextUserMessage,
+        retryable: nextRetryable,
+        details: nextDetails,
+        updatedAt: serverTimestamp(),
+    };
+}
+
 function getUrlRetryBackoffDelayMs(attempt: number): number {
     if (attempt <= 0) return 0;
     const index = attempt - 1;
@@ -2491,6 +2677,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
         if (effectiveLocked) return;
         if (!selectedGenerationType) return;
         if (selectedGenerationType === "html" && !canGenerateHtmlFromUrl) return;
+        if (sourceUrlCannotGenerate) return;
 
         closeGenerationModal();
         void onAppClick?.(selectedGenerationType);
@@ -2644,7 +2831,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                 ) : null}
 
                                 <div className="space-y-3">
-                                    {isDev ? (
+                                    
                                         <div className="relative">
                                             <button
                                                 type="button"
@@ -2709,7 +2896,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                                 </div>
                                             </button>
                                         </div>
-                                    ) : null}
+                                    
 
                                     <div className="relative">
                                         <button
@@ -2754,7 +2941,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
 
                                                     {sourceUrlCannotGenerate ? (
                                                         <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                                                            URL scan failed earlier, but you can still start a fresh rescan from here.
+                                                            The scan is incomplete or stale. Rescan before generating to avoid bad output.
                                                         </div>
                                                     ) : null}
                                                 </div>
@@ -2833,7 +3020,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                 <button
                                     type="button"
                                     onClick={handleContinueGeneration}
-                                    disabled={effectiveLocked || !selectedGenerationType || (selectedGenerationType === "html" && !canGenerateHtmlFromUrl)}
+                                    disabled={effectiveLocked || !selectedGenerationType || (selectedGenerationType === "html" && !canGenerateHtmlFromUrl) || sourceUrlCannotGenerate}
                                     className="rounded-xl px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-60 disabled:cursor-not-allowed"
                                     style={{ backgroundColor: ACCENT }}
                                 >
@@ -3239,9 +3426,16 @@ export default function PreviewPage(): JSX.Element {
     const [appWizardPrompt, setAppWizardPrompt] = useState<string>("");
     const [appWizardPromptFocused, setAppWizardPromptFocused] = useState(false);
     const [appWizardSeedRenderId, setAppWizardSeedRenderId] = useState<string | null>(null);
+    const [urlGenerationErrorDetails, setUrlGenerationErrorDetails] = useState<string>("");
     const [urlGenerationHealthWarning, setUrlGenerationHealthWarning] = useState<null | {
         url: string;
         generationFormat: "nextjs" | "html";
+        blocking: boolean;
+        code: string | null;
+        message: string | null;
+        details: string | null;
+        action: string | null;
+        retryable: boolean | null;
         warnings: Array<{
             code: string;
             message: string;
@@ -3843,7 +4037,6 @@ export default function PreviewPage(): JSX.Element {
         setPendingAppBuilderAppId(null);
         setPendingCreatedApp(null);
         pendingCreatedAppLaunchRequestedRef.current = null;
-        setUrlGenerationHealthWarning(null);
     }, []);
 
     const openUrlGenerationRescanModal = useCallback((opts: { message: string; url?: string | null }) => {
@@ -3871,7 +4064,6 @@ export default function PreviewPage(): JSX.Element {
         setPendingAppBuilderAppId(null);
         setPendingCreatedApp(null);
         pendingCreatedAppLaunchRequestedRef.current = null;
-        setUrlGenerationHealthWarning(null);
     }, [currentAppId, pendingCreatedApp?.id]);
 
     type UrlGenerationAcceptedResponse = {
@@ -3888,7 +4080,18 @@ export default function PreviewPage(): JSX.Element {
         rescanRecommended: boolean;
         archiveZipPath: string | null;
         generationFormat: "nextjs" | "html";
+        details?: any;
+        warning?: any;
+        warningCode?: string | null;
+        warningMessage?: string | null;
+        warningAction?: string | null;
+        errorCode?: string | null;
+        errorReason?: string | null;
+        userMessage?: string | null;
+        retryable?: boolean | null;
     };
+
+    type UrlGenerationFailureKind = "validation_error" | "rescan_required" | "server_error" | "unknown";
 
     type UrlGenerationTerminalResponse = {
         kind: "terminal_failure";
@@ -3897,6 +4100,19 @@ export default function PreviewPage(): JSX.Element {
         requestId: string | null;
         url: string | null;
         status: number;
+        failureKind: UrlGenerationFailureKind;
+        details?: any;
+        debugDetails?: string | null;
+        scope?: string | null;
+        path?: string | null;
+        warning?: any;
+        warningCode?: string | null;
+        warningMessage?: string | null;
+        warningAction?: string | null;
+        errorReason?: string | null;
+        userMessage?: string | null;
+        retryable?: boolean | null;
+        rescanRequired?: boolean;
     };
 
     type UrlGenerationResponse = UrlGenerationAcceptedResponse | UrlGenerationTerminalResponse;
@@ -3905,7 +4121,72 @@ export default function PreviewPage(): JSX.Element {
         const requestId = typeof data?.requestId === "string" && data.requestId.trim() ? data.requestId.trim() : null;
         const urlValue = typeof data?.url === "string" && data.url.trim() ? data.url.trim() : null;
         const code = typeof data?.code === "string" && data.code.trim() ? data.code.trim() : null;
+        const scope = typeof data?.scope === "string" && data.scope.trim() ? data.scope.trim() : null;
+        const path = typeof data?.path === "string" && data.path.trim() ? data.path.trim() : null;
         const hardFailureCode = code === "ARCHIVE_ZIP_MISSING" || code === "gemini_input_too_large";
+        const details = typeof data?.details === "object" && data.details ? data.details : null;
+        const warning = typeof data?.warning === "object" && data.warning ? data.warning : null;
+        const warningCode = typeof data?.warningCode === "string" && data.warningCode.trim() ? data.warningCode.trim() : null;
+        const warningMessage = typeof data?.warningMessage === "string" && data.warningMessage.trim() ? data.warningMessage.trim() : null;
+        const warningAction = typeof data?.warningAction === "string" && data.warningAction.trim() ? data.warningAction.trim() : null;
+        const errorReason = typeof data?.errorReason === "string" && data.errorReason.trim() ? data.errorReason.trim() : null;
+        const userMessage = typeof data?.userMessage === "string" && data.userMessage.trim() ? data.userMessage.trim() : null;
+        const retryable = typeof data?.retryable === "boolean" ? data.retryable : null;
+        const rescanRequired = Boolean(
+            data?.archiveHealth?.needsRescan === true ||
+            data?.needsRescan === true ||
+            data?.rescanRequired === true ||
+            (typeof warningAction === "string" && warningAction.toLowerCase().includes("rescan")) ||
+            (typeof warningCode === "string" && /rescan/.test(warningCode.toLowerCase())) ||
+            code === "ARCHIVE_RESCAN_REQUIRED" ||
+            code === "RESCAN_URL"
+        );
+
+        const buildRouteMismatchDetails = () => {
+            const lines = [
+                "Backend route mismatch detected.",
+                scope ? `Scope: ${scope}` : null,
+                path ? `Path: ${path}` : null,
+                "Update the client to the current generate-from-URL route instead of retrying the scan.",
+            ].filter(Boolean);
+            return lines.join("\n");
+        };
+
+        const buildValidationMessage = () => {
+            if (typeof data?.error === "string" && data.error.trim()) return data.error.trim();
+            if (code === "BLOCKED_URL") return "Please enter a valid public http(s) URL.";
+            if (code === "PREVIEW_CREDITS_EXHAUSTED") return "Monthly preview limit reached for your plan.";
+            return "Please check the URL and try again.";
+        };
+
+        const buildServerMessage = () => {
+            if (typeof data?.error === "string" && data.error.trim()) return data.error.trim();
+            if (typeof data?.message === "string" && data.message.trim()) return data.message.trim();
+            return "Something went wrong while generating this URL. Please retry.";
+        };
+
+        const isRouteMismatch = res.status === 404 || code === "BACKEND_ROUTE_NOT_FOUND";
+        const isValidationError = res.status === 400 || res.status === 413 || code === "BLOCKED_URL";
+        const isRescanFailure = rescanRequired || (res.status === 409 && code !== "ARCHIVE_ZIP_MISSING" && code !== "gemini_input_too_large");
+        const failureKind: UrlGenerationFailureKind = isRouteMismatch
+            ? "server_error"
+            : isRescanFailure
+                ? "rescan_required"
+                : isValidationError
+                    ? "validation_error"
+                    : res.status >= 500
+                        ? "server_error"
+                        : "unknown";
+        const failureMessage = isRouteMismatch
+            ? "The generation service is temporarily unavailable. Please try again in a bit."
+            : failureKind === "validation_error"
+                ? buildValidationMessage()
+                : failureKind === "server_error"
+                    ? buildServerMessage()
+                    : rescanRequired
+                        ? "This URL must be rescanned before generation can continue."
+                        : buildServerMessage();
+        const failureDebugDetails = isRouteMismatch ? buildRouteMismatchDetails() : null;
 
         if (res.status === 202 && res.ok) {
             const appId = typeof data?.appId === "string" ? data.appId.trim() : "";
@@ -3913,11 +4194,26 @@ export default function PreviewPage(): JSX.Element {
             if (hardFailureCode || !appId || !jobId) {
                 return {
                     kind: "terminal_failure",
-                    message: "Something went wrong. Please rescan the URL and try again.",
+                    message: rescanRequired
+                        ? "This URL must be rescanned before generation can continue."
+                        : "Something went wrong. Please rescan the URL and try again.",
                     code: code || null,
                     requestId,
                     url: urlValue,
                     status: res.status,
+                    failureKind,
+                    details,
+                    debugDetails: failureDebugDetails,
+                    scope,
+                    path,
+                    warning,
+                    warningCode,
+                    warningMessage,
+                    warningAction,
+                    errorReason,
+                    userMessage,
+                    retryable,
+                    rescanRequired,
                 };
             }
 
@@ -3930,27 +4226,64 @@ export default function PreviewPage(): JSX.Element {
                 rescanRecommended: data?.rescanRecommended === true,
                 archiveZipPath: typeof data?.archiveZipPath === "string" ? data.archiveZipPath : null,
                 generationFormat: data?.generationFormat === "html" ? "html" : "nextjs",
+                details,
+                warning,
+                warningCode,
+                warningMessage,
+                warningAction,
+                errorCode: typeof data?.errorCode === "string" ? data.errorCode : null,
+                errorReason,
+                userMessage,
+                retryable,
             };
         }
 
         if (hardFailureCode || res.status === 400 || res.status === 409 || res.status === 413 || !res.ok) {
             return {
                 kind: "terminal_failure",
-                message: "Something went wrong. Please rescan the URL and try again.",
+                message: rescanRequired
+                    ? "This URL must be rescanned before generation can continue."
+                    : "Something went wrong. Please rescan the URL and try again.",
                 code,
                 requestId,
                 url: urlValue,
                 status: res.status,
+                failureKind,
+                details,
+                debugDetails: failureDebugDetails,
+                scope,
+                path,
+                warning,
+                warningCode,
+                warningMessage,
+                warningAction,
+                errorReason,
+                userMessage,
+                retryable,
+                rescanRequired,
             };
         }
 
         return {
             kind: "terminal_failure",
-            message: "Something went wrong. Please rescan the URL and try again.",
+            message: failureMessage,
             code,
             requestId,
             url: urlValue,
             status: res.status,
+            failureKind,
+            details,
+            debugDetails: failureDebugDetails,
+            scope,
+            path,
+            warning,
+            warningCode,
+            warningMessage,
+            warningAction,
+            errorReason,
+            userMessage,
+            retryable,
+            rescanRequired,
         };
     }
 
@@ -4057,14 +4390,22 @@ export default function PreviewPage(): JSX.Element {
 
                 const data = await res.json().catch(() => ({} as any));
                 const parsed = parseUrlGenerationResponse(res, data);
+                const responseWarning = extractUrlRescanWarning(data);
 
                 if (parsed.kind === "accepted") {
+                    setUrlGenerationErrorDetails("");
                     pendingUrlGenerationAppIdRef.current = parsed.appId;
-                    if (parsed.rescanRecommended) {
+                    if (parsed.rescanRecommended || responseWarning) {
                         const warnings = Array.isArray(parsed.warnings) ? parsed.warnings : [];
                         setUrlGenerationHealthWarning({
                             url: url,
                             generationFormat: parsed.generationFormat,
+                            blocking: Boolean(responseWarning?.blocking),
+                            code: responseWarning?.code || null,
+                            message: responseWarning?.message || null,
+                            details: responseWarning?.details || null,
+                            action: responseWarning?.action || null,
+                            retryable: responseWarning?.retryable ?? null,
                             warnings,
                         });
                     } else {
@@ -4083,9 +4424,15 @@ export default function PreviewPage(): JSX.Element {
                         setCurrentAppId(appId);
                     }
                 } else {
-                    setUrlGenerationHealthWarning(null);
+                    const shouldPersistRescanWarning =
+                        responseWarning?.blocking ||
+                        parsed.failureKind === "rescan_required";
+                    if (!shouldPersistRescanWarning) {
+                        setUrlGenerationHealthWarning(null);
+                    }
                     if (mode === "url") {
                         if (parsed.status === 429 || parsed.code === "PREVIEW_CREDITS_EXHAUSTED") {
+                            setUrlGenerationErrorDetails("");
                             pendingUrlGenerationAppIdRef.current = null;
                             setPendingCreatedApp(null);
                             setAppBuilderOpen(false);
@@ -4096,8 +4443,31 @@ export default function PreviewPage(): JSX.Element {
                         }
 
                         if (parsed.status === 403) {
+                            setUrlGenerationErrorDetails("");
                             setErr("");
                             showWebsiteExitOfferPaywall();
+                            return null;
+                        }
+
+                        if (parsed.failureKind === "validation_error") {
+                            pendingUrlGenerationAppIdRef.current = null;
+                            setPendingCreatedApp(null);
+                            setAppBuilderOpen(false);
+                            setCurrentAppId(null);
+                            setUrlGenerationHealthWarning(null);
+                            setUrlGenerationErrorDetails(parsed.debugDetails || "");
+                            setErr(parsed.message || "Please check the URL and try again.");
+                            return null;
+                        }
+
+                        if (parsed.failureKind === "server_error") {
+                            pendingUrlGenerationAppIdRef.current = null;
+                            setPendingCreatedApp(null);
+                            setAppBuilderOpen(false);
+                            setCurrentAppId(null);
+                            setUrlGenerationHealthWarning(null);
+                            setUrlGenerationErrorDetails(parsed.debugDetails || "");
+                            setErr(parsed.message || "Something went wrong while generating this URL. Please retry.");
                             return null;
                         }
 
@@ -4105,10 +4475,47 @@ export default function PreviewPage(): JSX.Element {
                         setPendingCreatedApp(null);
                         setAppBuilderOpen(false);
                         setCurrentAppId(null);
-                        openUrlGenerationRescanModal({
-                            message: "Something went wrong. Please rescan the URL and try again.",
-                            url: parsed.url || url,
-                        });
+                        setUrlGenerationErrorDetails("");
+                        const rescanMessage =
+                            responseWarning?.blocking && responseWarning.message
+                                ? responseWarning.message
+                                : parsed.message || "This URL must be rescanned before generation can continue.";
+                        if (parsed.failureKind === "rescan_required") {
+                            setUrlGenerationHealthWarning({
+                                url: parsed.url || url,
+                                generationFormat: "nextjs",
+                                blocking: true,
+                                code: responseWarning?.code || parsed.code || null,
+                                message: responseWarning?.message || parsed.message || null,
+                                details: responseWarning?.details || null,
+                                action: responseWarning?.action || null,
+                                retryable: responseWarning?.retryable ?? null,
+                                warnings: responseWarning ? [
+                                    {
+                                        code: responseWarning.code || parsed.code || "rescan_required",
+                                        message: responseWarning.message,
+                                        severity: "warning",
+                                        rescanRecommended: true,
+                                    },
+                                ] : [],
+                            });
+                        }
+
+                        if (parsed.failureKind === "rescan_required") {
+                            openUrlGenerationRescanModal({
+                                message: rescanMessage,
+                                url: parsed.url || url,
+                            });
+
+                            if (optimisticAppBuilderId) {
+                                setAppBuilderOpen(false);
+                                setCurrentAppId(null);
+                            }
+
+                            return null;
+                        }
+
+                        setErr(parsed.message || "Something went wrong while generating this URL. Please retry.");
 
                         if (optimisticAppBuilderId) {
                             setAppBuilderOpen(false);
@@ -6150,12 +6557,58 @@ export default function PreviewPage(): JSX.Element {
         return statusUi;
     }, [activeUrlDoc, targetUrl, docData, captureTerminalFailureUrl, startRequested, err]);
 
-    const activeUrlCannotGenerate = activeUrlStatusUi === "error" || activeUrlStatusUi === "stale";
+    const activeUrlBackendWarning = useMemo(() => {
+        if (!activeUrlDoc) return null;
+
+        const normalizedActive = validateAndNormalizePublicHttpUrl(String(activeUrlDoc.url || ""));
+        const activeCanonical = normalizedActive ? normUrl(normalizedActive) : "";
+        const targetCanonical = targetUrl ? normUrl(targetUrl) : "";
+        const isSelectedTarget = !!activeCanonical && !!targetCanonical && activeCanonical === targetCanonical;
+
+        const source: any = isSelectedTarget && docData
+            ? {
+                ...activeUrlDoc,
+                ...docData,
+            }
+            : activeUrlDoc;
+
+        return extractUrlRescanWarning(source);
+    }, [activeUrlDoc, targetUrl, docData]);
+
+    const activeUrlCannotGenerate =
+        activeUrlStatusUi === "error" ||
+        activeUrlStatusUi === "stale" ||
+        Boolean(activeUrlBackendWarning?.blocking) ||
+        Boolean(
+            urlGenerationHealthWarning?.blocking &&
+            validateAndNormalizePublicHttpUrl(urlGenerationHealthWarning.url || "") &&
+            targetUrl &&
+            normUrl(validateAndNormalizePublicHttpUrl(urlGenerationHealthWarning.url || "") as string) === normUrl(targetUrl)
+        );
 
     const activeUrlIssueHref = useMemo(() => {
         const normalized = validateAndNormalizePublicHttpUrl(String(activeUrlDoc?.url || ""));
         return normalized ? normUrl(normalized) : "";
     }, [activeUrlDoc?.url]);
+
+    const localUrlGenerationBlockingWarning = useMemo(() => {
+        if (!urlGenerationHealthWarning?.blocking) return null;
+        const normalized = validateAndNormalizePublicHttpUrl(String(urlGenerationHealthWarning.url || ""));
+        const warningCanonical = normalized ? normUrl(normalized) : "";
+        const targetCanonical = targetUrl ? normUrl(targetUrl) : "";
+        if (!warningCanonical || !targetCanonical || warningCanonical !== targetCanonical) return null;
+
+        return {
+            blocking: true,
+            code: urlGenerationHealthWarning.code,
+            message: urlGenerationHealthWarning.message || "The scan is incomplete or stale. Rescan before generating to avoid bad output.",
+            details: urlGenerationHealthWarning.details,
+            action: urlGenerationHealthWarning.action,
+            retryable: urlGenerationHealthWarning.retryable,
+        };
+    }, [targetUrl, urlGenerationHealthWarning]);
+
+    const activeUrlRescanWarning = activeUrlBackendWarning || localUrlGenerationBlockingWarning;
 
     const retryCooldownUntil = activeUrlIssueHref ? (retryBackoffByUrl[activeUrlIssueHref]?.until ?? 0) : 0;
 
@@ -6170,15 +6623,43 @@ export default function PreviewPage(): JSX.Element {
     const showActiveUrlIssueWarning =
         activeUrlCannotGenerate &&
         !!activeUrlIssueHref &&
-        captureTerminalFailureUrl === activeUrlIssueHref &&
+        (Boolean(activeUrlRescanWarning?.blocking) || captureTerminalFailureUrl === activeUrlIssueHref) &&
         dismissedUrlIssueCanonical !== activeUrlIssueHref;
     const retryCooldownActive = retryCooldownUntil > Date.now();
     const retryCooldownRemainingMs = retryCooldownActive ? Math.max(0, retryCooldownUntil - retryCooldownTick) : 0;
-    const retryLabel = retryCooldownActive ? `Retry in ${formatRetryDelayLabel(retryCooldownRemainingMs)}` : "Retry";
+    const retryLabel = retryCooldownActive
+        ? `Retry in ${formatRetryDelayLabel(retryCooldownRemainingMs)}`
+        : activeUrlBackendWarning?.blocking
+            ? "Rescan URL"
+            : "Retry";
 
     const activeUrlIssueDetails = useMemo(() => {
         if (!showActiveUrlIssueWarning) return null;
         const activeUrlDisplay = activeUrlDoc?.url || activeUrlIssueHref;
+
+        if (activeUrlRescanWarning?.blocking) {
+            return (
+                <div className="space-y-3">
+                    <p className="font-semibold text-amber-950">
+                        {activeUrlRescanWarning.message || "The scan is incomplete or stale. Rescan before generating to avoid bad output."}
+                    </p>
+                    <p>
+                        Rescan this URL before generating. The current scan can&apos;t be trusted yet.
+                    </p>
+                    {activeUrlRescanWarning.details ? (
+                        <div className="rounded-lg border border-amber-200 bg-white px-3 py-2 text-[11px] leading-5 text-amber-950/90">
+                            <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-amber-800">
+                                Details
+                            </div>
+                            <pre className="whitespace-pre-wrap break-words font-mono text-[11px] leading-5 text-amber-950/90">
+                                {activeUrlRescanWarning.details}
+                            </pre>
+                        </div>
+                    ) : null}
+                </div>
+            );
+        }
+
         return (
             <div className="space-y-3">
                 <p className="font-semibold text-amber-950">
@@ -6201,7 +6682,7 @@ export default function PreviewPage(): JSX.Element {
                 </div>
             </div>
         );
-    }, [showActiveUrlIssueWarning, activeUrlDoc?.url, activeUrlIssueHref]);
+    }, [showActiveUrlIssueWarning, activeUrlDoc?.url, activeUrlIssueHref, activeUrlRescanWarning]);
 
     useEffect(() => {
         writeUrlRetryBackoffMap(retryBackoffByUrl);
@@ -6478,6 +6959,7 @@ export default function PreviewPage(): JSX.Element {
 
     const lastDocShotsKeyRef = useRef<string>("");
     const prevUrlDocContextRef = useRef<{ uid: string; targetUrl: string }>({ uid: "", targetUrl: "" });
+    const urlRescanBackfillKeyRef = useRef<string>("");
 
     useEffect(() => {
         let unsubUrlDoc: Unsubscribe | null = null;
@@ -6496,6 +6978,45 @@ export default function PreviewPage(): JSX.Element {
             if (contextChanged) {
                 setErr("");
                 setInfo("");
+                useEffect(() => {
+                    if (!user || !docSnap || !docData) return;
+
+                    const targetCanonical = targetUrl ? normUrl(targetUrl) : "";
+                    const docCanonical = validateAndNormalizePublicHttpUrl(String(docData.url || ""));
+                    const currentCanonical = docCanonical ? normUrl(docCanonical) : "";
+                    if (!targetCanonical || !currentCanonical || targetCanonical !== currentCanonical) return;
+
+                    const localBlockingWarning =
+                        urlGenerationHealthWarning &&
+                        validateAndNormalizePublicHttpUrl(String(urlGenerationHealthWarning.url || "")) &&
+                        normUrl(validateAndNormalizePublicHttpUrl(String(urlGenerationHealthWarning.url || "")) as string) === targetCanonical &&
+                        urlGenerationHealthWarning.blocking
+                            ? {
+                                blocking: true,
+                                code: urlGenerationHealthWarning.code,
+                                message: urlGenerationHealthWarning.message || "The scan is incomplete or stale. Rescan before generating to avoid bad output.",
+                                details: urlGenerationHealthWarning.details,
+                                action: urlGenerationHealthWarning.action,
+                                retryable: urlGenerationHealthWarning.retryable,
+                            }
+                            : null;
+
+                    const derivedWarning = localBlockingWarning || activeUrlBackendWarning || extractUrlRescanWarning(docData);
+                    if (!derivedWarning?.blocking) return;
+                    if (hasPersistedUrlRescanFields(docData)) return;
+
+                    const patch = buildUrlRescanBackfillPatch(docData, derivedWarning);
+                    if (!patch) return;
+
+                    const backfillSignature = `${docSnap.id}:${String(patch.warningCode || "")}:${String(patch.warningMessage || "")}:${String(patch.warningAction || "")}:${String(patch.errorCode || "")}:${String(patch.errorReason || "")}`;
+                    if (urlRescanBackfillKeyRef.current === backfillSignature) return;
+                    urlRescanBackfillKeyRef.current = backfillSignature;
+
+                    void updateDoc(docSnap.ref, patch as any).catch((err) => {
+                        console.warn("[dashboard] failed to backfill URL rescan warning", err);
+                        urlRescanBackfillKeyRef.current = "";
+                    });
+                }, [activeUrlBackendWarning, docData, docSnap, targetUrl, urlGenerationHealthWarning, user]);
             }
             setLoading(true);
             setDocSnap(null);
@@ -9018,6 +9539,12 @@ export default function PreviewPage(): JSX.Element {
         return normalized ? normUrl(normalized) : "";
     }, [showUrlAccessInError, targetUrl]);
 
+    useEffect(() => {
+        if (!err) {
+            setUrlGenerationErrorDetails("");
+        }
+    }, [err]);
+
     const isUrlProcessingError = Boolean(err) && (
         showActiveUrlIssueWarning ||
         /failed to process|unable to process|couldn't finish capturing this URL|failed to queue URL capture/i.test(err)
@@ -9799,13 +10326,14 @@ export default function PreviewPage(): JSX.Element {
                                                 lastError: (docData as any)?.lastError,
                                             }
                                             : u;
+                                        const rowBackendWarning = extractUrlRescanWarning(rowStatusSource);
                                         const statusUi = normalizeUrlStatus(
                                             rowStatusSource?.status,
                                             getUrlArtifactCount(rowStatusSource),
                                             rowStatusSource?.updatedAt,
                                             rowStatusSource?.lastError,
                                         );
-                                        const isFailedUrl = statusUi === "error" || statusUi === "stale";
+                                        const isFailedUrl = statusUi === "error" || statusUi === "stale" || Boolean(rowBackendWarning?.blocking);
                                         const failedUrlLabel = statusUi === "stale" ? "Stale" : "Failed";
 
                                         return (
@@ -9848,6 +10376,22 @@ export default function PreviewPage(): JSX.Element {
                                                             <span className="ml-2 shrink-0 rounded-full border border-red-200 bg-red-50 px-2 py-0.5 text-[11px] font-medium text-red-700">
                                                                 Invalid
                                                             </span>
+                                                        ) : rowBackendWarning?.blocking ? (
+                                                            <button
+                                                                type="button"
+                                                                onClick={(e) => {
+                                                                    e.preventDefault();
+                                                                    e.stopPropagation();
+                                                                    retryTrackedUrl(u.url);
+                                                                }}
+                                                                disabled={retryCooldownActive}
+                                                                className="ml-2 inline-flex shrink-0 items-center gap-1.5 rounded-full border border-amber-300 bg-amber-100 px-2.5 py-1 text-[11px] font-semibold text-amber-900 shadow-sm transition hover:bg-amber-200 disabled:cursor-not-allowed disabled:opacity-50"
+                                                                title="Rescan before generating"
+                                                                aria-label={`Rescan ${u.url}`}
+                                                            >
+                                                                <AlertTriangle className="h-3 w-3" />
+                                                                <span>Rescan required</span>
+                                                            </button>
                                                         ) : isFailedUrl ? (
                                                             <button
                                                                 type="button"
@@ -9908,7 +10452,11 @@ export default function PreviewPage(): JSX.Element {
                     <RedIssueBanner
                         message={err}
                         onDismiss={() => setErr("")}
-                        details={safeErrorUrl ? (
+                        details={urlGenerationErrorDetails ? (
+                            <pre className="whitespace-pre-wrap break-words font-mono text-[11px] leading-5 text-red-900/90">
+                                {urlGenerationErrorDetails}
+                            </pre>
+                        ) : safeErrorUrl ? (
                             <div className="flex flex-wrap items-center gap-2">
                                 <span
                                     className="inline-flex max-w-full items-center rounded-md border border-red-200 bg-white px-2 py-1 font-mono text-[11px] text-red-800"
@@ -9933,7 +10481,11 @@ export default function PreviewPage(): JSX.Element {
                     <RedIssueBanner
                         message={err}
                         onDismiss={() => setErr("")}
-                        details={safeErrorUrl ? (
+                        details={urlGenerationErrorDetails ? (
+                            <pre className="whitespace-pre-wrap break-words font-mono text-[11px] leading-5 text-red-900/90">
+                                {urlGenerationErrorDetails}
+                            </pre>
+                        ) : safeErrorUrl ? (
                             <div className="flex flex-wrap items-center gap-2">
                                 <span
                                     className="inline-flex max-w-full items-center rounded-md border border-red-200 bg-white px-2 py-1 font-mono text-[11px] text-red-800"
@@ -10112,55 +10664,6 @@ export default function PreviewPage(): JSX.Element {
                         </button>
                     </div>
 
-                    {urlGenerationHealthWarning?.warnings?.length ? (
-                        <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-amber-950 shadow-sm">
-                            <div className="flex items-start gap-3">
-                                <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-amber-100">
-                                    <AlertTriangle className="h-4 w-4 text-amber-700" />
-                                </div>
-                                <div className="min-w-0 flex-1 space-y-2">
-                                    <div className="text-sm font-semibold">
-                                        The crawl looks sparse or is missing stylesheets/assets. A rescan is recommended.
-                                    </div>
-                                    <div className="text-sm leading-6 text-amber-900/90">
-                                        The generated result may be incomplete until the site is rescanned.
-                                    </div>
-                                    <div className="space-y-1.5">
-                                        {urlGenerationHealthWarning.warnings.map((warning, idx) => (
-                                            <div
-                                                key={`${warning.code}-${idx}`}
-                                                className="rounded-xl border border-amber-200 bg-white/80 px-3 py-2 text-sm text-amber-950"
-                                            >
-                                                {warning.message}
-                                            </div>
-                                        ))}
-                                    </div>
-                                    <div className="flex flex-wrap items-center gap-2 pt-1">
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                const nextUrl = urlGenerationHealthWarning.url.trim();
-                                                if (!nextUrl) return;
-                                                setUrlGenerationHealthWarning(null);
-                                                void enqueueUrlScanRef.current?.(nextUrl, {
-                                                    forceRetry: true,
-                                                    clearStartParam: false,
-                                                });
-                                            }}
-                                            className="inline-flex items-center gap-2 rounded-xl bg-amber-600 px-3.5 py-2 text-sm font-semibold text-white hover:bg-amber-700"
-                                        >
-                                            <RotateCcw className="h-4 w-4" />
-                                            Rescan URL
-                                        </button>
-                                        <span className="text-xs font-medium text-amber-800">
-                                            {urlGenerationHealthWarning.generationFormat === "html" ? "HTML" : "Next.js"} generation
-                                        </span>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    ) : null}
-
                     {/* <p className="mt-1 mb-2 text-sm text-neutral-500">
                         {(renders.length === 0 ? 'This section will host your editable websites'
                             :
@@ -10179,7 +10682,7 @@ export default function PreviewPage(): JSX.Element {
                                     htmlGenerationPendingUrl === (targetUrl || "").trim()
                                 )}
                                 sourceUrl={targetUrl}
-                                sourceUrlCannotGenerate={showActiveUrlIssueWarning || isUrlProcessingError}
+                                sourceUrlCannotGenerate={activeUrlCannotGenerate || isUrlProcessingError}
                                 highlight={shouldHighlightCreateWebsiteCta}
                                 autoOpenNonce={autoOpenGenerateModalNonce}
                                 autoOpenSuccessMessage={autoOpenGenerateSuccessMessage}
@@ -10686,8 +11189,10 @@ export default function PreviewPage(): JSX.Element {
                                 >
                                     <div className="flex items-start justify-between gap-4 border-b border-neutral-200 px-5 py-4">
                                         <div className="space-y-1">
-                                            <div className="text-sm font-semibold text-neutral-900">Generation failed</div>
-                                            <div className="text-xs text-neutral-600">
+                                            <div className="text-2xl font-semibold tracking-tight text-neutral-900">
+                                                Generation failed
+                                            </div>
+                                            <div className="text-sm leading-6 text-neutral-600">
                                                 {urlGenerationRescanModal.message}
                                             </div>
                                         </div>
@@ -10713,7 +11218,7 @@ export default function PreviewPage(): JSX.Element {
                                     </div>
 
                                     <div className="px-5 py-4">
-                                        <p className="text-sm leading-6 text-neutral-700">
+                                        <p className="text-xs leading-7 text-neutral-700">
                                             This URL needs to be rescanned before it can be used for generation.
                                         </p>
                                     </div>

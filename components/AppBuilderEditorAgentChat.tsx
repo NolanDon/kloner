@@ -72,6 +72,7 @@ type AppBuilderEditorAgentChatProps = {
     creditError?: string | null;
     previewReady?: boolean;
     previewIssue?: string | null;
+    onPreviewIssueFixRequest?: () => void;
     onUserMessageSent?: () => void;
     welcomeContext?: {
         source?: "prompt" | "url" | "quickstart" | "template" | "sample" | "unknown";
@@ -211,7 +212,7 @@ function buildCompileFixPrefill(ctx: CompileErrorQuickFixContext): string {
     ].join("\n");
 }
 
-export default function AppBuilderEditorAgentChat({ appId, files, onFileEdit, onFilesReplace, onRestoreApplied, creditError, previewReady, previewIssue, onUserMessageSent, welcomeContext }: AppBuilderEditorAgentChatProps) {
+export default function AppBuilderEditorAgentChat({ appId, files, onFileEdit, onFilesReplace, onRestoreApplied, creditError, previewReady, previewIssue, onPreviewIssueFixRequest, onUserMessageSent, welcomeContext }: AppBuilderEditorAgentChatProps) {
     const { user, userTier } = useAuth();
     const { showConfirm, showAlert } = useModal();
     const AI_EDIT_COST = 3;
@@ -375,9 +376,8 @@ export default function AppBuilderEditorAgentChat({ appId, files, onFileEdit, on
             "",
             contextLine,
             "",
-            "I can help with layout, styling, images, copy, and features.",
-            "Pick a direction below, or type your own request.",
-            "Tell me what direction you want, and I’ll implement it.",
+            "I can help with layout, styling, copy, and features.",
+            "Choose a direction below or type your own request.",
         ]
             .filter(Boolean)
             .join("\n");
@@ -434,6 +434,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, onFileEdit, on
     const previewReadyRef = useRef(Boolean(previewReady));
     const previewIssueText = String(previewIssue || '').trim();
     const hasPreviewIssue = Boolean(previewIssueText);
+    const showPreviewIssueDetails = process.env.NODE_ENV !== "production";
 
     const chatDisabled = previewReady === false && !freeCompileFixContext && !hasPreviewIssue;
 
@@ -697,26 +698,17 @@ export default function AppBuilderEditorAgentChat({ appId, files, onFileEdit, on
             };
 
             const prefill = buildCompileFixPrefill(ctx);
-            setFreeCompileFixContext(ctx);
-            setInput(prefill);
 
             if (autoSend) {
                 setTimeout(() => {
-                    void sendMessage({ forcedInput: prefill, forcedCompileFixContext: ctx });
+                    void sendMessage({
+                        forcedInput: prefill,
+                        forcedCompileFixContext: ctx,
+                        hideUserMessage: true,
+                    });
                 }, 0);
                 return;
             }
-
-            setMessages((prev) => [
-                ...prev,
-                {
-                    id: `compile_fix_ready_${Date.now()}`,
-                    role: "assistant",
-                    content: "Compile fix is ready. Send as-is to use free mode.",
-                    timestamp: new Date(),
-                    type: "text",
-                },
-            ]);
         };
 
         window.addEventListener("kloner:compile-error-fix-request", onCompileFix as EventListener);
@@ -2272,10 +2264,12 @@ export default function AppBuilderEditorAgentChat({ appId, files, onFileEdit, on
         forcedInput?: string;
         forcedCompileFixContext?: CompileErrorQuickFixContext;
         allowWhenChatDisabled?: boolean;
+        hideUserMessage?: boolean;
     }) => {
         const messageInput = typeof opts?.forcedInput === "string" ? opts.forcedInput : input;
         const activeCompileFixContext = opts?.forcedCompileFixContext ?? freeCompileFixContext;
         const allowWhenChatDisabled = opts?.allowWhenChatDisabled === true;
+        const hideUserMessage = opts?.hideUserMessage === true;
 
         if (chatDisabled && !allowWhenChatDisabled) return;
         if (!messageInput.trim() || isLoading) return;
@@ -2296,8 +2290,10 @@ export default function AppBuilderEditorAgentChat({ appId, files, onFileEdit, on
                 type: "text",
             };
 
-            setMessages((prev) => [...prev, userMessage]);
-            onUserMessageSent?.();
+            if (!hideUserMessage) {
+                setMessages((prev) => [...prev, userMessage]);
+                onUserMessageSent?.();
+            }
             setInput("");
             setIsLoading(true);
 
@@ -2431,8 +2427,10 @@ export default function AppBuilderEditorAgentChat({ appId, files, onFileEdit, on
             type: "text"
         };
 
-        setMessages(prev => [...prev, userMessage]);
-        onUserMessageSent?.();
+        if (!hideUserMessage) {
+            setMessages(prev => [...prev, userMessage]);
+            onUserMessageSent?.();
+        }
         setInput("");
         setIsLoading(true);
 
@@ -2997,7 +2995,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, onFileEdit, on
                             ) : null}
 
                             {message.id === "welcome" && message.role === "assistant" ? (
-                                <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                                <div className="mt-3 flex w-full flex-col gap-2">
                                     {STARTER_PROMPTS.map((starter) => (
                                         <button
                                             key={starter}
@@ -3006,7 +3004,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, onFileEdit, on
                                                 setInput(starter);
                                                 inputRef.current?.focus();
                                             }}
-                                            className="flex min-h-[3.5rem] items-center rounded-2xl border border-[#F55F2A]/15 bg-white px-4 py-3 text-left text-sm font-medium text-neutral-900 shadow-[0_8px_18px_rgba(15,23,42,0.05)] transition hover:-translate-y-0.5 hover:border-[#F55F2A]/30 hover:shadow-[0_16px_30px_rgba(245,95,42,0.10)]"
+                                            className="flex min-h-[3.25rem] w-full items-center rounded-2xl border border-[#F55F2A]/15 bg-white px-4 py-3 text-left text-sm font-medium text-neutral-900 whitespace-normal break-words shadow-[0_8px_18px_rgba(15,23,42,0.05)] transition hover:-translate-y-0.5 hover:border-[#F55F2A]/30 hover:shadow-[0_16px_30px_rgba(245,95,42,0.10)]"
                                             title="Use this as your prompt"
                                         >
                                             {starter}
@@ -3170,7 +3168,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, onFileEdit, on
                                     <button
                                         type="button"
                                         onClick={() => void copyMessageText(message)}
-                                        className="rounded p-1 text-gray-500 hover:text-gray-900 hover:bg-black/5"
+                                        className={`rounded p-1 transition-colors ${message.role === "user" ? "text-white/90 hover:text-white hover:bg-white/15" : "text-gray-500 hover:text-gray-900 hover:bg-black/5"}`}
                                         title={copiedMessageId === message.id ? "Copied" : "Copy message"}
                                         aria-label={copiedMessageId === message.id ? "Copied" : "Copy message"}
                                     >
@@ -3183,7 +3181,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, onFileEdit, on
                                     <button
                                         type="button"
                                         onClick={() => dismissMessage(message.id)}
-                                        className="rounded p-1 text-gray-500 hover:text-gray-900 hover:bg-black/5"
+                                        className={`rounded p-1 transition-colors ${message.role === "user" ? "text-white/90 hover:text-white hover:bg-white/15" : "text-gray-500 hover:text-gray-900 hover:bg-black/5"}`}
                                         title="Dismiss message"
                                         aria-label="Dismiss message"
                                     >
@@ -3890,33 +3888,31 @@ export default function AppBuilderEditorAgentChat({ appId, files, onFileEdit, on
                                 <p className="mt-1 text-sm leading-relaxed text-neutral-700">
                                     The preview ran into a problem, but you can still chat here to debug it or ask for help.
                                 </p>
+                                {showPreviewIssueDetails ? (
+                                    <details className="mt-3 rounded-xl border border-neutral-200 bg-white px-3 py-2 text-left">
+                                        <summary className="cursor-pointer select-none text-[11px] font-semibold uppercase tracking-[0.12em] text-neutral-600">
+                                            Compile error details
+                                        </summary>
+                                        <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-words text-xs leading-relaxed text-neutral-700">
+                                            {previewIssueText}
+                                        </pre>
+                                    </details>
+                                ) : null}
                                 <div className="mt-3 inline-flex max-w-full items-center gap-2 rounded-full border border-rose-200 bg-white px-3 py-1 text-[11px] font-semibold text-neutral-700">
                                     <AlertTriangle className="h-3.5 w-3.5 text-rose-500" />
                                     <span className="truncate" title={previewIssueText}>
                                         {previewIssueText}
                                     </span>
                                 </div>
-                            </div>
-                        </div>
-                    </div>
-                ) : null}
-
-                {freeCompileFixContext ? (
-                    <div className="mb-3 rounded-[1.5rem] border border-emerald-200 bg-[linear-gradient(180deg,rgba(236,253,245,0.98),rgba(255,255,255,1))] px-4 py-4 shadow-[0_12px_32px_rgba(16,185,129,0.10)]">
-                        <div className="flex items-start gap-3">
-                            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-700 ring-1 ring-emerald-200">
-                                <Bot className="h-5 w-5" />
-                            </div>
-                            <div className="min-w-0 flex-1">
-                                <div className="flex flex-wrap items-center gap-2">
-                                    <p className="text-sm font-semibold text-neutral-900">Free compile-fix mode</p>
-                                    <span className="inline-flex items-center rounded-full border border-emerald-200 bg-white px-2 py-0.5 text-[11px] font-medium text-emerald-700">
-                                        Unlocked
-                                    </span>
+                                <div className="mt-3 flex flex-wrap items-center gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => onPreviewIssueFixRequest?.()}
+                                        className="inline-flex items-center justify-center rounded-full bg-rose-600 px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-rose-700"
+                                    >
+                                        Fix with AI
+                                    </button>
                                 </div>
-                                <p className="mt-1 text-sm leading-relaxed text-neutral-700">
-                                    Keep the payload unchanged to send a free quick fix.
-                                </p>
                             </div>
                         </div>
                     </div>

@@ -4,6 +4,7 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import { getAdminDb } from "../_lib/auth";
 import { requireSessionAndMaybeCsrf } from "../_lib/route-guard";
 import { assertAppBuilderScope } from "../_lib/appBuilderScope";
+import { hydrateAppBuilderFiles } from "../_lib/htmlStorage";
 import crypto from "node:crypto";
 import { captureCriticalEvent } from "@/lib/observability";
 
@@ -238,12 +239,37 @@ function classifyAiProviderError(err: unknown): {
         return Number.isFinite(n) ? n : 500;
     })();
 
-    if (statusFromMessage === 429 || lower.includes("quota") || lower.includes("rate")) {
+    const explicitRateLimit =
+        statusFromMessage === 429 &&
+        (
+            lower.includes("rate limit") ||
+            lower.includes("resource_exhausted") ||
+            lower.includes("quota") ||
+            lower.includes("too many requests")
+        );
+
+    const genericOverload =
+        lower.includes("overwhelmed by requests") ||
+        lower.includes("temporarily unavailable") ||
+        lower.includes("service unavailable") ||
+        lower.includes("backend error") ||
+        lower.includes("server error");
+
+    if (explicitRateLimit) {
         return {
             statusCode: 429,
             providerMessage: msg,
-            userMessage: "AI usage is temporarily rate-limited. Please try again shortly.",
+            userMessage: "Google AI is currently overwhelmed by requests. Please check back in a bit and try again.",
             code: "AI_RATE_LIMITED",
+        };
+    }
+
+    if (statusFromMessage === 429 || genericOverload) {
+        return {
+            statusCode: 503,
+            providerMessage: msg,
+            userMessage: "The AI service is currently overloaded. Please try again in a few minutes.",
+            code: "AI_PROVIDER_UNAVAILABLE",
         };
     }
 
@@ -542,6 +568,10 @@ export async function POST(req: NextRequest) {
         req,
         async ({ uid, req: authedReq }) => {
         let observedAppId = "";
+        let aiSlackPrompt = "";
+        let aiSlackConversationTail = "";
+        let aiSlackFileCount = 0;
+        let aiSlackRequestDigest = "";
         try {
             const body = await req.json();
             const message = safeString(body?.message, 10_000);
@@ -627,7 +657,19 @@ export async function POST(req: NextRequest) {
             }
 
             const appData = snap.data() as any;
-            const files: Record<string, { content: string; lastModified: number }> = appData?.files || {};
+            const files = await hydrateAppBuilderFiles({
+                db,
+                uid,
+                appId,
+                files: (appData?.files || {}) as Record<string, { content: string; lastModified: number }>,
+                fileManifest: appData?.fileManifest || null,
+                fileStorageCollection: typeof appData?.fileStorageCollection === "string" ? appData.fileStorageCollection : null,
+                fileStorageMode: typeof appData?.fileStorageMode === "string" ? appData.fileStorageMode : null,
+                containerCode: typeof appData?.containerCode === "string" ? appData.containerCode : null,
+                htmlStoragePath: appData?.htmlStoragePath || null,
+                htmlEditIndex: appData?.htmlEditIndex,
+            });
+            aiSlackFileCount = Object.keys(files).length;
 
             const origin = new URL(req.url).origin;
             const recentConversation = conversationHistory
@@ -638,6 +680,13 @@ export async function POST(req: NextRequest) {
                 }))
                 .map((m) => `${m.role}: ${m.content}`)
                 .join("\n");
+            aiSlackPrompt = message;
+            aiSlackConversationTail = recentConversation;
+            aiSlackRequestDigest = crypto
+                .createHash("sha256")
+                .update([appId, message, recentConversation].join("\n"))
+                .digest("hex")
+                .slice(0, 12);
 
             const model = genAI.getGenerativeModel({ model: process.env.GEMINI_MODEL || "gemini-3-pro-preview" });
 
@@ -963,16 +1012,23 @@ ${buildContext}`;
                 statusCode: classified.statusCode,
                 route: "/api/ai-agent",
                 method: "POST",
-                action: "ai_agent_generate_failed",
+                action: aiSlackRequestDigest ? `ai_agent_generate_failed:${aiSlackRequestDigest}` : "ai_agent_generate_failed",
                 userId: uid,
                 message: `AI agent provider failure: ${classified.providerMessage}`,
+                errorName: classified.providerErrorName,
                 service: "ai-agent",
                 tags: ["ai-agent", "gemini", "provider-error"],
                 extra: {
                     appId: observedAppId || null,
+                    requestDigest: aiSlackRequestDigest || null,
+                    prompt: aiSlackPrompt || null,
+                    conversationTail: aiSlackConversationTail ? aiSlackConversationTail.slice(-4000) : null,
+                    fileCount: aiSlackFileCount,
                     model: process.env.GEMINI_MODEL || "gemini-3-pro-preview",
                     providerMessage: classified.providerMessage,
                     code: classified.code,
+                    providerErrorName: classified.providerErrorName,
+                    providerDiagnostics: classified.providerDiagnostics,
                 },
             });
 
