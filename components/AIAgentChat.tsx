@@ -2476,13 +2476,24 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                 }),
             });
 
+            const errorPayload = res.ok ? null : await res.json().catch(() => null);
+
             if (!res.ok) {
                 dispatchAiAgentEvent("response_error", {
                     appId,
                     userId: user?.uid || null,
                     status: res.status,
                 });
-                throw new Error("Failed to get AI response");
+                let errorMessage = "Failed to get AI response";
+                if (typeof errorPayload?.error === "string") {
+                    errorMessage = errorPayload.error;
+                } else if (res.status === 413) {
+                    errorMessage = "That request is too large right now. Please shorten the ask or remove some context and try again.";
+                }
+                const error = new Error(errorMessage);
+                (error as any).status = res.status;
+                (error as any).code = typeof errorPayload?.code === "string" ? errorPayload.code : null;
+                throw error;
             }
 
             const data = await res.json();

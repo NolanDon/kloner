@@ -1,17 +1,22 @@
 // app/api/ai-agent/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenerativeAI, HarmBlockThreshold, HarmCategory } from "@google/generative-ai";
 import { getAdminDb } from "../_lib/auth";
 import { requireSessionAndMaybeCsrf } from "../_lib/route-guard";
 import { assertAppBuilderScope } from "../_lib/appBuilderScope";
 import { hydrateAppBuilderFiles } from "../_lib/htmlStorage";
 import crypto from "node:crypto";
-import { captureCriticalEvent } from "@/lib/observability";
+import { captureAuditEvent, captureCriticalEvent } from "@/lib/observability";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
+const AI_AGENT_INPUT_TOKEN_CAP = parsePositiveNumber(process.env.AI_AGENT_INPUT_TOKEN_CAP, 12000);
+const AI_AGENT_OUTPUT_TOKEN_CAP = parsePositiveNumber(process.env.AI_AGENT_OUTPUT_TOKEN_CAP, 4096);
+const AI_AGENT_CONTEXT_CHAR_CAP = parsePositiveNumber(process.env.AI_AGENT_CONTEXT_CHAR_CAP, 80_000);
+const GEMINI_INPUT_COST_PER_1M_TOKENS_USD = parsePositiveNumber(process.env.GEMINI_INPUT_COST_PER_1M_TOKENS_USD, 0);
+const GEMINI_OUTPUT_COST_PER_1M_TOKENS_USD = parsePositiveNumber(process.env.GEMINI_OUTPUT_COST_PER_1M_TOKENS_USD, 0);
 
 type ChatMessage = {
     role: "user" | "assistant";
@@ -41,6 +46,94 @@ type RestorePointPayload = {
     messageSnippet?: string;
     buildOk?: boolean;
 };
+
+type AiTokenUsage = {
+    estimatedInputTokens: number;
+    estimatedOutputTokens: number;
+    actualInputTokens: number | null;
+    actualOutputTokens: number | null;
+    totalTokens: number | null;
+    estimatedCostUsd: number | null;
+};
+
+function parsePositiveNumber(raw: string | undefined, fallback: number): number {
+    const parsed = Number(raw);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function estimateTokens(text: string): number {
+    const value = String(text || "");
+    if (!value.trim()) return 0;
+    return Math.max(1, Math.ceil(value.length / 4));
+}
+
+function estimateAiRequestCostUsd(inputTokens: number, outputTokens: number): number | null {
+    if (!GEMINI_INPUT_COST_PER_1M_TOKENS_USD && !GEMINI_OUTPUT_COST_PER_1M_TOKENS_USD) return null;
+    const inputCost = (inputTokens / 1_000_000) * GEMINI_INPUT_COST_PER_1M_TOKENS_USD;
+    const outputCost = (outputTokens / 1_000_000) * GEMINI_OUTPUT_COST_PER_1M_TOKENS_USD;
+    return Number((inputCost + outputCost).toFixed(6));
+}
+
+function summarizeAiUsage(usageMetadata: any, estimatedInputTokens: number, estimatedOutputTokens: number): AiTokenUsage {
+    const actualInputTokens = Number.isFinite(Number(usageMetadata?.promptTokenCount)) ? Number(usageMetadata.promptTokenCount) : null;
+    const actualOutputTokens = Number.isFinite(Number(usageMetadata?.candidatesTokenCount)) ? Number(usageMetadata.candidatesTokenCount) : null;
+    const totalTokens = Number.isFinite(Number(usageMetadata?.totalTokenCount)) ? Number(usageMetadata.totalTokenCount) : null;
+    const inputTokens = actualInputTokens ?? estimatedInputTokens;
+    const outputTokens = actualOutputTokens ?? estimatedOutputTokens;
+
+    return {
+        estimatedInputTokens,
+        estimatedOutputTokens,
+        actualInputTokens,
+        actualOutputTokens,
+        totalTokens,
+        estimatedCostUsd: estimateAiRequestCostUsd(inputTokens, outputTokens),
+    };
+}
+
+function isUnsafeAiRequest(text: string): { blocked: boolean; code: string; reason: string } {
+    const value = String(text || "").trim();
+    if (!value) return { blocked: false, code: "", reason: "" };
+
+    const lower = value.toLowerCase();
+    const rules: Array<{ code: string; reason: string; test: RegExp | ((input: string) => boolean) }> = [
+        {
+            code: "AI_REQUEST_BLOCKED_ABUSE",
+            reason: "Potential harassment, hate, or abuse content.",
+            test: /(kill yourself|make a bomb|build a bomb|ransomware|malware|phishing|credential stuffing|steal passwords|steal api keys|doxx|doxing|ddos|sql injection|exploit the vulnerability|bypass security)/i,
+        },
+        {
+            code: "AI_REQUEST_BLOCKED_SEXUAL",
+            reason: "Potential sexual content involving minors or explicit sexual abuse content.",
+            test: /(csam|child sexual|minor sexual|sexual abuse|explicit sexual content involving minors)/i,
+        },
+        {
+            code: "AI_REQUEST_BLOCKED_VIOLENCE",
+            reason: "Potential violent wrongdoing or weaponization content.",
+            test: /(assassinate|murder|commit a crime|weaponize|poison|bomb-making)/i,
+        },
+        {
+            code: "AI_REQUEST_BLOCKED_CREDENTIALS",
+            reason: "Potential credential or account theft content.",
+            test: /(steal tokens|steal cookies|session hijack|cookie theft|api key theft|password dump|credential theft)/i,
+        },
+    ];
+
+    for (const rule of rules) {
+        const matched = typeof rule.test === "function" ? rule.test(lower) : rule.test.test(lower);
+        if (matched) return { blocked: true, code: rule.code, reason: rule.reason };
+    }
+
+    return { blocked: false, code: "", reason: "" };
+}
+
+function isPromptTooLarge(promptText: string): { blocked: boolean; estimatedTokens: number } {
+    const estimatedTokens = estimateTokens(promptText);
+    return {
+        blocked: estimatedTokens > AI_AGENT_INPUT_TOKEN_CAP,
+        estimatedTokens,
+    };
+}
 
 function requestLikelyNeedsDatabase(userMessage: string): boolean {
     const m = String(userMessage || "").toLowerCase();
@@ -222,6 +315,20 @@ function looksLikeProviderLeak(text: unknown): boolean {
     );
 }
 
+function looksLikeGenericAiConversationError(text: string): boolean {
+    const value = String(text || "").toLowerCase();
+    if (!value.trim()) return false;
+    return (
+        value.includes("please try again in a few minutes") ||
+        value.includes("couldn’t complete that request right now") ||
+        value.includes("could not complete that request right now") ||
+        value.includes("that request is too large") ||
+        value.includes("failed to get ai response") ||
+        value.includes("sorry, i couldn’t") ||
+        value.includes("sorry, i could not")
+    );
+}
+
 function classifyAiProviderError(err: unknown): {
     statusCode: number;
     providerMessage: string;
@@ -363,6 +470,23 @@ function classifyAiProviderError(err: unknown): {
         providerErrorName,
         providerDiagnostics,
     };
+}
+
+function buildRecentConversationContext(history: unknown[]): string {
+    const recent = Array.isArray(history) ? history.slice(-6) : [];
+    const parts: string[] = [];
+
+    for (const raw of recent) {
+        if (!raw || typeof raw !== "object") continue;
+        const msg = raw as any;
+        const role = msg.role === "assistant" ? "assistant" : msg.role === "user" ? "user" : null;
+        const content = safeString(msg.content, 1200);
+        if (!role || !content.trim()) continue;
+        if (role === "assistant" && looksLikeGenericAiConversationError(content)) continue;
+        parts.push(`${role}: ${content}`);
+    }
+
+    return parts.join("\n");
 }
 
 function normalizeStoredMessages(input: unknown): StoredMessage[] {
@@ -546,7 +670,7 @@ function normalizeJsTsConfig(path: string, content: string): { ok: true; content
 
 function buildFileContext(files: Record<string, { content: string; lastModified: number }>): string {
     // Soft limit to avoid runaway prompts
-    const MAX_TOTAL = 140_000;
+    const MAX_TOTAL = AI_AGENT_CONTEXT_CHAR_CAP;
     let total = 0;
     const parts: string[] = [];
 
@@ -610,6 +734,14 @@ export async function POST(req: NextRequest) {
         let aiSlackConversationTail = "";
         let aiSlackFileCount = 0;
         let aiSlackRequestDigest = "";
+        let aiRequestPromptTokenEstimate = 0;
+        let aiRequestUsage = {
+            inputTokens: 0,
+            outputTokens: 0,
+            totalTokens: 0,
+            estimatedCostUsd: null as number | null,
+            attempts: 0,
+        };
         try {
             const body = await req.json();
             const message = safeString(body?.message, 10_000);
@@ -710,14 +842,7 @@ export async function POST(req: NextRequest) {
             aiSlackFileCount = Object.keys(files).length;
 
             const origin = new URL(req.url).origin;
-            const recentConversation = conversationHistory
-                .slice(-10)
-                .map((m: any): ChatMessage => ({
-                    role: m?.role === "assistant" ? "assistant" : "user",
-                    content: safeString(m?.content, 4000),
-                }))
-                .map((m) => `${m.role}: ${m.content}`)
-                .join("\n");
+            const recentConversation = buildRecentConversationContext(conversationHistory);
             aiSlackPrompt = message;
             aiSlackConversationTail = recentConversation;
             aiSlackRequestDigest = crypto
@@ -726,7 +851,19 @@ export async function POST(req: NextRequest) {
                 .digest("hex")
                 .slice(0, 12);
 
-            const model = genAI.getGenerativeModel({ model: process.env.GEMINI_MODEL || "gemini-3-pro-preview" });
+            const model = genAI.getGenerativeModel({
+                model: process.env.GEMINI_MODEL || "gemini-3-pro-preview",
+                safetySettings: [
+                    { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
+                    { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
+                    { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
+                    { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
+                ],
+                generationConfig: {
+                    maxOutputTokens: AI_AGENT_OUTPUT_TOKEN_CAP,
+                    temperature: 0.2,
+                },
+            });
 
             let lastBuild = { ok: true, exitCode: 0, logs: "" };
             let aggregatedEdits: FileEdit[] = [];
@@ -814,8 +951,87 @@ User request:
 ${message}
 ${buildContext}`;
 
+                const preflightPromptTokens = estimateTokens(systemPrompt);
+                aiRequestPromptTokenEstimate = preflightPromptTokens;
+                const tooLarge = isPromptTooLarge(systemPrompt);
+                if (tooLarge.blocked) {
+                    const response = `That request is too large for this AI route right now. Please shorten the prompt or reduce the amount of context and try again.`;
+
+                    await captureAuditEvent({
+                        source: "internal",
+                        severity: "warning",
+                        statusCode: 413,
+                        route: "/api/ai-agent",
+                        method: "POST",
+                        action: aiSlackRequestDigest ? `ai_agent_request_rejected:${aiSlackRequestDigest}` : "ai_agent_request_rejected",
+                        userId: uid,
+                        message: `AI agent request rejected before Google: estimated ${tooLarge.estimatedTokens} input tokens exceeds cap ${AI_AGENT_INPUT_TOKEN_CAP}`,
+                        errorName: "AI_REQUEST_TOO_LARGE",
+                        service: "ai-agent",
+                        tags: ["ai-agent", "request-validation", "token-cap"],
+                        extra: {
+                            appId: observedAppId || null,
+                            requestDigest: aiSlackRequestDigest || null,
+                            estimatedInputTokens: tooLarge.estimatedTokens,
+                            inputTokenCap: AI_AGENT_INPUT_TOKEN_CAP,
+                            promptTokens: preflightPromptTokens,
+                            messageLength: message.length,
+                        },
+                    });
+
+                    return NextResponse.json(
+                        {
+                            error: response,
+                            code: "AI_REQUEST_TOO_LARGE",
+                        },
+                        { status: 413 },
+                    );
+                }
+
+                const unsafeRequest = isUnsafeAiRequest(message);
+                if (unsafeRequest.blocked) {
+                    const response = "That request could not be sent to the model. Please rephrase it without abusive, violent, sexual, or malicious content.";
+
+                    await captureAuditEvent({
+                        source: "internal",
+                        severity: "warning",
+                        statusCode: 400,
+                        route: "/api/ai-agent",
+                        method: "POST",
+                        action: aiSlackRequestDigest ? `ai_agent_request_blocked:${aiSlackRequestDigest}` : "ai_agent_request_blocked",
+                        userId: uid,
+                        message: `AI agent request blocked before Google: ${unsafeRequest.reason}`,
+                        errorName: unsafeRequest.code,
+                        service: "ai-agent",
+                        tags: ["ai-agent", "request-validation", "safety-block"],
+                        extra: {
+                            appId: observedAppId || null,
+                            requestDigest: aiSlackRequestDigest || null,
+                            reason: unsafeRequest.reason,
+                            code: unsafeRequest.code,
+                        },
+                    });
+
+                    return NextResponse.json(
+                        {
+                            error: response,
+                            code: unsafeRequest.code,
+                        },
+                        { status: 400 },
+                    );
+                }
+
                 const result = await model.generateContent(systemPrompt);
-                const raw = result.response.text().trim();
+                const geminiResponse = result.response as any;
+                const raw = geminiResponse.text().trim();
+                const usage = summarizeAiUsage(geminiResponse?.usageMetadata || null, preflightPromptTokens, estimateTokens(raw));
+                aiRequestUsage.inputTokens += usage.actualInputTokens ?? usage.estimatedInputTokens;
+                aiRequestUsage.outputTokens += usage.actualOutputTokens ?? usage.estimatedOutputTokens;
+                aiRequestUsage.totalTokens += usage.totalTokens ?? (usage.actualInputTokens ?? usage.estimatedInputTokens) + (usage.actualOutputTokens ?? usage.estimatedOutputTokens);
+                if (usage.estimatedCostUsd !== null) {
+                    aiRequestUsage.estimatedCostUsd = Number(((aiRequestUsage.estimatedCostUsd ?? 0) + usage.estimatedCostUsd).toFixed(6));
+                }
+                aiRequestUsage.attempts += 1;
 
                 if (looksLikeProviderLeak(raw)) {
                     throw new Error(raw);
@@ -1032,6 +1248,31 @@ ${buildContext}`;
                 }
             }
 
+            await captureAuditEvent({
+                source: "internal",
+                severity: "info",
+                statusCode: 200,
+                route: "/api/ai-agent",
+                method: "POST",
+                action: aiSlackRequestDigest ? `ai_agent_request_completed:${aiSlackRequestDigest}` : "ai_agent_request_completed",
+                userId: uid,
+                message: `AI agent request completed`,
+                service: "ai-agent",
+                tags: ["ai-agent", "gemini", "usage"],
+                extra: {
+                    appId: observedAppId || null,
+                    requestDigest: aiSlackRequestDigest || null,
+                    promptTokens: aiRequestUsage.inputTokens,
+                    outputTokens: aiRequestUsage.outputTokens,
+                    totalTokens: aiRequestUsage.totalTokens,
+                    estimatedCostUsd: aiRequestUsage.estimatedCostUsd,
+                    attempts: aiRequestUsage.attempts,
+                    tokenCap: AI_AGENT_INPUT_TOKEN_CAP,
+                    outputTokenCap: AI_AGENT_OUTPUT_TOKEN_CAP,
+                    pricingConfigured: Boolean(GEMINI_INPUT_COST_PER_1M_TOKENS_USD || GEMINI_OUTPUT_COST_PER_1M_TOKENS_USD),
+                },
+            });
+
             return NextResponse.json({
                 response: assistantSummary,
                 fileEdits: aggregatedEdits,
@@ -1062,6 +1303,10 @@ ${buildContext}`;
                     prompt: aiSlackPrompt || null,
                     conversationTail: aiSlackConversationTail ? aiSlackConversationTail.slice(-4000) : null,
                     fileCount: aiSlackFileCount,
+                    promptTokens: aiRequestPromptTokenEstimate || estimateTokens(aiSlackPrompt),
+                    outputTokens: aiRequestUsage.outputTokens || 0,
+                    totalTokens: aiRequestUsage.totalTokens || 0,
+                    estimatedCostUsd: aiRequestUsage.estimatedCostUsd,
                     model: process.env.GEMINI_MODEL || "gemini-3-pro-preview",
                     providerMessage: classified.providerMessage,
                     code: classified.code,

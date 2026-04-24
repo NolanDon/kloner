@@ -2478,13 +2478,24 @@ export default function AppBuilderEditorAgentChat({ appId, files, onFileEdit, on
                 }),
             });
 
+            const errorPayload = res.ok ? null : await res.json().catch(() => null);
+
             if (!res.ok) {
                 dispatchAiAgentEvent("response_error", {
                     appId,
                     userId: user?.uid || null,
                     status: res.status,
                 });
-                throw new Error("Failed to get AI response");
+                const errorMessage =
+                    typeof errorPayload?.error === "string"
+                        ? errorPayload.error
+                        : res.status === 413
+                            ? "That request is too large right now. Please shorten the ask or remove some context and try again."
+                            : "Failed to get AI response";
+                const error = new Error(errorMessage);
+                (error as any).status = res.status;
+                (error as any).code = typeof errorPayload?.code === "string" ? errorPayload.code : null;
+                throw error;
             }
 
             const data = await res.json();

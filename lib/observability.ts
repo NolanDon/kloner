@@ -523,6 +523,28 @@ export async function captureCriticalEvent(event: ObservabilityEvent) {
     }
 }
 
+export async function captureAuditEvent(event: ObservabilityEvent) {
+    const normalized = sanitizeEvent({
+        ...event,
+        severity: event.severity || "info",
+    });
+
+    try {
+        const eventId = await storeEvent(normalized);
+        await postToSlack(normalized, eventId);
+        return { delivered: true as const, eventId };
+    } catch (err) {
+        console.error("[observability] failed to capture audit event", {
+            message: normalized.message,
+            source: normalized.source,
+            route: normalized.route,
+            statusCode: normalized.statusCode,
+            error: err instanceof Error ? err.message : String(err),
+        });
+        return { delivered: false as const, reason: "capture_failed" as const };
+    }
+}
+
 export async function captureException(params: {
     source: ObservabilityEvent["source"];
     error: unknown;
