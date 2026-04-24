@@ -2859,7 +2859,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                                     <div className="min-w-0 flex-1 space-y-1">
                                                         <div className="flex min-w-0 flex-wrap items-start gap-2 sm:items-center">
                                                             <div className="min-w-0 text-sm font-semibold text-neutral-900 break-words">
-                                                                Website (HTML)
+                                                                Website
                                                             </div>
                                                             <span className="inline-flex max-w-full items-center rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-800 whitespace-nowrap">
                                                                 15 preview credits
@@ -2867,10 +2867,10 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                                         </div>
 
                                                         <div className="text-xs text-neutral-600">
-                                                            Best for landing pages and simple sites.
+                                                            Best for fast-performance clones, landing pages, and simple sites.
                                                         </div>
                                                         <div className="mt-1 text-[11px] leading-4 text-neutral-500">
-                                                            Ideal for brochure sites, one-pagers, and straightforward pages that do not need a full app structure.
+                                                            Ideal for brochure sites, one-pagers, and straightforward pages when you want a lightweight HTML build.
                                                         </div>
 
                                                         {sourceUrlCannotGenerate ? (
@@ -2898,70 +2898,72 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                         </div>
                                     
 
-                                    <div className="relative">
-                                        <button
-                                            type="button"
-                                            onClick={() => setSelectedGenerationType("nextjs")}
-                                            disabled={effectiveLocked}
-                                            className={`relative w-full overflow-hidden rounded-xl border p-4 text-left shadow-sm transition disabled:opacity-60 disabled:cursor-not-allowed ${selectedGenerationType === "nextjs"
-                                                ? "border-[rgba(245,95,42,0.65)] bg-[linear-gradient(180deg,rgba(245,95,42,0.06),rgba(255,255,255,0))]"
-                                                : "border-neutral-200 bg-white hover:bg-neutral-50 hover:border-neutral-300"
-                                                }`}
-                                        >
-                                            <div className="flex items-start gap-3">
-                                                <div
-                                                    className="flex h-10 w-10 items-center justify-center rounded-lg bg-neutral-900"
-                                                    aria-hidden
-                                                >
-                                                    <Image
-                                                        src="/images/nextjs.webp"
-                                                        alt=""
-                                                        width={24}
-                                                        height={24}
-                                                        className="object-contain opacity-95"
-                                                        priority={false}
-                                                    />
-                                                </div>
-                                                <div className="min-w-0 flex-1 space-y-1">
-                                                    <div className="flex min-w-0 flex-wrap items-start gap-2 sm:items-center">
-                                                        <div className="min-w-0 text-sm font-semibold text-neutral-900 break-words">
-                                                            Website (NextJS)
+                                    {isDev ? (
+                                        <div className="relative">
+                                            <button
+                                                type="button"
+                                                onClick={() => setSelectedGenerationType("nextjs")}
+                                                disabled={effectiveLocked}
+                                                className={`relative w-full overflow-hidden rounded-xl border p-4 text-left shadow-sm transition disabled:opacity-60 disabled:cursor-not-allowed ${selectedGenerationType === "nextjs"
+                                                    ? "border-[rgba(245,95,42,0.65)] bg-[linear-gradient(180deg,rgba(245,95,42,0.06),rgba(255,255,255,0))]"
+                                                    : "border-neutral-200 bg-white hover:bg-neutral-50 hover:border-neutral-300"
+                                                    }`}
+                                            >
+                                                <div className="flex items-start gap-3">
+                                                    <div
+                                                        className="flex h-10 w-10 items-center justify-center rounded-lg bg-neutral-900"
+                                                        aria-hidden
+                                                    >
+                                                        <Image
+                                                            src="/images/nextjs.webp"
+                                                            alt=""
+                                                            width={24}
+                                                            height={24}
+                                                            className="object-contain opacity-95"
+                                                            priority={false}
+                                                        />
+                                                    </div>
+                                                    <div className="min-w-0 flex-1 space-y-1">
+                                                        <div className="flex min-w-0 flex-wrap items-start gap-2 sm:items-center">
+                                                            <div className="min-w-0 text-sm font-semibold text-neutral-900 break-words">
+                                                                Website (NextJS)
+                                                            </div>
+                                                            <span className="inline-flex max-w-full items-center rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-800 whitespace-nowrap">
+                                                                15 preview credits
+                                                            </span>
                                                         </div>
-                                                        <span className="inline-flex max-w-full items-center rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-800 whitespace-nowrap">
-                                                            15 preview credits
+
+                                                        <div className="text-xs text-neutral-600">
+                                                            Recommended for complex multi‑page websites.
+                                                        </div>
+                                                        <div className="mt-1 text-[11px] leading-4 text-neutral-500">
+                                                            Best for: user accounts, AI features, dashboards, web games, stores, or product-heavy content.
+                                                        </div>
+
+                                                        {sourceUrlCannotGenerate ? (
+                                                            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                                                                The scan is incomplete or stale. Rescan before generating to avoid bad output.
+                                                            </div>
+                                                        ) : null}
+                                                    </div>
+                                                </div>
+                                                <div className="mt-2 rounded-lg border border-neutral-200 bg-neutral-50 px-2.5 py-2">
+                                                    <div className="flex min-w-0 flex-wrap items-center gap-1 text-[11px]">
+                                                        <span className="shrink-0 font-medium text-neutral-500">
+                                                            Cloning:
+                                                        </span>
+                                                        <span
+                                                            className="min-w-0 max-w-full flex-1 break-all font-mono font-medium sm:truncate sm:whitespace-nowrap"
+                                                            style={{ color: ACCENT }}
+                                                            title={sourceUrlDisplay || "(none selected)"}
+                                                        >
+                                                            {sourceUrlDisplay ? truncateMiddle(sourceUrlDisplay, 56) : "(none selected)"}
                                                         </span>
                                                     </div>
-
-                                                    <div className="text-xs text-neutral-600">
-                                                        Recommended for complex multi‑page websites.
-                                                    </div>
-                                                    <div className="mt-1 text-[11px] leading-4 text-neutral-500">
-                                                        Best for: user accounts, AI features, dashboards, web games, stores, or product-heavy content.
-                                                    </div>
-
-                                                    {sourceUrlCannotGenerate ? (
-                                                        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                                                            The scan is incomplete or stale. Rescan before generating to avoid bad output.
-                                                        </div>
-                                                    ) : null}
                                                 </div>
-                                            </div>
-                                            <div className="mt-2 rounded-lg border border-neutral-200 bg-neutral-50 px-2.5 py-2">
-                                                <div className="flex min-w-0 flex-wrap items-center gap-1 text-[11px]">
-                                                    <span className="shrink-0 font-medium text-neutral-500">
-                                                        Cloning:
-                                                    </span>
-                                                    <span
-                                                        className="min-w-0 max-w-full flex-1 break-all font-mono font-medium sm:truncate sm:whitespace-nowrap"
-                                                        style={{ color: ACCENT }}
-                                                        title={sourceUrlDisplay || "(none selected)"}
-                                                    >
-                                                        {sourceUrlDisplay ? truncateMiddle(sourceUrlDisplay, 56) : "(none selected)"}
-                                                    </span>
-                                                </div>
-                                            </div>
-                                        </button>
-                                    </div>
+                                            </button>
+                                        </div>
+                                    ) : null}
                                 </div>
 
                                 {/* Template generation is intentionally disabled right now. */}

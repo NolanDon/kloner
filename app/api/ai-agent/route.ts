@@ -227,10 +227,34 @@ function classifyAiProviderError(err: unknown): {
     providerMessage: string;
     userMessage: string;
     code: string;
+    providerErrorName: string;
+    providerDiagnostics: Record<string, unknown>;
 } {
     const raw = err instanceof Error ? err.message : String(err || "Unknown AI provider error");
     const msg = safeString(raw, 1500) || "Unknown AI provider error";
     const lower = msg.toLowerCase();
+    const providerErrorName = err instanceof Error && err.name ? err.name : typeof (err as any)?.name === "string" ? String((err as any).name) : "Error";
+    const providerDiagnostics: Record<string, unknown> =
+        err && typeof err === "object"
+            ? {
+                  name: (err as any).name,
+                  message: (err as any).message,
+                  status: (err as any).status,
+                  statusCode: (err as any).statusCode,
+                  code: (err as any).code,
+                  details: (err as any).details,
+                  errorInfo: (err as any).errorInfo,
+                  cause: (err as any).cause,
+                  response: (err as any).response
+                      ? {
+                            status: (err as any).response.status,
+                            statusText: (err as any).response.statusText,
+                            data: (err as any).response.data,
+                            text: (err as any).response.text,
+                        }
+                      : undefined,
+              }
+            : {};
 
     const statusFromMessage = (() => {
         const m = msg.match(/\b(4\d\d|5\d\d)\b/);
@@ -261,6 +285,8 @@ function classifyAiProviderError(err: unknown): {
             providerMessage: msg,
             userMessage: "Google AI is currently overwhelmed by requests. Please check back in a bit and try again.",
             code: "AI_RATE_LIMITED",
+            providerErrorName,
+            providerDiagnostics,
         };
     }
 
@@ -270,6 +296,8 @@ function classifyAiProviderError(err: unknown): {
             providerMessage: msg,
             userMessage: "The AI service is currently overloaded. Please try again in a few minutes.",
             code: "AI_PROVIDER_UNAVAILABLE",
+            providerErrorName,
+            providerDiagnostics,
         };
     }
 
@@ -284,6 +312,8 @@ function classifyAiProviderError(err: unknown): {
             providerMessage: msg,
             userMessage: "That request couldn’t be completed as written. Try rephrasing it in your own words and avoid pasting large blocks of source text.",
             code: "AI_SAFETY_REJECTED",
+            providerErrorName,
+            providerDiagnostics,
         };
     }
 
@@ -298,6 +328,8 @@ function classifyAiProviderError(err: unknown): {
             providerMessage: msg,
             userMessage: "The AI service is temporarily unavailable. Please try again in a few minutes.",
             code: "AI_PROVIDER_UNAVAILABLE",
+            providerErrorName,
+            providerDiagnostics,
         };
     }
 
@@ -307,6 +339,8 @@ function classifyAiProviderError(err: unknown): {
             providerMessage: msg,
             userMessage: "The AI service had a temporary server issue. Please try again in a few minutes.",
             code: "AI_PROVIDER_SERVER_ERROR",
+            providerErrorName,
+            providerDiagnostics,
         };
     }
 
@@ -316,6 +350,8 @@ function classifyAiProviderError(err: unknown): {
             providerMessage: msg,
             userMessage: "Your request could not be completed. Please adjust your prompt and try again.",
             code: "AI_BAD_REQUEST",
+            providerErrorName,
+            providerDiagnostics,
         };
     }
 
@@ -324,6 +360,8 @@ function classifyAiProviderError(err: unknown): {
         providerMessage: msg,
         userMessage: "The AI request failed unexpectedly. Please try again in a few minutes.",
         code: "AI_UNKNOWN_ERROR",
+        providerErrorName,
+        providerDiagnostics,
     };
 }
 

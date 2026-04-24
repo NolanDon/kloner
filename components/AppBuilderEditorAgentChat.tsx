@@ -3865,10 +3865,6 @@ export default function AppBuilderEditorAgentChat({ appId, files, onFileEdit, on
                                 <p className="mt-1 text-sm leading-relaxed text-neutral-700">
                                     Preview is still loading. Chat will unlock once the preview renders.
                                 </p>
-                                <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-amber-200 bg-white px-3 py-1 text-[11px] font-semibold text-neutral-700">
-                                    <RefreshCw className="h-3.5 w-3.5 animate-spin text-amber-500" />
-                                    Keep the preview open while it finishes booting
-                                </div>
                             </div>
                         </div>
                     </div>
