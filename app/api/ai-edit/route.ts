@@ -1086,9 +1086,20 @@ function parseModelOutput(raw: string, fallbackHtml: string): AiEditModelResult 
     return { ok: true, afterHtml, summary };
 }
 
-function classifyGeminiError(err: any, requestId: string): { status: number; code: string; userMessage: string; isSafety: boolean } {
+function classifyGeminiError(err: any, requestId: string): {
+    status: number;
+    code: string;
+    userMessage: string;
+    slackMessage: string;
+    providerMessage: string;
+    providerErrorName: string;
+    providerDiagnostics: any;
+    isSafety: boolean;
+} {
     const message = String(err?.message || err?.toString?.() || "unknown_error");
     const lower = message.toLowerCase();
+    const providerErrorName = String(err?.name || err?.constructor?.name || "Error");
+    const providerDiagnostics = err?.response?.data ?? err?.response ?? err?.cause ?? null;
 
     // google generative ai errors vary; check common signals
     const httpStatus =
@@ -1112,6 +1123,10 @@ function classifyGeminiError(err: any, requestId: string): { status: number; cod
             status: 429,
             code: "RATE_LIMITED",
             userMessage: `AI editing is temporarily overloaded. Try again shortly. (Request ID: ${requestId})`,
+            slackMessage: `AI editing is temporarily overloaded. Try again shortly. (Request ID: ${requestId})`,
+            providerMessage: message,
+            providerErrorName,
+            providerDiagnostics,
             isSafety: false,
         };
     }
@@ -1121,6 +1136,10 @@ function classifyGeminiError(err: any, requestId: string): { status: number; cod
             status: 400,
             code: "SAFETY_REJECTED",
             userMessage: `That request can’t be processed because it was flagged by our safety filters. Try rephrasing with less explicit detail. (Request ID: ${requestId})`,
+            slackMessage: `That request can’t be processed because it was flagged by our safety filters. Try rephrasing with less explicit detail. (Request ID: ${requestId})`,
+            providerMessage: message,
+            providerErrorName,
+            providerDiagnostics,
             isSafety: true,
         };
     }
@@ -1129,6 +1148,10 @@ function classifyGeminiError(err: any, requestId: string): { status: number; cod
         status: status >= 500 ? 503 : 502,
         code: "GEMINI_ERROR",
         userMessage: `AI editing is temporarily unavailable. Try again shortly. (Request ID: ${requestId})`,
+        slackMessage: `AI editing is temporarily unavailable. Try again shortly. (Request ID: ${requestId})`,
+        providerMessage: message,
+        providerErrorName,
+        providerDiagnostics,
         isSafety: false,
     };
 }
