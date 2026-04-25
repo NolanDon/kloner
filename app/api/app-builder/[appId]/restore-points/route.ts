@@ -14,6 +14,8 @@ type RestorePointDoc = {
     kept?: boolean;
     paths?: string[];
     undoOf?: string | null;
+    before?: Record<string, string | null>;
+    after?: Record<string, string>;
 };
 
 function safeString(v: unknown, max = 200): string {
@@ -23,6 +25,8 @@ function safeString(v: unknown, max = 200): string {
 export async function GET(req: NextRequest, { params }: any) {
     return requireSessionAndMaybeCsrf(req, async ({ uid, req: authedReq }) => {
         const appId = safeString((await Promise.resolve(params))?.appId, 200);
+        const url = new URL(authedReq.url);
+        const restoreId = safeString(url.searchParams.get("restoreId"), 200);
         assertAppBuilderScope(authedReq, uid, appId);
 
         const db = getAdminDb();
@@ -32,6 +36,29 @@ export async function GET(req: NextRequest, { params }: any) {
             .collection("kloner_apps")
             .doc(appId)
             .collection("restore_points");
+
+        if (restoreId) {
+            const doc = await col.doc(restoreId).get();
+            if (!doc.exists) {
+                return NextResponse.json({ ok: false, error: "Restore point not found" }, { status: 404 });
+            }
+
+            const data = doc.data() as any;
+            const response: RestorePointDoc & { ok: true } = {
+                ok: true,
+                id: doc.id,
+                createdAt: data?.createdAt || null,
+                label: safeString(data?.label, 400) || "Restore point",
+                source: safeString(data?.source, 60) || undefined,
+                kept: Boolean(data?.kept),
+                paths: Array.isArray(data?.paths) ? data.paths.slice(0, 200) : undefined,
+                undoOf: typeof data?.undoOf === "string" ? data.undoOf : null,
+                before: data?.before && typeof data.before === "object" ? data.before : undefined,
+                after: data?.after && typeof data.after === "object" ? data.after : undefined,
+            };
+
+            return NextResponse.json(response, { status: 200 });
+        }
 
         const snap = await col.orderBy("createdAt", "desc").limit(25).get();
         const items: RestorePointDoc[] = snap.docs.map((d: any) => {

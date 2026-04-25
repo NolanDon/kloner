@@ -105,6 +105,16 @@ type RestorePointItem = {
     undoOf?: string | null;
 };
 
+type RestorePointDetail = {
+    id: string;
+    label: string;
+    source?: string;
+    kept?: boolean;
+    paths?: string[];
+    before?: Record<string, string | null>;
+    after?: Record<string, string>;
+};
+
 type MigrationApplyFailure = {
     errorText: string;
     errorCode: string | null;
@@ -211,6 +221,64 @@ function buildCompileFixPrefill(ctx: CompileErrorQuickFixContext): string {
         "Context (immutable in free-fix mode):",
         JSON.stringify(immutableContext, null, 2),
     ].join("\n");
+}
+
+function normalizeLines(text: string): string[] {
+    return String(text || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
+}
+
+function countLineDelta(beforeText: string, afterText: string): { added: number; removed: number } {
+    const before = normalizeLines(beforeText);
+    const after = normalizeLines(afterText);
+
+    let prefix = 0;
+    while (prefix < before.length && prefix < after.length && before[prefix] === after[prefix]) {
+        prefix += 1;
+    }
+
+    let suffix = 0;
+    while (
+        suffix < before.length - prefix &&
+        suffix < after.length - prefix &&
+        before[before.length - 1 - suffix] === after[after.length - 1 - suffix]
+    ) {
+        suffix += 1;
+    }
+
+    const removed = Math.max(0, before.length - prefix - suffix);
+    const added = Math.max(0, after.length - prefix - suffix);
+    return { added, removed };
+}
+
+function summarizeRestorePointDiff(detail: RestorePointDetail | null | undefined): Array<{ path: string; added: number; removed: number; beforeLines: number; afterLines: number }> {
+    if (!detail?.before && !detail?.after) return [];
+
+    const paths = Array.from(new Set([
+        ...(detail.paths || []),
+        ...Object.keys(detail.before || {}),
+        ...Object.keys(detail.after || {}),
+    ])).filter(Boolean);
+
+    return paths.map((path) => {
+        const beforeText = String(detail.before?.[path] ?? "");
+        const afterText = String(detail.after?.[path] ?? "");
+        const delta = countLineDelta(beforeText, afterText);
+        return {
+            path,
+            added: delta.added,
+            removed: delta.removed,
+            beforeLines: normalizeLines(beforeText).length,
+            afterLines: normalizeLines(afterText).length,
+        };
+    });
+}
+
+function buildRestorePointDiffPreview(detail: RestorePointDetail | null | undefined, path: string): { before: string; after: string } | null {
+    if (!detail) return null;
+    const before = String(detail.before?.[path] ?? "");
+    const after = String(detail.after?.[path] ?? "");
+    if (before === after) return null;
+    return { before, after };
 }
 
 export default function AppBuilderEditorAgentChat({ appId, files, currentFile, onFileEdit, onFilesReplace, onRestoreApplied, creditError, previewReady, previewIssue, onPreviewIssueFixRequest, onUserMessageSent, welcomeContext }: AppBuilderEditorAgentChatProps) {
@@ -402,6 +470,8 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
     const [restorePoints, setRestorePoints] = useState<RestorePointItem[]>([]);
     const [isRestoreBusy, setIsRestoreBusy] = useState(false);
     const [lastRestorePointId, setLastRestorePointId] = useState<string | null>(null);
+    const [restorePointDetailsById, setRestorePointDetailsById] = useState<Record<string, RestorePointDetail | undefined>>({});
+    const [activeRestorePointPreview, setActiveRestorePointPreview] = useState<{ restorePointId: string; path: string } | null>(null);
     const [showDatabaseSetup, setShowDatabaseSetup] = useState(false);
     const [showSupabaseSetup, setShowSupabaseSetup] = useState(false);
     const [showSupabaseAdvanced, setShowSupabaseAdvanced] = useState(false);
@@ -1275,6 +1345,56 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
             // ignore
         }
     }, [appId, fetchWithScopeRetry, scopeWarmupComplete]);
+
+    const fetchRestorePointDetails = useCallback(async (restorePointId: string) => {
+        const id = String(restorePointId || "").trim();
+        if (!id || !scopeWarmupComplete) return;
+        if (restorePointDetailsById[id]) return;
+
+        try {
+            await ensureSessionAndCsrf().catch(() => null);
+            const res = await fetchWithScopeRetry(
+                `/api/app-builder/${appId}/restore-points?restoreId=${encodeURIComponent(id)}`,
+                { method: "GET" },
+                { retryLabel: "fetch restore point details" }
+            );
+            if (!res.ok) return;
+            const data = await res.json().catch(() => null);
+            if (data?.ok && data?.id) {
+                setRestorePointDetailsById((prev) => ({
+                    ...prev,
+                    [id]: {
+                        id: String(data.id),
+                        label: String(data.label || "Restore point"),
+                        source: typeof data.source === "string" ? data.source : undefined,
+                        kept: Boolean(data.kept),
+                        paths: Array.isArray(data.paths) ? data.paths : undefined,
+                        before: data.before && typeof data.before === "object" ? data.before : undefined,
+                        after: data.after && typeof data.after === "object" ? data.after : undefined,
+                    },
+                }));
+            }
+        } catch {
+            // ignore
+        }
+    }, [appId, fetchWithScopeRetry, restorePointDetailsById, scopeWarmupComplete]);
+
+    const activeRestorePointPreviewData = activeRestorePointPreview
+        ? (() => {
+            const detail = restorePointDetailsById[activeRestorePointPreview.restorePointId];
+            const preview = buildRestorePointDiffPreview(detail, activeRestorePointPreview.path);
+            return preview ? { detail, preview, path: activeRestorePointPreview.path } : null;
+        })()
+        : null;
+
+    useEffect(() => {
+        const ids = Array.from(new Set(messages.map((m) => m.restorePointId).filter((id): id is string => Boolean(id))));
+        for (const id of ids) {
+            if (!restorePointDetailsById[id]) {
+                void fetchRestorePointDetails(id);
+            }
+        }
+    }, [fetchRestorePointDetails, messages, restorePointDetailsById]);
 
     const syncFilesFromServer = useCallback(async ({ applyToState = true }: { applyToState?: boolean } = {}) => {
         try {
@@ -3193,31 +3313,79 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                             ) : null}
 
                             {message.restorePointId && (
-                                <div className="mt-2 flex items-center gap-2">
-                                    <button
-                                        onClick={() =>
-                                            applyRestorePoint(
-                                                message.restorePointId!,
-                                                getStatusMessageForAction(message.restoreActionLabel)
-                                            )
-                                        }
-                                        disabled={isRestoreBusy}
-                                        className="px-2 py-1 text-xs bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50"
-                                        title={message.restoreActionLabel || "Apply"}
-                                    >
-                                        {message.restoreActionLabel || "Apply"}
-                                    </button>
-                                    <button
-                                        onClick={() => keepRestorePoint(message.restorePointId!)}
-                                        disabled={isRestoreBusy}
-                                        className="px-2 py-1 text-xs bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50"
-                                        title="Keep (do not auto-trim)"
-                                    >
-                                        Keep
-                                    </button>
-                                    <span className="text-[11px] text-gray-500">
-                                        {message.restorePointId.slice(0, 8)}
-                                    </span>
+                                <div className="mt-2 space-y-2">
+                                    {(() => {
+                                        const detail = restorePointDetailsById[message.restorePointId!];
+                                        const summary = summarizeRestorePointDiff(detail);
+                                        if (summary.length === 0) return null;
+
+                                        const showExpanded = summary.length <= 3;
+
+                                        return (
+                                            <div className="rounded-xl border border-[#F55F2A]/15 bg-white/80 p-3">
+                                                <div className="flex items-center justify-between gap-2">
+                                                    <div className="text-xs font-semibold text-neutral-800">Changed files</div>
+                                                    <div className="text-[11px] text-neutral-500">Hover or click a file to inspect the diff</div>
+                                                </div>
+                                                <div className="mt-3 space-y-2">
+                                                    {(showExpanded ? summary : summary.slice(0, 3)).map((entry) => (
+                                                        <button
+                                                            key={entry.path}
+                                                            type="button"
+                                                            onClick={() => setActiveRestorePointPreview({ restorePointId: message.restorePointId!, path: entry.path })}
+                                                            className="w-full rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-left transition hover:border-[#F55F2A]/30 hover:bg-white hover:shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-[#F55F2A]/30"
+                                                        >
+                                                            <div className="flex items-center justify-between gap-3">
+                                                                <div className="min-w-0 text-xs font-medium text-neutral-900 truncate">{entry.path}</div>
+                                                                <div className="flex shrink-0 items-center gap-2 text-[11px] font-semibold">
+                                                                    <span className="text-emerald-700">+{entry.added}</span>
+                                                                    <span className="text-rose-700">-{entry.removed}</span>
+                                                                </div>
+                                                            </div>
+                                                            <div className="mt-1 text-[11px] text-neutral-500">
+                                                                {entry.beforeLines} lines before • {entry.afterLines} lines after
+                                                            </div>
+                                                        </button>
+                                                    ))}
+                                                    {!showExpanded && summary.length > 3 ? (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setActiveRestorePointPreview({ restorePointId: message.restorePointId!, path: summary[0]!.path })}
+                                                            className="text-xs font-medium text-[#F55F2A] hover:underline"
+                                                        >
+                                                            View {summary.length - 3} more changed file{summary.length - 3 === 1 ? "" : "s"}
+                                                        </button>
+                                                    ) : null}
+                                                </div>
+                                            </div>
+                                        );
+                                    })()}
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        <button
+                                            onClick={() =>
+                                                applyRestorePoint(
+                                                    message.restorePointId!,
+                                                    getStatusMessageForAction(message.restoreActionLabel)
+                                                )
+                                            }
+                                            disabled={isRestoreBusy}
+                                            className="px-2 py-1 text-xs bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50"
+                                            title={message.restoreActionLabel || "Apply"}
+                                        >
+                                            {message.restoreActionLabel || "Apply"}
+                                        </button>
+                                        <button
+                                            onClick={() => keepRestorePoint(message.restorePointId!)}
+                                            disabled={isRestoreBusy}
+                                            className="px-2 py-1 text-xs bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50"
+                                            title="Keep (do not auto-trim)"
+                                        >
+                                            Keep
+                                        </button>
+                                        <span className="text-[11px] text-gray-500">
+                                            {message.restorePointId.slice(0, 8)}
+                                        </span>
+                                    </div>
                                 </div>
                             )}
                             <div className="mt-2 flex items-center justify-between gap-2">
@@ -3266,6 +3434,45 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
             </div>
 
             {/* Database Connections */}
+                            {activeRestorePointPreviewData ? (
+                                <div
+                                    className="fixed inset-0 z-[17000] bg-black/30 px-3 py-3 sm:px-4 sm:py-6"
+                                    onMouseDown={(e) => {
+                                        if (e.target === e.currentTarget) setActiveRestorePointPreview(null);
+                                    }}
+                                >
+                                    <div className="mx-auto mt-4 w-full max-w-4xl overflow-hidden rounded-2xl sm:rounded-3xl border border-neutral-200 bg-white shadow-[0_28px_80px_rgba(15,23,42,0.25)]">
+                                        <div className="flex items-start justify-between gap-3 border-b border-neutral-200 px-4 py-3 sm:px-5 sm:py-4">
+                                            <div className="min-w-0">
+                                                <div className="text-sm font-semibold text-neutral-900">File diff preview</div>
+                                                <div className="mt-0.5 break-all text-[11px] sm:text-xs text-neutral-500">{activeRestorePointPreviewData.path}</div>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => setActiveRestorePointPreview(null)}
+                                                className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-50"
+                                                aria-label="Close diff preview"
+                                            >
+                                                <X className="h-4 w-4" />
+                                            </button>
+                                        </div>
+                                        <div className="grid gap-0 md:grid-cols-2">
+                                            <div className="border-b border-neutral-200 md:border-b-0 md:border-r md:border-neutral-200">
+                                                <div className="border-b border-rose-100 bg-rose-50 px-4 py-2 text-xs font-semibold text-rose-700">Replaced / removed</div>
+                                                <pre className="max-h-[40vh] overflow-auto whitespace-pre-wrap break-words bg-[#fffafa] px-4 py-4 text-[11px] sm:text-[12px] leading-5 sm:leading-6 text-rose-950">
+                                                    <span className="text-rose-700">{activeRestorePointPreviewData.preview.before || "(empty)"}</span>
+                                                </pre>
+                                            </div>
+                                            <div>
+                                                <div className="border-b border-emerald-100 bg-emerald-50 px-4 py-2 text-xs font-semibold text-emerald-700">New / added</div>
+                                                <pre className="max-h-[40vh] overflow-auto whitespace-pre-wrap break-words bg-[#fbfffb] px-4 py-4 text-[11px] sm:text-[12px] leading-5 sm:leading-6 text-emerald-950">
+                                                    <span className="text-emerald-700">{activeRestorePointPreviewData.preview.after || "(empty)"}</span>
+                                                </pre>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            ) : null}
             {databaseConnections.length > 0 && (
                 <div className="px-4 py-2 border-t bg-white flex-shrink-0">
                     <div className="flex items-center gap-2 text-sm text-gray-600">

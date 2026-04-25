@@ -428,7 +428,7 @@ export async function POST(req: NextRequest) {
                         try {
                             const restartResult = await hubRestart(previewCode);
                             const restartTimedOut = restartResult.status === 202 && Boolean((restartResult.json as any)?.queued);
-                            const readyWindowMs = restartTimedOut ? 6_000 : 20_000;
+                            const readyWindowMs = restartTimedOut ? 1_500 : 3_500;
                             const ready = await pollReady(previewCode, readyWindowMs);
                             if (!ready.ok) {
                                 await logWriteFailure({
