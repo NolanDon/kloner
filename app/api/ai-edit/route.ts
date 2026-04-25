@@ -1137,6 +1137,7 @@ async function runAiEditModelGemini(input: {
     html: string;
     prompt: string;
     uid: string;
+    action?: "edit_block" | "create_page";
     mode?: "code" | "imagery";
     renderId: string;
     requestId: string;
@@ -1481,6 +1482,7 @@ async function handlePost(req: NextRequest) {
             html,
             prompt: modelPrompt,
             uid,
+            action,
             mode,
             renderId,
             requestId,
