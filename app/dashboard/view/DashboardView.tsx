@@ -102,6 +102,7 @@ import { archiveRender, filterRendersForBuilder, resolveStorageUrl, useResolvedI
 import { archiveApp } from "@/src/lib/apps";
 import { AnimatePresence, motion } from "framer-motion";
 import TrialSuccessCelebration from "../../../components/TrialSuccessCelebration";
+import SuccessConfetti from "../../../components/tools/SuccessConfetti";
 import { extractArchivedPageIdsFromRender, fetchRenderForDeployment, getArchivedRoutesForRender, persistArchivedPageIds, scrubArchivedRoutes, secureHtmlForPreviewIframe, withArchivedPageIds } from "@/components/helpers";
 import { useModal } from "@/components/ui/ModalContext";
 import AppBuilderEditor from "@/components/AppBuilderEditor";
@@ -3075,6 +3076,7 @@ export default function PreviewPage(): JSX.Element {
     const [exitOfferClaimed, setExitOfferClaimed] = useState(false);
     const [showWebsitePrePaywall, setShowWebsitePrePaywall] = useState(false);
     const [showTrialSuccessCelebration, setShowTrialSuccessCelebration] = useState(false);
+    const [showDeploySuccessConfetti, setShowDeploySuccessConfetti] = useState(false);
     const [showDevQuickMenu, setShowDevQuickMenu] = useState(false);
     const [previewDebugScenario, setPreviewDebugScenario] = useState<{ mode: 'terminal-error' | 'terminal-error-auto-fix'; nonce: number } | null>(null);
     const isDev = process.env.NODE_ENV !== "production";
@@ -3356,6 +3358,13 @@ export default function PreviewPage(): JSX.Element {
     const [appDeployWizardAppName, setAppDeployWizardAppName] = useState<string>("");
     const [appDeployWizardLiveUrl, setAppDeployWizardLiveUrl] = useState<string | null>(null);
     const [showAppDeployWizardStep2CloseButton, setShowAppDeployWizardStep2CloseButton] = useState(false);
+    const [appBuilderDeployIssue, setAppBuilderDeployIssue] = useState<{
+        title: string;
+        detail: string;
+        fingerprint: string;
+        fixAction?: string;
+    } | null>(null);
+    const deploySuccessConfettiShownRef = useRef(false);
     const appDeployWizardErrorText = appDeployWizardError || "";
     const appDeployWizardPermissionError = /don't have permission to create the project/i.test(appDeployWizardErrorText);
     const appDeployWizardResolvedErrorText = useMemo(() => {
@@ -3857,6 +3866,7 @@ export default function PreviewPage(): JSX.Element {
         setAppDeployWizardBusy(true);
         setAppDeployWizardError(null);
         setAppDeployWizardLiveUrl(null);
+        setAppBuilderDeployIssue(null);
 
         try {
             const csrf = await ensureSessionAndCsrf().catch(() => null);
@@ -3896,14 +3906,26 @@ export default function PreviewPage(): JSX.Element {
 
             if (!res.ok || !data?.ok) {
                 const rawMsg = data?.error || `Deploy failed (HTTP ${res.status})`;
-                const friendlyMsg = /don't have permission to create the project/i.test(rawMsg)
-                    ? "This Vercel account or team cannot create a new project here. Reconnect Vercel with the correct account or team, then retry the deploy."
-                    : rawMsg;
+                const code = String((data as any)?.code || "").trim();
+                const deployBodyBytes = typeof (data as any)?.deployBodyBytes === "number" ? (data as any).deployBodyBytes : null;
+                const bodyLimitBytes = typeof (data as any)?.bodyLimitBytes === "number" ? (data as any).bodyLimitBytes : null;
+                const friendlyMsg = code === "VERCEL_DEPLOY_BODY_TOO_LARGE"
+                    ? "This deployment is too large for Vercel's request-body limit. The hydrated file payload exceeds 10mb, so the app needs to be reduced or split before it can be deployed."
+                    : /don't have permission to create the project/i.test(rawMsg)
+                        ? "This Vercel account or team cannot create a new project here. Reconnect Vercel with the correct account or team, then retry the deploy."
+                        : rawMsg;
+                setAppBuilderDeployIssue({
+                    title: code === "VERCEL_DEPLOY_BODY_TOO_LARGE" ? "Deployment payload too large" : "Deployment failed",
+                    detail: friendlyMsg,
+                    fingerprint: `deploy:${code || res.status}:${String(deployBodyBytes || "")}:${String(bodyLimitBytes || "")}:${friendlyMsg.slice(0, 120)}`,
+                    fixAction: code === "VERCEL_DEPLOY_BODY_TOO_LARGE" ? "reduce_deploy_payload" : "deploy_issue_fix",
+                });
                 throw new Error(friendlyMsg);
             }
 
             const url = String(data?.url || data?.previewUrl || "").trim();
             if (!url) throw new Error("Deploy completed but no URL was returned.");
+            setAppBuilderDeployIssue(null);
             setAppDeployWizardLiveUrl(url);
         } catch (e: any) {
             setAppDeployWizardError(e?.message || "Deploy failed.");
@@ -3920,6 +3942,18 @@ export default function PreviewPage(): JSX.Element {
         autoAppDeployTriggeredRef.current = false;
         void deployAppLive({ force: true });
     }, [appDeployWizardOpen, appDeployWizardStep, deployAppLive]);
+
+    useEffect(() => {
+        if (!appDeployWizardOpen || appDeployWizardStep !== 3 || !appDeployWizardLiveUrl) {
+            deploySuccessConfettiShownRef.current = false;
+            setShowDeploySuccessConfetti(false);
+            return;
+        }
+
+        if (deploySuccessConfettiShownRef.current) return;
+        deploySuccessConfettiShownRef.current = true;
+        setShowDeploySuccessConfetti(true);
+    }, [appDeployWizardLiveUrl, appDeployWizardOpen, appDeployWizardStep]);
 
     useEffect(() => {
         if (!appDeployWizardOpen) {
@@ -10899,6 +10933,7 @@ export default function PreviewPage(): JSX.Element {
                             void startProCheckoutForAppDeploy({ returnAppId: appId });
                         }}
                         previewDebugScenario={previewDebugScenario}
+                        deployIssue={appBuilderDeployIssue}
                     />
                 )}
 
@@ -12954,6 +12989,12 @@ export default function PreviewPage(): JSX.Element {
                 <TrialSuccessCelebration
                     open={showTrialSuccessCelebration}
                     onDismiss={() => setShowTrialSuccessCelebration(false)}
+                />
+                <SuccessConfetti
+                    open={showDeploySuccessConfetti}
+                    title="Your website is live."
+                    message="The deploy finished successfully."
+                    onDismiss={() => setShowDeploySuccessConfetti(false)}
                 />
             </div>
         </main>

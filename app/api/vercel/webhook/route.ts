@@ -175,6 +175,51 @@ async function upsertDeploymentRecord(
         },
         { merge: true }
     );
+
+    const deployErrorCode =
+        (deployment as any)?.errorCode ||
+        (deployment.meta as any)?.errorCode ||
+        (deployment.meta as any)?.error?.code ||
+        null;
+    const deployErrorMessage =
+        (deployment as any)?.errorMessage ||
+        (deployment as any)?.readyStateReason ||
+        (deployment.meta as any)?.errorMessage ||
+        (deployment.meta as any)?.readyStateReason ||
+        null;
+
+    const appsSnap = await db
+        .collection("kloner_users")
+        .doc(uid)
+        .collection("kloner_apps")
+        .where("lastDeploymentId", "==", deployment.id)
+        .limit(1)
+        .get();
+
+    if (!appsSnap.empty) {
+        const appRef = appsSnap.docs[0].ref;
+        const patch: Record<string, any> = {
+            lastDeploymentState: canonicalState,
+            lastDeploymentId: deployment.id,
+            lastDeploymentUrl: deployment.url || null,
+            updatedAt: now,
+        };
+
+        if (canonicalState === "error") {
+            patch.lastDeploymentErrorCode = deployErrorCode || "VERCEL_DEPLOYMENT_ERROR";
+            patch.lastDeploymentErrorMessage = deployErrorMessage || "Vercel deployment failed.";
+            patch.lastDeploymentErrorAt = now;
+        } else if (canonicalState === "ready") {
+            patch.lastDeploymentErrorCode = null;
+            patch.lastDeploymentErrorMessage = null;
+            patch.lastDeploymentErrorAt = null;
+            patch.productionUrl = deployment.url || null;
+            patch.lastDeployUrl = deployment.url || null;
+            patch.isDeployed = true;
+        }
+
+        await appRef.set(patch, { merge: true });
+    }
 }
 
 export async function POST(req: NextRequest) {

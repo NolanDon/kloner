@@ -4,7 +4,7 @@
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import Editor from "@monaco-editor/react";
 import Image from "next/image";
-import { Folder, File, Upload, X, RefreshCw, MessageSquare, Code, Check, RotateCcw, Database, Rocket, Monitor, SlidersHorizontal, Images, Send, Pencil, Loader2, Share2, ExternalLink, Copy, ChevronDown, ChevronRight } from "lucide-react";
+import { Folder, File, Upload, X, RefreshCw, MessageSquare, Code, Check, RotateCcw, Database, Rocket, Monitor, SlidersHorizontal, Images, Send, Pencil, Loader2, Share2, ExternalLink, Copy, ChevronDown, ChevronRight, AlertTriangle } from "lucide-react";
 import AppBuilderEditorAgentChat from "./AppBuilderEditorAgentChat";
 import KlonerLoader from "./KlonerLoader";
 import WebContainerRunner from "./WebContainerRunner";
@@ -64,6 +64,12 @@ type AppData = {
         needsRescan?: boolean | null;
         nextAction?: string | null;
     } | null;
+    lastDeploymentId?: string | null;
+    lastDeploymentState?: string | null;
+    lastDeploymentErrorCode?: string | null;
+    lastDeploymentErrorMessage?: string | null;
+    lastDeploymentErrorAt?: unknown;
+    lastDeploymentUrl?: string | null;
 };
 
 type NormalizedGenerationState = {
@@ -97,6 +103,32 @@ type AutoPreviewPhase =
 type LeftViewMode = "ai" | "code" | "images";
 
 type PreviewMode = "webcontainer" | "vercel";
+
+type EditorIssue = {
+    title: string;
+    detail: string;
+    fingerprint: string;
+    fixAction?: string;
+};
+
+function buildDeployIssueFromApp(appData: Partial<AppData> | null | undefined): EditorIssue | null {
+    if (!appData) return null;
+
+    const deploymentId = String(appData.lastDeploymentId || "").trim();
+    const state = String(appData.lastDeploymentState || "").toLowerCase();
+    const errorCode = String(appData.lastDeploymentErrorCode || "").trim();
+    const errorMessage = String(appData.lastDeploymentErrorMessage || "").trim();
+
+    if (state !== "error" && !errorMessage) return null;
+
+    const detail = errorMessage || "Vercel reported a deployment failure.";
+    return {
+        title: "Deployment failed",
+        detail,
+        fingerprint: `deploy:${deploymentId || "unknown"}:${errorCode || "error"}:${detail.slice(0, 160)}`,
+        fixAction: errorCode === "VERCEL_DEPLOY_BODY_TOO_LARGE" ? "reduce_deploy_payload" : "deploy_issue_fix",
+    };
+}
 
 type VercelOAuthFlow = "preview" | "share";
 
@@ -871,6 +903,7 @@ export default function AppBuilderEditor({
     onTrialPromptShown,
     onTrialPromptStartCheckout,
     previewDebugScenario = null,
+    deployIssue = null,
 }: {
     appId: string;
     onClose: () => void;
@@ -887,6 +920,7 @@ export default function AppBuilderEditor({
     onTrialPromptShown?: (appId: string) => void;
     onTrialPromptStartCheckout?: (appId: string) => void;
     previewDebugScenario?: { mode: 'terminal-error' | 'terminal-error-auto-fix'; nonce: number } | null;
+    deployIssue?: EditorIssue | null;
 }) {
     const { user, loading: authLoading } = useAuth();
     const { showConfirm, showAlert, hideModal } = useModal();
@@ -1391,6 +1425,8 @@ export default function AppBuilderEditor({
     const [autoPreviewPhase, setAutoPreviewPhase] = useState<AutoPreviewPhase>("idle");
     const [autoPreviewError, setAutoPreviewError] = useState<string | null>(null);
     const [previewIssue, setPreviewIssue] = useState<string | null>(null);
+    const [dismissedDeployIssueFingerprint, setDismissedDeployIssueFingerprint] = useState<string | null>(null);
+    const [deployIssueFromApp, setDeployIssueFromApp] = useState<EditorIssue | null>(null);
     const [autoPreviewAttempt, setAutoPreviewAttempt] = useState<number>(0);
     const [autoPreviewBypassUnsupported, setAutoPreviewBypassUnsupported] = useState(false);
     const [previewMode, setPreviewMode] = useState<PreviewMode>("webcontainer");
@@ -1472,6 +1508,38 @@ export default function AppBuilderEditor({
             },
         });
     }, [appId, autoPreviewError, handleCompileErrorFixRequest, previewError, previewIssue]);
+
+    const effectiveDeployIssue = deployIssue || deployIssueFromApp;
+
+    const handleDeployIssueFixRequest = useCallback(() => {
+        if (!effectiveDeployIssue) return;
+
+        handleCompileErrorFixRequest({
+            appId,
+            code: "deploy_issue",
+            actionType: "quick_fix_compile",
+            fixAction: effectiveDeployIssue.fixAction || "deploy_issue_fix",
+            autoSend: true,
+            compileError: {
+                summary: effectiveDeployIssue.title,
+                detail: effectiveDeployIssue.detail,
+                fingerprint: effectiveDeployIssue.fingerprint,
+            },
+        });
+    }, [appId, effectiveDeployIssue, handleCompileErrorFixRequest]);
+
+    useEffect(() => {
+        if (!effectiveDeployIssue) {
+            setDismissedDeployIssueFingerprint(null);
+            return;
+        }
+        if (dismissedDeployIssueFingerprint !== effectiveDeployIssue.fingerprint) return;
+        // keep dismissed until the issue changes
+    }, [effectiveDeployIssue, dismissedDeployIssueFingerprint]);
+
+    const showDeployIssueBanner = Boolean(
+        effectiveDeployIssue && effectiveDeployIssue.detail && dismissedDeployIssueFingerprint !== effectiveDeployIssue.fingerprint,
+    );
 
     useEffect(() => {
         appBuilderTrialShownThisOpenRef.current = false;
@@ -3304,9 +3372,16 @@ export default function AppBuilderEditor({
                             previewUrl: (firebaseData as any).previewUrl || null,
                             vercelProjectId: (firebaseData as any).vercelProjectId || undefined,
                             vercelProtectionBypassSecret: (firebaseData as any).vercelProtectionBypassSecret || null,
+                            lastDeploymentId: (firebaseData as any).lastDeploymentId || null,
+                            lastDeploymentState: (firebaseData as any).lastDeploymentState || null,
+                            lastDeploymentErrorCode: (firebaseData as any).lastDeploymentErrorCode || null,
+                            lastDeploymentErrorMessage: (firebaseData as any).lastDeploymentErrorMessage || null,
+                            lastDeploymentErrorAt: (firebaseData as any).lastDeploymentErrorAt || null,
+                            lastDeploymentUrl: (firebaseData as any).lastDeploymentUrl || null,
                             updatedAt: (firebaseData as any).updatedAt,
                         };
                         setApp(initialApp);
+                        setDeployIssueFromApp(buildDeployIssueFromApp(initialApp));
                         buildFileTree(initialApp.files);
                         const nextLiveUrl = typeof (firebaseData as any).productionUrl === "string"
                             ? (firebaseData as any).productionUrl.trim()
@@ -3324,12 +3399,28 @@ export default function AppBuilderEditor({
                     const nextGenStatus = nextGeneration.status;
                     const nextGenError = nextGeneration.error;
                     const nextGenProgress = nextGeneration.progress;
+                    const nextDeployIssue = buildDeployIssueFromApp({
+                        lastDeploymentId: (firebaseData as any).lastDeploymentId || prevApp.lastDeploymentId || null,
+                        lastDeploymentState: (firebaseData as any).lastDeploymentState || prevApp.lastDeploymentState || null,
+                        lastDeploymentErrorCode: (firebaseData as any).lastDeploymentErrorCode || prevApp.lastDeploymentErrorCode || null,
+                        lastDeploymentErrorMessage: (firebaseData as any).lastDeploymentErrorMessage || prevApp.lastDeploymentErrorMessage || null,
+                        lastDeploymentErrorAt: (firebaseData as any).lastDeploymentErrorAt || prevApp.lastDeploymentErrorAt || null,
+                        lastDeploymentUrl: (firebaseData as any).lastDeploymentUrl || prevApp.lastDeploymentUrl || null,
+                    });
 
                     const generationStatusChanged =
                         prevApp.generationStatus !== nextGenStatus ||
                         prevApp.generationError !== nextGenError ||
                         prevApp.generationProgress !== nextGenProgress ||
                         generationStateChanged(prevApp.generation, nextGeneration);
+
+                    const deployStatusChanged =
+                        prevApp.lastDeploymentId !== (firebaseData as any).lastDeploymentId ||
+                        prevApp.lastDeploymentState !== (firebaseData as any).lastDeploymentState ||
+                        prevApp.lastDeploymentErrorCode !== (firebaseData as any).lastDeploymentErrorCode ||
+                        prevApp.lastDeploymentErrorMessage !== (firebaseData as any).lastDeploymentErrorMessage ||
+                        prevApp.lastDeploymentErrorAt !== (firebaseData as any).lastDeploymentErrorAt ||
+                        prevApp.lastDeploymentUrl !== (firebaseData as any).lastDeploymentUrl;
 
                     const hasFilesUpdate = Boolean((firebaseData as any).files);
                     const mergedFiles = hasFilesUpdate
@@ -3353,7 +3444,7 @@ export default function AppBuilderEditor({
                         ? !filesShallowEqualByContentAndTimestamp(prevApp.files, hydratedApp.files)
                         : false;
 
-                    if (!filesChanged && !generationStatusChanged) return;
+                    if (!filesChanged && !generationStatusChanged && !deployStatusChanged) return;
 
                     const updatedApp: AppData = {
                         ...hydratedApp,
@@ -3369,6 +3460,12 @@ export default function AppBuilderEditor({
                         generation: nextGeneration,
                         isDeployed: Boolean((firebaseData as any).isDeployed),
                         productionUrl: (firebaseData as any).productionUrl || null,
+                        lastDeploymentId: (firebaseData as any).lastDeploymentId || hydratedApp.lastDeploymentId || null,
+                        lastDeploymentState: (firebaseData as any).lastDeploymentState || hydratedApp.lastDeploymentState || null,
+                        lastDeploymentErrorCode: (firebaseData as any).lastDeploymentErrorCode || hydratedApp.lastDeploymentErrorCode || null,
+                        lastDeploymentErrorMessage: (firebaseData as any).lastDeploymentErrorMessage || hydratedApp.lastDeploymentErrorMessage || null,
+                        lastDeploymentErrorAt: (firebaseData as any).lastDeploymentErrorAt || hydratedApp.lastDeploymentErrorAt || null,
+                        lastDeploymentUrl: (firebaseData as any).lastDeploymentUrl || hydratedApp.lastDeploymentUrl || null,
                         updatedAt: (firebaseData as any).updatedAt,
                     };
 
@@ -3376,6 +3473,7 @@ export default function AppBuilderEditor({
                         ? (firebaseData as any).productionUrl.trim()
                         : "";
                     setLastDeployLiveUrl(nextLiveUrl || null);
+                    setDeployIssueFromApp(nextDeployIssue);
 
                     if (filesChanged) {
                         buildFileTree(updatedApp.files);
@@ -5184,6 +5282,29 @@ export default function AppBuilderEditor({
                     </div>
                 </div>
 
+                {deployChoiceError ? (
+                    <div className="px-4 pt-3 sm:px-6">
+                        <div className="rounded-2xl border border-red-300/80 bg-red-50/95 px-4 py-3 text-sm text-red-950 shadow-[0_14px_34px_rgba(185,28,28,0.10)]">
+                            <div className="flex items-start gap-3">
+                                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-600" />
+                                <div className="min-w-0 flex-1">
+                                    <div className="font-semibold">Deployment failed</div>
+                                    <div className="mt-1 text-sm leading-relaxed text-red-900">{deployChoiceError}</div>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setDeployChoiceError(null)}
+                                    className="ml-2 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-red-700 transition hover:bg-red-200 hover:text-red-950"
+                                    aria-label="Dismiss deployment error"
+                                    title="Dismiss"
+                                >
+                                    <X className="h-3.5 w-3.5" />
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                ) : null}
+
                 {/* Hidden file input: keep mounted for mobile controls */}
                 <input
                     ref={faviconInputRef}
@@ -5200,6 +5321,44 @@ export default function AppBuilderEditor({
                     className="hidden"
                     onChange={handleImageFileChange}
                 />
+
+                {showDeployIssueBanner ? (
+                    <div className="border-b border-amber-200 bg-[linear-gradient(180deg,rgba(255,251,240,0.98),rgba(255,255,255,1))] px-4 py-3 shadow-[0_18px_46px_rgba(15,23,42,0.10)] sm:px-5">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-3">
+                                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-amber-200 bg-white text-amber-600 shadow-sm">
+                                    <AlertTriangle className="h-4 w-4" />
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
+                                        <div className="min-w-0">
+                                            <p className="text-sm font-semibold text-neutral-950">
+                                                {effectiveDeployIssue?.title || "Deployment issue"}
+                                            </p>
+                                            <p className="mt-1 text-sm leading-relaxed text-neutral-700">
+                                                {effectiveDeployIssue?.detail}
+                                            </p>
+                                        </div>
+                                        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+                                            <button
+                                                type="button"
+                                                onClick={handleDeployIssueFixRequest}
+                                                className="inline-flex w-full items-center justify-center gap-1.5 rounded-full bg-[#f55f2a] px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-[#e14f1c] sm:w-auto"
+                                            >
+                                                Fix with AI
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => setDismissedDeployIssueFingerprint(effectiveDeployIssue?.fingerprint || null)}
+                                                className="inline-flex w-full items-center justify-center gap-1.5 rounded-full border border-neutral-200 bg-white px-3 py-2 text-xs font-semibold text-neutral-700 shadow-sm transition hover:bg-neutral-50 sm:w-auto"
+                                            >
+                                                Dismiss
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                ) : null}
 
                 {isGenerationProcessing && activeGeneration.status !== "error" && previewMode === "webcontainer" ? (
                     <div className="border-b bg-amber-50 px-4 py-2 text-xs text-amber-900">

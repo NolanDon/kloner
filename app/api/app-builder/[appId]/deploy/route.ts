@@ -1,11 +1,14 @@
 // app/api/app-builder/[appId]/deploy/route.ts
 import { NextRequest, NextResponse } from "next/server";
+import { createHash } from "crypto";
 import { getAdminDb } from "../../../_lib/auth";
 import { requireSessionAndMaybeCsrf } from "../../../_lib/route-guard";
 import { assertAppBuilderScope } from "../../../_lib/appBuilderScope";
 import { upsertVercelProjectEnvVar } from "../../../_lib/vercel-env";
 import { decryptString, type EncryptedBlobV1 } from "../../../_lib/crypto";
 import { refreshTierFromStripeForUid } from "../../../_lib/billing";
+import { hydrateAppBuilderFiles } from "../../../_lib/htmlStorage";
+import { captureCriticalEvent } from "@/lib/observability";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -46,6 +49,132 @@ function normalizeDeploymentUrl(v: unknown): string {
     if (!raw) return "";
     if (raw.startsWith("http://") || raw.startsWith("https://")) return raw;
     return `https://${raw}`;
+}
+
+function estimateUtf8Bytes(value: unknown): number {
+    try {
+        return Buffer.byteLength(typeof value === "string" ? value : JSON.stringify(value), "utf8");
+    } catch {
+        return 0;
+    }
+}
+
+function sha1Hex(text: string): string {
+    return createHash("sha1").update(text, "utf8").digest("hex");
+}
+
+function readPackageJsonFramework(files: Record<string, { content: string }>): "nextjs" | "vite" | null {
+    const pkgEntry = files["package.json"];
+    const raw = typeof pkgEntry?.content === "string" ? pkgEntry.content : "";
+    if (!raw) return null;
+
+    try {
+        const pkg = JSON.parse(raw) as any;
+        const dependencies = {
+            ...(pkg?.dependencies || {}),
+            ...(pkg?.devDependencies || {}),
+        } as Record<string, unknown>;
+        const scripts = (pkg?.scripts || {}) as Record<string, unknown>;
+        const hasNextDependency = Boolean(dependencies.next || dependencies["next"]);
+        const hasViteDependency = Boolean(dependencies.vite || dependencies["@vitejs/plugin-react"]);
+        const buildScript = String(scripts.build || "").toLowerCase();
+
+        if (hasNextDependency) return "nextjs";
+        if (hasViteDependency || buildScript.includes("vite")) return "vite";
+    } catch {
+        // ignore parse errors; fall through to file-based detection
+    }
+
+    return null;
+}
+
+function detectDeploymentFramework(files: Record<string, { content: string }>): "nextjs" | "vite" | null {
+    const packageFramework = readPackageJsonFramework(files);
+    if (packageFramework) return packageFramework;
+
+    const paths = Object.keys(files || {}).map((path) => path.toLowerCase());
+    if (paths.some((path) => path === "next.config.js" || path === "next.config.mjs" || path === "next.config.ts")) {
+        return "nextjs";
+    }
+    if (paths.some((path) => path.startsWith("app/") || path.startsWith("pages/") || path.startsWith("src/app/") || path.startsWith("src/pages/"))) {
+        return "nextjs";
+    }
+    if (paths.some((path) => path === "vite.config.js" || path === "vite.config.ts" || path === "vite.config.mjs")) {
+        return "vite";
+    }
+
+    return null;
+}
+
+async function uploadVercelFile(accessToken: string, filePath: string, content: string): Promise<{ file: string; sha: string; size: number }> {
+    const sha = sha1Hex(content);
+    const size = Buffer.byteLength(content, "utf8");
+
+    const uploadRes = await fetch("https://api.vercel.com/v2/now/files", {
+        method: "POST",
+        headers: {
+            Authorization: `Bearer ${accessToken}`,
+            "Content-Type": "text/plain",
+            "x-vercel-digest": sha,
+        },
+        body: content,
+        signal: AbortSignal.timeout(90_000),
+    });
+
+    if (!uploadRes.ok) {
+        const text = await uploadRes.text().catch(() => "");
+        throw new Error(`Failed to upload ${filePath} to Vercel (${uploadRes.status}): ${text || "unknown"}`);
+    }
+
+    return { file: filePath, sha, size };
+}
+
+async function uploadVercelFiles(accessToken: string, files: Array<{ file: string; content: string }>): Promise<Array<{ file: string; sha: string; size: number }>> {
+    const results: Array<{ file: string; sha: string; size: number }> = [];
+    const batchSize = 8;
+
+    for (let i = 0; i < files.length; i += batchSize) {
+        const batch = files.slice(i, i + batchSize);
+        const uploaded = await Promise.all(batch.map((item) => uploadVercelFile(accessToken, item.file, item.content)));
+        results.push(...uploaded);
+    }
+
+    return results;
+}
+
+function reportDeployFailure(params: {
+    uid: string;
+    appId: string;
+    appName: string;
+    vercelProjectId: string | null;
+    vercelProjectName: string | null;
+    vercelTeamId: string | undefined;
+    statusCode: number;
+    code: string;
+    message: string;
+    extra?: Record<string, unknown>;
+}) {
+    void captureCriticalEvent({
+        source: "internal",
+        severity: params.statusCode >= 500 || params.code === "VERCEL_DEPLOY_BODY_TOO_LARGE" ? "critical" : "error",
+        statusCode: params.statusCode,
+        route: "/api/app-builder/[appId]/deploy",
+        method: "POST",
+        action: params.code === "VERCEL_DEPLOY_BODY_TOO_LARGE" ? "app_builder_deploy_body_too_large" : "app_builder_deploy_failed",
+        userId: params.uid,
+        message: params.message,
+        errorName: params.code,
+        extra: {
+            appId: params.appId,
+            appName: params.appName,
+            vercelProjectId: params.vercelProjectId,
+            vercelProjectName: params.vercelProjectName,
+            teamId: params.vercelTeamId || null,
+            ...params.extra,
+        },
+    }).catch((err) => {
+        console.warn("[app-builder/deploy] failed to report deploy failure to Slack", err);
+    });
 }
 
 export async function POST(
@@ -148,7 +277,18 @@ export async function POST(
         }
 
         const appName = data.name || `app-${appId}`;
-        const files = data.files || {};
+        const files = await hydrateAppBuilderFiles({
+            db,
+            uid,
+            appId,
+            files: (data.files || {}) as any,
+            fileManifest: (data as any).fileManifest || null,
+            fileStorageCollection: typeof (data as any).fileStorageCollection === "string" ? (data as any).fileStorageCollection : null,
+            fileStorageMode: typeof (data as any).fileStorageMode === "string" ? (data as any).fileStorageMode : null,
+            containerCode: typeof (data as any).containerCode === "string" ? (data as any).containerCode : null,
+            htmlStoragePath: (data as any).htmlStoragePath || null,
+            htmlEditIndex: (data as any).htmlEditIndex,
+        });
 
         let vercelProjectId: string | null = data.vercelProjectId ?? null;
         let vercelProjectName: string | null = data.vercelProjectName ?? null;
@@ -191,6 +331,8 @@ export async function POST(
 
         const resolvedName = projectBaseName;
 
+        const deploymentFramework = detectDeploymentFramework(files as Record<string, { content: string }>);
+
         // ───────────────── create project if needed ─────────────────
         if (!vercelProjectId) {
             const projectUrl = vercelTeamId
@@ -207,10 +349,14 @@ export async function POST(
                 },
                 body: JSON.stringify({
                     name: resolvedName,
-                    framework: "nextjs", // Assume Next.js for apps
-                    buildCommand: "npm run build",
-                    devCommand: "npm run dev",
-                    outputDirectory: ".next",
+                    ...(deploymentFramework ? { framework: deploymentFramework } : {}),
+                    ...(deploymentFramework === "nextjs"
+                        ? {
+                            buildCommand: "npm run build",
+                            devCommand: "npm run dev",
+                            outputDirectory: ".next",
+                        }
+                        : {}),
                     rootDirectory: null,
                 }),
                 signal: AbortSignal.timeout(30_000),
@@ -346,10 +492,10 @@ export async function POST(
         }
 
         // ───────────────── prepare files for deployment ─────────────────
-        const deploymentFiles: any[] = [];
+        const deploymentSourceFiles: Array<{ file: string; content: string }> = [];
 
         // Add package.json if not present
-        if (!files["package.json"]) {
+        if (deploymentFramework === "nextjs" && !files["package.json"]) {
             const defaultPackageJson = {
                 name: resolvedName,
                 version: "1.0.0",
@@ -365,13 +511,9 @@ export async function POST(
                 }
             };
 
-            deploymentFiles.push({
+            deploymentSourceFiles.push({
                 file: "package.json",
-                data: Buffer.from(
-                    JSON.stringify(defaultPackageJson, null, 2),
-                    "utf8"
-                ).toString("base64"),
-                encoding: "base64" as const,
+                content: JSON.stringify(defaultPackageJson, null, 2),
             });
         }
 
@@ -389,11 +531,41 @@ export async function POST(
             }
 
             const fileInfo = fileData as { content: string; lastModified: number };
-            deploymentFiles.push({
+            deploymentSourceFiles.push({
                 file: filePath,
-                data: Buffer.from(fileInfo.content, "utf8").toString("base64"),
-                encoding: "base64" as const,
+                content: fileInfo.content,
             });
+        }
+
+        let deploymentFiles: Array<{ file: string; sha: string; size: number }> = [];
+        try {
+            deploymentFiles = await uploadVercelFiles(accessToken, deploymentSourceFiles);
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            reportDeployFailure({
+                uid,
+                appId,
+                appName,
+                vercelProjectId,
+                vercelProjectName,
+                vercelTeamId,
+                statusCode: 502,
+                code: "VERCEL_DEPLOY_FILE_UPLOAD_FAILED",
+                message: `Failed to upload files to Vercel before deploying: ${message}`,
+                extra: {
+                    phase: "upload_files",
+                    deploymentFileCount: deploymentSourceFiles.length,
+                },
+            });
+
+            return NextResponse.json(
+                {
+                    ok: false,
+                    error: `Failed to upload files to Vercel before deploying: ${message}`,
+                    code: "VERCEL_DEPLOY_FILE_UPLOAD_FAILED",
+                },
+                { status: 502 },
+            );
         }
 
         // ───────────────── create deployment ─────────────────
@@ -408,15 +580,53 @@ export async function POST(
         const deployBody: any = {
             name: vercelProjectName || resolvedName || "kloner-app",
             files: deploymentFiles,
-            projectSettings: {
+            target: "production",
+            public: true,
+        };
+
+        if (deploymentFramework === "nextjs") {
+            deployBody.projectSettings = {
                 framework: "nextjs",
                 buildCommand: "npm run build",
                 devCommand: "npm run dev",
                 outputDirectory: ".next",
-            },
-            target: "production",
-            public: true,
-        };
+            };
+        }
+
+        const deployBodyBytes = estimateUtf8Bytes(deployBody);
+        const bodyLimitBytes = 10 * 1024 * 1024;
+
+        if (deployBodyBytes > bodyLimitBytes) {
+            const message = "This deployment is too large for Vercel's request-body limit. The hydrated file payload exceeds 10mb, so the app needs to be reduced or split before it can be deployed.";
+            reportDeployFailure({
+                uid,
+                appId,
+                appName,
+                vercelProjectId,
+                vercelProjectName,
+                vercelTeamId,
+                statusCode: 413,
+                code: "VERCEL_DEPLOY_BODY_TOO_LARGE",
+                message,
+                extra: {
+                    deployBodyBytes,
+                    bodyLimitBytes,
+                    fileCount: deploymentFiles.length,
+                    phase: "create_deployment_preflight",
+                },
+            });
+
+            return NextResponse.json(
+                {
+                    ok: false,
+                    error: message,
+                    code: "VERCEL_DEPLOY_BODY_TOO_LARGE",
+                    deployBodyBytes,
+                    bodyLimitBytes,
+                },
+                { status: 413 },
+            );
+        }
 
         if (vercelProjectId) {
             deployBody.project = vercelProjectId;
@@ -435,14 +645,72 @@ export async function POST(
         const deployJson = await deployRes.json().catch(() => ({} as any));
 
         if (!deployRes.ok) {
+            const errorMessage =
+                (deployJson as any)?.error?.message ||
+                (deployJson as any)?.error ||
+                "Failed to deploy to Vercel";
+
+            if (deployRes.status === 413 || /body limit|request-body limit|too large/i.test(String(errorMessage))) {
+                const message = "This deployment is too large for Vercel's request-body limit. The hydrated file payload exceeds 10mb, so the app needs to be reduced or split before it can be deployed.";
+                reportDeployFailure({
+                    uid,
+                    appId,
+                    appName,
+                    vercelProjectId,
+                    vercelProjectName,
+                    vercelTeamId,
+                    statusCode: 413,
+                    code: "VERCEL_DEPLOY_BODY_TOO_LARGE",
+                    message,
+                    extra: {
+                        deployBodyBytes,
+                        bodyLimitBytes,
+                        fileCount: deploymentFiles.length,
+                        phase: "create_deployment_response",
+                        vercelStatus: deployRes.status,
+                        vercelError: errorMessage,
+                    },
+                });
+
+                return NextResponse.json(
+                    {
+                        ok: false,
+                        error: message,
+                        code: "VERCEL_DEPLOY_BODY_TOO_LARGE",
+                        deployBodyBytes,
+                        bodyLimitBytes,
+                    },
+                    { status: 413 },
+                );
+            }
+
+            reportDeployFailure({
+                uid,
+                appId,
+                appName,
+                vercelProjectId,
+                vercelProjectName,
+                vercelTeamId,
+                statusCode: deployRes.status,
+                code: "VERCEL_DEPLOY_FAILED",
+                message: `Failed to deploy to Vercel: ${errorMessage}`,
+                extra: {
+                    deployBodyBytes,
+                    bodyLimitBytes,
+                    fileCount: deploymentFiles.length,
+                    phase: "create_deployment_response",
+                    vercelStatus: deployRes.status,
+                    vercelError: errorMessage,
+                },
+            });
+
             return NextResponse.json(
                 {
                     ok: false,
-                    error:
-                        (deployJson as any)?.error?.message ||
-                        "Failed to deploy to Vercel",
+                    error: errorMessage,
+                    code: "VERCEL_DEPLOY_FAILED",
                 },
-                { status: 400 }
+                { status: deployRes.status >= 400 ? deployRes.status : 400 }
             );
         }
 
@@ -458,6 +726,12 @@ export async function POST(
         await docRef.update({
             lastDeployUrl: deploymentUrl,
             productionUrl: deploymentUrl,
+            lastDeploymentId: (deployJson as any)?.id || null,
+            lastDeploymentState: (deployJson as any)?.readyState || (deployJson as any)?.state || "building",
+            lastDeploymentErrorCode: null,
+            lastDeploymentErrorMessage: null,
+            lastDeploymentErrorAt: null,
+            lastDeploymentUrl: deploymentUrl,
             lastExportedAt: new Date(),
             isDeployed: true,
             updatedAt: new Date(),
@@ -467,6 +741,7 @@ export async function POST(
             ok: true,
             url: deploymentUrl,
             previewUrl: deploymentUrl,
+            deploymentId: (deployJson as any)?.id || null,
             vercelProjectId,
             vercelProjectName
         });
