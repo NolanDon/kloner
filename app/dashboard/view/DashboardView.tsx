@@ -3355,6 +3355,7 @@ export default function PreviewPage(): JSX.Element {
     const [appDeployWizardAppId, setAppDeployWizardAppId] = useState<string | null>(null);
     const [appDeployWizardAppName, setAppDeployWizardAppName] = useState<string>("");
     const [appDeployWizardLiveUrl, setAppDeployWizardLiveUrl] = useState<string | null>(null);
+    const [showAppDeployWizardStep2CloseButton, setShowAppDeployWizardStep2CloseButton] = useState(false);
     const appDeployWizardErrorText = appDeployWizardError || "";
     const appDeployWizardPermissionError = /don't have permission to create the project/i.test(appDeployWizardErrorText);
     const appDeployWizardResolvedErrorText = useMemo(() => {
@@ -3919,6 +3920,27 @@ export default function PreviewPage(): JSX.Element {
         autoAppDeployTriggeredRef.current = false;
         void deployAppLive({ force: true });
     }, [appDeployWizardOpen, appDeployWizardStep, deployAppLive]);
+
+    useEffect(() => {
+        if (!appDeployWizardOpen) {
+            setShowAppDeployWizardStep2CloseButton(false);
+            return;
+        }
+
+        if (appDeployWizardStep !== 2 || vercelStatus !== "connected") {
+            setShowAppDeployWizardStep2CloseButton(false);
+            return;
+        }
+
+        const timer = window.setTimeout(() => {
+            setShowAppDeployWizardStep2CloseButton(true);
+        }, 3000);
+
+        return () => {
+            window.clearTimeout(timer);
+            setShowAppDeployWizardStep2CloseButton(false);
+        };
+    }, [appDeployWizardOpen, appDeployWizardStep, vercelStatus]);
 
     // Auto-advance: once Vercel is connected, move straight to deploy.
     useEffect(() => {
@@ -11331,7 +11353,8 @@ export default function PreviewPage(): JSX.Element {
                                         </div>
 
                                         {appDeployWizardErrorText ? (
-                                            <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                                            <>
+                                            
                                                 {/already exists/i.test(appDeployWizardErrorText) ? (
                                                     <div>
                                                         <div className="font-semibold">Project name already exists</div>
@@ -11366,9 +11389,10 @@ export default function PreviewPage(): JSX.Element {
                                                         </div>
                                                     </div>
                                                 ) : (
-                                                    <div className="text-sm text-amber-800">{appDeployWizardResolvedErrorText}</div>
+                                                     <></>
                                                 )}
-                                            </div>
+                                                </>
+                                            // </div>
                                         ) : null}
 
                                         {appDeployWizardStep === 1 ? (
@@ -11404,7 +11428,7 @@ export default function PreviewPage(): JSX.Element {
                                                 </div>
 
                                                 <div className="rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2 text-[11px] text-neutral-700">
-                                                    <span className="font-semibold text-neutral-800">Status:</span>{" "}
+                                                    {/* <span className="font-semibold text-neutral-800">Status:</span>{" "} */}
                                                     {isVercelChecking
                                                         ? "Checking connection…"
                                                         : isVercelConnected
@@ -11418,7 +11442,7 @@ export default function PreviewPage(): JSX.Element {
                                                             <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
                                                         </div>
                                                         <div>
-                                                            <p className="text-neutral-900">Connected</p>
+                                                            {/* <p className="text-neutral-900">Connected</p> */}
                                                             <p className="text-[11px] text-emerald-700">Continuing to deploy…</p>
                                                         </div>
                                                     </div>
@@ -11585,15 +11609,15 @@ export default function PreviewPage(): JSX.Element {
                                                                         : "Ready"}
                                                         </p>
                                                         {appDeployWizardLiveUrl ? (
-                                                            <p className="text-[11px] text-neutral-600 break-all">
+                                                            <p className="text-[12px] text-neutral-600 break-all">
                                                                 {appDeployWizardLiveUrl}
                                                             </p>
                                                         ) : appDeployWizardError ? (
-                                                            <p className="text-[11px] text-amber-800">
+                                                            <p className="text-[13px] mt-2 text-amber-800">
                                                                 {appDeployWizardResolvedErrorText}
                                                             </p>
                                                         ) : (
-                                                            <p className="text-[11px] text-neutral-600">
+                                                            <p className="text-[12px] text-neutral-600">
                                                                 Deploy creates a production URL in Vercel.
                                                             </p>
                                                         )}
@@ -11950,9 +11974,9 @@ export default function PreviewPage(): JSX.Element {
                                                                 <p className="text-neutral-900">
                                                                     Vercel successfully connected
                                                                 </p>
-                                                                <p className="text-[11px] text-emerald-700">
+                                                                {/* <p className="text-[11px] text-emerald-700">
                                                                     You&apos;ll be moved to deploy in a moment…
-                                                                </p>
+                                                                </p> */}
                                                             </div>
                                                         </div>
                                                     ) : (
@@ -11963,6 +11987,18 @@ export default function PreviewPage(): JSX.Element {
                                                             </p>
                                                         </>
                                                     )}
+
+                                                    {vercelStatus === "connected" && showAppDeployWizardStep2CloseButton ? (
+                                                        <div className="flex items-center justify-end pt-1">
+                                                            <button
+                                                                type="button"
+                                                                onClick={closeAppDeployWizard}
+                                                                className="rounded-full border border-neutral-200 px-3 py-1.5 text-xs font-semibold text-neutral-600 hover:bg-neutral-50"
+                                                            >
+                                                                Close
+                                                            </button>
+                                                        </div>
+                                                    ) : null}
 
                                                     {vercelStatus !== "connected" && (
                                                         <div className="mt-4 flex items-center justify-between gap-2">

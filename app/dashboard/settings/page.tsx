@@ -1248,13 +1248,15 @@ export default function SettingsPage(): JSX.Element {
                                             <Rocket className="h-4 w-4 text-neutral-700" />
                                             <div className="text-sm font-medium text-neutral-800">Vercel</div>
                                         </div>
-                                        <span
-                                            className={
-                                                "rounded-full px-2 py-0.5 text-[10px] font-semibold border " + vercelBadgeClasses
-                                            }
-                                        >
-                                            {vercelBadgeLabel}
-                                        </span>
+                                        {!isVercelConnected ? (
+                                            <span
+                                                className={
+                                                    "rounded-full px-2 py-0.5 text-[10px] font-semibold border " + vercelBadgeClasses
+                                                }
+                                            >
+                                                {vercelBadgeLabel}
+                                            </span>
+                                        ) : null}
                                     </div>
                                     <p className="mt-1 text-xs text-neutral-600">Deploy live sites and apps directly from Kloner.</p>
 
