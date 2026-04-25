@@ -111,6 +111,15 @@ type EditorIssue = {
     fixAction?: string;
 };
 
+type DeployStatusBanner = {
+    kind: "success" | "error";
+    title: string;
+    detail: string;
+    fingerprint: string;
+    fixAction?: string;
+    liveUrl?: string | null;
+};
+
 function buildDeployIssueFromApp(appData: Partial<AppData> | null | undefined): EditorIssue | null {
     if (!appData) return null;
 
@@ -127,6 +136,35 @@ function buildDeployIssueFromApp(appData: Partial<AppData> | null | undefined): 
         detail,
         fingerprint: `deploy:${deploymentId || "unknown"}:${errorCode || "error"}:${detail.slice(0, 160)}`,
         fixAction: errorCode === "VERCEL_DEPLOY_BODY_TOO_LARGE" ? "reduce_deploy_payload" : "deploy_issue_fix",
+    };
+}
+
+function buildDeployErrorBannerFromApp(appData: Partial<AppData> | null | undefined): DeployStatusBanner | null {
+    const issue = buildDeployIssueFromApp(appData);
+    if (!issue) return null;
+
+    return {
+        kind: "error",
+        title: issue.title,
+        detail: issue.detail,
+        fingerprint: issue.fingerprint,
+        fixAction: issue.fixAction,
+        liveUrl: appData?.lastDeploymentUrl || null,
+    };
+}
+
+function buildDeploySuccessBanner(params: {
+    appId: string;
+    deploymentId?: string | null;
+    liveUrl?: string | null;
+}): DeployStatusBanner {
+    const liveUrl = typeof params.liveUrl === "string" ? params.liveUrl.trim() : "";
+    return {
+        kind: "success",
+        title: "Live deploy started",
+        detail: "Rebuild can take a few minutes before updates appear.",
+        fingerprint: `deploy-success:${params.appId}:${params.deploymentId || liveUrl || "unknown"}`,
+        liveUrl: liveUrl || null,
     };
 }
 
@@ -1425,8 +1463,9 @@ export default function AppBuilderEditor({
     const [autoPreviewPhase, setAutoPreviewPhase] = useState<AutoPreviewPhase>("idle");
     const [autoPreviewError, setAutoPreviewError] = useState<string | null>(null);
     const [previewIssue, setPreviewIssue] = useState<string | null>(null);
-    const [dismissedDeployIssueFingerprint, setDismissedDeployIssueFingerprint] = useState<string | null>(null);
-    const [deployIssueFromApp, setDeployIssueFromApp] = useState<EditorIssue | null>(null);
+    const [deployBannerFromApp, setDeployBannerFromApp] = useState<DeployStatusBanner | null>(null);
+    const [deployBannerFromRoute, setDeployBannerFromRoute] = useState<DeployStatusBanner | null>(null);
+    const [dismissedDeployBannerFingerprint, setDismissedDeployBannerFingerprint] = useState<string | null>(null);
     const [autoPreviewAttempt, setAutoPreviewAttempt] = useState<number>(0);
     const [autoPreviewBypassUnsupported, setAutoPreviewBypassUnsupported] = useState(false);
     const [previewMode, setPreviewMode] = useState<PreviewMode>("webcontainer");
@@ -1509,36 +1548,43 @@ export default function AppBuilderEditor({
         });
     }, [appId, autoPreviewError, handleCompileErrorFixRequest, previewError, previewIssue]);
 
-    const effectiveDeployIssue = deployIssue || deployIssueFromApp;
+    const effectiveDeployBanner = deployBannerFromRoute || deployBannerFromApp;
 
-    const handleDeployIssueFixRequest = useCallback(() => {
-        if (!effectiveDeployIssue) return;
+    useEffect(() => {
+        if (deployBannerFromApp?.kind !== "error") return;
+        setDeployBannerFromRoute((current) => (current?.kind === "success" ? null : current));
+    }, [deployBannerFromApp]);
+
+    const handleDeployBannerFixRequest = useCallback(() => {
+        if (!effectiveDeployBanner || effectiveDeployBanner.kind !== "error") return;
 
         handleCompileErrorFixRequest({
             appId,
             code: "deploy_issue",
             actionType: "quick_fix_compile",
-            fixAction: effectiveDeployIssue.fixAction || "deploy_issue_fix",
+            fixAction: effectiveDeployBanner.fixAction || "deploy_issue_fix",
             autoSend: true,
             compileError: {
-                summary: effectiveDeployIssue.title,
-                detail: effectiveDeployIssue.detail,
-                fingerprint: effectiveDeployIssue.fingerprint,
+                summary: effectiveDeployBanner.title,
+                detail: effectiveDeployBanner.detail,
+                fingerprint: effectiveDeployBanner.fingerprint,
             },
         });
-    }, [appId, effectiveDeployIssue, handleCompileErrorFixRequest]);
+    }, [appId, effectiveDeployBanner, handleCompileErrorFixRequest]);
 
     useEffect(() => {
-        if (!effectiveDeployIssue) {
-            setDismissedDeployIssueFingerprint(null);
+        if (!effectiveDeployBanner) {
+            setDismissedDeployBannerFingerprint(null);
             return;
         }
-        if (dismissedDeployIssueFingerprint !== effectiveDeployIssue.fingerprint) return;
+        if (dismissedDeployBannerFingerprint !== effectiveDeployBanner.fingerprint) return;
         // keep dismissed until the issue changes
-    }, [effectiveDeployIssue, dismissedDeployIssueFingerprint]);
+    }, [dismissedDeployBannerFingerprint, effectiveDeployBanner]);
 
-    const showDeployIssueBanner = Boolean(
-        effectiveDeployIssue && effectiveDeployIssue.detail && dismissedDeployIssueFingerprint !== effectiveDeployIssue.fingerprint,
+    const showDeployBanner = Boolean(
+        effectiveDeployBanner &&
+            effectiveDeployBanner.detail &&
+            dismissedDeployBannerFingerprint !== effectiveDeployBanner.fingerprint,
     );
 
     useEffect(() => {
@@ -2234,7 +2280,6 @@ export default function AppBuilderEditor({
             closeRequestInFlightRef.current = false;
         }
     }, [getHasUnsavedChanges, showConfirm]);
-    const [deployChoiceError, setDeployChoiceError] = useState<string | null>(null);
     const [shareChoiceError, setShareChoiceError] = useState<string | null>(null);
 
     // Lock chat until the preview iframe has successfully loaded.
@@ -2248,7 +2293,6 @@ export default function AppBuilderEditor({
     }, [previewMode, refreshKey, localRestartKey, reconnectKey]);
     const [lastDeployLiveUrl, setLastDeployLiveUrl] = useState<string | null>(null);
     const [lastSharePreviewUrl, setLastSharePreviewUrl] = useState<string | null>(null);
-    const [showDeploySuccess, setShowDeploySuccess] = useState(false);
     const [showShareSuccess, setShowShareSuccess] = useState(false);
     const deployUrlShortLabel = useMemo(() => formatDeployUrlShortLabel(lastDeployLiveUrl), [lastDeployLiveUrl]);
     const sharePreviewUrlShortLabel = useMemo(() => formatDeployUrlShortLabel(lastSharePreviewUrl), [lastSharePreviewUrl]);
@@ -3381,7 +3425,7 @@ export default function AppBuilderEditor({
                             updatedAt: (firebaseData as any).updatedAt,
                         };
                         setApp(initialApp);
-                        setDeployIssueFromApp(buildDeployIssueFromApp(initialApp));
+                        setDeployBannerFromApp(buildDeployErrorBannerFromApp(initialApp));
                         buildFileTree(initialApp.files);
                         const nextLiveUrl = typeof (firebaseData as any).productionUrl === "string"
                             ? (firebaseData as any).productionUrl.trim()
@@ -3399,7 +3443,7 @@ export default function AppBuilderEditor({
                     const nextGenStatus = nextGeneration.status;
                     const nextGenError = nextGeneration.error;
                     const nextGenProgress = nextGeneration.progress;
-                    const nextDeployIssue = buildDeployIssueFromApp({
+                    const nextDeployBanner = buildDeployErrorBannerFromApp({
                         lastDeploymentId: (firebaseData as any).lastDeploymentId || prevApp.lastDeploymentId || null,
                         lastDeploymentState: (firebaseData as any).lastDeploymentState || prevApp.lastDeploymentState || null,
                         lastDeploymentErrorCode: (firebaseData as any).lastDeploymentErrorCode || prevApp.lastDeploymentErrorCode || null,
@@ -3473,7 +3517,7 @@ export default function AppBuilderEditor({
                         ? (firebaseData as any).productionUrl.trim()
                         : "";
                     setLastDeployLiveUrl(nextLiveUrl || null);
-                    setDeployIssueFromApp(nextDeployIssue);
+                    setDeployBannerFromApp(nextDeployBanner);
 
                     if (filesChanged) {
                         buildFileTree(updatedApp.files);
@@ -4455,8 +4499,6 @@ export default function AppBuilderEditor({
         if (isDeploying) return;
 
         setIsDeploying(true);
-        setDeployChoiceError(null);
-        setShowDeploySuccess(false);
 
         try {
             // Ensure Vercel is connected before attempting either deploy.
@@ -4504,12 +4546,24 @@ export default function AppBuilderEditor({
             if (!url) throw new Error("Deploy completed but no URL was returned.");
 
             setLastDeployLiveUrl(url);
-            setShowDeploySuccess(true);
-            setTimeout(() => setShowDeploySuccess(false), 12000);
+            setDeployBannerFromRoute(buildDeploySuccessBanner({
+                appId,
+                deploymentId: String((data as any)?.deploymentId || (data as any)?.id || "").trim() || null,
+                liveUrl: url,
+            }));
 
             return;
         } catch (err: any) {
-            setDeployChoiceError(err?.message || "Deploy failed.");
+            const errorMessage = err?.message || "Deploy failed.";
+            setDeployBannerFromRoute({
+                kind: "error",
+                title: "Deployment failed",
+                detail: errorMessage,
+                fingerprint: `deploy-route:${appId}:${errorMessage.slice(0, 160)}`,
+                fixAction: /413|body too large|request entity too large/i.test(errorMessage)
+                    ? "reduce_deploy_payload"
+                    : "deploy_issue_fix",
+            });
         } finally {
             // Keep deploy disabled for longer to prevent spam
             setTimeout(() => setIsDeploying(false), 5000);
@@ -5192,23 +5246,6 @@ export default function AppBuilderEditor({
                             </button>
                         </div>
 
-                        {showDeploySuccess && !(isRenaming && isMobile) ? (
-                            <div className="md:hidden rounded-xl border border-emerald-200 bg-emerald-50/70 px-2.5 py-2 text-[11px] text-emerald-900">
-                                <div className="font-semibold">Live deploy started</div>
-                                <div className="mt-0.5 text-emerald-800/90">Rebuild can take a few minutes before updates appear.</div>
-                                {lastDeployLiveUrl ? (
-                                    <button
-                                        type="button"
-                                        onClick={() => window.open(lastDeployLiveUrl, "_blank", "noopener,noreferrer")}
-                                        className="mt-1 inline-flex items-center gap-1 font-semibold underline underline-offset-2"
-                                        title="Open live site"
-                                    >
-                                        View live: {deployUrlShortLabel}
-                                    </button>
-                                ) : null}
-                            </div>
-                        ) : null}
-
                         {showShareSuccess && !(isRenaming && isMobile) ? (
                             <div className="md:hidden rounded-xl border border-blue-200 bg-blue-50/70 px-2.5 py-2 text-[11px] text-blue-900">
                                 <div className="font-semibold">Share preview created</div>
@@ -5282,29 +5319,6 @@ export default function AppBuilderEditor({
                     </div>
                 </div>
 
-                {deployChoiceError ? (
-                    <div className="px-4 pt-3 sm:px-6">
-                        <div className="rounded-2xl border border-red-300/80 bg-red-50/95 px-4 py-3 text-sm text-red-950 shadow-[0_14px_34px_rgba(185,28,28,0.10)]">
-                            <div className="flex items-start gap-3">
-                                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-600" />
-                                <div className="min-w-0 flex-1">
-                                    <div className="font-semibold">Deployment failed</div>
-                                    <div className="mt-1 text-sm leading-relaxed text-red-900">{deployChoiceError}</div>
-                                </div>
-                                <button
-                                    type="button"
-                                    onClick={() => setDeployChoiceError(null)}
-                                    className="ml-2 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-red-700 transition hover:bg-red-200 hover:text-red-950"
-                                    aria-label="Dismiss deployment error"
-                                    title="Dismiss"
-                                >
-                                    <X className="h-3.5 w-3.5" />
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                ) : null}
-
                 {/* Hidden file input: keep mounted for mobile controls */}
                 <input
                     ref={faviconInputRef}
@@ -5321,44 +5335,6 @@ export default function AppBuilderEditor({
                     className="hidden"
                     onChange={handleImageFileChange}
                 />
-
-                {showDeployIssueBanner ? (
-                    <div className="border-b border-amber-200 bg-[linear-gradient(180deg,rgba(255,251,240,0.98),rgba(255,255,255,1))] px-4 py-3 shadow-[0_18px_46px_rgba(15,23,42,0.10)] sm:px-5">
-                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-3">
-                                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-amber-200 bg-white text-amber-600 shadow-sm">
-                                    <AlertTriangle className="h-4 w-4" />
-                                </div>
-                                <div className="min-w-0 flex-1">
-                                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
-                                        <div className="min-w-0">
-                                            <p className="text-sm font-semibold text-neutral-950">
-                                                {effectiveDeployIssue?.title || "Deployment issue"}
-                                            </p>
-                                            <p className="mt-1 text-sm leading-relaxed text-neutral-700">
-                                                {effectiveDeployIssue?.detail}
-                                            </p>
-                                        </div>
-                                        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
-                                            <button
-                                                type="button"
-                                                onClick={handleDeployIssueFixRequest}
-                                                className="inline-flex w-full items-center justify-center gap-1.5 rounded-full bg-[#f55f2a] px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-[#e14f1c] sm:w-auto"
-                                            >
-                                                Fix with AI
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={() => setDismissedDeployIssueFingerprint(effectiveDeployIssue?.fingerprint || null)}
-                                                className="inline-flex w-full items-center justify-center gap-1.5 rounded-full border border-neutral-200 bg-white px-3 py-2 text-xs font-semibold text-neutral-700 shadow-sm transition hover:bg-neutral-50 sm:w-auto"
-                                            >
-                                                Dismiss
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                ) : null}
 
                 {isGenerationProcessing && activeGeneration.status !== "error" && previewMode === "webcontainer" ? (
                     <div className="border-b bg-amber-50 px-4 py-2 text-xs text-amber-900">
@@ -5647,6 +5623,63 @@ export default function AppBuilderEditor({
 
                     {/* Right Panel - Browser-like App View */}
                     <div className={`${showRightPanel ? "flex" : "hidden"} flex-1 flex flex-col min-h-0`}>
+                        {showDeployBanner ? (
+                            <div
+                                className={`border-b px-4 py-3 sm:px-4 ${effectiveDeployBanner?.kind === "error"
+                                    ? "border-amber-200 bg-[linear-gradient(180deg,rgba(255,251,240,0.98),rgba(255,255,255,1))] shadow-[0_18px_46px_rgba(15,23,42,0.10)]"
+                                    : "border-emerald-200 bg-emerald-50/80 shadow-[0_18px_46px_rgba(16,185,129,0.10)]"
+                                }`}
+                            >
+                                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
+                                    <div className="flex min-w-0 items-start gap-3">
+                                        <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full border bg-white shadow-sm ${effectiveDeployBanner?.kind === "error" ? "border-amber-200 text-amber-600" : "border-emerald-200 text-emerald-600"}`}>
+                                            {effectiveDeployBanner?.kind === "error" ? (
+                                                <AlertTriangle className="h-4 w-4" />
+                                            ) : (
+                                                <Rocket className="h-4 w-4" />
+                                            )}
+                                        </div>
+                                        <div className="min-w-0">
+                                            <p className="text-sm font-semibold text-neutral-950">
+                                                {effectiveDeployBanner?.title || "Deployment status"}
+                                            </p>
+                                            <p className="mt-1 text-sm leading-relaxed text-neutral-700">
+                                                {effectiveDeployBanner?.detail}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+                                        {effectiveDeployBanner?.kind === "error" ? (
+                                            <button
+                                                type="button"
+                                                onClick={handleDeployBannerFixRequest}
+                                                className="inline-flex w-full items-center justify-center gap-1.5 rounded-full bg-[#f55f2a] px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-[#e14f1c] sm:w-auto"
+                                            >
+                                                Fix with AI
+                                            </button>
+                                        ) : null}
+                                        {effectiveDeployBanner?.liveUrl ? (
+                                            <button
+                                                type="button"
+                                                onClick={() => window.open(effectiveDeployBanner.liveUrl || lastDeployLiveUrl || "", "_blank", "noopener,noreferrer")}
+                                                className="inline-flex w-full items-center justify-center gap-1.5 rounded-full border border-neutral-200 bg-white px-3 py-2 text-xs font-semibold text-neutral-700 shadow-sm transition hover:bg-neutral-50 sm:w-auto"
+                                                title="Open live site"
+                                            >
+                                                View live
+                                            </button>
+                                        ) : null}
+                                        <button
+                                            type="button"
+                                            onClick={() => setDismissedDeployBannerFingerprint(effectiveDeployBanner?.fingerprint || null)}
+                                            className="inline-flex w-full items-center justify-center gap-1.5 rounded-full border border-neutral-200 bg-white px-3 py-2 text-xs font-semibold text-neutral-700 shadow-sm transition hover:bg-neutral-50 sm:w-auto"
+                                        >
+                                            Dismiss
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        ) : null}
+
                         {/* Browser Chrome */}
                         <div className="hidden md:flex bg-gray-100 border-b px-4 py-2 items-center gap-2">
                             <div className="flex gap-1">
@@ -5728,22 +5761,6 @@ export default function AppBuilderEditor({
                                 ) : null}
                             </div>
 
-                            {showDeploySuccess ? (
-                                <div className="ml-auto rounded-xl border border-emerald-200 bg-emerald-50/70 px-3 py-2 text-xs text-emerald-900">
-                                    <div className="font-semibold">Live deploy started</div>
-                                    <div className="mt-0.5 text-[11px] text-emerald-800/90">Rebuild can take a few minutes before updates appear.</div>
-                                    {lastDeployLiveUrl ? (
-                                        <button
-                                            type="button"
-                                            onClick={() => window.open(lastDeployLiveUrl, "_blank", "noopener,noreferrer")}
-                                            className="mt-1 inline-flex items-center gap-1 text-[11px] font-semibold underline underline-offset-2"
-                                            title="Open live site"
-                                        >
-                                            View live: {deployUrlShortLabel}
-                                        </button>
-                                    ) : null}
-                                </div>
-                            ) : null}
                         </div>
 
                         {/* App Content */}

@@ -11467,7 +11467,7 @@ export default function PreviewPage(): JSX.Element {
                                                     {isVercelChecking
                                                         ? "Checking connection…"
                                                         : isVercelConnected
-                                                            ? "Connected"
+                                                            ? ""
                                                             : "Not connected"}
                                                 </div>
 
@@ -11688,7 +11688,7 @@ export default function PreviewPage(): JSX.Element {
                                                             className="group flex flex-inline items-center gap-1 rounded-full px-3 py-1.5 text-sm text-white"
                                                             style={{ backgroundColor: ACCENT }}
                                                         >
-                                                            <span>Site link</span>
+                                                            <span>View site</span>
                                                             <Rocket className="h-4 w-4 transform transition-transform duration-150 group-hover:translate-x-0.5" />
                                                         </a>
                                                     ) : (
