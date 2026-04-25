@@ -140,6 +140,13 @@ function requestLikelyNeedsDatabase(userMessage: string): boolean {
     const m = String(userMessage || "").toLowerCase();
     if (!m.trim()) return false;
 
+    const isLoginPageRemovalOrRename =
+        /\b(login|log in|sign in|signin|auth|authentication)\b/i.test(m) &&
+        /\b(remove|delete|hide|rename|replace|remove entirely|get rid of|eliminate|disable|take down)\b/i.test(m) &&
+        /\b(page|screen|route|view|component|screen|ui)\b/i.test(m);
+
+    if (isLoginPageRemovalOrRename) return false;
+
     // High-signal: auth/accounts/persistence.
     const keywords = [
         "auth",
@@ -336,6 +343,7 @@ function classifyAiProviderError(err: unknown): {
     userMessage: string;
     code: string;
     providerErrorName: string;
+    slackMessage: string;
     providerDiagnostics: Record<string, unknown>;
 } {
     const raw = err instanceof Error ? err.message : String(err || "Unknown AI provider error");
@@ -364,6 +372,26 @@ function classifyAiProviderError(err: unknown): {
               }
             : {};
 
+    const nestedReasonCandidates = [
+        (providerDiagnostics as any)?.response?.data?.error?.message,
+        (providerDiagnostics as any)?.response?.data?.error?.status,
+        (providerDiagnostics as any)?.response?.data?.error?.details,
+        (providerDiagnostics as any)?.response?.data?.message,
+        (providerDiagnostics as any)?.details,
+        (providerDiagnostics as any)?.errorInfo?.message,
+        (providerDiagnostics as any)?.cause?.message,
+        (providerDiagnostics as any)?.response?.text,
+        (providerDiagnostics as any)?.response?.data,
+    ];
+    const nestedReason = nestedReasonCandidates
+        .map((value) => safeString(typeof value === "string" ? value : JSON.stringify(value), 1200).trim())
+        .find(Boolean) || "";
+    const slackMessage = nestedReason
+        ? `AI provider failure: ${msg} | rootCause: ${nestedReason}`
+        : `AI provider failure: ${msg}`;
+
+    const genericUserMessage = "The AI service is temporarily unavailable. Please try again in a few minutes.";
+
     const statusFromMessage = (() => {
         const m = msg.match(/\b(4\d\d|5\d\d)\b/);
         if (!m) return 500;
@@ -391,9 +419,10 @@ function classifyAiProviderError(err: unknown): {
         return {
             statusCode: 429,
             providerMessage: msg,
-            userMessage: "Google AI is currently overwhelmed by requests. Please check back in a bit and try again.",
+            userMessage: genericUserMessage,
             code: "AI_RATE_LIMITED",
             providerErrorName,
+            slackMessage,
             providerDiagnostics,
         };
     }
@@ -402,9 +431,10 @@ function classifyAiProviderError(err: unknown): {
         return {
             statusCode: 503,
             providerMessage: msg,
-            userMessage: "The AI service is currently overloaded. Please try again in a few minutes.",
+            userMessage: genericUserMessage,
             code: "AI_PROVIDER_UNAVAILABLE",
             providerErrorName,
+            slackMessage,
             providerDiagnostics,
         };
     }
@@ -418,9 +448,10 @@ function classifyAiProviderError(err: unknown): {
         return {
             statusCode: 400,
             providerMessage: msg,
-            userMessage: "That request couldn’t be completed as written. Try rephrasing it in your own words and avoid pasting large blocks of source text.",
+            userMessage: "That request couldn’t be completed as written. Try rephrasing it and send it again.",
             code: "AI_SAFETY_REJECTED",
             providerErrorName,
+            slackMessage,
             providerDiagnostics,
         };
     }
@@ -434,9 +465,10 @@ function classifyAiProviderError(err: unknown): {
         return {
             statusCode: 503,
             providerMessage: msg,
-            userMessage: "The AI service is temporarily unavailable. Please try again in a few minutes.",
+            userMessage: genericUserMessage,
             code: "AI_PROVIDER_UNAVAILABLE",
             providerErrorName,
+            slackMessage,
             providerDiagnostics,
         };
     }
@@ -445,9 +477,10 @@ function classifyAiProviderError(err: unknown): {
         return {
             statusCode: 503,
             providerMessage: msg,
-            userMessage: "The AI service had a temporary server issue. Please try again in a few minutes.",
+            userMessage: genericUserMessage,
             code: "AI_PROVIDER_SERVER_ERROR",
             providerErrorName,
+            slackMessage,
             providerDiagnostics,
         };
     }
@@ -456,9 +489,10 @@ function classifyAiProviderError(err: unknown): {
         return {
             statusCode: 400,
             providerMessage: msg,
-            userMessage: "Your request could not be completed. Please adjust your prompt and try again.",
+            userMessage: genericUserMessage,
             code: "AI_BAD_REQUEST",
             providerErrorName,
+            slackMessage,
             providerDiagnostics,
         };
     }
@@ -466,9 +500,10 @@ function classifyAiProviderError(err: unknown): {
     return {
         statusCode: 503,
         providerMessage: msg,
-        userMessage: "The AI request failed unexpectedly. Please try again in a few minutes.",
+        userMessage: genericUserMessage,
         code: "AI_UNKNOWN_ERROR",
         providerErrorName,
+        slackMessage,
         providerDiagnostics,
     };
 }
@@ -717,6 +752,80 @@ function extractSearchTerms(message: string, conversation: string): { phrases: s
     };
 }
 
+function requestLooksLikeCopyOrTextEdit(message: string, conversation: string): boolean {
+    const combined = `${message}
+${conversation}`.toLowerCase();
+    if (!combined.trim()) return false;
+
+    if (extractQuotedPhrases(combined).length > 0) return true;
+
+    return /\b(change|replace|rewrite|update|edit|revise)\b[\s\S]{0,80}\b(text|copy|banner|headline|title|cta|button|label|hero|subhead|subheading)\b/i.test(combined)
+        || /\b(make|turn|swap)\b[\s\S]{0,40}\b(say|read|display|show)\b/i.test(combined)
+        || /\b(the following text|this text|that text|banner text|page copy)\b/i.test(combined);
+}
+
+function scoreBroadCopyCandidate(path: string, content: string, phrases: string[], terms: string[]): number {
+    const normalizedPath = String(path || "").toLowerCase();
+    const normalizedContent = String(content || "").toLowerCase();
+    let score = 0;
+
+    if (/\.(tsx|ts|jsx|js|html|mdx?|css|json|md)$/i.test(normalizedPath)) score += 2;
+    if (/(page|layout|home|hero|banner|header|footer|copy|text|content|cta|section|marketing|landing|article|blog|post)/i.test(normalizedPath)) score += 3;
+    if (/(headline|subheadline|subtitle|description|label|announcement|notice|copy|banner|hero|cta|button|title|summary|paragraph)/i.test(normalizedPath)) score += 2;
+
+    for (const phrase of phrases) {
+        if (phrase && normalizedContent.includes(phrase.toLowerCase())) {
+            score += 12;
+        }
+    }
+
+    for (const term of terms) {
+        if (term && normalizedContent.includes(term.toLowerCase())) {
+            score += 1;
+        }
+    }
+
+    return score;
+}
+
+function buildBroadCopyCandidatePaths(
+    files: Record<string, { content: string; lastModified: number }>,
+    message: string,
+    conversation: string,
+    maxPaths = 12,
+): string[] {
+    const { phrases, terms } = extractSearchTerms(message, conversation);
+    const scored = Object.entries(files || {})
+        .map(([path, file]) => ({
+            path,
+            score: scoreBroadCopyCandidate(path, String(file?.content || ""), phrases, terms),
+        }))
+        .filter((entry) => entry.score > 0)
+        .sort((left, right) => right.score - left.score || left.path.localeCompare(right.path));
+
+    return scored.slice(0, maxPaths).map((entry) => entry.path);
+}
+
+function findExactPhraseMatches(
+    files: Record<string, { content: string; lastModified: number }>,
+    phrases: string[],
+    maxPaths = 12,
+): string[] {
+    const needlePhrases = Array.from(new Set((phrases || []).map((phrase) => String(phrase || "").trim().toLowerCase()).filter(Boolean)));
+    if (needlePhrases.length === 0) return [];
+
+    const scored = Object.entries(files || {})
+        .map(([path, file]) => {
+            const content = String(file?.content || "").toLowerCase();
+            const matchScore = needlePhrases.reduce((count, phrase) => count + (content.includes(phrase) ? 1 : 0), 0);
+            return { path, score: matchScore };
+        })
+        .filter((entry) => entry.score > 0)
+        .sort((left, right) => right.score - left.score || left.path.localeCompare(right.path));
+
+    return scored.slice(0, maxPaths).map((entry) => entry.path);
+}
+
 function buildRelevantExcerpt(content: string, phrases: string[], terms: string[], maxSnippetChars = 12000): string {
     const raw = String(content || "");
     if (raw.length <= maxSnippetChars) return raw;
@@ -805,6 +914,8 @@ function buildSystemPrompt(params: {
     fileSelectionNote: string;
     currentFileNote: string;
     fileContext: string;
+    copyEditContext: string;
+    retrievedChunksContext: string;
     dbContext: string;
     dbPreferenceContext: string;
     noDbFallbackContext: string;
@@ -817,6 +928,8 @@ function buildSystemPrompt(params: {
         fileSelectionNote,
         currentFileNote,
         fileContext,
+        copyEditContext,
+        retrievedChunksContext,
         dbContext,
         dbPreferenceContext,
         noDbFallbackContext,
@@ -875,8 +988,9 @@ function buildSystemPrompt(params: {
         '  "response": string,',
         '  "refreshServer": boolean,',
         '  "fileEdits": Array<{ "path": string, "content": string }>,',
-        '    "setupDatabase": boolean,',
-        '    "dbMigrations"?: Array<{ "sql": string, "message"?: string, "destructive"?: boolean }> ',
+        '  "htmlEdits"?: Array<{ "path": string, "find": string, "replace": string }>,',
+        '  "setupDatabase": boolean,',
+        '  "dbMigrations"?: Array<{ "sql": string, "message"?: string, "destructive"?: boolean }>',
         "}",
         "",
         "Rules:",
@@ -886,19 +1000,33 @@ function buildSystemPrompt(params: {
         "- Keep changes minimal and ensure npm run build passes.",
         "- If you need no file changes, return an empty fileEdits array.",
         "- If you can edit safely, you must return fileEdits. Do not answer by summarizing the request when the task is actionable.",
+        "- Use htmlEdits for chunk-targeted HTML/banner/copy updates when the exact before/after snippet is known; keep fileEdits for full-file rewrites.",
     ].join("\n");
+
+    const copySection = compactMode
+        ? [
+            "COPY / TEXT EDITING:",
+            "- If the user request contains quoted text, treat the quote as the exact edit anchor.",
+            "- Search the hydrated files for that exact text and edit the file that contains it, even if it is a public HTML file, banner, hero, or layout file.",
+            "- Do not ask for more context when the quoted sentence uniquely identifies the text to replace.",
+            "- If the exact phrase appears in more than one file, prefer the visible current page first, then the page/layout file that renders the banner or section.",
+        ].join("\n")
+        : "";
 
     const promptParts = [
         tone,
         safetySection,
         envSafetySection,
         outputSection,
+        copySection,
+        copyEditContext,
         `Selected app files:\n${fileSelectionNote}`,
         currentFileNote,
         fileContext,
         dbContext,
         dbPreferenceContext,
         noDbFallbackContext,
+        retrievedChunksContext,
         `Recent conversation:\n${recentConversation}`,
         `User request:\n${message}`,
         buildContext,
@@ -981,7 +1109,7 @@ function buildFileSearchPrompt(params: {
     fileCatalog: string;
 }): string {
     const { message, currentFile, recentConversation, fileCatalog } = params;
-    const currentPageLabel = currentFile ? "the currently open page" : "the current screen";
+    const currentPageLabel = currentFile ? "the currently open page" : "the selected page";
 
     return [
         "You are the file-search stage for an IDE-style code assistant.",
@@ -995,6 +1123,7 @@ function buildFileSearchPrompt(params: {
         "- For copy requests, choose 1 to 3 files.",
         "- For targeted requests, choose 1 to 6 files.",
         "- For broad requests, choose up to 10 files.",
+        "- If the request is quoted copy/text or a banner rewrite and currentFile is null, favor broad mode and search page/layout/component/content files instead of asking for more details.",
         "- If no edits have been applied yet, assistantMessage must not claim the change is already done or promise a file edit. It should either summarize what was searched or ask a clarifying question.",
         "- If the request is too ambiguous, set needsMoreContext=true and ask at most 2 short questions that do not mention file paths.",
         "- Keep selectedPaths minimal and relevant.",
@@ -1002,6 +1131,87 @@ function buildFileSearchPrompt(params: {
         `User request:\n${message}`,
         `Available files:\n${fileCatalog}`,
     ].join("\n\n");
+}
+
+type RetrievedChunk = {
+    path?: string;
+    chunkId?: string;
+    startLine?: number;
+    endLine?: number;
+    score?: number;
+    text?: string;
+    excerpt?: string;
+    source?: string;
+};
+
+function formatRetrievedChunksSection(chunks: unknown): string {
+    if (!Array.isArray(chunks) || chunks.length === 0) return "";
+
+    const lines: string[] = ["Retrieved embedding chunks:"];
+    chunks.slice(0, 12).forEach((chunk, index) => {
+        if (!chunk || typeof chunk !== "object") return;
+        const path = safeString((chunk as any).path || "", 500).trim();
+        const chunkId = safeString((chunk as any).chunkId || "", 200).trim();
+        const startLine = Number.isFinite(Number((chunk as any).startLine)) ? Math.max(1, Math.floor(Number((chunk as any).startLine))) : null;
+        const endLine = Number.isFinite(Number((chunk as any).endLine)) ? Math.max(1, Math.floor(Number((chunk as any).endLine))) : null;
+        const score = Number.isFinite(Number((chunk as any).score)) ? Number((chunk as any).score) : null;
+        const text = safeString((chunk as any).text || (chunk as any).excerpt || "", 12_000).trim();
+        const source = safeString((chunk as any).source || "", 200).trim();
+
+        lines.push(
+            [
+                `${index + 1}. ${path || "(unknown path)"}${chunkId ? ` [${chunkId}]` : ""}`,
+                startLine && endLine ? `   lines: ${startLine}-${endLine}` : "",
+                score !== null ? `   score: ${score.toFixed(4)}` : "",
+                source ? `   source: ${source}` : "",
+                text ? `   text: ${text}` : "",
+            ].filter(Boolean).join("\n"),
+        );
+    });
+
+    return lines.join("\n");
+}
+
+function replaceOnce(source: string, find: string, replace: string): { ok: boolean; content: string } {
+    const haystack = String(source || "");
+    const needle = String(find || "");
+    if (!needle.trim()) return { ok: false, content: haystack };
+
+    const index = haystack.indexOf(needle);
+    if (index === -1) return { ok: false, content: haystack };
+    return {
+        ok: true,
+        content: `${haystack.slice(0, index)}${replace}${haystack.slice(index + needle.length)}`,
+    };
+}
+
+function normalizeHtmlEditOps(
+    htmlEdits: unknown,
+    files: Record<string, { content: string; lastModified: number }>,
+): FileEdit[] {
+    if (!Array.isArray(htmlEdits) || htmlEdits.length === 0) return [];
+
+    const working = new Map<string, string>();
+    const edits: FileEdit[] = [];
+
+    for (const raw of htmlEdits) {
+        if (!raw || typeof raw !== "object") continue;
+        const path = canonicalizeEditPath(safeString((raw as any).path, 500), files);
+        const find = safeString((raw as any).find || (raw as any).before || (raw as any).match || "", 30_000);
+        const replace = safeString((raw as any).replace || (raw as any).after || (raw as any).content || "", 100_000);
+        if (!path || !find.trim()) continue;
+
+        const baseContent = working.has(path)
+            ? working.get(path) || ""
+            : String(files?.[path]?.content || "");
+        const applied = replaceOnce(baseContent, find, replace);
+        if (!applied.ok) continue;
+
+        working.set(path, applied.content);
+        edits.push({ path, content: applied.content });
+    }
+
+    return edits;
 }
 
 function looksLikeCompletionClaim(text: string): boolean {
@@ -1016,10 +1226,12 @@ async function planAiFiles(params: {
     currentFile: string | null;
     recentConversation: string;
     filePaths: string[];
+    files: Record<string, { content: string; lastModified: number }>;
     fileManifest?: unknown;
     htmlEditIndex?: unknown;
+    retrievedChunks?: unknown;
 }): Promise<AiFileSearchPlan> {
-    const { model, message, currentFile, recentConversation, filePaths, fileManifest, htmlEditIndex } = params;
+    const { model, message, currentFile, recentConversation, filePaths, files, fileManifest, htmlEditIndex, retrievedChunks } = params;
     const manifestPaths = new Set<string>();
     collectPlannerPathHints(fileManifest, manifestPaths);
     collectPlannerPathHints(htmlEditIndex, manifestPaths);
@@ -1040,6 +1252,11 @@ async function planAiFiles(params: {
     const raw = result.response?.text?.() || "";
     const parsed = parseJsonFromText<Partial<AiFileSearchPlan>>(raw, {});
 
+    const isCopyOrTextEdit = requestLooksLikeCopyOrTextEdit(message, recentConversation);
+    const searchTerms = extractSearchTerms(message, recentConversation);
+    const broadCopyPaths = isCopyOrTextEdit ? buildBroadCopyCandidatePaths(files, message, recentConversation) : [];
+    const exactPhrasePaths = isCopyOrTextEdit ? findExactPhraseMatches(files, searchTerms.phrases) : [];
+
     const selectedPaths = Array.isArray(parsed.selectedPaths)
         ? parsed.selectedPaths
               .map((path) => safeString(path, 500).trim())
@@ -1051,15 +1268,29 @@ async function planAiFiles(params: {
               .filter(Boolean)
               .slice(0, 2)
         : [];
-    const mode = parsed.mode === "copy" || parsed.mode === "broad" || parsed.mode === "targeted" ? parsed.mode : "targeted";
+    const mode = isCopyOrTextEdit
+        ? "broad"
+        : parsed.mode === "copy" || parsed.mode === "broad" || parsed.mode === "targeted"
+            ? parsed.mode
+            : "targeted";
+
+    const mergedSelectedPaths = Array.from(new Set([
+        ...selectedPaths,
+        ...exactPhrasePaths,
+        ...broadCopyPaths,
+    ])).slice(0, mode === "copy" ? 3 : mode === "targeted" ? 6 : 10);
 
     return {
         mode,
-        selectedPaths: Array.from(new Set(selectedPaths)).slice(0, mode === "copy" ? 3 : mode === "targeted" ? 6 : 10),
-        needsMoreContext: Boolean(parsed.needsMoreContext),
+        selectedPaths: mergedSelectedPaths,
+        needsMoreContext: isCopyOrTextEdit ? false : Boolean(parsed.needsMoreContext),
         questions,
-        reason: safeString(parsed.reason || "", 500),
-        assistantMessage: safeString(parsed.assistantMessage || "", 1200),
+        reason: isCopyOrTextEdit
+            ? "Broad copy/text request detected; preselected page/layout/content files from the quoted phrase and broadened context."
+            : safeString(parsed.reason || "", 500),
+        assistantMessage: isCopyOrTextEdit
+            ? "I found likely text-edit targets from the quoted copy and broadened the search across page and content files."
+            : safeString(parsed.assistantMessage || "", 1200),
     };
 }
 
@@ -1124,6 +1355,7 @@ export async function POST(req: NextRequest) {
             const message = safeString(body?.message, 10_000);
             const appId = safeString(body?.appId, 200);
             const currentFile = safeString(body?.currentFile, 500) || null;
+            const currentFileContent = safeString(body?.currentFileContent, 200_000) || null;
             observedAppId = appId;
             const persistChat = body?.persistChat === true;
             const conversationId = safeString(body?.conversationId, 80);
@@ -1132,6 +1364,9 @@ export async function POST(req: NextRequest) {
                 : [];
             const databaseConnections = Array.isArray(body?.databaseConnections)
                 ? (body.databaseConnections as any[])
+                : [];
+            const retrievedChunks = Array.isArray(body?.retrievedChunks)
+                ? (body.retrievedChunks as RetrievedChunk[])
                 : [];
             const autoFix = body?.autoFix !== false;
             const maxIterations = typeof body?.maxIterations === "number" ? Math.min(3, Math.max(1, body.maxIterations)) : 2;
@@ -1207,6 +1442,12 @@ export async function POST(req: NextRequest) {
             const recentConversation = buildRecentConversationContext(conversationHistory);
             const appData = snap.data() as any;
             const allFiles = (appData?.files || {}) as Record<string, { content: string; lastModified: number }>;
+            if (currentFile && currentFileContent) {
+                allFiles[currentFile] = {
+                    content: currentFileContent,
+                    lastModified: Date.now(),
+                };
+            }
             const filePaths = Object.keys(allFiles);
             const plannerModel = genAI.getGenerativeModel({
                 model: process.env.GEMINI_MODEL || "gemini-3-pro-preview",
@@ -1227,12 +1468,15 @@ export async function POST(req: NextRequest) {
                 currentFile,
                 recentConversation,
                 filePaths,
+                files: allFiles,
                 fileManifest: appData?.fileManifest || null,
                 htmlEditIndex: appData?.htmlEditIndex,
             });
             const selectedPaths = Array.from(new Set([
                 ...(currentFile ? [currentFile] : []),
                 ...plannedSelection.selectedPaths,
+                ...(requestLooksLikeCopyOrTextEdit(message, recentConversation) ? findExactPhraseMatches(allFiles, extractSearchTerms(message, recentConversation).phrases) : []),
+                ...(requestLooksLikeCopyOrTextEdit(message, recentConversation) ? buildBroadCopyCandidatePaths(allFiles, message, recentConversation) : []),
             ].map((path) => String(path || "").trim()).filter(Boolean)));
             const selectedFileContext = {
                 mode: plannedSelection.mode,
@@ -1240,7 +1484,7 @@ export async function POST(req: NextRequest) {
                 summary: plannedSelection.reason
                     ? `Planner selected ${selectedPaths.length} files (${plannedSelection.mode}): ${selectedPaths.join(", ")} — ${plannedSelection.reason}`
                     : `Planner selected ${selectedPaths.length} files (${plannedSelection.mode}): ${selectedPaths.join(", ")}`,
-                useFullContext: plannedSelection.mode === "broad" || selectedPaths.length === 0,
+                useFullContext: plannedSelection.mode === "broad" || selectedPaths.length === 0 || requestLooksLikeCopyOrTextEdit(message, recentConversation),
             };
             const effectiveMaxIterations = selectedFileContext.mode === "copy" ? 1 : maxIterations;
 
@@ -1337,6 +1581,16 @@ export async function POST(req: NextRequest) {
                 const fileContext = buildFileContext(files, message, recentConversation, promptMode, selectedPaths);
                 const fileSelectionNote = selectedFileContext.summary;
                 const currentFileNote = currentFile ? `Current open file: ${currentFile}` : "Current open file: (none)";
+                const copyEditContext = requestLooksLikeCopyOrTextEdit(message, recentConversation)
+                    ? [
+                        "Copy/text request search trace:",
+                        `- Exact quoted phrases: ${extractSearchTerms(message, recentConversation).phrases.length ? extractSearchTerms(message, recentConversation).phrases.map((phrase: string) => JSON.stringify(phrase)).join(", ") : "(none found)"}`,
+                        `- Exact phrase matches: ${findExactPhraseMatches(allFiles, extractSearchTerms(message, recentConversation).phrases).length ? findExactPhraseMatches(allFiles, extractSearchTerms(message, recentConversation).phrases).join(", ") : "(none)"}`,
+                        `- Broad content candidates: ${buildBroadCopyCandidatePaths(allFiles, message, recentConversation).length ? buildBroadCopyCandidatePaths(allFiles, message, recentConversation).join(", ") : "(none)"}`,
+                        `- Search-selected paths: ${selectedPaths.length ? selectedPaths.join(", ") : "(none)"}`,
+                    ].join("\n")
+                    : "";
+                const retrievedChunksContext = formatRetrievedChunksSection(retrievedChunks);
                 const buildContext = !lastBuild.ok
                     ? `\n\nLast build failed. Here are the build logs (most recent):\n${lastBuild.logs}\n\nThe previous attempt returned zero fileEdits. Return actual fileEdits for one of the selected files or ask a clarifying question. Do not summarize the request.`
                     : "";
@@ -1363,6 +1617,8 @@ export async function POST(req: NextRequest) {
                                     fileSelectionNote,
                                     currentFileNote,
                                     fileContext,
+                                    copyEditContext,
+                                    retrievedChunksContext,
                                     dbContext,
                                     dbPreferenceContext,
                                     noDbFallbackContext,
@@ -1381,6 +1637,7 @@ export async function POST(req: NextRequest) {
                 await captureAuditEvent({
                     source: "internal",
                     severity: "info",
+                    alwaysNotifySlack: true,
                     route: "/api/ai-agent",
                     method: "POST",
                     action: aiSlackRequestDigest ? `ai_agent_prompt_built:${aiSlackRequestDigest}` : "ai_agent_prompt_built",
@@ -1412,6 +1669,7 @@ export async function POST(req: NextRequest) {
                         source: "internal",
                         severity: "warning",
                         statusCode: 413,
+                        alwaysNotifySlack: true,
                         route: "/api/ai-agent",
                         method: "POST",
                         action: aiSlackRequestDigest ? `ai_agent_request_rejected:${aiSlackRequestDigest}` : "ai_agent_request_rejected",
@@ -1455,6 +1713,7 @@ export async function POST(req: NextRequest) {
                         source: "internal",
                         severity: "warning",
                         statusCode: 400,
+                        alwaysNotifySlack: true,
                         route: "/api/ai-agent",
                         method: "POST",
                         action: aiSlackRequestDigest ? `ai_agent_request_blocked:${aiSlackRequestDigest}` : "ai_agent_request_blocked",
@@ -1509,6 +1768,7 @@ export async function POST(req: NextRequest) {
                     response?: string;
                     refreshServer?: boolean;
                     fileEdits?: FileEdit[];
+                    htmlEdits?: Array<{ path?: string; find?: string; replace?: string }>;
                     setupDatabase?: boolean;
                     dbMigrations?: Array<{ sql?: string; message?: string; destructive?: boolean }>;
                 } = {
@@ -1536,7 +1796,10 @@ export async function POST(req: NextRequest) {
                 }
 
                 // Post-parse guard: never allow insecure local user storage/auth to land in app files.
-                const fileEdits = Array.isArray(parsed.fileEdits) ? (parsed.fileEdits as FileEdit[]) : [];
+                const fileEdits = [
+                    ...(Array.isArray(parsed.fileEdits) ? (parsed.fileEdits as FileEdit[]) : []),
+                    ...normalizeHtmlEditOps(parsed.htmlEdits, files),
+                ];
                 if (fileEdits.length > 0 && fileEditsUseBrowserModalApis(fileEdits)) {
                     return NextResponse.json(
                         {
@@ -1722,11 +1985,55 @@ export async function POST(req: NextRequest) {
             }
 
             if (aggregatedEdits.length === 0 && dbMigrations.length === 0 && !setupDatabase && !plannedSelection.needsMoreContext) {
+                const searchDebug = {
+                    currentFile,
+                    selectionMode: selectedFileContext.mode,
+                    selectedPaths,
+                    exactPhrasePaths: requestLooksLikeCopyOrTextEdit(message, recentConversation) ? findExactPhraseMatches(allFiles, extractSearchTerms(message, recentConversation).phrases) : [],
+                    broadCopyPaths: requestLooksLikeCopyOrTextEdit(message, recentConversation) ? buildBroadCopyCandidatePaths(allFiles, message, recentConversation) : [],
+                    copyRequest: requestLooksLikeCopyOrTextEdit(message, recentConversation),
+                    quotedPhrases: extractSearchTerms(message, recentConversation).phrases,
+                };
+
+                void captureCriticalEvent({
+                    source: "internal",
+                    severity: "critical",
+                    statusCode: 422,
+                    route: "/api/ai-agent",
+                    method: "POST",
+                    action: aiSlackRequestDigest ? `ai_agent_no_changes_applied:${aiSlackRequestDigest}` : "ai_agent_no_changes_applied",
+                    userId: uid,
+                    message: `AI agent could not produce an edit. Search trace: ${JSON.stringify(searchDebug)}`,
+                    tags: ["ai-agent", "writer-error", "no-changes-applied"],
+                    extra: {
+                        appId: observedAppId || null,
+                        requestDigest: aiSlackRequestDigest || null,
+                        prompt: aiSlackPrompt || null,
+                        conversationTail: aiSlackConversationTail ? aiSlackConversationTail.slice(-4000) : null,
+                        fileCount: aiSlackFileCount,
+                        promptTokens: aiRequestPromptTokenEstimate || estimateTokens(aiSlackPrompt),
+                        outputTokens: aiRequestUsage.outputTokens || 0,
+                        totalTokens: aiRequestUsage.totalTokens || 0,
+                        estimatedCostUsd: aiRequestUsage.estimatedCostUsd,
+                        inputTokenCap: AI_AGENT_INPUT_TOKEN_CAP,
+                        outputTokenCap: AI_AGENT_OUTPUT_TOKEN_CAP,
+                        model: process.env.GEMINI_MODEL || "gemini-3-pro-preview",
+                        searchDebug,
+                        selectedFilesPreview: aiSlackSelectedFilesPreview,
+                        fileContextPreview: aiSlackFileContextPreview,
+                        finalPromptPreview: aiSlackFinalPromptPreview,
+                        buildLogs: safeString(lastBuild.logs || "", 60_000),
+                    },
+                });
+
                 return NextResponse.json(
                     {
-                        error: "No changes were applied. The agent could not produce file edits for this request.",
+                        error: currentFile
+                            ? "I checked the attached page and nearby source files, but I couldn’t produce a safe edit from the request as written. Tell me the exact section, file, or text you want changed, and I’ll apply that directly."
+                            : "I checked the selected page and nearby source files, but I couldn’t produce a safe edit from the request as written. Tell me the exact section, file, or text you want changed, and I’ll apply that directly.",
                         code: "AI_NO_CHANGES_APPLIED",
                         build: lastBuild,
+                        searchDebug,
                         requestId,
                     },
                     { status: 422 },
@@ -1752,6 +2059,7 @@ export async function POST(req: NextRequest) {
                 source: "internal",
                 severity: "info",
                 statusCode: 200,
+                alwaysNotifySlack: true,
                 route: "/api/ai-agent",
                 method: "POST",
                 action: aiSlackRequestDigest ? `ai_agent_request_completed:${aiSlackRequestDigest}` : "ai_agent_request_completed",
@@ -1801,11 +2109,12 @@ export async function POST(req: NextRequest) {
                 source: "internal",
                 severity: classified.statusCode >= 500 ? "critical" : "error",
                 statusCode: classified.statusCode,
+                alwaysNotifySlack: true,
                 route: "/api/ai-agent",
                 method: "POST",
                 action: aiSlackRequestDigest ? `ai_agent_generate_failed:${aiSlackRequestDigest}` : "ai_agent_generate_failed",
                 userId: uid,
-                message: `AI agent provider failure: ${classified.providerMessage}`,
+                message: classified.slackMessage,
                 tags: ["ai-agent", "gemini", "provider-error"],
                 extra: {
                     appId: observedAppId || null,

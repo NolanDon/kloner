@@ -99,6 +99,202 @@ const clearStoredContainerCodeEverywhere = async (appId: string, user: any) => {
   }
 };
 
+function asTrimmedString(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed || null;
+}
+
+function asFiniteInteger(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return Math.floor(value);
+  }
+  if (typeof value === 'string' && value.trim()) {
+    const parsed = Number.parseInt(value.trim(), 10);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return null;
+}
+
+function asBooleanIfPresent(value: unknown): boolean | null {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'string') {
+    const raw = value.trim().toLowerCase();
+    if (raw === 'true') return true;
+    if (raw === 'false') return false;
+  }
+  return null;
+}
+
+function asRecord(value: unknown): Record<string, any> | null {
+  return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, any>) : null;
+}
+
+function pickFirstString(...values: unknown[]): string | null {
+  for (const value of values) {
+    const text = asTrimmedString(value);
+    if (text) return text;
+  }
+  return null;
+}
+
+function normalizePreviewFailureDetails(rawStatusData: any) {
+  const backend = asRecord(rawStatusData);
+  const diagnostic = asRecord(backend?.diagnostic);
+  const previewFailure = asRecord(backend?.previewFailure);
+  const backendDebug = asRecord(backend?.debug);
+  const machine = asRecord(backendDebug?.machine || backend?.machine || previewFailure?.machine || diagnostic?.machine);
+
+  const requestId = pickFirstString(
+    backend?.requestId,
+    backend?.reqId,
+    backendDebug?.requestId,
+    backendDebug?.reqId,
+    diagnostic?.requestId,
+    diagnostic?.reqId,
+    previewFailure?.requestId,
+    previewFailure?.reqId,
+  );
+  const correlationId = pickFirstString(
+    backend?.correlationId,
+    backend?.traceId,
+    backend?.spanId,
+    backend?.requestCorrelationId,
+    backendDebug?.correlationId,
+    backendDebug?.traceId,
+    backendDebug?.spanId,
+    diagnostic?.correlationId,
+    diagnostic?.traceId,
+    diagnostic?.spanId,
+    previewFailure?.correlationId,
+    previewFailure?.traceId,
+    previewFailure?.spanId,
+  );
+
+  const backendStatus = pickFirstString(
+    backend?.backendStatus,
+    backend?.status,
+    diagnostic?.backendStatus,
+    diagnostic?.status,
+    previewFailure?.backendStatus,
+    previewFailure?.status,
+    backendDebug?.status,
+  );
+  const uiStage = pickFirstString(
+    backend?.uiStage,
+    diagnostic?.uiStage,
+    previewFailure?.uiStage,
+    backendDebug?.uiStage,
+  );
+  const timeoutReason = pickFirstString(
+    backend?.timeoutReason,
+    backendDebug?.timeoutReason,
+    diagnostic?.timeoutReason,
+    previewFailure?.timeoutReason,
+  );
+  const machineState = pickFirstString(
+    backend?.machineState,
+    backend?.machine?.state,
+    machine?.state,
+    backendDebug?.machineState,
+    backendDebug?.machine?.state,
+    diagnostic?.machineState,
+    diagnostic?.machine?.state,
+    previewFailure?.machineState,
+    previewFailure?.machine?.state,
+  );
+  const restartCount = asFiniteInteger(
+    backend?.restartCount ??
+      backend?.machine?.restartCount ??
+      machine?.restartCount ??
+      backendDebug?.restartCount ??
+      backendDebug?.machine?.restartCount ??
+      diagnostic?.restartCount ??
+      diagnostic?.machine?.restartCount ??
+      previewFailure?.restartCount ??
+      previewFailure?.machine?.restartCount,
+  );
+  const rootfsIoCorruption = asBooleanIfPresent(
+    backend?.rootfsIoCorruption ??
+      backend?.storage?.rootfsIoCorruption ??
+      backendDebug?.rootfsIoCorruption ??
+      backendDebug?.storage?.rootfsIoCorruption ??
+      diagnostic?.rootfsIoCorruption ??
+      diagnostic?.storage?.rootfsIoCorruption ??
+      previewFailure?.rootfsIoCorruption ??
+      previewFailure?.storage?.rootfsIoCorruption,
+  );
+
+  const suggestedFix = pickFirstString(
+    backend?.suggestedFix,
+    diagnostic?.suggestedFix,
+    previewFailure?.suggestedFix,
+  );
+
+  const uiTitle = pickFirstString(
+    backend?.uiTitle,
+    previewFailure?.uiTitle,
+    diagnostic?.uiTitle,
+  );
+  const uiMessage = pickFirstString(
+    backend?.uiMessage,
+    previewFailure?.uiMessage,
+    diagnostic?.uiMessage,
+    backend?.message,
+    previewFailure?.message,
+    diagnostic?.message,
+  );
+
+  const correlationIds: Array<{ label: string; value: string }> = [];
+  const pushCorrelation = (label: string, value: unknown) => {
+    const text = asTrimmedString(value);
+    if (text && !correlationIds.some((entry) => entry.value === text)) {
+      correlationIds.push({ label, value: text });
+    }
+  };
+
+  pushCorrelation('correlationId', backend?.correlationId || backendDebug?.correlationId || diagnostic?.correlationId || previewFailure?.correlationId);
+  pushCorrelation('traceId', backend?.traceId || backendDebug?.traceId || diagnostic?.traceId || previewFailure?.traceId);
+  pushCorrelation('spanId', backend?.spanId || backendDebug?.spanId || diagnostic?.spanId || previewFailure?.spanId);
+  pushCorrelation('jobId', backend?.jobId || backendDebug?.jobId || diagnostic?.jobId || previewFailure?.jobId);
+  pushCorrelation('machineId', backend?.machineId || backend?.machine?.id || machine?.id || backendDebug?.machineId || diagnostic?.machineId || previewFailure?.machineId);
+
+  const stalePreviewCode =
+    backend?.__httpStatus === 410 ||
+    backend?.httpStatus === 410 ||
+    backend?.statusCode === 410 ||
+    backendStatus === 'gone' ||
+    backendStatus === 'expired' ||
+    uiStage === 'preview_replaced_or_deleted';
+
+  return {
+    backend,
+    diagnostic,
+    previewFailure,
+    requestId,
+    correlationId,
+    correlationIds,
+    backendStatus,
+    uiStage,
+    timeoutReason,
+    machineState,
+    restartCount,
+    rootfsIoCorruption,
+    suggestedFix,
+    uiTitle,
+    uiMessage,
+    stalePreviewCode,
+  };
+}
+
+function formatPreviewFailureSection(value: unknown): string {
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return '';
+  }
+}
+
 // React 18 StrictMode in dev intentionally mounts/unmounts twice.
 // If we eagerly stop the local runner on unmount, we create a start/stop/start loop.
 // This small scheduler avoids killing the process when a remount happens immediately.
@@ -110,7 +306,7 @@ interface WebContainerRunnerProps {
   filesReady?: boolean;
   onFileChange?: (path: string, content: string) => void;
   onPreviewReadyChange?: (ready: boolean) => void;
-  onPreviewIssueChange?: (issue: string | null) => void;
+  onPreviewIssueChange?: (issue: { issue: string | null; diagnostics?: string | null } | null) => void;
   onBackendReady?: (args: { appId: string; code: string; url: string }) => void;
   onRequestRebuild?: () => void | Promise<void>;
   reloadToken?: number;
@@ -246,6 +442,9 @@ export default function WebContainerRunner({ appId, files, filesReady = true, on
     fixAction?: string;
     canShowFreeFixCta: boolean;
   } | null>(null);
+  const compileFixRequestCooldownRef = useRef<{ fingerprint: string; until: number } | null>(null);
+  const fixWithAiCooldownTimerRef = useRef<number | null>(null);
+  const [fixWithAiCooldownUntil, setFixWithAiCooldownUntil] = useState(0);
   const [cookieRecoveryPromptVisible, setCookieRecoveryPromptVisible] = useState(false);
   const [externalPreviewMode, setExternalPreviewMode] = useState(false);
   const [externalPreviewAutoOpenFailed, setExternalPreviewAutoOpenFailed] = useState(false);
@@ -303,6 +502,7 @@ export default function WebContainerRunner({ appId, files, filesReady = true, on
   const compileErrorSeenByFingerprintRef = useRef<Record<string, true>>({});
   const compileErrorActiveFingerprintRef = useRef<string | null>(null);
   const iframePostLoadRecoveryCountRef = useRef<number>(0);
+  const noMachineBootSinceRef = useRef<number | null>(null);
   const pollFetchFailureCountRef = useRef(0);
   const pollRateLimitCountRef = useRef(0);
   const lastPollFailureSignatureRef = useRef('');
@@ -803,6 +1003,7 @@ export default function WebContainerRunner({ appId, files, filesReady = true, on
     previewUrl?: string | null;
     requestId?: string;
     jobId?: string;
+    correlationIds?: Array<{ label: string; value: string }>;
     backendStatusData?: any;
     force?: boolean;
   }): Promise<{ sent: boolean; deduped: boolean; alertKey: string }> => {
@@ -837,6 +1038,7 @@ export default function WebContainerRunner({ appId, files, filesReady = true, on
       userId: user?.uid || null,
       requestId: payload.requestId || backendContext.requestId || null,
       jobId: payload.jobId || backendContext.jobId || null,
+      correlationIds: payload.correlationIds || null,
       elapsedMs: typeof payload.elapsedMs === 'number' ? payload.elapsedMs : null,
       backend: {
         status: backend?.status || null,
@@ -937,6 +1139,7 @@ export default function WebContainerRunner({ appId, files, filesReady = true, on
     reason?: string;
     requestId?: string;
     jobId?: string;
+    correlationIds?: Array<{ label: string; value: string }>;
     backendStatusData?: any;
     alertKeyOverride?: string;
     dedupeTtlMs?: number;
@@ -956,6 +1159,7 @@ export default function WebContainerRunner({ appId, files, filesReady = true, on
       previewUrl: payload.previewUrl,
       requestId: payload.requestId,
       jobId: payload.jobId,
+      correlationIds: payload.correlationIds,
       backendStatusData: payload.backendStatusData,
       alertKeyOverride: payload.alertKeyOverride,
       dedupeTtlMs: payload.dedupeTtlMs,
@@ -1674,8 +1878,9 @@ export default function NavBar() {
 
   const normalizeStatusDataForUi = (code: string, raw: any): any => {
     try {
-      const status = String((raw as any)?.status || '').toLowerCase();
-      const uiStage = String((raw as any)?.uiStage || '').toLowerCase();
+      const normalizedFailure = normalizePreviewFailureDetails(raw);
+      const status = String((raw as any)?.status || normalizedFailure.backendStatus || '').toLowerCase();
+      const uiStage = String((raw as any)?.uiStage || normalizedFailure.uiStage || '').toLowerCase();
       const transitioning = status === 'transitioning' || uiStage === 'transitioning' || uiStage.includes('transition');
 
       const uiProgressRaw = (raw as any)?.uiProgress;
@@ -1698,7 +1903,21 @@ export default function NavBar() {
       const sticky = Math.max(prev, nextProgress);
       stickyProgressByCodeRef.current[code] = sticky;
 
-      return { ...raw, uiProgress: sticky, __transitioning: transitioning };
+      return {
+        ...raw,
+        ...normalizedFailure,
+        backendStatus: normalizedFailure.backendStatus || String((raw as any)?.backendStatus || '').trim() || null,
+        uiStage: normalizedFailure.uiStage || String((raw as any)?.uiStage || '').trim() || null,
+        timeoutReason: normalizedFailure.timeoutReason || String((raw as any)?.timeoutReason || '').trim() || null,
+        machineState: normalizedFailure.machineState || String((raw as any)?.machineState || '').trim() || null,
+        restartCount: normalizedFailure.restartCount,
+        rootfsIoCorruption: normalizedFailure.rootfsIoCorruption,
+        suggestedFix: normalizedFailure.suggestedFix,
+        uiTitle: normalizedFailure.uiTitle || String((raw as any)?.uiTitle || '').trim() || null,
+        uiMessage: normalizedFailure.uiMessage || String((raw as any)?.uiMessage || '').trim() || null,
+        uiProgress: sticky,
+        __transitioning: transitioning,
+      };
     } catch {
       return raw;
     }
@@ -2280,7 +2499,7 @@ export default function NavBar() {
 
           // Skip existing container checks entirely - go straight to creation
           console.log(`🏗️ Force fresh start: Creating new container for app ${appId}...`);
-          setLoadingStatus('Starting new machine... (This may take several minutes for first-time builds)');
+          setLoadingStatus('Starting new machine... (This can take a minute or two)');
         } else {
           // First, check if there's an existing container for this app
           const existingCode = await getStoredContainerCode(appId, user);
@@ -2636,7 +2855,7 @@ export default function NavBar() {
         } else {
           console.log(`🏗️ Creating new container for app ${appId}...`);
         }
-        setLoadingStatus('Starting new machine... (This may take several minutes for first-time builds)');
+        setLoadingStatus('Starting new machine... (This can take a minute or two)');
 
         // Validate files before sending
         if (!filesRef.current || typeof filesRef.current !== 'object' || Array.isArray(filesRef.current)) {
@@ -2968,16 +3187,79 @@ export default function NavBar() {
                 return;
               }
 
+              if (statusResponse.status === 410) {
+                const stalePreviewData = await statusResponse.json().catch(() => ({} as any));
+                const stalePreviewStatusData = normalizeStatusDataForUi(code, {
+                  ...stalePreviewData,
+                  status: 'gone',
+                  backendStatus: 'gone',
+                  uiStage: 'preview_replaced_or_deleted',
+                  uiTitle: pickFirstString(stalePreviewData?.uiTitle, 'Preview replaced or deleted'),
+                  uiMessage: pickFirstString(
+                    stalePreviewData?.uiMessage,
+                    'This preview code is no longer valid. Refresh to reopen the latest preview or reopen the latest preview from the app shell.',
+                  ),
+                  suggestedFix: pickFirstString(
+                    stalePreviewData?.suggestedFix,
+                    stalePreviewData?.diagnostic?.suggestedFix,
+                    stalePreviewData?.previewFailure?.suggestedFix,
+                    'Refresh or reopen the latest preview to create a new valid preview code.',
+                  ),
+                  __httpStatus: 410,
+                  httpStatus: 410,
+                });
+                const stalePreviewFailure = normalizePreviewFailureDetails(stalePreviewStatusData);
+
+                console.log(`🗑️ Preview code ${code} is stale (410); clearing stored code and asking the user to refresh.`);
+                if (stalePreviewFailure.requestId || stalePreviewFailure.correlationIds.length) {
+                  console.log('[WebContainerRunner] stale preview diagnostics', {
+                    requestId: stalePreviewFailure.requestId,
+                    correlationIds: stalePreviewFailure.correlationIds,
+                    backendStatus: stalePreviewFailure.backendStatus,
+                    uiStage: stalePreviewFailure.uiStage,
+                  });
+                }
+
+                await clearStoredContainerCodeEverywhere(appId, user);
+                stopAllTimers();
+                setIsPolling(false);
+                setIsLoading(false);
+                setConnectingToExisting(false);
+                setLoadingStatus('Preview replaced or deleted. Refresh to reopen the latest preview.');
+                setPreviewUrl(null);
+                setCurrentStatusData(stalePreviewStatusData);
+                setCanRetry(true);
+                setError('Preview replaced or deleted. Refresh to reopen the latest preview or reopen the latest preview from the app shell.');
+
+                reportPollIssueOnce(`stale-preview-code:${appId}:${code}:${stalePreviewFailure.requestId || 'unknown'}`, {
+                  appId,
+                  code,
+                  action: 'preview_code_invalidated',
+                  severity: 'warning',
+                  statusCode: 410,
+                  status: 'preview_replaced_or_deleted',
+                  reason: 'preview_code_no_longer_valid',
+                  message: 'The backend returned 410 Gone for this preview code. The latest preview must be reopened or refreshed.',
+                  previewUrl: previewUrlRef.current,
+                  requestId: stalePreviewFailure.requestId || undefined,
+                  jobId: stalePreviewFailure.correlationIds.find((entry) => entry.label === 'jobId')?.value,
+                  backendStatusData: stalePreviewStatusData,
+                  correlationIds: stalePreviewFailure.correlationIds,
+                });
+
+                return;
+              }
+
               // Handle 404s specially for newly created containers
               if (statusResponse.status === 404) {
                 containerNotFoundCountRef.current += 1;
                 const now = Date.now();
                 const inRegistrationGrace = previewRegistrationGraceUntilRef.current > now;
                 const baseMaxNotFoundAttempts = isForceFreshStart
-                  ? Math.max(maxContainerNotFound, 24)
-                  : Math.max(maxContainerNotFound, 12);
+                  ? Math.max(maxContainerNotFound, 15)
+                  : Math.max(maxContainerNotFound, 15);
                 const maxNotFoundAttempts = inRegistrationGrace
-                  ? Math.max(baseMaxNotFoundAttempts, 48)
+                  ? Math.max(baseMaxNotFoundAttempts, 15)
                   : baseMaxNotFoundAttempts;
                 console.log(`Container not found (404) - attempt ${containerNotFoundCountRef.current}/${maxNotFoundAttempts}`);
 
@@ -2999,7 +3281,7 @@ export default function NavBar() {
                   setIsPolling(false);
                   setIsLoading(false);
                   setConnectingToExisting(false);
-                  setError('Container failed to start. Refresh first to retry this preview. If it still fails, use Rebuild to start a new machine.');
+                  setError('Container failed to start after repeated 404s. Refresh first to retry this preview. If it still fails, use Rebuild to start a new machine.');
                   setCanRetry(true);
                   setLoadingStatus('');
                   setCurrentStatusData(null);
@@ -3083,6 +3365,53 @@ export default function NavBar() {
               : '';
 
             lastAppServerKindRef.current = appServerKind;
+
+            const hasMachineId = Boolean(String((statusData as any)?.machineId || '').trim());
+            const isBootingWithoutMachine =
+              !readyFlag &&
+              !deploymentUrl &&
+              !hasMachineId &&
+              ['pending', 'starting', 'booting', 'creating_machine', 'transitioning'].includes(status);
+
+            if (isBootingWithoutMachine) {
+              if (noMachineBootSinceRef.current == null) {
+                noMachineBootSinceRef.current = Date.now();
+              }
+
+              const bootElapsedMs = Date.now() - noMachineBootSinceRef.current;
+              const bootTimeoutMs = uiStage === 'app_unreachable' ? 45_000 : 120_000;
+              if (bootElapsedMs >= bootTimeoutMs) {
+                reportPollIssueOnce(`no-machine-boot-timeout:${appId}:${code}:${uiStage || status || 'unknown'}`, {
+                  appId,
+                  code,
+                  action: 'preview_no_machine_timeout',
+                  severity: 'critical',
+                  statusCode: 504,
+                  status: 'no_machine_boot_timeout',
+                  reason: uiStage || status || 'no_machine_boot_timeout',
+                  message: 'Preview never produced a machine or URL, so the boot loop was stopped to avoid hanging forever.',
+                  elapsedMs: bootElapsedMs,
+                  previewUrl: previewUrlRef.current,
+                  requestId: (statusData as any)?.requestId,
+                  jobId: (statusData as any)?.jobId,
+                  backendStatusData: statusData,
+                });
+
+                await clearStoredContainerCodeEverywhere(appId, user);
+                stopAllTimers();
+                setIsPolling(false);
+                setIsLoading(false);
+                setConnectingToExisting(false);
+                setLoadingStatus('');
+                setCurrentStatusData(null);
+                setPreviewUrl(null);
+                setError('Preview startup failed before a machine was created. Please refresh or try Fix with AI.');
+                setCanRetry(true);
+                return;
+              }
+            } else {
+              noMachineBootSinceRef.current = null;
+            }
 
             // Fly provider can return a machine-create timeout (HTTP 408) after we already got a preview code.
             // In that case this code will never become reachable, so stop the spinner and regenerate immediately.
@@ -4186,17 +4515,137 @@ export default function NavBar() {
   const showApplyRefreshingOverlay = showPreviewSurface && isApplyRefreshing;
   const terminalPreviewStatusData = terminalPreviewStatus ? (currentStatusData || lastBackendStatusRef.current || null) : null;
   const showTerminalPreviewErrorCard = Boolean(error) || terminalPreviewStatus;
-  const terminalPreviewErrorMessage =
-    error ||
-    'Something went wrong while starting the preview. Use Fix with AI to send the locked technical issue to the agent.';
+  const buildPreviewFixIssueMessage = useCallback((baseMessage: string, rawStatusData: any) => {
+    const backendContext = extractTimeoutBackendContext(rawStatusData || null);
+    const failure = normalizePreviewFailureDetails(rawStatusData || null);
+    const backend = backendContext.backend || null;
+    const debug = (backend?.debug && typeof backend.debug === 'object' ? backend.debug : {}) as Record<string, any>;
+    const details: string[] = [];
+
+    if (backendContext.machineId) details.push(`machineId=${backendContext.machineId}`);
+    if (backendContext.machineState) details.push(`machineState=${backendContext.machineState}`);
+    if (typeof backendContext.restartCount === 'number') details.push(`restartCount=${backendContext.restartCount}`);
+    if (backendContext.requestId) details.push(`requestId=${backendContext.requestId}`);
+    if (backendContext.jobId) details.push(`jobId=${backendContext.jobId}`);
+    if (backend?.status) details.push(`backendStatus=${backend.status}`);
+    if (backend?.uiStage) details.push(`uiStage=${backend.uiStage}`);
+    if (debug?.timeoutReason) details.push(`timeoutReason=${debug.timeoutReason}`);
+    if (debug?.compile?.summary) details.push(`compileSummary=${debug.compile.summary}`);
+    if (debug?.storage?.rootfsIoCorruption != null) {
+      details.push(`rootfsIoCorruption=${String(debug.storage.rootfsIoCorruption)}`);
+    }
+    if (failure.suggestedFix) details.push(`suggestedFix=${failure.suggestedFix}`);
+    if (failure.correlationId) details.push(`correlationId=${failure.correlationId}`);
+
+    const structuredSections: string[] = [];
+    if (failure.suggestedFix) {
+      structuredSections.push(`Suggested fix:\n${failure.suggestedFix}`);
+    }
+    if (failure.diagnostic || failure.previewFailure) {
+      structuredSections.push(
+        `Structured backend diagnostics:\n${formatPreviewFailureSection({
+          requestId: failure.requestId,
+          correlationId: failure.correlationId,
+          correlationIds: failure.correlationIds,
+          backendStatus: failure.backendStatus,
+          uiStage: failure.uiStage,
+          timeoutReason: failure.timeoutReason,
+          machineState: failure.machineState,
+          restartCount: failure.restartCount,
+          rootfsIoCorruption: failure.rootfsIoCorruption,
+          suggestedFix: failure.suggestedFix,
+          diagnostic: failure.diagnostic,
+          previewFailure: failure.previewFailure,
+        })}`,
+      );
+    }
+
+    return [
+      baseMessage,
+      details.length ? `Backend context: ${details.join('; ')}` : '',
+      ...structuredSections,
+    ].filter(Boolean).join('\n\n');
+  }, []);
+
+  const previewIssueContextData = error
+    ? (currentStatusData || lastBackendStatusRef.current || null)
+    : terminalPreviewStatusData;
+  const terminalPreviewErrorMessage = buildPreviewFixIssueMessage(
+    error || 'Something went wrong while starting the preview. Use Fix with AI to send the locked technical issue to the agent.',
+    previewIssueContextData,
+  );
+  const previewIssueDiagnostics = previewIssueContextData
+    ? JSON.stringify(
+        {
+          appId,
+          previewUrl: previewUrlRef.current || null,
+          loadingStatus: loadingStatus || null,
+          canRetry,
+          isPolling,
+          isLoading,
+          connectingToExisting,
+          previewUrlAgeMs,
+          previewStatus,
+          terminalPreviewStatus,
+          previewInteractiveByStatus,
+          backendReady: backendReadyRef.current,
+          currentStatusData: previewIssueContextData,
+        },
+        null,
+        2,
+      )
+    : null;
+  const previewFailureUi = previewIssueContextData ? normalizePreviewFailureDetails(previewIssueContextData) : null;
+  const previewFailureTitle = previewFailureUi?.uiTitle || (previewFailureUi?.stalePreviewCode ? 'Preview replaced or deleted' : 'Something went wrong');
+  const previewFailureMessage = previewFailureUi?.uiMessage || (previewFailureUi?.stalePreviewCode
+    ? 'This preview code is no longer valid. Refresh to reopen the latest preview or reopen the latest preview from the app shell.'
+    : 'Check chat for details.');
+  const isFixWithAiCoolingDown = fixWithAiCooldownUntil > Date.now();
+  const startFixWithAiCooldown = useCallback(() => {
+    const until = Date.now() + 30_000;
+    setFixWithAiCooldownUntil(until);
+    if (fixWithAiCooldownTimerRef.current) {
+      clearTimeout(fixWithAiCooldownTimerRef.current);
+      fixWithAiCooldownTimerRef.current = null;
+    }
+    fixWithAiCooldownTimerRef.current = window.setTimeout(() => {
+      setFixWithAiCooldownUntil((current) => (current === until ? 0 : current));
+      fixWithAiCooldownTimerRef.current = null;
+    }, 30_000);
+  }, []);
+  const handlePreviewFailureFixRequest = useCallback(() => {
+    if (!previewIssueContextData) return;
+
+    startFixWithAiCooldown();
+    const detail = buildPreviewFixIssueMessage(previewFailureMessage, previewIssueContextData);
+    onCompileErrorFixRequest?.({
+      appId,
+      code: 'preview_issue',
+      actionType: 'quick_fix_compile',
+      fixAction: 'preview_issue_fix',
+      autoSend: true,
+      compileError: {
+        summary: previewFailureTitle,
+        detail,
+        fingerprint: `preview_issue:${appId}:${String(previewFailureUi?.requestId || previewFailureUi?.correlationId || previewFailureTitle).slice(0, 120)}`,
+      },
+    });
+  }, [appId, buildPreviewFixIssueMessage, onCompileErrorFixRequest, previewFailureMessage, previewFailureTitle, previewFailureUi?.correlationId, previewFailureUi?.requestId, previewIssueContextData, startFixWithAiCooldown]);
 
   useEffect(() => {
     try {
-      onPreviewIssueChange?.(showTerminalPreviewErrorCard ? terminalPreviewErrorMessage : null);
+      onPreviewIssueChange?.(
+        showTerminalPreviewErrorCard
+          ? {
+              issue: terminalPreviewErrorMessage,
+              diagnostics: previewIssueDiagnostics,
+            }
+          : null,
+      );
     } catch {
       // ignore
     }
-  }, [onPreviewIssueChange, showTerminalPreviewErrorCard, terminalPreviewErrorMessage]);
+  }, [onPreviewIssueChange, previewIssueDiagnostics, showTerminalPreviewErrorCard, terminalPreviewErrorMessage]);
 
   useEffect(() => {
     if (!debugPreviewScenario) return;
@@ -4286,12 +4735,20 @@ export default function NavBar() {
                   <button
                     type="button"
                     onClick={() => {
+                      startFixWithAiCooldown();
+                      const lockKey = `${compileErrorState.code}:${compileErrorState.fingerprint}`;
+                      const now = Date.now();
+                      const cooldown = compileFixRequestCooldownRef.current;
+                      const cooldownMs = 30_000;
+                      if (cooldown && cooldown.fingerprint === lockKey && now < cooldown.until) return;
+                      compileFixRequestCooldownRef.current = { fingerprint: lockKey, until: now + cooldownMs };
                       emitCompileErrorTelemetry('compile_error_fix_clicked', {
                         code: compileErrorState.code,
                         fingerprint: compileErrorState.fingerprint,
                         actionType: compileErrorState.actionType,
                         fixAction: compileErrorState.fixAction || null,
                       });
+                      setCompileErrorState(null);
                       onCompileErrorFixRequest?.({
                         appId,
                         code: compileErrorState.code,
@@ -4305,7 +4762,8 @@ export default function NavBar() {
                         },
                       });
                     }}
-                    className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-xs bg-accent text-white hover:bg-[#e54f1a] transition-colors"
+                    disabled={isFixWithAiCoolingDown}
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-xs bg-accent text-white hover:bg-[#e54f1a] transition-colors disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     Fix with AI
                   </button>
@@ -4758,12 +5216,34 @@ export default function NavBar() {
         </div>
       ) : showTerminalPreviewErrorCard || compileErrorState ? (
         <div className="flex-1 flex items-center justify-center px-4">
-          <div className="w-full max-w-md rounded-2xl bg-white px-5 py-5 text-center">
-            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-100 text-amber-700 ring-1 ring-amber-200">
-              <AlertTriangle className="h-6 w-6" />
+          <div className="w-full max-w-lg rounded-2xl border border-amber-200 bg-white px-5 py-6 shadow-sm">
+            <div className="mx-auto flex max-w-md flex-col items-center text-center">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-100 text-amber-700 ring-1 ring-amber-200">
+                <AlertTriangle className="h-6 w-6" />
+              </div>
+              <div className="min-w-0">
+                <div className="mt-4 text-lg font-semibold text-neutral-900">{previewFailureTitle}</div>
+                <div className="mt-2 text-sm leading-relaxed text-neutral-600">{previewFailureMessage}</div>
+
+                <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
+                  {/* <button
+                    type="button"
+                    onClick={handlePreviewFailureFixRequest}
+                    disabled={isFixWithAiCoolingDown}
+                    className="inline-flex items-center gap-2 rounded-full bg-accent px-4 py-2 text-xs font-medium text-white transition-colors hover:bg-[#e54f1a] disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Fix with AI
+                  </button> */}
+                  <button
+                    type="button"
+                    onClick={rebuildPreview}
+                    className="inline-flex items-center gap-2 rounded-full border border-black/15 bg-white px-4 py-2 text-xs font-medium text-black/80 transition-colors hover:bg-black/5"
+                  >
+                    Restart Preview
+                  </button>
+                </div>
+              </div>
             </div>
-            <div className="mt-4 text-lg font-semibold text-neutral-900">Something went wrong</div>
-            <div className="mt-2 text-sm leading-relaxed text-neutral-600">Check chat for details.</div>
           </div>
         </div>
       ) : (
@@ -4780,7 +5260,7 @@ export default function NavBar() {
                       ? {
                         uiStage: 'building_app',
                         uiTitle: 'Building your app',
-                        uiMessage: 'This may take several minutes for first-time builds',
+                        uiMessage: 'This can take a minute or two',
                         updatedAt: Date.now(),
                       }
                       : pollingRetryCountRef.current < maxPollingRetries

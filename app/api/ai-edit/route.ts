@@ -20,6 +20,7 @@ import { getAuthoritativeUserTier } from "../_lib/userTier";
 import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from "@google/generative-ai";
 import { randomUUID, createHash } from "crypto";
 import { Resend } from "resend";
+import { captureAuditEvent, captureCriticalEvent } from "@/lib/observability";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -100,6 +101,26 @@ function safeSnippet(input: string, max = 220) {
     if (!t) return "";
     if (t.length <= max) return t;
     return t.slice(0, max - 1) + "…";
+}
+
+function estimateTokens(text: string) {
+    const value = String(text || "");
+    if (!value.trim()) return 0;
+    return Math.max(1, Math.ceil(value.length / 4));
+}
+
+function summarizeAiUsage(usageMetadata: any, estimatedInputTokens: number, estimatedOutputTokens: number) {
+    const actualInputTokens = Number.isFinite(Number(usageMetadata?.promptTokenCount)) ? Number(usageMetadata.promptTokenCount) : null;
+    const actualOutputTokens = Number.isFinite(Number(usageMetadata?.candidatesTokenCount)) ? Number(usageMetadata.candidatesTokenCount) : null;
+    const totalTokens = Number.isFinite(Number(usageMetadata?.totalTokenCount)) ? Number(usageMetadata.totalTokenCount) : null;
+
+    return {
+        estimatedInputTokens,
+        estimatedOutputTokens,
+        actualInputTokens,
+        actualOutputTokens,
+        totalTokens,
+    };
 }
 
 function hashIp(ip: string) {
@@ -1187,6 +1208,36 @@ ${trimmedHtml}
             usageMetadata: response?.usageMetadata || null,
         };
 
+        const usage = summarizeAiUsage(response?.usageMetadata || null, estimateTokens(user), estimateTokens(raw));
+
+        void captureAuditEvent({
+            source: "internal",
+            severity: "info",
+            alwaysNotifySlack: true,
+            statusCode: 200,
+            route: "/api/ai-edit",
+            method: "POST",
+            action: `ai_edit_request_completed:${input.requestId || input.renderId}`,
+            userId: input.uid,
+            requestId: input.requestId,
+            message: "AI edit request completed",
+            service: "ai-edit",
+            tags: ["ai-edit", "gemini", "usage"],
+            extra: {
+                renderId: input.renderId,
+                requestId: input.requestId || null,
+                action: input.action || null,
+                mode: input.mode || null,
+                promptTokens: usage.actualInputTokens ?? usage.estimatedInputTokens,
+                outputTokens: usage.actualOutputTokens ?? usage.estimatedOutputTokens,
+                totalTokens: usage.totalTokens ?? (usage.actualInputTokens ?? usage.estimatedInputTokens) + (usage.actualOutputTokens ?? usage.estimatedOutputTokens),
+                usageMetadata: response?.usageMetadata || null,
+                model: GEMINI_MODEL,
+                promptSnippet: safeSnippet(input.prompt || input.originalPrompt || input.userPrompt || "", 220),
+                htmlChars: trimmedHtml.length,
+            },
+        });
+
         const parsed = parseModelOutput(raw, input.html);
 
         if (!parsed.ok) {
@@ -1204,6 +1255,35 @@ ${trimmedHtml}
         };
     } catch (err: any) {
         const classified = classifyGeminiError(err, input.requestId);
+
+        void captureCriticalEvent({
+            source: "internal",
+            severity: classified.status >= 500 ? "critical" : "error",
+            alwaysNotifySlack: true,
+            statusCode: classified.status,
+            route: "/api/ai-edit",
+            method: "POST",
+            action: `ai_edit_generate_failed:${input.requestId || input.renderId}`,
+            userId: input.uid,
+            requestId: input.requestId,
+            message: classified.slackMessage,
+            service: "ai-edit",
+            tags: ["ai-edit", "gemini", "provider-error"],
+            extra: {
+                renderId: input.renderId,
+                requestId: input.requestId || null,
+                action: input.action || null,
+                mode: input.mode || null,
+                promptTokens: estimateTokens(user),
+                outputTokens: 0,
+                totalTokens: estimateTokens(user),
+                model: GEMINI_MODEL,
+                providerMessage: classified.providerMessage,
+                code: classified.code,
+                providerErrorName: classified.providerErrorName,
+                providerDiagnostics: classified.providerDiagnostics,
+            },
+        });
 
         console.error("[ai-edit][gemini] call failed", {
             requestId: input.requestId,

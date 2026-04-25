@@ -8,6 +8,7 @@ type ExtraData = Record<string, unknown>;
 export type ObservabilityEvent = {
     source: "vercel" | "fly" | "frontend" | "internal";
     severity: ObservabilitySeverity;
+    alwaysNotifySlack?: boolean;
     statusCode?: number;
     route?: string;
     method?: string;
@@ -171,6 +172,8 @@ function shouldSuppressLocalhostSlackWebhook(): boolean {
 }
 
 function shouldSuppressSlackWebhook(event: StoredEvent): boolean {
+    if (event.alwaysNotifySlack) return false;
+
     if (isLocalhostUrl(event.url) && shouldSuppressLocalhostSlackWebhook()) return true;
 
     const action = String(event.action || "").toLowerCase();

@@ -13,3 +13,5 @@ public/hero copy.webm
 app-builder-architecture.md
 
 certificates
+.github/prompts/backend-embedding-workflow.prompt.md
+.gitignore

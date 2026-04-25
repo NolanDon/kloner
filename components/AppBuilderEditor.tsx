@@ -20,6 +20,7 @@ import { compressImageForUpload } from "@/src/lib/clientImageCompression";
 import { sanitizeImageName } from "./helpers";
 import { recordAppBuilderSessionAnalytics } from "@/components/analytics";
 import { motion } from "framer-motion";
+import { detectProjectFramework } from "@/src/lib/projectFramework";
 
 const VERCEL_INTEGRATION_SLUG =
     process.env.NEXT_PUBLIC_VERCEL_INTEGRATION_SLUG || "kloner";
@@ -39,6 +40,15 @@ type AppData = {
     htmlStoragePath?: string | null;
     htmlByteLength?: number | null;
     htmlEditIndex?: unknown;
+    embeddingStatus?: string | null;
+    embeddingMessage?: string | null;
+    embeddingProgress?: number | null;
+    embedding?: {
+        status?: string | null;
+        stage?: string | null;
+        progress?: number | null;
+        message?: string | null;
+    } | null;
     updatedAt?: unknown;
     vercelProjectId?: string;
     previewUrl?: string;
@@ -455,6 +465,33 @@ function normalizeGenerationState(data: any): NormalizedGenerationState {
     };
 }
 
+type NormalizedEmbeddingState = {
+    status: string | null;
+    progress: number | null;
+    message: string | null;
+};
+
+function normalizeEmbeddingState(data: any): NormalizedEmbeddingState {
+    const embedding = data?.embedding && typeof data.embedding === "object" ? data.embedding : null;
+
+    return {
+        status:
+            asTrimmedString(embedding?.status) ||
+            asTrimmedString(embedding?.stage) ||
+            asTrimmedString(data?.embeddingStatus) ||
+            asTrimmedString(data?.embeddingStage) ||
+            asTrimmedString(data?.status),
+        progress:
+            asFiniteNumber(embedding?.progress) ??
+            asFiniteNumber(data?.embeddingProgress) ??
+            asFiniteNumber(data?.progress),
+        message:
+            asTrimmedString(embedding?.message) ||
+            asTrimmedString(data?.embeddingMessage) ||
+            asTrimmedString(data?.message),
+    };
+}
+
 function generationStateChanged(
     prev: Partial<NormalizedGenerationState> | null | undefined,
     next: Partial<NormalizedGenerationState>,
@@ -505,6 +542,79 @@ function detectNextAppDir(files: AppData["files"] | null | undefined): "src/app"
     if (keys.some((key) => key === "src/app" || key.startsWith("src/app/"))) return "src/app";
     if (keys.some((key) => key === "app" || key.startsWith("app/"))) return "app";
     return null;
+}
+
+function isPageFile(path: string): boolean {
+    const value = String(path || "").trim();
+    if (!value) return false;
+    return (
+        /^(?:src\/)?app\/.+\/page\.(tsx|ts|jsx|js|mdx?)$/i.test(value) ||
+        /^(?:src\/)?app\/page\.(tsx|ts|jsx|js|mdx?)$/i.test(value) ||
+        /^(?:src\/)?pages\/(?:index|.+)\.(tsx|ts|jsx|js|mdx?)$/i.test(value) ||
+        /^public\/.+\/index\.html?$/i.test(value) ||
+        /^public\/index\.html?$/i.test(value) ||
+        /^public\/.+\.html?$/i.test(value)
+    );
+}
+
+function humanizePageLabel(path: string): string {
+    const normalized = String(path || "").replace(/^src\//, "");
+    if (/^(?:app|pages)\/(?:page|index)\.[^.]+$/i.test(normalized) || /^public\/index\.html?$/i.test(normalized)) return "home";
+
+    const publicMatch = normalized.match(/^public\/(.+?)\/(?:index\.html?|index)$/i) || normalized.match(/^public\/(.+?)\.html?$/i);
+    if (publicMatch?.[1]) {
+        return publicMatch[1]
+            .replace(/\(([^)]+)\)/g, "$1")
+            .split("/")
+            .filter(Boolean)
+            .map((segment) => segment.replace(/[-_]+/g, " ").replace(/\b\w/g, (char) => char.toLowerCase()))
+            .join(" / ");
+    }
+
+    const appMatch = normalized.match(/^app\/(.+?)\/page\.[^.]+$/i);
+    const pagesMatch = normalized.match(/^pages\/(.+?)\.[^.]+$/i);
+    const rawRoute = appMatch?.[1] || pagesMatch?.[1] || normalized;
+    return rawRoute
+        .replace(/\/index$/i, "")
+        .replace(/\(([^)]+)\)/g, "$1")
+        .split("/")
+        .filter(Boolean)
+        .map((segment) => segment.replace(/[-_]+/g, " ").replace(/\b\w/g, (char) => char.toLowerCase()))
+        .join(" / ") || path;
+}
+
+function pageFileToPreviewPath(path: string): string {
+    const normalized = String(path || "").replace(/^src\//, "").trim();
+    if (!normalized) return "/";
+
+    if (/^app\/page\.[^.]+$/i.test(normalized) || /^pages\/index\.[^.]+$/i.test(normalized)) {
+        return "/";
+    }
+
+    if (normalized.toLowerCase().startsWith("app/")) {
+        const segments = normalized
+            .slice(4)
+            .replace(/\/page\.[^.]+$/i, "")
+            .split("/")
+            .filter(Boolean)
+            .filter((segment) => !/^\(.+\)$/.test(segment) && !segment.startsWith("@"));
+        return `/${segments.join("/")}`.replace(/\/+/g, "/") || "/";
+    }
+
+    if (normalized.toLowerCase().startsWith("pages/")) {
+        const route = normalized.slice(6).replace(/\.(tsx|ts|jsx|js|mdx?)$/i, "");
+        return `/${route.replace(/\/index$/i, "")}`.replace(/\/+/g, "/") || "/";
+    }
+
+    if (normalized.toLowerCase().startsWith("public/")) {
+        const route = normalized
+            .slice(7)
+            .replace(/\/index\.html?$/i, "")
+            .replace(/\.html?$/i, "");
+        return `/${route}`.replace(/\/+/g, "/") || "/";
+    }
+
+    return "/";
 }
 
 function buildHeadTsxWithFavicon(faviconUrl: string): string {
@@ -1339,6 +1449,7 @@ export default function AppBuilderEditor({
         }, [showAlert, showConfirm, supabaseConnected, supabaseProjectName, supabaseProjectRef, user?.uid, verifySupabaseConnection]);
 
     const [app, setApp] = useState<AppData | null>(null);
+    const projectFramework = useMemo(() => detectProjectFramework(app?.files || null), [app?.files]);
     const [loading, setLoading] = useState(true);
     const [filesHydrated, setFilesHydrated] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -1445,14 +1556,102 @@ export default function AppBuilderEditor({
     const [isDeploying, setIsDeploying] = useState(false);
     const [isSharingPreview, setIsSharingPreview] = useState(false);
     const [isPreviewBuilding, setIsPreviewBuilding] = useState(false);
+    const [previewPagePath, setPreviewPagePath] = useState<string | null>(null);
+    const [previewNavigateToken, setPreviewNavigateToken] = useState(0);
+    const [isPageDropdownOpen, setIsPageDropdownOpen] = useState(false);
+    const pageDropdownRef = useRef<HTMLDivElement | null>(null);
     const isDev = process.env.NODE_ENV !== "production";
     const currentAiPromptFile = currentFile || "(no file selected)";
+
+    const pageOptions = useMemo(() => {
+        const seen = new Set<string>();
+        return Object.keys(app?.files || {})
+            .filter((path) => isPageFile(path))
+            .map((path) => ({
+                path,
+                route: pageFileToPreviewPath(path),
+                label: humanizePageLabel(path),
+            }))
+            .filter((page) => {
+                if (!page.route) return false;
+                if (seen.has(page.route)) return false;
+                seen.add(page.route);
+                return true;
+            })
+            .sort((left, right) => left.label.localeCompare(right.label) || left.route.localeCompare(right.route));
+    }, [app?.files]);
+
+    useEffect(() => {
+        if (currentFile && pageOptions.some((page) => page.path === currentFile)) {
+            setPreviewPagePath(currentFile);
+            return;
+        }
+
+        setPreviewPagePath((prev) => {
+            if (prev && pageOptions.some((page) => page.path === prev)) return prev;
+            return pageOptions[0]?.path ?? null;
+        });
+    }, [currentFile, pageOptions]);
+
+    useEffect(() => {
+        if (currentFile) return;
+        if (!previewPagePath) return;
+        const matched = pageOptions.find((page) => page.path === previewPagePath);
+        if (!matched) return;
+        const content = app?.files?.[matched.path]?.content;
+        if (typeof content !== "string") return;
+        setCurrentFile(matched.path);
+        setCode(content);
+    }, [app?.files, currentFile, pageOptions, previewPagePath]);
+
+    const selectedPreviewPage = useMemo(
+        () => pageOptions.find((page) => page.path === previewPagePath) || null,
+        [pageOptions, previewPagePath],
+    );
+    const aiCurrentFile = currentFile || selectedPreviewPage?.path || null;
+    const previewNavigatePath = selectedPreviewPage?.route || null;
+    const selectedPageLabel = useMemo(() => {
+        const route = String(selectedPreviewPage?.route || "").trim();
+        if (!route || route === "/") return "home";
+        return route.replace(/^\//, "").toLowerCase();
+    }, [selectedPreviewPage?.route]);
+    const pageDropdownLabel = useMemo(() => {
+        if (selectedPageLabel) return selectedPageLabel;
+        if (currentFile) return String(currentFile.replace(/^src\//, "")).toLowerCase();
+        return "page";
+    }, [currentFile, selectedPageLabel]);
+
+    useEffect(() => {
+        if (!isPageDropdownOpen) return;
+
+        const onPointerDown = (event: MouseEvent) => {
+            const target = event.target as Node | null;
+            if (pageDropdownRef.current && target && !pageDropdownRef.current.contains(target)) {
+                setIsPageDropdownOpen(false);
+            }
+        };
+
+        const onKeyDown = (event: KeyboardEvent) => {
+            if (event.key === "Escape") {
+                setIsPageDropdownOpen(false);
+            }
+        };
+
+        document.addEventListener("mousedown", onPointerDown);
+        document.addEventListener("keydown", onKeyDown);
+
+        return () => {
+            document.removeEventListener("mousedown", onPointerDown);
+            document.removeEventListener("keydown", onKeyDown);
+        };
+    }, [isPageDropdownOpen]);
 
     useEffect(() => {
         if (IS_PRODUCTION && viewMode === "code") {
             setViewMode("ai");
         }
     }, [viewMode]);
+
     const [previewError, setPreviewError] = useState<string | null>(null);
     const [protectedPreviewUrl, setProtectedPreviewUrl] = useState<string | null>(null);
     const [vercelSecuritySettingsUrl, setVercelSecuritySettingsUrl] = useState<string | null>(null);
@@ -1463,6 +1662,7 @@ export default function AppBuilderEditor({
     const [autoPreviewPhase, setAutoPreviewPhase] = useState<AutoPreviewPhase>("idle");
     const [autoPreviewError, setAutoPreviewError] = useState<string | null>(null);
     const [previewIssue, setPreviewIssue] = useState<string | null>(null);
+    const [previewIssueDiagnostics, setPreviewIssueDiagnostics] = useState<string | null>(null);
     const [deployBannerFromApp, setDeployBannerFromApp] = useState<DeployStatusBanner | null>(null);
     const [deployBannerFromRoute, setDeployBannerFromRoute] = useState<DeployStatusBanner | null>(null);
     const [dismissedDeployBannerFingerprint, setDismissedDeployBannerFingerprint] = useState<string | null>(null);
@@ -1473,6 +1673,7 @@ export default function AppBuilderEditor({
     const [vercelConnectOpening, setVercelConnectOpening] = useState(false);
     const [vercelConnectFlow, setVercelConnectFlow] = useState<VercelOAuthFlow>("preview");
     const [generationEver, setGenerationEver] = useState(false);
+    const previewIssueFixRequestCooldownRef = useRef<{ fingerprint: string; until: number } | null>(null);
     const appBuilderSessionStartedAtRef = useRef<number>(Date.now());
     const appBuilderAiMessagesSentRef = useRef<number>(0);
     const appBuilderViewSwitchesRef = useRef<number>(0);
@@ -1485,6 +1686,12 @@ export default function AppBuilderEditor({
         rebuildAt: 0,
         saveAt: 0,
     });
+
+    useEffect(() => {
+        if (previewMode !== "webcontainer") return;
+        if (!previewNavigatePath) return;
+        setPreviewNavigateToken((token) => token + 1);
+    }, [previewMode, previewNavigatePath]);
 
     const buildCurrentVercelOAuthReturnPath = useCallback((): string => {
         if (typeof window === "undefined") return "/dashboard/view";
@@ -1534,6 +1741,51 @@ export default function AppBuilderEditor({
         const issue = String(previewIssue || autoPreviewError || previewError || "").trim();
         if (!issue) return;
 
+        const fingerprint = `preview_issue:${appId}:${issue.slice(0, 120)}`;
+        const now = Date.now();
+        const cooldown = previewIssueFixRequestCooldownRef.current;
+        const cooldownMs = 30_000;
+        if (cooldown && cooldown.fingerprint === fingerprint && now < cooldown.until) return;
+        previewIssueFixRequestCooldownRef.current = { fingerprint, until: now + cooldownMs };
+
+        const fileCount = Object.keys(app?.files || {}).length;
+        const hasPath = (pattern: RegExp): boolean => Object.keys(app?.files || {}).some((path) => pattern.test(path));
+        const bundleSignals = {
+            fileCount,
+            hasPackageJson: Boolean(app?.files?.["package.json"]),
+            hasServerJs: hasPath(/^server\.(js|ts)$/i),
+            hasServerMjs: hasPath(/^server\.mjs$/i),
+            hasNextConfig: hasPath(/^next\.config\.(mjs|js|ts|cjs)$/i),
+            hasAppPage: hasPath(/^(?:src\/)?app\/page\.(tsx|ts|jsx|js|mdx?)$/i),
+            hasAppLayout: hasPath(/^(?:src\/)?app\/layout\.(tsx|ts|jsx|js|mdx?)$/i),
+            hasPagesDir: hasPath(/^(?:src\/)?pages\//i),
+            hasAnyPublicContent: hasPath(/^public\//i),
+            hasPublicHtmlContent: hasPath(/^public\/.+\/index\.html?$/i) || hasPath(/^public\/index\.html?$/i),
+            hasNextShape: Boolean(projectFramework.key === "nextjs"),
+            hasHtmlServerShape: Boolean(projectFramework.key === "html-js" || hasPath(/^index\.html?$/i) || hasPath(/^server\.(js|ts)$/i)),
+            hasBuildArtifacts: hasPath(/^\.next\//i) || hasPath(/^dist\//i) || hasPath(/^build\//i),
+        };
+
+        const missingFiles: string[] = [];
+        if (projectFramework.key === "nextjs") {
+            if (!bundleSignals.hasNextConfig) missingFiles.push("next.config.mjs|next.config.js");
+            if (!bundleSignals.hasAppPage) missingFiles.push("app/page.js|app/page.tsx");
+            if (!bundleSignals.hasAppLayout) missingFiles.push("app/layout.js|app/layout.tsx");
+        } else if (projectFramework.key === "html-js") {
+            if (!bundleSignals.hasPublicHtmlContent && !hasPath(/^index\.html?$/i)) missingFiles.push("index.html");
+        }
+
+        const hiddenDiagnostics = {
+            detectedFramework: projectFramework.key,
+            frameworkLabel: projectFramework.label,
+            frameworkConfidence: projectFramework.confidence,
+            frameworkReason: projectFramework.reason,
+            bundleSignals,
+            missingFiles,
+            missingFileCount: missingFiles.length,
+            previewIssueDiagnostics: previewIssueDiagnostics ? JSON.parse(previewIssueDiagnostics) : null,
+        };
+
         handleCompileErrorFixRequest({
             appId,
             code: "preview_issue",
@@ -1542,11 +1794,11 @@ export default function AppBuilderEditor({
             autoSend: true,
             compileError: {
                 summary: "Preview hit an error",
-                detail: issue,
-                fingerprint: `preview_issue:${appId}:${issue.slice(0, 120)}`,
+                detail: `${issue}${previewIssueDiagnostics ? `\n\nHidden diagnostics:\n${JSON.stringify(hiddenDiagnostics, null, 2)}` : ""}`,
+                fingerprint,
             },
         });
-    }, [appId, autoPreviewError, handleCompileErrorFixRequest, previewError, previewIssue]);
+    }, [appId, app?.files, autoPreviewError, handleCompileErrorFixRequest, previewError, previewIssue, previewIssueDiagnostics, projectFramework]);
 
     const effectiveDeployBanner = deployBannerFromRoute || deployBannerFromApp;
 
@@ -1906,6 +2158,8 @@ export default function AppBuilderEditor({
 
     const activeGeneration = useMemo(() => normalizeGenerationState(app), [app]);
     const isGenerationProcessing = isGenerationInProgress(activeGeneration);
+    const activeEmbedding = useMemo(() => normalizeEmbeddingState(app), [app]);
+    const isEmbeddingProcessing = /pending|processing|backfilling|warming|indexing/i.test(String(activeEmbedding.status || ""));
 
     const generationErrorText = useMemo(() => {
         return String(activeGeneration.error || "");
@@ -2681,7 +2935,7 @@ export default function AppBuilderEditor({
                         if (interactive || now - lastApplyAlertAtRef.current > 15000) {
                             lastApplyAlertAtRef.current = now;
                             void showAlert(
-                                "No active preview was found for live apply. Start/reconnect the preview, then your change will retry automatically.",
+                                "No active preview was found for live apply. Rebuild the preview. Your changes are saved and will be applied when the preview is ready.",
                                 "Live update",
                             );
                         }
@@ -2743,8 +2997,11 @@ export default function AppBuilderEditor({
                         if (shouldAlert) {
                             lastApplyAlertAtRef.current = now;
                             const restartHint = String((data as any)?.restartMessage || "").trim();
-                            const msg = restartHint || String((data as any)?.error || `Live update failed (HTTP ${res.status})`);
-                            void showAlert(`${msg}\n\nAuto-retry paused for 30 seconds.`, "Live update");
+                            const msg = restartHint || "The preview service had a temporary problem while applying your change.";
+                            void showAlert(
+                                `${msg}\n\nYour changes are still saved. We’ll keep retrying for 30 seconds, or you can click Refresh after a moment.`,
+                                "Live update",
+                            );
                         }
                         return;
                     }
@@ -2753,8 +3010,11 @@ export default function AppBuilderEditor({
                     const shouldAlert = interactive || now - lastApplyAlertAtRef.current > 15000;
                     if (shouldAlert) {
                         lastApplyAlertAtRef.current = now;
-                        const msg = String((data as any)?.error || `Live update failed (HTTP ${res.status})`);
-                        void showAlert(msg, "Live update");
+                        const msg = String((data as any)?.error || "The preview could not be updated right now.");
+                        void showAlert(
+                            `${msg}\n\nYour changes were kept, and you can try Refresh in a moment.`,
+                            "Live update",
+                        );
                     }
                     return;
                 }
@@ -2840,7 +3100,10 @@ export default function AppBuilderEditor({
                 const shouldAlert = interactive || now - lastApplyAlertAtRef.current > 15000;
                 if (shouldAlert) {
                     lastApplyAlertAtRef.current = now;
-                    void showAlert(err?.message || "Live update failed.", "Live update");
+                    void showAlert(
+                        "We couldn’t reach the preview service just now. Your changes are still saved, and we’ll retry automatically for 30 seconds.",
+                        "Live update",
+                    );
                 }
             } finally {
                 applyInFlightRef.current = false;
@@ -3031,7 +3294,7 @@ export default function AppBuilderEditor({
                     if (interactive || now - lastApplyAlertAtRef.current > 15000) {
                         lastApplyAlertAtRef.current = now;
                         void showAlert(
-                            "That file affects dependencies/build settings, so it can’t be hot-updated. Your change is saved. Try Refresh first, if it still fails, please contact support.",
+                            "This change needs a restart to take effect. Your change is saved. Click Rebuild preview to apply it.",
                             "Restart needed",
                         );
                     }
@@ -4745,12 +5008,6 @@ export default function AppBuilderEditor({
         const cooldownMs = forceFresh ? 5000 : 1500;
         if (now - previewActionThrottleRef.current[throttleKey] < cooldownMs) return;
         previewActionThrottleRef.current[throttleKey] = now;
-        setFilesHydrated(false);
-        
-        void fetchAndHydrateAppFiles({ forceRefreshToken: forceFresh }).catch((err) => {
-            console.warn("[app-builder] background file sync failed", err);
-            setFilesHydrated(true);
-        });
 
         if (forceFresh) {
             // Show confirmation dialog for force fresh start
@@ -4760,20 +5017,28 @@ export default function AppBuilderEditor({
             );
             if (!confirmed) return;
         }
-        
-        setIsRefreshing(true);
-        if (forceFresh) {
-            void restartLocalPreview(true).finally(() => {
-                setTimeout(() => setIsRefreshing(false), 500);
-            });
-            return;
-        }
 
-        // Default refresh: reconnect/reload without hitting any legacy endpoints.
-        setPreviewMode("webcontainer");
-        setReconnectKey((k) => k + 1);
-        setRefreshKey((k) => k + 1);
-        setTimeout(() => setIsRefreshing(false), 500);
+        setIsRefreshing(true);
+        try {
+            if (forceFresh) {
+                setFilesHydrated(false);
+                await fetchAndHydrateAppFiles({ forceRefreshToken: true });
+                await restartLocalPreview(true);
+                return;
+            }
+
+            // Default refresh: reconnect/reload without hitting any legacy endpoints.
+            setPreviewMode("webcontainer");
+            setReconnectKey((k) => k + 1);
+            setRefreshKey((k) => k + 1);
+        } catch (err) {
+            console.warn("[app-builder] background file sync failed", err);
+        } finally {
+            if (forceFresh) {
+                setFilesHydrated(true);
+            }
+            setTimeout(() => setIsRefreshing(false), 500);
+        }
     };
 
     const handleReconnect = () => {
@@ -5115,6 +5380,14 @@ export default function AppBuilderEditor({
                                     <span className="truncate">{app?.name || "Untitled Project"}</span>
                                     <Pencil className="h-3.5 w-3.5 shrink-0 text-neutral-500 group-hover:text-accent" aria-hidden="true" />
                                 </h1>
+                                {isDev ? (
+                                    <span
+                                        className="mt-1 inline-flex items-center rounded-full border border-neutral-200 bg-white px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-neutral-600"
+                                        title={projectFramework.reason}
+                                    >
+                                        {projectFramework.label}
+                                    </span>
+                                ) : null}
                             </div>
                         )}
 
@@ -5182,6 +5455,17 @@ export default function AppBuilderEditor({
                                     <span>Connect Database</span>
                                 )}
                             </button>
+
+                            {lastDeployLiveUrl ? (
+                                <button
+                                    onClick={() => window.open(lastDeployLiveUrl, "_blank", "noopener,noreferrer")}
+                                    className="inline-flex items-center justify-center gap-2 rounded-full border border-neutral-300 bg-white px-3 py-2 text-xs font-semibold text-neutral-700 hover:bg-neutral-50"
+                                    title="Open live deployment"
+                                >
+                                    <Rocket className="h-4 w-4" />
+                                    <span>View live</span>
+                                </button>
+                            ) : null}
 
                             {supabaseConnected ? (
                                 <button
@@ -5336,6 +5620,13 @@ export default function AppBuilderEditor({
                     onChange={handleImageFileChange}
                 />
 
+                {isEmbeddingProcessing ? (
+                    <div className="border-b bg-sky-50 px-4 py-2 text-xs text-sky-900">
+                        {activeEmbedding.message || "Preparing the embedding index so AI edits can target the right chunks faster."}
+                        {typeof activeEmbedding.progress === "number" ? ` (${Math.max(0, Math.min(100, Math.round(activeEmbedding.progress * 100)))}%)` : ""}
+                    </div>
+                ) : null}
+
                 {isGenerationProcessing && activeGeneration.status !== "error" && previewMode === "webcontainer" ? (
                     <div className="border-b bg-amber-50 px-4 py-2 text-xs text-amber-900">
                         {"Generating your website. Preview will update automatically when it's ready."}
@@ -5394,12 +5685,11 @@ export default function AppBuilderEditor({
 
                         {/* AI Chat or Code View */}
                         <div className="flex-1 min-h-0 overflow-hidden">
-                            {viewMode === "ai" ? (
-                                // AI Chat Interface
+                            <div className={viewMode === "ai" ? "h-full" : "hidden"}>
                                 <AppBuilderEditorAgentChat
                                     appId={appId}
                                     files={app.files}
-                                    currentFile={currentFile}
+                                    currentFile={aiCurrentFile}
                                     onFileEdit={handleFileEditFromAI}
                                     onFilesReplace={handleFilesReplaceFromServer}
                                     onRestoreApplied={handleRestoreApplied}
@@ -5412,205 +5702,204 @@ export default function AppBuilderEditor({
                                     }}
                                     welcomeContext={agentWelcomeContext}
                                 />
-                            ) : viewMode === "code" ? (
-                                // Code View - File Tree and Editor
-                                <div className="h-full flex flex-col">
-                                    {/* File Tree */}
-                                    <div className="flex-1 border-b p-3 overflow-auto">
-                                        <h3 className="font-medium mb-2 text-sm">Files</h3>
-                                        <FileTree
-                                            nodes={fileTree}
-                                            onFileSelect={handleFileSelect}
-                                            expandedFolders={expandedFolders}
-                                            onToggleFolder={handleToggleFolder}
+                            </div>
+
+                            <div className={viewMode === "code" ? "h-full flex flex-col" : "hidden"}>
+                                {/* File Tree */}
+                                <div className="flex-1 border-b p-3 overflow-auto">
+                                    <h3 className="font-medium mb-2 text-sm">Files</h3>
+                                    <FileTree
+                                        nodes={fileTree}
+                                        onFileSelect={handleFileSelect}
+                                        expandedFolders={expandedFolders}
+                                        onToggleFolder={handleToggleFolder}
+                                    />
+                                </div>
+
+                                {/* Code Editor */}
+                                <div className="flex-1">
+                                    {currentFile ? (
+                                        <Editor
+                                            height="100%"
+                                            language={getEditorLanguageForPath(currentFile)}
+                                            value={code}
+                                            onChange={handleCodeChange}
+                                            theme="vs-dark"
+                                            options={{
+                                                minimap: { enabled: false },
+                                                fontSize: 12,
+                                                lineNumbers: "off",
+                                                scrollBeyondLastLine: false,
+                                            }}
                                         />
+                                    ) : (
+                                        <div className="flex items-center justify-center h-full text-gray-500 text-sm">
+                                            Select a file to edit
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            <div className={viewMode === "images" ? "h-full flex flex-col" : "hidden"}>
+                                <div className="border-b p-3 space-y-3">
+                                    <div className="flex items-center justify-end gap-3">
+                                        {lastImageInsert ? (
+                                            <button
+                                                type="button"
+                                                onClick={() => void undoLastImageInsert()}
+                                                className="text-xs font-semibold text-[#F55F2A] hover:text-[#E04E1B]"
+                                            >
+                                                Undo last insert
+                                            </button>
+                                        ) : null}
+                                        {stagedImages.length ? (
+                                            <button
+                                                type="button"
+                                                onClick={clearStagedImages}
+                                                className="text-xs text-gray-600 hover:text-gray-900"
+                                            >
+                                                Clear all
+                                            </button>
+                                        ) : null}
                                     </div>
 
-                                    {/* Code Editor */}
-                                    <div className="flex-1">
-                                        {currentFile ? (
-                                            <Editor
-                                                height="100%"
-                                                language={getEditorLanguageForPath(currentFile)}
-                                                value={code}
-                                                onChange={handleCodeChange}
-                                                theme="vs-dark"
-                                                options={{
-                                                    minimap: { enabled: false },
-                                                    fontSize: 12,
-                                                    lineNumbers: "off",
-                                                    scrollBeyondLastLine: false,
-                                                }}
+                                    <div className="flex flex-col items-center gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={handlePickImages}
+                                            className="inline-flex items-center gap-2 rounded-full bg-[#F55F2A] px-3 py-2 text-xs font-semibold text-white hover:bg-[#E04E1B]"
+                                        >
+                                            <Upload className="w-3.5 h-3.5" />
+                                            Upload
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={handlePickFavicon}
+                                            disabled={faviconUploading}
+                                            className="inline-flex items-center gap-2 rounded-full border border-gray-300 bg-white px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+                                            title="Upload a favicon.ico for this app"
+                                        >
+                                            {faviconUploading ? "Uploading favicon…" : "Upload favicon"}
+                                        </button>
+                                        {faviconUrl ? (
+                                            <button
+                                                type="button"
+                                                onClick={() => window.open(faviconUrl, "_blank", "noopener,noreferrer")}
+                                                className="text-[11px] font-semibold text-[#F55F2A] hover:text-[#E04E1B]"
+                                                title="Open current favicon"
+                                            >
+                                                View favicon
+                                            </button>
+                                        ) : null}
+                                        <label className="inline-flex items-center gap-2 text-[11px] text-gray-500">
+                                            <input
+                                                type="checkbox"
+                                                checked={autoCompressImages}
+                                                onChange={(e) => setAutoCompressImages(e.target.checked)}
+                                                className="rounded border-gray-300"
                                             />
-                                        ) : (
-                                            <div className="flex items-center justify-center h-full text-gray-500 text-sm">
-                                                Select a file to edit
-                                            </div>
-                                        )}
+                                            Auto-compress before upload
+                                        </label>
                                     </div>
                                 </div>
-                            ) : (
-                                <div className="h-full flex flex-col">
-                                    <div className="border-b p-3 space-y-3">
-                                        <div className="flex items-center justify-end gap-3">
-                                            {lastImageInsert ? (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => void undoLastImageInsert()}
-                                                    className="text-xs font-semibold text-[#F55F2A] hover:text-[#E04E1B]"
-                                                >
-                                                    Undo last insert
-                                                </button>
-                                            ) : null}
-                                            {stagedImages.length ? (
-                                                <button
-                                                    type="button"
-                                                    onClick={clearStagedImages}
-                                                    className="text-xs text-gray-600 hover:text-gray-900"
-                                                >
-                                                    Clear all
-                                                </button>
-                                            ) : null}
+
+                                <div className="flex-1 overflow-auto p-3 space-y-3">
+                                    {stagedImages.length === 0 ? (
+                                        <div className="rounded-xl border border-dashed border-gray-300 bg-white p-4 text-xs text-gray-600">
+                                            Add one or more images to stage them, then type placement prompts like insert into homepage top or add to footer.
                                         </div>
+                                    ) : null}
 
-                                        <div className="flex flex-col items-center gap-2">
-                                            <button
-                                                type="button"
-                                                onClick={handlePickImages}
-                                                className="inline-flex items-center gap-2 rounded-full bg-[#F55F2A] px-3 py-2 text-xs font-semibold text-white hover:bg-[#E04E1B]"
-                                            >
-                                                <Upload className="w-3.5 h-3.5" />
-                                                Upload
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={handlePickFavicon}
-                                                disabled={faviconUploading}
-                                                className="inline-flex items-center gap-2 rounded-full border border-gray-300 bg-white px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60"
-                                                title="Upload a favicon.ico for this app"
-                                            >
-                                                {faviconUploading ? "Uploading favicon…" : "Upload favicon"}
-                                            </button>
-                                            {faviconUrl ? (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => window.open(faviconUrl, "_blank", "noopener,noreferrer")}
-                                                    className="text-[11px] font-semibold text-[#F55F2A] hover:text-[#E04E1B]"
-                                                    title="Open current favicon"
-                                                >
-                                                    View favicon
-                                                </button>
-                                            ) : null}
-                                            <label className="inline-flex items-center gap-2 text-[11px] text-gray-500">
-                                                <input
-                                                    type="checkbox"
-                                                    checked={autoCompressImages}
-                                                    onChange={(e) => setAutoCompressImages(e.target.checked)}
-                                                    className="rounded border-gray-300"
-                                                />
-                                                Auto-compress before upload
-                                            </label>
-                                        </div>
-                                    </div>
+                                    {stagedImages.map((item) => {
+                                        const compressionPct = item.originalBytes > 0
+                                            ? Math.max(0, Math.round((1 - item.preparedBytes / item.originalBytes) * 100))
+                                            : 0;
 
-                                    <div className="flex-1 overflow-auto p-3 space-y-3">
-                                        {stagedImages.length === 0 ? (
-                                            <div className="rounded-xl border border-dashed border-gray-300 bg-white p-4 text-xs text-gray-600">
-                                                Add one or more images to stage them, then type placement prompts like insert into homepage top or add to footer.
-                                            </div>
-                                        ) : null}
-
-                                        {stagedImages.map((item) => {
-                                            const compressionPct = item.originalBytes > 0
-                                                ? Math.max(0, Math.round((1 - item.preparedBytes / item.originalBytes) * 100))
-                                                : 0;
-
-                                            return (
-                                                <div key={item.id} className="rounded-xl border border-gray-200 bg-white p-3 space-y-2.5">
-                                                    <div className="flex items-start gap-3">
-                                                        <Image
-                                                            src={item.previewUrl}
-                                                            alt={item.alt || "Staged image"}
-                                                            width={64}
-                                                            height={64}
-                                                            unoptimized
-                                                            className="h-16 w-16 rounded-lg object-cover border border-gray-200"
-                                                        />
-                                                        <div className="min-w-0 flex-1">
-                                                            <div className="text-xs font-semibold text-gray-900 truncate">{item.originalFile.name}</div>
-                                                            <div className="text-[11px] text-gray-500">
-                                                                {Math.round(item.originalBytes / 1024)}KB → {Math.round(item.preparedBytes / 1024)}KB
-                                                                {item.preparedBytes < item.originalBytes ? ` (${compressionPct}% smaller)` : ""}
-                                                            </div>
-
-                                                            <details className="mt-2 rounded-md border border-gray-200 bg-gray-50 px-2.5 py-1.5">
-                                                                <summary className="cursor-pointer select-none text-[11px] text-gray-600">Alt text</summary>
-                                                                <div className="mt-2">
-                                                                    <input
-                                                                        type="text"
-                                                                        value={item.alt}
-                                                                        onChange={(e) => updateStagedImage(item.id, { alt: e.target.value })}
-                                                                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-xs bg-white"
-                                                                        placeholder="Alt text"
-                                                                    />
-                                                                </div>
-                                                            </details>
-
-                                                            {item.error ? (
-                                                                <div className="mt-2 text-[11px] text-amber-700">{item.error}</div>
-                                                            ) : null}
+                                        return (
+                                            <div key={item.id} className="rounded-xl border border-gray-200 bg-white p-3 space-y-2.5">
+                                                <div className="flex items-start gap-3">
+                                                    <Image
+                                                        src={item.previewUrl}
+                                                        alt={item.alt || "Staged image"}
+                                                        width={64}
+                                                        height={64}
+                                                        unoptimized
+                                                        className="h-16 w-16 rounded-lg object-cover border border-gray-200"
+                                                    />
+                                                    <div className="min-w-0 flex-1">
+                                                        <div className="text-xs font-semibold text-gray-900 truncate">{item.originalFile.name}</div>
+                                                        <div className="text-[11px] text-gray-500">
+                                                            {Math.round(item.originalBytes / 1024)}KB → {Math.round(item.preparedBytes / 1024)}KB
+                                                            {item.preparedBytes < item.originalBytes ? ` (${compressionPct}% smaller)` : ""}
                                                         </div>
+
+                                                        <details className="mt-2 rounded-md border border-gray-200 bg-gray-50 px-2.5 py-1.5">
+                                                            <summary className="cursor-pointer select-none text-[11px] text-gray-600">Alt text</summary>
+                                                            <div className="mt-2">
+                                                                <input
+                                                                    type="text"
+                                                                    value={item.alt}
+                                                                    onChange={(e) => updateStagedImage(item.id, { alt: e.target.value })}
+                                                                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-xs bg-white"
+                                                                    placeholder="Alt text"
+                                                                />
+                                                            </div>
+                                                        </details>
+
+                                                        {item.error ? (
+                                                            <div className="mt-2 text-[11px] text-amber-700">{item.error}</div>
+                                                        ) : null}
+                                                    </div>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => removeStagedImage(item.id)}
+                                                        className="text-gray-500 hover:text-gray-900"
+                                                        title="Remove"
+                                                    >
+                                                        <X className="w-4 h-4" />
+                                                    </button>
+                                                </div>
+
+                                                <div className="mt-4 mb-2 space-y-3">
+                                                    <label className="block text-[12px] font-medium text-gray-700">Where should this go?</label>
+                                                    <div className="relative flex items-center bg-white/95 gap-2 backdrop-blur-md p-2 pl-4 pr-2 shadow-[0_12px_30px_rgba(0,0,0,0.08)] ring-1 ring-neutral-200 rounded-full h-[48px]">
+                                                        <input
+                                                            type="text"
+                                                            value={item.placementPrompt}
+                                                            onChange={(e) => updateStagedImage(item.id, { placementPrompt: e.target.value })}
+                                                            className="flex-1 bg-transparent outline-none text-neutral-700 placeholder:text-neutral-400 font-medium text-[13px] sm:text-sm"
+                                                            placeholder={IMAGE_PLACEMENT_PLACEHOLDERS[imagePromptPlaceholderIdx]}
+                                                        />
+
                                                         <button
                                                             type="button"
-                                                            onClick={() => removeStagedImage(item.id)}
-                                                            className="text-gray-500 hover:text-gray-900"
-                                                            title="Remove"
+                                                            onClick={() => void applyStagedImage(item.id)}
+                                                            disabled={item.status === "uploading" || !item.placementPrompt.trim()}
+                                                            className={`inline-flex h-8 w-8 items-center justify-center rounded-full transition disabled:opacity-60 ${
+                                                                item.status === "applied"
+                                                                    ? "bg-emerald-100 text-emerald-700"
+                                                                    : item.status === "uploading"
+                                                                      ? "bg-neutral-200 text-neutral-600"
+                                                                      : "bg-[#F55F2A] text-white hover:bg-[#E04E1B]"
+                                                            }`}
+                                                            title={item.status === "applied" ? "Applied" : "Apply image"}
+                                                            aria-label={item.status === "applied" ? "Applied" : "Apply image"}
                                                         >
-                                                            <X className="w-4 h-4" />
+                                                            {item.status === "applied" ? (
+                                                                <Check className="h-4 w-4" />
+                                                            ) : item.status === "uploading" ? (
+                                                                <RefreshCw className="h-4 w-4 animate-spin" />
+                                                            ) : (
+                                                                <Send className="h-4 w-4" />
+                                                            )}
                                                         </button>
                                                     </div>
-
-                                                    <div className="mt-4 mb-2 space-y-3">
-                                                        <label className="block text-[12px] font-medium text-gray-700">Where should this go?</label>
-                                                        <div className="relative flex items-center bg-white/95 gap-2 backdrop-blur-md p-2 pl-4 pr-2 shadow-[0_12px_30px_rgba(0,0,0,0.08)] ring-1 ring-neutral-200 rounded-full h-[48px]">
-                                                            <input
-                                                                type="text"
-                                                                value={item.placementPrompt}
-                                                                onChange={(e) => updateStagedImage(item.id, { placementPrompt: e.target.value })}
-                                                                className="flex-1 bg-transparent outline-none text-neutral-700 placeholder:text-neutral-400 font-medium text-[13px] sm:text-sm"
-                                                                placeholder={IMAGE_PLACEMENT_PLACEHOLDERS[imagePromptPlaceholderIdx]}
-                                                            />
-
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => void applyStagedImage(item.id)}
-                                                                disabled={item.status === "uploading" || !item.placementPrompt.trim()}
-                                                                className={`inline-flex h-8 w-8 items-center justify-center rounded-full transition disabled:opacity-60 ${
-                                                                    item.status === "applied"
-                                                                        ? "bg-emerald-100 text-emerald-700"
-                                                                        : item.status === "uploading"
-                                                                          ? "bg-neutral-200 text-neutral-600"
-                                                                          : "bg-[#F55F2A] text-white hover:bg-[#E04E1B]"
-                                                                }`}
-                                                                title={item.status === "applied" ? "Applied" : "Apply image"}
-                                                                aria-label={item.status === "applied" ? "Applied" : "Apply image"}
-                                                            >
-                                                                {item.status === "applied" ? (
-                                                                    <Check className="h-4 w-4" />
-                                                                ) : item.status === "uploading" ? (
-                                                                    <RefreshCw className="h-4 w-4 animate-spin" />
-                                                                ) : (
-                                                                    <Send className="h-4 w-4" />
-                                                                )}
-                                                            </button>
-                                                        </div>
-                                                    </div>
                                                 </div>
-                                            );
-                                        })}
-                                    </div>
+                                            </div>
+                                        );
+                                    })}
                                 </div>
-                            )}
+                            </div>
                         </div>
                     </div>
 
@@ -5654,7 +5943,7 @@ export default function AppBuilderEditor({
                                                 type="button"
                                                 onClick={handleDeployBannerFixRequest}
                                                 className="inline-flex w-full items-center justify-center gap-1.5 rounded-full bg-[#f55f2a] px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-[#e14f1c] sm:w-auto"
-                                            >
+                                            >,
                                                 Fix with AI
                                             </button>
                                         ) : null}
@@ -5687,27 +5976,17 @@ export default function AppBuilderEditor({
                                 <div className="w-3 h-3 bg-yellow-400 rounded-full"></div>
                                 <div className="w-3 h-3 bg-green-400 rounded-full"></div>
                             </div>
-                            {lastDeployLiveUrl ? (
-                                <div className="ml-3 flex items-center gap-2 text-xs">
-                                    <button
-                                        onClick={() => window.open(lastDeployLiveUrl, "_blank", "noopener,noreferrer")}
-                                        className="px-3 py-1 rounded-full border border-gray-300 hover:bg-gray-50"
-                                        title="Open live deployment"
-                                    >
-                                        View live
-                                    </button>
-
-                                    <a
-                                        href="https://vercel.com/domains"
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="text-xs text-gray-600 underline hover:text-gray-900"
-                                        title="Attach a custom domain in Vercel"
-                                    >
-                                        Attach custom domain
-                                    </a>
-                                </div>
-                            ) : null}
+                            <div className="ml-3 flex items-center gap-2 text-xs">
+                                <a
+                                    href="https://vercel.com/domains"
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-xs text-gray-600 underline hover:text-gray-900"
+                                    title="Attach a custom domain in Vercel"
+                                >
+                                    Attach custom domain
+                                </a>
+                            </div>
 
                             {lastSharePreviewUrl ? (
                                 <div className="ml-2 flex items-center gap-2 text-xs">
@@ -5738,28 +6017,49 @@ export default function AppBuilderEditor({
                                 </div>
                             ) : null}
 
-                            <div className="ml-3 flex items-center gap-2 text-xs">
-                                <button
-                                    type="button"
-                                    onClick={handlePickFavicon}
-                                    disabled={faviconUploading}
-                                    className="px-3 py-1 rounded-full border border-gray-300 hover:bg-gray-50 disabled:opacity-60"
-                                    title="Upload a favicon.ico for this app"
-                                >
-                                    {faviconUploading ? "Uploading favicon…" : "Upload favicon"}
-                                </button>
+                                {pageOptions.length > 0 ? (
+                                    <div className="relative ml-3" ref={pageDropdownRef}>
+                                        <button
+                                            type="button"
+                                            onClick={() => setIsPageDropdownOpen((prev) => !prev)}
+                                            className="inline-flex items-center gap-1.5 rounded-full border border-neutral-200 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-800 shadow-sm transition hover:bg-neutral-50"
+                                            title={`Current page: ${pageDropdownLabel}`}
+                                            aria-haspopup="menu"
+                                            aria-expanded={isPageDropdownOpen}
+                                        >
+                                            <span className="max-w-[180px] truncate lowercase">{pageDropdownLabel}</span>
+                                            <ChevronDown className={`h-3.5 w-3.5 shrink-0 transition-transform ${isPageDropdownOpen ? "rotate-180" : ""}`} />
+                                        </button>
 
-                                {faviconUrl ? (
-                                    <button
-                                        type="button"
-                                        onClick={() => window.open(faviconUrl, "_blank", "noopener,noreferrer")}
-                                        className="text-xs text-gray-600 underline hover:text-gray-900"
-                                        title="Open current favicon"
-                                    >
-                                        View favicon
-                                    </button>
+                                        {isPageDropdownOpen ? (
+                                            <div className="absolute left-0 top-[calc(100%+0.5rem)] z-50 w-72 overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-[0_18px_40px_rgba(15,23,42,0.12)]">
+                                                <div className="max-h-64 overflow-y-auto py-1">
+                                                    {pageOptions.map((page) => {
+                                                        const isActive = selectedPreviewPage?.path === page.path;
+                                                        const routeLabel = String(page.route || "").replace(/^\//, "") || "home";
+                                                        return (
+                                                            <button
+                                                                key={page.path}
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    setPreviewPagePath(page.path);
+                                                                    handleFileSelect(page.path);
+                                                                    setIsPageDropdownOpen(false);
+                                                                }}
+                                                                className={`flex w-full items-center justify-between px-4 py-2 text-left text-sm transition-colors hover:bg-orange-50 hover:text-[#F55F2A] ${
+                                                                    isActive ? "bg-orange-50/70 text-[#F55F2A]" : "text-neutral-700"
+                                                                }`}
+                                                            >
+                                                                <span className="truncate lowercase">{routeLabel}</span>
+                                                                {isActive ? <span className="ml-3 shrink-0 h-2 w-2 rounded-full bg-[#F55F2A]" aria-hidden="true" /> : null}
+                                                            </button>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </div>
+                                        ) : null}
+                                    </div>
                                 ) : null}
-                            </div>
 
                         </div>
 
@@ -5774,7 +6074,10 @@ export default function AppBuilderEditor({
                                             filesReady={filesHydrated}
                                             onFileChange={handleFileChangeFromContainer}
                                             onPreviewReadyChange={setIsWebPreviewReady}
-                                            onPreviewIssueChange={setPreviewIssue}
+                                            onPreviewIssueChange={(payload) => {
+                                                setPreviewIssue(payload?.issue || null);
+                                                setPreviewIssueDiagnostics(payload?.diagnostics || null);
+                                            }}
                                             onCompileErrorFixRequest={handleCompileErrorFixRequest}
                                             debugPreviewScenario={previewDebugScenario}
                                             onBackendReady={() => {
@@ -5789,6 +6092,8 @@ export default function AppBuilderEditor({
                                             restartToken={localRestartKey}
                                             reconnectToken={reconnectKey}
                                             forceFreshStart={forceFreshStartKey.current}
+                                                navigatePath={previewNavigatePath}
+                                                navigatePathToken={previewNavigateToken}
                                             pollingConfig={generationEver ? { maxPollingRetries: 480, maxContainerNotFound: 10 } : undefined}
                                         />
                                     </div>

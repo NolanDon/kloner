@@ -1,13 +1,27 @@
 // src/components/AppBuilderEditorAgentChat.tsx
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { Send, Bot, RotateCcw, Database, FileText, RefreshCw, X, AlertTriangle, ChevronDown, ChevronUp, ExternalLink, Copy, Check } from "lucide-react";
 import { ensureSessionAndCsrf } from "@/lib/auth-client";
 import { useAuth } from "@/src/hooks/useAuth";
 import { db } from "@/lib/firebase";
 import { doc, onSnapshot } from "firebase/firestore";
 import { useModal } from "@/components/ui/ModalContext";
+import {
+    applyEmbeddingEditPlanToFiles,
+    editPlanHasDeleteOps,
+    fetchEmbeddingEditPlan,
+    fetchEmbeddingSearch,
+    normalizeEmbeddingEditPlanResponse,
+    normalizeEmbeddingSearchResponse,
+} from "@/src/lib/appEmbeddingsClient";
+import {
+    buildProjectFrameworkPrompt,
+    chooseFrameworkCurrentFile,
+    detectProjectFramework,
+    planWouldSwitchFramework,
+} from "@/src/lib/projectFramework";
 
 type Message = {
     id: string;
@@ -31,6 +45,8 @@ type Message = {
     supabaseContinuationStatus?: "PENDING" | "CONTINUE" | "DISMISS";
     dbSetupPrompt?: string;
     dbSetupStatus?: "PENDING" | "CONNECT" | "BASIC" | "DISMISS";
+    retryPrompt?: string;
+    retryStatus?: number;
 };
 
 type StagedBundle = {
@@ -41,6 +57,7 @@ type StagedBundle = {
     appliedProposalIds: Record<string, boolean>;
     fileEdits: Array<{ path: string; content: string }>;
     creditRequestId?: string;
+    needsRebuild?: boolean;
 };
 
 type Checkpoint = {
@@ -82,6 +99,11 @@ type AppBuilderEditorAgentChatProps = {
         templateName?: string | null;
     };
 };
+
+function resolveFallbackCurrentFile(files: { [path: string]: { content: string; lastModified: number } }, currentFile?: string | null): string | null {
+    const framework = detectProjectFramework(files);
+    return chooseFrameworkCurrentFile(files, framework, currentFile);
+}
 
 type CompileErrorQuickFixContext = {
     appId: string;
@@ -150,6 +172,10 @@ function sanitizeAssistantContent(text: unknown): string {
     }
 
     return raw;
+}
+
+function isRetryableAiStatus(status: number | null | undefined): boolean {
+    return status === 422 || status === 429 || status === 500 || status === 502 || status === 503 || status === 504;
 }
 
 function renderTextWithLinks(text: string): React.ReactNode {
@@ -470,6 +496,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
     const [restorePoints, setRestorePoints] = useState<RestorePointItem[]>([]);
     const [isRestoreBusy, setIsRestoreBusy] = useState(false);
     const [lastRestorePointId, setLastRestorePointId] = useState<string | null>(null);
+    const [selectedRestorePointId, setSelectedRestorePointId] = useState<string | null>(null);
     const [restorePointDetailsById, setRestorePointDetailsById] = useState<Record<string, RestorePointDetail | undefined>>({});
     const [activeRestorePointPreview, setActiveRestorePointPreview] = useState<{ restorePointId: string; path: string } | null>(null);
     const [showDatabaseSetup, setShowDatabaseSetup] = useState(false);
@@ -488,6 +515,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
     const [existingSupabaseServiceRoleKey, setExistingSupabaseServiceRoleKey] = useState("");
     const [applyingMigrationIds, setApplyingMigrationIds] = useState<Record<string, boolean>>({});
     const [showMigrationSqlByMessageId, setShowMigrationSqlByMessageId] = useState<Record<string, boolean>>({});
+    const compileFixRequestCooldownRef = useRef<{ fingerprint: string; until: number } | null>(null);
     const [migrationReviewMessageId, setMigrationReviewMessageId] = useState<string | null>(null);
     const [migrationAcknowledge, setMigrationAcknowledge] = useState(false);
     const [migrationConfirmText, setMigrationConfirmText] = useState("");
@@ -505,14 +533,39 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
     const previewIssueText = String(previewIssue || '').trim();
     const hasPreviewIssue = Boolean(previewIssueText);
     const showPreviewIssueDetails = process.env.NODE_ENV !== "production";
+    const previewIssueFixButtonTimerRef = useRef<number | null>(null);
+    const [previewIssueFixButtonCooldownUntil, setPreviewIssueFixButtonCooldownUntil] = useState(0);
 
     const chatDisabled = previewReady === false && !freeCompileFixContext && !hasPreviewIssue;
+    const isPreviewIssueFixButtonCoolingDown = previewIssueFixButtonCooldownUntil > Date.now();
 
     const didSyncSupabasePreviewEnvRef = useRef(false);
 
     useEffect(() => {
         previewReadyRef.current = Boolean(previewReady);
     }, [previewReady]);
+
+    useEffect(() => {
+        return () => {
+            if (previewIssueFixButtonTimerRef.current) {
+                clearTimeout(previewIssueFixButtonTimerRef.current);
+                previewIssueFixButtonTimerRef.current = null;
+            }
+        };
+    }, []);
+
+    const startPreviewIssueFixButtonCooldown = useCallback(() => {
+        const until = Date.now() + 30_000;
+        setPreviewIssueFixButtonCooldownUntil(until);
+        if (previewIssueFixButtonTimerRef.current) {
+            clearTimeout(previewIssueFixButtonTimerRef.current);
+            previewIssueFixButtonTimerRef.current = null;
+        }
+        previewIssueFixButtonTimerRef.current = window.setTimeout(() => {
+            setPreviewIssueFixButtonCooldownUntil((current) => (current === until ? 0 : current));
+            previewIssueFixButtonTimerRef.current = null;
+        }, 30_000);
+    }, []);
 
     useEffect(() => {
         if (allowDatabaseSetupUi) return;
@@ -741,51 +794,6 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
             // ignore
         }
     }, []);
-
-    useEffect(() => {
-        if (typeof window === "undefined") return;
-
-        const onCompileFix = (event: Event) => {
-            const detail = (event as CustomEvent<any>)?.detail || {};
-            const autoSend = detail?.autoSend === true;
-            const code = typeof detail?.code === "string" ? detail.code.trim() : "";
-            const actionType = String(detail?.actionType || "").toLowerCase();
-            const summary = typeof detail?.compileError?.summary === "string" ? detail.compileError.summary.trim() : "";
-            const detailText = typeof detail?.compileError?.detail === "string" ? detail.compileError.detail : "";
-            const fingerprint = typeof detail?.compileError?.fingerprint === "string" ? detail.compileError.fingerprint.trim() : "";
-            if (!code || actionType !== "quick_fix_compile" || !summary || !fingerprint) return;
-
-            const ctx: CompileErrorQuickFixContext = {
-                appId: String(detail?.appId || appId),
-                code,
-                actionType: "quick_fix_compile",
-                fixAction: typeof detail?.fixAction === "string" ? detail.fixAction : undefined,
-                compileError: {
-                    summary,
-                    detail: detailText,
-                    fingerprint,
-                },
-            };
-
-            const prefill = buildCompileFixPrefill(ctx);
-
-            if (autoSend) {
-                setTimeout(() => {
-                    void sendMessage({
-                        forcedInput: prefill,
-                        forcedCompileFixContext: ctx,
-                        hideUserMessage: true,
-                    });
-                }, 0);
-                return;
-            }
-        };
-
-        window.addEventListener("kloner:compile-error-fix-request", onCompileFix as EventListener);
-        return () => {
-            window.removeEventListener("kloner:compile-error-fix-request", onCompileFix as EventListener);
-        };
-    }, [appId]);
 
     const withCsrfHeaders = useCallback(async () => {
         // Always fetch a fresh CSRF token to avoid stale token issues
@@ -1416,14 +1424,71 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
         return null;
     }, [appId, fetchWithScopeRetry, onFilesReplace]);
 
+    const projectFramework = useMemo(() => detectProjectFramework(files), [files]);
+
+    const createRestorePointBeforeApply = useCallback(
+        async (label: string): Promise<string | null> => {
+            try {
+                const headers = await ensureSessionAndCsrf().then(() => withCsrfHeaders()).catch(() => null);
+                if (!headers) return null;
+
+                const res = await fetchWithScopeRetry(
+                    `/api/app-builder/${appId}/restore-points`,
+                    { method: "POST", headers, body: JSON.stringify({ label }) },
+                    { retryLabel: "create restore point before apply" },
+                );
+                if (!res.ok) return null;
+
+                const data = await res.json().catch(() => null);
+                const restorePointId = typeof data?.restorePointId === "string" ? data.restorePointId.trim() : "";
+                return restorePointId || null;
+            } catch {
+                return null;
+            }
+        },
+        [appId, fetchWithScopeRetry, withCsrfHeaders],
+    );
+
     useEffect(() => {
         fetchRestorePoints();
     }, [fetchRestorePoints]);
+
+    useEffect(() => {
+        if (restorePoints.length === 0) {
+            setSelectedRestorePointId(null);
+            return;
+        }
+
+        if (selectedRestorePointId && restorePoints.some((item) => item.id === selectedRestorePointId)) {
+            return;
+        }
+
+        const preferredId = lastRestorePointId && restorePoints.some((item) => item.id === lastRestorePointId)
+            ? lastRestorePointId
+            : restorePoints[0]?.id || null;
+        setSelectedRestorePointId(preferredId);
+    }, [lastRestorePointId, restorePoints, selectedRestorePointId]);
 
     // Scroll to bottom when messages change
     useEffect(() => {
         scrollToBottom();
     }, [messages, scrollToBottom]);
+
+    const selectedRestorePoint = restorePoints.find((item) => item.id === selectedRestorePointId) ?? restorePoints[0] ?? null;
+
+    const formatRestorePointCreatedAt = useCallback((value: any): string => {
+        if (!value) return "Just now";
+        if (typeof value?.toDate === "function") {
+            const date = value.toDate();
+            return date instanceof Date && !Number.isNaN(date.getTime()) ? date.toLocaleString() : "Just now";
+        }
+        if (typeof value?.seconds === "number") {
+            const date = new Date(value.seconds * 1000);
+            return Number.isNaN(date.getTime()) ? "Just now" : date.toLocaleString();
+        }
+        const date = new Date(value);
+        return Number.isNaN(date.getTime()) ? "Just now" : date.toLocaleString();
+    }, []);
 
     const saveTimerRef = useRef<number | null>(null);
 
@@ -1622,45 +1687,113 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
         setCurrentCheckpoint(checkpointId);
     }, [files]);
 
-    const applyStagedBundle = useCallback((bundleId: string, options?: { unsafe?: boolean }) => {
-        setStagedBundles((prev) => {
-            const bundle = prev.find((b) => b.id === bundleId);
-            if (!bundle) return prev;
+    const runPostMigrationRefreshPipeline = useCallback(async () => {
+        const runId = Date.now();
 
-            // Always create a local checkpoint right before applying.
-            createCheckpoint(bundle.label || "Apply staged edits");
+        setMessages((prev) => [
+            ...prev,
+            {
+                id: `mig_progress_applied_${runId}`,
+                role: "assistant",
+                content: "Migration applied. Regenerating app…",
+                timestamp: new Date(),
+                type: "text",
+            },
+        ]);
 
-            // Apply edits (this persists to Firebase via the parent).
-            for (const edit of bundle.fileEdits) {
-                try {
-                    onFileEdit(edit.path, edit.content, bundle.creditRequestId);
-                } catch {
-                    // ignore; individual edits are handled by the parent save path
-                }
-            }
+        await syncFilesFromServer({ applyToState: true }).catch(() => null);
 
-            // Clear linkage so the modal doesn't keep showing staged actions.
-            setMessages((msgs) =>
-                msgs.map((m) => (m.stagedBundleId === bundleId ? { ...m, stagedBundleId: undefined } : m))
+        setMessages((prev) => [
+            ...prev,
+            {
+                id: `mig_progress_restart_${runId}`,
+                role: "assistant",
+                content: "Restarting preview…",
+                timestamp: new Date(),
+                type: "text",
+            },
+        ]);
+
+        if (typeof window !== "undefined") {
+            window.dispatchEvent(
+                new CustomEvent("kloner:preview-force-fresh", {
+                    detail: { appId, reason: "migration-applied" },
+                }),
             );
+        }
 
-            // Emit a small chat note.
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+        const start = Date.now();
+        let ready = previewReadyRef.current;
+        while (!ready && Date.now() - start < 45_000) {
+            await new Promise((resolve) => setTimeout(resolve, 1000));
+            ready = previewReadyRef.current;
+        }
+    }, [appId, previewReadyRef, syncFilesFromServer]);
+
+    const applyStagedBundle = useCallback(async (bundleId: string, options?: { unsafe?: boolean }) => {
+        const bundle = stagedBundles.find((entry) => entry.id === bundleId);
+        if (!bundle) return;
+
+        const restorePointId = await createRestorePointBeforeApply(bundle.label || "Apply staged edits");
+
+        if (!restorePointId) {
             setMessages((msgs) => [
                 ...msgs,
                 {
-                    id: `staged_applied_${Date.now()}`,
+                    id: `staged_restore_failed_${Date.now()}`,
                     role: "assistant",
-                    content: options?.unsafe
-                        ? "Applied the staged code changes (without waiting for the database update). If something breaks, you can undo via the restore point/checkpoint."
-                        : "Applied the staged code changes now that the database update is applied.",
+                    content:
+                        "I couldn’t create a restore point for this change, so I stopped before applying the staged edits.",
                     timestamp: new Date(),
                     type: "text",
                 },
             ]);
+            return;
+        }
 
-            return prev.filter((b) => b.id !== bundleId);
-        });
-    }, [createCheckpoint, onFileEdit]);
+        setLastRestorePointId(restorePointId);
+        void fetchRestorePoints();
+
+        // Always create a local checkpoint right before applying.
+        createCheckpoint(bundle.label || "Apply staged edits");
+
+        // Apply edits (this persists to Firebase via the parent).
+        for (const edit of bundle.fileEdits) {
+            try {
+                onFileEdit(edit.path, edit.content, bundle.creditRequestId);
+            } catch {
+                // ignore; individual edits are handled by the parent save path
+            }
+        }
+
+        if (bundle.needsRebuild) {
+            await runPostMigrationRefreshPipeline();
+        }
+
+        // Clear linkage so the modal doesn't keep showing staged actions.
+        setMessages((msgs) =>
+            msgs.map((m) => (m.stagedBundleId === bundleId ? { ...m, stagedBundleId: undefined } : m))
+        );
+
+        // Emit a small chat note.
+        setMessages((msgs) => [
+            ...msgs,
+            {
+                id: `staged_applied_${Date.now()}`,
+                role: "assistant",
+                content: options?.unsafe
+                    ? "Applied the staged code changes (without waiting for the database update). If something breaks, you can undo via the restore point/checkpoint."
+                    : "Applied the staged code changes now that the database update is applied.",
+                timestamp: new Date(),
+                type: "text",
+                restorePointId,
+                restoreActionLabel: "Undo",
+            },
+        ]);
+
+        setStagedBundles((prev) => prev.filter((b) => b.id !== bundleId));
+    }, [createCheckpoint, createRestorePointBeforeApply, fetchRestorePoints, onFileEdit, runPostMigrationRefreshPipeline, setLastRestorePointId, stagedBundles]);
 
     const discardStagedBundle = useCallback((bundleId: string) => {
         setStagedBundles((prev) => prev.filter((b) => b.id !== bundleId));
@@ -1769,61 +1902,6 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
         },
         [],
     );
-
-    const runPostMigrationRefreshPipeline = useCallback(async () => {
-        const runId = Date.now();
-
-        setMessages((prev) => [
-            ...prev,
-            {
-                id: `mig_progress_applied_${runId}`,
-                role: "assistant",
-                content: "Migration applied. Regenerating app…",
-                timestamp: new Date(),
-                type: "text",
-            },
-        ]);
-
-        await syncFilesFromServer({ applyToState: true }).catch(() => null);
-
-        setMessages((prev) => [
-            ...prev,
-            {
-                id: `mig_progress_restart_${runId}`,
-                role: "assistant",
-                content: "Restarting preview…",
-                timestamp: new Date(),
-                type: "text",
-            },
-        ]);
-
-        if (typeof window !== "undefined") {
-            window.dispatchEvent(
-                new CustomEvent("kloner:preview-force-fresh", {
-                    detail: { appId, reason: "migration-applied" },
-                }),
-            );
-        }
-
-        await new Promise((resolve) => setTimeout(resolve, 1500));
-        const start = Date.now();
-        let ready = previewReadyRef.current;
-        while (!ready && Date.now() - start < 45_000) {
-            await new Promise((resolve) => setTimeout(resolve, 1000));
-            ready = previewReadyRef.current;
-        }
-
-        setMessages((prev) => [
-            ...prev,
-            {
-                id: `mig_progress_ready_${runId}`,
-                role: "assistant",
-                content: ready ? "Ready." : "Restart started. Your app should be ready shortly.",
-                timestamp: new Date(),
-                type: "text",
-            },
-        ]);
-    }, [appId, syncFilesFromServer]);
 
     const handleDatabaseConnect = useCallback((connection: DatabaseConnection) => {
         setDatabaseConnections(prev => [...prev.filter(c => c.id !== connection.id), connection]);
@@ -2556,7 +2634,8 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
 
         try {
             const headers = await withCsrfHeaders();
-
+            const effectiveCurrentFile = resolveFallbackCurrentFile(files, currentFile);
+            const frameworkPrompt = buildProjectFrameworkPrompt(projectFramework, messageInput);
             dispatchAiAgentEvent("request", {
                 appId,
                 userId: user?.uid || null,
@@ -2576,56 +2655,83 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                 });
             }
 
-            const res = await fetch("/api/ai-agent", {
-                method: "POST",
-                headers,
-                body: JSON.stringify({
-                                        message: messageInput,
+            const searchResult = await fetchEmbeddingSearch(
+                {
                     appId,
-                    currentFile,
-                    conversationHistory: [...messages.slice(-10), userMessage],
-                    databaseConnections,
-                                        quickActionContext: isFreeCompileFixMode && activeCompileFixContext
-                        ? {
-                                                        type: activeCompileFixContext.actionType,
-                                                        fixAction: activeCompileFixContext.fixAction || null,
-                                                        code: activeCompileFixContext.code,
-                                                        compileErrorFingerprint: activeCompileFixContext.compileError.fingerprint,
-                                                        compileErrorSummary: activeCompileFixContext.compileError.summary,
-                                                        compileErrorDetail: activeCompileFixContext.compileError.detail,
-                            noCreditRequested: true,
-                          }
-                        : null,
-                }),
-            });
+                    query: messageInput,
+                    requestText: frameworkPrompt,
+                    currentPath: effectiveCurrentFile,
+                    maxChunks: 10,
+                    framework: projectFramework.key,
+                    frameworkLabel: projectFramework.label,
+                    frameworkConfidence: projectFramework.confidence,
+                    frameworkReason: projectFramework.reason,
+                },
+                headers,
+            );
 
-            const errorPayload = res.ok ? null : await res.json().catch(() => null);
-
-            if (!res.ok) {
+            if (!searchResult.ok) {
                 dispatchAiAgentEvent("response_error", {
                     appId,
                     userId: user?.uid || null,
-                    status: res.status,
+                    status: searchResult.status,
                 });
-                const errorMessage =
-                    typeof errorPayload?.error === "string"
-                        ? errorPayload.error
-                        : res.status === 413
-                            ? "That request is too large right now. Please shorten the ask or remove some context and try again."
-                            : "Failed to get AI response";
-                const error = new Error(errorMessage);
-                (error as any).status = res.status;
-                (error as any).code = typeof errorPayload?.code === "string" ? errorPayload.code : null;
-                throw error;
+                const searchError = new Error(
+                    searchResult.status === 429
+                        ? "Embedding search is temporarily rate-limited. Please wait a moment and try again."
+                        : searchResult.error || "Failed to get embedding search results",
+                );
+                (searchError as any).status = searchResult.status;
+                (searchError as any).code = searchResult.status === 429 ? "EMBEDDING_SEARCH_RATE_LIMITED" : "EMBEDDING_SEARCH_FAILED";
+                (searchError as any).retryPrompt = messageInput;
+                throw searchError;
             }
 
-            const data = await res.json();
-            const requestId = typeof data?.requestId === "string" ? data.requestId : null;
-            const creditCost = typeof data?.creditCost === "number" && Number.isFinite(data.creditCost)
-                ? Math.max(1, Math.floor(data.creditCost))
-                : 1;
+            const normalizedSearch = normalizeEmbeddingSearchResponse(searchResult.data);
 
-            if (!isFreeCompileFixMode && requestId) {
+            const editPlanResult = await fetchEmbeddingEditPlan(
+                {
+                    appId,
+                    query: messageInput,
+                    requestText: frameworkPrompt,
+                    currentPath: effectiveCurrentFile,
+                    maxChunks: 10,
+                    search: normalizedSearch.chunks,
+                    framework: projectFramework.key,
+                    frameworkLabel: projectFramework.label,
+                    frameworkConfidence: projectFramework.confidence,
+                    frameworkReason: projectFramework.reason,
+                },
+                headers,
+            );
+
+            if (!editPlanResult.ok) {
+                dispatchAiAgentEvent("response_error", {
+                    appId,
+                    userId: user?.uid || null,
+                    status: editPlanResult.status,
+                });
+                const editPlanError = new Error(
+                    editPlanResult.status === 429
+                        ? "Edit planning is temporarily rate-limited. Please wait a moment and try again."
+                        : editPlanResult.error || "Failed to get edit plan",
+                );
+                (editPlanError as any).status = editPlanResult.status;
+                (editPlanError as any).code = editPlanResult.status === 429 ? "EDIT_PLAN_RATE_LIMITED" : "EDIT_PLAN_FAILED";
+                (editPlanError as any).retryPrompt = messageInput;
+                throw editPlanError;
+            }
+
+            const rawPlan = editPlanResult.data;
+            const planMeta = rawPlan as any;
+            const data = normalizeEmbeddingEditPlanResponse(rawPlan);
+            const requestId = typeof planMeta?.requestId === "string" ? planMeta.requestId : null;
+            const creditCost = typeof planMeta?.creditCost === "number" && Number.isFinite(planMeta.creditCost)
+                ? Math.max(1, Math.floor(planMeta.creditCost))
+                : 1;
+            const hasChargeableWork = (Array.isArray(data?.files) && data.files.length > 0) || (Array.isArray(data?.dbMigrations) && data.dbMigrations.length > 0);
+
+            if (!isFreeCompileFixMode && requestId && hasChargeableWork) {
                 const headers2 = await withCsrfHeaders();
                 const consumeRes = await fetch("/api/credits/ai-edits/consume", {
                     method: "POST",
@@ -2653,23 +2759,43 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                 if (typeof consumeJson?.remaining === "number" && Number.isFinite(consumeJson.remaining)) {
                     setAiCreditsRemaining(consumeJson.remaining);
                 }
+            } else if (!isFreeCompileFixMode && requestId && !hasChargeableWork) {
+                dispatchAiAgentEvent("response_noop", {
+                    appId,
+                    userId: user?.uid || null,
+                    requestId,
+                    reason: "no_chargeable_changes_returned",
+                    hasFileEdits: Array.isArray(data?.files) && data.files.length > 0,
+                    fileEditsCount: Array.isArray(data?.files) ? data.files.length : 0,
+                    hasDbMigrations: Array.isArray(data?.dbMigrations) && data.dbMigrations.length > 0,
+                    dbMigrationsCount: Array.isArray(data?.dbMigrations) ? data.dbMigrations.length : 0,
+                });
             }
 
             dispatchAiAgentEvent("response_ok", {
                 appId,
                 userId: user?.uid || null,
-                hasFileEdits: Array.isArray(data?.fileEdits) && data.fileEdits.length > 0,
-                fileEditsCount: Array.isArray(data?.fileEdits) ? data.fileEdits.length : 0,
+                hasFileEdits: Array.isArray(data?.files) && data.files.length > 0,
+                fileEditsCount: Array.isArray(data?.files) ? data.files.length : 0,
                 hasDbMigrations: Array.isArray(data?.dbMigrations) && data.dbMigrations.length > 0,
                 dbMigrationsCount: Array.isArray(data?.dbMigrations) ? data.dbMigrations.length : 0,
-                restorePointId: typeof data?.restorePointId === "string" ? data.restorePointId : null,
-                responseLen: typeof data?.response === "string" ? data.response.length : null,
+                restorePointId: typeof planMeta?.restorePointId === "string" ? planMeta.restorePointId : null,
+                responseLen: typeof data?.summary === "string" ? data.summary.length : null,
             });
 
-            // If the AI response or context indicates a restart is required, suggest the Rebuild app button
-            let aiContent = sanitizeAssistantContent(data.response);
-            const clarifyingQuestions: string[] = Array.isArray(data?.clarifyingQuestions)
-                ? data.clarifyingQuestions
+            // If the edit plan indicates a rebuild is required, keep the current UX note.
+            let aiContent = sanitizeAssistantContent(data.summary || data.response || "I've prepared an edit plan.");
+            if (Array.isArray(data.notes) && data.notes.length > 0) {
+                const noteText = data.notes.filter((note) => typeof note === "string" && note.trim()).slice(0, 5).join("\n- ");
+                if (noteText) {
+                    aiContent = `${aiContent}\n\nNotes:\n- ${noteText}`;
+                }
+            }
+            if (data.needsRebuild) {
+                aiContent += "\n\nThis plan needs a rebuild before the changes are fully visible.";
+            }
+            const clarifyingQuestions: string[] = Array.isArray(planMeta?.clarifyingQuestions)
+                ? planMeta.clarifyingQuestions
                       .filter((q: unknown) => typeof q === "string" && q.trim())
                       .map((q: string) => q.trim())
                       .slice(0, 3)
@@ -2684,7 +2810,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
             }
             if (typeof aiContent === "string" && /restart|server.*restart|refresh.*server|database credentials|should work in a moment/i.test(aiContent)) {
                 aiContent +=
-                    "\n\nIf you just updated your database credentials or made a major config change, you may need to click the **Rebuild app** button (formerly 'Start fresh') in the editor to fully restart your app server.";
+                    "\n\nIf you just updated your database credentials or made a major config change, you may need to click the **Rebuild app** button in the top right to fully restart your app server.";
             }
             const aiMessage: Message = {
                 id: `ai_${Date.now()}`,
@@ -2697,6 +2823,26 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
             setMessages(prev => [...prev, aiMessage]);
 
             const hasDbMigrations = Array.isArray(data.dbMigrations) && data.dbMigrations.length > 0;
+            const planFiles = Array.isArray(data.files) ? data.files.filter((file) => file && typeof file.path === "string") : [];
+            const planHasDeleteOps = editPlanHasDeleteOps(planFiles);
+            const planSwitchesFramework = planWouldSwitchFramework(planFiles.map((file) => file.path), projectFramework);
+
+            if (planSwitchesFramework) {
+                setMessages((prev) => [
+                    ...prev,
+                    {
+                        id: `framework_mismatch_${Date.now()}`,
+                        role: "assistant",
+                        content:
+                            projectFramework.key === "html-js"
+                                ? "I detected a plain HTML/JS project, so I won’t apply Next.js scaffold files. I can keep this change in the current framework, or you can ask for a migration explicitly."
+                                : "This plan would switch frameworks, which I won’t do automatically. I can keep the current file pattern, or you can ask me to migrate it explicitly.",
+                        timestamp: new Date(),
+                        type: "text",
+                    },
+                ]);
+                return;
+            }
 
             // Handle database migrations (propose -> ask user -> apply)
             const proposalIdsForThisResponse: string[] = [];
@@ -2789,27 +2935,31 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
             }
 
             // Handle file edits if any
-            if (data.fileEdits && data.fileEdits.length > 0) {
+            if (planFiles.length > 0) {
                 dispatchAiAgentEvent("file_edits_received", {
                     appId,
                     userId: user?.uid || null,
-                    count: Array.isArray(data?.fileEdits) ? data.fileEdits.length : 0,
+                    count: planFiles.length,
                     creditRequestId:
-                        (typeof data?.restorePointId === "string" && data.restorePointId) ||
+                        (typeof planMeta?.restorePointId === "string" && planMeta.restorePointId) ||
                         `ai_agent_${appId}_${userMessage.id}`,
                 });
                 const creditRequestId =
-                    (typeof data?.restorePointId === "string" && data.restorePointId) ||
+                    (typeof planMeta?.restorePointId === "string" && planMeta.restorePointId) ||
                     `ai_agent_${appId}_${userMessage.id}`;
 
                 // Safety: if the agent also proposed DB changes, don't persist/apply code changes yet.
                 // This prevents the preview from breaking on missing schema until the user confirms the migration.
                 if (hasDbMigrations) {
                     const bundleId = `staged_${Date.now()}`;
-                    const label = `AI edit (staged): ${messageInput.slice(0, 50)}...`;
-                    const fileEdits = (data.fileEdits as Array<any>)
-                        .filter((e) => e && typeof e.path === "string" && typeof e.content === "string")
-                        .map((e) => ({ path: e.path, content: e.content }));
+                    const label = `AI edit plan (staged): ${(data.summary || messageInput).slice(0, 50)}...`;
+                    const fileEdits = planFiles
+                        .filter((e) => String(e?.action || "update").toLowerCase() !== "delete" && typeof e.content === "string")
+                        .map((e) => ({ path: String(e.path), content: String(e.content) }));
+
+                    if (planHasDeleteOps) {
+                        console.warn("[AppBuilderEditorAgentChat] edit plan includes delete operations while DB migration staging is active; delete ops will be deferred until the next non-staged apply.");
+                    }
 
                     setStagedBundles((prev) => [
                         ...prev,
@@ -2821,6 +2971,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                             appliedProposalIds: {},
                             fileEdits,
                             creditRequestId,
+                            needsRebuild: Boolean(data.needsRebuild),
                         },
                     ]);
 
@@ -2854,7 +3005,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                         ]);
                     }
 
-                    const rid = typeof data?.restorePointId === "string" ? data.restorePointId : null;
+                    const rid = typeof planMeta?.restorePointId === "string" ? planMeta.restorePointId : null;
                     if (rid) {
                         setLastRestorePointId(rid);
                         setMessages((prev) => [
@@ -2862,7 +3013,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                             {
                                 id: `rp_${Date.now()}`,
                                 role: "assistant",
-                                content: "Created a restore point for that edit.",
+                                content: "Created a restore point before applying this edit plan. You can roll back from the restore point list if needed.",
                                 timestamp: new Date(),
                                 type: "text",
                                 restorePointId: rid,
@@ -2873,29 +3024,56 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                     }
 
                 } else {
-                    createCheckpoint(`AI edit: ${messageInput.slice(0, 50)}...`);
+                    const restorePointId =
+                        (typeof planMeta?.restorePointId === "string" && planMeta.restorePointId.trim()) ||
+                        (await createRestorePointBeforeApply(`AI edit plan: ${(data.summary || messageInput).slice(0, 80)}`));
 
-                    data.fileEdits.forEach((edit: { path: string; content: string }) => {
-                        onFileEdit(edit.path, edit.content, creditRequestId);
-                    });
-
-                    const rid = typeof data?.restorePointId === "string" ? data.restorePointId : null;
-                    if (rid) {
-                        setLastRestorePointId(rid);
-                        setMessages(prev => [
+                    if (!restorePointId) {
+                        setMessages((prev) => [
                             ...prev,
                             {
-                                id: `rp_${Date.now()}`,
+                                id: `restore_failed_${Date.now()}`,
                                 role: "assistant",
-                                content: "Created a restore point for that edit.",
+                                content:
+                                    "I couldn’t create a restore point for this edit, so I stopped before applying the file changes.",
                                 timestamp: new Date(),
                                 type: "text",
-                                restorePointId: rid,
-                                restoreActionLabel: "Undo",
                             },
                         ]);
-                        fetchRestorePoints();
+                        return;
                     }
+
+                    setLastRestorePointId(restorePointId);
+                    void fetchRestorePoints();
+                    createCheckpoint(`AI edit: ${messageInput.slice(0, 50)}...`);
+
+                    if (planHasDeleteOps && onFilesReplace) {
+                        const nextFiles = applyEmbeddingEditPlanToFiles(files, planFiles);
+                        onFilesReplace(nextFiles);
+                    } else {
+                        planFiles.forEach((edit) => {
+                            if (String(edit?.action || "update").toLowerCase() === "delete") return;
+                            if (typeof edit.content !== "string") return;
+                            onFileEdit(edit.path, edit.content, creditRequestId);
+                        });
+                    }
+
+                    if (data.needsRebuild) {
+                        await runPostMigrationRefreshPipeline();
+                    }
+
+                    setMessages(prev => [
+                        ...prev,
+                        {
+                            id: `rp_${Date.now()}`,
+                            role: "assistant",
+                            content: "Created a restore point before applying this edit plan. You can roll back from the restore point list if needed.",
+                            timestamp: new Date(),
+                            type: "text",
+                            restorePointId,
+                            restoreActionLabel: "Undo",
+                        },
+                    ]);
                 }
             }
 
@@ -2909,18 +3087,91 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                 error: err?.message || String(err),
             });
             console.error("AI chat error:", err);
+            const status = typeof err?.status === "number" ? err.status : null;
+            const retryable = isRetryableAiStatus(status);
+            const retryPrompt = typeof err?.retryPrompt === "string" && err.retryPrompt.trim() ? err.retryPrompt : input;
             const errorMessage: Message = {
                 id: `error_${Date.now()}`,
                 role: "assistant",
-                content: "Sorry, I couldn’t complete that request right now. Please try again in a few minutes.",
+                content: retryable
+                    ? status === 422
+                        ? "I found the page and searched nearby files, but I couldn’t make a safe edit from the request as written. Tell me the exact section, file, or text you want changed, and I’ll apply that directly."
+                        : "That request failed temporarily. Use retry to try again."
+                    : "Sorry, I couldn’t complete that request right now. Please try again in a few minutes.",
                 timestamp: new Date(),
-                type: "text"
+                type: "text",
+                retryPrompt: retryable ? retryPrompt : undefined,
+                retryStatus: retryable ? status ?? undefined : undefined,
             };
             setMessages(prev => [...prev, errorMessage]);
         } finally {
             setIsLoading(false);
         }
     };
+
+    useEffect(() => {
+        if (!isLoading) {
+            return;
+        }
+    }, [isLoading]);
+
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+
+        const onCompileFix = (event: Event) => {
+            const detail = (event as CustomEvent<any>)?.detail || {};
+            const autoSend = detail?.autoSend === true;
+            const code = typeof detail?.code === "string" ? detail.code.trim() : "";
+            const actionType = String(detail?.actionType || "").toLowerCase();
+            const summary = typeof detail?.compileError?.summary === "string" ? detail.compileError.summary.trim() : "";
+            const detailText = typeof detail?.compileError?.detail === "string" ? detail.compileError.detail : "";
+            const fingerprint = typeof detail?.compileError?.fingerprint === "string" ? detail.compileError.fingerprint.trim() : "";
+            if (!code || actionType !== "quick_fix_compile" || !summary || !fingerprint) return;
+
+            const ctx: CompileErrorQuickFixContext = {
+                appId: String(detail?.appId || appId),
+                code,
+                actionType: "quick_fix_compile",
+                fixAction: typeof detail?.fixAction === "string" ? detail.fixAction : undefined,
+                compileError: {
+                    summary,
+                    detail: detailText,
+                    fingerprint,
+                },
+            };
+
+            const prefill = buildCompileFixPrefill(ctx);
+            const lockKey = `${ctx.appId}:${ctx.code}:${ctx.compileError.fingerprint}`;
+            const now = Date.now();
+            const cooldown = compileFixRequestCooldownRef.current;
+            const cooldownMs = 30_000;
+            if (cooldown && cooldown.fingerprint === lockKey && now < cooldown.until) return;
+            compileFixRequestCooldownRef.current = { fingerprint: lockKey, until: now + cooldownMs };
+
+            if (autoSend) {
+                setTimeout(() => {
+                    void (async () => {
+                        try {
+                            await sendMessage({
+                                forcedInput: prefill,
+                                forcedCompileFixContext: ctx,
+                                hideUserMessage: true,
+                                allowWhenChatDisabled: true,
+                            });
+                        } finally {
+                            // cooldown persists until expiry
+                        }
+                    })();
+                }, 0);
+                return;
+            }
+        };
+
+        window.addEventListener("kloner:compile-error-fix-request", onCompileFix as EventListener);
+        return () => {
+            window.removeEventListener("kloner:compile-error-fix-request", onCompileFix as EventListener);
+        };
+    }, [appId, sendMessage]);
 
     const handleKeyPress = (e: React.KeyboardEvent) => {
         if (e.key === "Enter" && !e.shiftKey) {
@@ -2936,6 +3187,14 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                 <div className="flex items-center gap-2">
                     <Bot className="w-5 h-6 text-accent" />
                     <h3 className="font-medium text-sm">Agent</h3>
+                    {process.env.NODE_ENV !== "production" ? (
+                        <span
+                            className="inline-flex items-center rounded-full border border-neutral-200 bg-neutral-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-neutral-600"
+                            title={projectFramework.reason}
+                        >
+                            {projectFramework.label}
+                        </span>
+                    ) : null}
                     {creditError ? (
                         <div className="ml-2 text-[11px] text-red-600 max-w-[220px] truncate" title={creditError}>
                             {creditError}
@@ -2972,50 +3231,60 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                 </div>
             </div>
 
-            {/* Messages */}
-            <div className="flex-1 min-h-0 overflow-y-auto px-4 py-5 space-y-4 bg-[radial-gradient(circle_at_top,_rgba(245,95,42,0.10),_transparent_36%),linear-gradient(180deg,rgba(255,250,247,0.96),rgba(255,255,255,1))]">
-                {restorePoints.length > 0 && (
-                    <div className="rounded-2xl border border-[#F55F2A]/12 bg-white/85 p-3 shadow-[0_10px_28px_rgba(15,23,42,0.06)] backdrop-blur-sm">
-                        <div className="flex items-center justify-between">
-                            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[#F55F2A]/75">Recent restore points</div>
-                            <button
-                                onClick={fetchRestorePoints}
-                                className="text-xs font-medium text-neutral-600 hover:text-neutral-900"
-                                disabled={isRestoreBusy}
-                            >
-                                Refresh
-                            </button>
+            <div className="flex-shrink-0 border-b border-[#F55F2A]/12 bg-white/95 px-3 py-3 shadow-[0_8px_20px_rgba(15,23,42,0.04)]">
+                <div className="rounded-2xl border border-[#F55F2A]/12 bg-[linear-gradient(180deg,rgba(255,251,248,0.98),rgba(255,255,255,0.96))] px-3 py-3">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                            <div className="text-sm font-medium text-neutral-900">Restore points</div>
+                            <div className="mt-1 text-[11px] text-neutral-500">Always visible at the top of chat.</div>
                         </div>
-                        <div className="mt-2 space-y-2">
-                            {restorePoints.slice(0, 5).map((rp) => (
-                                <div key={rp.id} className="flex items-center justify-between gap-2">
-                                    <div className="min-w-0">
-                                        <div className="text-xs text-gray-800 truncate">{rp.label}</div>
-                                        <div className="text-[11px] text-gray-500 truncate">
-                                            {rp.id.slice(0, 8)}{rp.kept ? " • kept" : ""}
-                                        </div>
-                                    </div>
-                                    <div className="flex items-center gap-2 flex-shrink-0">
-                                        <button
-                                            onClick={() => applyRestorePoint(rp.id, "Applied restore point")}
-                                            disabled={isRestoreBusy}
-                                            className="px-2 py-1 text-xs bg-gray-50 border border-gray-300 rounded hover:bg-gray-100 disabled:opacity-50"
-                                        >
-                                            Apply
-                                        </button>
-                                        <button
-                                            onClick={() => keepRestorePoint(rp.id)}
-                                            disabled={isRestoreBusy}
-                                            className="px-2 py-1 text-xs bg-gray-50 border border-gray-300 rounded hover:bg-gray-100 disabled:opacity-50"
-                                        >
-                                            Keep
-                                        </button>
+                        <div className="flex flex-wrap items-center gap-2">
+                            {restorePoints.length > 1 ? (
+                                <select
+                                    value={selectedRestorePointId || restorePoints[0]?.id || ""}
+                                    onChange={(event) => setSelectedRestorePointId(event.target.value || null)}
+                                    className="min-w-[220px] rounded-lg border border-neutral-200 bg-white px-3 py-2 text-xs text-neutral-700 shadow-sm outline-none transition focus:border-[#F55F2A]/50"
+                                    disabled={isRestoreBusy}
+                                >
+                                    {restorePoints.map((rp) => (
+                                        <option key={rp.id} value={rp.id}>
+                                            {rp.label} · {formatRestorePointCreatedAt(rp.createdAt)}
+                                        </option>
+                                    ))}
+                                </select>
+                            ) : selectedRestorePoint ? (
+                                <div className="rounded-lg border border-neutral-200 bg-white px-3 py-2 text-xs text-neutral-700 shadow-sm">
+                                    <div className="font-medium text-neutral-900">{selectedRestorePoint.label}</div>
+                                    <div className="text-[11px] text-neutral-500">
+                                        {formatRestorePointCreatedAt(selectedRestorePoint.createdAt)}{selectedRestorePoint.kept ? " · kept" : ""}
                                     </div>
                                 </div>
-                            ))}
+                            ) : (
+                                <div className="rounded-lg border border-dashed border-[#F55F2A]/20 bg-[#FFF8F5] px-3 py-2 text-xs text-neutral-600">
+                                    No restore points yet. The editor will create one automatically before applying AI edits.
+                                </div>
+                            )}
+                            <button
+                                onClick={() => selectedRestorePoint && applyRestorePoint(selectedRestorePoint.id, "Applied restore point")}
+                                disabled={isRestoreBusy || !selectedRestorePoint}
+                                className="rounded-lg border border-neutral-300 bg-white px-3 py-2 text-xs font-medium text-neutral-700 shadow-sm transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                                Apply
+                            </button>
+                            <button
+                                onClick={() => selectedRestorePoint && keepRestorePoint(selectedRestorePoint.id)}
+                                disabled={isRestoreBusy || !selectedRestorePoint}
+                                className="rounded-lg border border-neutral-300 bg-white px-3 py-2 text-xs font-medium text-neutral-700 shadow-sm transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                                Keep
+                            </button>
                         </div>
                     </div>
-                )}
+                </div>
+            </div>
+
+            {/* Messages */}
+            <div className="flex-1 min-h-0 overflow-y-auto px-4 py-5 space-y-4 bg-[radial-gradient(circle_at_top,_rgba(245,95,42,0.10),_transparent_36%),linear-gradient(180deg,rgba(255,250,247,0.96),rgba(255,255,255,1))]">
                 {messages.length === 0 && !isLoading ? (
                     <div className="rounded-2xl border border-dashed border-[#F55F2A]/20 bg-white/80 px-4 py-10 text-center text-sm text-neutral-500 shadow-[0_10px_24px_rgba(15,23,42,0.05)]">
                         No messages yet. Start with one of the suggestions below.
@@ -3406,6 +3675,22 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                             <Copy className="h-3.5 w-3.5" />
                                         )}
                                     </button>
+                                    {message.role === "assistant" && message.retryPrompt && isRetryableAiStatus(message.retryStatus) ? (
+                                        <button
+                                            type="button"
+                                            disabled={isLoading}
+                                            onClick={() => {
+                                                const prompt = String(message.retryPrompt || "").trim();
+                                                if (!prompt || isLoading) return;
+                                                void sendMessage({ forcedInput: prompt });
+                                            }}
+                                            className="rounded p-1 transition-colors text-gray-500 hover:text-gray-900 hover:bg-black/5 disabled:opacity-50"
+                                            title={message.retryStatus === 422 ? "Retry with broader search" : "Retry request"}
+                                            aria-label={message.retryStatus === 422 ? "Retry with broader search" : "Retry request"}
+                                        >
+                                            <RotateCcw className="h-3.5 w-3.5" />
+                                        </button>
+                                    ) : null}
                                     <button
                                         type="button"
                                         onClick={() => dismissMessage(message.id)}
@@ -3422,10 +3707,10 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                 ))}
                 {isLoading && (
                     <div className="flex justify-start">
-                        <div className="bg-white border border-gray-200 rounded-lg p-3 max-w-[80%]">
+                        <div className="max-w-[82%] rounded-2xl border border-gray-200 bg-white p-3 shadow-[0_10px_24px_rgba(15,23,42,0.05)]">
                             <div className="flex items-center gap-2">
                                 <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-accent"></div>
-                                <span className="text-sm text-gray-600">Thinking...</span>
+                                <span className="text-sm font-medium text-gray-700">Working on it</span>
                             </div>
                         </div>
                     </div>
@@ -4151,15 +4436,15 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                 <p className="mt-1 text-sm leading-relaxed text-neutral-700">
                                     The preview ran into a problem, but you can still chat here to debug it or ask for help.
                                 </p>
-                                {showPreviewIssueDetails ? (
-                                    <details className="mt-3 rounded-xl border border-neutral-200 bg-white px-3 py-2 text-left">
-                                        <summary className="cursor-pointer select-none text-[11px] font-semibold uppercase tracking-[0.12em] text-neutral-600">
-                                            Compile error details
-                                        </summary>
-                                        <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-words text-xs leading-relaxed text-neutral-700">
-                                            {previewIssueText}
-                                        </pre>
-                                    </details>
+                                {showPreviewIssueDetails ? (<></>
+                                    // <details className="mt-3 rounded-xl border border-neutral-200 bg-white px-3 py-2 text-left">
+                                    //     <summary className="cursor-pointer select-none text-[11px] font-semibold uppercase tracking-[0.12em] text-neutral-600">
+                                    //         Compile error details
+                                    //     </summary>
+                                    //     <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-words text-xs leading-relaxed text-neutral-700">
+                                    //         {previewIssueText}
+                                    //     </pre>
+                                    // </details>
                                 ) : null}
                                 <div className="mt-3 inline-flex max-w-full items-center gap-2 rounded-full border border-rose-200 bg-white px-3 py-1 text-[11px] font-semibold text-neutral-700">
                                     <AlertTriangle className="h-3.5 w-3.5 text-rose-500" />
@@ -4170,8 +4455,12 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                 <div className="mt-3 flex flex-wrap items-center gap-2">
                                     <button
                                         type="button"
-                                        onClick={() => onPreviewIssueFixRequest?.()}
-                                        className="inline-flex items-center justify-center rounded-full bg-rose-600 px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-rose-700"
+                                        onClick={() => {
+                                            startPreviewIssueFixButtonCooldown();
+                                            onPreviewIssueFixRequest?.();
+                                        }}
+                                        disabled={isPreviewIssueFixButtonCoolingDown}
+                                        className="inline-flex items-center justify-center rounded-full bg-rose-600 px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-50"
                                     >
                                         Fix with AI
                                     </button>

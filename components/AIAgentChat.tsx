@@ -1,13 +1,24 @@
 // src/components/AIAgentChat.tsx
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { Send, Bot, RotateCcw, Database, FileText, RefreshCw, X, AlertTriangle, ChevronDown, ChevronUp, ExternalLink, Copy, Check } from "lucide-react";
 import { ensureSessionAndCsrf } from "@/lib/auth-client";
 import { useAuth } from "@/src/hooks/useAuth";
 import { db } from "@/lib/firebase";
 import { doc, onSnapshot } from "firebase/firestore";
 import { useModal } from "@/components/ui/ModalContext";
+import {
+    applyEmbeddingEditPlanToFiles,
+    editPlanHasDeleteOps,
+    fetchEmbeddingEditPlan,
+    normalizeEmbeddingEditPlanResponse,
+} from "@/src/lib/appEmbeddingsClient";
+import {
+    buildProjectFrameworkPrompt,
+    detectProjectFramework,
+    planWouldSwitchFramework,
+} from "@/src/lib/projectFramework";
 
 type Message = {
     id: string;
@@ -41,6 +52,7 @@ type StagedBundle = {
     appliedProposalIds: Record<string, boolean>;
     fileEdits: Array<{ path: string; content: string }>;
     creditRequestId?: string;
+    needsRebuild?: boolean;
 };
 
 type Checkpoint = {
@@ -115,6 +127,17 @@ const STARTER_PROMPTS = [
     "Add a pricing section with plans, feature bullets, and a compare view.",
     "Refine mobile responsiveness for navigation, spacing, and tap targets.",
 ];
+
+function requestLooksLikePageRemovalOrRename(userMessage: string): boolean {
+    const m = String(userMessage || "").toLowerCase();
+    if (!m.trim()) return false;
+
+    return (
+        /\b(login|log in|sign in|signin|auth|authentication)\b/i.test(m) &&
+        /\b(remove|delete|hide|rename|replace|remove entirely|get rid of|eliminate|disable|take down)\b/i.test(m) &&
+        /\b(page|screen|route|view|component|ui)\b/i.test(m)
+    );
+}
 
 function stripMarkdownBold(text: string): string {
     // Chat renders content as plain text (not markdown), so remove bold markers.
@@ -641,6 +664,13 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
     const loadedFromRemoteRef = useRef(false);
     const initialLoadCompletedRef = useRef(false);
     const lastSavedPayloadRef = useRef<string | null>(null);
+    const compileFixRequestCooldownRef = useRef<{ fingerprint: string; until: number } | null>(null);
+    const sendMessageRef = useRef<((opts?: {
+        forcedInput?: string;
+        forcedCompileFixContext?: CompileErrorQuickFixContext;
+        allowWhenChatDisabled?: boolean;
+        hideUserMessage?: boolean;
+    }) => Promise<void>) | null>(null);
     const debugChatIo = useCallback(() => {
         if (typeof window === "undefined") return false;
         try {
@@ -666,60 +696,6 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
             // ignore
         }
     }, []);
-
-    useEffect(() => {
-        if (typeof window === "undefined") return;
-
-        const onCompileFix = (event: Event) => {
-            const detail = (event as CustomEvent<any>)?.detail || {};
-            const autoSend = detail?.autoSend === true;
-            const code = typeof detail?.code === "string" ? detail.code.trim() : "";
-            const actionType = String(detail?.actionType || "").toLowerCase();
-            const summary = typeof detail?.compileError?.summary === "string" ? detail.compileError.summary.trim() : "";
-            const detailText = typeof detail?.compileError?.detail === "string" ? detail.compileError.detail : "";
-            const fingerprint = typeof detail?.compileError?.fingerprint === "string" ? detail.compileError.fingerprint.trim() : "";
-            if (!code || actionType !== "quick_fix_compile" || !summary || !fingerprint) return;
-
-            const ctx: CompileErrorQuickFixContext = {
-                appId: String(detail?.appId || appId),
-                code,
-                actionType: "quick_fix_compile",
-                fixAction: typeof detail?.fixAction === "string" ? detail.fixAction : undefined,
-                compileError: {
-                    summary,
-                    detail: detailText,
-                    fingerprint,
-                },
-            };
-
-            const prefill = buildCompileFixPrefill(ctx);
-            setFreeCompileFixContext(ctx);
-            setInput(prefill);
-
-            if (autoSend) {
-                setTimeout(() => {
-                    void sendMessage({ forcedInput: prefill, forcedCompileFixContext: ctx });
-                }, 0);
-                return;
-            }
-
-            setMessages((prev) => [
-                ...prev,
-                {
-                    id: `compile_fix_ready_${Date.now()}`,
-                    role: "assistant",
-                    content: "Compile fix is ready. Send as-is to use free mode.",
-                    timestamp: new Date(),
-                    type: "text",
-                },
-            ]);
-        };
-
-        window.addEventListener("kloner:compile-error-fix-request", onCompileFix as EventListener);
-        return () => {
-            window.removeEventListener("kloner:compile-error-fix-request", onCompileFix as EventListener);
-        };
-    }, [appId]);
 
     const withCsrfHeaders = useCallback(async () => {
         // Always fetch a fresh CSRF token to avoid stale token issues
@@ -1300,6 +1276,29 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
         return null;
     }, [appId, fetchWithScopeRetry, onFilesReplace]);
 
+    const projectFramework = useMemo(() => detectProjectFramework(files), [files]);
+
+    const createRestorePointBeforeApply = useCallback(
+        async (label: string): Promise<string | null> => {
+            try {
+                const headers = await withCsrfHeaders();
+                const res = await fetchWithScopeRetry(
+                    `/api/app-builder/${appId}/restore-points`,
+                    { method: "POST", headers, body: JSON.stringify({ label }) },
+                    { retryLabel: "create restore point before apply" },
+                );
+                if (!res.ok) return null;
+
+                const data = await res.json().catch(() => null);
+                const restorePointId = typeof data?.restorePointId === "string" ? data.restorePointId.trim() : "";
+                return restorePointId || null;
+            } catch {
+                return null;
+            }
+        },
+        [appId, fetchWithScopeRetry, withCsrfHeaders],
+    );
+
     useEffect(() => {
         fetchRestorePoints();
     }, [fetchRestorePoints]);
@@ -1506,45 +1505,112 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
         setCurrentCheckpoint(checkpointId);
     }, [files]);
 
-    const applyStagedBundle = useCallback((bundleId: string, options?: { unsafe?: boolean }) => {
-        setStagedBundles((prev) => {
-            const bundle = prev.find((b) => b.id === bundleId);
-            if (!bundle) return prev;
+    const runPostMigrationRefreshPipeline = useCallback(async () => {
+        const runId = Date.now();
 
-            // Always create a local checkpoint right before applying.
-            createCheckpoint(bundle.label || "Apply staged edits");
+        setMessages((prev) => [
+            ...prev,
+            {
+                id: `mig_progress_applied_${runId}`,
+                role: "assistant",
+                content: "Migration applied. Regenerating app…",
+                timestamp: new Date(),
+                type: "text",
+            },
+        ]);
 
-            // Apply edits (this persists to Firebase via the parent).
-            for (const edit of bundle.fileEdits) {
-                try {
-                    onFileEdit(edit.path, edit.content, bundle.creditRequestId);
-                } catch {
-                    // ignore; individual edits are handled by the parent save path
-                }
-            }
+        await syncFilesFromServer({ applyToState: true }).catch(() => null);
 
-            // Clear linkage so the modal doesn't keep showing staged actions.
-            setMessages((msgs) =>
-                msgs.map((m) => (m.stagedBundleId === bundleId ? { ...m, stagedBundleId: undefined } : m))
+        setMessages((prev) => [
+            ...prev,
+            {
+                id: `mig_progress_restart_${runId}`,
+                role: "assistant",
+                content: "Restarting preview…",
+                timestamp: new Date(),
+                type: "text",
+            },
+        ]);
+
+        if (typeof window !== "undefined") {
+            window.dispatchEvent(
+                new CustomEvent("kloner:preview-force-fresh", {
+                    detail: { appId, reason: "migration-applied" },
+                }),
             );
+        }
 
-            // Emit a small chat note.
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+        const start = Date.now();
+        let ready = previewReadyRef.current;
+        while (!ready && Date.now() - start < 45_000) {
+            await new Promise((resolve) => setTimeout(resolve, 1000));
+            ready = previewReadyRef.current;
+        }
+    }, [appId, previewReadyRef, syncFilesFromServer]);
+
+    const applyStagedBundle = useCallback(async (bundleId: string, options?: { unsafe?: boolean }) => {
+        const bundle = stagedBundles.find((entry) => entry.id === bundleId);
+        if (!bundle) return;
+
+        const restorePointId = await createRestorePointBeforeApply(bundle.label || "Apply staged edits");
+        if (!restorePointId) {
             setMessages((msgs) => [
                 ...msgs,
                 {
-                    id: `staged_applied_${Date.now()}`,
+                    id: `staged_restore_failed_${Date.now()}`,
                     role: "assistant",
-                    content: options?.unsafe
-                        ? "Applied the staged code changes (without waiting for the database update). If something breaks, you can undo via the restore point/checkpoint."
-                        : "Applied the staged code changes now that the database update is applied.",
+                    content:
+                        "I couldn’t create a restore point for this change, so I stopped before applying the staged edits.",
                     timestamp: new Date(),
                     type: "text",
                 },
             ]);
+            return;
+        }
 
-            return prev.filter((b) => b.id !== bundleId);
-        });
-    }, [createCheckpoint, onFileEdit]);
+        setLastRestorePointId(restorePointId);
+        void fetchRestorePoints();
+
+        // Always create a local checkpoint right before applying.
+        createCheckpoint(bundle.label || "Apply staged edits");
+
+        // Apply edits (this persists to Firebase via the parent).
+        for (const edit of bundle.fileEdits) {
+            try {
+                onFileEdit(edit.path, edit.content, bundle.creditRequestId);
+            } catch {
+                // ignore; individual edits are handled by the parent save path
+            }
+        }
+
+        if (bundle.needsRebuild) {
+            await runPostMigrationRefreshPipeline();
+        }
+
+        // Clear linkage so the modal doesn't keep showing staged actions.
+        setMessages((msgs) =>
+            msgs.map((m) => (m.stagedBundleId === bundleId ? { ...m, stagedBundleId: undefined } : m))
+        );
+
+        // Emit a small chat note.
+        setMessages((msgs) => [
+            ...msgs,
+            {
+                id: `staged_applied_${Date.now()}`,
+                role: "assistant",
+                content: options?.unsafe
+                    ? "Applied the staged code changes (without waiting for the database update). If something breaks, you can undo via the restore point/checkpoint."
+                    : "Applied the staged code changes now that the database update is applied.",
+                timestamp: new Date(),
+                type: "text",
+                restorePointId,
+                restoreActionLabel: "Undo",
+            },
+        ]);
+
+        setStagedBundles((prev) => prev.filter((b) => b.id !== bundleId));
+    }, [createCheckpoint, createRestorePointBeforeApply, fetchRestorePoints, onFileEdit, runPostMigrationRefreshPipeline, setLastRestorePointId, stagedBundles]);
 
     const discardStagedBundle = useCallback((bundleId: string) => {
         setStagedBundles((prev) => prev.filter((b) => b.id !== bundleId));
@@ -1654,61 +1720,6 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
         [],
     );
 
-    const runPostMigrationRefreshPipeline = useCallback(async () => {
-        const runId = Date.now();
-
-        setMessages((prev) => [
-            ...prev,
-            {
-                id: `mig_progress_applied_${runId}`,
-                role: "assistant",
-                content: "Migration applied. Regenerating app…",
-                timestamp: new Date(),
-                type: "text",
-            },
-        ]);
-
-        await syncFilesFromServer({ applyToState: true }).catch(() => null);
-
-        setMessages((prev) => [
-            ...prev,
-            {
-                id: `mig_progress_restart_${runId}`,
-                role: "assistant",
-                content: "Restarting preview…",
-                timestamp: new Date(),
-                type: "text",
-            },
-        ]);
-
-        if (typeof window !== "undefined") {
-            window.dispatchEvent(
-                new CustomEvent("kloner:preview-force-fresh", {
-                    detail: { appId, reason: "migration-applied" },
-                }),
-            );
-        }
-
-        await new Promise((resolve) => setTimeout(resolve, 1500));
-        const start = Date.now();
-        let ready = previewReadyRef.current;
-        while (!ready && Date.now() - start < 45_000) {
-            await new Promise((resolve) => setTimeout(resolve, 1000));
-            ready = previewReadyRef.current;
-        }
-
-        setMessages((prev) => [
-            ...prev,
-            {
-                id: `mig_progress_ready_${runId}`,
-                role: "assistant",
-                content: ready ? "Ready." : "Restart started. Your app should be ready shortly.",
-                timestamp: new Date(),
-                type: "text",
-            },
-        ]);
-    }, [appId, syncFilesFromServer]);
-
     const handleDatabaseConnect = useCallback((connection: DatabaseConnection) => {
         setDatabaseConnections(prev => [...prev.filter(c => c.id !== connection.id), connection]);
     }, []);
@@ -1761,7 +1772,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                     id: `db_setup_choice_${Date.now()}`,
                     role: "assistant",
                     content:
-                        "This request usually works best with a database. You can connect Supabase, or continue now with a basic version that skips database persistence.",
+                        "This request may need persistent data. If you only want the page removed, renamed, or relabeled, I can keep it database-free and handle it as a normal file edit.",
                     timestamp: new Date(),
                     type: "text",
                     dbSetupPrompt: prompt,
@@ -2434,6 +2445,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
 
         try {
             const headers = await withCsrfHeaders();
+            const frameworkPrompt = buildProjectFrameworkPrompt(projectFramework, messageInput);
 
             dispatchAiAgentEvent("request", {
                 appId,
@@ -2454,66 +2466,68 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                 });
             }
 
-            const res = await fetch("/api/ai-agent", {
-                method: "POST",
-                headers,
-                body: JSON.stringify({
-                                        message: messageInput,
+            const editPlanResult = await fetchEmbeddingEditPlan(
+                {
                     appId,
-                    conversationHistory: [...messages.slice(-10), userMessage],
-                    databaseConnections,
-                                        quickActionContext: isFreeCompileFixMode && activeCompileFixContext
-                        ? {
-                                                        type: activeCompileFixContext.actionType,
-                                                        fixAction: activeCompileFixContext.fixAction || null,
-                                                        code: activeCompileFixContext.code,
-                                                        compileErrorFingerprint: activeCompileFixContext.compileError.fingerprint,
-                                                        compileErrorSummary: activeCompileFixContext.compileError.summary,
-                                                        compileErrorDetail: activeCompileFixContext.compileError.detail,
-                            noCreditRequested: true,
-                          }
-                        : null,
-                }),
-            });
+                    query: messageInput,
+                    requestText: frameworkPrompt,
+                    maxChunks: 10,
+                    framework: projectFramework.key,
+                    frameworkLabel: projectFramework.label,
+                    frameworkConfidence: projectFramework.confidence,
+                    frameworkReason: projectFramework.reason,
+                },
+                headers,
+            );
 
-            const errorPayload = res.ok ? null : await res.json().catch(() => null);
-
-            if (!res.ok) {
+            if (!editPlanResult.ok) {
                 dispatchAiAgentEvent("response_error", {
                     appId,
                     userId: user?.uid || null,
-                    status: res.status,
+                    status: editPlanResult.status,
                 });
-                let errorMessage = "Failed to get AI response";
-                if (typeof errorPayload?.error === "string") {
-                    errorMessage = errorPayload.error;
-                } else if (res.status === 413) {
-                    errorMessage = "That request is too large right now. Please shorten the ask or remove some context and try again.";
-                }
+                const errorMessage =
+                    editPlanResult.status === 429
+                        ? "Edit planning is temporarily rate-limited. Please wait a moment and try again."
+                        : editPlanResult.error || "Failed to get edit plan";
                 const error = new Error(errorMessage);
-                (error as any).status = res.status;
-                (error as any).code = typeof errorPayload?.code === "string" ? errorPayload.code : null;
+                (error as any).status = editPlanResult.status;
+                (error as any).code = editPlanResult.status === 429 ? "EDIT_PLAN_RATE_LIMITED" : "EDIT_PLAN_FAILED";
                 throw error;
             }
 
-            const data = await res.json();
+            const rawPlan = editPlanResult.data;
+            const data = normalizeEmbeddingEditPlanResponse(rawPlan);
+            const requestId = typeof (rawPlan as any)?.requestId === "string" ? (rawPlan as any).requestId : null;
+            const creditCost = typeof (rawPlan as any)?.creditCost === "number" && Number.isFinite((rawPlan as any).creditCost)
+                ? Math.max(1, Math.floor((rawPlan as any).creditCost))
+                : 1;
 
             dispatchAiAgentEvent("response_ok", {
                 appId,
                 userId: user?.uid || null,
-                hasFileEdits: Array.isArray(data?.fileEdits) && data.fileEdits.length > 0,
-                fileEditsCount: Array.isArray(data?.fileEdits) ? data.fileEdits.length : 0,
+                hasFileEdits: Array.isArray(data?.files) && data.files.length > 0,
+                fileEditsCount: Array.isArray(data?.files) ? data.files.length : 0,
                 hasDbMigrations: Array.isArray(data?.dbMigrations) && data.dbMigrations.length > 0,
                 dbMigrationsCount: Array.isArray(data?.dbMigrations) ? data.dbMigrations.length : 0,
-                restorePointId: typeof data?.restorePointId === "string" ? data.restorePointId : null,
-                responseLen: typeof data?.response === "string" ? data.response.length : null,
+                restorePointId: typeof (rawPlan as any)?.restorePointId === "string" ? (rawPlan as any).restorePointId : null,
+                responseLen: typeof data?.summary === "string" ? data.summary.length : null,
             });
 
-            // If the AI response or context indicates a restart is required, suggest the Rebuild app button
-            let aiContent = sanitizeAssistantContent(data.response);
+            // If the edit plan indicates a restart is required, keep the UX note.
+            let aiContent = sanitizeAssistantContent(data.summary || data.response || "I've prepared an edit plan.");
+            if (Array.isArray(data.notes) && data.notes.length > 0) {
+                const noteText = data.notes.filter((note) => typeof note === "string" && note.trim()).slice(0, 5).join("\n- ");
+                if (noteText) {
+                    aiContent = `${aiContent}\n\nNotes:\n- ${noteText}`;
+                }
+            }
+            if (data.needsRebuild) {
+                aiContent += "\n\nThis plan needs a rebuild before the changes are fully visible.";
+            }
             if (typeof aiContent === "string" && /restart|server.*restart|refresh.*server|database credentials|should work in a moment/i.test(aiContent)) {
                 aiContent +=
-                    "\n\nIf you just updated your database credentials or made a major config change, you may need to click the **Rebuild app** button (formerly 'Start fresh') in the editor to fully restart your app server.";
+                    "\n\nIf you just updated your database credentials or made a major config change, you may need to click the **Rebuild app** button in the top right to fully restart your app server.";
             }
             const aiMessage: Message = {
                 id: `ai_${Date.now()}`,
@@ -2526,6 +2540,26 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
             setMessages(prev => [...prev, aiMessage]);
 
             const hasDbMigrations = Array.isArray(data.dbMigrations) && data.dbMigrations.length > 0;
+            const planFiles = Array.isArray(data.files) ? data.files.filter((file) => file && typeof file.path === "string") : [];
+            const planHasDeleteOps = editPlanHasDeleteOps(planFiles);
+            const planSwitchesFramework = planWouldSwitchFramework(planFiles.map((file) => file.path), projectFramework);
+
+            if (planSwitchesFramework) {
+                setMessages((prev) => [
+                    ...prev,
+                    {
+                        id: `framework_mismatch_${Date.now()}`,
+                        role: "assistant",
+                        content:
+                            projectFramework.key === "html-js"
+                                ? "I detected a plain HTML/JS project, so I won’t apply Next.js scaffold files. I can keep this change in the current framework, or you can ask for a migration explicitly."
+                                : "This plan would switch frameworks, which I won’t do automatically. I can keep the current file pattern, or you can ask me to migrate it explicitly.",
+                        timestamp: new Date(),
+                        type: "text",
+                    },
+                ]);
+                return;
+            }
 
             // Handle database migrations (propose -> ask user -> apply)
             const proposalIdsForThisResponse: string[] = [];
@@ -2605,11 +2639,12 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
             // Handle database setup request
             if (data.setupDatabase) {
                 const followupPrompt = messageInput.trim();
-                if (followupPrompt) {
+                const suppressDatabaseSetup = requestLooksLikePageRemovalOrRename(followupPrompt);
+                if (followupPrompt && !suppressDatabaseSetup) {
                     setPendingSupabaseFollowupPrompt(followupPrompt);
                     enqueueDatabaseSetupChoicePrompt(followupPrompt);
                 }
-                if (allowDatabaseSetupUi) {
+                if (allowDatabaseSetupUi && !suppressDatabaseSetup) {
                     setTimeout(() => {
                         if (isSupabaseConnectedRef.current) return;
                         setShowDatabaseSetup(true);
@@ -2618,39 +2653,50 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
             }
 
             // Handle file edits if any
-            if (data.fileEdits && data.fileEdits.length > 0) {
+            if (planFiles.length > 0) {
                 dispatchAiAgentEvent("file_edits_received", {
                     appId,
                     userId: user?.uid || null,
-                    count: Array.isArray(data?.fileEdits) ? data.fileEdits.length : 0,
+                    count: planFiles.length,
                     creditRequestId:
-                        (typeof data?.restorePointId === "string" && data.restorePointId) ||
+                        (typeof (rawPlan as any)?.restorePointId === "string" && (rawPlan as any).restorePointId) ||
                         `ai_agent_${appId}_${userMessage.id}`,
                 });
                 const creditRequestId =
-                    (typeof data?.restorePointId === "string" && data.restorePointId) ||
+                    (typeof (rawPlan as any)?.restorePointId === "string" && (rawPlan as any).restorePointId) ||
                     `ai_agent_${appId}_${userMessage.id}`;
 
                 // Safety: if the agent also proposed DB changes, don't persist/apply code changes yet.
                 // This prevents the preview from breaking on missing schema until the user confirms the migration.
                 if (hasDbMigrations) {
                     const bundleId = `staged_${Date.now()}`;
-                    const label = `AI edit (staged): ${messageInput.slice(0, 50)}...`;
-                    const fileEdits = (data.fileEdits as Array<any>)
-                        .filter((e) => e && typeof e.path === "string" && typeof e.content === "string")
-                        .map((e) => ({ path: e.path, content: e.content }));
+                    const label = `AI edit plan (staged): ${(data.summary || messageInput).slice(0, 50)}...`;
+                    const fileEdits: Array<{ path: string; content: string }> = [];
+                    for (const edit of planFiles) {
+                        if (!edit || typeof edit.path !== "string") continue;
+                        if (String(edit.action || "update").toLowerCase() === "delete") continue;
+                        if (typeof edit.content !== "string") continue;
+                        fileEdits.push({ path: edit.path, content: edit.content });
+                    }
+
+                    if (planHasDeleteOps) {
+                        console.warn("[AIAgentChat] edit plan includes delete operations while DB migration staging is active; delete ops will be deferred until the next non-staged apply.");
+                    }
+
+                    const stagedBundle: StagedBundle = {
+                        id: bundleId,
+                        createdAt: Date.now(),
+                        label,
+                        proposalIds: proposalIdsForThisResponse,
+                        appliedProposalIds: {},
+                        fileEdits,
+                        creditRequestId,
+                        needsRebuild: Boolean(data.needsRebuild),
+                    };
 
                     setStagedBundles((prev) => [
                         ...prev,
-                        {
-                            id: bundleId,
-                            createdAt: Date.now(),
-                            label,
-                            proposalIds: proposalIdsForThisResponse,
-                            appliedProposalIds: {},
-                            fileEdits,
-                            creditRequestId,
-                        },
+                        stagedBundle,
                     ]);
 
                     // Link the staged code bundle to one migration message so we keep a single DB confirmation modal.
@@ -2683,7 +2729,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                         ]);
                     }
 
-                    const rid = typeof data?.restorePointId === "string" ? data.restorePointId : null;
+                    const rid = typeof (rawPlan as any)?.restorePointId === "string" ? (rawPlan as any).restorePointId : null;
                     if (rid) {
                         setLastRestorePointId(rid);
                         setMessages((prev) => [
@@ -2691,7 +2737,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                             {
                                 id: `rp_${Date.now()}`,
                                 role: "assistant",
-                                content: "Created a restore point for that edit.",
+                                content: "Created a restore point before applying this edit plan. You can roll back from the restore point list if needed.",
                                 timestamp: new Date(),
                                 type: "text",
                                 restorePointId: rid,
@@ -2702,29 +2748,56 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                     }
 
                 } else {
-                    createCheckpoint(`AI edit: ${messageInput.slice(0, 50)}...`);
+                    const restorePointId =
+                        (typeof (rawPlan as any)?.restorePointId === "string" && String((rawPlan as any).restorePointId).trim()) ||
+                        (await createRestorePointBeforeApply(`AI edit plan: ${(data.summary || messageInput).slice(0, 80)}`));
 
-                    data.fileEdits.forEach((edit: { path: string; content: string }) => {
-                        onFileEdit(edit.path, edit.content, creditRequestId);
-                    });
-
-                    const rid = typeof data?.restorePointId === "string" ? data.restorePointId : null;
-                    if (rid) {
-                        setLastRestorePointId(rid);
-                        setMessages(prev => [
+                    if (!restorePointId) {
+                        setMessages((prev) => [
                             ...prev,
                             {
-                                id: `rp_${Date.now()}`,
+                                id: `restore_failed_${Date.now()}`,
                                 role: "assistant",
-                                content: "Created a restore point for that edit.",
+                                content:
+                                    "I couldn’t create a restore point for this edit, so I stopped before applying the file changes.",
                                 timestamp: new Date(),
                                 type: "text",
-                                restorePointId: rid,
-                                restoreActionLabel: "Undo",
                             },
                         ]);
-                        fetchRestorePoints();
+                        return;
                     }
+
+                    setLastRestorePointId(restorePointId);
+                    void fetchRestorePoints();
+                    createCheckpoint(`AI edit: ${messageInput.slice(0, 50)}...`);
+
+                    if (planHasDeleteOps && onFilesReplace) {
+                        const nextFiles = applyEmbeddingEditPlanToFiles(files, planFiles);
+                        onFilesReplace(nextFiles);
+                    } else {
+                        planFiles.forEach((edit) => {
+                            if (String(edit?.action || "update").toLowerCase() === "delete") return;
+                            if (typeof edit.content !== "string") return;
+                            onFileEdit(edit.path, edit.content, creditRequestId);
+                        });
+                    }
+
+                    if (data.needsRebuild) {
+                        await runPostMigrationRefreshPipeline();
+                    }
+
+                    setMessages(prev => [
+                        ...prev,
+                        {
+                            id: `rp_${Date.now()}`,
+                            role: "assistant",
+                            content: "Created a restore point before applying this edit plan. You can roll back from the restore point list if needed.",
+                            timestamp: new Date(),
+                            type: "text",
+                            restorePointId,
+                            restoreActionLabel: "Undo",
+                        },
+                    ]);
                 }
             }
 
@@ -2751,12 +2824,82 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
         }
     };
 
+    useEffect(() => {
+        sendMessageRef.current = sendMessage;
+    }, [sendMessage]);
+
     const handleKeyPress = (e: React.KeyboardEvent) => {
         if (e.key === "Enter" && !e.shiftKey) {
             e.preventDefault();
             if (!chatDisabled) sendMessage();
         }
     };
+
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+
+        const onCompileFix = (event: Event) => {
+            const detail = (event as CustomEvent<any>)?.detail || {};
+            const autoSend = detail?.autoSend === true;
+            const code = typeof detail?.code === "string" ? detail.code.trim() : "";
+            const actionType = String(detail?.actionType || "").toLowerCase();
+            const summary = typeof detail?.compileError?.summary === "string" ? detail.compileError.summary.trim() : "";
+            const detailText = typeof detail?.compileError?.detail === "string" ? detail.compileError.detail : "";
+            const fingerprint = typeof detail?.compileError?.fingerprint === "string" ? detail.compileError.fingerprint.trim() : "";
+            if (!code || actionType !== "quick_fix_compile" || !summary || !fingerprint) return;
+
+            const ctx: CompileErrorQuickFixContext = {
+                appId: String(detail?.appId || appId),
+                code,
+                actionType: "quick_fix_compile",
+                fixAction: typeof detail?.fixAction === "string" ? detail.fixAction : undefined,
+                compileError: {
+                    summary,
+                    detail: detailText,
+                    fingerprint,
+                },
+            };
+
+            const prefill = buildCompileFixPrefill(ctx);
+            setFreeCompileFixContext(ctx);
+            setInput(prefill);
+
+            const lockKey = `${ctx.appId}:${ctx.code}:${ctx.compileError.fingerprint}`;
+            const now = Date.now();
+            const cooldown = compileFixRequestCooldownRef.current;
+            const cooldownMs = 30_000;
+            if (cooldown && cooldown.fingerprint === lockKey && now < cooldown.until) return;
+            compileFixRequestCooldownRef.current = { fingerprint: lockKey, until: now + cooldownMs };
+
+            if (autoSend) {
+                setTimeout(() => {
+                    void sendMessageRef.current?.({
+                        forcedInput: prefill,
+                        forcedCompileFixContext: ctx,
+                        allowWhenChatDisabled: true,
+                        hideUserMessage: true,
+                    });
+                }, 0);
+                return;
+            }
+
+            setMessages((prev) => [
+                ...prev,
+                {
+                    id: `compile_fix_ready_${Date.now()}`,
+                    role: "assistant",
+                    content: "Compile fix is ready. Send as-is to use free mode.",
+                    timestamp: new Date(),
+                    type: "text",
+                },
+            ]);
+        };
+
+        window.addEventListener("kloner:compile-error-fix-request", onCompileFix as EventListener);
+        return () => {
+            window.removeEventListener("kloner:compile-error-fix-request", onCompileFix as EventListener);
+        };
+    }, [appId]);
 
     return (
         <div className="flex flex-col h-full min-h-0 bg-gray-50 overflow-hidden">
@@ -2765,6 +2908,14 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                 <div className="flex items-center gap-2">
                     <Bot className="w-5 h-6 text-accent" />
                     <h3 className="font-medium text-sm">Agent</h3>
+                    {process.env.NODE_ENV !== "production" ? (
+                        <span
+                            className="inline-flex items-center rounded-full border border-neutral-200 bg-neutral-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-neutral-600"
+                            title={projectFramework.reason}
+                        >
+                            {projectFramework.label}
+                        </span>
+                    ) : null}
                     {creditError ? (
                         <div className="ml-2 text-[11px] text-red-600 max-w-[220px] truncate" title={creditError}>
                             {creditError}
@@ -2803,20 +2954,20 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
 
             {/* Messages */}
             <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4">
-                {restorePoints.length > 0 && (
-                    <div className="bg-white border border-gray-200 rounded-lg p-3">
-                        <div className="flex items-center justify-between">
-                            <div className="text-xs font-medium text-gray-700">Recent restore points</div>
-                            <button
-                                onClick={fetchRestorePoints}
-                                className="text-xs text-gray-600 hover:text-gray-900"
-                                disabled={isRestoreBusy}
-                            >
-                                Refresh
-                            </button>
-                        </div>
-                        <div className="mt-2 space-y-2">
-                            {restorePoints.slice(0, 5).map((rp) => (
+                <div className="bg-white border border-gray-200 rounded-lg p-3">
+                    <div className="flex items-center justify-between">
+                        <div className="text-xs font-medium text-gray-700">Recent restore points</div>
+                        <button
+                            onClick={fetchRestorePoints}
+                            className="text-xs text-gray-600 hover:text-gray-900"
+                            disabled={isRestoreBusy}
+                        >
+                            Refresh
+                        </button>
+                    </div>
+                    <div className="mt-2 space-y-2">
+                        {restorePoints.length > 0 ? (
+                            restorePoints.slice(0, 5).map((rp) => (
                                 <div key={rp.id} className="flex items-center justify-between gap-2">
                                     <div className="min-w-0">
                                         <div className="text-xs text-gray-800 truncate">{rp.label}</div>
@@ -2841,10 +2992,14 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                                         </button>
                                     </div>
                                 </div>
-                            ))}
-                        </div>
+                            ))
+                        ) : (
+                            <div className="rounded-md border border-dashed border-gray-300 bg-gray-50 px-3 py-2 text-xs text-gray-600">
+                                No restore points yet. The editor will create one automatically before applying AI edits, and you can save one here anytime.
+                            </div>
+                        )}
                     </div>
-                )}
+                </div>
                 {messages.length === 0 && !isLoading ? (
                     <div className="text-center text-sm text-gray-500 py-10">
                         No chat messages yet.
