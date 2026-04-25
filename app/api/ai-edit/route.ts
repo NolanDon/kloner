@@ -1136,6 +1136,8 @@ function classifyGeminiError(err: any, requestId: string): { status: number; cod
 async function runAiEditModelGemini(input: {
     html: string;
     prompt: string;
+    originalPrompt?: string;
+    userPrompt?: string;
     uid: string;
     action?: "edit_block" | "create_page";
     mode?: "code" | "imagery";
@@ -1481,6 +1483,8 @@ async function handlePost(req: NextRequest) {
         const modelResult = await runAiEditModelGemini({
             html,
             prompt: modelPrompt,
+            originalPrompt: rawDisplayPrompt,
+            userPrompt: rawUserPrompt,
             uid,
             action,
             mode,
