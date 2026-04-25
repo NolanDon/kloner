@@ -4,7 +4,8 @@ import { GoogleGenerativeAI, HarmBlockThreshold, HarmCategory } from "@google/ge
 import { getAdminDb } from "../_lib/auth";
 import { requireSessionAndMaybeCsrf } from "../_lib/route-guard";
 import { assertAppBuilderScope } from "../_lib/appBuilderScope";
-import { hydrateAppBuilderFiles } from "../_lib/htmlStorage";
+import { hydrateAppBuilderFiles, hydrateAppBuilderFilesByPaths } from "../_lib/htmlStorage";
+import { shouldRefreshAfterAiEdits } from "../_lib/aiFileSelection";
 import crypto from "node:crypto";
 import { captureAuditEvent, captureCriticalEvent } from "@/lib/observability";
 
@@ -14,7 +15,7 @@ export const dynamic = "force-dynamic";
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 const AI_AGENT_INPUT_TOKEN_CAP = parsePositiveNumber(process.env.AI_AGENT_INPUT_TOKEN_CAP, 12000);
 const AI_AGENT_OUTPUT_TOKEN_CAP = parsePositiveNumber(process.env.AI_AGENT_OUTPUT_TOKEN_CAP, 4096);
-const AI_AGENT_CONTEXT_CHAR_CAP = parsePositiveNumber(process.env.AI_AGENT_CONTEXT_CHAR_CAP, 80_000);
+const AI_AGENT_CONTEXT_CHAR_CAP = parsePositiveNumber(process.env.AI_AGENT_CONTEXT_CHAR_CAP, 36_000);
 const GEMINI_INPUT_COST_PER_1M_TOKENS_USD = parsePositiveNumber(process.env.GEMINI_INPUT_COST_PER_1M_TOKENS_USD, 0);
 const GEMINI_OUTPUT_COST_PER_1M_TOKENS_USD = parsePositiveNumber(process.env.GEMINI_OUTPUT_COST_PER_1M_TOKENS_USD, 0);
 
@@ -668,26 +669,398 @@ function normalizeJsTsConfig(path: string, content: string): { ok: true; content
     return { ok: true, content: JSON.stringify(parsed, null, 2) + "\n" };
 }
 
-function buildFileContext(files: Record<string, { content: string; lastModified: number }>): string {
+function extractQuotedPhrases(text: string): string[] {
+    const phrases: string[] = [];
+    const re = /["“”']([^"“”']{2,160})["“”']/g;
+    let match: RegExpExecArray | null;
+    while ((match = re.exec(text || ""))) {
+        const value = String(match[1] || "").trim();
+        if (value) phrases.push(value.toLowerCase());
+    }
+    return Array.from(new Set(phrases));
+}
+
+function extractSearchTerms(message: string, conversation: string): { phrases: string[]; terms: string[] } {
+    const combined = `${message}\n${conversation}`;
+    const stopWords = new Set([
+        "the",
+        "and",
+        "for",
+        "with",
+        "this",
+        "that",
+        "from",
+        "please",
+        "change",
+        "update",
+        "make",
+        "add",
+        "edit",
+        "text",
+        "banner",
+        "top",
+        "section",
+    ]);
+
+    const terms = Array.from(
+        new Set(
+            combined
+                .toLowerCase()
+                .match(/[a-z0-9][a-z0-9_-]{2,}/g)
+                ?.filter((term) => !stopWords.has(term)) || [],
+        ),
+    );
+
+    return {
+        phrases: extractQuotedPhrases(combined),
+        terms,
+    };
+}
+
+function buildRelevantExcerpt(content: string, phrases: string[], terms: string[], maxSnippetChars = 12000): string {
+    const raw = String(content || "");
+    if (raw.length <= maxSnippetChars) return raw;
+
+    const lower = raw.toLowerCase();
+    const needles = [...phrases, ...terms].filter(Boolean);
+
+    for (const needle of needles) {
+        const idx = lower.indexOf(needle.toLowerCase());
+        if (idx >= 0) {
+            const radius = Math.floor(maxSnippetChars / 2);
+            const start = Math.max(0, idx - radius);
+            const end = Math.min(raw.length, idx + radius);
+            return [
+                raw.slice(start, idx > start ? idx : start),
+                raw.slice(idx, Math.min(end, idx + maxSnippetChars)),
+            ].join("");
+        }
+    }
+
+    const head = raw.slice(0, Math.floor(maxSnippetChars * 0.7));
+    const tail = raw.slice(Math.max(0, raw.length - Math.floor(maxSnippetChars * 0.3)));
+    return `${head}\n\n[...truncated... ]\n\n${tail}`;
+}
+
+function buildFileContext(
+    files: Record<string, { content: string; lastModified: number }>,
+    message: string,
+    conversation: string,
+    mode: "copy" | "targeted" | "broad",
+    priorityPaths: string[] = [],
+): string {
     // Soft limit to avoid runaway prompts
-    const MAX_TOTAL = AI_AGENT_CONTEXT_CHAR_CAP;
+    const MAX_TOTAL = mode === "copy" ? 14_000 : mode === "targeted" ? 24_000 : AI_AGENT_CONTEXT_CHAR_CAP;
+    const { phrases, terms } = extractSearchTerms(message, conversation);
     let total = 0;
     const parts: string[] = [];
 
-    for (const [path, file] of Object.entries(files)) {
+    const orderedPaths = Array.from(new Set([
+        ...priorityPaths.map((path) => String(path || "").trim()).filter(Boolean),
+        ...Object.keys(files),
+    ]));
+
+    for (const path of orderedPaths) {
+        const file = files[path];
         const content = typeof file?.content === "string" ? file.content : "";
         const header = `File: ${path}\n`;
         const remaining = MAX_TOTAL - total;
         if (remaining <= header.length) break;
 
         const chunkBudget = Math.max(0, remaining - header.length);
-        const chunk = content.slice(0, chunkBudget);
+        const chunk = buildRelevantExcerpt(content, phrases, terms, Math.min(chunkBudget, mode === "copy" ? 4_000 : mode === "targeted" ? 7_000 : 10_000));
         parts.push(header + chunk);
         total += header.length + chunk.length;
         if (total >= MAX_TOTAL) break;
     }
 
     return parts.join("\n\n");
+}
+
+function trimConversationForMode(conversation: string, mode: "copy" | "targeted" | "broad"): string {
+    const limit = mode === "copy" ? 1200 : mode === "targeted" ? 2200 : 4000;
+    const value = safeString(conversation, limit);
+    return value.length > limit ? value.slice(-limit) : value;
+}
+
+function buildPromptPreview(prompt: string, maxChars = 2400): string {
+    const value = safeString(prompt, maxChars * 2);
+    return value.length > maxChars ? `${value.slice(0, maxChars)}\n...[truncated]` : value;
+}
+
+function buildSelectedFilesPreview(files: Record<string, { content: string; lastModified: number }>, maxFiles = 4, maxCharsPerFile = 320): Array<{ path: string; chars: number; preview: string }> {
+    return Object.entries(files)
+        .slice(0, maxFiles)
+        .map(([path, file]) => {
+            const content = safeString(file?.content || "", maxCharsPerFile * 2);
+            return {
+                path,
+                chars: content.length,
+                preview: buildPromptPreview(content, maxCharsPerFile),
+            };
+        });
+}
+
+function buildSystemPrompt(params: {
+    fileSelectionNote: string;
+    currentFileNote: string;
+    fileContext: string;
+    dbContext: string;
+    dbPreferenceContext: string;
+    noDbFallbackContext: string;
+    recentConversation: string;
+    message: string;
+    buildContext: string;
+    mode: "copy" | "targeted" | "broad";
+}): string {
+    const {
+        fileSelectionNote,
+        currentFileNote,
+        fileContext,
+        dbContext,
+        dbPreferenceContext,
+        noDbFallbackContext,
+        recentConversation,
+        message,
+        buildContext,
+        mode,
+    } = params;
+
+    const compactMode = mode === "copy";
+    const tone = compactMode
+        ? "You are a precise Next.js app builder. Make the smallest safe change that satisfies the request."
+        : "You are an expert Next.js developer working inside an app builder. Be conversational and helpful!";
+
+    const safetySection = compactMode
+        ? [
+            "SECURITY + FEEDBACK:",
+            "- Never use fake auth or local-only user storage.",
+            "- Never store passwords client-side.",
+            "- Never use browser alert/confirm/prompt in generated app code.",
+            "- For user feedback, use inline UI, toast, snackbar, or a React modal.",
+            "- You already have the source files below; do not ask the user to open code or claim you can only see compiled output.",
+            "- Treat the attached current file as the primary editing anchor when it plausibly matches the request.",
+            "- Use the selected file contents and path clues to infer the best file to edit; do not ask the user to point at a file unless no safe match exists.",
+            "- Edit the selected app files directly.",
+        ].join("\n")
+        : [
+            "SECURITY + PERSISTENCE (TOP PRIORITY):",
+            "- NEVER implement \"fake\" auth or user storage using localStorage/sessionStorage/in-memory arrays/JSON files.",
+            "- NEVER store passwords client-side, never store plaintext passwords anywhere.",
+            "- NEVER use browser modal APIs (alert/confirm/prompt) for user feedback in generated app code.",
+            "- For warnings/errors/success states, use in-app UI patterns (inline banner, toast/snackbar, form helper text, or modal component rendered in React), not window-level dialogs.",
+            "- If the user requests authentication, user accounts, or any persistent data feature and a database is not connected, DO NOT implement workarounds. Instead:",
+            "    - ask the user to connect Supabase,",
+            "    - set setupDatabase: true,",
+            "    - return zero fileEdits.",
+            "- Exception: if the user explicitly asks to continue without a database and accepts a basic/non-persistent version, implement a safe basic fallback with setupDatabase: false.",
+            "- If Supabase is connected, use Supabase Auth for authentication and propose any needed schema via dbMigrations (e.g. profiles table + RLS).",
+        ].join("\n");
+
+    const envSafetySection = compactMode
+        ? ""
+        : [
+            "SUPABASE ENV SAFETY (DO NOT BREAK INITIAL RENDER):",
+            "- NEVER write '.env', '.env.local', or any '.env.*' file.",
+            "- NEVER call createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) at module scope.",
+            "- When you need a Supabase browser client, scaffold a helper that lazily creates the client only after checking env vars at runtime.",
+            "- If env vars are missing, return null and show a friendly UI message instead of throwing or failing the TypeScript build.",
+            "- Only use NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY for browser code.",
+        ].join("\n");
+
+    const outputSection = [
+        "CRITICAL OUTPUT FORMAT:",
+        "Return ONLY valid JSON (no markdown, no backticks) matching this TypeScript shape:",
+        "{",
+        '  "response": string,',
+        '  "refreshServer": boolean,',
+        '  "fileEdits": Array<{ "path": string, "content": string }>,',
+        '    "setupDatabase": boolean,',
+        '    "dbMigrations"?: Array<{ "sql": string, "message"?: string, "destructive"?: boolean }> ',
+        "}",
+        "",
+        "Rules:",
+        "- response should be short and user-friendly. Never include code, file paths, or technical details.",
+        "- Never put SQL in response; use dbMigrations instead.",
+        "- Only include file edits for the user's app files.",
+        "- Keep changes minimal and ensure npm run build passes.",
+        "- If you need no file changes, return an empty fileEdits array.",
+        "- If you can edit safely, you must return fileEdits. Do not answer by summarizing the request when the task is actionable.",
+    ].join("\n");
+
+    const promptParts = [
+        tone,
+        safetySection,
+        envSafetySection,
+        outputSection,
+        `Selected app files:\n${fileSelectionNote}`,
+        currentFileNote,
+        fileContext,
+        dbContext,
+        dbPreferenceContext,
+        noDbFallbackContext,
+        `Recent conversation:\n${recentConversation}`,
+        `User request:\n${message}`,
+        buildContext,
+    ].filter((part) => Boolean(String(part || "").trim()));
+
+    return promptParts.join("\n\n");
+}
+
+type AiFileSearchPlan = {
+    mode: "copy" | "targeted" | "broad";
+    selectedPaths: string[];
+    needsMoreContext: boolean;
+    questions: string[];
+    reason: string;
+    assistantMessage: string;
+};
+function buildFileCatalog(paths: string[], currentFile: string | null, maxPaths = 240): string {
+    const normalizedCurrent = safeString(currentFile || "", 500).trim();
+    const uniquePaths = Array.from(new Set(paths.map((path) => String(path || "").trim()).filter(Boolean)));
+    const currentFirst = normalizedCurrent ? [normalizedCurrent, ...uniquePaths.filter((path) => path !== normalizedCurrent)] : uniquePaths;
+    const limited = currentFirst.slice(0, maxPaths);
+
+    return limited
+        .map((path, index) => `${index + 1}. ${path}${path === normalizedCurrent ? " [current]" : ""}`)
+        .join("\n");
+}
+
+function collectPlannerPathHints(value: unknown, out: Set<string>, limit = 4000) {
+    if (!value || out.size >= limit) return;
+
+    if (typeof value === "string") {
+        const raw = value.trim();
+        if (!raw) return;
+        if (/^([a-z0-9_.-]+\/)+[a-z0-9_.-]+/i.test(raw) || /\.(tsx?|jsx?|css|html?|json|md|yaml|yml|js|ts|mjs|cjs|png|jpg|jpeg|gif|svg|webp|woff2?|otf)$/i.test(raw)) {
+            out.add(raw.replace(/^\/+/, ""));
+        }
+        return;
+    }
+
+    if (Array.isArray(value)) {
+        for (const item of value) collectPlannerPathHints(item, out, limit);
+        return;
+    }
+
+    if (typeof value === "object") {
+        for (const [key, nested] of Object.entries(value as Record<string, unknown>)) {
+            if (/(path|filePath|targetPath|htmlPath|entryPath|storagePath)/i.test(key) && typeof nested === "string") {
+                out.add(String(nested).trim().replace(/^\/+/, ""));
+            }
+            if (typeof key === "string" && /\.(tsx?|jsx?|css|html?|json|md|yaml|yml|js|ts|mjs|cjs)$/i.test(key)) {
+                out.add(key.trim().replace(/^\/+/, ""));
+            }
+            collectPlannerPathHints(nested, out, limit);
+        }
+    }
+}
+
+function parseJsonFromText<T>(raw: string, fallback: T): T {
+    const trimmed = String(raw || "").trim();
+    if (!trimmed) return fallback;
+    try {
+        return JSON.parse(trimmed) as T;
+    } catch {
+        const match = trimmed.match(/\{[\s\S]*\}/);
+        if (match) {
+            try {
+                return JSON.parse(match[0]) as T;
+            } catch {
+                return fallback;
+            }
+        }
+    }
+    return fallback;
+}
+
+function buildFileSearchPrompt(params: {
+    message: string;
+    currentFile: string | null;
+    recentConversation: string;
+    fileCatalog: string;
+}): string {
+    const { message, currentFile, recentConversation, fileCatalog } = params;
+    const currentPageLabel = currentFile ? "the currently open page" : "the current screen";
+
+    return [
+        "You are the file-search stage for an IDE-style code assistant.",
+        "Choose the smallest useful set of files before any edits are written.",
+        `The user cannot see file names. The current visible page should be treated as ${currentPageLabel}.`,
+        "Return only valid JSON with this shape:",
+        '{"mode":"copy|targeted|broad","selectedPaths":["path"],"needsMoreContext":boolean,"questions":["short question"],"reason":"short reason","assistantMessage":"short user-facing message"}',
+        "Rules:",
+        "- Prefer the current file when it plausibly matches the request.",
+        "- Prefer editable source files over generated HTML when both exist.",
+        "- For copy requests, choose 1 to 3 files.",
+        "- For targeted requests, choose 1 to 6 files.",
+        "- For broad requests, choose up to 10 files.",
+        "- If no edits have been applied yet, assistantMessage must not claim the change is already done or promise a file edit. It should either summarize what was searched or ask a clarifying question.",
+        "- If the request is too ambiguous, set needsMoreContext=true and ask at most 2 short questions that do not mention file paths.",
+        "- Keep selectedPaths minimal and relevant.",
+        `Recent conversation:\n${recentConversation}`,
+        `User request:\n${message}`,
+        `Available files:\n${fileCatalog}`,
+    ].join("\n\n");
+}
+
+function looksLikeCompletionClaim(text: string): boolean {
+    const value = String(text || "").toLowerCase();
+    if (!value.trim()) return false;
+    return /\b(i('| a)m|i have|i’ve|i've|i will|i’ll|i'll|added|updated|changed|fixed|made)\b/.test(value) && /\b(changes?|edit|file|background|hero|page|section)\b/.test(value);
+}
+
+async function planAiFiles(params: {
+    model: any;
+    message: string;
+    currentFile: string | null;
+    recentConversation: string;
+    filePaths: string[];
+    fileManifest?: unknown;
+    htmlEditIndex?: unknown;
+}): Promise<AiFileSearchPlan> {
+    const { model, message, currentFile, recentConversation, filePaths, fileManifest, htmlEditIndex } = params;
+    const manifestPaths = new Set<string>();
+    collectPlannerPathHints(fileManifest, manifestPaths);
+    collectPlannerPathHints(htmlEditIndex, manifestPaths);
+
+    const catalogPaths = Array.from(new Set([
+        ...filePaths,
+        ...Array.from(manifestPaths),
+    ].map((path) => String(path || "").trim()).filter(Boolean)));
+
+    const prompt = buildFileSearchPrompt({
+        message,
+        currentFile,
+        recentConversation,
+        fileCatalog: buildFileCatalog(catalogPaths, currentFile),
+    });
+
+    const result = await model.generateContent(prompt);
+    const raw = result.response?.text?.() || "";
+    const parsed = parseJsonFromText<Partial<AiFileSearchPlan>>(raw, {});
+
+    const selectedPaths = Array.isArray(parsed.selectedPaths)
+        ? parsed.selectedPaths
+              .map((path) => safeString(path, 500).trim())
+              .filter(Boolean)
+        : [];
+    const questions = Array.isArray(parsed.questions)
+        ? parsed.questions
+              .map((question) => safeString(question, 240).trim())
+              .filter(Boolean)
+              .slice(0, 2)
+        : [];
+    const mode = parsed.mode === "copy" || parsed.mode === "broad" || parsed.mode === "targeted" ? parsed.mode : "targeted";
+
+    return {
+        mode,
+        selectedPaths: Array.from(new Set(selectedPaths)).slice(0, mode === "copy" ? 3 : mode === "targeted" ? 6 : 10),
+        needsMoreContext: Boolean(parsed.needsMoreContext),
+        questions,
+        reason: safeString(parsed.reason || "", 500),
+        assistantMessage: safeString(parsed.assistantMessage || "", 1200),
+    };
 }
 
 async function runBuildCheck(origin: string, appId: string, files: Record<string, { content: string; lastModified: number }>) {
@@ -734,7 +1107,11 @@ export async function POST(req: NextRequest) {
         let aiSlackConversationTail = "";
         let aiSlackFileCount = 0;
         let aiSlackRequestDigest = "";
+        let aiSlackSelectedFilesPreview: Array<{ path: string; chars: number; preview: string }> = [];
+        let aiSlackFileContextPreview = "";
+        let aiSlackFinalPromptPreview = "";
         let aiRequestPromptTokenEstimate = 0;
+        const requestId = crypto.randomUUID().slice(0, 12);
         let aiRequestUsage = {
             inputTokens: 0,
             outputTokens: 0,
@@ -746,6 +1123,7 @@ export async function POST(req: NextRequest) {
             const body = await req.json();
             const message = safeString(body?.message, 10_000);
             const appId = safeString(body?.appId, 200);
+            const currentFile = safeString(body?.currentFile, 500) || null;
             observedAppId = appId;
             const persistChat = body?.persistChat === true;
             const conversationId = safeString(body?.conversationId, 80);
@@ -826,30 +1204,110 @@ export async function POST(req: NextRequest) {
                 return NextResponse.json({ error: "App not found" }, { status: 404 });
             }
 
+            const recentConversation = buildRecentConversationContext(conversationHistory);
             const appData = snap.data() as any;
-            const files = await hydrateAppBuilderFiles({
-                db,
-                uid,
-                appId,
-                files: (appData?.files || {}) as Record<string, { content: string; lastModified: number }>,
+            const allFiles = (appData?.files || {}) as Record<string, { content: string; lastModified: number }>;
+            const filePaths = Object.keys(allFiles);
+            const plannerModel = genAI.getGenerativeModel({
+                model: process.env.GEMINI_MODEL || "gemini-3-pro-preview",
+                safetySettings: [
+                    { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
+                    { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
+                    { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
+                    { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
+                ],
+                generationConfig: {
+                    maxOutputTokens: 512,
+                    temperature: 0.1,
+                },
+            });
+            const plannedSelection = await planAiFiles({
+                model: plannerModel,
+                message,
+                currentFile,
+                recentConversation,
+                filePaths,
                 fileManifest: appData?.fileManifest || null,
-                fileStorageCollection: typeof appData?.fileStorageCollection === "string" ? appData.fileStorageCollection : null,
-                fileStorageMode: typeof appData?.fileStorageMode === "string" ? appData.fileStorageMode : null,
-                containerCode: typeof appData?.containerCode === "string" ? appData.containerCode : null,
-                htmlStoragePath: appData?.htmlStoragePath || null,
                 htmlEditIndex: appData?.htmlEditIndex,
             });
+            const selectedPaths = Array.from(new Set([
+                ...(currentFile ? [currentFile] : []),
+                ...plannedSelection.selectedPaths,
+            ].map((path) => String(path || "").trim()).filter(Boolean)));
+            const selectedFileContext = {
+                mode: plannedSelection.mode,
+                selectedPaths,
+                summary: plannedSelection.reason
+                    ? `Planner selected ${selectedPaths.length} files (${plannedSelection.mode}): ${selectedPaths.join(", ")} — ${plannedSelection.reason}`
+                    : `Planner selected ${selectedPaths.length} files (${plannedSelection.mode}): ${selectedPaths.join(", ")}`,
+                useFullContext: plannedSelection.mode === "broad" || selectedPaths.length === 0,
+            };
+            const effectiveMaxIterations = selectedFileContext.mode === "copy" ? 1 : maxIterations;
+
+            if (plannedSelection.needsMoreContext && selectedPaths.length === 0) {
+                const response = plannedSelection.assistantMessage || plannedSelection.questions.join("\n");
+
+                if (persistChat) {
+                    try {
+                        await persistLegacyAiChat({
+                            db,
+                            uid,
+                            appId,
+                            userMessage: message,
+                            assistantMessage: response,
+                            conversationId: conversationId || undefined,
+                        });
+                    } catch (err) {
+                        console.warn("[ai-agent] chat persistence failed", err);
+                    }
+                }
+
+                return NextResponse.json(
+                    {
+                        response,
+                        clarifyingQuestions: plannedSelection.questions,
+                        fileEdits: [],
+                        refreshServer: false,
+                        setupDatabase: false,
+                        dbMigrations: [],
+                        requestId,
+                        creditCost: 1,
+                    },
+                    { status: 200 },
+                );
+            }
+
+            const files = selectedFileContext.useFullContext
+                ? await hydrateAppBuilderFiles({
+                    db,
+                    uid,
+                    appId,
+                    files: allFiles,
+                    fileManifest: appData?.fileManifest || null,
+                    fileStorageCollection: typeof appData?.fileStorageCollection === "string" ? appData.fileStorageCollection : null,
+                    fileStorageMode: typeof appData?.fileStorageMode === "string" ? appData.fileStorageMode : null,
+                    containerCode: typeof appData?.containerCode === "string" ? appData.containerCode : null,
+                    htmlStoragePath: appData?.htmlStoragePath || null,
+                    htmlEditIndex: appData?.htmlEditIndex,
+                })
+                : await hydrateAppBuilderFilesByPaths({
+                    db,
+                    uid,
+                    appId,
+                    files: allFiles,
+                    fileManifest: appData?.fileManifest || null,
+                    fileStorageCollection: typeof appData?.fileStorageCollection === "string" ? appData.fileStorageCollection : null,
+                    fileStorageMode: typeof appData?.fileStorageMode === "string" ? appData.fileStorageMode : null,
+                    htmlStoragePath: appData?.htmlStoragePath || null,
+                    htmlEditIndex: appData?.htmlEditIndex,
+                    paths: selectedPaths,
+                });
             aiSlackFileCount = Object.keys(files).length;
 
             const origin = new URL(req.url).origin;
-            const recentConversation = buildRecentConversationContext(conversationHistory);
             aiSlackPrompt = message;
-            aiSlackConversationTail = recentConversation;
-            aiSlackRequestDigest = crypto
-                .createHash("sha256")
-                .update([appId, message, recentConversation].join("\n"))
-                .digest("hex")
-                .slice(0, 12);
+            aiSlackConversationTail = trimConversationForMode(recentConversation, selectedFileContext.mode);
+            aiSlackRequestDigest = requestId;
 
             const model = genAI.getGenerativeModel({
                 model: process.env.GEMINI_MODEL || "gemini-3-pro-preview",
@@ -872,11 +1330,15 @@ export async function POST(req: NextRequest) {
             let setupDatabase = false;
             let lastRestorePointId: string | null = null;
             let dbMigrations: Array<{ sql: string; message?: string; destructive?: boolean }> = [];
+            let aiFollowupQuestions: string[] = [];
 
-            for (let attempt = 1; attempt <= maxIterations; attempt++) {
-                const fileContext = buildFileContext(files);
+            for (let attempt = 1; attempt <= effectiveMaxIterations; attempt++) {
+                const promptMode = selectedFileContext.mode;
+                const fileContext = buildFileContext(files, message, recentConversation, promptMode, selectedPaths);
+                const fileSelectionNote = selectedFileContext.summary;
+                const currentFileNote = currentFile ? `Current open file: ${currentFile}` : "Current open file: (none)";
                 const buildContext = !lastBuild.ok
-                    ? `\n\nLast build failed. Here are the build logs (most recent):\n${lastBuild.logs}`
+                    ? `\n\nLast build failed. Here are the build logs (most recent):\n${lastBuild.logs}\n\nThe previous attempt returned zero fileEdits. Return actual fileEdits for one of the selected files or ask a clarifying question. Do not summarize the request.`
                     : "";
 
                 const dbContext = hasAnyDbSignal
@@ -897,62 +1359,51 @@ export async function POST(req: NextRequest) {
                     ? "\n\nNo-database fallback mode:\n- The user explicitly chose to continue without Supabase/database setup.\n- Implement a basic version that avoids persistence requirements.\n- Prefer UI-only or in-memory behavior for demo flows.\n- Do not store passwords, auth credentials, or user accounts in localStorage/sessionStorage/in-memory arrays.\n- Do not ask to connect Supabase again in this response.\n- Set setupDatabase=false."
                     : "";
 
-                                const systemPrompt = `You are an expert Next.js developer working inside an app builder. Be conversational and helpful!
-
-SECURITY + PERSISTENCE (TOP PRIORITY):
-- NEVER implement "fake" auth or user storage using localStorage/sessionStorage/in-memory arrays/JSON files.
-- NEVER store passwords client-side, never store plaintext passwords anywhere.
-- NEVER use browser modal APIs (alert/confirm/prompt) for user feedback in generated app code.
-- For warnings/errors/success states, use in-app UI patterns (inline banner, toast/snackbar, form helper text, or modal component rendered in React), not window-level dialogs.
-- If the user requests authentication, user accounts, or any persistent data feature and a database is not connected, DO NOT implement workarounds. Instead:
-    - ask the user to connect Supabase,
-    - set setupDatabase: true,
-    - return zero fileEdits.
-- Exception: if the user explicitly asks to continue without a database and accepts a basic/non-persistent version, implement a safe basic fallback with setupDatabase: false.
-- If Supabase is connected, use Supabase Auth for authentication and propose any needed schema via dbMigrations (e.g. profiles table + RLS).
-
-SUPABASE ENV SAFETY (DO NOT BREAK INITIAL RENDER):
-- NEVER write '.env', '.env.local', or any '.env.*' file.
-- NEVER call createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) at module scope.
-- When you need a Supabase browser client, scaffold a helper (e.g. lib/supabaseClient.ts) that lazily creates the client ONLY after checking env vars at runtime.
-- If env vars are missing, return null and show a friendly UI message instead of throwing or failing the TypeScript build.
-- Only use NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY for browser code.
-
-CRITICAL OUTPUT FORMAT:
-Return ONLY valid JSON (no markdown, no backticks) matching this TypeScript shape:
-{
-  "response": string,
-  "refreshServer": boolean,
-  "fileEdits": Array<{ "path": string, "content": string }>,
-    "setupDatabase": boolean,
-    "dbMigrations"?: Array<{ "sql": string, "message"?: string, "destructive"?: boolean }>
-}
-
-Rules:
-- response should be a simple, user-friendly summary of what you did (e.g., "Added a login button to the header" or "Fixed the styling on the contact form"). NEVER include code, file paths, or technical details in the response field.
-- If you need to change the database schema, NEVER include SQL in response. Instead, put SQL statements into dbMigrations and describe the intent in response.
-- Only include file edits for the user's app files.
-- Each fileEdits entry MUST include the full, final content of the file.
-- Keep changes minimal and ensure npm run build passes.
-- If you need no file changes, return an empty fileEdits array.
-- Be conversational! If the user might benefit from database connectivity, strongly recommend Supabase with MCP integration for AI-powered database operations.
-- If no databases are connected and the user is building something that needs data persistence (like auth, user management, blog comments, e-commerce, etc.), you MUST suggest connecting Supabase specifically and set setupDatabase: true.
-- If the user explicitly asks to continue without Supabase/database, proceed with a reduced non-persistent implementation and set setupDatabase: false.
-- With MCP integration, you have access to: database schema exploration, query generation, migration assistance, authentication setup, RLS policy creation, edge function development, and real-time feature implementation.
-- Set setupDatabase: true if you want to offer Supabase MCP connection setup to the user.
-
-Current app files:
-${fileContext}${dbContext}${dbPreferenceContext}${noDbFallbackContext}
-
-Recent conversation:
-${recentConversation}
-
-User request:
-${message}
-${buildContext}`;
+                                const systemPrompt = buildSystemPrompt({
+                                    fileSelectionNote,
+                                    currentFileNote,
+                                    fileContext,
+                                    dbContext,
+                                    dbPreferenceContext,
+                                    noDbFallbackContext,
+                                    recentConversation: trimConversationForMode(recentConversation, promptMode),
+                                    message,
+                                    buildContext,
+                                    mode: promptMode,
+                                });
 
                 const preflightPromptTokens = estimateTokens(systemPrompt);
                 aiRequestPromptTokenEstimate = preflightPromptTokens;
+                aiSlackSelectedFilesPreview = buildSelectedFilesPreview(files);
+                aiSlackFileContextPreview = buildPromptPreview(fileContext);
+                aiSlackFinalPromptPreview = buildPromptPreview(systemPrompt);
+
+                await captureAuditEvent({
+                    source: "internal",
+                    severity: "info",
+                    route: "/api/ai-agent",
+                    method: "POST",
+                    action: aiSlackRequestDigest ? `ai_agent_prompt_built:${aiSlackRequestDigest}` : "ai_agent_prompt_built",
+                    userId: uid,
+                    service: "ai-agent",
+                    tags: ["ai-agent", "prompt-debug", "selection-preview"],
+                    message: `AI agent prompt built with ${selectedFileContext.selectedPaths.length} selected files in ${promptMode} mode`,
+                    extra: {
+                        appId: observedAppId || null,
+                        requestDigest: aiSlackRequestDigest || null,
+                        selectionMode: selectedFileContext.mode,
+                        selectionSummary: selectedFileContext.summary,
+                        selectedPaths: selectedFileContext.selectedPaths,
+                        selectedFileCount: selectedFileContext.selectedPaths.length,
+                        selectedFilesPreview: aiSlackSelectedFilesPreview,
+                        fileContextPreview: aiSlackFileContextPreview,
+                        finalPromptPreview: aiSlackFinalPromptPreview,
+                        promptTokens: preflightPromptTokens,
+                        inputTokenCap: AI_AGENT_INPUT_TOKEN_CAP,
+                        outputTokenCap: AI_AGENT_OUTPUT_TOKEN_CAP,
+                    },
+                });
+
                 const tooLarge = isPromptTooLarge(systemPrompt);
                 if (tooLarge.blocked) {
                     const response = `That request is too large for this AI route right now. Please shorten the prompt or reduce the amount of context and try again.`;
@@ -972,10 +1423,18 @@ ${buildContext}`;
                         extra: {
                             appId: observedAppId || null,
                             requestDigest: aiSlackRequestDigest || null,
+                            userFacingResponse: response,
                             estimatedInputTokens: tooLarge.estimatedTokens,
                             inputTokenCap: AI_AGENT_INPUT_TOKEN_CAP,
+                            outputTokenCap: AI_AGENT_OUTPUT_TOKEN_CAP,
                             promptTokens: preflightPromptTokens,
                             messageLength: message.length,
+                            selectionMode: selectedFileContext.mode,
+                            selectedPaths: selectedFileContext.selectedPaths,
+                            selectedFileCount: selectedFileContext.selectedPaths.length,
+                            selectedFilesPreview: aiSlackSelectedFilesPreview,
+                            fileContextPreview: aiSlackFileContextPreview,
+                            finalPromptPreview: aiSlackFinalPromptPreview,
                         },
                     });
 
@@ -1007,8 +1466,17 @@ ${buildContext}`;
                         extra: {
                             appId: observedAppId || null,
                             requestDigest: aiSlackRequestDigest || null,
+                            userFacingResponse: response,
                             reason: unsafeRequest.reason,
                             code: unsafeRequest.code,
+                            inputTokenCap: AI_AGENT_INPUT_TOKEN_CAP,
+                            outputTokenCap: AI_AGENT_OUTPUT_TOKEN_CAP,
+                            selectionMode: selectedFileContext.mode,
+                            selectedPaths: selectedFileContext.selectedPaths,
+                            selectedFileCount: selectedFileContext.selectedPaths.length,
+                            selectedFilesPreview: aiSlackSelectedFilesPreview,
+                            fileContextPreview: aiSlackFileContextPreview,
+                            finalPromptPreview: aiSlackFinalPromptPreview,
                         },
                     });
 
@@ -1059,11 +1527,11 @@ ${buildContext}`;
                             parsed = JSON.parse(jsonMatch[0]);
                         } catch {
                             // Still failed, use fallback
-                            parsed = { response: "I've made the requested changes to your app.", refreshServer: false, fileEdits: [] };
+                            parsed = { response: "", refreshServer: false, fileEdits: [] };
                         }
                     } else {
                         // No JSON found, use fallback
-                        parsed = { response: "I've made the requested changes to your app.", refreshServer: false, fileEdits: [] };
+                        parsed = { response: "", refreshServer: false, fileEdits: [] };
                     }
                 }
 
@@ -1098,6 +1566,9 @@ ${buildContext}`;
                 }
 
                 let response = safeString(parsed.response || "I've made the requested changes to your app.", 20_000);
+                if (!response.trim()) {
+                    response = "";
+                }
 
                 if (looksLikeProviderLeak(response)) {
                     throw new Error(response);
@@ -1105,10 +1576,9 @@ ${buildContext}`;
                 
                 // Ensure response doesn't contain code
                 if (response.includes('content":') || response.includes('path":') || response.length > 500) {
-                    response = "I've updated your app with the requested changes.";
+                    response = "";
                 }
                 
-                assistantSummary = response;
                 setupDatabase = Boolean(parsed.setupDatabase);
                 refreshServer = Boolean(parsed.refreshServer);
 
@@ -1139,10 +1609,18 @@ ${buildContext}`;
                     appliedEdits.push({ path: canonicalPath, content: normalized.content });
                 }
 
-                // Automatically refresh server if there are file edits
-                if (appliedEdits.length > 0) {
-                    refreshServer = true;
-                }
+                const appliedAnyChanges = appliedEdits.length > 0 || dbMigrations.length > 0 || setupDatabase;
+                aiFollowupQuestions = appliedAnyChanges ? [] : plannedSelection.questions;
+                assistantSummary = appliedAnyChanges
+                    ? response
+                    : safeString(
+                        looksLikeCompletionClaim(plannedSelection.assistantMessage)
+                            ? (plannedSelection.questions.length > 0 ? plannedSelection.questions.join("\n") : plannedSelection.reason)
+                            : (plannedSelection.assistantMessage || plannedSelection.questions.join("\n") || plannedSelection.reason),
+                        1200,
+                    );
+
+                refreshServer = refreshServer || shouldRefreshAfterAiEdits(appliedEdits.map((edit) => edit.path));
 
                 if (appliedEdits.length > 0) {
                     // Create a restore point capturing the *previous* content for touched files.
@@ -1222,7 +1700,17 @@ ${buildContext}`;
                     }
                 }
 
-                // Always build-check after an edit. If no edits, don't waste cycles.
+                // Retry once when the model returns zero edits for an actionable request.
+                if (appliedEdits.length === 0 && !plannedSelection.needsMoreContext && selectedPaths.length > 0 && attempt < effectiveMaxIterations) {
+                    lastBuild = {
+                        ok: false,
+                        exitCode: 1,
+                        logs: "Previous attempt returned zero fileEdits. Return actual fileEdits for the selected files and do not summarize the request.",
+                    };
+                    continue;
+                }
+
+                // Always build-check after an edit. If no edits remain after retries, stop.
                 if (appliedEdits.length > 0) {
                     lastBuild = await runBuildCheck(origin, appId, files);
                     if (lastBuild.ok) break;
@@ -1231,6 +1719,18 @@ ${buildContext}`;
                 } else {
                     break;
                 }
+            }
+
+            if (aggregatedEdits.length === 0 && dbMigrations.length === 0 && !setupDatabase && !plannedSelection.needsMoreContext) {
+                return NextResponse.json(
+                    {
+                        error: "No changes were applied. The agent could not produce file edits for this request.",
+                        code: "AI_NO_CHANGES_APPLIED",
+                        build: lastBuild,
+                        requestId,
+                    },
+                    { status: 422 },
+                );
             }
 
             if (persistChat) {
@@ -1266,21 +1766,33 @@ ${buildContext}`;
                     outputTokens: aiRequestUsage.outputTokens,
                     totalTokens: aiRequestUsage.totalTokens,
                     estimatedCostUsd: aiRequestUsage.estimatedCostUsd,
+                    creditCost: Math.max(1, Math.ceil((aiRequestUsage.inputTokens + aiRequestUsage.outputTokens) / 2000)),
                     attempts: aiRequestUsage.attempts,
-                    tokenCap: AI_AGENT_INPUT_TOKEN_CAP,
+                    inputTokenCap: AI_AGENT_INPUT_TOKEN_CAP,
                     outputTokenCap: AI_AGENT_OUTPUT_TOKEN_CAP,
+                    selectionMode: selectedFileContext.mode,
+                    selectedPaths: selectedFileContext.selectedPaths,
+                    selectedFileCount: selectedFileContext.selectedPaths.length,
+                    selectionSummary: selectedFileContext.summary,
+                    selectedFilesPreview: aiSlackSelectedFilesPreview,
+                    fileContextPreview: aiSlackFileContextPreview,
+                    finalPromptPreview: aiSlackFinalPromptPreview,
+                    estimatedInputTokens: aiRequestPromptTokenEstimate,
                     pricingConfigured: Boolean(GEMINI_INPUT_COST_PER_1M_TOKENS_USD || GEMINI_OUTPUT_COST_PER_1M_TOKENS_USD),
                 },
             });
 
             return NextResponse.json({
                 response: assistantSummary,
+                clarifyingQuestions: aiFollowupQuestions,
                 fileEdits: aggregatedEdits,
                 refreshServer,
                 setupDatabase,
                 dbMigrations,
                 build: lastBuild,
                 restorePointId: lastRestorePointId,
+                requestId,
+                creditCost: Math.max(1, Math.ceil((aiRequestUsage.inputTokens + aiRequestUsage.outputTokens) / 2000)),
             });
         } catch (error) {
             const classified = classifyAiProviderError(error);
@@ -1294,12 +1806,11 @@ ${buildContext}`;
                 action: aiSlackRequestDigest ? `ai_agent_generate_failed:${aiSlackRequestDigest}` : "ai_agent_generate_failed",
                 userId: uid,
                 message: `AI agent provider failure: ${classified.providerMessage}`,
-                errorName: classified.providerErrorName,
-                service: "ai-agent",
                 tags: ["ai-agent", "gemini", "provider-error"],
                 extra: {
                     appId: observedAppId || null,
                     requestDigest: aiSlackRequestDigest || null,
+                    clientResponse: classified.userMessage,
                     prompt: aiSlackPrompt || null,
                     conversationTail: aiSlackConversationTail ? aiSlackConversationTail.slice(-4000) : null,
                     fileCount: aiSlackFileCount,
@@ -1307,6 +1818,8 @@ ${buildContext}`;
                     outputTokens: aiRequestUsage.outputTokens || 0,
                     totalTokens: aiRequestUsage.totalTokens || 0,
                     estimatedCostUsd: aiRequestUsage.estimatedCostUsd,
+                    inputTokenCap: AI_AGENT_INPUT_TOKEN_CAP,
+                    outputTokenCap: AI_AGENT_OUTPUT_TOKEN_CAP,
                     model: process.env.GEMINI_MODEL || "gemini-3-pro-preview",
                     providerMessage: classified.providerMessage,
                     code: classified.code,

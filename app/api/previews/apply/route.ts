@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireSessionAndMaybeCsrf } from "../../_lib/route-guard";
 import { assertAppBuilderScope } from "../../_lib/appBuilderScope";
 import { callBackend } from "@/src/lib/callBackend";
+import { captureCriticalEvent } from "@/lib/observability";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -100,6 +101,7 @@ export async function POST(req: NextRequest) {
     return requireSessionAndMaybeCsrf(
         req,
         async ({ uid, req: authedReq }) => {
+            const requestId = String(authedReq.headers.get("x-request-id") || "").trim() || undefined;
             const body = await authedReq.json().catch(() => ({} as any));
             const appId = typeof body?.appId === "string" ? body.appId.trim() : "";
             const code = typeof body?.code === "string" ? body.code.trim() : "";
@@ -205,6 +207,7 @@ export async function POST(req: NextRequest) {
                     path: `/preview/${previewCode}/restart`,
                     method: "POST",
                     timeoutMs: 20_000,
+                    acceptOnTimeout: true,
                     userCtx: { uid },
                     body: { appId },
                 });
@@ -233,6 +236,30 @@ export async function POST(req: NextRequest) {
                 }
                 return { ok: false as const };
             }
+
+            async function logWriteFailure(extra: Record<string, unknown>) {
+                void captureCriticalEvent({
+                    source: "internal",
+                    severity: "error",
+                    statusCode: typeof extra.statusCode === "number" ? extra.statusCode : 500,
+                    route: "/api/previews/apply",
+                    method: "POST",
+                    action: `preview_apply_failed:${appId}`,
+                    userId: uid,
+                    message: String(extra.message || "Preview apply failed to confirm machine write"),
+                    service: "previews",
+                    tags: ["preview", "apply", "write-failure"],
+                    extra: {
+                        appId,
+                        code: code || null,
+                        requestId: requestId || null,
+                        fileCount: sanitizedFiles.length,
+                        filePaths: sanitizedFiles.map((file) => file.path),
+                        ...extra,
+                    },
+                });
+            }
+
             try {
                 const bodyWithCode = { appId, ...(code ? { code } : {}), files: sanitizedFiles };
 
@@ -265,6 +292,14 @@ export async function POST(req: NextRequest) {
                 if (result.status === 404) {
                     const hubCode = String((result.json as any)?.code || "").toUpperCase();
                     if (hubCode === "NO_ACTIVE_PREVIEW") {
+                        await logWriteFailure({
+                            statusCode: 404,
+                            message: "Preview apply could not find an active preview to write to.",
+                            resultStatus: result.status,
+                            resultCode: hubCode,
+                            firstAttemptStatus,
+                            didRetryWithoutCode,
+                        });
                         return NextResponse.json(
                             {
                                 ...(result.json as any),
@@ -293,7 +328,7 @@ export async function POST(req: NextRequest) {
                         }
                     } else if (hubCode === "PROXY_NOT_READY") {
                         // Restart the preview once, wait for inspect to say proxy is ready, then retry apply once.
-                        await hubRestart(previewCode);
+                        const restartResult = await hubRestart(previewCode);
                         // Poll inspect for proxy readiness (up to ~20s)
                         const startedAt = Date.now();
                         while (Date.now() - startedAt < 20_000) {
@@ -304,6 +339,17 @@ export async function POST(req: NextRequest) {
                             await sleep(1500);
                         }
                         result = await hubApply(previewCode);
+                        if (result.status >= 400) {
+                            await logWriteFailure({
+                                statusCode: result.status,
+                                message: "Preview apply failed after restarting proxy readiness.",
+                                resultStatus: result.status,
+                                resultCode: hubCode,
+                                previewCode,
+                                restartStatus: restartResult.status,
+                                restartQueued: restartResult.status === 202 && Boolean((restartResult.json as any)?.queued),
+                            });
+                        }
                     }
                 }
             } catch (err: any) {
@@ -320,6 +366,11 @@ export async function POST(req: NextRequest) {
                         { status: 500 },
                     );
                 }
+                await logWriteFailure({
+                    statusCode: 502,
+                    message: "Failed to reach preview service during apply.",
+                    error: msg,
+                });
                 return NextResponse.json(
                     {
                         ok: false,
@@ -331,6 +382,12 @@ export async function POST(req: NextRequest) {
             }
 
             if (result.status === 401 || result.status === 403) {
+                await logWriteFailure({
+                    statusCode: result.status,
+                    message: "Preview service authorization failed during apply.",
+                    resultStatus: result.status,
+                    resultBody: result.json,
+                });
                 return NextResponse.json(
                     {
                         ok: false,
@@ -369,8 +426,35 @@ export async function POST(req: NextRequest) {
                     const previewCode = await resolveActivePreviewCode();
                     if (previewCode) {
                         try {
-                            await hubRestart(previewCode);
-                            await pollReady(previewCode, 20_000);
+                            const restartResult = await hubRestart(previewCode);
+                            const restartTimedOut = restartResult.status === 202 && Boolean((restartResult.json as any)?.queued);
+                            const readyWindowMs = restartTimedOut ? 6_000 : 20_000;
+                            const ready = await pollReady(previewCode, readyWindowMs);
+                            if (!ready.ok) {
+                                await logWriteFailure({
+                                    statusCode: 202,
+                                    message: "Files were applied, but the preview restart could not be confirmed ready.",
+                                    resultStatus: result.status,
+                                    previewCode,
+                                    restartStatus: restartResult.status,
+                                    restartQueued: restartTimedOut,
+                                    restartResultBody: restartResult.json,
+                                });
+                                return NextResponse.json(
+                                    {
+                                        ...(base || {}),
+                                        ok: true,
+                                        requiresRestart: true,
+                                        restartPending: true,
+                                        restartQueued: restartTimedOut,
+                                        restartStatus: restartTimedOut ? "queued" : "pending",
+                                        restartMessage:
+                                            "Your files were saved, but the preview restart may still be in progress. If the update does not appear, click Rebuild app.",
+                                        autoRestarted: false,
+                                    },
+                                    { status: 202 },
+                                );
+                            }
                             if (base && typeof base === "object" && !Array.isArray(base)) {
                                 return NextResponse.json(
                                     { ...(base as any), requiresRestart: true, autoRestarted: true },
@@ -378,10 +462,49 @@ export async function POST(req: NextRequest) {
                                 );
                             }
                         } catch {
-                            // Best effort only; fall through to returning hub response.
+                            await logWriteFailure({
+                                statusCode: 202,
+                                message: "Files were applied, but preview restart confirmation failed.",
+                                resultStatus: result.status,
+                                previewCode,
+                            });
+                            return NextResponse.json(
+                                {
+                                    ...(base || {}),
+                                    ok: true,
+                                    requiresRestart: true,
+                                    restartPending: true,
+                                    restartStatus: "failed",
+                                    restartMessage:
+                                        "Your files were saved, but the preview restart could not be confirmed. Click Rebuild app if the update does not appear.",
+                                    autoRestarted: false,
+                                },
+                                { status: 202 },
+                            );
                         }
                     }
                 }
+            }
+
+            if (result.status === 504 && String((result.json as any)?.error || "").toLowerCase() === "backend timeout") {
+                await logWriteFailure({
+                    statusCode: 504,
+                    message: "Preview apply timed out while waiting for restart to settle.",
+                    resultStatus: result.status,
+                    resultBody: result.json,
+                });
+                return NextResponse.json(
+                    {
+                        ...(result.json as any),
+                        ok: true,
+                        queued: true,
+                        restartPending: true,
+                        restartStatus: "timeout",
+                        restartMessage:
+                            "The preview update timed out while waiting for the restart to settle. Your files may already be saved. If the change does not show up, click Rebuild app.",
+                    },
+                    { status: 202 },
+                );
             }
 
             return NextResponse.json(result.json, { status: result.status });

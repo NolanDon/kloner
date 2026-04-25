@@ -11,7 +11,7 @@ export type UserTier = "free" | "pro" | "agency" | "enterprise" | "unknown";
  *  - enterprise: 0 = unlimited / contract, handled outside this file
  *
  * `editMonthly` is the max number of *credits* for AI edits.
- * Each AI edit consumes 5 credits, so "400" here = 80 edits/month.
+ * AI edit charge is usage-based and scaled from request size, so this cap limits the monthly pool of credits available for AI requests.
  */
 export const CREDIT_LIMITS: Record<
     UserTier,
@@ -20,29 +20,29 @@ export const CREDIT_LIMITS: Record<
     free: {
         screenshotMonthly: 100,
         previewMonthly: 60,
-        editMonthly: 30, // 3 edits @ 5 credits each
+        editMonthly: 30, // small starter pool for usage-based AI edits
     },
     pro: {
         screenshotMonthly: 100,
         previewMonthly: 450,
-        editMonthly: 300, // @ 5 credits each
+        editMonthly: 300, // standard pool for usage-based AI edits
     },
     agency: {
         screenshotMonthly: 400,
         previewMonthly: 1500,
-        editMonthly: 1200, // 300 edits @ 5 credits each
+        editMonthly: 1200, // larger pool for usage-based AI edits
     },
     // 0 = unlimited / contract; enforce via Stripe + custom terms.
     enterprise: {
         screenshotMonthly: 0,
         previewMonthly: 0,
-        editMonthly: 0, // unlimited
+        editMonthly: 0, // unlimited / contract; enforce via Stripe + custom terms.
     },
     // Unknown should NOT be unlimited. Treat as free-tier safety net.
     unknown: {
         screenshotMonthly: 5,
         previewMonthly: 10,
-        editMonthly: 10, // 2 edits @ 5 credits each
+        editMonthly: 10, // small safety-net pool for usage-based AI edits
     },
 };
 

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireSessionAndMaybeCsrf } from "../../_lib/route-guard";
 import { assertAppBuilderScope } from "../../_lib/appBuilderScope";
 import { callBackend } from "@/src/lib/callBackend";
+import { captureCriticalEvent } from "@/lib/observability";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -30,6 +31,29 @@ export async function POST(req: NextRequest) {
 
             console.info("[previews/restart]", { appId, code: "(provided)", uid });
 
+            const requestId = String(authedReq.headers.get("x-request-id") || "").trim() || undefined;
+
+            const logRestartFailure = async (extra: Record<string, unknown>) => {
+                void captureCriticalEvent({
+                    source: "internal",
+                    severity: "error",
+                    statusCode: typeof extra.statusCode === "number" ? extra.statusCode : 500,
+                    route: "/api/previews/restart",
+                    method: "POST",
+                    action: `preview_restart_failed:${appId}`,
+                    userId: uid,
+                    message: String(extra.message || "Preview restart failed to confirm"),
+                    service: "previews",
+                    tags: ["preview", "restart", "write-failure"],
+                    extra: {
+                        appId,
+                        code,
+                        requestId,
+                        ...extra,
+                    },
+                });
+            };
+
             let result: Awaited<ReturnType<typeof callBackend>>;
             try {
                 result = await callBackend(authedReq, {
@@ -42,6 +66,11 @@ export async function POST(req: NextRequest) {
             } catch (err: any) {
                 const msg = String(err?.message || "Backend call failed");
                 console.error("[previews/restart] callBackend threw", { msg });
+                await logRestartFailure({
+                    statusCode: 502,
+                    message: "Failed to reach preview service during restart.",
+                    error: msg,
+                });
                 if (msg.includes("INTERNAL_API_KEY not set")) {
                     return NextResponse.json(
                         {
@@ -60,6 +89,12 @@ export async function POST(req: NextRequest) {
             }
 
             if (result.status === 401 || result.status === 403) {
+                await logRestartFailure({
+                    statusCode: result.status,
+                    message: "Preview restart authorization failed.",
+                    resultStatus: result.status,
+                    resultBody: result.json,
+                });
                 return NextResponse.json(
                     {
                         ok: false,
@@ -81,6 +116,16 @@ export async function POST(req: NextRequest) {
                     return NextResponse.json({ ...(base as any), __debug: debug }, { status: result.status });
                 }
                 return NextResponse.json({ ok: result.upstream.ok, data: base, __debug: debug }, { status: result.status });
+            }
+
+            if (result.status >= 400) {
+                await logRestartFailure({
+                    statusCode: result.status,
+                    message: "Preview restart returned a non-success response.",
+                    resultStatus: result.status,
+                    resultBody: result.json,
+                    resultReqId: result.reqId,
+                });
             }
 
             return NextResponse.json(result.json, { status: result.status });

@@ -532,3 +532,79 @@ export async function hydrateAppBuilderFiles(params: {
 
     return storageHydrated;
 }
+
+export async function hydrateAppBuilderFilesByPaths(params: {
+    db?: any;
+    uid?: string | null;
+    appId?: string | null;
+    files?: AppBuilderFiles | Record<string, unknown>;
+    fileManifest?: AppBuilderFileManifest | null;
+    fileStorageCollection?: string | null;
+    fileStorageMode?: string | null;
+    htmlStoragePath?: string | null;
+    htmlEditIndex?: unknown;
+    paths?: string[];
+}): Promise<AppBuilderFiles> {
+    const inlineFiles = normalizeInlineFiles(params.files);
+    const requestedPaths = Array.from(
+        new Set(
+            (params.paths || [])
+                .map((path) => String(path || "").trim().replace(/^\/+/, ""))
+                .filter(Boolean),
+        ),
+    );
+
+    if (requestedPaths.length === 0) {
+        return hydrateAppBuilderFiles(params);
+    }
+
+    const manifestEntries: AppBuilderManifestEntry[] = [];
+    collectManifestEntries(params.fileManifest, manifestEntries);
+    const manifestByPath = new Map<string, AppBuilderManifestEntry>();
+    for (const entry of manifestEntries) {
+        const path = getEntryPath(entry).replace(/^\/+/, "");
+        if (path) manifestByPath.set(path, entry);
+    }
+
+    const shardIndex =
+        params.fileStorageMode === "sharded" || params.fileManifest
+            ? await loadShardIndex({
+                db: params.db,
+                uid: params.uid,
+                appId: params.appId,
+                collectionName: params.fileStorageCollection,
+            })
+            : new Map<string, any>();
+
+    const nextFiles: AppBuilderFiles = {};
+    for (const path of requestedPaths) {
+        const inlineRecord = inlineFiles[path];
+        if (inlineRecord && String(inlineRecord.content || "").trim()) {
+            nextFiles[path] = inlineRecord;
+            continue;
+        }
+
+        const entry = manifestByPath.get(path);
+        const shardRecord = shardIndex.get(path) || null;
+        if (entry || shardRecord) {
+            nextFiles[path] = await hydrateManifestEntry({ entry: entry || ({ path } as AppBuilderManifestEntry), shardRecord });
+            continue;
+        }
+
+        if (inlineRecord) {
+            nextFiles[path] = inlineRecord;
+            continue;
+        }
+
+        nextFiles[path] = {
+            content: "",
+            lastModified: Date.now(),
+        };
+    }
+
+    return hydrateAppBuilderHtmlFiles({
+        files: nextFiles,
+        htmlStoragePath: params.htmlStoragePath,
+        htmlEditIndex: params.htmlEditIndex,
+    });
+}

@@ -136,7 +136,6 @@ type StagedImage = {
     status: "staged" | "uploading" | "applied" | "failed";
     error: string | null;
 };
-
 type PlacementPosition = "top" | "middle" | "bottom";
 
 type ImagePlacementPlan = {
@@ -1374,6 +1373,8 @@ export default function AppBuilderEditor({
     const [isDeploying, setIsDeploying] = useState(false);
     const [isSharingPreview, setIsSharingPreview] = useState(false);
     const [isPreviewBuilding, setIsPreviewBuilding] = useState(false);
+    const isDev = process.env.NODE_ENV !== "production";
+    const currentAiPromptFile = currentFile || "(no file selected)";
 
     useEffect(() => {
         if (IS_PRODUCTION && viewMode === "code") {
@@ -2629,7 +2630,8 @@ export default function AppBuilderEditor({
                         const shouldAlert = interactive || now - lastApplyAlertAtRef.current > 15000;
                         if (shouldAlert) {
                             lastApplyAlertAtRef.current = now;
-                            const msg = String((data as any)?.error || `Live update failed (HTTP ${res.status})`);
+                            const restartHint = String((data as any)?.restartMessage || "").trim();
+                            const msg = restartHint || String((data as any)?.error || `Live update failed (HTTP ${res.status})`);
                             void showAlert(`${msg}\n\nAuto-retry paused for 30 seconds.`, "Live update");
                         }
                         return;
@@ -2672,12 +2674,24 @@ export default function AppBuilderEditor({
                 const requiresRestart = Boolean(
                     (data as any)?.requiresRestart || (data as any)?.requiresRebuild || (data as any)?.requires_rebuild,
                 );
+                const restartPending = Boolean((data as any)?.restartPending || (data as any)?.restart_pending || (data as any)?.queued);
+                const restartMessage = String((data as any)?.restartMessage || "").trim();
 
                 // Notify the runner that an apply finished. The runner will do a delayed hard reload
                 // only if HMR websocket is blocked/unknown (prevents "reload too early" issues).
                 setApplyCompleteKey((k) => k + 1);
 
-                if (requiresRestart) {
+                if (restartPending) {
+                    const now = Date.now();
+                    if (interactive || now - lastApplyAlertAtRef.current > 15000) {
+                        lastApplyAlertAtRef.current = now;
+                        void showAlert(
+                            restartMessage ||
+                                "Your files were saved, but the preview restart may still be in progress. If the change does not appear, click Rebuild app.",
+                            "Restart pending",
+                        );
+                    }
+                } else if (requiresRestart) {
                     const now = Date.now();
                     if (interactive || now - lastApplyAlertAtRef.current > 15000) {
                         lastApplyAlertAtRef.current = now;
@@ -5250,6 +5264,7 @@ export default function AppBuilderEditor({
                                 <AppBuilderEditorAgentChat
                                     appId={appId}
                                     files={app.files}
+                                    currentFile={currentFile}
                                     onFileEdit={handleFileEditFromAI}
                                     onFilesReplace={handleFilesReplaceFromServer}
                                     onRestoreApplied={handleRestoreApplied}

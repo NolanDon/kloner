@@ -63,6 +63,7 @@ type DatabaseConnection = {
 type AppBuilderEditorAgentChatProps = {
     appId: string;
     files: { [path: string]: { content: string; lastModified: number } };
+    currentFile?: string | null;
     onFileEdit: (path: string, content: string, creditRequestId?: string) => void;
     onFilesReplace?: (files: { [path: string]: { content: string; lastModified: number } }) => void;
     onRestoreApplied?: (args: {
@@ -212,10 +213,9 @@ function buildCompileFixPrefill(ctx: CompileErrorQuickFixContext): string {
     ].join("\n");
 }
 
-export default function AppBuilderEditorAgentChat({ appId, files, onFileEdit, onFilesReplace, onRestoreApplied, creditError, previewReady, previewIssue, onPreviewIssueFixRequest, onUserMessageSent, welcomeContext }: AppBuilderEditorAgentChatProps) {
+export default function AppBuilderEditorAgentChat({ appId, files, currentFile, onFileEdit, onFilesReplace, onRestoreApplied, creditError, previewReady, previewIssue, onPreviewIssueFixRequest, onUserMessageSent, welcomeContext }: AppBuilderEditorAgentChatProps) {
     const { user, userTier } = useAuth();
     const { showConfirm, showAlert } = useModal();
-    const AI_EDIT_COST = 3;
     const PRO_MONTHLY_PRICE_USD = Number.isFinite(Number(process.env.NEXT_PUBLIC_PRO_MONTHLY_PRICE_USD))
         ? Math.max(1, Number(process.env.NEXT_PUBLIC_PRO_MONTHLY_PRICE_USD))
         : 19.99;
@@ -2404,8 +2404,8 @@ export default function AppBuilderEditorAgentChat({ appId, files, onFileEdit, on
             return;
         }
 
-        // If we can see the remaining balance and it's insufficient, block early.
-        if (!isFreeCompileFixMode && typeof aiCreditsRemaining === "number" && aiCreditsRemaining < AI_EDIT_COST) {
+        // If we can see the remaining balance and it's exhausted, block early.
+        if (!isFreeCompileFixMode && typeof aiCreditsRemaining === "number" && aiCreditsRemaining <= 0) {
             const topup = "/price#topup";
             const errorMessage: Message = {
                 id: `error_${Date.now()}`,
@@ -2462,6 +2462,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, onFileEdit, on
                 body: JSON.stringify({
                                         message: messageInput,
                     appId,
+                    currentFile,
                     conversationHistory: [...messages.slice(-10), userMessage],
                     databaseConnections,
                                         quickActionContext: isFreeCompileFixMode && activeCompileFixContext
@@ -2499,6 +2500,40 @@ export default function AppBuilderEditorAgentChat({ appId, files, onFileEdit, on
             }
 
             const data = await res.json();
+            const requestId = typeof data?.requestId === "string" ? data.requestId : null;
+            const creditCost = typeof data?.creditCost === "number" && Number.isFinite(data.creditCost)
+                ? Math.max(1, Math.floor(data.creditCost))
+                : 1;
+
+            if (!isFreeCompileFixMode && requestId) {
+                const headers2 = await withCsrfHeaders();
+                const consumeRes = await fetch("/api/credits/ai-edits/consume", {
+                    method: "POST",
+                    headers: headers2,
+                    body: JSON.stringify({ requestId, cost: creditCost }),
+                });
+                const consumeJson = await consumeRes.json().catch(() => ({} as any));
+                if (!consumeRes.ok || consumeJson?.ok === false) {
+                    const topup = "/price#topup";
+                    const messageText = typeof consumeJson?.error === "string" && consumeJson.error.trim()
+                        ? consumeJson.error
+                        : "You have used all AI edit credits for this month.";
+                    setMessages((prev) => [
+                        ...prev,
+                        {
+                            id: `error_${Date.now()}`,
+                            role: "assistant",
+                            content: `${messageText}\nAdd credits: ${topup}`,
+                            timestamp: new Date(),
+                            type: "text",
+                        },
+                    ]);
+                    return;
+                }
+                if (typeof consumeJson?.remaining === "number" && Number.isFinite(consumeJson.remaining)) {
+                    setAiCreditsRemaining(consumeJson.remaining);
+                }
+            }
 
             dispatchAiAgentEvent("response_ok", {
                 appId,
@@ -2513,6 +2548,20 @@ export default function AppBuilderEditorAgentChat({ appId, files, onFileEdit, on
 
             // If the AI response or context indicates a restart is required, suggest the Rebuild app button
             let aiContent = sanitizeAssistantContent(data.response);
+            const clarifyingQuestions: string[] = Array.isArray(data?.clarifyingQuestions)
+                ? data.clarifyingQuestions
+                      .filter((q: unknown) => typeof q === "string" && q.trim())
+                      .map((q: string) => q.trim())
+                      .slice(0, 3)
+                : [];
+            if (clarifyingQuestions.length > 0 && !clarifyingQuestions.some((q) => aiContent.includes(q))) {
+                aiContent = [
+                    aiContent,
+                    "",
+                    "A few details would help me target the right file:",
+                    ...clarifyingQuestions.map((q) => `- ${q}`),
+                ].join("\n");
+            }
             if (typeof aiContent === "string" && /restart|server.*restart|refresh.*server|database credentials|should work in a moment/i.test(aiContent)) {
                 aiContent +=
                     "\n\nIf you just updated your database credentials or made a major config change, you may need to click the **Rebuild app** button (formerly 'Start fresh') in the editor to fully restart your app server.";
@@ -3746,7 +3795,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, onFileEdit, on
                                 <div>
                                     <div className="text-lg font-semibold text-neutral-900">Top up AI credits</div>
                                     <div className="mt-0.5 text-xs text-neutral-600">
-                                        1 AI edit costs {AI_EDIT_COST} credits.
+                                        AI edit credits scale with request size.
                                     </div>
                                 </div>
                                 <button
@@ -3783,7 +3832,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, onFileEdit, on
                                         </select>
 
                                         <div className="mt-2 text-[12px] text-neutral-700">
-                                            ≈ {Math.max(1, Math.floor(topupCredits / AI_EDIT_COST)).toLocaleString()} AI edits
+                                            Credit use varies by request size.
                                         </div>
                                     </div>
 
