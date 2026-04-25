@@ -1138,6 +1138,7 @@ async function runAiEditModelGemini(input: {
     prompt: string;
     uid: string;
     mode?: "code" | "imagery";
+    renderId: string;
     requestId: string;
 }): Promise<AiEditModelResult & { debug?: any }> {
     if (!geminiClient) {
@@ -1481,6 +1482,7 @@ async function handlePost(req: NextRequest) {
             prompt: modelPrompt,
             uid,
             mode,
+            renderId,
             requestId,
         });
 
