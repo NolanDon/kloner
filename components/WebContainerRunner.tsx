@@ -4602,7 +4602,7 @@ export default function NavBar() {
     : 'Check chat for details.');
   const isFixWithAiCoolingDown = fixWithAiCooldownUntil > Date.now();
   const startFixWithAiCooldown = useCallback(() => {
-    const until = Date.now() + 30_000;
+    const until = Date.now() + 10 * 60_000;
     setFixWithAiCooldownUntil(until);
     if (fixWithAiCooldownTimerRef.current) {
       clearTimeout(fixWithAiCooldownTimerRef.current);
@@ -4611,7 +4611,7 @@ export default function NavBar() {
     fixWithAiCooldownTimerRef.current = window.setTimeout(() => {
       setFixWithAiCooldownUntil((current) => (current === until ? 0 : current));
       fixWithAiCooldownTimerRef.current = null;
-    }, 30_000);
+    }, 10 * 60_000);
   }, []);
   const handlePreviewFailureFixRequest = useCallback(() => {
     if (!previewIssueContextData) return;
@@ -4739,7 +4739,7 @@ export default function NavBar() {
                       const lockKey = `${compileErrorState.code}:${compileErrorState.fingerprint}`;
                       const now = Date.now();
                       const cooldown = compileFixRequestCooldownRef.current;
-                      const cooldownMs = 30_000;
+                      const cooldownMs = 10 * 60_000;
                       if (cooldown && cooldown.fingerprint === lockKey && now < cooldown.until) return;
                       compileFixRequestCooldownRef.current = { fingerprint: lockKey, until: now + cooldownMs };
                       emitCompileErrorTelemetry('compile_error_fix_clicked', {

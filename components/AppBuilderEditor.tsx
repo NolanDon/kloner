@@ -1580,6 +1580,7 @@ export default function AppBuilderEditor({
             })
             .sort((left, right) => left.label.localeCompare(right.label) || left.route.localeCompare(right.route));
     }, [app?.files]);
+            const hasPageDropdown = pageOptions.length > 1;
 
     useEffect(() => {
         if (currentFile && pageOptions.some((page) => page.path === currentFile)) {
@@ -1592,6 +1593,11 @@ export default function AppBuilderEditor({
             return pageOptions[0]?.path ?? null;
         });
     }, [currentFile, pageOptions]);
+
+    useEffect(() => {
+        if (hasPageDropdown) return;
+        setIsPageDropdownOpen(false);
+    }, [hasPageDropdown]);
 
     useEffect(() => {
         if (currentFile) return;
@@ -2935,7 +2941,7 @@ export default function AppBuilderEditor({
                         if (interactive || now - lastApplyAlertAtRef.current > 15000) {
                             lastApplyAlertAtRef.current = now;
                             void showAlert(
-                                "No active preview was found for live apply. Rebuild the preview. Your changes are saved and will be applied when the preview is ready.",
+                                "No active preview was found. Rebuild the preview. Your changes are saved and will be applied.",
                                 "Live update",
                             );
                         }
@@ -5393,17 +5399,6 @@ export default function AppBuilderEditor({
 
                         {/* Project controls (moved off top-right) */}
                         <div className="ml-2 hidden md:flex items-center gap-2">
-                            {!IS_PRODUCTION ? (
-                                <button
-                                    onClick={() => void handleSave(true)}
-                                    disabled={isSaving}
-                                    className="px-4 py-2 bg-white text-xs font-semibold text-neutral-800 border border-neutral-300 rounded-full hover:bg-neutral-50 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-all"
-                                >
-                                    <Upload className="w-4 h-4" />
-                                    {isSaving ? "Saving..." : "Save"}
-                                </button>
-                            ) : null}
-
                             <button
                                 onClick={() => void openDatabaseConnect()}
                                 className={`min-w-[170px] px-4 py-2 text-xs font-semibold rounded-full flex items-center justify-center gap-2 transition-colors whitespace-nowrap ${
@@ -6019,19 +6014,25 @@ export default function AppBuilderEditor({
 
                                 {pageOptions.length > 0 ? (
                                     <div className="relative ml-3" ref={pageDropdownRef}>
-                                        <button
-                                            type="button"
-                                            onClick={() => setIsPageDropdownOpen((prev) => !prev)}
-                                            className="inline-flex items-center gap-1.5 rounded-full border border-neutral-200 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-800 shadow-sm transition hover:bg-neutral-50"
-                                            title={`Current page: ${pageDropdownLabel}`}
-                                            aria-haspopup="menu"
-                                            aria-expanded={isPageDropdownOpen}
-                                        >
-                                            <span className="max-w-[180px] truncate lowercase">{pageDropdownLabel}</span>
-                                            <ChevronDown className={`h-3.5 w-3.5 shrink-0 transition-transform ${isPageDropdownOpen ? "rotate-180" : ""}`} />
-                                        </button>
+                                        {hasPageDropdown ? (
+                                            <button
+                                                type="button"
+                                                onClick={() => setIsPageDropdownOpen((prev) => !prev)}
+                                                className="inline-flex items-center gap-1.5 rounded-full border border-neutral-200 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-800 shadow-sm transition hover:bg-neutral-50"
+                                                title={`Current page: ${pageDropdownLabel}`}
+                                                aria-haspopup="menu"
+                                                aria-expanded={isPageDropdownOpen}
+                                            >
+                                                <span className="max-w-[180px] truncate lowercase">{pageDropdownLabel}</span>
+                                                <ChevronDown className={`h-3.5 w-3.5 shrink-0 transition-transform ${isPageDropdownOpen ? "rotate-180" : ""}`} />
+                                            </button>
+                                        ) : (
+                                            <div className="inline-flex items-center gap-1.5 rounded-full border border-neutral-200 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-800 shadow-sm" title={`Current page: ${pageDropdownLabel}`}>
+                                                <span className="max-w-[180px] truncate lowercase">{pageDropdownLabel}</span>
+                                            </div>
+                                        )}
 
-                                        {isPageDropdownOpen ? (
+                                        {hasPageDropdown && isPageDropdownOpen ? (
                                             <div className="absolute left-0 top-[calc(100%+0.5rem)] z-50 w-72 overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-[0_18px_40px_rgba(15,23,42,0.12)]">
                                                 <div className="max-h-64 overflow-y-auto py-1">
                                                     {pageOptions.map((page) => {

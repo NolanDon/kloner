@@ -555,7 +555,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
     }, []);
 
     const startPreviewIssueFixButtonCooldown = useCallback(() => {
-        const until = Date.now() + 30_000;
+        const until = Date.now() + 10 * 60_000;
         setPreviewIssueFixButtonCooldownUntil(until);
         if (previewIssueFixButtonTimerRef.current) {
             clearTimeout(previewIssueFixButtonTimerRef.current);
@@ -564,7 +564,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
         previewIssueFixButtonTimerRef.current = window.setTimeout(() => {
             setPreviewIssueFixButtonCooldownUntil((current) => (current === until ? 0 : current));
             previewIssueFixButtonTimerRef.current = null;
-        }, 30_000);
+        }, 10 * 60_000);
     }, []);
 
     useEffect(() => {
@@ -3144,7 +3144,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
             const lockKey = `${ctx.appId}:${ctx.code}:${ctx.compileError.fingerprint}`;
             const now = Date.now();
             const cooldown = compileFixRequestCooldownRef.current;
-            const cooldownMs = 30_000;
+            const cooldownMs = 10 * 60_000;
             if (cooldown && cooldown.fingerprint === lockKey && now < cooldown.until) return;
             compileFixRequestCooldownRef.current = { fingerprint: lockKey, until: now + cooldownMs };
 

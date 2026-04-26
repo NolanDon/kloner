@@ -2867,7 +2867,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
             const lockKey = `${ctx.appId}:${ctx.code}:${ctx.compileError.fingerprint}`;
             const now = Date.now();
             const cooldown = compileFixRequestCooldownRef.current;
-            const cooldownMs = 30_000;
+            const cooldownMs = 10 * 60_000;
             if (cooldown && cooldown.fingerprint === lockKey && now < cooldown.until) return;
             compileFixRequestCooldownRef.current = { fingerprint: lockKey, until: now + cooldownMs };
 
