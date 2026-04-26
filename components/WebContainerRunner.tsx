@@ -2,7 +2,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { db } from "@/lib/firebase";
 import { doc, onSnapshot, updateDoc, getDoc } from "firebase/firestore";
 import { useAuth } from "@/src/hooks/useAuth";
@@ -335,9 +335,10 @@ interface WebContainerRunnerProps {
   debugPreviewScenario?: { mode: 'terminal-error' | 'terminal-error-auto-fix'; nonce: number } | null;
   navigatePath?: string | null;
   navigatePathToken?: number;
+  onNavigatePathChange?: (path: string | null) => void;
 }
 
-export default function WebContainerRunner({ appId, files, filesReady = true, onFileChange, onPreviewReadyChange, onPreviewIssueChange, onBackendReady, onRequestRebuild, onCompileErrorFixRequest, debugPreviewScenario, reloadToken, applyToken, restartToken, reconnectToken, forceFreshStart, pollingConfig, navigatePath, navigatePathToken }: WebContainerRunnerProps) {
+export default function WebContainerRunner({ appId, files, filesReady = true, onFileChange, onPreviewReadyChange, onPreviewIssueChange, onBackendReady, onRequestRebuild, onCompileErrorFixRequest, debugPreviewScenario, reloadToken, applyToken, restartToken, reconnectToken, forceFreshStart, pollingConfig, navigatePath, navigatePathToken, onNavigatePathChange }: WebContainerRunnerProps) {
 
   type DebugEvent = {
     ts: number;
@@ -1419,6 +1420,13 @@ export default function WebContainerRunner({ appId, files, filesReady = true, on
       backendStatus: lastBackendStatusRef.current,
     });
 
+    try {
+      await onRequestRebuild?.();
+      return;
+    } catch (err) {
+      console.warn('[WebContainerRunner] rebuild callback failed; falling back to refresh', err);
+    }
+
     stopAllTimers();
 
     setStartAttempt(0);
@@ -1454,13 +1462,6 @@ export default function WebContainerRunner({ appId, files, filesReady = true, on
       iframePostLoadTimeoutRef.current = null;
     }
 
-    try {
-      await onRequestRebuild?.();
-      return;
-    } catch (err) {
-      console.warn('[WebContainerRunner] rebuild callback failed; falling back to refresh', err);
-    }
-
     retryApp();
   };
 
@@ -1481,6 +1482,7 @@ export default function WebContainerRunner({ appId, files, filesReady = true, on
   };
   const proxyBaseRef = useRef<string | null>(null);
   const previewUrlRef = useRef<string | null>(null);
+  const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const previewUrlFirstSeenAtRef = useRef<number>(0);
   const hmrWsRef = useRef<WebSocket | null>(null);
   const hmrWsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -2229,6 +2231,72 @@ export default function NavBar() {
     }
   };
 
+  const toPreviewRootUrl = (url: string) => {
+    try {
+      const u = new URL(url, typeof window !== 'undefined' ? window.location.origin : undefined);
+      const segs = u.pathname.split('/').filter(Boolean);
+      if (segs.length >= 2 && segs[0] === 'preview') {
+        u.pathname = `/${segs[0]}/${segs[1]}`;
+      }
+      return u.toString();
+    } catch {
+      return url;
+    }
+  };
+
+  const normalizeAppRouteFromPath = useCallback((path: string | null | undefined) => {
+    const raw = String(path || '').trim();
+    if (!raw) return '/';
+
+    try {
+      const url = new URL(raw, typeof window !== 'undefined' ? window.location.origin : undefined);
+      const pathname = String(url.pathname || '/').replace(/\/+$/g, '') || '/';
+      const parts = pathname.split('/').filter(Boolean);
+
+      if (parts.length >= 2 && parts[0] === 'preview') {
+        return `/${parts.slice(2).join('/')}`.replace(/\/+/g, '/') || '/';
+      }
+
+      if (parts.length >= 4 && parts[0] === 'api' && parts[1] === 'webcontainer' && parts[3] === 'proxy') {
+        return `/${parts.slice(4).join('/')}`.replace(/\/+/g, '/') || '/';
+      }
+
+      return pathname || '/';
+    } catch {
+      return raw.startsWith('/') ? raw.replace(/\/+$/g, '') || '/' : `/${raw}`.replace(/\/+/g, '/') || '/';
+    }
+  }, []);
+
+  const sendPreviewNavigateCommand = useCallback((path: string | null | undefined) => {
+    if (typeof window === 'undefined') return;
+    const raw = String(path || '').trim();
+    if (!raw) return;
+    try {
+      iframeRef.current?.contentWindow?.postMessage(
+        { type: 'kloner:preview-navigate', pathname: raw },
+        '*',
+      );
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const onMessage = (event: MessageEvent) => {
+      const data = event.data as any;
+      if (!data || data.type !== 'kloner:preview-route') return;
+
+      const nextPath = normalizeAppRouteFromPath(typeof data.pathname === 'string' ? data.pathname : null);
+      if (!nextPath) return;
+      onNavigatePathChange?.(nextPath);
+    };
+
+    window.addEventListener('message', onMessage);
+    return () => window.removeEventListener('message', onMessage);
+  }, [normalizeAppRouteFromPath, onNavigatePathChange]);
+
   // Track a stable base URL for reloads (strip only cache-busting params).
   useEffect(() => {
     if (!previewUrl) return;
@@ -2237,29 +2305,24 @@ export default function NavBar() {
       const u = new URL(isRelative ? `${window.location.origin}${previewUrl}` : String(previewUrl));
       // IMPORTANT: keep `t` (viewer token). Only strip our cache-buster.
       u.searchParams.delete('cb');
-      proxyBaseRef.current = isRelative ? `${u.pathname}${u.search}${u.hash}` : u.toString();
+      proxyBaseRef.current = toPreviewRootUrl(isRelative ? `${u.origin}${u.pathname}${u.search}${u.hash}` : u.toString());
     } catch {
       // Last-resort fallback: never strip query params (it may contain the viewer token `t`).
       const raw = String(previewUrl);
-      proxyBaseRef.current = raw.replace(/([?&])cb=[^&#]+(&)?/g, (m, sep, trailing) => (sep === '?' && trailing ? '?' : sep === '?' ? '' : trailing ? '&' : '')).replace(/[?&]$/, '') || raw;
+      proxyBaseRef.current = toPreviewRootUrl(raw.replace(/([?&])cb=[^&#]+(&)?/g, (m, sep, trailing) => (sep === '?' && trailing ? '?' : sep === '?' ? '' : trailing ? '&' : '')).replace(/[?&]$/, '') || raw);
     }
   }, [previewUrl]);
 
-  // Allow the parent to navigate the preview iframe to a specific path under /preview/:code.
-  // This is used for a visible HMR smoke-test page.
+  // Allow the parent to ask the live preview to switch routes without reloading the iframe.
   useEffect(() => {
     if (typeof navigatePathToken !== 'number') return;
     if (navigatePathToken <= 0) return;
     if (lastNavigatePathTokenRef.current === navigatePathToken) return;
-    lastNavigatePathTokenRef.current = navigatePathToken;
 
     if (!navigatePath) return;
-    if (!proxyBaseRef.current) return;
-
-    const nextBase = withPreviewPath(proxyBaseRef.current, navigatePath);
-    proxyBaseRef.current = nextBase;
-    setPreviewUrl(withCacheBust(nextBase));
-  }, [navigatePath, navigatePathToken]);
+    sendPreviewNavigateCommand(navigatePath);
+    lastNavigatePathTokenRef.current = navigatePathToken;
+  }, [navigatePath, navigatePathToken, sendPreviewNavigateCommand]);
 
   // If the parent requests a restart, we must actually tear down our local
   // "already started" guard and avoid reconnecting to a stale machine.
@@ -3677,8 +3740,8 @@ export default function NavBar() {
               if (isValidPreviewUrlCandidate(readyUrl)) {
                 // Prevent a reload loop: if we're already on this base URL, do not keep appending new cache-busters.
                 if (proxyBaseRef.current !== readyUrl || !previewUrlRef.current) {
-                  proxyBaseRef.current = readyUrl;
-                  setPreviewUrl(withCacheBust(readyUrl));
+                  proxyBaseRef.current = toPreviewRootUrl(readyUrl);
+                  setPreviewUrl(withCacheBust(proxyBaseRef.current));
                 }
               }
               if (!iframeLoadedSuccessfullyRef.current) {
@@ -4431,7 +4494,7 @@ export default function NavBar() {
             return;
           }
           if (cookieLikely) {
-            setError('Preview couldn’t load in this iframe. The embedded preview may be blocked by browser routing/cookie settings, or it may still be starting. We will automatically refresh the preview in a few seconds.');
+            setError('We couldn\'t open the preview. Please refresh or rebuild to try again.');
             setCookieRecoveryPromptVisible(true);
             setCanRetry(true);
             reportCookieIframeBlocked({
@@ -4960,13 +5023,27 @@ export default function NavBar() {
             </div>
           ) : (
           <iframe
+            ref={iframeRef}
             key={iframeKey}
             src={activePreviewUrl}
             className="w-full h-full border border-black/10 rounded-lg"
             title="App Preview"
             sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"
-            onLoad={() => {
+            onLoad={(event) => {
               console.log('[WebContainerRunner] iframe onLoad (navigation complete):', previewUrl);
+
+              try {
+                const iframe = event.currentTarget as HTMLIFrameElement | null;
+                const currentPath = iframe?.contentWindow?.location?.pathname || null;
+                const normalizedPath = normalizeAppRouteFromPath(currentPath);
+                onNavigatePathChange?.(normalizedPath);
+              } catch {
+                // ignore
+              }
+
+              if (navigatePath) {
+                sendPreviewNavigateCommand(navigatePath);
+              }
 
               if (iframeCriticalTimeoutRef.current) {
                 clearTimeout(iframeCriticalTimeoutRef.current);
@@ -5216,10 +5293,15 @@ export default function NavBar() {
         </div>
       ) : showTerminalPreviewErrorCard || compileErrorState ? (
         <div className="flex-1 flex items-center justify-center px-4">
-          <div className="w-full max-w-lg rounded-2xl border border-amber-200 bg-white px-5 py-6 shadow-sm">
+          {(() => {
+            const statusCopy = `${String(previewFailureTitle || '')} ${String(previewFailureMessage || '')}`.toLowerCase();
+            const isPositiveStatus = /\bready\b|\bready to\b|\brunning\b|\bcompleted\b|\bfinished\b|\bsuccess\b|\bok\b|\brestart preview\b/.test(statusCopy);
+
+            return (
+          <div className={`w-full max-w-lg rounded-2xl border px-5 py-6 shadow-sm ${isPositiveStatus ? "border-emerald-200 bg-emerald-50/70" : "border-amber-200 bg-white"}`}>
             <div className="mx-auto flex max-w-md flex-col items-center text-center">
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-100 text-amber-700 ring-1 ring-amber-200">
-                <AlertTriangle className="h-6 w-6" />
+              <div className={`flex h-12 w-12 items-center justify-center rounded-2xl ring-1 ${isPositiveStatus ? "bg-emerald-100 text-emerald-700 ring-emerald-200" : "bg-amber-100 text-amber-700 ring-amber-200"}`}>
+                {isPositiveStatus ? <CheckCircle2 className="h-6 w-6" /> : <AlertTriangle className="h-6 w-6" />}
               </div>
               <div className="min-w-0">
                 <div className="mt-4 text-lg font-semibold text-neutral-900">{previewFailureTitle}</div>
@@ -5245,6 +5327,8 @@ export default function NavBar() {
               </div>
             </div>
           </div>
+            );
+          })()}
         </div>
       ) : (
         <div className="flex-1 flex items-center justify-center">

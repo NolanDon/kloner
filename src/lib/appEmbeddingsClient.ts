@@ -82,12 +82,16 @@ function normalizeLineRange(value: unknown): { start: number; end: number } {
     };
 }
 
+function isObjectObjectSentinel(value: string): boolean {
+    return value.trim().toLowerCase() === "[object object]";
+}
+
 export function normalizeEmbeddingSearchChunk(raw: unknown): AppEmbeddingSearchChunk | null {
     if (!raw || typeof raw !== "object") return null;
     const chunk = raw as Record<string, unknown>;
     const path = asString(chunk.path, 500);
     const chunkText = asString(chunk.chunkText ?? chunk.text ?? chunk.excerpt, 30_000);
-    if (!path || !chunkText) return null;
+    if (!path || !chunkText || isObjectObjectSentinel(chunkText)) return null;
 
     const lineRange = normalizeLineRange(chunk.lineRange ?? {
         start: chunk.startLine,

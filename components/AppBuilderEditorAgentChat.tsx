@@ -499,6 +499,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
     const [selectedRestorePointId, setSelectedRestorePointId] = useState<string | null>(null);
     const [restorePointDetailsById, setRestorePointDetailsById] = useState<Record<string, RestorePointDetail | undefined>>({});
     const [activeRestorePointPreview, setActiveRestorePointPreview] = useState<{ restorePointId: string; path: string } | null>(null);
+    const [expandedRestorePointDiffIds, setExpandedRestorePointDiffIds] = useState<Record<string, boolean>>({});
     const [showDatabaseSetup, setShowDatabaseSetup] = useState(false);
     const [showSupabaseSetup, setShowSupabaseSetup] = useState(false);
     const [showSupabaseAdvanced, setShowSupabaseAdvanced] = useState(false);
@@ -3588,7 +3589,9 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                         const summary = summarizeRestorePointDiff(detail);
                                         if (summary.length === 0) return null;
 
-                                        const showExpanded = summary.length <= 3;
+                                        const isExpanded = expandedRestorePointDiffIds[message.restorePointId!] === true;
+                                        const visibleSummary = isExpanded || summary.length <= 3 ? summary : summary.slice(0, 3);
+                                        const hiddenCount = Math.max(0, summary.length - visibleSummary.length);
 
                                         return (
                                             <div className="rounded-xl border border-[#F55F2A]/15 bg-white/80 p-3">
@@ -3597,7 +3600,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                                     <div className="text-[11px] text-neutral-500">Hover or click a file to inspect the diff</div>
                                                 </div>
                                                 <div className="mt-3 space-y-2">
-                                                    {(showExpanded ? summary : summary.slice(0, 3)).map((entry) => (
+                                                    {visibleSummary.map((entry) => (
                                                         <button
                                                             key={entry.path}
                                                             type="button"
@@ -3616,13 +3619,20 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                                             </div>
                                                         </button>
                                                     ))}
-                                                    {!showExpanded && summary.length > 3 ? (
+                                                    {hiddenCount > 0 ? (
                                                         <button
                                                             type="button"
-                                                            onClick={() => setActiveRestorePointPreview({ restorePointId: message.restorePointId!, path: summary[0]!.path })}
+                                                            onClick={() =>
+                                                                setExpandedRestorePointDiffIds((prev) => ({
+                                                                    ...prev,
+                                                                    [message.restorePointId!]: !isExpanded,
+                                                                }))
+                                                            }
                                                             className="text-xs font-medium text-[#F55F2A] hover:underline"
                                                         >
-                                                            View {summary.length - 3} more changed file{summary.length - 3 === 1 ? "" : "s"}
+                                                            {isExpanded
+                                                                ? "Show fewer changed files"
+                                                                : `View ${hiddenCount} more changed file${hiddenCount === 1 ? "" : "s"}`}
                                                         </button>
                                                     ) : null}
                                                 </div>

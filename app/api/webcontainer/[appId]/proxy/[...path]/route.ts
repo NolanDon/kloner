@@ -25,6 +25,7 @@ export async function HEAD(
     assertAppBuilderScope(req, session.uid, routeParams.appId);
 
     const subPath = (routeParams.path || []).join('/');
+    const appPath = subPath ? `/${subPath.replace(/^\/+|\/+$/g, '')}` : '/';
     const targetUrl = `${BACKEND_ORIGIN}/api/v1/webcontainer/${routeParams.appId}/proxy/${subPath}`;
 
     try {
@@ -120,11 +121,11 @@ export async function GET(
             nextData.assetPrefix = proxyBase;
             
             // Ensure safe router state defaults
-            if (nextData.page && nextData.page !== '/') {
-              nextData.page = '/';
+            if (typeof nextData.page === 'string') {
+              nextData.page = appPath;
             }
-            if (nextData.pathname && nextData.pathname !== '/') {
-              nextData.pathname = '/';
+            if (typeof nextData.pathname === 'string') {
+              nextData.pathname = appPath;
             }
             
             const modifiedNextData = JSON.stringify(nextData);

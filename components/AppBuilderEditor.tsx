@@ -848,6 +848,21 @@ function addVercelProtectionBypass(url: string, secret: string | null | undefine
     }
 }
 
+function appendPathToUrl(url: string, path: string): string {
+    const raw = String(path || "").trim();
+    if (!raw) return url;
+
+    const normalized = raw.startsWith("/") ? raw : `/${raw}`;
+    try {
+        const u = new URL(url);
+        u.pathname = normalized.replace(/\/+/g, "/");
+        return u.toString();
+    } catch {
+        const base = String(url || "").replace(/[?#].*$/, "");
+        return `${base}${normalized}`;
+    }
+}
+
 function escapeAttribute(value: string): string {
     return String(value || "").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
@@ -1692,12 +1707,31 @@ export default function AppBuilderEditor({
         rebuildAt: 0,
         saveAt: 0,
     });
+    const suppressNextPreviewNavigateTokenRef = useRef(false);
 
     useEffect(() => {
         if (previewMode !== "webcontainer") return;
         if (!previewNavigatePath) return;
+        if (suppressNextPreviewNavigateTokenRef.current) {
+            suppressNextPreviewNavigateTokenRef.current = false;
+            return;
+        }
         setPreviewNavigateToken((token) => token + 1);
     }, [previewMode, previewNavigatePath]);
+
+    const handlePreviewRouteChange = useCallback((nextPath: string | null) => {
+        const raw = String(nextPath || "").trim();
+        if (!raw) return;
+
+        const matched = pageOptions.find((page) => page.route === raw) || null;
+        if (!matched) return;
+
+        setPreviewPagePath((current) => {
+            if (current === matched.path) return current;
+            suppressNextPreviewNavigateTokenRef.current = true;
+            return matched.path;
+        });
+    }, [pageOptions]);
 
     const buildCurrentVercelOAuthReturnPath = useCallback((): string => {
         if (typeof window === "undefined") return "/dashboard/view";
@@ -2941,7 +2975,7 @@ export default function AppBuilderEditor({
                         if (interactive || now - lastApplyAlertAtRef.current > 15000) {
                             lastApplyAlertAtRef.current = now;
                             void showAlert(
-                                "No active preview was found. Rebuild the preview. Your changes are saved and will be applied.",
+                                "Your preview isn’t ready yet, so we can’t apply this change live right now. Your changes are saved, and we’ll try again after the preview restarts.",
                                 "Live update",
                             );
                         }
@@ -2966,7 +3000,7 @@ export default function AppBuilderEditor({
                         if (interactive || now - lastApplyAlertAtRef.current > 15000) {
                             lastApplyAlertAtRef.current = now;
                             void showAlert(
-                                "Preview is busy/booting (409). Not restarting anything — will retry live apply automatically.",
+                                "The preview is still starting up, so we’re waiting before applying this change. Your changes are saved and we’ll try again shortly.",
                                 "Live update",
                             );
                         }
@@ -3003,9 +3037,9 @@ export default function AppBuilderEditor({
                         if (shouldAlert) {
                             lastApplyAlertAtRef.current = now;
                             const restartHint = String((data as any)?.restartMessage || "").trim();
-                            const msg = restartHint || "The preview service had a temporary problem while applying your change.";
+                            const msg = restartHint || "The preview had a temporary problem while applying your change.";
                             void showAlert(
-                                `${msg}\n\nYour changes are still saved. We’ll keep retrying for 30 seconds, or you can click Refresh after a moment.`,
+                                `${msg}\n\nYour changes are still saved. We’ll keep trying for 30 seconds, or you can click Refresh after a moment.`,
                                 "Live update",
                             );
                         }
@@ -5018,7 +5052,7 @@ export default function AppBuilderEditor({
         if (forceFresh) {
             // Show confirmation dialog for force fresh start
             const confirmed = await showConfirm(
-                "This will delete the current machine and start completely fresh. Any unsaved changes may be lost. Continue?",
+                "This will completely refresh the current session. Continue?",
                 "Force Fresh Start"
             );
             if (!confirmed) return;
@@ -6079,6 +6113,7 @@ export default function AppBuilderEditor({
                                                 setPreviewIssue(payload?.issue || null);
                                                 setPreviewIssueDiagnostics(payload?.diagnostics || null);
                                             }}
+                                            onNavigatePathChange={handlePreviewRouteChange}
                                             onCompileErrorFixRequest={handleCompileErrorFixRequest}
                                             debugPreviewScenario={previewDebugScenario}
                                             onBackendReady={() => {
