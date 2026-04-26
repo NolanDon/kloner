@@ -86,6 +86,7 @@ export async function GET(
 
     const contentType = upstream.headers.get('content-type') || '';
     const isHtml = contentType.includes('text/html');
+    const appPath = subPath ? `/${subPath.replace(/^\/+|\/+$/g, '')}` : '/';
 
     // If this is HTML content, we need to rewrite URLs
     if (isHtml && upstream.ok) {

@@ -26,6 +26,7 @@ export type AppEmbeddingSearchChunk = {
 
 export type AppEmbeddingSearchResponse = {
     chunks: AppEmbeddingSearchChunk[];
+    refreshQueued?: boolean;
 };
 
 export type AppEmbeddingEditPlanFile = {
@@ -55,7 +56,49 @@ export type AppEmbeddingRequestResult<T> = {
     data: T | null;
     error: string | null;
     retryAfter: string | null;
+    code: string | null;
 };
+
+const EMBEDDING_REQUEST_TIMEOUT_MS = 42_000;
+
+function getTextEncoderByteLength(text: string): number {
+    if (typeof TextEncoder !== "undefined") {
+        return new TextEncoder().encode(text).length;
+    }
+
+    return text.length;
+}
+
+function summarizeEmbeddingResponseShape(value: unknown): {
+    ok: boolean | null;
+    code: string | null;
+    statusCode: number | null;
+    returned: number | null;
+    candidates: number | null;
+    refreshQueued: boolean;
+    chunks: number | null;
+} {
+    const raw = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+    const returned = typeof raw.returned === "number" ? raw.returned : Number.isFinite(Number(raw.returned)) ? Number(raw.returned) : null;
+    const candidates = Array.isArray(raw.candidates) ? raw.candidates.length : Number.isFinite(Number(raw.candidates)) ? Number(raw.candidates) : null;
+    const chunks = Array.isArray(raw.chunks) ? raw.chunks.length : null;
+
+    return {
+        ok: typeof raw.ok === "boolean" ? raw.ok : null,
+        code: asString(raw.code, 120) || null,
+        statusCode: typeof raw.statusCode === "number" ? raw.statusCode : typeof raw.status === "number" ? raw.status : null,
+        returned,
+        candidates,
+        refreshQueued: asBoolean(raw.refreshQueued ?? raw.refresh_queued),
+        chunks,
+    };
+}
+
+function logEmbeddingTransport(stage: string, details: Record<string, unknown>) {
+    if (process.env.NODE_ENV === "test") return;
+    const logger = stage === "timeout" || stage === "abort" || stage === "error" ? console.warn : console.info;
+    logger.call(console, "[app-embeddings][transport]", stage, details);
+}
 
 function asString(value: unknown, max = 10_000): string {
     const text = typeof value === "string" ? value.trim() : "";
@@ -66,6 +109,10 @@ function asString(value: unknown, max = 10_000): string {
 function asNumber(value: unknown, fallback = 0): number {
     const parsed = Number(value);
     return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function asBoolean(value: unknown): boolean {
+    return value === true || value === "true";
 }
 
 function normalizeLineRange(value: unknown): { start: number; end: number } {
@@ -82,16 +129,12 @@ function normalizeLineRange(value: unknown): { start: number; end: number } {
     };
 }
 
-function isObjectObjectSentinel(value: string): boolean {
-    return value.trim().toLowerCase() === "[object object]";
-}
-
 export function normalizeEmbeddingSearchChunk(raw: unknown): AppEmbeddingSearchChunk | null {
     if (!raw || typeof raw !== "object") return null;
     const chunk = raw as Record<string, unknown>;
     const path = asString(chunk.path, 500);
     const chunkText = asString(chunk.chunkText ?? chunk.text ?? chunk.excerpt, 30_000);
-    if (!path || !chunkText || isObjectObjectSentinel(chunkText)) return null;
+    if (!path || !chunkText) return null;
 
     const lineRange = normalizeLineRange(chunk.lineRange ?? {
         start: chunk.startLine,
@@ -120,7 +163,49 @@ export function normalizeEmbeddingSearchResponse(raw: unknown): AppEmbeddingSear
 
     return {
         chunks: chunks as AppEmbeddingSearchChunk[],
+        refreshQueued: asBoolean((raw as any)?.refreshQueued ?? (raw as any)?.refresh_queued),
     };
+}
+
+export function getEmbeddingSearchErrorMessage(status: number, code: string | null | undefined, error: string | null | undefined): string {
+    const normalizedCode = typeof code === "string" ? code.trim() : "";
+    const normalizedError = typeof error === "string" ? error.trim() : "";
+
+    if (status === 409 || normalizedCode === "EMBEDDING_INDEX_STALE") {
+        return normalizedError || "The file search is refreshing right now. Please try again in a moment.";
+    }
+
+    if (status === 503 || normalizedCode === "EMBEDDING_MEMORY_PRESSURE") {
+        return normalizedError || "The file search is busy right now. Please try again in a moment.";
+    }
+
+    if (status === 504 || normalizedCode === "EMBEDDING_SEARCH_TIMEOUT") {
+        return normalizedError || "The file search took too long. Please try again in a moment.";
+    }
+
+    if (status === 0) {
+        return normalizedError || "The service could not be reached. Check your connection and try again.";
+    }
+
+    if (status === 429) {
+        return normalizedError || "Requests are temporarily limited. Please wait a moment and try again.";
+    }
+
+    return normalizedError || "Couldn’t get results right now.";
+}
+
+export function getEmbeddingSearchRefreshQueuedNotice(result: AppEmbeddingSearchResponse | null | undefined): string | null {
+    if (!result?.refreshQueued) return null;
+    return "The file search is still updating in the background. I used the matches that are ready so you can keep going.";
+}
+
+export async function withLoadingState<T>(setLoading: (value: boolean) => void, task: () => Promise<T>): Promise<T> {
+    setLoading(true);
+    try {
+        return await task();
+    } finally {
+        setLoading(false);
+    }
 }
 
 export function normalizeEmbeddingEditPlanFile(raw: unknown): AppEmbeddingEditPlanFile | null {
@@ -166,17 +251,55 @@ export function normalizeEmbeddingEditPlanResponse(raw: unknown): AppEmbeddingEd
 }
 
 async function postJson<T>(path: string, body: unknown, headers: HeadersInit): Promise<AppEmbeddingRequestResult<T>> {
+    const timeoutMs = EMBEDDING_REQUEST_TIMEOUT_MS;
+    const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    let timedOut = false;
+    const requestBodyText = JSON.stringify(body ?? {});
+    const requestSizeBytes = getTextEncoderByteLength(requestBodyText);
+    const startedAt = Date.now();
+
+    logEmbeddingTransport("request_started", {
+        path,
+        requestSizeBytes,
+        timeoutMs,
+    });
+
     try {
+        if (controller && timeoutMs > 0) {
+            timeoutId = setTimeout(() => {
+                timedOut = true;
+                controller.abort();
+            }, timeoutMs);
+        }
+
+        logEmbeddingTransport("request_sent", {
+            path,
+            requestSizeBytes,
+            timeoutMs,
+        });
+
         const response = await fetch(path, {
             method: "POST",
             headers,
             credentials: "include",
             cache: "no-store",
-            body: JSON.stringify(body ?? {}),
+            body: requestBodyText,
+            signal: controller?.signal,
         });
 
         const data = await response.json().catch(() => null);
         const retryAfter = response.headers.get("retry-after");
+        const code = typeof (data as any)?.code === "string" ? (data as any).code : null;
+        const elapsedMs = Date.now() - startedAt;
+
+        logEmbeddingTransport("response_received", {
+            path,
+            elapsedMs,
+            status: response.status,
+            ok: response.ok,
+            shape: summarizeEmbeddingResponseShape(data),
+        });
 
         return {
             ok: response.ok,
@@ -184,15 +307,61 @@ async function postJson<T>(path: string, body: unknown, headers: HeadersInit): P
             data: data as T | null,
             error: response.ok ? null : (typeof (data as any)?.error === "string" ? (data as any).error : "Request failed"),
             retryAfter,
+            code,
         };
     } catch (err: any) {
+        if (timedOut) {
+            logEmbeddingTransport("timeout", {
+                path,
+                elapsedMs: Date.now() - startedAt,
+                timeoutMs,
+                requestSizeBytes,
+            });
+            return {
+                ok: false,
+                status: 504,
+                data: null,
+                error: `The embedding request timed out after ${Math.round(timeoutMs / 1000)} seconds. Please try again in a moment.`,
+                retryAfter: null,
+                code: "EMBEDDING_SEARCH_TIMEOUT",
+            };
+        }
+
+        if (controller?.signal.aborted) {
+            logEmbeddingTransport("abort", {
+                path,
+                elapsedMs: Date.now() - startedAt,
+                requestSizeBytes,
+            });
+            return {
+                ok: false,
+                status: 0,
+                data: null,
+                error: String(err?.message || "The embedding request was aborted."),
+                retryAfter: null,
+                code: "REQUEST_ABORTED",
+            };
+        }
+
+        logEmbeddingTransport("error", {
+            path,
+            elapsedMs: Date.now() - startedAt,
+            requestSizeBytes,
+            error: String(err?.message || err || "Request failed"),
+        });
+
         return {
             ok: false,
             status: 0,
             data: null,
             error: String(err?.message || err || "Request failed"),
             retryAfter: null,
+            code: null,
         };
+    } finally {
+        if (timeoutId) {
+            clearTimeout(timeoutId);
+        }
     }
 }
 

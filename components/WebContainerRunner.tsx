@@ -4469,13 +4469,13 @@ export default function NavBar() {
                   ...prev,
                   uiStage: prev?.uiStage || 'waiting_for_preview',
                   uiTitle: prev?.uiTitle || 'Starting preview',
-                  uiMessage: prev?.uiMessage || 'Preview is still loading. If it stays stuck, click Refresh for a light restart or Rebuild app for a full restart.',
+                  uiMessage: prev?.uiMessage || 'Preview is still loading. If it stays stuck, click Refresh to reattempt the connection.',
                   updatedAt: Date.now(),
                 }
                 : {
                   uiStage: 'waiting_for_preview',
                   uiTitle: 'Starting preview',
-                  uiMessage: 'Preview is still loading. If it stays stuck, click Refresh for a light restart or Rebuild app for a full restart.',
+                  uiMessage: 'Preview is still loading. If it stays stuck, click Refresh to reattempt the connection.',
                   updatedAt: Date.now(),
                   status: 'starting',
                   uiProgress: 0,

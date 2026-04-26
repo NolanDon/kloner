@@ -135,6 +135,9 @@ export async function callBackend(req: Reqish, opts: CallOpts) {
 
     const method = (opts.method || "POST").toUpperCase() as NonNullable<CallOpts["method"]>;
     const url = buildUrl(opts.path, opts.query, opts.noPrefix === true);
+    const timeoutMs = opts.timeoutMs ?? 15_000;
+    const bodyText = method === "GET" || method === "HEAD" || method === "OPTIONS" ? "" : JSON.stringify(opts.body ?? {});
+    const bodySizeBytes = new TextEncoder().encode(bodyText).length;
 
     const inboundId = readHeader(req, "x-request-id");
     const reqId =
@@ -145,19 +148,21 @@ export async function callBackend(req: Reqish, opts: CallOpts) {
 
     const signed = opts.userCtx ? signUserCtx(opts.userCtx) : null;
 
-    const controller = new AbortController();
-    const timeoutHandle = setTimeout(
-        () => controller.abort(),
-        opts.timeoutMs ?? 15_000
-    );
-
     let upstream: any;
     try {
         const doFetch = async (dispatcher?: Agent) => {
             const controller = new AbortController();
-            const timeoutHandle = setTimeout(() => controller.abort(), opts.timeoutMs ?? 15_000);
+            const timeoutHandle = setTimeout(() => controller.abort(), timeoutMs);
+            const startedAt = Date.now();
+            console.info("[app-embeddings][proxy] backend_request_start", {
+                reqId,
+                url,
+                method,
+                timeoutMs,
+                bodySizeBytes,
+            });
             try {
-                return await undiciFetch(url, {
+                const response = await undiciFetch(url, {
                     method,
                     headers: {
                         ...(opts.headers || {}),
@@ -170,13 +175,20 @@ export async function callBackend(req: Reqish, opts: CallOpts) {
                             : {}),
                         ...(opts.idempotencyKey ? { "idempotency-key": opts.idempotencyKey } : {}),
                     },
-                    body:
-                        method === "GET" || method === "HEAD" || method === "OPTIONS"
-                            ? undefined
-                            : JSON.stringify(opts.body ?? {}),
+                    body: method === "GET" || method === "HEAD" || method === "OPTIONS" ? undefined : bodyText,
                     signal: controller.signal,
                     ...(dispatcher ? { dispatcher } : {}),
                 });
+
+                console.info("[app-embeddings][proxy] backend_response_received", {
+                    reqId,
+                    url,
+                    method,
+                    elapsedMs: Date.now() - startedAt,
+                    status: response.status,
+                    ok: response.ok,
+                });
+                return response;
             } finally {
                 clearTimeout(timeoutHandle);
             }
@@ -200,6 +212,15 @@ export async function callBackend(req: Reqish, opts: CallOpts) {
         }
     } catch (err: any) {
         const aborted = err?.name === "AbortError";
+        console.warn("[app-embeddings][proxy] backend_request_failed", {
+            reqId,
+            url,
+            method,
+            aborted,
+            timeoutMs,
+            bodySizeBytes,
+            error: err?.message || String(err),
+        });
         if (aborted && opts.acceptOnTimeout) {
             const json = { ok: true, queued: true, code: "TIMEOUT_ACCEPTED" };
             const fake = new Response(JSON.stringify(json), {
@@ -229,7 +250,6 @@ export async function callBackend(req: Reqish, opts: CallOpts) {
             url,
         };
     } finally {
-        clearTimeout(timeoutHandle);
     }
 
     const raw = await upstream.text();

@@ -5651,7 +5651,7 @@ export default function AppBuilderEditor({
 
                 {isEmbeddingProcessing ? (
                     <div className="border-b bg-sky-50 px-4 py-2 text-xs text-sky-900">
-                        {activeEmbedding.message || "Preparing the embedding index so AI edits can target the right chunks faster."}
+                        {"Preparing your files so the assistant can use the right parts faster."}
                         {typeof activeEmbedding.progress === "number" ? ` (${Math.max(0, Math.min(100, Math.round(activeEmbedding.progress * 100)))}%)` : ""}
                     </div>
                 ) : null}

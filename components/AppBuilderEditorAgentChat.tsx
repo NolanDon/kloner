@@ -13,6 +13,8 @@ import {
     editPlanHasDeleteOps,
     fetchEmbeddingEditPlan,
     fetchEmbeddingSearch,
+    getEmbeddingSearchErrorMessage,
+    getEmbeddingSearchRefreshQueuedNotice,
     normalizeEmbeddingEditPlanResponse,
     normalizeEmbeddingSearchResponse,
 } from "@/src/lib/appEmbeddingsClient";
@@ -175,7 +177,11 @@ function sanitizeAssistantContent(text: unknown): string {
 }
 
 function isRetryableAiStatus(status: number | null | undefined): boolean {
-    return status === 422 || status === 429 || status === 500 || status === 502 || status === 503 || status === 504;
+    return status === 422 || status === 429 || status === 500 || status === 502;
+}
+
+function isUserRetryableAiStatus(status: number | null | undefined): boolean {
+    return status === 0 || status === 409 || status === 422 || status === 429 || status === 500 || status === 502 || status === 503 || status === 504;
 }
 
 function renderTextWithLinks(text: string): React.ReactNode {
@@ -2635,6 +2641,14 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
 
         try {
             const headers = await withCsrfHeaders();
+            const searchRequestId = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+                ? crypto.randomUUID()
+                : `search_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+            const requestHeaders = {
+                ...headers,
+                "x-request-id": searchRequestId,
+                "x-client-request-id": searchRequestId,
+            };
             const effectiveCurrentFile = resolveFallbackCurrentFile(files, currentFile);
             const frameworkPrompt = buildProjectFrameworkPrompt(projectFramework, messageInput);
             dispatchAiAgentEvent("request", {
@@ -2644,6 +2658,30 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                 messagePreview: messageInput.slice(0, 280),
                 historyCount: Math.min(messages.length + 1, 11),
                 freeCompileFixMode: isFreeCompileFixMode,
+            });
+
+            const searchRequestBody = {
+                appId,
+                query: messageInput,
+                requestText: frameworkPrompt,
+                currentPath: effectiveCurrentFile,
+                maxChunks: 10,
+                framework: projectFramework.key,
+                frameworkLabel: projectFramework.label,
+                frameworkConfidence: projectFramework.confidence,
+                frameworkReason: projectFramework.reason,
+            };
+            const searchRequestBodyBytes = new TextEncoder().encode(JSON.stringify(searchRequestBody)).length;
+            const searchStartedAt = Date.now();
+
+            dispatchAiAgentEvent("search_request_start", {
+                appId,
+                userId: user?.uid || null,
+                requestId: searchRequestId,
+                bodySizeBytes: searchRequestBodyBytes,
+                currentPath: effectiveCurrentFile,
+                maxChunks: 10,
+                queryLen: messageInput.length,
             });
 
             if (isFreeCompileFixMode && activeCompileFixContext) {
@@ -2657,38 +2695,78 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
             }
 
             const searchResult = await fetchEmbeddingSearch(
-                {
-                    appId,
-                    query: messageInput,
-                    requestText: frameworkPrompt,
-                    currentPath: effectiveCurrentFile,
-                    maxChunks: 10,
-                    framework: projectFramework.key,
-                    frameworkLabel: projectFramework.label,
-                    frameworkConfidence: projectFramework.confidence,
-                    frameworkReason: projectFramework.reason,
-                },
-                headers,
+                searchRequestBody,
+                requestHeaders,
             );
 
+            const normalizedSearch = normalizeEmbeddingSearchResponse(searchResult.data);
+            const searchElapsedMs = Date.now() - searchStartedAt;
+            dispatchAiAgentEvent("search_request_end", {
+                appId,
+                userId: user?.uid || null,
+                requestId: searchRequestId,
+                ok: searchResult.ok,
+                status: searchResult.status,
+                code: searchResult.code || null,
+                elapsedMs: searchElapsedMs,
+                chunksLength: normalizedSearch.chunks.length,
+                refreshQueued: normalizedSearch.refreshQueued === true,
+                returned: typeof (searchResult.data as any)?.returned === "number" ? (searchResult.data as any).returned : null,
+                candidates: Array.isArray((searchResult.data as any)?.candidates)
+                    ? (searchResult.data as any).candidates.length
+                    : null,
+            });
+
             if (!searchResult.ok) {
+                if (searchResult.status === 409 && normalizedSearch.chunks.length === 0) {
+                    dispatchAiAgentEvent("search_request_soft_stop", {
+                        appId,
+                        userId: user?.uid || null,
+                        requestId: searchRequestId,
+                        status: searchResult.status,
+                        elapsedMs: searchElapsedMs,
+                        chunksLength: 0,
+                    });
+
+                    setMessages(prev => [
+                        ...prev,
+                        {
+                            id: `search_note_${Date.now()}`,
+                            role: "assistant",
+                            content: "The file search is still updating. I don’t have grounded context yet, so try again in a moment.",
+                            timestamp: new Date(),
+                            type: "text",
+                        },
+                    ]);
+                    return;
+                }
+
                 dispatchAiAgentEvent("response_error", {
                     appId,
                     userId: user?.uid || null,
                     status: searchResult.status,
                 });
+                const errorCode =
+                    searchResult.code ||
+                    (searchResult.status === 409
+                        ? "EMBEDDING_INDEX_STALE"
+                        : searchResult.status === 503
+                            ? "EMBEDDING_MEMORY_PRESSURE"
+                        : searchResult.status === 504
+                            ? "EMBEDDING_SEARCH_TIMEOUT"
+                            : searchResult.status === 429
+                                ? "EMBEDDING_SEARCH_RATE_LIMITED"
+                                : "EMBEDDING_SEARCH_FAILED");
                 const searchError = new Error(
-                    searchResult.status === 429
-                        ? "Embedding search is temporarily rate-limited. Please wait a moment and try again."
-                        : searchResult.error || "Failed to get embedding search results",
+                    getEmbeddingSearchErrorMessage(searchResult.status, searchResult.code, searchResult.error),
                 );
                 (searchError as any).status = searchResult.status;
-                (searchError as any).code = searchResult.status === 429 ? "EMBEDDING_SEARCH_RATE_LIMITED" : "EMBEDDING_SEARCH_FAILED";
+                (searchError as any).code = errorCode;
                 (searchError as any).retryPrompt = messageInput;
                 throw searchError;
             }
 
-            const normalizedSearch = normalizeEmbeddingSearchResponse(searchResult.data);
+            const refreshQueuedNotice = getEmbeddingSearchRefreshQueuedNotice(normalizedSearch);
 
             const editPlanResult = await fetchEmbeddingEditPlan(
                 {
@@ -2703,7 +2781,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                     frameworkConfidence: projectFramework.confidence,
                     frameworkReason: projectFramework.reason,
                 },
-                headers,
+                requestHeaders,
             );
 
             if (!editPlanResult.ok) {
@@ -2712,13 +2790,22 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                     userId: user?.uid || null,
                     status: editPlanResult.status,
                 });
+                const editPlanErrorCode =
+                    editPlanResult.code ||
+                    (editPlanResult.status === 409
+                        ? "EMBEDDING_INDEX_STALE"
+                        : editPlanResult.status === 503
+                            ? "EMBEDDING_MEMORY_PRESSURE"
+                        : editPlanResult.status === 504
+                            ? "EMBEDDING_SEARCH_TIMEOUT"
+                            : editPlanResult.status === 429
+                                ? "EDIT_PLAN_RATE_LIMITED"
+                                : "EDIT_PLAN_FAILED");
                 const editPlanError = new Error(
-                    editPlanResult.status === 429
-                        ? "Edit planning is temporarily rate-limited. Please wait a moment and try again."
-                        : editPlanResult.error || "Failed to get edit plan",
+                    getEmbeddingSearchErrorMessage(editPlanResult.status, editPlanResult.code, editPlanResult.error),
                 );
                 (editPlanError as any).status = editPlanResult.status;
-                (editPlanError as any).code = editPlanResult.status === 429 ? "EDIT_PLAN_RATE_LIMITED" : "EDIT_PLAN_FAILED";
+                (editPlanError as any).code = editPlanErrorCode;
                 (editPlanError as any).retryPrompt = messageInput;
                 throw editPlanError;
             }
@@ -2726,18 +2813,18 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
             const rawPlan = editPlanResult.data;
             const planMeta = rawPlan as any;
             const data = normalizeEmbeddingEditPlanResponse(rawPlan);
-            const requestId = typeof planMeta?.requestId === "string" ? planMeta.requestId : null;
+            const planRequestId = typeof planMeta?.requestId === "string" ? planMeta.requestId : null;
             const creditCost = typeof planMeta?.creditCost === "number" && Number.isFinite(planMeta.creditCost)
                 ? Math.max(1, Math.floor(planMeta.creditCost))
                 : 1;
             const hasChargeableWork = (Array.isArray(data?.files) && data.files.length > 0) || (Array.isArray(data?.dbMigrations) && data.dbMigrations.length > 0);
 
-            if (!isFreeCompileFixMode && requestId && hasChargeableWork) {
+            if (!isFreeCompileFixMode && planRequestId && hasChargeableWork) {
                 const headers2 = await withCsrfHeaders();
                 const consumeRes = await fetch("/api/credits/ai-edits/consume", {
                     method: "POST",
                     headers: headers2,
-                    body: JSON.stringify({ requestId, cost: creditCost }),
+                    body: JSON.stringify({ requestId: planRequestId, cost: creditCost }),
                 });
                 const consumeJson = await consumeRes.json().catch(() => ({} as any));
                 if (!consumeRes.ok || consumeJson?.ok === false) {
@@ -2760,11 +2847,11 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                 if (typeof consumeJson?.remaining === "number" && Number.isFinite(consumeJson.remaining)) {
                     setAiCreditsRemaining(consumeJson.remaining);
                 }
-            } else if (!isFreeCompileFixMode && requestId && !hasChargeableWork) {
+            } else if (!isFreeCompileFixMode && planRequestId && !hasChargeableWork) {
                 dispatchAiAgentEvent("response_noop", {
                     appId,
                     userId: user?.uid || null,
-                    requestId,
+                    requestId: planRequestId,
                     reason: "no_chargeable_changes_returned",
                     hasFileEdits: Array.isArray(data?.files) && data.files.length > 0,
                     fileEditsCount: Array.isArray(data?.files) ? data.files.length : 0,
@@ -2786,6 +2873,9 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
 
             // If the edit plan indicates a rebuild is required, keep the current UX note.
             let aiContent = sanitizeAssistantContent(data.summary || data.response || "I've prepared an edit plan.");
+            if (refreshQueuedNotice) {
+                aiContent = `${aiContent}\n\n${refreshQueuedNotice}`;
+            }
             if (Array.isArray(data.notes) && data.notes.length > 0) {
                 const noteText = data.notes.filter((note) => typeof note === "string" && note.trim()).slice(0, 5).join("\n- ");
                 if (noteText) {
@@ -3090,7 +3180,11 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
             console.error("AI chat error:", err);
             const status = typeof err?.status === "number" ? err.status : null;
             const retryable = isRetryableAiStatus(status);
+            const userRetryable = isUserRetryableAiStatus(status);
             const retryPrompt = typeof err?.retryPrompt === "string" && err.retryPrompt.trim() ? err.retryPrompt : input;
+            const userFacingErrorMessage = status !== null
+                ? getEmbeddingSearchErrorMessage(status, typeof err?.code === "string" ? err.code : null, typeof err?.message === "string" ? err.message : null)
+                : "Sorry, I couldn’t complete that request right now. Please try again in a few minutes.";
             const errorMessage: Message = {
                 id: `error_${Date.now()}`,
                 role: "assistant",
@@ -3098,11 +3192,13 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                     ? status === 422
                         ? "I found the page and searched nearby files, but I couldn’t make a safe edit from the request as written. Tell me the exact section, file, or text you want changed, and I’ll apply that directly."
                         : "That request failed temporarily. Use retry to try again."
-                    : "Sorry, I couldn’t complete that request right now. Please try again in a few minutes.",
+                    : userRetryable
+                        ? userFacingErrorMessage
+                        : "Sorry, I couldn’t complete that request right now. Please try again in a few minutes.",
                 timestamp: new Date(),
                 type: "text",
-                retryPrompt: retryable ? retryPrompt : undefined,
-                retryStatus: retryable ? status ?? undefined : undefined,
+                retryPrompt: userRetryable ? retryPrompt : undefined,
+                retryStatus: userRetryable ? status ?? undefined : undefined,
             };
             setMessages(prev => [...prev, errorMessage]);
         } finally {
