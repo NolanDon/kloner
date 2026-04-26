@@ -1598,6 +1598,7 @@ export default function AppBuilderEditor({
             const hasPageDropdown = pageOptions.length > 1;
 
     useEffect(() => {
+        if (viewMode === "code") return;
         if (currentFile && pageOptions.some((page) => page.path === currentFile)) {
             setPreviewPagePath(currentFile);
             return;
@@ -1607,7 +1608,7 @@ export default function AppBuilderEditor({
             if (prev && pageOptions.some((page) => page.path === prev)) return prev;
             return pageOptions[0]?.path ?? null;
         });
-    }, [currentFile, pageOptions]);
+    }, [currentFile, pageOptions, viewMode]);
 
     useEffect(() => {
         if (hasPageDropdown) return;
@@ -6046,7 +6047,7 @@ export default function AppBuilderEditor({
                                 </div>
                             ) : null}
 
-                                {pageOptions.length > 0 ? (
+                                {!IS_PRODUCTION && pageOptions.length > 0 ? (
                                     <div className="relative ml-3" ref={pageDropdownRef}>
                                         {hasPageDropdown ? (
                                             <button

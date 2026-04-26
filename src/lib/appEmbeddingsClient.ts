@@ -57,6 +57,7 @@ export type AppEmbeddingRequestResult<T> = {
     error: string | null;
     retryAfter: string | null;
     code: string | null;
+    requestId?: string | null;
 };
 
 const EMBEDDING_REQUEST_TIMEOUT_MS = 42_000;
@@ -308,6 +309,7 @@ async function postJson<T>(path: string, body: unknown, headers: HeadersInit): P
             error: response.ok ? null : (typeof (data as any)?.error === "string" ? (data as any).error : "Request failed"),
             retryAfter,
             code,
+            requestId: typeof (data as any)?.reqId === "string" ? (data as any).reqId : typeof (data as any)?.requestId === "string" ? (data as any).requestId : null,
         };
     } catch (err: any) {
         if (timedOut) {
@@ -324,6 +326,7 @@ async function postJson<T>(path: string, body: unknown, headers: HeadersInit): P
                 error: `The embedding request timed out after ${Math.round(timeoutMs / 1000)} seconds. Please try again in a moment.`,
                 retryAfter: null,
                 code: "EMBEDDING_SEARCH_TIMEOUT",
+                requestId: null,
             };
         }
 
@@ -340,6 +343,7 @@ async function postJson<T>(path: string, body: unknown, headers: HeadersInit): P
                 error: String(err?.message || "The embedding request was aborted."),
                 retryAfter: null,
                 code: "REQUEST_ABORTED",
+                requestId: null,
             };
         }
 
@@ -357,6 +361,7 @@ async function postJson<T>(path: string, body: unknown, headers: HeadersInit): P
             error: String(err?.message || err || "Request failed"),
             retryAfter: null,
             code: null,
+            requestId: null,
         };
     } finally {
         if (timeoutId) {
@@ -400,11 +405,6 @@ export async function fetchEmbeddingEditPlan(
             requestText: request.requestText ?? request.query,
             currentPath: request.currentPath || null,
             maxChunks,
-            search: Array.isArray(request.search) ? request.search : undefined,
-            ...(request.framework ? { framework: request.framework } : {}),
-            ...(request.frameworkLabel ? { frameworkLabel: request.frameworkLabel } : {}),
-            ...(request.frameworkConfidence ? { frameworkConfidence: request.frameworkConfidence } : {}),
-            ...(request.frameworkReason ? { frameworkReason: request.frameworkReason } : {}),
         },
         headers,
     );

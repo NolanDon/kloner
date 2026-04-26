@@ -1,7 +1,7 @@
 // src/components/AppBuilderEditorAgentChat.tsx
 "use client";
 
-import { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo } from "react";
 import { Send, Bot, RotateCcw, Database, FileText, RefreshCw, X, AlertTriangle, ChevronDown, ChevronUp, ExternalLink, Copy, Check } from "lucide-react";
 import { ensureSessionAndCsrf } from "@/lib/auth-client";
 import { useAuth } from "@/src/hooks/useAuth";
@@ -145,6 +145,79 @@ type MigrationApplyFailure = {
     relationName: string | null;
     canRegenerate: boolean;
 };
+
+const STRUCTURAL_UI_HINTS = ["app/layout.tsx", "components/Footer.tsx", "footer.html", "header.html", "site-footer.js", "nav.js"];
+
+function looksLikeStructuralUiRequest(message: string): boolean {
+    return /(footer|header|navbar|nav\b|navigation|menu|layout|link)/i.test(String(message || ""));
+}
+
+function isStructuralSearchResult(chunks: Array<{ path?: string }>): boolean {
+    return chunks.some((chunk) => {
+        const path = String(chunk?.path || "").toLowerCase();
+        return STRUCTURAL_UI_HINTS.some((hint) => path.includes(hint.toLowerCase())) || /layout|footer|header|nav|menu/.test(path);
+    });
+}
+
+function isBusyEditPlanStatus(status: number | null | undefined, code: string | null | undefined): boolean {
+    const normalizedCode = String(code || "").trim().toUpperCase();
+    return status === 503 || normalizedCode === "EMBEDDING_MEMORY_PRESSURE" || normalizedCode === "EMBEDDING_QUEUE_FULL" || normalizedCode === "EMBEDDING_QUEUE_TIMEOUT";
+}
+
+function parseRetryDelaySeconds(result: { retryAfter?: string | null; data?: unknown }): number | null {
+    const body = result.data && typeof result.data === "object" ? (result.data as Record<string, unknown>) : {};
+    const retryAfterSeconds = body.retryAfterSeconds;
+
+    if (typeof retryAfterSeconds === "number" && Number.isFinite(retryAfterSeconds) && retryAfterSeconds >= 0) {
+        return Math.max(0, Math.ceil(retryAfterSeconds));
+    }
+
+    const header = String(result.retryAfter || "").trim();
+    if (!header) return null;
+
+    const parsed = Number(header);
+    if (Number.isFinite(parsed) && parsed >= 0) {
+        return Math.max(0, Math.ceil(parsed));
+    }
+
+    const dateMs = Date.parse(header);
+    if (Number.isFinite(dateMs)) {
+        return Math.max(0, Math.ceil((dateMs - Date.now()) / 1000));
+    }
+
+    return null;
+}
+
+function waitMs(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function buildEditPlanPauseMessage(requestId: string | null | undefined, code: string | null | undefined): string {
+    const details = [
+        "We’re busy processing other requests right now.",
+        "Please try again in a moment.",
+        "No changes were made yet.",
+        requestId ? `Request ID: ${requestId}` : null,
+        code ? `Error code: ${code}` : null,
+    ].filter(Boolean);
+    return details.join("\n");
+}
+
+function buildEditPlanTerminalMessage(requestId: string | null | undefined, code: string | null | undefined, reason: string): string {
+    const lowerCode = String(code || "").trim().toUpperCase();
+    const isMissingContext = lowerCode === "MISSING_APP_SCOPE" || lowerCode === "INVALID_APP_SCOPE" || lowerCode === "EMBEDDING_INDEX_STALE";
+    const header = isMissingContext
+        ? "We couldn’t find enough context to prepare this change yet."
+        : "We couldn’t finish this update right now.";
+    return [
+        header,
+        "No changes were made yet.",
+        reason ? `Reason: ${reason}` : null,
+        requestId ? `Request ID: ${requestId}` : null,
+        code ? `Error code: ${code}` : null,
+        "Please try again in a moment.",
+    ].filter(Boolean).join("\n");
+}
 
 const STARTER_PROMPTS = [
     "Improve the hero section with stronger hierarchy and clearer CTA.",
@@ -505,7 +578,6 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
     const [selectedRestorePointId, setSelectedRestorePointId] = useState<string | null>(null);
     const [restorePointDetailsById, setRestorePointDetailsById] = useState<Record<string, RestorePointDetail | undefined>>({});
     const [activeRestorePointPreview, setActiveRestorePointPreview] = useState<{ restorePointId: string; path: string } | null>(null);
-    const [expandedRestorePointDiffIds, setExpandedRestorePointDiffIds] = useState<Record<string, boolean>>({});
     const [showDatabaseSetup, setShowDatabaseSetup] = useState(false);
     const [showSupabaseSetup, setShowSupabaseSetup] = useState(false);
     const [showSupabaseAdvanced, setShowSupabaseAdvanced] = useState(false);
@@ -745,33 +817,28 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
     const inputRef = useRef<HTMLTextAreaElement>(null);
 
     const scrollToBottom = useCallback(() => {
-        // Use scrollIntoView as primary method
-        setTimeout(() => {
-            if (messagesEndRef.current) {
-                messagesEndRef.current.scrollIntoView({
-                    behavior: 'smooth',
-                    block: 'end',
-                    inline: 'nearest'
-                });
-            }
-        }, 0);
+        if (!messagesEndRef.current) return;
 
-        // Fallback: also try setting scrollTop on the container
-        setTimeout(() => {
-            if (messagesEndRef.current) {
-                const container = messagesEndRef.current.parentElement;
-                if (container) {
-                    container.scrollTop = container.scrollHeight;
-                }
+        messagesEndRef.current.scrollIntoView({
+            behavior: "auto",
+            block: "end",
+            inline: "nearest",
+        });
 
-                // Also try scrollIntoView again as backup
-                messagesEndRef.current.scrollIntoView({
-                    behavior: 'auto',
-                    block: 'end'
-                });
-            }
-        }, 50);
+        const container = messagesEndRef.current.parentElement;
+        if (container) {
+            container.scrollTop = container.scrollHeight;
+        }
     }, []);
+
+    const latestAssistantMessageId = useMemo(() => {
+        for (let index = messages.length - 1; index >= 0; index -= 1) {
+            if (messages[index]?.role === "assistant") {
+                return messages[index].id;
+            }
+        }
+        return null;
+    }, [messages]);
 
     const loadedFromRemoteRef = useRef(false);
     const initialLoadCompletedRef = useRef(false);
@@ -1085,7 +1152,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
             if (now - scopeRecoveryNoticeAtRef.current < 60_000) return;
             scopeRecoveryNoticeAtRef.current = now;
 
-            const text = "App context expired. Reconnected to app. Please retry.";
+            const text = "This app session needs a fresh start. Please reopen the app in App Builder and try again.";
             void showAlert(text, "App connection");
             setMessages((prev) => [
                 ...prev,
@@ -1476,10 +1543,10 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
         setSelectedRestorePointId(preferredId);
     }, [lastRestorePointId, restorePoints, selectedRestorePointId]);
 
-    // Scroll to bottom when messages change
-    useEffect(() => {
+    // Scroll immediately when a new assistant message appears.
+    useLayoutEffect(() => {
         scrollToBottom();
-    }, [messages, scrollToBottom]);
+    }, [latestAssistantMessageId, scrollToBottom]);
 
     const selectedRestorePoint = restorePoints.find((item) => item.id === selectedRestorePointId) ?? restorePoints[0] ?? null;
 
@@ -2651,6 +2718,31 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
             };
             const effectiveCurrentFile = resolveFallbackCurrentFile(files, currentFile);
             const frameworkPrompt = buildProjectFrameworkPrompt(projectFramework, messageInput);
+            const isScopeErrorResult = <T,>(result: { status: number; code?: string | null }) => {
+                const code = String(result.code || "").trim().toUpperCase();
+                return result.status === 403 && (code === "MISSING_APP_SCOPE" || code === "INVALID_APP_SCOPE");
+            };
+            const recoverAppScopeForAiRequest = async <T,>(retryLabel: string, request: () => Promise<{ ok: boolean; status: number; code?: string | null } & T>): Promise<{ ok: boolean; status: number; code?: string | null } & T> => {
+                const firstResult = await request();
+                if (!isScopeErrorResult(firstResult)) return firstResult;
+
+                const warmed = await bootstrapAppScope().catch(() => false);
+                dispatchAiAgentEvent("app_scope_recovery", {
+                    appId,
+                    userId: user?.uid || null,
+                    retryLabel,
+                    scopeRecovered: warmed,
+                    phase: "ai_request_recover",
+                });
+
+                if (warmed) {
+                    const retryResult = await request();
+                    if (!isScopeErrorResult(retryResult)) return retryResult;
+                }
+
+                notifyScopeRecoveryFailure(retryLabel);
+                return firstResult;
+            };
             dispatchAiAgentEvent("request", {
                 appId,
                 userId: user?.uid || null,
@@ -2694,13 +2786,59 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                 });
             }
 
-            const searchResult = await fetchEmbeddingSearch(
-                searchRequestBody,
-                requestHeaders,
+            const searchResult = await recoverAppScopeForAiRequest(
+                "embedding search",
+                () => fetchEmbeddingSearch(searchRequestBody, requestHeaders),
             );
 
+            if (isScopeErrorResult(searchResult)) {
+                return;
+            }
+
             const normalizedSearch = normalizeEmbeddingSearchResponse(searchResult.data);
-            const searchElapsedMs = Date.now() - searchStartedAt;
+            let searchElapsedMs = Date.now() - searchStartedAt;
+
+            const shouldRetrySearchForStructuralUi =
+                looksLikeStructuralUiRequest(messageInput) &&
+                !isStructuralSearchResult(normalizedSearch.chunks);
+
+            if (searchResult.ok && shouldRetrySearchForStructuralUi) {
+                const structuralHintText = `Prefer structural targets like ${STRUCTURAL_UI_HINTS.join(", ")}.`;
+                const structuralSearchBody = {
+                    ...searchRequestBody,
+                    requestText: `${frameworkPrompt}\n\n${structuralHintText}`,
+                    query: `${messageInput}\n\n${structuralHintText}`,
+                };
+                const structuralSearchResult = await recoverAppScopeForAiRequest(
+                    "structural embedding search",
+                    () => fetchEmbeddingSearch(structuralSearchBody, requestHeaders),
+                );
+
+                if (isScopeErrorResult(structuralSearchResult)) {
+                    return;
+                }
+
+                if (structuralSearchResult.ok) {
+                    const structuralNormalizedSearch = normalizeEmbeddingSearchResponse(structuralSearchResult.data);
+                    if (structuralNormalizedSearch.chunks.length > 0 && isStructuralSearchResult(structuralNormalizedSearch.chunks)) {
+                        dispatchAiAgentEvent("search_request_retry", {
+                            appId,
+                            userId: user?.uid || null,
+                            requestId: searchRequestId,
+                            reason: "structural_hints",
+                            initialChunkCount: normalizedSearch.chunks.length,
+                            retryChunkCount: structuralNormalizedSearch.chunks.length,
+                        });
+                        searchResult.data = structuralSearchResult.data;
+                        searchResult.status = structuralSearchResult.status;
+                        searchResult.code = structuralSearchResult.code;
+                        normalizedSearch.chunks.splice(0, normalizedSearch.chunks.length, ...structuralNormalizedSearch.chunks);
+                        normalizedSearch.refreshQueued = structuralNormalizedSearch.refreshQueued;
+                        searchElapsedMs = Date.now() - searchStartedAt;
+                    }
+                }
+            }
+
             dispatchAiAgentEvent("search_request_end", {
                 appId,
                 userId: user?.uid || null,
@@ -2768,21 +2906,23 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
 
             const refreshQueuedNotice = getEmbeddingSearchRefreshQueuedNotice(normalizedSearch);
 
-            const editPlanResult = await fetchEmbeddingEditPlan(
-                {
-                    appId,
-                    query: messageInput,
-                    requestText: frameworkPrompt,
-                    currentPath: effectiveCurrentFile,
-                    maxChunks: 10,
-                    search: normalizedSearch.chunks,
-                    framework: projectFramework.key,
-                    frameworkLabel: projectFramework.label,
-                    frameworkConfidence: projectFramework.confidence,
-                    frameworkReason: projectFramework.reason,
-                },
-                requestHeaders,
+            let editPlanResult = await recoverAppScopeForAiRequest(
+                "edit plan",
+                () => fetchEmbeddingEditPlan(
+                    {
+                        appId,
+                        query: messageInput,
+                        requestText: frameworkPrompt,
+                        currentPath: effectiveCurrentFile,
+                        maxChunks: 10,
+                    },
+                    requestHeaders,
+                ),
             );
+
+            if (isScopeErrorResult(editPlanResult)) {
+                return;
+            }
 
             if (!editPlanResult.ok) {
                 dispatchAiAgentEvent("response_error", {
@@ -2790,23 +2930,140 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                     userId: user?.uid || null,
                     status: editPlanResult.status,
                 });
+
                 const editPlanErrorCode =
                     editPlanResult.code ||
                     (editPlanResult.status === 409
                         ? "EMBEDDING_INDEX_STALE"
                         : editPlanResult.status === 503
                             ? "EMBEDDING_MEMORY_PRESSURE"
-                        : editPlanResult.status === 504
-                            ? "EMBEDDING_SEARCH_TIMEOUT"
-                            : editPlanResult.status === 429
-                                ? "EDIT_PLAN_RATE_LIMITED"
-                                : "EDIT_PLAN_FAILED");
+                            : editPlanResult.status === 504
+                                ? "EMBEDDING_SEARCH_TIMEOUT"
+                                : editPlanResult.status === 429
+                                    ? "EDIT_PLAN_RATE_LIMITED"
+                                    : "EDIT_PLAN_FAILED");
+                const editPlanRequestId = editPlanResult.requestId || null;
+                const retryDelaySeconds = parseRetryDelaySeconds(editPlanResult);
+                const isBusy = isBusyEditPlanStatus(editPlanResult.status, editPlanErrorCode);
+                const hasRetryDelay = typeof retryDelaySeconds === "number" && retryDelaySeconds > 0;
+                const isRetryablePause = isBusy && hasRetryDelay;
+
+                if (isBusy && !isRetryablePause) {
+                    const pauseMessage = buildEditPlanPauseMessage(editPlanRequestId, editPlanErrorCode);
+                    await showAlert(pauseMessage, "We’re busy right now");
+                    setMessages((prev) => [
+                        ...prev,
+                        {
+                            id: `edit_plan_busy_${Date.now()}`,
+                            role: "assistant",
+                            content: pauseMessage,
+                            timestamp: new Date(),
+                            type: "text",
+                            retryPrompt: messageInput,
+                            retryStatus: 503,
+                        },
+                    ]);
+                    return;
+                }
+
+                if (isRetryablePause) {
+                    const pauseMessage = buildEditPlanPauseMessage(editPlanRequestId, editPlanErrorCode);
+                    setMessages((prev) => [
+                        ...prev,
+                        {
+                            id: `edit_plan_busy_${Date.now()}`,
+                            role: "assistant",
+                            content: pauseMessage,
+                            timestamp: new Date(),
+                            type: "text",
+                            retryPrompt: messageInput,
+                            retryStatus: 503,
+                        },
+                    ]);
+                    setIsLoading(false);
+                    await waitMs(Math.min(retryDelaySeconds * 1000, 45_000));
+                    setIsLoading(true);
+
+                    const retryEditPlanResult = await recoverAppScopeForAiRequest(
+                        "edit plan retry",
+                        () => fetchEmbeddingEditPlan(
+                            {
+                                appId,
+                                query: messageInput,
+                                requestText: frameworkPrompt,
+                                currentPath: effectiveCurrentFile,
+                                maxChunks: 10,
+                            },
+                            requestHeaders,
+                        ),
+                    );
+
+                    if (isScopeErrorResult(retryEditPlanResult)) {
+                        return;
+                    }
+
+                    if (!retryEditPlanResult.ok) {
+                        const retryCode = retryEditPlanResult.code || editPlanErrorCode;
+                        const retryRequestId = retryEditPlanResult.requestId || editPlanRequestId || null;
+                        const retryReason = retryEditPlanResult.error || "We’re busy processing other requests right now.";
+                        const terminalMessage = buildEditPlanTerminalMessage(retryRequestId, retryCode, retryReason);
+
+                        await showAlert(terminalMessage, "Update couldn’t finish");
+                        setMessages((prev) => [
+                            ...prev,
+                            {
+                                id: `edit_plan_terminal_${Date.now()}`,
+                                role: "assistant",
+                                content: terminalMessage,
+                                timestamp: new Date(),
+                                type: "text",
+                                retryPrompt: messageInput,
+                                retryStatus: 503,
+                            },
+                        ]);
+                        return;
+                    }
+
+                    editPlanResult = retryEditPlanResult;
+                }
+
+                const isMissingContext = editPlanResult.status === 409 || editPlanErrorCode === "EMBEDDING_INDEX_STALE";
+                const isTerminalEditPlanFailure =
+                    isMissingContext ||
+                    editPlanResult.status === 502 ||
+                    editPlanResult.status === 504 ||
+                    editPlanErrorCode === "EMBEDDING_EDIT_PLAN_FAILED" ||
+                    (editPlanResult.status === 500 && !editPlanResult.retryAfter && !(editPlanResult.data as any)?.retryAfterSeconds);
+
+                if (isTerminalEditPlanFailure) {
+                    const requestIdText = editPlanResult.requestId || editPlanRequestId || "unknown";
+                    const reasonText = editPlanResult.error || "The update could not be completed.";
+                    const terminalMessage = buildEditPlanTerminalMessage(requestIdText, editPlanErrorCode, reasonText);
+
+                    await showAlert(terminalMessage, "Update couldn’t finish");
+                    setMessages((prev) => [
+                        ...prev,
+                        {
+                            id: `edit_plan_failed_${Date.now()}`,
+                            role: "assistant",
+                            content: terminalMessage,
+                            timestamp: new Date(),
+                            type: "text",
+                            retryPrompt: messageInput,
+                            retryStatus: 503,
+                        },
+                    ]);
+                    return;
+                }
+
                 const editPlanError = new Error(
                     getEmbeddingSearchErrorMessage(editPlanResult.status, editPlanResult.code, editPlanResult.error),
                 );
                 (editPlanError as any).status = editPlanResult.status;
                 (editPlanError as any).code = editPlanErrorCode;
                 (editPlanError as any).retryPrompt = messageInput;
+                (editPlanError as any).requestId = editPlanResult.requestId || null;
+                (editPlanError as any).phase = "edit-plan";
                 throw editPlanError;
             }
 
@@ -3335,12 +3592,12 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                             <div className="text-sm font-medium text-neutral-900">Restore points</div>
                             <div className="mt-1 text-[11px] text-neutral-500">Always visible at the top of chat.</div>
                         </div>
-                        <div className="flex flex-wrap items-center gap-2">
+                        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2 justify-end">
                             {restorePoints.length > 1 ? (
                                 <select
                                     value={selectedRestorePointId || restorePoints[0]?.id || ""}
                                     onChange={(event) => setSelectedRestorePointId(event.target.value || null)}
-                                    className="min-w-[220px] rounded-lg border border-neutral-200 bg-white px-3 py-2 text-xs text-neutral-700 shadow-sm outline-none transition focus:border-[#F55F2A]/50"
+                                    className="min-w-[220px] max-w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-xs text-neutral-700 shadow-sm outline-none transition focus:border-[#F55F2A]/50"
                                     disabled={isRestoreBusy}
                                 >
                                     {restorePoints.map((rp) => (
@@ -3350,14 +3607,14 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                     ))}
                                 </select>
                             ) : selectedRestorePoint ? (
-                                <div className="rounded-lg border border-neutral-200 bg-white px-3 py-2 text-xs text-neutral-700 shadow-sm">
-                                    <div className="font-medium text-neutral-900">{selectedRestorePoint.label}</div>
-                                    <div className="text-[11px] text-neutral-500">
+                                <div className="min-w-0 max-w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-xs text-neutral-700 shadow-sm">
+                                    <div className="min-w-0 truncate font-medium text-neutral-900">{selectedRestorePoint.label}</div>
+                                    <div className="min-w-0 truncate text-[11px] text-neutral-500">
                                         {formatRestorePointCreatedAt(selectedRestorePoint.createdAt)}{selectedRestorePoint.kept ? " · kept" : ""}
                                     </div>
                                 </div>
                             ) : (
-                                <div className="rounded-lg border border-dashed border-[#F55F2A]/20 bg-[#FFF8F5] px-3 py-2 text-xs text-neutral-600">
+                                <div className="min-w-0 max-w-full rounded-lg border border-dashed border-[#F55F2A]/20 bg-[#FFF8F5] px-3 py-2 text-xs text-neutral-600">
                                     No restore points yet. The editor will create one automatically before applying AI edits.
                                 </div>
                             )}
@@ -3685,18 +3942,14 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                         const summary = summarizeRestorePointDiff(detail);
                                         if (summary.length === 0) return null;
 
-                                        const isExpanded = expandedRestorePointDiffIds[message.restorePointId!] === true;
-                                        const visibleSummary = isExpanded || summary.length <= 3 ? summary : summary.slice(0, 3);
-                                        const hiddenCount = Math.max(0, summary.length - visibleSummary.length);
-
                                         return (
                                             <div className="rounded-xl border border-[#F55F2A]/15 bg-white/80 p-3">
                                                 <div className="flex items-center justify-between gap-2">
-                                                    <div className="text-xs font-semibold text-neutral-800">Changed files</div>
+                                                    <div className="text-xs font-semibold text-neutral-800">Changed files in this edit</div>
                                                     <div className="text-[11px] text-neutral-500">Hover or click a file to inspect the diff</div>
                                                 </div>
                                                 <div className="mt-3 space-y-2">
-                                                    {visibleSummary.map((entry) => (
+                                                    {summary.map((entry) => (
                                                         <button
                                                             key={entry.path}
                                                             type="button"
@@ -3715,22 +3968,6 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                                             </div>
                                                         </button>
                                                     ))}
-                                                    {hiddenCount > 0 ? (
-                                                        <button
-                                                            type="button"
-                                                            onClick={() =>
-                                                                setExpandedRestorePointDiffIds((prev) => ({
-                                                                    ...prev,
-                                                                    [message.restorePointId!]: !isExpanded,
-                                                                }))
-                                                            }
-                                                            className="text-xs font-medium text-[#F55F2A] hover:underline"
-                                                        >
-                                                            {isExpanded
-                                                                ? "Show fewer changed files"
-                                                                : `View ${hiddenCount} more changed file${hiddenCount === 1 ? "" : "s"}`}
-                                                        </button>
-                                                    ) : null}
                                                 </div>
                                             </div>
                                         );

@@ -19,6 +19,19 @@ function toMaxChunks(value: unknown): number {
     return Math.min(10, Math.max(1, Math.floor(parsed)));
 }
 
+function parseRetryAfterSeconds(value: string | null): number | null {
+    if (!value) return null;
+    const parsed = Number(value);
+    if (Number.isFinite(parsed) && parsed >= 0) return Math.ceil(parsed);
+
+    const dateMs = Date.parse(value);
+    if (Number.isFinite(dateMs)) {
+        return Math.max(0, Math.ceil((dateMs - Date.now()) / 1000));
+    }
+
+    return null;
+}
+
 export async function POST(req: NextRequest) {
     return requireSessionAndMaybeCsrf(
         req,
@@ -59,9 +72,9 @@ export async function POST(req: NextRequest) {
                 },
             });
 
-            const response = result.json as any;
-            const files = Array.isArray(response?.files) ? response.files : [];
-            const dbMigrations = Array.isArray(response?.dbMigrations) ? response.dbMigrations : [];
+            const payload = result.json as any;
+            const files = Array.isArray(payload?.files) ? payload.files : [];
+            const dbMigrations = Array.isArray(payload?.dbMigrations) ? payload.dbMigrations : [];
             if (files.length === 0 && dbMigrations.length === 0) {
                 void captureAuditEvent({
                     source: "internal",
@@ -78,14 +91,26 @@ export async function POST(req: NextRequest) {
                         currentPath,
                         query,
                         maxChunks,
-                        searchChunkCount: Array.isArray(response?.search) ? response.search.length : Array.isArray(search) ? search.length : 0,
-                        summary: typeof response?.summary === "string" ? response.summary.slice(0, 300) : null,
-                        notes: Array.isArray(response?.notes) ? response.notes.slice(0, 5) : [],
+                        searchChunkCount: Array.isArray(payload?.search) ? payload.search.length : Array.isArray(search) ? search.length : 0,
+                        summary: typeof payload?.summary === "string" ? payload.summary.slice(0, 300) : null,
+                        notes: Array.isArray(payload?.notes) ? payload.notes.slice(0, 5) : [],
                     },
                 });
             }
 
-            return NextResponse.json(result.json, { status: result.status });
+            const retryAfter = result.upstream.headers.get("retry-after");
+            const response = NextResponse.json(
+                {
+                    ...(result.json as any),
+                    reqId: result.reqId,
+                    retryAfterSeconds: parseRetryAfterSeconds(retryAfter),
+                },
+                { status: result.status },
+            );
+            if (retryAfter) {
+                response.headers.set("Retry-After", retryAfter);
+            }
+            return response;
         },
         { csrf: true, methods: ["POST"] },
     );
