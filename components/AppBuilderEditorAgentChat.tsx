@@ -5021,6 +5021,9 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                             <div className="min-w-0 flex-1">
                                 <div className="flex flex-wrap items-center gap-2">
                                     <p className="text-sm font-semibold text-neutral-900">Agent chat is temporarily paused</p>
+                                    <span className="inline-flex items-center rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-600">
+                                        Paused
+                                    </span>
                                 </div>
                                 <p className="mt-1 text-sm leading-relaxed text-neutral-700">
                                     {PRODUCTION_AGENT_CHAT_BLOCK_MESSAGE}
