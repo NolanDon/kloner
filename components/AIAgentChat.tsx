@@ -8,11 +8,17 @@ import { useAuth } from "@/src/hooks/useAuth";
 import { db } from "@/lib/firebase";
 import { doc, onSnapshot } from "firebase/firestore";
 import { useModal } from "@/components/ui/ModalContext";
+import EditPlanReviewModal from "@/components/EditPlanReviewModal";
+import EditPlanJobStatusCard from "@/components/EditPlanJobStatusCard";
 import {
-    applyEmbeddingEditPlanToFiles,
-    editPlanHasDeleteOps,
+    applyEditPlanOps,
     fetchEmbeddingEditPlan,
+    fetchEmbeddingEditPlanJobStatus,
+    normalizeEmbeddingEditPlanJobStatus,
     normalizeEmbeddingEditPlanResponse,
+    type AppEmbeddingEditPlanJobStatus,
+    type AppEmbeddingEditPlanOp,
+    type AppEmbeddingEditPlanResponse,
 } from "@/src/lib/appEmbeddingsClient";
 import {
     buildProjectFrameworkPrompt,
@@ -50,7 +56,8 @@ type StagedBundle = {
     label: string;
     proposalIds: string[];
     appliedProposalIds: Record<string, boolean>;
-    fileEdits: Array<{ path: string; content: string }>;
+    ops: AppEmbeddingEditPlanOp[];
+    rawPlan: AppEmbeddingEditPlanResponse;
     creditRequestId?: string;
     needsRebuild?: boolean;
 };
@@ -114,6 +121,9 @@ type RestorePointItem = {
     undoOf?: string | null;
 };
 
+const PRODUCTION_AGENT_CHAT_BLOCKED = process.env.NODE_ENV === "production";
+const PRODUCTION_AGENT_CHAT_BLOCK_MESSAGE = "We’re working on some updates to reduce your token usage. Please check back soon.";
+
 type MigrationApplyFailure = {
     errorText: string;
     errorCode: string | null;
@@ -160,6 +170,14 @@ function sanitizeAssistantContent(text: unknown): string {
     }
 
     return raw;
+}
+
+function isActiveEditPlanJobStatus(status: string | null | undefined): boolean {
+    return ["queued", "picked_up", "working"].includes(String(status || "").toLowerCase());
+}
+
+function buildEditPlanJobStorageKey(appId: string): string {
+    return `kloner:edit-plan-job:${appId}`;
 }
 
 function renderTextWithLinks(text: string): React.ReactNode {
@@ -444,6 +462,10 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
     const [migrationConfirmText, setMigrationConfirmText] = useState("");
     const [migrationShowSqlInModal, setMigrationShowSqlInModal] = useState(false);
     const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
+    const [pendingEditPlan, setPendingEditPlan] = useState<AppEmbeddingEditPlanResponse | null>(null);
+    const [isApplyingEditPlan, setIsApplyingEditPlan] = useState(false);
+    const [editPlanApplyError, setEditPlanApplyError] = useState<string | null>(null);
+    const [activeEditPlanJob, setActiveEditPlanJob] = useState<AppEmbeddingEditPlanJobStatus | null>(null);
 
     const [stagedBundles, setStagedBundles] = useState<StagedBundle[]>([]);
 
@@ -452,15 +474,168 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
     const lastSupabaseDbHealthAtRef = useRef(0);
     const scopeRecoveryNoticeAtRef = useRef(0);
     const migrationFailureSeenAtRef = useRef<Record<string, number>>({});
+    const editPlanJobVersionRef = useRef(0);
+    const editPlanJobStableSignatureRef = useRef<string>("");
+    const editPlanJobStableReadsRef = useRef(0);
+    const editPlanJobPollTimerRef = useRef<number | null>(null);
     const previewReadyRef = useRef(Boolean(previewReady));
 
-    const chatDisabled = previewReady === false && !freeCompileFixContext;
+    const chatDisabled = PRODUCTION_AGENT_CHAT_BLOCKED || (previewReady === false && !freeCompileFixContext);
 
     const didSyncSupabasePreviewEnvRef = useRef(false);
 
     useEffect(() => {
         previewReadyRef.current = Boolean(previewReady);
     }, [previewReady]);
+
+    useEffect(() => {
+        if (typeof window === "undefined" || !appId) return;
+        const storageKey = buildEditPlanJobStorageKey(appId);
+        const raw = window.localStorage.getItem(storageKey);
+        if (!raw) return;
+        try {
+            const parsed = JSON.parse(raw);
+            const job = normalizeEmbeddingEditPlanJobStatus(parsed);
+            if (isActiveEditPlanJobStatus(job.status) && job.statusUrl) {
+                setActiveEditPlanJob(job);
+            } else {
+                window.localStorage.removeItem(storageKey);
+            }
+        } catch {
+            window.localStorage.removeItem(storageKey);
+        }
+    }, [appId]);
+
+    useEffect(() => {
+        if (typeof window === "undefined" || !appId) return;
+        const storageKey = buildEditPlanJobStorageKey(appId);
+        if (activeEditPlanJob && activeEditPlanJob.statusUrl) {
+            window.localStorage.setItem(storageKey, JSON.stringify(activeEditPlanJob));
+        } else {
+            window.localStorage.removeItem(storageKey);
+        }
+    }, [activeEditPlanJob, appId]);
+
+    useEffect(() => {
+        return () => {
+            if (editPlanJobPollTimerRef.current) {
+                clearTimeout(editPlanJobPollTimerRef.current);
+                editPlanJobPollTimerRef.current = null;
+            }
+        };
+    }, []);
+
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+        if (!activeEditPlanJob?.statusUrl || !isActiveEditPlanJobStatus(activeEditPlanJob.status)) return;
+
+        const jobStatusUrl = activeEditPlanJob.statusUrl;
+        const pollVersion = ++editPlanJobVersionRef.current;
+        const signature = [
+            activeEditPlanJob.status,
+            activeEditPlanJob.stage || "",
+            activeEditPlanJob.progress ?? "",
+            activeEditPlanJob.queueAgeSeconds ?? "",
+            activeEditPlanJob.queuedForSeconds ?? "",
+            activeEditPlanJob.runningForSeconds ?? "",
+            activeEditPlanJob.workerId || "",
+            activeEditPlanJob.attemptCount ?? "",
+        ].join("|");
+        if (signature === editPlanJobStableSignatureRef.current) {
+            editPlanJobStableReadsRef.current += 1;
+        } else {
+            editPlanJobStableSignatureRef.current = signature;
+            editPlanJobStableReadsRef.current = 0;
+        }
+
+        const stableReads = editPlanJobStableReadsRef.current;
+        const delayMs = activeEditPlanJob.status === "queued"
+            ? stableReads >= 3
+                ? 2_500
+                : 1_400
+            : stableReads >= 3
+                ? 2_000
+                : 1_600;
+
+        editPlanJobPollTimerRef.current = window.setTimeout(() => {
+            void (async () => {
+                const result = await fetchEmbeddingEditPlanJobStatus(jobStatusUrl, {});
+                if (pollVersion !== editPlanJobVersionRef.current) return;
+
+                if (!result.ok || !result.data) {
+                    const terminalStatus = result.status === 404
+                        ? "expired"
+                        : result.status === 409 || result.status === 422 || result.status === 429 || result.status === 503 || result.status === 504
+                            ? "failed"
+                            : activeEditPlanJob.status;
+                    const errorDetails = {
+                        code: result.code || (result.status === 404 ? "JOB_EXPIRED" : result.status === 429 ? "JOB_RATE_LIMITED" : result.status === 503 ? "JOB_BACKLOG" : result.status === 504 ? "JOB_TIMEOUT" : "JOB_STATUS_FAILED"),
+                        message: result.error || "We couldn’t refresh this edit-plan job.",
+                        retryAfterSeconds: typeof result.retryAfter === "string" && Number.isFinite(Number(result.retryAfter)) ? Math.max(0, Math.ceil(Number(result.retryAfter))) : null,
+                    };
+                    setActiveEditPlanJob({
+                        ...activeEditPlanJob,
+                        status: terminalStatus,
+                        stage: terminalStatus,
+                        error: errorDetails,
+                    });
+                    if (terminalStatus === "expired" || terminalStatus === "failed") {
+                        setEditPlanApplyError(`${errorDetails.message}\nRequest ID: ${activeEditPlanJob.requestId || "unknown"}\nJob ID: ${activeEditPlanJob.jobId || "unknown"}`);
+                    }
+                    return;
+                }
+
+                const nextJob = normalizeEmbeddingEditPlanJobStatus(result.data);
+                setActiveEditPlanJob(nextJob);
+
+                if (nextJob.status === "completed") {
+                    const completedPlan = nextJob.result || nextJob.job?.result || null;
+                    if (completedPlan) {
+                        const normalizedPlan = normalizeEmbeddingEditPlanResponse(completedPlan);
+                        setPendingEditPlan(normalizedPlan);
+                        setEditPlanApplyError(null);
+                        setMessages((prev) => [
+                            ...prev,
+                            {
+                                id: `edit_plan_ready_${Date.now()}`,
+                                role: "assistant",
+                                content: normalizedPlan.summary || "Your edit plan is ready.",
+                                timestamp: new Date(),
+                                type: "text",
+                            },
+                        ]);
+                    }
+                    editPlanJobVersionRef.current += 1;
+                    setActiveEditPlanJob(null);
+                    return;
+                }
+
+                if (nextJob.status === "failed" || nextJob.status === "expired") {
+                    setEditPlanApplyError(
+                        [
+                            nextJob.error && typeof nextJob.error === "object" && typeof nextJob.error.message === "string" ? nextJob.error.message : typeof nextJob.error === "string" ? nextJob.error : "The edit plan job failed.",
+                            `Request ID: ${nextJob.requestId || activeEditPlanJob.requestId || "unknown"}`,
+                            `Job ID: ${nextJob.jobId || activeEditPlanJob.jobId || "unknown"}`,
+                            nextJob.error && typeof nextJob.error === "object" && typeof nextJob.error.retryAfterSeconds === "number" ? `Retry after: ${nextJob.error.retryAfterSeconds}s` : null,
+                        ].filter(Boolean).join("\n"),
+                    );
+                    editPlanJobVersionRef.current += 1;
+                    setActiveEditPlanJob(nextJob);
+                    return;
+                }
+            })().catch((err) => {
+                if (pollVersion !== editPlanJobVersionRef.current) return;
+                setEditPlanApplyError(String(err?.message || "Failed to refresh edit-plan job status."));
+            });
+        }, delayMs);
+
+        return () => {
+            if (editPlanJobPollTimerRef.current) {
+                clearTimeout(editPlanJobPollTimerRef.current);
+                editPlanJobPollTimerRef.current = null;
+            }
+        };
+    }, [activeEditPlanJob, setMessages]);
 
     useEffect(() => {
         if (allowDatabaseSetupUi) return;
@@ -1279,12 +1454,13 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
     const projectFramework = useMemo(() => detectProjectFramework(files), [files]);
 
     const createRestorePointBeforeApply = useCallback(
-        async (label: string): Promise<string | null> => {
+        async (label: string, paths?: string[]): Promise<string | null> => {
             try {
                 const headers = await withCsrfHeaders();
+                const uniquePaths = Array.from(new Set((paths || []).map((path) => String(path || "").trim()).filter(Boolean)));
                 const res = await fetchWithScopeRetry(
                     `/api/app-builder/${appId}/restore-points`,
-                    { method: "POST", headers, body: JSON.stringify({ label }) },
+                    { method: "POST", headers, body: JSON.stringify({ label, paths: uniquePaths }) },
                     { retryLabel: "create restore point before apply" },
                 );
                 if (!res.ok) return null;
@@ -1298,6 +1474,73 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
         },
         [appId, fetchWithScopeRetry, withCsrfHeaders],
     );
+
+    const applyPendingEditPlan = useCallback(async () => {
+        const plan = pendingEditPlan;
+        if (!plan) return;
+
+        const ops = Array.isArray(plan.ops)
+            ? plan.ops.filter((op): op is AppEmbeddingEditPlanOp => Boolean(op && typeof op.path === "string" && op.path.trim()))
+            : [];
+
+        if (plan.needsMoreContext || ops.length === 0) {
+            setEditPlanApplyError("The backend asked for more context before it could safely apply this plan.");
+            return;
+        }
+
+        setIsApplyingEditPlan(true);
+        setEditPlanApplyError(null);
+
+        try {
+            const restoreLabel = String(plan.summary || "Apply edit plan").trim() || "Apply edit plan";
+            const restorePointId = await createRestorePointBeforeApply(restoreLabel, ops.map((op) => op.path));
+            if (!restorePointId) {
+                setEditPlanApplyError("I couldn’t create a restore point for this edit, so I stopped before applying it.");
+                return;
+            }
+
+            setLastRestorePointId(restorePointId);
+            await fetchRestorePoints();
+
+            const headers = await withCsrfHeaders();
+            const applyResult = await applyEditPlanOps({ appId, ops, code: null }, headers);
+            if (!applyResult.ok) {
+                const requestId = applyResult.requestId || plan.requestId || null;
+                const code = applyResult.code || (applyResult.status === 409 ? "PATCH_RESOLUTION_FAILED" : null);
+                const errorText = String(applyResult.error || (applyResult.data as any)?.error || "Failed to apply edit plan.");
+                const anchorHint = ops[0]?.target ? `\n\nAnchor details:\n${JSON.stringify(ops[0].target, null, 2)}` : "";
+                setEditPlanApplyError(
+                    [
+                        "The backend could not apply this edit plan.",
+                        errorText,
+                        requestId ? `Request ID: ${requestId}` : null,
+                        code ? `Error code: ${code}` : null,
+                        applyResult.status === 409 ? "Review the anchor details below and refine the request." : null,
+                    ].filter(Boolean).join("\n") + anchorHint,
+                );
+                return;
+            }
+
+            await syncFilesFromServer({ applyToState: true }).catch(() => null);
+            setPendingEditPlan(null);
+            setMessages((prev) => [
+                ...prev,
+                {
+                    id: `edit_plan_applied_${Date.now()}`,
+                    role: "assistant",
+                    content: "Applied the edit plan and synced the updated files.",
+                    timestamp: new Date(),
+                    type: "text",
+                    restorePointId,
+                    restoreActionLabel: "Undo",
+                },
+            ]);
+        } catch (err: any) {
+            setEditPlanApplyError(String(err?.message || "Failed to apply edit plan."));
+        } finally {
+            setIsApplyingEditPlan(false);
+        }
+    }, [appId, createRestorePointBeforeApply, fetchRestorePoints, pendingEditPlan, syncFilesFromServer, withCsrfHeaders]);
 
     useEffect(() => {
         fetchRestorePoints();
@@ -1553,7 +1796,10 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
         const bundle = stagedBundles.find((entry) => entry.id === bundleId);
         if (!bundle) return;
 
-        const restorePointId = await createRestorePointBeforeApply(bundle.label || "Apply staged edits");
+        const restorePointId = await createRestorePointBeforeApply(
+            bundle.label || "Apply staged edits",
+            bundle.ops.map((op) => op.path),
+        );
         if (!restorePointId) {
             setMessages((msgs) => [
                 ...msgs,
@@ -1575,14 +1821,23 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
         // Always create a local checkpoint right before applying.
         createCheckpoint(bundle.label || "Apply staged edits");
 
-        // Apply edits (this persists to Firebase via the parent).
-        for (const edit of bundle.fileEdits) {
-            try {
-                onFileEdit(edit.path, edit.content, bundle.creditRequestId);
-            } catch {
-                // ignore; individual edits are handled by the parent save path
-            }
+        const headers = await withCsrfHeaders();
+        const applyResult = await applyEditPlanOps({ appId, ops: bundle.ops, code: null }, headers);
+        if (!applyResult.ok) {
+            setMessages((msgs) => [
+                ...msgs,
+                {
+                    id: `staged_apply_failed_${Date.now()}`,
+                    role: "assistant",
+                    content: String(applyResult.error || "Failed to apply staged code changes."),
+                    timestamp: new Date(),
+                    type: "text",
+                },
+            ]);
+            return;
         }
+
+        await syncFilesFromServer({ applyToState: true }).catch(() => null);
 
         if (bundle.needsRebuild) {
             await runPostMigrationRefreshPipeline();
@@ -1610,7 +1865,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
         ]);
 
         setStagedBundles((prev) => prev.filter((b) => b.id !== bundleId));
-    }, [createCheckpoint, createRestorePointBeforeApply, fetchRestorePoints, onFileEdit, runPostMigrationRefreshPipeline, setLastRestorePointId, stagedBundles]);
+    }, [appId, createCheckpoint, createRestorePointBeforeApply, fetchRestorePoints, runPostMigrationRefreshPipeline, stagedBundles, syncFilesFromServer, setLastRestorePointId, withCsrfHeaders]);
 
     const discardStagedBundle = useCallback((bundleId: string) => {
         setStagedBundles((prev) => prev.filter((b) => b.id !== bundleId));
@@ -2496,33 +2751,50 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                 throw error;
             }
 
-            const rawPlan = editPlanResult.data;
-            const data = normalizeEmbeddingEditPlanResponse(rawPlan);
-            const requestId = typeof (rawPlan as any)?.requestId === "string" ? (rawPlan as any).requestId : null;
-            const creditCost = typeof (rawPlan as any)?.creditCost === "number" && Number.isFinite((rawPlan as any).creditCost)
-                ? Math.max(1, Math.floor((rawPlan as any).creditCost))
+            const rawPlan = normalizeEmbeddingEditPlanResponse(editPlanResult.data);
+            const queuedJob = rawPlan.queued || rawPlan.status === "queued" || rawPlan.statusUrl || rawPlan.job?.statusUrl
+                ? normalizeEmbeddingEditPlanJobStatus(rawPlan.job || rawPlan)
+                : null;
+            const queuedStatusUrl = rawPlan.statusUrl || queuedJob?.statusUrl || null;
+            if (queuedJob && queuedStatusUrl && isActiveEditPlanJobStatus(queuedJob.status)) {
+                editPlanJobVersionRef.current += 1;
+                editPlanJobStableSignatureRef.current = "";
+                editPlanJobStableReadsRef.current = 0;
+                setActiveEditPlanJob({ ...queuedJob, statusUrl: queuedStatusUrl, requestId: queuedJob.requestId || rawPlan.requestId || null, jobId: queuedJob.jobId || rawPlan.jobId || null });
+                setIsLoading(false);
+                return;
+            }
+
+            const planMeta = rawPlan as any;
+            const requestId = typeof planMeta?.requestId === "string" ? planMeta.requestId : null;
+            const creditCost = typeof planMeta?.creditCost === "number" && Number.isFinite(planMeta.creditCost)
+                ? Math.max(1, Math.floor(planMeta.creditCost))
                 : 1;
+            const planOps = Array.isArray(rawPlan?.ops)
+                ? rawPlan.ops.filter((op): op is AppEmbeddingEditPlanOp => Boolean(op && typeof op.path === "string" && op.path.trim()))
+                : [];
+            const hasDbMigrations = Array.isArray(rawPlan?.dbMigrations) && rawPlan.dbMigrations.length > 0;
 
             dispatchAiAgentEvent("response_ok", {
                 appId,
                 userId: user?.uid || null,
-                hasFileEdits: Array.isArray(data?.files) && data.files.length > 0,
-                fileEditsCount: Array.isArray(data?.files) ? data.files.length : 0,
-                hasDbMigrations: Array.isArray(data?.dbMigrations) && data.dbMigrations.length > 0,
-                dbMigrationsCount: Array.isArray(data?.dbMigrations) ? data.dbMigrations.length : 0,
-                restorePointId: typeof (rawPlan as any)?.restorePointId === "string" ? (rawPlan as any).restorePointId : null,
-                responseLen: typeof data?.summary === "string" ? data.summary.length : null,
+                hasFileEdits: planOps.length > 0,
+                fileEditsCount: planOps.length,
+                hasDbMigrations,
+                dbMigrationsCount: hasDbMigrations ? (rawPlan.dbMigrations?.length || 0) : 0,
+                restorePointId: typeof planMeta?.restorePointId === "string" ? planMeta.restorePointId : null,
+                responseLen: typeof rawPlan?.summary === "string" ? rawPlan.summary.length : null,
             });
 
             // If the edit plan indicates a restart is required, keep the UX note.
-            let aiContent = sanitizeAssistantContent(data.summary || data.response || "I've prepared an edit plan.");
-            if (Array.isArray(data.notes) && data.notes.length > 0) {
-                const noteText = data.notes.filter((note) => typeof note === "string" && note.trim()).slice(0, 5).join("\n- ");
+            let aiContent = sanitizeAssistantContent(rawPlan.summary || rawPlan.response || "I've prepared an edit plan.");
+            if (Array.isArray(rawPlan.notes) && rawPlan.notes.length > 0) {
+                const noteText = rawPlan.notes.filter((note) => typeof note === "string" && note.trim()).slice(0, 5).join("\n- ");
                 if (noteText) {
                     aiContent = `${aiContent}\n\nNotes:\n- ${noteText}`;
                 }
             }
-            if (data.needsRebuild) {
+            if (rawPlan.needsRebuild) {
                 aiContent += "\n\nThis plan needs a rebuild before the changes are fully visible.";
             }
             if (typeof aiContent === "string" && /restart|server.*restart|refresh.*server|database credentials|should work in a moment/i.test(aiContent)) {
@@ -2539,10 +2811,8 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
 
             setMessages(prev => [...prev, aiMessage]);
 
-            const hasDbMigrations = Array.isArray(data.dbMigrations) && data.dbMigrations.length > 0;
-            const planFiles = Array.isArray(data.files) ? data.files.filter((file) => file && typeof file.path === "string") : [];
-            const planHasDeleteOps = editPlanHasDeleteOps(planFiles);
-            const planSwitchesFramework = planWouldSwitchFramework(planFiles.map((file) => file.path), projectFramework);
+            const planHasDeleteOps = planOps.some((op) => String(op.op || "").toLowerCase() === "delete");
+            const planSwitchesFramework = planWouldSwitchFramework(planOps.map((op) => op.path), projectFramework);
 
             if (planSwitchesFramework) {
                 setMessages((prev) => [
@@ -2565,7 +2835,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
             const proposalIdsForThisResponse: string[] = [];
             if (hasDbMigrations) {
                 const headers2 = await withCsrfHeaders();
-                for (const mig of data.dbMigrations as Array<any>) {
+                for (const mig of rawPlan.dbMigrations as Array<any>) {
                     const sql = typeof mig?.sql === "string" ? mig.sql : "";
                     const messageText = typeof mig?.message === "string" ? mig.message : "Database schema change";
                     const destructive = Boolean(mig?.destructive);
@@ -2637,7 +2907,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
             }
 
             // Handle database setup request
-            if (data.setupDatabase) {
+            if (rawPlan.setupDatabase) {
                 const followupPrompt = messageInput.trim();
                 const suppressDatabaseSetup = requestLooksLikePageRemovalOrRename(followupPrompt);
                 if (followupPrompt && !suppressDatabaseSetup) {
@@ -2653,31 +2923,24 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
             }
 
             // Handle file edits if any
-            if (planFiles.length > 0) {
+            if (planOps.length > 0) {
                 dispatchAiAgentEvent("file_edits_received", {
                     appId,
                     userId: user?.uid || null,
-                    count: planFiles.length,
+                    count: planOps.length,
                     creditRequestId:
-                        (typeof (rawPlan as any)?.restorePointId === "string" && (rawPlan as any).restorePointId) ||
+                        (typeof planMeta?.restorePointId === "string" && planMeta.restorePointId) ||
                         `ai_agent_${appId}_${userMessage.id}`,
                 });
                 const creditRequestId =
-                    (typeof (rawPlan as any)?.restorePointId === "string" && (rawPlan as any).restorePointId) ||
+                    (typeof planMeta?.restorePointId === "string" && planMeta.restorePointId) ||
                     `ai_agent_${appId}_${userMessage.id}`;
 
                 // Safety: if the agent also proposed DB changes, don't persist/apply code changes yet.
                 // This prevents the preview from breaking on missing schema until the user confirms the migration.
                 if (hasDbMigrations) {
                     const bundleId = `staged_${Date.now()}`;
-                    const label = `AI edit plan (staged): ${(data.summary || messageInput).slice(0, 50)}...`;
-                    const fileEdits: Array<{ path: string; content: string }> = [];
-                    for (const edit of planFiles) {
-                        if (!edit || typeof edit.path !== "string") continue;
-                        if (String(edit.action || "update").toLowerCase() === "delete") continue;
-                        if (typeof edit.content !== "string") continue;
-                        fileEdits.push({ path: edit.path, content: edit.content });
-                    }
+                    const label = `AI edit plan (staged): ${(rawPlan.summary || messageInput).slice(0, 50)}...`;
 
                     if (planHasDeleteOps) {
                         console.warn("[AIAgentChat] edit plan includes delete operations while DB migration staging is active; delete ops will be deferred until the next non-staged apply.");
@@ -2689,9 +2952,10 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                         label,
                         proposalIds: proposalIdsForThisResponse,
                         appliedProposalIds: {},
-                        fileEdits,
+                        ops: planOps,
+                        rawPlan,
                         creditRequestId,
-                        needsRebuild: Boolean(data.needsRebuild),
+                        needsRebuild: Boolean(rawPlan.needsRebuild),
                     };
 
                     setStagedBundles((prev) => [
@@ -2729,75 +2993,11 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                         ]);
                     }
 
-                    const rid = typeof (rawPlan as any)?.restorePointId === "string" ? (rawPlan as any).restorePointId : null;
-                    if (rid) {
-                        setLastRestorePointId(rid);
-                        setMessages((prev) => [
-                            ...prev,
-                            {
-                                id: `rp_${Date.now()}`,
-                                role: "assistant",
-                                content: "Created a restore point before applying this edit plan. You can roll back from the restore point list if needed.",
-                                timestamp: new Date(),
-                                type: "text",
-                                restorePointId: rid,
-                                restoreActionLabel: "Undo",
-                            },
-                        ]);
-                        fetchRestorePoints();
-                    }
-
                 } else {
-                    const restorePointId =
-                        (typeof (rawPlan as any)?.restorePointId === "string" && String((rawPlan as any).restorePointId).trim()) ||
-                        (await createRestorePointBeforeApply(`AI edit plan: ${(data.summary || messageInput).slice(0, 80)}`));
-
-                    if (!restorePointId) {
-                        setMessages((prev) => [
-                            ...prev,
-                            {
-                                id: `restore_failed_${Date.now()}`,
-                                role: "assistant",
-                                content:
-                                    "I couldn’t create a restore point for this edit, so I stopped before applying the file changes.",
-                                timestamp: new Date(),
-                                type: "text",
-                            },
-                        ]);
-                        return;
-                    }
-
-                    setLastRestorePointId(restorePointId);
-                    void fetchRestorePoints();
-                    createCheckpoint(`AI edit: ${messageInput.slice(0, 50)}...`);
-
-                    if (planHasDeleteOps && onFilesReplace) {
-                        const nextFiles = applyEmbeddingEditPlanToFiles(files, planFiles);
-                        onFilesReplace(nextFiles);
-                    } else {
-                        planFiles.forEach((edit) => {
-                            if (String(edit?.action || "update").toLowerCase() === "delete") return;
-                            if (typeof edit.content !== "string") return;
-                            onFileEdit(edit.path, edit.content, creditRequestId);
-                        });
-                    }
-
-                    if (data.needsRebuild) {
-                        await runPostMigrationRefreshPipeline();
-                    }
-
-                    setMessages(prev => [
-                        ...prev,
-                        {
-                            id: `rp_${Date.now()}`,
-                            role: "assistant",
-                            content: "Created a restore point before applying this edit plan. You can roll back from the restore point list if needed.",
-                            timestamp: new Date(),
-                            type: "text",
-                            restorePointId,
-                            restoreActionLabel: "Undo",
-                        },
-                    ]);
+                    setPendingEditPlan(rawPlan);
+                    setEditPlanApplyError(null);
+                    setIsApplyingEditPlan(false);
+                    return;
                 }
             }
 
@@ -3004,6 +3204,20 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                     <div className="text-center text-sm text-gray-500 py-10">
                         No chat messages yet.
                     </div>
+                ) : null}
+
+                {activeEditPlanJob ? (
+                    <EditPlanJobStatusCard
+                        job={activeEditPlanJob}
+                        onDismiss={
+                            isActiveEditPlanJobStatus(activeEditPlanJob.status)
+                                ? undefined
+                                : () => {
+                                    editPlanJobVersionRef.current += 1;
+                                    setActiveEditPlanJob(null);
+                                }
+                        }
+                    />
                 ) : null}
 
                 {messages.map((message) => (
@@ -3563,6 +3777,18 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                 </div>
             )}
 
+            <EditPlanReviewModal
+                open={Boolean(pendingEditPlan)}
+                plan={pendingEditPlan}
+                applying={isApplyingEditPlan}
+                applyError={editPlanApplyError}
+                onConfirm={() => void applyPendingEditPlan()}
+                onCancel={() => {
+                    setPendingEditPlan(null);
+                    setEditPlanApplyError(null);
+                }}
+            />
+
             {/* Migration Review & Apply Modal (non-coder friendly guardrails) */}
             {migrationReviewMessageId ? (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
@@ -4009,7 +4235,11 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                     </div>
                 ) : null}
 
-                {chatDisabled ? (
+                {PRODUCTION_AGENT_CHAT_BLOCKED ? (
+                    <div className="mb-2 rounded border border-slate-200 bg-slate-50 px-3 py-2 text-[12px] text-slate-800">
+                        Agent chat is temporarily paused in production. {PRODUCTION_AGENT_CHAT_BLOCK_MESSAGE}
+                    </div>
+                ) : chatDisabled ? (
                     <div className="mb-2 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-900">
                         Preview is still loading. Chat will unlock once the preview renders.
                     </div>

@@ -2,10 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireSessionAndMaybeCsrf } from "../../_lib/route-guard";
 import { assertAppBuilderScope } from "../../_lib/appBuilderScope";
 import { callBackend } from "@/src/lib/callBackend";
-import { captureAuditEvent } from "@/lib/observability";
+import { captureAuditEvent, captureCriticalEvent } from "@/lib/observability";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+const EDIT_PLAN_TIMEOUT_MS = 45_000;
 
 function asString(value: unknown, max = 10_000): string {
     const text = typeof value === "string" ? value.trim() : "";
@@ -36,6 +38,7 @@ export async function POST(req: NextRequest) {
     return requireSessionAndMaybeCsrf(
         req,
         async ({ uid, req: authedReq }) => {
+            const requestId = authedReq.headers.get("x-request-id") || authedReq.headers.get("x-client-request-id") || null;
             const body = await authedReq.json().catch(() => ({} as any));
             const appId = asString(body?.appId, 200);
             const query = asString(body?.query ?? body?.requestText, 10_000);
@@ -56,7 +59,7 @@ export async function POST(req: NextRequest) {
             const result = await callBackend(authedReq, {
                 path: "/app-embeddings/edit-plan",
                 method: "POST",
-                timeoutMs: 45_000,
+                timeoutMs: EDIT_PLAN_TIMEOUT_MS,
                 userCtx: { uid },
                 body: {
                     appId,
@@ -71,6 +74,32 @@ export async function POST(req: NextRequest) {
                     ...(frameworkReason ? { frameworkReason } : {}),
                 },
             });
+
+            if (result.status === 504 && String((result.json as any)?.error || "").toLowerCase() === "backend timeout") {
+                void captureCriticalEvent({
+                    source: "internal",
+                    severity: "critical",
+                    alwaysNotifySlack: true,
+                    statusCode: 504,
+                    route: "/api/app-embeddings/edit-plan",
+                    method: "POST",
+                    action: "app_embeddings_edit_plan_timeout",
+                    userId: uid,
+                    message: `Edit-plan request timed out after ${Math.round(EDIT_PLAN_TIMEOUT_MS / 1000)}s`,
+                    service: "app-embeddings",
+                    tags: ["app-embeddings", "edit-plan", "timeout", "oom-suspected"],
+                    extra: {
+                        appId,
+                        currentPath,
+                        maxChunks,
+                        timeoutMs: EDIT_PLAN_TIMEOUT_MS,
+                        requestId: result.reqId || requestId || undefined,
+                        backendStatus: result.status,
+                        backendError: (result.json as any)?.error || null,
+                        queryPreview: query.slice(0, 500),
+                    },
+                });
+            }
 
             const payload = result.json as any;
             const files = Array.isArray(payload?.files) ? payload.files : [];

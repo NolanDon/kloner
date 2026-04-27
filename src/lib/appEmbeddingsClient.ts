@@ -29,25 +29,100 @@ export type AppEmbeddingSearchResponse = {
     refreshQueued?: boolean;
 };
 
-export type AppEmbeddingEditPlanFile = {
+export type AppEmbeddingEditPlanTarget = {
+    chunkId?: string | null;
+    chunkHash?: string | null;
+    fileHash?: string | null;
+    lineStart?: number | null;
+    lineEnd?: number | null;
+    anchorText?: string | null;
+    beforeText?: string | null;
+    afterText?: string | null;
+};
+
+export type AppEmbeddingEditPlanOp = {
     path: string;
-    action: string;
+    op: "replace" | "insert_before" | "insert_after" | "delete" | (string & {});
+    target?: AppEmbeddingEditPlanTarget | null;
     content?: string | null;
+    encoding?: "utf8" | "base64" | (string & {}) | null;
+    baseFileHash?: string | null;
     reason?: string | null;
+    [key: string]: unknown;
 };
 
 export type AppEmbeddingEditPlanResponse = {
     formatVersion: string | null;
     summary: string;
     needsRebuild: boolean;
-    files: AppEmbeddingEditPlanFile[];
+    ops: AppEmbeddingEditPlanOp[];
     notes: string[];
     search: AppEmbeddingSearchChunk[];
     response?: string;
     refreshServer?: boolean;
-    fileEdits?: Array<{ path: string; content: string }>;
     setupDatabase?: boolean;
     dbMigrations?: Array<{ sql?: string; message?: string; destructive?: boolean }>;
+    needsMoreContext?: boolean;
+    questions?: string[];
+    clarifyingQuestions?: string[];
+    requestId?: string | null;
+    code?: string | null;
+    error?: string | null;
+    queued?: boolean;
+    jobId?: string | null;
+    statusUrl?: string | null;
+    status?: "queued" | "picked_up" | "working" | "completed" | "failed" | "expired" | string | null;
+    stage?: string | null;
+    progress?: number | null;
+    queueAgeSeconds?: number | null;
+    queuedForSeconds?: number | null;
+    runningForSeconds?: number | null;
+    leaseRemainingSeconds?: number | null;
+    workerId?: string | null;
+    attemptCount?: number | null;
+    job?: AppEmbeddingEditPlanJobStatus | null;
+    result?: AppEmbeddingEditPlanPlan | null;
+    [key: string]: unknown;
+};
+
+export type AppEmbeddingEditPlanPlan = {
+    formatVersion: string | null;
+    summary: string;
+    needsRebuild: boolean;
+    ops: AppEmbeddingEditPlanOp[];
+    notes: string[];
+    search: AppEmbeddingSearchChunk[];
+    response?: string;
+    refreshServer?: boolean;
+    setupDatabase?: boolean;
+    dbMigrations?: Array<{ sql?: string; message?: string; destructive?: boolean }>;
+    needsMoreContext?: boolean;
+    questions?: string[];
+    clarifyingQuestions?: string[];
+    requestId?: string | null;
+    code?: string | null;
+    error?: string | null;
+    [key: string]: unknown;
+};
+
+export type AppEmbeddingEditPlanJobStatus = {
+    status: "queued" | "picked_up" | "working" | "completed" | "failed" | "expired" | string;
+    stage?: string | null;
+    progress?: number | null;
+    queueAgeSeconds?: number | null;
+    queuedForSeconds?: number | null;
+    runningForSeconds?: number | null;
+    leaseRemainingSeconds?: number | null;
+    workerId?: string | null;
+    attemptCount?: number | null;
+    requestId?: string | null;
+    jobId?: string | null;
+    statusUrl?: string | null;
+    error?: string | { code?: string; message?: string; retryAfterSeconds?: number | null; [key: string]: unknown } | null;
+    result?: AppEmbeddingEditPlanPlan | null;
+    queued?: boolean;
+    job?: AppEmbeddingEditPlanJobStatus | null;
+    [key: string]: unknown;
 };
 
 export type AppEmbeddingRequestResult<T> = {
@@ -130,6 +205,11 @@ function normalizeLineRange(value: unknown): { start: number; end: number } {
     };
 }
 
+function asNullableNumber(value: unknown): number | null {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+}
+
 export function normalizeEmbeddingSearchChunk(raw: unknown): AppEmbeddingSearchChunk | null {
     if (!raw || typeof raw !== "object") return null;
     const chunk = raw as Record<string, unknown>;
@@ -209,28 +289,40 @@ export async function withLoadingState<T>(setLoading: (value: boolean) => void, 
     }
 }
 
-export function normalizeEmbeddingEditPlanFile(raw: unknown): AppEmbeddingEditPlanFile | null {
+export function normalizeEmbeddingEditPlanFile(raw: unknown): AppEmbeddingEditPlanOp | null {
     if (!raw || typeof raw !== "object") return null;
-    const file = raw as Record<string, unknown>;
-    const path = asString(file.path, 500);
+    const op = raw as Record<string, unknown>;
+    const path = asString(op.path, 500);
     if (!path) return null;
 
-    const action = asString(file.action, 80) || "update";
-    const content = typeof file.content === "string" ? file.content : null;
-    const reason = asString(file.reason, 2000) || null;
+    const target = op.target && typeof op.target === "object"
+        ? {
+            chunkId: asString((op.target as Record<string, unknown>).chunkId, 200) || null,
+            chunkHash: asString((op.target as Record<string, unknown>).chunkHash, 200) || null,
+            fileHash: asString((op.target as Record<string, unknown>).fileHash, 200) || null,
+            lineStart: Number.isFinite(Number((op.target as Record<string, unknown>).lineStart)) ? Math.floor(Number((op.target as Record<string, unknown>).lineStart)) : null,
+            lineEnd: Number.isFinite(Number((op.target as Record<string, unknown>).lineEnd)) ? Math.floor(Number((op.target as Record<string, unknown>).lineEnd)) : null,
+            anchorText: asString((op.target as Record<string, unknown>).anchorText, 4000) || null,
+            beforeText: asString((op.target as Record<string, unknown>).beforeText, 4000) || null,
+            afterText: asString((op.target as Record<string, unknown>).afterText, 4000) || null,
+        }
+        : null;
 
     return {
         path,
-        action,
-        content,
-        reason,
+        op: asString(op.op, 80) || "replace",
+        target,
+        content: typeof op.content === "string" ? op.content : null,
+        encoding: asString(op.encoding, 20) || null,
+        baseFileHash: asString(op.baseFileHash, 200) || null,
+        reason: asString(op.reason, 2000) || null,
     };
 }
 
-export function normalizeEmbeddingEditPlanResponse(raw: unknown): AppEmbeddingEditPlanResponse {
+export function normalizeEmbeddingEditPlanPlan(raw: unknown): AppEmbeddingEditPlanPlan {
     const normalizedSearch = normalizeEmbeddingSearchResponse((raw as any)?.search);
-    const files = Array.isArray((raw as any)?.files)
-        ? (raw as any).files.map(normalizeEmbeddingEditPlanFile).filter(Boolean)
+    const ops = Array.isArray((raw as any)?.ops)
+        ? (raw as any).ops.map(normalizeEmbeddingEditPlanFile).filter(Boolean)
         : [];
     const notes = Array.isArray((raw as any)?.notes)
         ? (raw as any).notes.map((note: unknown) => asString(note, 4000)).filter(Boolean)
@@ -240,14 +332,136 @@ export function normalizeEmbeddingEditPlanResponse(raw: unknown): AppEmbeddingEd
         formatVersion: asString((raw as any)?.formatVersion ?? (raw as any)?.format_version ?? "", 80) || null,
         summary: asString((raw as any)?.summary ?? (raw as any)?.response ?? "", 20_000),
         needsRebuild: Boolean((raw as any)?.needsRebuild ?? (raw as any)?.needs_rebuild ?? (raw as any)?.refreshServer),
-        files: files as AppEmbeddingEditPlanFile[],
+        ops: ops as AppEmbeddingEditPlanOp[],
         notes,
         search: normalizedSearch.chunks,
         response: typeof (raw as any)?.response === "string" ? (raw as any).response : undefined,
         refreshServer: typeof (raw as any)?.refreshServer === "boolean" ? (raw as any).refreshServer : undefined,
-        fileEdits: Array.isArray((raw as any)?.fileEdits) ? (raw as any).fileEdits : undefined,
         setupDatabase: typeof (raw as any)?.setupDatabase === "boolean" ? (raw as any).setupDatabase : undefined,
         dbMigrations: Array.isArray((raw as any)?.dbMigrations) ? (raw as any).dbMigrations : undefined,
+        needsMoreContext: typeof (raw as any)?.needsMoreContext === "boolean" ? (raw as any).needsMoreContext : undefined,
+        questions: Array.isArray((raw as any)?.questions) ? (raw as any).questions : undefined,
+        clarifyingQuestions: Array.isArray((raw as any)?.clarifyingQuestions) ? (raw as any).clarifyingQuestions : undefined,
+        requestId: typeof (raw as any)?.requestId === "string" ? (raw as any).requestId : null,
+        code: typeof (raw as any)?.code === "string" ? (raw as any).code : null,
+        error: typeof (raw as any)?.error === "string" ? (raw as any).error : null,
+    };
+}
+
+export function normalizeEmbeddingEditPlanJobStatus(raw: unknown): AppEmbeddingEditPlanJobStatus {
+    const source = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+    const nestedJob = source.job && typeof source.job === "object" ? (source.job as Record<string, unknown>) : null;
+    const active = nestedJob || source;
+    const result = active.result && typeof active.result === "object"
+        ? normalizeEmbeddingEditPlanPlan(active.result)
+        : source.result && typeof source.result === "object"
+            ? normalizeEmbeddingEditPlanPlan(source.result)
+            : null;
+
+    return {
+        ...source,
+        status: asString(active.status, 80) || "queued",
+        stage: asString(active.stage, 120) || null,
+        progress: asNullableNumber(active.progress),
+        queueAgeSeconds: asNullableNumber(active.queueAgeSeconds ?? active.queue_age_seconds),
+        queuedForSeconds: asNullableNumber(active.queuedForSeconds ?? active.queued_for_seconds),
+        runningForSeconds: asNullableNumber(active.runningForSeconds ?? active.running_for_seconds),
+        leaseRemainingSeconds: asNullableNumber(active.leaseRemainingSeconds ?? active.lease_remaining_seconds),
+        workerId: asString(active.workerId, 200) || null,
+        attemptCount: asNullableNumber(active.attemptCount ?? active.attempt_count),
+        requestId: asString(active.requestId ?? source.requestId, 120) || null,
+        jobId: asString(active.jobId ?? source.jobId, 120) || null,
+        statusUrl: asString(active.statusUrl ?? source.statusUrl, 500) || null,
+        error: typeof active.error === "string"
+            ? active.error
+            : active.error && typeof active.error === "object"
+                ? {
+                    ...active.error,
+                    code: asString((active.error as any).code, 120) || undefined,
+                    message: asString((active.error as any).message, 20_000) || undefined,
+                    retryAfterSeconds: asNullableNumber((active.error as any).retryAfterSeconds ?? (active.error as any).retry_after_seconds),
+                }
+                : null,
+        result,
+        queued: asBoolean(active.queued ?? source.queued),
+        job: nestedJob ? normalizeEmbeddingEditPlanJobStatus(nestedJob) : null,
+    } as AppEmbeddingEditPlanJobStatus;
+}
+
+export function normalizeEmbeddingEditPlanResponse(raw: unknown): AppEmbeddingEditPlanResponse {
+    const normalizedPlan = normalizeEmbeddingEditPlanPlan(raw);
+    const normalizedJob = normalizeEmbeddingEditPlanJobStatus(raw);
+
+    return {
+        ...normalizedPlan,
+        queued: asBoolean((raw as any)?.queued),
+        jobId: asString((raw as any)?.jobId, 120) || null,
+        statusUrl: asString((raw as any)?.statusUrl ?? (raw as any)?.status_url, 500) || null,
+        status: asString((raw as any)?.status, 80) || null,
+        stage: asString((raw as any)?.stage, 120) || null,
+        progress: asNullableNumber((raw as any)?.progress),
+        queueAgeSeconds: asNullableNumber((raw as any)?.queueAgeSeconds ?? (raw as any)?.queue_age_seconds),
+        queuedForSeconds: asNullableNumber((raw as any)?.queuedForSeconds ?? (raw as any)?.queued_for_seconds),
+        runningForSeconds: asNullableNumber((raw as any)?.runningForSeconds ?? (raw as any)?.running_for_seconds),
+        leaseRemainingSeconds: asNullableNumber((raw as any)?.leaseRemainingSeconds ?? (raw as any)?.lease_remaining_seconds),
+        workerId: asString((raw as any)?.workerId, 200) || null,
+        attemptCount: asNullableNumber((raw as any)?.attemptCount ?? (raw as any)?.attempt_count),
+        job: normalizedJob,
+        result: (raw as any)?.result && typeof (raw as any).result === "object" ? normalizeEmbeddingEditPlanPlan((raw as any).result) : undefined,
+    };
+}
+
+export async function fetchEmbeddingEditPlanJobStatus(
+    statusUrl: string,
+    headers: HeadersInit,
+): Promise<AppEmbeddingRequestResult<AppEmbeddingEditPlanJobStatus>> {
+    const response = await fetch(statusUrl, {
+        method: "GET",
+        headers,
+        credentials: "include",
+        cache: "no-store",
+    });
+
+    const data = await response.json().catch(() => null);
+    return {
+        ok: response.ok,
+        status: response.status,
+        data: data ? normalizeEmbeddingEditPlanJobStatus(data) : null,
+        error: response.ok ? null : asString((data as any)?.error, 10_000) || response.statusText || "Request failed",
+        retryAfter: response.headers.get("retry-after"),
+        code: asString((data as any)?.code, 120) || null,
+        requestId: asString((data as any)?.requestId, 120) || null,
+    };
+}
+
+export async function applyEditPlanOps(
+    request: { appId: string; ops: AppEmbeddingEditPlanOp[]; code?: string | null },
+    headers: HeadersInit,
+): Promise<AppEmbeddingRequestResult<unknown>> {
+    const response = await fetch("/api/v1/webcontainer/apply", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            ...headers,
+        },
+        credentials: "include",
+        cache: "no-store",
+        body: JSON.stringify({
+            appId: request.appId,
+            ...(typeof request.code === "string" && request.code.trim() ? { code: request.code.trim() } : {}),
+            ops: request.ops,
+        }),
+    });
+
+    const data = await response.json().catch(() => null);
+    return {
+        ok: response.ok,
+        status: response.status,
+        data,
+        error: response.ok ? null : asString((data as any)?.error, 10_000) || response.statusText || "Apply failed",
+        retryAfter: response.headers.get("retry-after"),
+        code: asString((data as any)?.code, 120) || null,
+        requestId: asString((data as any)?.requestId, 120) || null,
     };
 }
 
@@ -412,29 +626,29 @@ export async function fetchEmbeddingEditPlan(
 
 export function applyEmbeddingEditPlanToFiles(
     currentFiles: { [path: string]: { content: string; lastModified: number } },
-    files: AppEmbeddingEditPlanFile[],
+    ops: AppEmbeddingEditPlanOp[],
 ): { [path: string]: { content: string; lastModified: number } } {
     const nextFiles = { ...(currentFiles || {}) };
     const now = Date.now();
 
-    for (const file of files || []) {
-        const path = asString(file?.path, 500);
+    for (const op of ops || []) {
+        const path = asString(op?.path, 500);
         if (!path) continue;
 
-        const action = asString(file?.action, 80).toLowerCase();
+        const action = asString(op?.op, 80).toLowerCase();
         if (action === "delete") {
             delete nextFiles[path];
             continue;
         }
 
-        if (typeof file?.content === "string") {
-            nextFiles[path] = { content: file.content, lastModified: now };
+        if (typeof op?.content === "string") {
+            nextFiles[path] = { content: op.content, lastModified: now };
         }
     }
 
     return nextFiles;
 }
 
-export function editPlanHasDeleteOps(files: AppEmbeddingEditPlanFile[]): boolean {
-    return Array.isArray(files) && files.some((file) => asString(file?.action, 80).toLowerCase() === "delete");
+export function editPlanHasDeleteOps(ops: AppEmbeddingEditPlanOp[]): boolean {
+    return Array.isArray(ops) && ops.some((op) => asString(op?.op, 80).toLowerCase() === "delete");
 }

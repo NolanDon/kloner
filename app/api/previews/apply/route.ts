@@ -8,6 +8,16 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 type ApplyFile = { path: string; content?: string; delete?: boolean };
+type ApplyOp = {
+    path: string;
+    op: string;
+    target?: unknown;
+    content?: string | null;
+    encoding?: string | null;
+    baseFileHash?: string | null;
+    reason?: string | null;
+    [key: string]: unknown;
+};
 
 function sanitizeRelativePath(input: any): string | null {
     const raw = typeof input === "string" ? input.trim() : "";
@@ -106,12 +116,13 @@ export async function POST(req: NextRequest) {
             const appId = typeof body?.appId === "string" ? body.appId.trim() : "";
             const code = typeof body?.code === "string" ? body.code.trim() : "";
             const files = Array.isArray(body?.files) ? (body.files as ApplyFile[]) : null;
+            const ops = Array.isArray(body?.ops) ? (body.ops as ApplyOp[]) : null;
 
-            if (!appId || !files || files.length === 0) {
+            if (!appId || ((!files || files.length === 0) && (!ops || ops.length === 0))) {
                 return NextResponse.json({ ok: false, error: "Invalid request" }, { status: 400 });
             }
 
-            if (files.length > 200) {
+            if (files && files.length > 200) {
                 return NextResponse.json(
                     { ok: false, error: "Too many files in one request (max 200)." },
                     { status: 400 },
@@ -121,64 +132,77 @@ export async function POST(req: NextRequest) {
             assertAppBuilderScope(authedReq, uid, appId);
 
             const sanitizedFiles: ApplyFile[] = [];
+            const sanitizedOps = Array.isArray(ops) ? ops : null;
             let totalBytes = 0;
             const maxTotalBytes = 2_000_000; // ~2MB
             const maxFileBytes = 600_000; // ~600KB per file
 
-            for (const f of files) {
-                const p = sanitizeRelativePath((f as any)?.path);
-                if (!p) {
-                    return NextResponse.json(
-                        { ok: false, error: "Invalid file path. Use a relative path without leading '/' or '..'." },
-                        { status: 400 },
-                    );
+            if (sanitizedOps) {
+                console.info("[previews/apply]", {
+                    appId,
+                    code: code ? "(provided)" : "(omitted)",
+                    ops: sanitizedOps.length,
+                    uid,
+                });
+            } else {
+                for (const f of files || []) {
+                    const p = sanitizeRelativePath((f as any)?.path);
+                    if (!p) {
+                        return NextResponse.json(
+                            { ok: false, error: "Invalid file path. Use a relative path without leading '/' or '..'." },
+                            { status: 400 },
+                        );
+                    }
+
+                    const del = Boolean((f as any)?.delete);
+                    const content = (f as any)?.content;
+
+                    if (!del && typeof content !== "string") {
+                        return NextResponse.json({ ok: false, error: `Missing content for ${p}` }, { status: 400 });
+                    }
+
+                    if (!del && byteLen(content) > maxFileBytes) {
+                        return NextResponse.json(
+                            { ok: false, error: `File too large for live apply (${p}).` },
+                            { status: 400 },
+                        );
+                    }
+
+                    totalBytes += byteLen(p);
+                    if (!del) totalBytes += byteLen(content);
+                    if (totalBytes > maxTotalBytes) {
+                        return NextResponse.json(
+                            { ok: false, error: "Payload too large for live apply." },
+                            { status: 400 },
+                        );
+                    }
+
+                    sanitizedFiles.push({ path: p, ...(del ? { delete: true } : { content }) });
                 }
 
-                const del = Boolean((f as any)?.delete);
-                const content = (f as any)?.content;
-
-                if (!del && typeof content !== "string") {
-                    return NextResponse.json({ ok: false, error: `Missing content for ${p}` }, { status: 400 });
-                }
-
-                if (!del && byteLen(content) > maxFileBytes) {
-                    return NextResponse.json(
-                        { ok: false, error: `File too large for live apply (${p}).` },
-                        { status: 400 },
-                    );
-                }
-
-                totalBytes += byteLen(p);
-                if (!del) totalBytes += byteLen(content);
-                if (totalBytes > maxTotalBytes) {
-                    return NextResponse.json(
-                        { ok: false, error: "Payload too large for live apply." },
-                        { status: 400 },
-                    );
-                }
-
-                sanitizedFiles.push({ path: p, ...(del ? { delete: true } : { content }) });
+                console.info("[previews/apply]", {
+                    appId,
+                    code: code ? "(provided)" : "(omitted)",
+                    files: sanitizedFiles.length,
+                    bytes: totalBytes,
+                    uid,
+                });
             }
-
-            console.info("[previews/apply]", {
-                appId,
-                code: code ? "(provided)" : "(omitted)",
-                files: sanitizedFiles.length,
-                bytes: totalBytes,
-                uid,
-            });
 
             let result: Awaited<ReturnType<typeof callBackend>>;
             let firstAttemptStatus: number | null = null;
             let didRetryWithoutCode = false;
 
             async function hubApply(previewCode?: string) {
+                const body = sanitizedOps
+                    ? { appId, ...(previewCode ? { code: previewCode } : {}), ops: sanitizedOps }
+                    : { appId, ...(previewCode ? { code: previewCode } : {}), files: sanitizedFiles };
                 return callBackend(authedReq, {
                     path: "/webcontainer/apply",
                     method: "POST",
                     timeoutMs: 25_000,
                     userCtx: { uid },
-                    body: { appId, ...(previewCode ? { code: previewCode } : {}), files: sanitizedFiles },
+                    body,
                 });
             }
 
@@ -419,7 +443,7 @@ export async function POST(req: NextRequest) {
 
             // If the hub signals a restart/rebuild is required (usually dependency/config changes),
             // auto-restart so the user doesn't get stuck on a compile error overlay.
-            if (result.status < 400) {
+            if (result.status < 400 && !sanitizedOps) {
                 const base = result.json as any;
                 const needs = resultNeedsRestart(base) || fileSetNeedsRestart(sanitizedFiles);
                 if (needs) {

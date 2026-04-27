@@ -73,7 +73,7 @@ export default function UniformModal({
           >
             <div className="flex items-start justify-between gap-4 border-b border-neutral-200 px-5 py-4">
               <div className="space-y-1">
-                <div className="text-sm font-semibold text-neutral-900">
+                <div className="text-lg font-semibold text-neutral-900 leading-tight">
                   {title}
                 </div>
               </div>

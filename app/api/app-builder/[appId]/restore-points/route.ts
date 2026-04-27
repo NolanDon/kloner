@@ -87,6 +87,9 @@ export async function POST(req: NextRequest, { params }: any) {
 
             const body = await req.json().catch(() => ({} as any));
             const label = safeString(body?.label, 400) || "Manual restore point";
+            const requestedPaths: string[] = Array.isArray(body?.paths)
+                ? Array.from(new Set((body.paths as unknown[]).map((path) => safeString(path, 400)).filter((path): path is string => Boolean(path))))
+                : [];
 
             const db = getAdminDb();
             const appRef = db
@@ -103,16 +106,18 @@ export async function POST(req: NextRequest, { params }: any) {
             const app = snap.data() as any;
             const files = (app?.files || {}) as Record<string, { content: string; lastModified: number }>;
 
-            // Manual restore point captures current state for all files.
-            // Guardrails: cap file count and total stored bytes.
+            // If the caller provides explicit paths, capture only those files so the restore point
+            // reflects the current edit instead of the whole app snapshot.
+            const capturePaths: string[] = requestedPaths.length > 0 ? requestedPaths : Object.keys(files);
             const MAX_FILES = 200;
             const MAX_TOTAL = 1_500_000; // ~1.5MB
 
             const before: Record<string, string | null> = {};
             let total = 0;
 
-            for (const [path, file] of Object.entries(files).slice(0, MAX_FILES)) {
-                const content = typeof (file as any)?.content === "string" ? (file as any).content : "";
+            for (const path of capturePaths.slice(0, MAX_FILES)) {
+                const file = files[path];
+                const content = typeof file?.content === "string" ? file.content : "";
                 total += content.length;
                 if (total > MAX_TOTAL) break;
                 before[path] = content;

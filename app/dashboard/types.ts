@@ -56,4 +56,9 @@ export interface UrlDoc {
     userMessage?: string | null;
     retryable?: boolean | null;
     details?: any;
+    lastErrorCode?: string | null;
+    lastErrorRequestId?: string | null;
+    lastErrorJobId?: string | null;
+    lastErrorBlockedHost?: string | null;
+    lastErrorRetryable?: boolean | null;
 }

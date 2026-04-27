@@ -4,7 +4,7 @@
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import Editor from "@monaco-editor/react";
 import Image from "next/image";
-import { Folder, File, Upload, X, RefreshCw, MessageSquare, Code, Check, RotateCcw, Database, Rocket, Monitor, SlidersHorizontal, Images, Send, Pencil, Loader2, Share2, ExternalLink, Copy, ChevronDown, ChevronRight, AlertTriangle } from "lucide-react";
+import { Folder, File, Upload, X, RefreshCw, MessageSquare, Code, Check, RotateCcw, Database, Rocket, Monitor, SlidersHorizontal, Images, Send, Pencil, Loader2, Share2, ExternalLink, Copy, ChevronDown, ChevronRight, AlertTriangle, Search } from "lucide-react";
 import AppBuilderEditorAgentChat from "./AppBuilderEditorAgentChat";
 import KlonerLoader from "./KlonerLoader";
 import WebContainerRunner from "./WebContainerRunner";
@@ -986,27 +986,32 @@ function insertSnippetIntoContent(content: string, snippet: string, position: Pl
     );
 }
 
-function FileTree({ nodes, onFileSelect, expandedFolders, onToggleFolder, prefix = "", depth = 0 }: {
+function FileTree({ nodes, onFileSelect, expandedFolders, onToggleFolder, prefix = "", depth = 0, forceExpanded = false }: {
     nodes: FileNode[];
     onFileSelect: (path: string) => void;
     expandedFolders: Record<string, boolean>;
     onToggleFolder: (path: string) => void;
     prefix?: string;
     depth?: number;
+    forceExpanded?: boolean;
 }) {
     return (
         <ul>
             {nodes.map((node) => (
                 <li key={node.name}>
-                    {node.type === "folder" ? (
+                    {(() => {
+                        const nodePath = prefix + node.name;
+                        const isExpanded = forceExpanded || (expandedFolders[nodePath] ?? true);
+
+                        return node.type === "folder" ? (
                         <button
                             type="button"
-                            onClick={() => onToggleFolder(prefix + node.name)}
+                            onClick={() => onToggleFolder(nodePath)}
                             className="flex w-full items-center gap-2 rounded-md py-1 text-left hover:bg-gray-100"
                             style={{ paddingLeft: depth * 16 + 4 }}
                         >
                             <span className="inline-flex h-4 w-4 items-center justify-center text-gray-500">
-                                {(expandedFolders[prefix + node.name] ?? true) ? (
+                                {isExpanded ? (
                                     <ChevronDown className="h-4 w-4" />
                                 ) : (
                                     <ChevronRight className="h-4 w-4" />
@@ -1018,7 +1023,7 @@ function FileTree({ nodes, onFileSelect, expandedFolders, onToggleFolder, prefix
                     ) : (
                         <button
                             type="button"
-                            onClick={() => onFileSelect(prefix + node.name)}
+                            onClick={() => onFileSelect(nodePath)}
                             className="flex w-full items-center gap-2 rounded-md py-1 text-left hover:bg-gray-100"
                             style={{ paddingLeft: depth * 16 + 4 }}
                         >
@@ -1026,8 +1031,12 @@ function FileTree({ nodes, onFileSelect, expandedFolders, onToggleFolder, prefix
                             <File className="h-4 w-4 shrink-0" />
                             <span className="truncate">{node.name}</span>
                         </button>
-                    )}
-                    {node.children && (expandedFolders[prefix + node.name] ?? true) && (
+                    );
+                    })()}
+                    {(() => {
+                        const nodePath = prefix + node.name;
+                        const isExpanded = forceExpanded || (expandedFolders[nodePath] ?? true);
+                        return node.children && isExpanded ? (
                         <FileTree
                             nodes={node.children}
                             onFileSelect={onFileSelect}
@@ -1035,12 +1044,41 @@ function FileTree({ nodes, onFileSelect, expandedFolders, onToggleFolder, prefix
                             onToggleFolder={onToggleFolder}
                             prefix={prefix + node.name + "/"}
                             depth={depth + 1}
+                            forceExpanded={forceExpanded}
                         />
-                    )}
+                        ) : null;
+                    })()}
                 </li>
             ))}
         </ul>
     );
+}
+
+function filterFileTree(nodes: FileNode[], query: string, prefix = ""): FileNode[] {
+    const normalized = query.trim().toLowerCase();
+    if (!normalized) return nodes;
+
+    const matchesText = (value: string) => value.toLowerCase().includes(normalized);
+
+    return nodes
+        .map((node) => {
+            const fullPath = `${prefix}${node.name}`;
+            const selfMatches = matchesText(node.name) || matchesText(fullPath);
+
+            if (node.type === "file") {
+                return selfMatches ? node : null;
+            }
+
+            const childMatches = filterFileTree(node.children || [], normalized, `${fullPath}/`);
+            if (selfMatches) {
+                return { ...node, children: node.children || [] };
+            }
+            if (childMatches.length > 0) {
+                return { ...node, children: childMatches };
+            }
+            return null;
+        })
+        .filter((node): node is FileNode => Boolean(node));
 }
 
 function getEditorLanguageForPath(path: string | null): string {
@@ -1543,6 +1581,7 @@ export default function AppBuilderEditor({
     const [currentFile, setCurrentFile] = useState<string | null>(null);
     const [fileTree, setFileTree] = useState<FileNode[]>([]);
     const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({});
+    const [codeFileSearch, setCodeFileSearch] = useState("");
     const [code, setCode] = useState<string>("");
     const [refreshKey, setRefreshKey] = useState(0);
     const [applyCompleteKey, setApplyCompleteKey] = useState(0);
@@ -1576,6 +1615,8 @@ export default function AppBuilderEditor({
     const [isPageDropdownOpen, setIsPageDropdownOpen] = useState(false);
     const pageDropdownRef = useRef<HTMLDivElement | null>(null);
     const isDev = process.env.NODE_ENV !== "production";
+    const filteredCodeFileTree = useMemo(() => filterFileTree(fileTree, codeFileSearch), [codeFileSearch, fileTree]);
+    const codeFileSearchActive = Boolean(codeFileSearch.trim());
     const currentAiPromptFile = currentFile || "(no file selected)";
 
     const pageOptions = useMemo(() => {
@@ -5737,13 +5778,42 @@ export default function AppBuilderEditor({
                             <div className={viewMode === "code" ? "h-full flex flex-col" : "hidden"}>
                                 {/* File Tree */}
                                 <div className="flex-1 border-b p-3 overflow-auto">
-                                    <h3 className="font-medium mb-2 text-sm">Files</h3>
-                                    <FileTree
-                                        nodes={fileTree}
-                                        onFileSelect={handleFileSelect}
-                                        expandedFolders={expandedFolders}
-                                        onToggleFolder={handleToggleFolder}
-                                    />
+                                    <div className="mb-2 flex items-center justify-between gap-3">
+                                        <h3 className="font-medium text-sm">Files</h3>
+                                        <div className="relative w-full max-w-[260px]">
+                                            <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400" />
+                                            <input
+                                                type="text"
+                                                value={codeFileSearch}
+                                                onChange={(e) => setCodeFileSearch(e.target.value)}
+                                                placeholder="Search files"
+                                                className="w-full rounded-full border border-gray-300 bg-white py-1.5 pl-9 pr-9 text-xs text-gray-800 outline-none transition focus:border-[#F55F2A] focus:ring-2 focus:ring-[#F55F2A]/20"
+                                            />
+                                            {codeFileSearchActive ? (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setCodeFileSearch("")}
+                                                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+                                                    aria-label="Clear file search"
+                                                >
+                                                    <X className="h-3.5 w-3.5" />
+                                                </button>
+                                            ) : null}
+                                        </div>
+                                    </div>
+                                    {filteredCodeFileTree.length > 0 ? (
+                                        <FileTree
+                                            nodes={filteredCodeFileTree}
+                                            onFileSelect={handleFileSelect}
+                                            expandedFolders={expandedFolders}
+                                            onToggleFolder={handleToggleFolder}
+                                            forceExpanded={codeFileSearchActive}
+                                        />
+                                    ) : (
+                                        <div className="rounded-lg border border-dashed border-gray-300 bg-white px-3 py-4 text-center text-xs text-gray-500">
+                                            {codeFileSearchActive ? "No files match your search." : "No files available."}
+                                        </div>
+                                    )}
                                 </div>
 
                                 {/* Code Editor */}
