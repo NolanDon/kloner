@@ -332,13 +332,13 @@ async function notifyKlonerSignup(
         };
 
         await Promise.allSettled([
-            fetch("/api/private/send-signup-alert", {
-                method: "POST",
-                headers,
-                credentials: "same-origin",
-                cache: "no-store",
-                body: JSON.stringify(payload),
-            }),
+            // fetch("/api/private/send-signup-alert", {
+            //     method: "POST",
+            //     headers,
+            //     credentials: "same-origin",
+            //     cache: "no-store",
+            //     body: JSON.stringify(payload),
+            // }),
             fetch("/api/private/send-welcome-email", {
                 method: "POST",
                 headers,
