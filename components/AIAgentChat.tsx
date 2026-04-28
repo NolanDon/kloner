@@ -8,15 +8,23 @@ import { useAuth } from "@/src/hooks/useAuth";
 import { db } from "@/lib/firebase";
 import { doc, onSnapshot } from "firebase/firestore";
 import { useModal } from "@/components/ui/ModalContext";
-import EditPlanReviewModal from "@/components/EditPlanReviewModal";
 import EditPlanJobStatusCard from "@/components/EditPlanJobStatusCard";
 import {
     applyEditPlanOps,
+    extractCompletedEditPlanProposal,
+    formatEditPlanBackpressureMessage,
     fetchEmbeddingEditPlan,
     fetchEmbeddingEditPlanJobStatus,
+    getEditPlanJobPollDelayMs,
+    getEditPlanJobQueueAgeSeconds,
+    isEditPlanBackpressureResult,
+    isEditPlanJobActiveStatus as isActiveEditPlanJobStatus,
+    isEditPlanJobExpiredByQueueAge,
+    isEditPlanJobTerminalStatus,
     normalizeEmbeddingEditPlanJobStatus,
     normalizeEmbeddingEditPlanResponse,
     type AppEmbeddingEditPlanJobStatus,
+    type AppEmbeddingEditPlanProposal,
     type AppEmbeddingEditPlanOp,
     type AppEmbeddingEditPlanResponse,
 } from "@/src/lib/appEmbeddingsClient";
@@ -32,6 +40,7 @@ type Message = {
     content: string;
     timestamp: Date;
     type: "text" | "code" | "file-edit";
+    debugDetails?: string;
     restorePointId?: string;
     restoreActionLabel?: string;
     migrationProposalId?: string;
@@ -48,6 +57,7 @@ type Message = {
     supabaseContinuationStatus?: "PENDING" | "CONTINUE" | "DISMISS";
     dbSetupPrompt?: string;
     dbSetupStatus?: "PENDING" | "CONNECT" | "BASIC" | "DISMISS";
+    editPlanRetryPrompt?: string;
 };
 
 type StagedBundle = {
@@ -104,6 +114,7 @@ type CompileErrorQuickFixContext = {
     code: string;
     actionType: "quick_fix_compile";
     fixAction?: string;
+    currentPath?: string | null;
     compileError: {
         summary: string;
         detail: string;
@@ -172,12 +183,69 @@ function sanitizeAssistantContent(text: unknown): string {
     return raw;
 }
 
-function isActiveEditPlanJobStatus(status: string | null | undefined): boolean {
-    return ["queued", "picked_up", "working"].includes(String(status || "").toLowerCase());
-}
-
 function buildEditPlanJobStorageKey(appId: string): string {
     return `kloner:edit-plan-job:${appId}`;
+}
+
+function formatRestorePointCreatedAt(value: any): string {
+    if (!value) return "recently";
+    const date = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(date.getTime())) return "recently";
+    return date.toLocaleString([], {
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+    });
+}
+
+    const isPersistableChatMessage = useCallback((message: Message) => {
+        const id = String(message.id || "");
+        return ![
+            "edit_plan_status_",
+            "mig_progress_",
+            "staged_",
+            "creating_project_",
+            "supabase_oauth_popup_blocked_",
+            "supabase_restart_",
+            "project_created_",
+            "create_error_",
+        ].some((prefix) => id.startsWith(prefix));
+    }, []);
+
+function buildNeedsMoreContextMessage(plan: AppEmbeddingEditPlanResponse): string {
+    const questions = [
+        ...(Array.isArray(plan.questions) ? plan.questions : []),
+        ...(Array.isArray(plan.clarifyingQuestions) ? plan.clarifyingQuestions : []),
+    ]
+        .map((question) => String(question || "").trim())
+        .filter(Boolean)
+        .slice(0, 3);
+
+    const guidance = questions.length > 0
+        ? ["Please send any of these details:", ...questions.map((question) => `- ${question}`)]
+        : ["Please tell me which file, section, or exact text you want changed."];
+
+    return ["I need a bit more detail before I can safely make this change.", ...guidance].join("\n");
+}
+
+function buildNeedsMoreContextDebugDetails(plan: AppEmbeddingEditPlanResponse): string {
+    return JSON.stringify(
+        {
+            requestId: plan.requestId || null,
+            code: plan.code || null,
+            reason: plan.reason || null,
+            needsMoreContext: Boolean(plan.needsMoreContext),
+            questions: Array.isArray(plan.questions) ? plan.questions : [],
+            clarifyingQuestions: Array.isArray(plan.clarifyingQuestions) ? plan.clarifyingQuestions : [],
+            summary: plan.summary || null,
+            opsCount: Array.isArray(plan.ops) ? plan.ops.length : 0,
+            searchCount: Array.isArray(plan.search) ? plan.search.length : 0,
+            response: plan.response || null,
+        },
+        null,
+        2,
+    );
 }
 
 function renderTextWithLinks(text: string): React.ReactNode {
@@ -236,6 +304,7 @@ function buildCompileFixPrefill(ctx: CompileErrorQuickFixContext): string {
         code: ctx.code,
         actionType: ctx.actionType,
         fixAction: ctx.fixAction || null,
+        currentPath: ctx.currentPath ?? null,
         compileError: {
             summary: ctx.compileError.summary,
             detail: ctx.compileError.detail,
@@ -462,10 +531,24 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
     const [migrationConfirmText, setMigrationConfirmText] = useState("");
     const [migrationShowSqlInModal, setMigrationShowSqlInModal] = useState(false);
     const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
-    const [pendingEditPlan, setPendingEditPlan] = useState<AppEmbeddingEditPlanResponse | null>(null);
+    const [pendingEditPlan, setPendingEditPlan] = useState<AppEmbeddingEditPlanProposal | null>(null);
     const [isApplyingEditPlan, setIsApplyingEditPlan] = useState(false);
     const [editPlanApplyError, setEditPlanApplyError] = useState<string | null>(null);
+    const [editPlanApplyStatusMessage, setEditPlanApplyStatusMessage] = useState<string | null>(null);
     const [activeEditPlanJob, setActiveEditPlanJob] = useState<AppEmbeddingEditPlanJobStatus | null>(null);
+    const [editPlanStatusMessageId, setEditPlanStatusMessageId] = useState<string | null>(null);
+    const [showRestorePointsPanel, setShowRestorePointsPanel] = useState(false);
+    const lastAppliedEditPlanRef = useRef<AppEmbeddingEditPlanProposal | null>(null);
+    const editPlanApplyIdempotencyKeyRef = useRef<string | null>(null);
+
+    const latestAssistantMessageId = useMemo(() => {
+        for (let index = messages.length - 1; index >= 0; index -= 1) {
+            if (messages[index]?.role === "assistant") {
+                return messages[index].id;
+            }
+        }
+        return null;
+    }, [messages]);
 
     const [stagedBundles, setStagedBundles] = useState<StagedBundle[]>([]);
 
@@ -478,6 +561,12 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
     const editPlanJobStableSignatureRef = useRef<string>("");
     const editPlanJobStableReadsRef = useRef(0);
     const editPlanJobPollTimerRef = useRef<number | null>(null);
+    const editPlanJobFetchFailureCountRef = useRef(0);
+    const editPlanAutoApplyJobIdRef = useRef<string | null>(null);
+    const lastEditPlanPromptRef = useRef<string | null>(null);
+    const editPlanStatusMessageJobKeyRef = useRef<string | null>(null);
+    const editPlanStatusMessageIdRef = useRef<string | null>(null);
+    const editPlanStatusMessageTextRef = useRef<string | null>(null);
     const previewReadyRef = useRef(Boolean(previewReady));
 
     const chatDisabled = PRODUCTION_AGENT_CHAT_BLOCKED || (previewReady === false && !freeCompileFixContext);
@@ -487,6 +576,37 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
     useEffect(() => {
         previewReadyRef.current = Boolean(previewReady);
     }, [previewReady]);
+
+    const formatEditPlanSeconds = useCallback((value: number | null | undefined): string | null => {
+        if (typeof value !== "number" || !Number.isFinite(value) || value < 0) return null;
+        if (value < 60) return `${Math.round(value)}s`;
+        const minutes = Math.floor(value / 60);
+        const seconds = Math.round(value % 60);
+        return seconds > 0 ? `${minutes}m ${seconds}s` : `${minutes}m`;
+    }, []);
+
+    const buildEditPlanStatusBubbleText = useCallback((job: AppEmbeddingEditPlanJobStatus): string => {
+        const status = String(job.status || "queued").toLowerCase();
+        const narrative = (() => {
+            switch (status) {
+                case "queued":
+                    return "I’ve queued this edit plan. I’m waiting for a worker to pick it up.";
+                case "picked_up":
+                case "working":
+                    return "I’m applying the edit plan in the background now.";
+                case "completed":
+                    return "The edit plan finished. I’m now sending the apply request so the website can be updated.";
+                case "failed":
+                    return "The edit plan stopped before it could finish.";
+                case "expired":
+                    return "The edit plan expired before a worker could finish it.";
+                default:
+                    return "I’m tracking the edit plan in the background.";
+            }
+        })();
+
+        return narrative;
+    }, []);
 
     useEffect(() => {
         if (typeof window === "undefined" || !appId) return;
@@ -510,7 +630,11 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
         if (typeof window === "undefined" || !appId) return;
         const storageKey = buildEditPlanJobStorageKey(appId);
         if (activeEditPlanJob && activeEditPlanJob.statusUrl) {
-            window.localStorage.setItem(storageKey, JSON.stringify(activeEditPlanJob));
+            if (isActiveEditPlanJobStatus(activeEditPlanJob.status)) {
+                window.localStorage.setItem(storageKey, JSON.stringify(activeEditPlanJob));
+            } else {
+                window.localStorage.removeItem(storageKey);
+            }
         } else {
             window.localStorage.removeItem(storageKey);
         }
@@ -549,13 +673,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
         }
 
         const stableReads = editPlanJobStableReadsRef.current;
-        const delayMs = activeEditPlanJob.status === "queued"
-            ? stableReads >= 3
-                ? 2_500
-                : 1_400
-            : stableReads >= 3
-                ? 2_000
-                : 1_600;
+        const delayMs = getEditPlanJobPollDelayMs(activeEditPlanJob.status, stableReads);
 
         editPlanJobPollTimerRef.current = window.setTimeout(() => {
             void (async () => {
@@ -563,65 +681,134 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                 if (pollVersion !== editPlanJobVersionRef.current) return;
 
                 if (!result.ok || !result.data) {
-                    const terminalStatus = result.status === 404
-                        ? "expired"
-                        : result.status === 409 || result.status === 422 || result.status === 429 || result.status === 503 || result.status === 504
-                            ? "failed"
-                            : activeEditPlanJob.status;
-                    const errorDetails = {
-                        code: result.code || (result.status === 404 ? "JOB_EXPIRED" : result.status === 429 ? "JOB_RATE_LIMITED" : result.status === 503 ? "JOB_BACKLOG" : result.status === 504 ? "JOB_TIMEOUT" : "JOB_STATUS_FAILED"),
-                        message: result.error || "We couldn’t refresh this edit-plan job.",
-                        retryAfterSeconds: typeof result.retryAfter === "string" && Number.isFinite(Number(result.retryAfter)) ? Math.max(0, Math.ceil(Number(result.retryAfter))) : null,
-                    };
+                    const statusCode = result.status;
+                    const failureCount = editPlanJobFetchFailureCountRef.current + 1;
+                    editPlanJobFetchFailureCountRef.current = failureCount;
+                    const terminalError =
+                        statusCode === 403
+                            ? { code: "JOB_FORBIDDEN", message: result.error || "You do not have access to this job.", retryAfterSeconds: null }
+                            : statusCode === 404
+                                ? { code: "JOB_NOT_FOUND", message: result.error || "We could not find this job.", retryAfterSeconds: null }
+                                : failureCount >= 4
+                                    ? {
+                                        code: result.code || (statusCode === 429 ? "JOB_RATE_LIMITED" : statusCode === 503 ? "JOB_BACKLOG" : statusCode === 504 ? "JOB_TIMEOUT" : "JOB_STATUS_FAILED"),
+                                        message: result.error || "We couldn’t refresh this edit-plan job.",
+                                        retryAfterSeconds: typeof result.retryAfter === "string" && Number.isFinite(Number(result.retryAfter)) ? Math.max(0, Math.ceil(Number(result.retryAfter))) : null,
+                                    }
+                                    : null;
+                    if (!terminalError) {
+                        setActiveEditPlanJob((current) => (current ? { ...current } : current));
+                        return;
+                    }
+
                     setActiveEditPlanJob({
                         ...activeEditPlanJob,
-                        status: terminalStatus,
-                        stage: terminalStatus,
-                        error: errorDetails,
+                        status: "failed",
+                        stage: "failed",
+                        error: terminalError,
                     });
-                    if (terminalStatus === "expired" || terminalStatus === "failed") {
-                        setEditPlanApplyError(`${errorDetails.message}\nRequest ID: ${activeEditPlanJob.requestId || "unknown"}\nJob ID: ${activeEditPlanJob.jobId || "unknown"}`);
-                    }
+                    setEditPlanApplyError(`${terminalError.message}\nRequest ID: ${activeEditPlanJob.requestId || "unknown"}\nJob ID: ${activeEditPlanJob.jobId || "unknown"}`);
+                    editPlanJobVersionRef.current += 1;
                     return;
                 }
 
+                editPlanJobFetchFailureCountRef.current = 0;
                 const nextJob = normalizeEmbeddingEditPlanJobStatus(result.data);
                 setActiveEditPlanJob(nextJob);
 
-                if (nextJob.status === "completed") {
-                    const completedPlan = nextJob.result || nextJob.job?.result || null;
-                    if (completedPlan) {
-                        const normalizedPlan = normalizeEmbeddingEditPlanResponse(completedPlan);
-                        setPendingEditPlan(normalizedPlan);
-                        setEditPlanApplyError(null);
-                        setMessages((prev) => [
-                            ...prev,
-                            {
-                                id: `edit_plan_ready_${Date.now()}`,
-                                role: "assistant",
-                                content: normalizedPlan.summary || "Your edit plan is ready.",
-                                timestamp: new Date(),
-                                type: "text",
-                            },
-                        ]);
-                    }
-                    editPlanJobVersionRef.current += 1;
-                    setActiveEditPlanJob(null);
-                    return;
-                }
+                if (isEditPlanJobTerminalStatus(nextJob.status)) {
+                    if (nextJob.status === "completed") {
+                        const completedProposal = extractCompletedEditPlanProposal(nextJob);
+                        if (!completedProposal) {
+                            setActiveEditPlanJob({
+                                ...nextJob,
+                                status: "failed",
+                                stage: "failed",
+                                error: {
+                                    code: "JOB_RESULT_MISSING",
+                                    message: "The job finished, but the edit plan payload was missing.",
+                                    retryAfterSeconds: null,
+                                },
+                            });
+                            setEditPlanApplyError(`The job finished, but the edit plan payload was missing.\nRequest ID: ${nextJob.requestId || activeEditPlanJob.requestId || "unknown"}\nJob ID: ${nextJob.jobId || activeEditPlanJob.jobId || "unknown"}`);
+                            setEditPlanApplyStatusMessage("The job finished, but the proposal payload was missing.");
+                            editPlanJobVersionRef.current += 1;
+                            return;
+                        }
 
-                if (nextJob.status === "failed" || nextJob.status === "expired") {
-                    setEditPlanApplyError(
-                        [
-                            nextJob.error && typeof nextJob.error === "object" && typeof nextJob.error.message === "string" ? nextJob.error.message : typeof nextJob.error === "string" ? nextJob.error : "The edit plan job failed.",
-                            `Request ID: ${nextJob.requestId || activeEditPlanJob.requestId || "unknown"}`,
-                            `Job ID: ${nextJob.jobId || activeEditPlanJob.jobId || "unknown"}`,
-                            nextJob.error && typeof nextJob.error === "object" && typeof nextJob.error.retryAfterSeconds === "number" ? `Retry after: ${nextJob.error.retryAfterSeconds}s` : null,
-                        ].filter(Boolean).join("\n"),
-                    );
-                    editPlanJobVersionRef.current += 1;
-                    setActiveEditPlanJob(nextJob);
-                    return;
+                        setPendingEditPlan(completedProposal);
+                        setEditPlanApplyError(null);
+                        setEditPlanApplyStatusMessage(
+                            completedProposal.autoApplyAllowed === false
+                                ? "The proposal is ready, but it was not marked safe to auto-apply."
+                                : "The proposal is ready. I’m sending the apply request now.",
+                        );
+                        editPlanJobVersionRef.current += 1;
+                        return;
+                    }
+
+                    if (nextJob.status === "expired") {
+                        setActiveEditPlanJob(nextJob);
+                        setEditPlanApplyError(
+                            [
+                                nextJob.error && typeof nextJob.error === "object" && typeof nextJob.error.message === "string"
+                                    ? nextJob.error.message
+                                    : typeof nextJob.error === "string"
+                                        ? nextJob.error
+                                        : "The job expired before it could finish.",
+                                `Request ID: ${nextJob.requestId || activeEditPlanJob.requestId || "unknown"}`,
+                                `Job ID: ${nextJob.jobId || activeEditPlanJob.jobId || "unknown"}`,
+                                nextJob.error && typeof nextJob.error === "object" && typeof nextJob.error.retryAfterSeconds === "number"
+                                    ? `Retry after: ${nextJob.error.retryAfterSeconds}s`
+                                    : null,
+                            ].filter(Boolean).join("\n"),
+                        );
+                        setEditPlanApplyStatusMessage("The job expired before it could be applied.");
+                        editPlanJobVersionRef.current += 1;
+                        return;
+                    }
+
+                    if (isEditPlanJobExpiredByQueueAge(nextJob)) {
+                        const queuedAgeSeconds = getEditPlanJobQueueAgeSeconds(nextJob);
+                        const expiredJob = {
+                            ...nextJob,
+                            status: "expired",
+                            stage: "expired",
+                            error: {
+                                code: "JOB_QUEUE_TIMEOUT",
+                                message: queuedAgeSeconds !== null
+                                    ? `This job waited in queue for ${Math.floor(queuedAgeSeconds / 60)} minutes and expired before it could be picked up.`
+                                    : "This job waited in queue too long and expired before it could be picked up.",
+                                retryAfterSeconds: null,
+                            },
+                        } as AppEmbeddingEditPlanJobStatus;
+                        setActiveEditPlanJob(expiredJob);
+                        setEditPlanApplyError(`${expiredJob.error && typeof expiredJob.error === "object" && typeof expiredJob.error.message === "string" ? expiredJob.error.message : "This job expired before it could be picked up."}\nRequest ID: ${nextJob.requestId || activeEditPlanJob.requestId || "unknown"}\nJob ID: ${nextJob.jobId || activeEditPlanJob.jobId || "unknown"}`);
+                        setEditPlanApplyStatusMessage("The job expired before it could be picked up.");
+                        editPlanJobVersionRef.current += 1;
+                        return;
+                    }
+
+                    if (nextJob.status === "failed") {
+                        setActiveEditPlanJob(nextJob);
+                        setEditPlanApplyError(
+                            [
+                                nextJob.error && typeof nextJob.error === "object" && typeof nextJob.error.message === "string"
+                                    ? nextJob.error.message
+                                    : typeof nextJob.error === "string"
+                                        ? nextJob.error
+                                        : "The edit plan job failed.",
+                                `Request ID: ${nextJob.requestId || activeEditPlanJob.requestId || "unknown"}`,
+                                `Job ID: ${nextJob.jobId || activeEditPlanJob.jobId || "unknown"}`,
+                                nextJob.error && typeof nextJob.error === "object" && typeof nextJob.error.retryAfterSeconds === "number"
+                                    ? `Retry after: ${nextJob.error.retryAfterSeconds}s`
+                                    : null,
+                            ].filter(Boolean).join("\n"),
+                        );
+                        setEditPlanApplyStatusMessage("The edit plan job failed before it could finish.");
+                        editPlanJobVersionRef.current += 1;
+                        return;
+                    }
                 }
             })().catch((err) => {
                 if (pollVersion !== editPlanJobVersionRef.current) return;
@@ -845,6 +1032,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
         forcedCompileFixContext?: CompileErrorQuickFixContext;
         allowWhenChatDisabled?: boolean;
         hideUserMessage?: boolean;
+        bypassInitialSearch?: boolean;
     }) => Promise<void>) | null>(null);
     const debugChatIo = useCallback(() => {
         if (typeof window === "undefined") return false;
@@ -1451,6 +1639,50 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
         return null;
     }, [appId, fetchWithScopeRetry, onFilesReplace]);
 
+    const runPostMigrationRefreshPipeline = useCallback(async () => {
+        const runId = Date.now();
+
+        setMessages((prev) => [
+            ...prev,
+            {
+                id: `mig_progress_applied_${runId}`,
+                role: "assistant",
+                content: "Website updated. Regenerating website…",
+                timestamp: new Date(),
+                type: "text",
+            },
+        ]);
+
+        await syncFilesFromServer({ applyToState: true }).catch(() => null);
+
+        setMessages((prev) => [
+            ...prev,
+            {
+                id: `mig_progress_restart_${runId}`,
+                role: "assistant",
+                content: "Restarting preview…",
+                timestamp: new Date(),
+                type: "text",
+            },
+        ]);
+
+        if (typeof window !== "undefined") {
+            window.dispatchEvent(
+                new CustomEvent("kloner:preview-force-fresh", {
+                    detail: { appId, reason: "migration-applied" },
+                }),
+            );
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+        const start = Date.now();
+        let ready = previewReadyRef.current;
+        while (!ready && Date.now() - start < 45_000) {
+            await new Promise((resolve) => setTimeout(resolve, 1000));
+            ready = previewReadyRef.current;
+        }
+    }, [appId, previewReadyRef, syncFilesFromServer]);
+
     const projectFramework = useMemo(() => detectProjectFramework(files), [files]);
 
     const createRestorePointBeforeApply = useCallback(
@@ -1475,27 +1707,65 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
         [appId, fetchWithScopeRetry, withCsrfHeaders],
     );
 
-    const applyPendingEditPlan = useCallback(async () => {
-        const plan = pendingEditPlan;
-        if (!plan) return;
+    const applyPendingEditPlan = useCallback(async (proposalArg?: AppEmbeddingEditPlanProposal | null) => {
+        const proposal = proposalArg ?? pendingEditPlan;
+        if (!proposal) return;
+        lastAppliedEditPlanRef.current = proposal;
 
-        const ops = Array.isArray(plan.ops)
-            ? plan.ops.filter((op): op is AppEmbeddingEditPlanOp => Boolean(op && typeof op.path === "string" && op.path.trim()))
+        const files = Array.isArray(proposal.files)
+            ? proposal.files.filter((file): file is AppEmbeddingEditPlanProposal["files"][number] => Boolean(file && typeof file.path === "string" && file.path.trim()))
             : [];
 
-        if (plan.needsMoreContext || ops.length === 0) {
-            setEditPlanApplyError("The backend asked for more context before it could safely apply this plan.");
+        if (proposal.needsMoreContext || files.length === 0) {
+            setEditPlanApplyStatusMessage(proposal.needsMoreContext
+                ? "The worker asked for more context, so I did not send the apply request yet."
+                : "The worker did not return any files to apply.");
+            return;
+        }
+
+        if (proposal.autoApplyAllowed === false) {
+            setEditPlanApplyStatusMessage("The worker returned a proposal, but it was not marked safe to auto-apply.");
             return;
         }
 
         setIsApplyingEditPlan(true);
         setEditPlanApplyError(null);
+        setEditPlanApplyStatusMessage(null);
+
+        const applyMessageId = `edit_plan_apply_${Date.now()}`;
+        const upsertApplyMessage = (content: string, extra?: Partial<Message>) => {
+            setMessages((prev) => {
+                const nextMessage = {
+                    id: applyMessageId,
+                    role: "assistant" as const,
+                    content,
+                    timestamp: new Date(),
+                    type: "text" as const,
+                    ...extra,
+                };
+
+                const existingIndex = prev.findIndex((message) => message.id === applyMessageId);
+                if (existingIndex === -1) {
+                    return [...prev, nextMessage];
+                }
+
+                const next = prev.slice();
+                next[existingIndex] = { ...next[existingIndex], ...nextMessage };
+                return next;
+            });
+        };
+
+        upsertApplyMessage("Sending the apply request now…");
 
         try {
-            const restoreLabel = String(plan.summary || "Apply edit plan").trim() || "Apply edit plan";
-            const restorePointId = await createRestorePointBeforeApply(restoreLabel, ops.map((op) => op.path));
+            const restoreLabel = String(proposal.summary || "Apply edit plan").trim() || "Apply edit plan";
+            const restorePointId = await createRestorePointBeforeApply(restoreLabel, files.map((file) => file.path));
             if (!restorePointId) {
                 setEditPlanApplyError("I couldn’t create a restore point for this edit, so I stopped before applying it.");
+                setEditPlanApplyStatusMessage("I couldn’t create a restore point, so I stopped before applying it.");
+                upsertApplyMessage("I couldn’t create a restore point for this edit, so I stopped before applying it.", {
+                    editPlanRetryPrompt: lastEditPlanPromptRef.current?.trim() || "Retry apply",
+                });
                 return;
             }
 
@@ -1503,12 +1773,20 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
             await fetchRestorePoints();
 
             const headers = await withCsrfHeaders();
-            const applyResult = await applyEditPlanOps({ appId, ops, code: null }, headers);
-            if (!applyResult.ok) {
-                const requestId = applyResult.requestId || plan.requestId || null;
+            const applyIdempotencyKey = editPlanApplyIdempotencyKeyRef.current || (editPlanApplyIdempotencyKeyRef.current = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+                ? crypto.randomUUID()
+                : `${Date.now()}-${Math.random().toString(16).slice(2)}`);
+            const applyResult = await applyEditPlanOps({ appId, files, code: null, idempotencyKey: applyIdempotencyKey }, headers);
+            const applyData = applyResult.data;
+            const applyRetryAfterSeconds = typeof applyData?.retryAfterSeconds === "number" ? applyData.retryAfterSeconds : null;
+            const applyRestartPending = Boolean(applyData?.restartPending || applyData?.queued || applyData?.outcome === "restart_pending");
+            const applyRestartTimedOut = Boolean(applyData?.outcome === "restart_timeout" || (applyResult.status === 504 && applyData?.retryable));
+            const applyRestartConfirmed = Boolean(applyData?.restartConfirmed);
+
+            if (!applyResult.ok && !applyData?.retryable && !applyRestartTimedOut) {
+                const requestId = applyResult.requestId || proposal.requestId || null;
                 const code = applyResult.code || (applyResult.status === 409 ? "PATCH_RESOLUTION_FAILED" : null);
-                const errorText = String(applyResult.error || (applyResult.data as any)?.error || "Failed to apply edit plan.");
-                const anchorHint = ops[0]?.target ? `\n\nAnchor details:\n${JSON.stringify(ops[0].target, null, 2)}` : "";
+                const errorText = String(applyResult.error || (applyData as any)?.error || "Failed to apply edit plan.");
                 setEditPlanApplyError(
                     [
                         "The backend could not apply this edit plan.",
@@ -1516,35 +1794,140 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                         requestId ? `Request ID: ${requestId}` : null,
                         code ? `Error code: ${code}` : null,
                         applyResult.status === 409 ? "Review the anchor details below and refine the request." : null,
-                    ].filter(Boolean).join("\n") + anchorHint,
+                    ].filter(Boolean).join("\n"),
                 );
+                setEditPlanApplyStatusMessage(null);
+                upsertApplyMessage(`The apply request failed: ${errorText}`, {
+                    editPlanRetryPrompt: lastEditPlanPromptRef.current?.trim() || "Retry apply",
+                });
                 return;
             }
 
-            await syncFilesFromServer({ applyToState: true }).catch(() => null);
-            setPendingEditPlan(null);
-            setMessages((prev) => [
-                ...prev,
+            void syncFilesFromServer({ applyToState: true }).catch(() => null);
+
+            if (applyRestartTimedOut || (applyData?.retryable && !applyRestartConfirmed && !applyRestartPending)) {
+                const retryHint = applyRetryAfterSeconds !== null ? ` Retry in ${applyRetryAfterSeconds}s.` : "";
+                const timeoutMessage = String(applyData?.restartMessage || applyData?.error || "The apply request timed out while waiting for the restart to settle.");
+
+                setEditPlanApplyError(null);
+                setEditPlanApplyStatusMessage(`${timeoutMessage}${retryHint}`.trim());
+                upsertApplyMessage(`${timeoutMessage}${retryHint}`.trim(), {
+                    editPlanRetryPrompt: lastEditPlanPromptRef.current?.trim() || "Retry apply",
+                });
+
+                return;
+            }
+
+            const applyNeedsRebuild = Boolean(
+                applyData?.needsRebuild ??
+                    applyData?.requiresRestart ??
+                    applyData?.requiresRebuild ??
+                    applyData?.touchesPublicAssets ??
+                    proposal.needsRebuild,
+            );
+            if (applyNeedsRebuild) {
+                upsertApplyMessage("Files were saved. Preview restart is pending.");
+
+                void syncFilesFromServer({ applyToState: true }).catch(() => null);
+
+                if (typeof window !== "undefined") {
+                    window.dispatchEvent(
+                        new CustomEvent("kloner:preview-force-fresh", {
+                            detail: { appId, reason: "migration-applied" },
+                        }),
+                    );
+                }
+
+                await new Promise((resolve) => setTimeout(resolve, 1500));
+                const start = Date.now();
+                let ready = previewReadyRef.current;
+                while (!ready && Date.now() - start < 45_000) {
+                    await new Promise((resolve) => setTimeout(resolve, 1000));
+                    ready = previewReadyRef.current;
+                }
+            }
+
+            const restartPending = Boolean(applyData?.restartPending || applyData?.restart_pending || applyData?.queued || applyData?.outcome === "restart_pending");
+            const restartStatus = String(applyData?.restartStatus || applyData?.restart_status || "").trim().toLowerCase();
+            const restartMessage = String(applyData?.restartMessage || applyData?.restart_message || "").trim();
+            const restartTimedOut = Boolean(
+                applyData?.outcome === "restart_timeout" ||
+                (applyData?.retryable && applyData?.saved !== true && !applyRestartConfirmed && !restartPending && restartStatus === "timeout")
+            );
+
+            if (restartTimedOut || restartPending) {
+                const restartContent = restartTimedOut
+                    ? restartMessage || "The website update timed out while waiting for the restart to settle. Your files may already be saved."
+                    : restartMessage || "The website update is still restarting. Please try again in a moment.";
+
+                setEditPlanApplyError(null);
+                setEditPlanApplyStatusMessage(restartContent);
+                upsertApplyMessage(restartContent, {
+                    editPlanRetryPrompt: lastEditPlanPromptRef.current?.trim() || "Retry apply",
+                });
+                return;
+            }
+
+            setEditPlanApplyStatusMessage(
+                applyNeedsRebuild
+                    ? "The website update is running and the preview is refreshing."
+                    : "The website was updated and the preview was refreshed."
+            );
+            upsertApplyMessage(
+                applyNeedsRebuild
+                    ? "The website update is running and the preview is refreshing."
+                    : "The website was updated and the updated files were synced.",
                 {
-                    id: `edit_plan_applied_${Date.now()}`,
-                    role: "assistant",
-                    content: "Applied the edit plan and synced the updated files.",
-                    timestamp: new Date(),
-                    type: "text",
                     restorePointId,
                     restoreActionLabel: "Undo",
                 },
-            ]);
+            );
+
+            if (!restartTimedOut && !restartPending) {
+                editPlanApplyIdempotencyKeyRef.current = null;
+            }
         } catch (err: any) {
             setEditPlanApplyError(String(err?.message || "Failed to apply edit plan."));
+            setEditPlanApplyStatusMessage(String(err?.message || "Failed to apply edit plan."));
+            editPlanApplyIdempotencyKeyRef.current = null;
         } finally {
             setIsApplyingEditPlan(false);
         }
-    }, [appId, createRestorePointBeforeApply, fetchRestorePoints, pendingEditPlan, syncFilesFromServer, withCsrfHeaders]);
+    }, [appId, createRestorePointBeforeApply, fetchRestorePoints, pendingEditPlan, runPostMigrationRefreshPipeline, syncFilesFromServer, withCsrfHeaders]);
 
     useEffect(() => {
         fetchRestorePoints();
     }, [fetchRestorePoints]);
+
+    useEffect(() => {
+        if (!activeEditPlanJob) return;
+
+        const jobKey = activeEditPlanJob.jobId || activeEditPlanJob.requestId || activeEditPlanJob.statusUrl || null;
+        if (!jobKey) return;
+
+        const nextContent = buildEditPlanStatusBubbleText(activeEditPlanJob);
+        const bubbleId = editPlanStatusMessageIdRef.current;
+        const lastContent = editPlanStatusMessageTextRef.current;
+
+        if (editPlanStatusMessageJobKeyRef.current !== jobKey || !bubbleId || lastContent !== nextContent) {
+            const nextBubbleId = `edit_plan_status_${Date.now()}`;
+            editPlanStatusMessageJobKeyRef.current = jobKey;
+            editPlanStatusMessageIdRef.current = nextBubbleId;
+            editPlanStatusMessageTextRef.current = nextContent;
+            setEditPlanStatusMessageId(nextBubbleId);
+            setMessages((prev) => [
+                ...prev,
+                {
+                    id: nextBubbleId,
+                    role: "assistant",
+                    content: nextContent,
+                    timestamp: new Date(),
+                    type: "text",
+                },
+            ]);
+            return;
+        }
+    }, [activeEditPlanJob, buildEditPlanStatusBubbleText]);
 
     // Scroll to bottom when messages change
     useEffect(() => {
@@ -1556,19 +1939,22 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
     const buildChatPayload = useCallback((input: Message[]) => {
         // Keep a reasonable tail to prevent doc bloat.
         const tailMax = 120;
-        const base = input.slice(-tailMax).map((m) => ({
-            id: m.id,
-            role: m.role,
-            content: m.content,
-            type: m.type,
-            timestampMs: m.timestamp.getTime(),
-            restorePointId: m.restorePointId ?? null,
-            restoreActionLabel: m.restoreActionLabel ?? null,
-            supabaseContinuationPrompt: m.supabaseContinuationPrompt ?? null,
-            supabaseContinuationStatus: m.supabaseContinuationStatus ?? null,
-            dbSetupPrompt: m.dbSetupPrompt ?? null,
-            dbSetupStatus: m.dbSetupStatus ?? null,
-        }));
+        const base = input
+            .filter(isPersistableChatMessage)
+            .slice(-tailMax)
+            .map((m) => ({
+                id: m.id,
+                role: m.role,
+                content: m.content,
+                type: m.type,
+                timestampMs: m.timestamp.getTime(),
+                restorePointId: m.restorePointId ?? null,
+                restoreActionLabel: m.restoreActionLabel ?? null,
+                supabaseContinuationPrompt: m.supabaseContinuationPrompt ?? null,
+                supabaseContinuationStatus: m.supabaseContinuationStatus ?? null,
+                dbSetupPrompt: m.dbSetupPrompt ?? null,
+                dbSetupStatus: m.dbSetupStatus ?? null,
+            }));
 
         const encoder = typeof TextEncoder !== "undefined" ? new TextEncoder() : null;
         const sizeBytes = (payload: any) => {
@@ -1583,7 +1969,21 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
         if (sizeBytes(payload) > MAX_BYTES) payload = base.slice(-30);
 
         return payload;
-    }, []);
+    }, [isPersistableChatMessage]);
+
+    useEffect(() => {
+        if (!pendingEditPlan || !activeEditPlanJob) return;
+        const jobId = activeEditPlanJob.jobId || activeEditPlanJob.requestId || null;
+        if (!jobId) return;
+        if (!isEditPlanJobTerminalStatus(activeEditPlanJob.status) || String(activeEditPlanJob.status || "").toLowerCase() !== "completed") return;
+        if (editPlanAutoApplyJobIdRef.current === jobId) return;
+        if (isApplyingEditPlan) return;
+        if (pendingEditPlan.needsMoreContext || pendingEditPlan.autoApplyAllowed === false) return;
+        if (!Array.isArray(pendingEditPlan.files) || pendingEditPlan.files.length === 0) return;
+
+        editPlanAutoApplyJobIdRef.current = jobId;
+        void applyPendingEditPlan(pendingEditPlan);
+    }, [activeEditPlanJob, applyPendingEditPlan, isApplyingEditPlan, pendingEditPlan]);
 
     const saveChatNow = useCallback(
         async (nextMessages: Message[]) => {
@@ -1747,50 +2147,6 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
         setCheckpoints(prev => [...prev, checkpoint]);
         setCurrentCheckpoint(checkpointId);
     }, [files]);
-
-    const runPostMigrationRefreshPipeline = useCallback(async () => {
-        const runId = Date.now();
-
-        setMessages((prev) => [
-            ...prev,
-            {
-                id: `mig_progress_applied_${runId}`,
-                role: "assistant",
-                content: "Migration applied. Regenerating app…",
-                timestamp: new Date(),
-                type: "text",
-            },
-        ]);
-
-        await syncFilesFromServer({ applyToState: true }).catch(() => null);
-
-        setMessages((prev) => [
-            ...prev,
-            {
-                id: `mig_progress_restart_${runId}`,
-                role: "assistant",
-                content: "Restarting preview…",
-                timestamp: new Date(),
-                type: "text",
-            },
-        ]);
-
-        if (typeof window !== "undefined") {
-            window.dispatchEvent(
-                new CustomEvent("kloner:preview-force-fresh", {
-                    detail: { appId, reason: "migration-applied" },
-                }),
-            );
-        }
-
-        await new Promise((resolve) => setTimeout(resolve, 1500));
-        const start = Date.now();
-        let ready = previewReadyRef.current;
-        while (!ready && Date.now() - start < 45_000) {
-            await new Promise((resolve) => setTimeout(resolve, 1000));
-            ready = previewReadyRef.current;
-        }
-    }, [appId, previewReadyRef, syncFilesFromServer]);
 
     const applyStagedBundle = useCallback(async (bundleId: string, options?: { unsafe?: boolean }) => {
         const bundle = stagedBundles.find((entry) => entry.id === bundleId);
@@ -2534,10 +2890,14 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
         forcedInput?: string;
         forcedCompileFixContext?: CompileErrorQuickFixContext;
         allowWhenChatDisabled?: boolean;
+        hideUserMessage?: boolean;
+        bypassInitialSearch?: boolean;
     }) => {
         const messageInput = typeof opts?.forcedInput === "string" ? opts.forcedInput : input;
         const activeCompileFixContext = opts?.forcedCompileFixContext ?? freeCompileFixContext;
         const allowWhenChatDisabled = opts?.allowWhenChatDisabled === true;
+        const hideUserMessage = opts?.hideUserMessage === true;
+        const shouldRestoreInput = typeof opts?.forcedInput !== "string";
 
         if (chatDisabled && !allowWhenChatDisabled) return;
         if (!messageInput.trim() || isLoading) return;
@@ -2693,10 +3053,13 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
             type: "text"
         };
 
-        setMessages(prev => [...prev, userMessage]);
-        onUserMessageSent?.();
+        if (!hideUserMessage) {
+            setMessages(prev => [...prev, userMessage]);
+            onUserMessageSent?.();
+        }
         setInput("");
         setIsLoading(true);
+        lastEditPlanPromptRef.current = messageInput;
 
         try {
             const headers = await withCsrfHeaders();
@@ -2741,6 +3104,27 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                     userId: user?.uid || null,
                     status: editPlanResult.status,
                 });
+
+                if (isEditPlanBackpressureResult(editPlanResult)) {
+                    const backpressureMessage = formatEditPlanBackpressureMessage(editPlanResult);
+                    if (shouldRestoreInput) {
+                        setInput(messageInput);
+                    }
+                    setMessages((prev) => [
+                        ...prev,
+                        {
+                            id: `edit_plan_backpressure_${Date.now()}`,
+                            role: "assistant",
+                            content: backpressureMessage,
+                            timestamp: new Date(),
+                            type: "text",
+                            retryPrompt: messageInput,
+                            retryStatus: 429,
+                        },
+                    ]);
+                    return;
+                }
+
                 const errorMessage =
                     editPlanResult.status === 429
                         ? "Edit planning is temporarily rate-limited. Please wait a moment and try again."
@@ -2752,16 +3136,64 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
             }
 
             const rawPlan = normalizeEmbeddingEditPlanResponse(editPlanResult.data);
-            const queuedJob = rawPlan.queued || rawPlan.status === "queued" || rawPlan.statusUrl || rawPlan.job?.statusUrl
-                ? normalizeEmbeddingEditPlanJobStatus(rawPlan.job || rawPlan)
-                : null;
+            const queuedResponseLike = editPlanResult.status === 202 || rawPlan.queued === true || Boolean(rawPlan.statusUrl) || Boolean(rawPlan.jobId) || Boolean(rawPlan.job?.statusUrl) || Boolean(rawPlan.job?.jobId);
+            const queuedJob = queuedResponseLike ? normalizeEmbeddingEditPlanJobStatus(rawPlan.job || rawPlan) : null;
             const queuedStatusUrl = rawPlan.statusUrl || queuedJob?.statusUrl || null;
+            if (queuedResponseLike && (!queuedJob || !queuedStatusUrl)) {
+                const queuedErrorMessage = "The edit-plan job was accepted, but the backend did not return a status URL to poll.";
+                await showAlert(
+                    <div className="space-y-2">
+                        <div className="text-sm text-neutral-800">{queuedErrorMessage}</div>
+                        <div className="text-xs text-neutral-600">Request ID: {rawPlan.requestId || editPlanResult.requestId || "unknown"}</div>
+                    </div>,
+                    "Edit plan queue error",
+                );
+                setMessages((prev) => [
+                    ...prev,
+                    {
+                        id: `edit_plan_queued_missing_status_${Date.now()}`,
+                        role: "assistant",
+                        content: `${queuedErrorMessage}\nRequest ID: ${rawPlan.requestId || editPlanResult.requestId || "unknown"}\nJob ID: ${rawPlan.jobId || "unknown"}`,
+                        timestamp: new Date(),
+                        type: "text",
+                        retryPrompt: messageInput,
+                        retryStatus: 503,
+                    },
+                ]);
+                return;
+            }
+
             if (queuedJob && queuedStatusUrl && isActiveEditPlanJobStatus(queuedJob.status)) {
                 editPlanJobVersionRef.current += 1;
                 editPlanJobStableSignatureRef.current = "";
                 editPlanJobStableReadsRef.current = 0;
-                setActiveEditPlanJob({ ...queuedJob, statusUrl: queuedStatusUrl, requestId: queuedJob.requestId || rawPlan.requestId || null, jobId: queuedJob.jobId || rawPlan.jobId || null });
+                editPlanJobFetchFailureCountRef.current = 0;
+                setActiveEditPlanJob({ ...queuedJob, statusUrl: queuedStatusUrl, requestId: queuedJob.requestId || rawPlan.requestId || editPlanResult.requestId || null, jobId: queuedJob.jobId || rawPlan.jobId || null });
                 setIsLoading(false);
+                return;
+            }
+
+            if (queuedResponseLike) {
+                const queuedErrorMessage = `The edit-plan job was accepted, but it came back in an unexpected state: ${String(queuedJob?.status || rawPlan.status || editPlanResult.status)}.`;
+                await showAlert(
+                    <div className="space-y-2">
+                        <div className="text-sm text-neutral-800">{queuedErrorMessage}</div>
+                        <div className="text-xs text-neutral-600">Request ID: {rawPlan.requestId || editPlanResult.requestId || "unknown"}</div>
+                    </div>,
+                    "Edit plan queue error",
+                );
+                setMessages((prev) => [
+                    ...prev,
+                    {
+                        id: `edit_plan_queued_unexpected_${Date.now()}`,
+                        role: "assistant",
+                        content: `${queuedErrorMessage}\nRequest ID: ${rawPlan.requestId || editPlanResult.requestId || "unknown"}\nJob ID: ${rawPlan.jobId || "unknown"}`,
+                        timestamp: new Date(),
+                        type: "text",
+                        retryPrompt: messageInput,
+                        retryStatus: 503,
+                    },
+                ]);
                 return;
             }
 
@@ -2994,9 +3426,31 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                     }
 
                 } else {
-                    setPendingEditPlan(rawPlan);
+                    if (rawPlan.needsMoreContext) {
+                        const assistantMessage = buildNeedsMoreContextMessage(rawPlan);
+                        const debugDetails = process.env.NODE_ENV !== "production" ? buildNeedsMoreContextDebugDetails(rawPlan) : undefined;
+
+                        setMessages((prev) => [
+                            ...prev,
+                            {
+                                id: `edit_plan_more_context_${Date.now()}`,
+                                role: "assistant",
+                                content: assistantMessage,
+                                timestamp: new Date(),
+                                type: "text",
+                                debugDetails,
+                            },
+                        ]);
+                        setPendingEditPlan(null);
+                        setEditPlanApplyError(null);
+                        setEditPlanApplyStatusMessage("The worker asked for more context, so I did not apply anything.");
+                        setIsApplyingEditPlan(false);
+                        return;
+                    }
+
+                    setPendingEditPlan(null);
                     setEditPlanApplyError(null);
-                    setIsApplyingEditPlan(false);
+                    setEditPlanApplyStatusMessage("The worker did not return a proposal in this response yet.");
                     return;
                 }
             }
@@ -3053,6 +3507,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                 code,
                 actionType: "quick_fix_compile",
                 fixAction: typeof detail?.fixAction === "string" ? detail.fixAction : undefined,
+                currentPath: null,
                 compileError: {
                     summary,
                     detail: detailText,
@@ -3067,7 +3522,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
             const lockKey = `${ctx.appId}:${ctx.code}:${ctx.compileError.fingerprint}`;
             const now = Date.now();
             const cooldown = compileFixRequestCooldownRef.current;
-            const cooldownMs = 10 * 60_000;
+            const cooldownMs = 5_000;
             if (cooldown && cooldown.fingerprint === lockKey && now < cooldown.until) return;
             compileFixRequestCooldownRef.current = { fingerprint: lockKey, until: now + cooldownMs };
 
@@ -3124,6 +3579,18 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                 </div>
                 <div className="flex items-center gap-2">
                     <button
+                        type="button"
+                        onClick={() => setShowRestorePointsPanel((prev) => !prev)}
+                        className="inline-flex items-center gap-1.5 rounded-full border border-neutral-200 bg-white px-3 py-1.5 text-xs font-medium text-neutral-700 shadow-sm transition hover:bg-neutral-50"
+                        aria-expanded={showRestorePointsPanel}
+                        aria-label="Toggle restore points"
+                        title="Restore points"
+                    >
+                        <FileText className="h-3.5 w-3.5" />
+                        <span>Restore points</span>
+                        <ChevronDown className={`h-3.5 w-3.5 transition-transform ${showRestorePointsPanel ? "rotate-180" : ""}`} />
+                    </button>
+                    <button
                         onClick={fetchRestorePoints}
                         className="p-1 hover:bg-gray-200 rounded"
                         title="Refresh restore points"
@@ -3152,72 +3619,69 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                 </div>
             </div>
 
-            {/* Messages */}
-            <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4">
-                <div className="bg-white border border-gray-200 rounded-lg p-3">
-                    <div className="flex items-center justify-between">
-                        <div className="text-xs font-medium text-gray-700">Recent restore points</div>
-                        <button
-                            onClick={fetchRestorePoints}
-                            className="text-xs text-gray-600 hover:text-gray-900"
-                            disabled={isRestoreBusy}
-                        >
-                            Refresh
-                        </button>
-                    </div>
-                    <div className="mt-2 space-y-2">
-                        {restorePoints.length > 0 ? (
-                            restorePoints.slice(0, 5).map((rp) => (
-                                <div key={rp.id} className="flex items-center justify-between gap-2">
-                                    <div className="min-w-0">
-                                        <div className="text-xs text-gray-800 truncate">{rp.label}</div>
-                                        <div className="text-[11px] text-gray-500 truncate">
-                                            {rp.id.slice(0, 8)}{rp.kept ? " • kept" : ""}
-                                        </div>
-                                    </div>
-                                    <div className="flex items-center gap-2 flex-shrink-0">
-                                        <button
-                                            onClick={() => applyRestorePoint(rp.id, "Applied restore point")}
-                                            disabled={isRestoreBusy}
-                                            className="px-2 py-1 text-xs bg-gray-50 border border-gray-300 rounded hover:bg-gray-100 disabled:opacity-50"
-                                        >
-                                            Apply
-                                        </button>
-                                        <button
-                                            onClick={() => keepRestorePoint(rp.id)}
-                                            disabled={isRestoreBusy}
-                                            className="px-2 py-1 text-xs bg-gray-50 border border-gray-300 rounded hover:bg-gray-100 disabled:opacity-50"
-                                        >
-                                            Keep
-                                        </button>
-                                    </div>
-                                </div>
-                            ))
-                        ) : (
-                            <div className="rounded-md border border-dashed border-gray-300 bg-gray-50 px-3 py-2 text-xs text-gray-600">
-                                No restore points yet. The editor will create one automatically before applying AI edits, and you can save one here anytime.
+            {showRestorePointsPanel ? (
+                <div className="relative z-20 flex-shrink-0">
+                    <div className="absolute left-3 right-3 top-2 rounded-2xl border border-neutral-200 bg-white p-3 shadow-[0_20px_50px_rgba(15,23,42,0.12)]">
+                        <div className="flex items-start justify-between gap-3">
+                            <div>
+                                <div className="text-sm font-medium text-neutral-900">Restore points</div>
+                                <div className="mt-1 text-[11px] text-neutral-500">Open this when you need a checkpoint; it stays out of the way otherwise.</div>
                             </div>
-                        )}
+                            <button
+                                type="button"
+                                onClick={() => setShowRestorePointsPanel(false)}
+                                className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-neutral-100 text-neutral-600 transition hover:bg-neutral-200"
+                                aria-label="Close restore points"
+                            >
+                                <X className="h-4 w-4" />
+                            </button>
+                        </div>
+                        <div className="mt-3 flex flex-wrap items-center gap-2">
+                            {restorePoints.length > 0 ? (
+                                <div className="max-h-52 flex-1 overflow-auto space-y-2 pr-1">
+                                    {restorePoints.slice(0, 5).map((rp) => (
+                                        <div key={rp.id} className="flex items-center justify-between gap-2 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2">
+                                            <div className="min-w-0">
+                                                <div className="truncate text-xs text-neutral-800">{rp.label}</div>
+                                                <div className="truncate text-[11px] text-neutral-500">
+                                                    {formatRestorePointCreatedAt(rp.createdAt)}{rp.kept ? " · kept" : ""}
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center gap-2 flex-shrink-0">
+                                                <button
+                                                    onClick={() => applyRestorePoint(rp.id, "Applied restore point")}
+                                                    disabled={isRestoreBusy}
+                                                    className="px-2 py-1 text-xs bg-white border border-neutral-300 rounded hover:bg-neutral-50 disabled:opacity-50"
+                                                >
+                                                    Apply
+                                                </button>
+                                                <button
+                                                    onClick={() => keepRestorePoint(rp.id)}
+                                                    disabled={isRestoreBusy}
+                                                    className="px-2 py-1 text-xs bg-white border border-neutral-300 rounded hover:bg-neutral-50 disabled:opacity-50"
+                                                >
+                                                    Keep
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                <div className="min-w-0 flex-1 rounded-lg border border-dashed border-[#F55F2A]/20 bg-[#FFF8F5] px-3 py-2 text-xs text-neutral-600">
+                                    No restore points yet. The editor will create one automatically before applying AI edits.
+                                </div>
+                            )}
+                        </div>
                     </div>
                 </div>
+            ) : null}
+
+            {/* Messages */}
+            <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4">
                 {messages.length === 0 && !isLoading ? (
                     <div className="text-center text-sm text-gray-500 py-10">
                         No chat messages yet.
                     </div>
-                ) : null}
-
-                {activeEditPlanJob ? (
-                    <EditPlanJobStatusCard
-                        job={activeEditPlanJob}
-                        onDismiss={
-                            isActiveEditPlanJobStatus(activeEditPlanJob.status)
-                                ? undefined
-                                : () => {
-                                    editPlanJobVersionRef.current += 1;
-                                    setActiveEditPlanJob(null);
-                                }
-                        }
-                    />
                 ) : null}
 
                 {messages.map((message) => (
@@ -3245,6 +3709,21 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                                         <Copy className="h-3.5 w-3.5" />
                                     )}
                                 </button>
+                                {message.role === "assistant" && message.editPlanRetryPrompt ? (
+                                    <button
+                                        type="button"
+                                        disabled={isLoading}
+                                        onClick={() => {
+                                                if (isLoading) return;
+                                                void applyPendingEditPlan(pendingEditPlan ?? lastAppliedEditPlanRef.current);
+                                        }}
+                                        className="rounded p-1 transition-colors text-gray-500 hover:text-gray-900 hover:bg-black/5 disabled:opacity-50"
+                                        title="Retry apply"
+                                        aria-label="Retry apply"
+                                    >
+                                        <RotateCcw className="h-3.5 w-3.5" />
+                                    </button>
+                                ) : null}
                                 <button
                                     type="button"
                                     onClick={() => dismissMessage(message.id)}
@@ -3256,7 +3735,20 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                                 </button>
                             </div>
 
-                            <div className="whitespace-pre-wrap break-words text-sm leading-relaxed">{renderTextWithLinks(message.content)}</div>
+                            {!(message.role === "assistant" && message.id === editPlanStatusMessageId && activeEditPlanJob) ? (
+                                <div className="whitespace-pre-wrap break-words text-sm leading-relaxed">{renderTextWithLinks(message.content)}</div>
+                            ) : null}
+
+                            {message.role === "assistant" && message.debugDetails && process.env.NODE_ENV !== "production" ? (
+                                <details className="mt-3 rounded-2xl border border-orange-200 bg-white/90 px-3 py-2 text-left">
+                                    <summary className="cursor-pointer list-none text-xs font-semibold text-neutral-700">
+                                        Debug details
+                                    </summary>
+                                    <pre className="mt-2 whitespace-pre-wrap break-words text-[11px] leading-5 text-neutral-600">
+                                        {message.debugDetails}
+                                    </pre>
+                                </details>
+                            ) : null}
 
                             {message.supabaseContinuationPrompt && message.supabaseContinuationStatus === "PENDING" ? (
                                 <div className="mt-3 flex flex-wrap gap-2">
@@ -3432,6 +3924,38 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                                 </div>
                             )}
 
+                            {message.role === "assistant" && message.id === editPlanStatusMessageId && activeEditPlanJob ? (
+                                <div className="flex justify-start">
+                                    <div className="w-full max-w-none px-0 py-0 shadow-none">
+                                        <EditPlanJobStatusCard
+                                            job={activeEditPlanJob}
+                                            applyStatusMessage={editPlanApplyStatusMessage}
+                                            onRetry={
+                                                (activeEditPlanJob.status === "failed" || activeEditPlanJob.status === "expired") && lastEditPlanPromptRef.current?.trim()
+                                                    ? () => {
+                                                        const retryPrompt = lastEditPlanPromptRef.current?.trim();
+                                                        if (!retryPrompt) return;
+                                                        void sendMessage({
+                                                            forcedInput: retryPrompt,
+                                                            allowWhenChatDisabled: true,
+                                                            hideUserMessage: true,
+                                                        });
+                                                    }
+                                                    : undefined
+                                            }
+                                            onDismiss={
+                                                isActiveEditPlanJobStatus(activeEditPlanJob.status)
+                                                    ? undefined
+                                                    : () => {
+                                                        editPlanJobVersionRef.current += 1;
+                                                        setActiveEditPlanJob(null);
+                                                    }
+                                            }
+                                        />
+                                    </div>
+                                </div>
+                            ) : null}
+
                             {message.migrationProposalId && message.migrationSql ? (
                                 <div className="mt-3 space-y-2">
                                     <div className="rounded border border-gray-200 bg-white/70 p-3">
@@ -3532,7 +4056,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                                 </div>
                             ) : null}
 
-                            {message.restorePointId && (
+                            {message.restorePointId && !message.editPlanRetryPrompt && (
                                 <div className="mt-2 flex items-center gap-2">
                                     <button
                                         onClick={() =>
@@ -3776,18 +4300,6 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                     </div>
                 </div>
             )}
-
-            <EditPlanReviewModal
-                open={Boolean(pendingEditPlan)}
-                plan={pendingEditPlan}
-                applying={isApplyingEditPlan}
-                applyError={editPlanApplyError}
-                onConfirm={() => void applyPendingEditPlan()}
-                onCancel={() => {
-                    setPendingEditPlan(null);
-                    setEditPlanApplyError(null);
-                }}
-            />
 
             {/* Migration Review & Apply Modal (non-coder friendly guardrails) */}
             {migrationReviewMessageId ? (

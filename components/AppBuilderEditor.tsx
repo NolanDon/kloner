@@ -21,10 +21,23 @@ import { sanitizeImageName } from "./helpers";
 import { recordAppBuilderSessionAnalytics } from "@/components/analytics";
 import { motion } from "framer-motion";
 import { detectProjectFramework } from "@/src/lib/projectFramework";
+import { normalizePreviewApplyResponse } from "@/src/lib/appEmbeddingsClient";
 
 const VERCEL_INTEGRATION_SLUG =
     process.env.NEXT_PUBLIC_VERCEL_INTEGRATION_SLUG || "kloner";
 const APP_BUILDER_PENDING_SHARE_KEY = "kloner_vercel_pending_app_share";
+
+function DevOnlyIconBadge({ title }: { title: string }) {
+    return (
+        <span
+            className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-blue-200 bg-blue-50 text-blue-600"
+            title={title}
+            aria-label={title}
+        >
+            <ChevronRight className="h-2.5 w-2.5" />
+        </span>
+    );
+}
 
 type FileNode = {
     name: string;
@@ -1826,7 +1839,7 @@ export default function AppBuilderEditor({
         const fingerprint = `preview_issue:${appId}:${issue.slice(0, 120)}`;
         const now = Date.now();
         const cooldown = previewIssueFixRequestCooldownRef.current;
-        const cooldownMs = 30_000;
+        const cooldownMs = 5_000;
         if (cooldown && cooldown.fingerprint === fingerprint && now < cooldown.until) return;
         previewIssueFixRequestCooldownRef.current = { fingerprint, until: now + cooldownMs };
 
@@ -2694,6 +2707,7 @@ export default function AppBuilderEditor({
     const applyServerErrorRetryCountRef = useRef(0);
     const applyAutoRetryPausedUntilRef = useRef(0);
     const lastApplyFailureStatusRef = useRef<number | null>(null);
+    const applyIdempotencyKeyRef = useRef<string | null>(null);
 
     // Firebase can emit multiple snapshots in quick succession. Reloading the preview iframe for
     // every snapshot causes heavy flicker and request thrash. Coalesce into at most ~1 reload/1.5s.
@@ -2804,6 +2818,16 @@ export default function AppBuilderEditor({
         return new Promise((resolve) => setTimeout(resolve, ms));
     }
 
+    const getApplyIdempotencyKey = useCallback(() => {
+        if (!applyIdempotencyKeyRef.current) {
+            applyIdempotencyKeyRef.current = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+                ? crypto.randomUUID()
+                : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+        }
+
+        return applyIdempotencyKeyRef.current;
+    }, []);
+
     const fetchFreshCsrf = useCallback(async (): Promise<string | null> => {
         try {
             const res = await fetch("/api/auth/csrf", {
@@ -2907,6 +2931,11 @@ export default function AppBuilderEditor({
 
         // Dependency / build config files typically cannot be hot-updated.
         return (
+            p === "public" ||
+            p.startsWith("public/") ||
+            p.endsWith("/public") ||
+            p.endsWith(".html") ||
+            p.endsWith(".htm") ||
             p === "package.json" ||
             p.endsWith("/package.json") ||
             p === "package-lock.json" ||
@@ -2980,6 +3009,7 @@ export default function AppBuilderEditor({
                 const payload: any = {
                     appId,
                     files: paths.map((p) => ({ path: p, content: queued[p] })),
+                    idempotencyKey: getApplyIdempotencyKey(),
                 };
                 if (storedCode) payload.code = storedCode;
 
@@ -2987,6 +3017,7 @@ export default function AppBuilderEditor({
                     method: "POST",
                     headers: {
                         "Content-Type": "application/json",
+                        "idempotency-key": String(payload.idempotencyKey || ""),
                         ...(typeof csrf === "string" && csrf ? { "x-csrf": csrf } : {}),
                     },
                     credentials: "include",
@@ -2995,8 +3026,43 @@ export default function AppBuilderEditor({
                 });
 
                 const data = await res.json().catch(() => ({} as any));
+                const apply = normalizePreviewApplyResponse(data, res.status, res.headers.get("retry-after"));
+                const restartPending = Boolean(apply.restartPending || apply.queued || apply.outcome === "restart_pending");
+                const restartTimedOut = Boolean(apply.outcome === "restart_timeout" || (res.status === 504 && apply.retryable));
+                const retryAfterSeconds = typeof apply.retryAfterSeconds === "number" ? apply.retryAfterSeconds : null;
+                const restartMessage = String(apply.restartMessage || "").trim();
+                const needsRestart = Boolean(apply.requiresRestart || apply.requiresRebuild || apply.needsRebuild || apply.touchesPublicAssets);
+                const retryableApply = Boolean(apply.retryable || restartTimedOut);
 
-                if (!res.ok || !(data as any)?.ok) {
+                if (!res.ok || !apply.ok) {
+                    if (retryableApply) {
+                        // Keep changes queued so we can retry the exact same payload with the same idempotency key.
+                        for (const p of paths) {
+                            if (queued[p] !== undefined) applyQueuedRef.current[p] = queued[p];
+                        }
+
+                        const now = Date.now();
+                        const backoffSeconds = retryAfterSeconds ?? Math.max(1, 1 + applyServerErrorRetryCountRef.current);
+                        applyAutoRetryPausedUntilRef.current = now + backoffSeconds * 1000;
+                        if (interactive || now - lastApplyAlertAtRef.current > 15000) {
+                            lastApplyAlertAtRef.current = now;
+                            void showAlert(
+                                `${restartMessage || "The preview update timed out while waiting for the restart to settle."}\n\nRetrying in ${backoffSeconds}s with the same apply payload.`,
+                                "Live update",
+                            );
+                        }
+
+                        if (!applyRetryTimerRef.current) {
+                            applyRetryTimerRef.current = setTimeout(() => {
+                                applyRetryTimerRef.current = null;
+                                void flushPreviewApply({ interactive: false });
+                            }, backoffSeconds * 1000);
+                        }
+
+                        scheduledRetry = true;
+                        return;
+                    }
+
                     // Keep changes queued so we can retry safely.
                     for (const p of paths) {
                         if (queued[p] !== undefined) applyQueuedRef.current[p] = queued[p];
@@ -3126,14 +3192,18 @@ export default function AppBuilderEditor({
                 }
 
                 const requiresRestart = Boolean(
-                    (data as any)?.requiresRestart || (data as any)?.requiresRebuild || (data as any)?.requires_rebuild,
+                    apply.requiresRestart ||
+                    apply.requiresRebuild ||
+                    apply.needsRebuild ||
+                    apply.touchesPublicAssets ||
+                    needsRestart,
                 );
-                const restartPending = Boolean((data as any)?.restartPending || (data as any)?.restart_pending || (data as any)?.queued);
-                const restartMessage = String((data as any)?.restartMessage || "").trim();
 
                 // Notify the runner that an apply finished. The runner will do a delayed hard reload
                 // only if HMR websocket is blocked/unknown (prevents "reload too early" issues).
-                setApplyCompleteKey((k) => k + 1);
+                if (restartPending || apply.saved || apply.restartConfirmed || apply.outcome === "saved") {
+                    setApplyCompleteKey((k) => k + 1);
+                }
 
                 if (restartPending) {
                     const now = Date.now();
@@ -3154,7 +3224,18 @@ export default function AppBuilderEditor({
                             "Restart needed",
                         );
                     }
+                } else if (apply.outcome === "saved") {
+                    const now = Date.now();
+                    if (interactive || now - lastApplyAlertAtRef.current > 15000) {
+                        lastApplyAlertAtRef.current = now;
+                        void showAlert(
+                            "Your files were saved successfully.",
+                            "Live update",
+                        );
+                    }
                 }
+
+                applyIdempotencyKeyRef.current = null;
             } catch (err: any) {
                 // Network / fetch failures: retry a couple times, then pause.
                 if (lastApplyFailureStatusRef.current === -1) {
@@ -3201,10 +3282,12 @@ export default function AppBuilderEditor({
                 if (applyRunAfterRef.current || Object.keys(applyQueuedRef.current).length > 0) {
                     applyRunAfterRef.current = false;
                     void flushPreviewApply({ interactive: false });
+                } else if (!applyRetryTimerRef.current) {
+                    applyIdempotencyKeyRef.current = null;
                 }
             }
         },
-        [appId, fetchFreshCsrf, restartLocalPreview, showAlert]
+        [appId, fetchFreshCsrf, getApplyIdempotencyKey, restartLocalPreview, showAlert]
     );
 
     const getStoredPreviewCode = useCallback((): string => {
@@ -3265,6 +3348,7 @@ export default function AppBuilderEditor({
                             ? { path: e.path, delete: true }
                             : { path: e.path, content: typeof e.content === "string" ? e.content : "" },
                     ),
+                    idempotencyKey: getApplyIdempotencyKey(),
                 };
                 if (activeCode) payload.code = activeCode;
 
@@ -3272,6 +3356,7 @@ export default function AppBuilderEditor({
                     method: "POST",
                     headers: {
                         "Content-Type": "application/json",
+                        "idempotency-key": String(payload.idempotencyKey || ""),
                         ...(typeof csrf === "string" && csrf ? { "x-csrf": csrf } : {}),
                     },
                     credentials: "include",
@@ -3280,7 +3365,24 @@ export default function AppBuilderEditor({
                 });
 
                 const data = await res.json().catch(() => ({} as any));
-                if (!res.ok || !(data as any)?.ok) {
+                const apply = normalizePreviewApplyResponse(data, res.status, res.headers.get("retry-after"));
+                const restartPending = Boolean(apply.restartPending || apply.queued || apply.outcome === "restart_pending");
+                const restartTimedOut = Boolean(apply.outcome === "restart_timeout" || (res.status === 504 && apply.retryable));
+                const retryAfterSeconds = typeof apply.retryAfterSeconds === "number" ? apply.retryAfterSeconds : null;
+                const retryableApply = Boolean(apply.retryable || restartTimedOut);
+
+                if (!res.ok || !apply.ok) {
+                    if (retryableApply) {
+                        if (interactive) {
+                            const retryText = retryAfterSeconds !== null ? `Retrying in ${retryAfterSeconds}s.` : "Retrying shortly.";
+                            void showAlert(
+                                `${String(apply.restartMessage || apply.error || "The preview update timed out while waiting for restart.")}\n\n${retryText}`,
+                                "Live update",
+                            );
+                        }
+                        return;
+                    }
+
                     if (res.status === 404) {
                         if (interactive) {
                             void showAlert(
@@ -3332,14 +3434,25 @@ export default function AppBuilderEditor({
                 }
 
                 const needsRebuild = Boolean(
-                    (data as any)?.needsRebuild ||
-                        (data as any)?.needs_rebuild ||
-                        (data as any)?.requiresRebuild ||
-                        (data as any)?.requires_rebuild ||
-                        (data as any)?.requiresRestart ||
-                        (data as any)?.requires_restart,
+                    apply.needsRebuild ||
+                        apply.requiresRebuild ||
+                        apply.requiresRestart ||
+                        apply.touchesPublicAssets ||
+                        apply.hmrLikely === false ||
+                        (data as any)?.refreshServer,
                 );
                 overallNeedsRebuild = overallNeedsRebuild || needsRebuild;
+
+                if (restartPending) {
+                    const now = Date.now();
+                    if (interactive || now - lastApplyAlertAtRef.current > 15000) {
+                        lastApplyAlertAtRef.current = now;
+                        void showAlert(
+                            String(apply.restartMessage || "Your files were saved, but the preview restart may still be in progress. If the change does not appear, click Rebuild app."),
+                            "Restart pending",
+                        );
+                    }
+                }
             }
 
             if (overallNeedsRebuild && activeCode) {
@@ -3359,8 +3472,12 @@ export default function AppBuilderEditor({
                     if (interactive) void showAlert(msg, "Restart needed");
                 }
             }
+
+            if (!applyRetryTimerRef.current && Object.keys(applyQueuedRef.current).length === 0) {
+                applyIdempotencyKeyRef.current = null;
+            }
         },
-        [appId, fetchFreshCsrf, getStoredPreviewCode, restartLocalPreview, showAlert]
+        [appId, fetchFreshCsrf, getApplyIdempotencyKey, getStoredPreviewCode, restartLocalPreview, showAlert]
     );
 
     const queuePreviewApply = useCallback(
@@ -5293,8 +5410,8 @@ export default function AppBuilderEditor({
                         ) : null}
                         {generationFailureDebugDetails ? (
                             <details className="mt-3 rounded-2xl border border-neutral-200 bg-white/80 px-4 py-3 text-sm text-neutral-700">
-                                <summary className="cursor-pointer list-none font-medium text-neutral-900">
-                                    Debug details
+                                <summary className="inline-flex cursor-pointer list-none items-center justify-center rounded-full border border-blue-200 bg-blue-50 p-1 text-blue-600 hover:bg-blue-100">
+                                    <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
                                 </summary>
                                 <pre className="mt-3 whitespace-pre-wrap break-words font-mono text-[11px] leading-5 text-neutral-700">
                                     {generationFailureDebugDetails}
@@ -5463,12 +5580,12 @@ export default function AppBuilderEditor({
                                     <Pencil className="h-3.5 w-3.5 shrink-0 text-neutral-500 group-hover:text-accent" aria-hidden="true" />
                                 </h1>
                                 {isDev ? (
-                                    <span
-                                        className="mt-1 inline-flex items-center rounded-full border border-neutral-200 bg-white px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-neutral-600"
-                                        title={projectFramework.reason}
-                                    >
-                                        {projectFramework.label}
-                                    </span>
+                                    <div className="mt-1 flex items-center gap-1.5">
+                                        <DevOnlyIconBadge title={projectFramework.reason} />
+                                        <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-neutral-600">
+                                            {projectFramework.label}
+                                        </span>
+                                    </div>
                                 ) : null}
                             </div>
                         )}
@@ -5737,6 +5854,7 @@ export default function AppBuilderEditor({
                                     >
                                         <Code className="w-4 h-4" />
                                         Code
+                                        <DevOnlyIconBadge title="Development-only code tab" />
                                     </button>
                                 ) : null}
                                 <button
@@ -5777,29 +5895,33 @@ export default function AppBuilderEditor({
 
                             <div className={viewMode === "code" ? "h-full flex flex-col" : "hidden"}>
                                 {/* File Tree */}
-                                <div className="flex-1 border-b p-3 overflow-auto">
-                                    <div className="mb-2 flex items-center justify-between gap-3">
+                                <div className="flex-1 border-b overflow-auto p-3">
+                                    <div className="sticky top-0 z-20 -mx-3 mb-3 border-b border-neutral-200/80 bg-white/95 px-3 py-2 backdrop-blur-sm">
+                                        <div className="flex items-center gap-3">
                                         <h3 className="font-medium text-sm">Files</h3>
-                                        <div className="relative w-full max-w-[260px]">
-                                            <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400" />
-                                            <input
-                                                type="text"
-                                                value={codeFileSearch}
-                                                onChange={(e) => setCodeFileSearch(e.target.value)}
-                                                placeholder="Search files"
-                                                className="w-full rounded-full border border-gray-300 bg-white py-1.5 pl-9 pr-9 text-xs text-gray-800 outline-none transition focus:border-[#F55F2A] focus:ring-2 focus:ring-[#F55F2A]/20"
-                                            />
-                                            {codeFileSearchActive ? (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setCodeFileSearch("")}
-                                                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
-                                                    aria-label="Clear file search"
-                                                >
-                                                    <X className="h-3.5 w-3.5" />
-                                                </button>
-                                            ) : null}
+                                        <div className="flex flex-1 justify-center">
+                                            <div className="relative w-full max-w-[320px]">
+                                                <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400" />
+                                                <input
+                                                    type="text"
+                                                    value={codeFileSearch}
+                                                    onChange={(e) => setCodeFileSearch(e.target.value)}
+                                                    placeholder="Search files"
+                                                    className="w-full rounded-full border border-gray-300 bg-white/95 py-1.5 pl-9 pr-9 text-xs text-gray-800 outline-none transition focus:border-[#F55F2A] focus:ring-2 focus:ring-[#F55F2A]/20"
+                                                />
+                                                {codeFileSearchActive ? (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setCodeFileSearch("")}
+                                                        className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+                                                        aria-label="Clear file search"
+                                                    >
+                                                        <X className="h-3.5 w-3.5" />
+                                                    </button>
+                                                ) : null}
+                                            </div>
                                         </div>
+                                    </div>
                                     </div>
                                     {filteredCodeFileTree.length > 0 ? (
                                         <FileTree
@@ -6118,7 +6240,7 @@ export default function AppBuilderEditor({
                             ) : null}
 
                                 {!IS_PRODUCTION && pageOptions.length > 0 ? (
-                                    <div className="relative ml-3" ref={pageDropdownRef}>
+                                        <div className="relative ml-3" ref={pageDropdownRef}>
                                         {hasPageDropdown ? (
                                             <button
                                                 type="button"
@@ -6130,10 +6252,12 @@ export default function AppBuilderEditor({
                                             >
                                                 <span className="max-w-[180px] truncate lowercase">{pageDropdownLabel}</span>
                                                 <ChevronDown className={`h-3.5 w-3.5 shrink-0 transition-transform ${isPageDropdownOpen ? "rotate-180" : ""}`} />
+                                                    <DevOnlyIconBadge title="Development-only page chooser" />
                                             </button>
                                         ) : (
-                                            <div className="inline-flex items-center gap-1.5 rounded-full border border-neutral-200 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-800 shadow-sm" title={`Current page: ${pageDropdownLabel}`}>
+                                                <div className="inline-flex items-center gap-1.5 rounded-full border border-neutral-200 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-800 shadow-sm" title={`Current page: ${pageDropdownLabel}`}>
                                                 <span className="max-w-[180px] truncate lowercase">{pageDropdownLabel}</span>
+                                                    <DevOnlyIconBadge title="Development-only page chooser" />
                                             </div>
                                         )}
 
@@ -6461,6 +6585,7 @@ export default function AppBuilderEditor({
                                             title="Save"
                                         >
                                             <Upload className="h-4 w-4" />
+                                            <DevOnlyIconBadge title="Development-only save control" />
                                             <span>{isSaving ? "Saving…" : "Save"}</span>
                                         </button>
                                     ) : null}

@@ -4326,7 +4326,7 @@ export default function NavBar() {
     }
 
     // Wait for Next to finish recompiling, otherwise we reload old output.
-    const delayMs = 3000;
+    const delayMs = 15_000;
     applyReloadTimeoutRef.current = setTimeout(() => {
       applyReloadTimeoutRef.current = null;
       setIsApplyRefreshing(false);
@@ -4665,7 +4665,8 @@ export default function NavBar() {
     : 'Check chat for details.');
   const isFixWithAiCoolingDown = fixWithAiCooldownUntil > Date.now();
   const startFixWithAiCooldown = useCallback(() => {
-    const until = Date.now() + 10 * 60_000;
+    const cooldownMs = 5_000;
+    const until = Date.now() + cooldownMs;
     setFixWithAiCooldownUntil(until);
     if (fixWithAiCooldownTimerRef.current) {
       clearTimeout(fixWithAiCooldownTimerRef.current);
@@ -4674,7 +4675,7 @@ export default function NavBar() {
     fixWithAiCooldownTimerRef.current = window.setTimeout(() => {
       setFixWithAiCooldownUntil((current) => (current === until ? 0 : current));
       fixWithAiCooldownTimerRef.current = null;
-    }, 10 * 60_000);
+    }, cooldownMs);
   }, []);
   const handlePreviewFailureFixRequest = useCallback(() => {
     if (!previewIssueContextData) return;
@@ -5298,28 +5299,25 @@ export default function NavBar() {
             const isPositiveStatus = /\bready\b|\bready to\b|\brunning\b|\bcompleted\b|\bfinished\b|\bsuccess\b|\bok\b|\brestart preview\b/.test(statusCopy);
 
             return (
-          <div className={`w-full max-w-lg rounded-2xl border px-5 py-6 shadow-sm ${isPositiveStatus ? "border-emerald-200 bg-emerald-50/70" : "border-amber-200 bg-white"}`}>
-            <div className="mx-auto flex max-w-md flex-col items-center text-center">
-              <div className={`flex h-12 w-12 items-center justify-center rounded-2xl ring-1 ${isPositiveStatus ? "bg-emerald-100 text-emerald-700 ring-emerald-200" : "bg-amber-100 text-amber-700 ring-amber-200"}`}>
-                {isPositiveStatus ? <CheckCircle2 className="h-6 w-6" /> : <AlertTriangle className="h-6 w-6" />}
+          <div className={`w-full max-w-lg rounded-[1.5rem] border px-4 py-4 shadow-[0_12px_32px_rgba(244,63,94,0.10)] ${isPositiveStatus ? "border-emerald-200 bg-[linear-gradient(180deg,rgba(236,253,245,0.98),rgba(255,255,255,1))]" : "border-rose-200 bg-[linear-gradient(180deg,rgba(255,241,242,0.98),rgba(255,255,255,1))]"}`}>
+            <div className="flex items-start gap-3">
+              <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ring-1 ${isPositiveStatus ? "bg-emerald-100 text-emerald-700 ring-emerald-200" : "bg-rose-100 text-rose-700 ring-rose-200"}`}>
+                {isPositiveStatus ? <CheckCircle2 className="h-5 w-5" /> : <AlertTriangle className="h-5 w-5" />}
               </div>
-              <div className="min-w-0">
-                <div className="mt-4 text-lg font-semibold text-neutral-900">{previewFailureTitle}</div>
-                <div className="mt-2 text-sm leading-relaxed text-neutral-600">{previewFailureMessage}</div>
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className={`text-sm font-semibold ${isPositiveStatus ? "text-emerald-950" : "text-rose-950"}`}>{previewFailureTitle}</p>
+                  <span className={`inline-flex items-center rounded-full border bg-white px-2 py-0.5 text-[11px] font-medium ${isPositiveStatus ? "border-emerald-200 text-emerald-700" : "border-rose-200 text-rose-700"}`}>
+                    {isPositiveStatus ? "Ready" : "Error"}
+                  </span>
+                </div>
+                <p className="mt-1 text-sm leading-relaxed text-neutral-700">{previewFailureMessage}</p>
 
-                <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
-                  {/* <button
-                    type="button"
-                    onClick={handlePreviewFailureFixRequest}
-                    disabled={isFixWithAiCoolingDown}
-                    className="inline-flex items-center gap-2 rounded-full bg-accent px-4 py-2 text-xs font-medium text-white transition-colors hover:bg-[#e54f1a] disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    Fix with AI
-                  </button> */}
+                <div className="mt-3 flex flex-wrap items-center gap-2">
                   <button
                     type="button"
                     onClick={rebuildPreview}
-                    className="inline-flex items-center gap-2 rounded-full border border-black/15 bg-white px-4 py-2 text-xs font-medium text-black/80 transition-colors hover:bg-black/5"
+                    className="inline-flex items-center justify-center rounded-full border border-neutral-200 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-900 transition-colors hover:bg-neutral-50"
                   >
                     Restart Preview
                   </button>

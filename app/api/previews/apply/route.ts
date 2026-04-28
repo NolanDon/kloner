@@ -7,6 +7,8 @@ import { captureCriticalEvent } from "@/lib/observability";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+const PREVIEW_APPLY_TIMEOUT_MS = 60_000;
+
 type ApplyFile = { path: string; content?: string; delete?: boolean };
 type ApplyOp = {
     path: string;
@@ -200,7 +202,7 @@ export async function POST(req: NextRequest) {
                 return callBackend(authedReq, {
                     path: "/webcontainer/apply",
                     method: "POST",
-                    timeoutMs: 25_000,
+                    timeoutMs: PREVIEW_APPLY_TIMEOUT_MS,
                     userCtx: { uid },
                     body,
                 });
@@ -290,7 +292,7 @@ export async function POST(req: NextRequest) {
                 result = await callBackend(authedReq, {
                     path: "/webcontainer/apply",
                     method: "POST",
-                    timeoutMs: 25_000,
+                    timeoutMs: PREVIEW_APPLY_TIMEOUT_MS,
                     userCtx: { uid },
                     body: bodyWithCode,
                 });
@@ -305,7 +307,7 @@ export async function POST(req: NextRequest) {
                     result = await callBackend(authedReq, {
                         path: "/webcontainer/apply",
                         method: "POST",
-                        timeoutMs: 25_000,
+                        timeoutMs: PREVIEW_APPLY_TIMEOUT_MS,
                         userCtx: { uid },
                         body: { appId, files: sanitizedFiles },
                     });
@@ -451,40 +453,49 @@ export async function POST(req: NextRequest) {
                     if (previewCode) {
                         try {
                             const restartResult = await hubRestart(previewCode);
-                            const restartTimedOut = restartResult.status === 202 && Boolean((restartResult.json as any)?.queued);
-                            const readyWindowMs = restartTimedOut ? 1_500 : 3_500;
-                            const ready = await pollReady(previewCode, readyWindowMs);
-                            if (!ready.ok) {
-                                await logWriteFailure({
-                                    statusCode: 202,
-                                    message: "Files were applied, but the preview restart could not be confirmed ready.",
-                                    resultStatus: result.status,
-                                    previewCode,
-                                    restartStatus: restartResult.status,
-                                    restartQueued: restartTimedOut,
-                                    restartResultBody: restartResult.json,
-                                });
+                            const restartQueued = restartResult.status === 202 && Boolean((restartResult.json as any)?.queued);
+                            const restartAccepted = restartResult.status < 400;
+                            if (restartAccepted) {
                                 return NextResponse.json(
                                     {
                                         ...(base || {}),
                                         ok: true,
                                         requiresRestart: true,
                                         restartPending: true,
-                                        restartQueued: restartTimedOut,
-                                        restartStatus: restartTimedOut ? "queued" : "pending",
+                                        restartQueued,
+                                        restartStatus: restartQueued ? "queued" : "pending",
                                         restartMessage:
-                                            "Your files were saved, but the preview restart may still be in progress. If the update does not appear, click Rebuild app.",
+                                            restartQueued
+                                                ? "Your files were saved and the preview restart was queued. If the update does not appear, click Rebuild app."
+                                                : "Your files were saved and the preview is restarting in the background. If the update does not appear, click Rebuild app.",
                                         autoRestarted: false,
                                     },
                                     { status: 202 },
                                 );
                             }
-                            if (base && typeof base === "object" && !Array.isArray(base)) {
-                                return NextResponse.json(
-                                    { ...(base as any), requiresRestart: true, autoRestarted: true },
-                                    { status: result.status },
-                                );
-                            }
+                            await logWriteFailure({
+                                statusCode: 202,
+                                message: "Files were applied, but the preview restart could not be confirmed accepted.",
+                                resultStatus: result.status,
+                                previewCode,
+                                restartStatus: restartResult.status,
+                                restartQueued,
+                                restartResultBody: restartResult.json,
+                            });
+                            return NextResponse.json(
+                                {
+                                    ...(base || {}),
+                                    ok: true,
+                                    requiresRestart: true,
+                                    restartPending: true,
+                                    restartQueued,
+                                    restartStatus: restartQueued ? "queued" : "pending",
+                                    restartMessage:
+                                        "Your files were saved, but the preview restart may still be in progress. If the update does not appear, click Rebuild app.",
+                                    autoRestarted: false,
+                                },
+                                { status: 202 },
+                            );
                         } catch {
                             await logWriteFailure({
                                 statusCode: 202,
@@ -529,6 +540,17 @@ export async function POST(req: NextRequest) {
                     },
                     { status: 202 },
                 );
+            }
+
+            if (result.status >= 400) {
+                await logWriteFailure({
+                    statusCode: result.status,
+                    message: String((result.json as any)?.error || (result.json as any)?.message || "Preview apply returned an error response."),
+                    resultStatus: result.status,
+                    resultBody: result.json,
+                    firstAttemptStatus,
+                    didRetryWithoutCode,
+                });
             }
 
             return NextResponse.json(result.json, { status: result.status });

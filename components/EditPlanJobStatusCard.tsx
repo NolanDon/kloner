@@ -1,43 +1,6 @@
-"use client";
 
-import { ChevronDown, X } from "lucide-react";
-import type { AppEmbeddingEditPlanJobStatus } from "@/src/lib/appEmbeddingsClient";
-
-function statusLabel(status: string | null | undefined): string {
-    switch (String(status || "").toLowerCase()) {
-        case "queued":
-            return "Waiting in queue";
-        case "picked_up":
-            return "Picked up by worker";
-        case "working":
-            return "Generating edit plan";
-        case "completed":
-            return "Edit plan ready";
-        case "failed":
-            return "Edit plan failed";
-        case "expired":
-            return "Edit plan expired";
-        default:
-            return String(status || "Working").replace(/_/g, " ");
-    }
-}
-
-function statusTone(status: string | null | undefined): string {
-    switch (String(status || "").toLowerCase()) {
-        case "queued":
-            return "bg-amber-50 text-amber-800 border-amber-200";
-        case "picked_up":
-        case "working":
-            return "bg-sky-50 text-sky-800 border-sky-200";
-        case "completed":
-            return "bg-emerald-50 text-emerald-800 border-emerald-200";
-        case "failed":
-        case "expired":
-            return "bg-rose-50 text-rose-800 border-rose-200";
-        default:
-            return "bg-neutral-50 text-neutral-700 border-neutral-200";
-    }
-}
+import { ChevronDown, Info, RotateCcw } from "lucide-react";
+import { type AppEmbeddingEditPlanJobStatus } from "@/src/lib/appEmbeddingsClient";
 
 function formatSeconds(value: number | null | undefined): string | null {
     if (typeof value !== "number" || !Number.isFinite(value) || value < 0) return null;
@@ -47,22 +10,17 @@ function formatSeconds(value: number | null | undefined): string | null {
     return seconds > 0 ? `${minutes}m ${seconds}s` : `${minutes}m`;
 }
 
-function clampProgress(value: number | null | undefined): number {
-    if (typeof value !== "number" || !Number.isFinite(value)) return 0;
-    return Math.max(0, Math.min(100, Math.round(value)));
-}
-
 interface EditPlanJobStatusCardProps {
     job: AppEmbeddingEditPlanJobStatus;
     onDismiss?: () => void;
+    onRetry?: () => void;
+    applyStatusMessage?: string | null;
 }
 
-export default function EditPlanJobStatusCard({ job, onDismiss }: EditPlanJobStatusCardProps) {
+export default function EditPlanJobStatusCard({ job, onDismiss, onRetry, applyStatusMessage }: EditPlanJobStatusCardProps) {
     const status = String(job.status || "queued").toLowerCase();
-    const label = statusLabel(status);
-    const tone = statusTone(status);
-    const progress = clampProgress(job.progress);
     const ageText = formatSeconds(job.queueAgeSeconds ?? job.queuedForSeconds ?? job.runningForSeconds);
+    const normalizedApplyStatusMessage = typeof applyStatusMessage === "string" ? applyStatusMessage.trim() : null;
     const retryAfterSeconds = typeof (job.error as any)?.retryAfterSeconds === "number"
         ? (job.error as any).retryAfterSeconds
         : null;
@@ -72,114 +30,191 @@ export default function EditPlanJobStatusCard({ job, onDismiss }: EditPlanJobSta
         : typeof job.error === "string"
             ? job.error
             : null;
-    const isBacklogged = status === "queued" && typeof job.queueAgeSeconds === "number" && job.queueAgeSeconds >= 30;
+    const showDevDetails = process.env.NODE_ENV !== "production";
+    const proposal = job.result?.proposal ?? null;
+    const proposalFiles = Array.isArray(proposal?.files) ? proposal.files : [];
+    const proposalFileCount = typeof proposal?.fileCount === "number" && Number.isFinite(proposal.fileCount) ? proposal.fileCount : proposalFiles.length;
+    const linesAdded = typeof proposal?.totalEstimatedLinesAdded === "number" && Number.isFinite(proposal.totalEstimatedLinesAdded) ? proposal.totalEstimatedLinesAdded : null;
+    const linesRemoved = typeof proposal?.totalEstimatedLinesRemoved === "number" && Number.isFinite(proposal.totalEstimatedLinesRemoved) ? proposal.totalEstimatedLinesRemoved : null;
+    const filesAddedTotal = proposalFiles.reduce((sum, file) => sum + (typeof file.estimatedLinesAdded === "number" && Number.isFinite(file.estimatedLinesAdded) ? file.estimatedLinesAdded : 0), 0);
+    const filesRemovedTotal = proposalFiles.reduce((sum, file) => sum + (typeof file.estimatedLinesRemoved === "number" && Number.isFinite(file.estimatedLinesRemoved) ? file.estimatedLinesRemoved : 0), 0);
+    const totalAdded = linesAdded !== null ? linesAdded : filesAddedTotal;
+    const totalRemoved = linesRemoved !== null ? linesRemoved : filesRemovedTotal;
+    const proposalSummary = String(proposal?.summary || "").trim();
+    const proposalModel = String(proposal?.model || "").trim();
+    const proposalNeedsRebuild = proposal?.needsRebuild === true;
+    const proposalNeedsMoreContext = proposal?.needsMoreContext === true;
+    const proposalAutoApplyAllowed = proposal?.autoApplyAllowed !== false;
+
+    const narrative = (() => {
+        switch (status) {
+            case "queued":
+                return "I’ve queued this edit plan. I’m waiting for a worker to pick it up.";
+            case "picked_up":
+            case "working":
+                return "I’m applying the edit plan in the background now.";
+            case "completed":
+                return "The edit plan finished. I’m now sending the apply request so the files can be updated.";
+            case "failed":
+                return "The edit plan stopped before it could finish.";
+            case "expired":
+                return "The edit plan expired before a worker could finish it.";
+            default:
+                return "I’m tracking the edit plan in the background.";
+        }
+    })();
+
+    const mainSentences = [narrative, normalizedApplyStatusMessage].filter((sentence, index, sentences) => {
+        if (!sentence) return false;
+        return sentences.indexOf(sentence) === index;
+    });
+
+    const proposalSection = proposal && status === "completed" ? (
+        <div className="space-y-4 text-neutral-700 w-full">
+            <p>
+                {proposalAutoApplyAllowed
+                    ? "The proposal is ready and the app is sending the apply request now."
+                    : "The proposal is ready, but it is not marked safe to auto-apply."}
+            </p>
+            <details className="group w-full rounded-3xl border border-neutral-200 bg-white/90 shadow-lg shadow-black/5">
+                <summary className="flex w-full cursor-pointer list-none items-center gap-3 px-4 py-4">
+                    <div className="min-w-0 flex-1">
+                        <div className="font-medium text-neutral-900">{proposalFileCount} files changed</div>
+                        {/* <div className="text-[11px] text-neutral-500">Open to review the file list.</div> */}
+                    </div>
+                    <div className="flex items-center gap-3 text-xs font-semibold tabular-nums">
+                        <span className="text-emerald-600">+{totalAdded}</span>
+                        <span className="text-rose-600">-{totalRemoved}</span>
+                    </div>
+                    <ChevronDown className="h-4 w-4 shrink-0 text-neutral-500 transition-transform group-open:rotate-180" />
+                </summary>
+                <div className="border-t border-neutral-200 bg-neutral-50/40 px-4 py-4 space-y-4">
+                    {proposalFiles.length > 0 ? (
+                        <div className="space-y-3">
+                            {proposalFiles.map((file) => renderFilePreview(file))}
+                        </div>
+                    ) : null}
+                </div>
+            </details>
+        </div>
+    ) : null;
+
+    function renderPreviewSection(label: string, tone: "added" | "deleted", content: string | null | undefined) {
+        if (!content || !content.trim()) return null;
+        const toneClasses = tone === "added"
+            ? "border-emerald-200 bg-emerald-50/60 text-emerald-700"
+            : "border-rose-200 bg-rose-50/60 text-rose-700";
+
+        return (
+            <div className={`space-y-2 rounded-2xl border px-4 py-4 ${toneClasses}`}>
+                <div className="text-[11px] font-semibold uppercase tracking-[0.12em]">{label}</div>
+                <pre className="max-h-[28rem] overflow-auto whitespace-pre font-mono text-[12px] leading-6 text-neutral-900 rounded-xl border border-white/70 bg-white/95 px-4 py-4 shadow-sm">
+                    {content}
+                </pre>
+            </div>
+        );
+    }
+
+    function renderFilePreview(file: (typeof proposalFiles)[number]) {
+        const beforeLineCount = typeof file.beforeLineCount === "number" && Number.isFinite(file.beforeLineCount) ? file.beforeLineCount : null;
+        const afterLineCount = typeof file.afterLineCount === "number" && Number.isFinite(file.afterLineCount) ? file.afterLineCount : null;
+        const estimatedLinesAdded = typeof file.estimatedLinesAdded === "number" && Number.isFinite(file.estimatedLinesAdded) ? file.estimatedLinesAdded : null;
+        const estimatedLinesRemoved = typeof file.estimatedLinesRemoved === "number" && Number.isFinite(file.estimatedLinesRemoved) ? file.estimatedLinesRemoved : null;
+        const lineStart = typeof file.target?.lineStart === "number" && Number.isFinite(file.target.lineStart) ? file.target.lineStart : null;
+        const lineEnd = typeof file.target?.lineEnd === "number" && Number.isFinite(file.target.lineEnd) ? file.target.lineEnd : null;
+        const addedPreview = file.afterPreview || file.content || null;
+        const deletedPreview = file.beforePreview || null;
+
+        return (
+            <details key={file.path} className="group w-full rounded-3xl border border-neutral-200 bg-white shadow-lg shadow-black/5">
+                <summary className="flex w-full cursor-pointer list-none items-center gap-3 px-4 py-4">
+                    <div className="min-w-0 flex-1">
+                        <div className="truncate font-medium text-neutral-900">{file.path}</div>
+                        <div className="text-[11px] text-neutral-500">
+                            {String(file.op || "replace").replace(/_/g, " ")}
+                            {file.delete ? " · delete" : ""}
+                        </div>
+                    </div>
+                    <div className="flex items-center gap-2 text-xs font-semibold tabular-nums">
+                        <span className="text-emerald-600">+{estimatedLinesAdded !== null ? estimatedLinesAdded : 0}</span>
+                        <span className="text-rose-600">-{estimatedLinesRemoved !== null ? estimatedLinesRemoved : 0}</span>
+                    </div>
+                    <ChevronDown className="h-4 w-4 shrink-0 text-neutral-500 transition-transform group-open:rotate-180" />
+                </summary>
+                <div className="border-t border-neutral-200 bg-neutral-50/40 px-4 py-4 space-y-4">
+                    <div className="grid gap-2 text-xs text-neutral-600 sm:grid-cols-2">
+                        <div>Before lines: {beforeLineCount !== null ? beforeLineCount : "unknown"}.</div>
+                        <div>After lines: {afterLineCount !== null ? afterLineCount : "unknown"}.</div>
+                        {lineStart !== null || lineEnd !== null ? (
+                            <div className="sm:col-span-2">Target lines: {lineStart !== null ? lineStart : "?"} to {lineEnd !== null ? lineEnd : "?"}.</div>
+                        ) : null}
+                    </div>
+                    <div className="space-y-3">
+                        {file.delete ? renderPreviewSection("Deleted", "deleted", deletedPreview) : null}
+                        {!file.delete && deletedPreview ? renderPreviewSection("Before", "deleted", deletedPreview) : null}
+                        {renderPreviewSection(file.delete ? "Deleted" : "Added", "added", addedPreview)}
+                    </div>
+                </div>
+            </details>
+        );
+    }
 
     return (
-        <div className="rounded-3xl border border-neutral-200 bg-white shadow-[0_18px_50px_rgba(15,23,42,0.08)]">
-            <div className="flex items-start justify-between gap-4 border-b border-neutral-200 px-4 py-3">
-                <div className="min-w-0 space-y-1">
-                    <div className="text-sm font-semibold text-neutral-900">Edit plan job</div>
-                    <div className="text-sm text-neutral-600">The editor stays usable while this runs in the background.</div>
+        <div className="space-y-4 text-sm leading-relaxed text-neutral-700">
+            <div className="min-w-0 space-y-3">
+                <div>
+                    <div className="space-y-2 text-neutral-900 leading-7">
+                        {mainSentences.map((sentence) => (
+                            <p key={sentence}>{sentence}</p>
+                        ))}
+                    </div>
+                    {proposalSection}
                 </div>
-                {onDismiss ? (
-                    <button
-                        type="button"
-                        onClick={onDismiss}
-                        className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-neutral-600 transition hover:bg-neutral-200"
-                        aria-label="Dismiss edit plan job"
-                    >
-                        <X className="h-4 w-4" />
-                    </button>
-                ) : null}
             </div>
 
-            <div className="space-y-4 px-4 py-4">
-                <div className="flex flex-wrap items-center gap-2">
-                    <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold ${tone}`}>
-                        {label}
-                    </span>
-                    {job.stage ? (
-                        <span className="inline-flex items-center rounded-full border border-neutral-200 bg-neutral-50 px-2.5 py-1 text-xs font-medium text-neutral-600">
-                            {job.stage.replace(/_/g, " ")}
-                        </span>
-                    ) : null}
-                    {typeof job.workerId === "string" && job.workerId.trim() ? (
-                        <span className="inline-flex items-center rounded-full border border-neutral-200 bg-neutral-50 px-2.5 py-1 text-xs font-medium text-neutral-600">
-                            Worker {job.workerId}
-                        </span>
-                    ) : null}
-                </div>
-
-                <div className="space-y-2">
-                    <div className="flex items-center justify-between text-xs text-neutral-500">
-                        <span>{progress >= 100 ? "Done" : `${progress}%`}</span>
-                        <span>{status === "failed" || status === "expired" ? "Stopped" : label}</span>
-                    </div>
-                    <div className="h-2 overflow-hidden rounded-full bg-neutral-100">
-                        <div
-                            className={`h-full rounded-full transition-all ${status === "failed" || status === "expired" ? "bg-rose-500" : status === "completed" ? "bg-emerald-500" : "bg-[#f55f2a]"}`}
-                            style={{ width: `${progress}%` }}
-                        />
-                    </div>
-                </div>
-
-                <div className="flex flex-wrap gap-3 text-xs text-neutral-600">
-                    {ageText ? <span>Age {ageText}</span> : null}
-                    {typeof job.leaseRemainingSeconds === "number" && Number.isFinite(job.leaseRemainingSeconds) ? <span>Lease {formatSeconds(job.leaseRemainingSeconds)}</span> : null}
-                    {typeof job.attemptCount === "number" && Number.isFinite(job.attemptCount) ? <span>Attempt {job.attemptCount}</span> : null}
-                </div>
-
-                <div className="grid gap-2 rounded-2xl border border-neutral-200 bg-neutral-50 px-3 py-3 text-xs text-neutral-700 sm:grid-cols-2">
-                    <div>
-                        <div className="font-medium text-neutral-900">Request ID</div>
-                        <div className="mt-1 break-all">{job.requestId || "unknown"}</div>
-                    </div>
-                    <div>
-                        <div className="font-medium text-neutral-900">Job ID</div>
-                        <div className="mt-1 break-all">{job.jobId || "unknown"}</div>
-                    </div>
-                    {typeof job.queueAgeSeconds === "number" && Number.isFinite(job.queueAgeSeconds) ? (
-                        <div>
-                            <div className="font-medium text-neutral-900">Queue age</div>
-                            <div className="mt-1">{formatSeconds(job.queueAgeSeconds)}</div>
-                        </div>
-                    ) : null}
-                    {typeof job.queuedForSeconds === "number" && Number.isFinite(job.queuedForSeconds) ? (
-                        <div>
-                            <div className="font-medium text-neutral-900">Queued for</div>
-                            <div className="mt-1">{formatSeconds(job.queuedForSeconds)}</div>
-                        </div>
-                    ) : null}
-                </div>
-
-                {isBacklogged ? (
-                    <div className="rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
-                        This job has been waiting longer than usual. The queue may be backed up, but it is still active.
-                    </div>
-                ) : null}
-
-                {status === "failed" || status === "expired" ? (
-                    <div className="rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-950 whitespace-pre-wrap">
-                        {errorMessage || "The edit plan job stopped before it could finish."}
-                        {errorCode ? `\nError code: ${errorCode}` : ""}
-                        {typeof retryAfterSeconds === "number" ? `\nRetry after: ${retryAfterSeconds}s` : ""}
-                    </div>
-                ) : null}
-
-                <details className="rounded-2xl border border-neutral-200 bg-white px-3 py-2">
+            {showDevDetails ? (
+                <details className="pt-1">
                     <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-xs font-semibold text-neutral-700">
-                        <span>Debug details</span>
+                        <span className="inline-flex items-center gap-1.5">
+                            <span>View details</span>
+                            <span
+                                className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-blue-200 bg-blue-50 text-blue-600"
+                                aria-label="Development-only details"
+                                title="Development-only details"
+                            >
+                                <Info className="h-2.5 w-2.5" aria-hidden="true" />
+                            </span>
+                        </span>
                         <ChevronDown className="h-4 w-4 shrink-0 text-neutral-500" />
                     </summary>
                     <div className="mt-3 space-y-2 text-xs text-neutral-600">
-                        <div><span className="font-medium text-neutral-900">Status:</span> {job.status}</div>
-                        {job.stage ? <div><span className="font-medium text-neutral-900">Stage:</span> {job.stage}</div> : null}
-                        {job.statusUrl ? <div className="break-all"><span className="font-medium text-neutral-900">Status URL:</span> {job.statusUrl}</div> : null}
-                        {typeof job.runningForSeconds === "number" && Number.isFinite(job.runningForSeconds) ? <div><span className="font-medium text-neutral-900">Running for:</span> {formatSeconds(job.runningForSeconds)}</div> : null}
-                        {typeof job.leaseRemainingSeconds === "number" && Number.isFinite(job.leaseRemainingSeconds) ? <div><span className="font-medium text-neutral-900">Lease remaining:</span> {formatSeconds(job.leaseRemainingSeconds)}</div> : null}
+                        <div>Job status: {job.status}.</div>
+                        {job.stage ? <div>Job stage: {job.stage}.</div> : null}
+                        {job.statusUrl ? <div className="break-all">Status URL: {job.statusUrl}.</div> : null}
+                        <div>Request ID: {job.requestId || "unknown"}.</div>
+                        <div>Job ID: {job.jobId || "unknown"}.</div>
+                        <div>Files: {proposalFileCount}.</div>
+                        <div>Estimated lines added: {linesAdded !== null ? linesAdded : totalAdded}.</div>
+                        <div>Estimated lines removed: {linesRemoved !== null ? linesRemoved : totalRemoved}.</div>
+                        <div>Needs rebuild: {proposalNeedsRebuild ? "yes" : "no"}.</div>
+                        <div>Needs more context: {proposalNeedsMoreContext ? "yes" : "no"}.</div>
+                        {proposalModel ? <div>Model: {proposalModel}.</div> : null}
+                        {proposalSummary ? <div>Summary: {proposalSummary}.</div> : null}
+                        {typeof job.queueAgeSeconds === "number" && Number.isFinite(job.queueAgeSeconds) ? <div>Waiting time: {formatSeconds(job.queueAgeSeconds)}.</div> : null}
+                        {typeof job.queuedForSeconds === "number" && Number.isFinite(job.queuedForSeconds) ? <div>Queued for: {formatSeconds(job.queuedForSeconds)}.</div> : null}
+                        {typeof job.runningForSeconds === "number" && Number.isFinite(job.runningForSeconds) ? <div>Running for: {formatSeconds(job.runningForSeconds)}.</div> : null}
+                        {typeof job.attemptCount === "number" && Number.isFinite(job.attemptCount) ? <div>Attempt number: {job.attemptCount}.</div> : null}
+                        {typeof job.leaseRemainingSeconds === "number" && Number.isFinite(job.leaseRemainingSeconds) ? <div>Lease remaining: {formatSeconds(job.leaseRemainingSeconds)}.</div> : null}
+                        {status === "failed" || status === "expired" ? (
+                            <div className="space-y-1 pt-1 text-neutral-700">
+                                <div>{errorMessage || "The edit plan job stopped before it could finish."}.</div>
+                                {errorCode ? <div>Error code: {errorCode}.</div> : null}
+                                {typeof retryAfterSeconds === "number" ? <div>Retry after: {retryAfterSeconds}s.</div> : null}
+                            </div>
+                        ) : null}
                     </div>
                 </details>
-            </div>
+            ) : null}
         </div>
     );
 }

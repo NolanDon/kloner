@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireSessionAndMaybeCsrf } from "../../_lib/route-guard";
 import { assertAppBuilderScope } from "../../_lib/appBuilderScope";
 import { callBackend } from "@/src/lib/callBackend";
-import { captureAuditEvent } from "@/lib/observability";
+import { captureAuditEvent, captureCriticalEvent } from "@/lib/observability";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -93,6 +93,39 @@ export async function POST(req: NextRequest) {
                     ...(frameworkReason ? { frameworkReason } : {}),
                 },
             });
+
+            const backendErrorCode = String((result.json as any)?.code || "").trim().toUpperCase();
+            if (result.status === 504 || backendErrorCode === "EMBEDDING_SEARCH_TIMEOUT") {
+                void captureCriticalEvent({
+                    source: "internal",
+                    severity: "critical",
+                    alwaysNotifySlack: true,
+                    statusCode: 504,
+                    route: "/api/app-embeddings/search",
+                    method: "POST",
+                    action: "app_embeddings_search_timeout",
+                    userId: uid,
+                    requestId: result.reqId || requestId || undefined,
+                    message: `The embedding request timed out after ${Math.round(30_000 / 1000)} seconds. Please try again in a moment.`,
+                    service: "app-embeddings",
+                    tags: ["app-embeddings", "search", "timeout"],
+                    extra: {
+                        appId,
+                        currentPath,
+                        maxChunks,
+                        framework,
+                        frameworkLabel,
+                        frameworkConfidence,
+                        frameworkReason,
+                        requestId: result.reqId || requestId || null,
+                        backendStatus: result.status,
+                        backendCode: (result.json as any)?.code || null,
+                        backendError: (result.json as any)?.error || null,
+                        elapsedMs: Date.now() - startedAt,
+                        queryPreview: query.slice(0, 500),
+                    },
+                });
+            }
 
             const chunks = Array.isArray((result.json as any)?.chunks) ? (result.json as any).chunks : [];
             const elapsedMs = Date.now() - startedAt;

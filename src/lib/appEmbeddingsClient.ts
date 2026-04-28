@@ -51,6 +51,34 @@ export type AppEmbeddingEditPlanOp = {
     [key: string]: unknown;
 };
 
+export type AppEmbeddingEditPlanProposalFile = {
+    path: string;
+    op: string;
+    delete?: boolean | null;
+    content?: string | null;
+    beforeLineCount?: number | null;
+    afterLineCount?: number | null;
+    estimatedLinesAdded?: number | null;
+    estimatedLinesRemoved?: number | null;
+    beforePreview?: string | null;
+    afterPreview?: string | null;
+    target?: AppEmbeddingEditPlanTarget | null;
+    [key: string]: unknown;
+};
+
+export type AppEmbeddingEditPlanProposal = {
+    autoApplyAllowed?: boolean;
+    files: AppEmbeddingEditPlanProposalFile[];
+    fileCount?: number | null;
+    totalEstimatedLinesAdded?: number | null;
+    totalEstimatedLinesRemoved?: number | null;
+    summary?: string | null;
+    model?: string | null;
+    needsRebuild?: boolean | null;
+    needsMoreContext?: boolean | null;
+    [key: string]: unknown;
+};
+
 export type AppEmbeddingEditPlanResponse = {
     formatVersion: string | null;
     summary: string;
@@ -82,6 +110,10 @@ export type AppEmbeddingEditPlanResponse = {
     attemptCount?: number | null;
     job?: AppEmbeddingEditPlanJobStatus | null;
     result?: AppEmbeddingEditPlanPlan | null;
+    retryAfterSeconds?: number | null;
+    reason?: string | null;
+    queueMetrics?: Record<string, unknown> | null;
+    thresholds?: Record<string, unknown> | null;
     [key: string]: unknown;
 };
 
@@ -99,6 +131,7 @@ export type AppEmbeddingEditPlanPlan = {
     needsMoreContext?: boolean;
     questions?: string[];
     clarifyingQuestions?: string[];
+    proposal?: AppEmbeddingEditPlanProposal | null;
     requestId?: string | null;
     code?: string | null;
     error?: string | null;
@@ -125,6 +158,33 @@ export type AppEmbeddingEditPlanJobStatus = {
     [key: string]: unknown;
 };
 
+export type AppPreviewApplyOutcome = "saved" | "restart_pending" | "restart_timeout" | "failed" | (string & {});
+
+export type AppPreviewApplyResponse = {
+    ok: boolean;
+    outcome?: AppPreviewApplyOutcome | null;
+    saved?: boolean | null;
+    restartPending?: boolean | null;
+    restartConfirmed?: boolean | null;
+    retryable?: boolean | null;
+    retryAfterSeconds?: number | null;
+    requestId?: string | null;
+    idempotencyKey?: string | null;
+    machineId?: string | null;
+    code?: string | null;
+    resolvedFrom?: string | null;
+    needsRebuild?: boolean | null;
+    requiresRestart?: boolean | null;
+    requiresRebuild?: boolean | null;
+    hmrLikely?: boolean | null;
+    touchesPublicAssets?: boolean | null;
+    queued?: boolean | null;
+    restartStatus?: string | null;
+    restartMessage?: string | null;
+    error?: string | { code?: string; message?: string; retryAfterSeconds?: number | null; [key: string]: unknown } | null;
+    [key: string]: unknown;
+};
+
 export type AppEmbeddingRequestResult<T> = {
     ok: boolean;
     status: number;
@@ -134,6 +194,18 @@ export type AppEmbeddingRequestResult<T> = {
     code: string | null;
     requestId?: string | null;
 };
+
+export type AppEmbeddingEditPlanBackpressureInfo = {
+    retryAfterSeconds: number | null;
+    requestId: string | null;
+    reason: string | null;
+    queuedCount: number | null;
+    oldestQueuedAgeSeconds: number | null;
+    queueMetrics: Record<string, unknown> | null;
+    thresholds: Record<string, unknown> | null;
+};
+
+const EDIT_PLAN_MAX_QUEUED_AGE_SECONDS = 30 * 60;
 
 const EMBEDDING_REQUEST_TIMEOUT_MS = 42_000;
 
@@ -208,6 +280,135 @@ function normalizeLineRange(value: unknown): { start: number; end: number } {
 function asNullableNumber(value: unknown): number | null {
     const parsed = Number(value);
     return Number.isFinite(parsed) ? parsed : null;
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+    return value && typeof value === "object" ? (value as Record<string, unknown>) : null;
+}
+
+function parseRetryAfterSeconds(value: unknown): number | null {
+    const parsed = asNullableNumber(value);
+    if (parsed !== null && parsed >= 0) {
+        return Math.max(0, Math.ceil(parsed));
+    }
+
+    if (typeof value === "string") {
+        const header = value.trim();
+        if (!header) return null;
+
+        const headerSeconds = Number(header);
+        if (Number.isFinite(headerSeconds) && headerSeconds >= 0) {
+            return Math.max(0, Math.ceil(headerSeconds));
+        }
+
+        const dateMs = Date.parse(header);
+        if (Number.isFinite(dateMs)) {
+            return Math.max(0, Math.ceil((dateMs - Date.now()) / 1000));
+        }
+    }
+
+    return null;
+}
+
+function readNumericField(record: Record<string, unknown> | null, keys: string[]): number | null {
+    if (!record) return null;
+
+    for (const key of keys) {
+        const parsed = asNullableNumber(record[key]);
+        if (parsed !== null && parsed >= 0) {
+            return Math.max(0, Math.ceil(parsed));
+        }
+    }
+
+    return null;
+}
+
+function readStringField(record: Record<string, unknown> | null, keys: string[]): string | null {
+    if (!record) return null;
+
+    for (const key of keys) {
+        const text = asString(record[key], 20_000);
+        if (text) return text;
+    }
+
+    return null;
+}
+
+function formatSecondsLabel(seconds: number | null): string {
+    if (seconds === null) {
+        return "a moment";
+    }
+
+    return seconds === 1 ? "1 second" : `${seconds} seconds`;
+}
+
+function formatQueueMetrics(info: AppEmbeddingEditPlanBackpressureInfo): string | null {
+    const queueBits: string[] = [];
+
+    if (info.queuedCount !== null) {
+        queueBits.push(`${info.queuedCount} waiting`);
+    }
+
+    if (info.oldestQueuedAgeSeconds !== null) {
+        queueBits.push(`oldest ${formatSecondsLabel(info.oldestQueuedAgeSeconds)}`);
+    }
+
+    if (!queueBits.length) return null;
+    return `Queue metrics: ${queueBits.join(", ")}`;
+}
+
+function normalizeEmbeddingEditPlanProposalFile(raw: unknown): AppEmbeddingEditPlanProposalFile | null {
+    if (!raw || typeof raw !== "object") return null;
+    const file = raw as Record<string, unknown>;
+    const path = asString(file.path, 500);
+    const op = asString(file.op, 80);
+    if (!path || !op) return null;
+
+    const target = file.target && typeof file.target === "object"
+        ? {
+            chunkId: asString((file.target as Record<string, unknown>).chunkId, 200) || null,
+            chunkHash: asString((file.target as Record<string, unknown>).chunkHash, 200) || null,
+            fileHash: asString((file.target as Record<string, unknown>).fileHash, 200) || null,
+            lineStart: Number.isFinite(Number((file.target as Record<string, unknown>).lineStart)) ? Math.floor(Number((file.target as Record<string, unknown>).lineStart)) : null,
+            lineEnd: Number.isFinite(Number((file.target as Record<string, unknown>).lineEnd)) ? Math.floor(Number((file.target as Record<string, unknown>).lineEnd)) : null,
+            anchorText: asString((file.target as Record<string, unknown>).anchorText, 4000) || null,
+            beforeText: asString((file.target as Record<string, unknown>).beforeText, 4000) || null,
+            afterText: asString((file.target as Record<string, unknown>).afterText, 4000) || null,
+        }
+        : null;
+
+    return {
+        path,
+        op,
+        delete: typeof file.delete === "boolean" ? file.delete : undefined,
+        content: typeof file.content === "string" ? file.content : null,
+        beforeLineCount: asNullableNumber(file.beforeLineCount ?? file.before_line_count),
+        afterLineCount: asNullableNumber(file.afterLineCount ?? file.after_line_count),
+        estimatedLinesAdded: asNullableNumber(file.estimatedLinesAdded ?? file.estimated_lines_added),
+        estimatedLinesRemoved: asNullableNumber(file.estimatedLinesRemoved ?? file.estimated_lines_removed),
+        beforePreview: asString(file.beforePreview ?? file.before_preview, 20_000) || null,
+        afterPreview: asString(file.afterPreview ?? file.after_preview, 20_000) || null,
+        target,
+    };
+}
+
+function normalizeEmbeddingEditPlanProposal(raw: unknown): AppEmbeddingEditPlanProposal {
+    const source = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+    const files = Array.isArray(source.files)
+        ? source.files.map(normalizeEmbeddingEditPlanProposalFile).filter(Boolean)
+        : [];
+
+    return {
+        autoApplyAllowed: asBoolean(source.autoApplyAllowed ?? source.auto_apply_allowed),
+        files: files as AppEmbeddingEditPlanProposalFile[],
+        fileCount: asNullableNumber(source.fileCount ?? source.file_count),
+        totalEstimatedLinesAdded: asNullableNumber(source.totalEstimatedLinesAdded ?? source.total_estimated_lines_added),
+        totalEstimatedLinesRemoved: asNullableNumber(source.totalEstimatedLinesRemoved ?? source.total_estimated_lines_removed),
+        summary: asString(source.summary, 20_000) || null,
+        model: asString(source.model, 200) || null,
+        needsRebuild: typeof source.needsRebuild === "boolean" ? source.needsRebuild : typeof source.needs_rebuild === "boolean" ? source.needs_rebuild : undefined,
+        needsMoreContext: typeof source.needsMoreContext === "boolean" ? source.needsMoreContext : typeof source.needs_more_context === "boolean" ? source.needs_more_context : undefined,
+    };
 }
 
 export function normalizeEmbeddingSearchChunk(raw: unknown): AppEmbeddingSearchChunk | null {
@@ -342,6 +543,7 @@ export function normalizeEmbeddingEditPlanPlan(raw: unknown): AppEmbeddingEditPl
         needsMoreContext: typeof (raw as any)?.needsMoreContext === "boolean" ? (raw as any).needsMoreContext : undefined,
         questions: Array.isArray((raw as any)?.questions) ? (raw as any).questions : undefined,
         clarifyingQuestions: Array.isArray((raw as any)?.clarifyingQuestions) ? (raw as any).clarifyingQuestions : undefined,
+        proposal: (raw as any)?.proposal && typeof (raw as any).proposal === "object" ? normalizeEmbeddingEditPlanProposal((raw as any).proposal) : undefined,
         requestId: typeof (raw as any)?.requestId === "string" ? (raw as any).requestId : null,
         code: typeof (raw as any)?.code === "string" ? (raw as any).code : null,
         error: typeof (raw as any)?.error === "string" ? (raw as any).error : null,
@@ -411,6 +613,136 @@ export function normalizeEmbeddingEditPlanResponse(raw: unknown): AppEmbeddingEd
     };
 }
 
+const EDIT_PLAN_JOB_ACTIVE_STATUSES = new Set(["queued", "picked_up", "working"]);
+const EDIT_PLAN_JOB_TERMINAL_STATUSES = new Set(["completed", "failed", "expired"]);
+
+export function isEditPlanJobActiveStatus(status: string | null | undefined): boolean {
+    return EDIT_PLAN_JOB_ACTIVE_STATUSES.has(String(status || "").toLowerCase());
+}
+
+export function isEditPlanJobTerminalStatus(status: string | null | undefined): boolean {
+    return EDIT_PLAN_JOB_TERMINAL_STATUSES.has(String(status || "").toLowerCase());
+}
+
+export function getEditPlanJobDisplayStatus(status: string | null | undefined): string {
+    switch (String(status || "").toLowerCase()) {
+        case "queued":
+            return "Waiting in queue";
+        case "picked_up":
+            return "Picked up by worker";
+        case "working":
+            return "Generating edit plan";
+        case "completed":
+            return "Edit plan ready";
+        case "failed":
+            return "Edit plan failed";
+        case "expired":
+            return "Job expired, re-queued";
+        default:
+            return String(status || "Working").replace(/_/g, " ");
+    }
+}
+
+export function getEditPlanJobPollDelayMs(status: string | null | undefined, stableReads = 0): number {
+    const normalizedStatus = String(status || "").toLowerCase();
+    const stable = Math.max(0, Math.floor(Number(stableReads) || 0));
+
+    if (normalizedStatus === "queued") {
+        return stable >= 3 ? 2_500 : 1_400;
+    }
+
+    return stable >= 3 ? 2_000 : 1_600;
+}
+
+export function extractCompletedEditPlanResult(job: AppEmbeddingEditPlanJobStatus | null | undefined): AppEmbeddingEditPlanPlan | null {
+    if (!job || typeof job !== "object") return null;
+    if (!isEditPlanJobTerminalStatus(job.status) || String(job.status || "").toLowerCase() !== "completed") return null;
+    if (job.result && typeof job.result === "object") return normalizeEmbeddingEditPlanPlan(job.result);
+    if (job.job?.result && typeof job.job.result === "object") return normalizeEmbeddingEditPlanPlan(job.job.result);
+    return null;
+}
+
+export function extractCompletedEditPlanProposal(job: AppEmbeddingEditPlanJobStatus | null | undefined): AppEmbeddingEditPlanProposal | null {
+    if (!job || typeof job !== "object") return null;
+    if (!isEditPlanJobTerminalStatus(job.status) || String(job.status || "").toLowerCase() !== "completed") return null;
+
+    const completedResult = job.result && typeof job.result === "object"
+        ? job.result
+        : job.job?.result && typeof job.job.result === "object"
+            ? job.job.result
+            : null;
+    const proposal = completedResult && typeof completedResult === "object" ? (completedResult as any).proposal : null;
+    if (!proposal || typeof proposal !== "object") return null;
+
+    return normalizeEmbeddingEditPlanProposal(proposal);
+}
+
+export function getEditPlanRetryAfterSeconds(result: { retryAfter?: string | null; data?: unknown }): number | null {
+    const data = asRecord(result.data);
+    const bodyRetryAfterSeconds = parseRetryAfterSeconds(data?.retryAfterSeconds ?? data?.retry_after_seconds);
+    if (bodyRetryAfterSeconds !== null) {
+        return bodyRetryAfterSeconds;
+    }
+
+    return parseRetryAfterSeconds(result.retryAfter);
+}
+
+export function isEditPlanBackpressureResult(result: Pick<AppEmbeddingRequestResult<unknown>, "status" | "code">): boolean {
+    const code = String(result.code || "").trim().toUpperCase();
+    return result.status === 429 || code === "EMBEDDING_EDIT_PLAN_BACKPRESSURE";
+}
+
+export function getEditPlanBackpressureInfo(result: AppEmbeddingRequestResult<AppEmbeddingEditPlanResponse>): AppEmbeddingEditPlanBackpressureInfo {
+    const data = asRecord(result.data);
+    const queueMetrics = asRecord(data?.queueMetrics ?? data?.queue_metrics);
+    const thresholds = asRecord(data?.thresholds ?? data?.queueThresholds ?? data?.queue_thresholds);
+
+    return {
+        retryAfterSeconds: getEditPlanRetryAfterSeconds(result),
+        requestId: asString(data?.requestId ?? result.requestId, 120) || null,
+        reason: readStringField(data, ["reason", "message", "error"]),
+        queuedCount: readNumericField(queueMetrics, ["queuedCount", "queued_count", "queueDepth", "queue_depth"]),
+        oldestQueuedAgeSeconds: readNumericField(queueMetrics, ["oldestQueuedAgeSeconds", "oldest_queued_age_seconds", "oldestQueuedAge", "oldest_queued_age"]),
+        queueMetrics,
+        thresholds,
+    };
+}
+
+export function formatEditPlanBackpressureMessage(result: AppEmbeddingRequestResult<AppEmbeddingEditPlanResponse>): string {
+    const info = getEditPlanBackpressureInfo(result);
+    const lines = [
+        `The edit-plan queue is busy. Try again in ${formatSecondsLabel(info.retryAfterSeconds)}.`,
+        "No changes were made yet.",
+    ];
+
+    if (info.reason) {
+        lines.push(`Reason: ${info.reason}`);
+    }
+
+    const queueMetricsLine = formatQueueMetrics(info);
+    if (queueMetricsLine) {
+        lines.push(queueMetricsLine);
+    }
+
+    if (info.requestId) {
+        lines.push(`Request ID: ${info.requestId}`);
+    }
+
+    return lines.join("\n");
+}
+
+export function getEditPlanJobQueueAgeSeconds(job: Pick<AppEmbeddingEditPlanJobStatus, "queueAgeSeconds" | "queuedForSeconds"> | null | undefined): number | null {
+    if (!job || typeof job !== "object") return null;
+    const age = asNullableNumber(job.queueAgeSeconds ?? job.queuedForSeconds);
+    return age !== null && age >= 0 ? Math.max(0, Math.floor(age)) : null;
+}
+
+export function isEditPlanJobExpiredByQueueAge(job: Pick<AppEmbeddingEditPlanJobStatus, "status" | "queueAgeSeconds" | "queuedForSeconds"> | null | undefined): boolean {
+    if (!job || String(job.status || "").toLowerCase() !== "queued") return false;
+    const ageSeconds = getEditPlanJobQueueAgeSeconds(job);
+    return typeof ageSeconds === "number" && ageSeconds >= EDIT_PLAN_MAX_QUEUED_AGE_SECONDS;
+}
+
 export async function fetchEmbeddingEditPlanJobStatus(
     statusUrl: string,
     headers: HeadersInit,
@@ -434,22 +766,66 @@ export async function fetchEmbeddingEditPlanJobStatus(
     };
 }
 
+export function normalizePreviewApplyResponse(raw: unknown, status: number, retryAfterHeader: string | null): AppPreviewApplyResponse {
+    const source = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+    const normalizedRetryAfterSeconds = parseRetryAfterSeconds(source.retryAfterSeconds ?? source.retry_after_seconds ?? retryAfterHeader);
+    const normalizedOutcome = asString(source.outcome, 80) || null;
+    const restartPending = Boolean(source.restartPending ?? source.restart_pending ?? source.queued);
+    const restartConfirmed = Boolean(source.restartConfirmed ?? source.restart_confirmed);
+    const explicitRetryable = typeof source.retryable === "boolean" ? source.retryable : false;
+    const saved = typeof source.saved === "boolean" ? source.saved : normalizedOutcome === "saved" || restartPending || restartConfirmed;
+    const backendRetryableFailure = Boolean(
+        normalizedOutcome === "restart_timeout" ||
+        (status >= 500 && status < 600 && !saved && !restartPending && !restartConfirmed)
+    );
+    const retryable = Boolean(
+        explicitRetryable ||
+        backendRetryableFailure
+    );
+
+    return {
+        ...source,
+        ok: typeof source.ok === "boolean" ? source.ok : status >= 200 && status < 300,
+        outcome: normalizedOutcome,
+        saved,
+        restartPending,
+        restartConfirmed,
+        retryable,
+        retryAfterSeconds: normalizedRetryAfterSeconds,
+        requestId: asString(source.requestId, 120) || null,
+        idempotencyKey: asString(source.idempotencyKey ?? source.idempotency_key, 200) || null,
+        machineId: asString(source.machineId ?? source.machine_id, 200) || null,
+        code: asString(source.code, 120) || null,
+        resolvedFrom: asString(source.resolvedFrom ?? source.resolved_from, 120) || null,
+        needsRebuild: typeof source.needsRebuild === "boolean" ? source.needsRebuild : typeof source.needs_rebuild === "boolean" ? source.needs_rebuild : undefined,
+        requiresRestart: typeof source.requiresRestart === "boolean" ? source.requiresRestart : typeof source.requires_restart === "boolean" ? source.requires_restart : undefined,
+        requiresRebuild: typeof source.requiresRebuild === "boolean" ? source.requiresRebuild : typeof source.requires_rebuild === "boolean" ? source.requires_rebuild : undefined,
+        hmrLikely: typeof source.hmrLikely === "boolean" ? source.hmrLikely : typeof source.hmr_likely === "boolean" ? source.hmr_likely : undefined,
+        touchesPublicAssets: typeof source.touchesPublicAssets === "boolean" ? source.touchesPublicAssets : typeof source.touches_public_assets === "boolean" ? source.touches_public_assets : undefined,
+        queued: typeof source.queued === "boolean" ? source.queued : undefined,
+        restartStatus: asString(source.restartStatus ?? source.restart_status, 80) || null,
+        restartMessage: asString(source.restartMessage ?? source.restart_message, 20_000) || null,
+    };
+}
+
 export async function applyEditPlanOps(
-    request: { appId: string; ops: AppEmbeddingEditPlanOp[]; code?: string | null },
+    request: { appId: string; ops?: AppEmbeddingEditPlanOp[]; files?: Array<{ path: string; content?: string | null; delete?: boolean | null; [key: string]: unknown }>; code?: string | null; idempotencyKey?: string | null },
     headers: HeadersInit,
-): Promise<AppEmbeddingRequestResult<unknown>> {
+): Promise<AppEmbeddingRequestResult<AppPreviewApplyResponse>> {
     const response = await fetch("/api/v1/webcontainer/apply", {
         method: "POST",
         headers: {
             "Content-Type": "application/json",
+            ...(typeof request.idempotencyKey === "string" && request.idempotencyKey.trim() ? { "idempotency-key": request.idempotencyKey.trim() } : {}),
             ...headers,
         },
         credentials: "include",
         cache: "no-store",
         body: JSON.stringify({
             appId: request.appId,
+            ...(typeof request.idempotencyKey === "string" && request.idempotencyKey.trim() ? { idempotencyKey: request.idempotencyKey.trim() } : {}),
             ...(typeof request.code === "string" && request.code.trim() ? { code: request.code.trim() } : {}),
-            ops: request.ops,
+            ...(Array.isArray(request.files) && request.files.length > 0 ? { files: request.files } : { ops: request.ops }),
         }),
     });
 
@@ -457,7 +833,7 @@ export async function applyEditPlanOps(
     return {
         ok: response.ok,
         status: response.status,
-        data,
+        data: data ? normalizePreviewApplyResponse(data, response.status, response.headers.get("retry-after")) : null,
         error: response.ok ? null : asString((data as any)?.error, 10_000) || response.statusText || "Apply failed",
         retryAfter: response.headers.get("retry-after"),
         code: asString((data as any)?.code, 120) || null,
