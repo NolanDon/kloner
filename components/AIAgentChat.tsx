@@ -567,6 +567,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
     const editPlanStatusMessageJobKeyRef = useRef<string | null>(null);
     const editPlanStatusMessageIdRef = useRef<string | null>(null);
     const editPlanStatusMessageTextRef = useRef<string | null>(null);
+    const editPlanApplyStatusBubbleTextRef = useRef<string | null>(null);
     const previewReadyRef = useRef(Boolean(previewReady));
 
     const chatDisabled = PRODUCTION_AGENT_CHAT_BLOCKED || (previewReady === false && !freeCompileFixContext);
@@ -592,12 +593,13 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                 case "queued":
                     return "I’ve queued this edit plan. I’m waiting for a worker to pick it up.";
                 case "picked_up":
+                    return "The worker picked up the edit plan. I’m waiting for it to start applying.";
                 case "working":
                     return "I’m applying the edit plan in the background now.";
                 case "completed":
-                    return "The edit plan finished. I’m now sending the apply request so the website can be updated.";
+                    return "The edit plan finished.";
                 case "failed":
-                    return "The edit plan stopped before it could finish.";
+                    return "The edit plan failed.";
                 case "expired":
                     return "The edit plan expired before a worker could finish it.";
                 default:
@@ -739,9 +741,11 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                         setPendingEditPlan(completedProposal);
                         setEditPlanApplyError(null);
                         setEditPlanApplyStatusMessage(
-                            completedProposal.autoApplyAllowed === false
-                                ? "The proposal is ready, but it was not marked safe to auto-apply."
-                                : "The proposal is ready. I’m sending the apply request now.",
+                            completedProposal.needsMoreContext || !Array.isArray(completedProposal.files) || completedProposal.files.length === 0
+                                ? "The worker needs more context before I can continue."
+                                : completedProposal.autoApplyAllowed === false
+                                    ? "Proposal ready for review."
+                                    : "I’m sending the apply request now.",
                         );
                         editPlanJobVersionRef.current += 1;
                         return;
@@ -805,7 +809,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                                     : null,
                             ].filter(Boolean).join("\n"),
                         );
-                        setEditPlanApplyStatusMessage("The edit plan job failed before it could finish.");
+                        setEditPlanApplyStatusMessage("The apply step did not complete.");
                         editPlanJobVersionRef.current += 1;
                         return;
                     }
@@ -1928,6 +1932,33 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
             return;
         }
     }, [activeEditPlanJob, buildEditPlanStatusBubbleText]);
+
+    useEffect(() => {
+        const content = String(editPlanApplyStatusMessage || "").trim();
+        if (!content) {
+            editPlanApplyStatusBubbleTextRef.current = null;
+            return;
+        }
+
+        if (messages.some((message) => String(message.id || "").startsWith("edit_plan_apply_status_") && String(message.content || "").trim() === content)) {
+            editPlanApplyStatusBubbleTextRef.current = content;
+            return;
+        }
+
+        if (editPlanApplyStatusBubbleTextRef.current === content) return;
+        editPlanApplyStatusBubbleTextRef.current = content;
+        const nextBubbleId = `edit_plan_apply_status_${Date.now()}`;
+        setMessages((prev) => [
+            ...prev,
+            {
+                id: nextBubbleId,
+                role: "assistant",
+                content,
+                timestamp: new Date(),
+                type: "text",
+            },
+        ]);
+    }, [editPlanApplyStatusMessage, messages]);
 
     // Scroll to bottom when messages change
     useEffect(() => {

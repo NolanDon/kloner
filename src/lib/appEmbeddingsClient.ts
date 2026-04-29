@@ -207,7 +207,7 @@ export type AppEmbeddingEditPlanBackpressureInfo = {
 
 const EDIT_PLAN_MAX_QUEUED_AGE_SECONDS = 30 * 60;
 
-const EMBEDDING_REQUEST_TIMEOUT_MS = 42_000;
+const EMBEDDING_REQUEST_TIMEOUT_MS = 60_000;
 
 function getTextEncoderByteLength(text: string): number {
     if (typeof TextEncoder !== "undefined") {
@@ -987,6 +987,7 @@ export async function fetchEmbeddingEditPlan(
     headers: HeadersInit,
 ): Promise<AppEmbeddingRequestResult<AppEmbeddingEditPlanResponse>> {
     const maxChunks = Math.min(10, Math.max(1, Math.floor(Number(request.maxChunks ?? 10) || 10)));
+    const search = Array.isArray(request.search) ? request.search : undefined;
     return postJson<AppEmbeddingEditPlanResponse>(
         "/api/app-embeddings/edit-plan",
         {
@@ -995,6 +996,7 @@ export async function fetchEmbeddingEditPlan(
             requestText: request.requestText ?? request.query,
             currentPath: request.currentPath || null,
             maxChunks,
+            ...(search ? { search } : {}),
         },
         headers,
     );

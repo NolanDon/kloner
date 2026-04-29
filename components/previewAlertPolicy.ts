@@ -10,11 +10,15 @@ const HARD_FAILURE_TIMEOUT_REASONS = new Set([
 ]);
 
 const RECOVERABLE_STATES = new Set([
+  'pending',
   'starting',
   'booting',
+  'creating_machine',
+  'creating_server',
   'restarting',
   'app_generation_not_ready',
   'proxy_unreachable',
+  'proxy_unreachable_auto',
 ]);
 
 const UNRECOVERABLE_STATES = new Set([
@@ -32,6 +36,23 @@ export type BackendSignalSummary = {
   jobId?: string;
   hardFailure: boolean;
   recoverable: boolean;
+};
+
+export type PreviewPresentationState = {
+  status: string;
+  uiStage: string;
+  ready: boolean;
+  attachable: boolean;
+  hasMachineId: boolean;
+  hasPreviewUrl: boolean;
+  restartPending: boolean;
+  retryable: boolean;
+  terminal: boolean;
+  recoverable: boolean;
+  shouldKeepPolling: boolean;
+  shouldShowLivePreview: boolean;
+  shouldShowLoadingShell: boolean;
+  shouldShowTerminalError: boolean;
 };
 
 export function parsePreviewTimeoutMs(raw: string | undefined, fallbackMs: number): number {
@@ -53,15 +74,16 @@ export function classifyBackendSignal(statusData: any): BackendSignalSummary {
   ).trim() || undefined;
   const jobId = String(statusData?.jobId || statusData?.debug?.jobId || '').trim() || undefined;
 
-  const hardFailure =
-    HARD_FAILURE_TIMEOUT_REASONS.has(timeoutReason) ||
-    UNRECOVERABLE_STATES.has(status) ||
-    UNRECOVERABLE_STATES.has(uiStage);
-
-  const recoverable =
+  const recoverableState =
     RECOVERABLE_STATES.has(status) ||
     RECOVERABLE_STATES.has(uiStage) ||
-    (!hardFailure && (!status || status === 'pending' || status === 'transitioning'));
+    (!status || status === 'pending' || status === 'transitioning');
+
+  const hardFailure =
+    HARD_FAILURE_TIMEOUT_REASONS.has(timeoutReason) ||
+    ((UNRECOVERABLE_STATES.has(status) || UNRECOVERABLE_STATES.has(uiStage)) && !recoverableState);
+
+  const recoverable = recoverableState && !HARD_FAILURE_TIMEOUT_REASONS.has(timeoutReason);
 
   return {
     status,
@@ -71,6 +93,83 @@ export function classifyBackendSignal(statusData: any): BackendSignalSummary {
     jobId,
     hardFailure,
     recoverable,
+  };
+}
+
+export function isTrustedBrowserPreviewUrl(url: string, origin?: string | null): boolean {
+  const raw = String(url || '').trim();
+  if (!raw) return false;
+
+  const proxyPathPattern = /^\/api\/(?:webcontainer|preview)\/[^\s?#]+/i;
+  if (proxyPathPattern.test(raw)) return true;
+
+  try {
+    const base = origin || (typeof window !== 'undefined' ? window.location.origin : undefined);
+    const parsed = new URL(raw, base);
+    if (!base || parsed.origin !== base) return false;
+    return proxyPathPattern.test(parsed.pathname);
+  } catch {
+    return false;
+  }
+}
+
+export function classifyPreviewPresentationState(statusData: any, opts?: {
+  previewUrl?: string | null;
+  iframeLoaded?: boolean;
+  hmrWsStatus?: 'unknown' | 'ok' | 'blocked';
+  externalPreviewMode?: boolean;
+  origin?: string | null;
+}): PreviewPresentationState {
+  const status = String(statusData?.status || '').trim().toLowerCase();
+  const uiStage = String(statusData?.uiStage || '').trim().toLowerCase();
+  const ready = Boolean(statusData?.ready);
+  const attachable = Boolean(statusData?.attachable);
+  const machineId = String(statusData?.machineId || statusData?.machine?.id || '').trim();
+  const hasMachineId = Boolean(machineId);
+  const hasPreviewUrl = Boolean(String(opts?.previewUrl || '').trim());
+  const restartPending = Boolean(statusData?.restartPending || statusData?.queued || statusData?.outcome === 'restart_pending');
+  const retryable = Boolean(statusData?.retryable || statusData?.retryAfterSeconds != null);
+  const backendSignal = classifyBackendSignal(statusData);
+
+  const terminalStatus = new Set(['error', 'failed', 'fatal', 'stopped', 'cancelled', 'canceled', 'timeout']);
+  const transitionalStatus = new Set(['pending', 'starting', 'booting', 'creating_machine', 'creating_server', 'transitioning', 'restarting']);
+  const connectableStatus = new Set(['ready', 'running', 'compiled', 'started', 'completed', 'finished', 'active', 'online']);
+  const terminal = (terminalStatus.has(status) || terminalStatus.has(uiStage)) && !backendSignal.recoverable && !restartPending && !retryable;
+  const recoverable = Boolean(
+    restartPending ||
+      retryable ||
+      backendSignal.recoverable ||
+      transitionalStatus.has(status) ||
+      transitionalStatus.has(uiStage) ||
+      (hasMachineId && hasPreviewUrl && !terminal),
+  );
+
+  const bootingLike = transitionalStatus.has(status) || transitionalStatus.has(uiStage);
+  const shouldShowLivePreview = Boolean(
+    opts?.externalPreviewMode ||
+      ready ||
+      attachable ||
+      opts?.iframeLoaded ||
+      opts?.hmrWsStatus === 'ok' ||
+      (connectableStatus.has(status) && !terminal) ||
+      (recoverable && !bootingLike && hasMachineId && hasPreviewUrl),
+  );
+
+  return {
+    status,
+    uiStage,
+    ready,
+    attachable,
+    hasMachineId,
+    hasPreviewUrl,
+    restartPending,
+    retryable,
+    terminal,
+    recoverable,
+    shouldKeepPolling: !terminal && !attachable && (recoverable || !ready),
+    shouldShowLivePreview,
+    shouldShowLoadingShell: !shouldShowLivePreview,
+    shouldShowTerminalError: terminal,
   };
 }
 

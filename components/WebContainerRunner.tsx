@@ -9,9 +9,11 @@ import { useAuth } from "@/src/hooks/useAuth";
 import {
   buildPreviewAlertKey,
   classifyBackendSignal,
+  classifyPreviewPresentationState,
   getPollBackoffMs,
   parsePreviewTimeoutMs,
   PREVIEW_ALERT_DEDUPE_TTL_MS,
+  isTrustedBrowserPreviewUrl,
   shouldDedupeAlert,
 } from './previewAlertPolicy';
 
@@ -112,6 +114,19 @@ function asFiniteInteger(value: unknown): number | null {
   if (typeof value === 'string' && value.trim()) {
     const parsed = Number.parseInt(value.trim(), 10);
     if (Number.isFinite(parsed)) return parsed;
+  }
+  return null;
+}
+
+function asRetryAfterSeconds(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return Math.max(0, Math.ceil(value));
+  }
+  if (typeof value === 'string' && value.trim()) {
+    const parsed = Number(value.trim());
+    if (Number.isFinite(parsed)) {
+      return Math.max(0, Math.ceil(parsed));
+    }
   }
   return null;
 }
@@ -350,6 +365,47 @@ export default function WebContainerRunner({ appId, files, filesReady = true, on
   const debugPersistTimerRef = useRef<number | null>(null);
   const debugKeyRef = useRef<string>(`kloner.appprevieweditor.aiAgentEvents.${String(appId || 'unknown')}`);
 
+  const redactDebugValue = (value: unknown, depth = 0): unknown => {
+    if (depth > 4) return '[redacted]';
+    if (value == null) return value;
+    if (typeof value === 'string') return value;
+    if (typeof value !== 'object') return value;
+    if (Array.isArray(value)) return value.slice(0, 20).map((item) => redactDebugValue(item, depth + 1));
+
+    const record = value as Record<string, unknown>;
+    const sensitiveKeys = new Set([
+      'previewUrl',
+      'url',
+      'statusUrl',
+      'machineId',
+      'requestId',
+      'jobId',
+      'idempotencyKey',
+      'csrf',
+      'authorization',
+      'auth',
+      'token',
+      'signedArchiveUrl',
+      'archiveUrl',
+      'privateIp',
+      'privateIP',
+      'ip',
+      'headers',
+      'cookies',
+    ]);
+
+    const next: Record<string, unknown> = {};
+    for (const [key, nestedValue] of Object.entries(record)) {
+      const normalizedKey = key.trim().toLowerCase();
+      if (sensitiveKeys.has(key) || sensitiveKeys.has(normalizedKey)) {
+        next[key] = '[redacted]';
+        continue;
+      }
+      next[key] = redactDebugValue(nestedValue, depth + 1);
+    }
+    return next;
+  };
+
   const schedulePersistDebugEvents = useCallback(() => {
     if (typeof window === 'undefined') return;
     if (debugPersistTimerRef.current != null) return;
@@ -357,10 +413,16 @@ export default function WebContainerRunner({ appId, files, filesReady = true, on
       debugPersistTimerRef.current = null;
       try {
         const key = debugKeyRef.current;
-        const payload = JSON.stringify(debugEventsRef.current.slice(-500));
+        const payload = JSON.stringify(debugEventsRef.current.slice(-500).map((event) => ({
+          ...event,
+          data: redactDebugValue(event.data),
+        })));
         window.localStorage.setItem(key, payload);
         (window as any).__klonerAppPreviewEditorAiAgentEvents = (window as any).__klonerAppPreviewEditorAiAgentEvents || {};
-        (window as any).__klonerAppPreviewEditorAiAgentEvents[String(appId || 'unknown')] = debugEventsRef.current.slice(-500);
+        (window as any).__klonerAppPreviewEditorAiAgentEvents[String(appId || 'unknown')] = debugEventsRef.current.slice(-500).map((event) => ({
+          ...event,
+          data: redactDebugValue(event.data),
+        }));
       } catch {
         // ignore
       }
@@ -381,7 +443,7 @@ export default function WebContainerRunner({ appId, files, filesReady = true, on
       }
     })();
 
-    debugEventsRef.current.push({ ts, kind, data: safeData });
+    debugEventsRef.current.push({ ts, kind, data: redactDebugValue(safeData) });
     if (debugEventsRef.current.length > 600) {
       debugEventsRef.current = debugEventsRef.current.slice(-500);
     }
@@ -499,6 +561,7 @@ export default function WebContainerRunner({ appId, files, filesReady = true, on
   const lastReportedStatusRef = useRef<string>('');
   const lastReadyUrlRef = useRef<string | null>(null);
   const lastBackendReadyNotifyRef = useRef<string | null>(null);
+  const lastPreviewGenerationKeyRef = useRef<string>('');
   const autoRebuildByCodeRef = useRef<Record<string, true>>({});
   const compileErrorSeenByFingerprintRef = useRef<Record<string, true>>({});
   const compileErrorActiveFingerprintRef = useRef<string | null>(null);
@@ -589,6 +652,15 @@ export default function WebContainerRunner({ appId, files, filesReady = true, on
     }
   };
 
+  const buildBrowserPreviewUrl = (candidate?: string | null): string => {
+    const proxyRoot = `/api/webcontainer/${encodeURIComponent(appId)}/proxy/`;
+    const raw = normalizePreviewUrlHost(String(candidate || ''));
+    if (isTrustedBrowserPreviewUrl(raw, typeof window !== 'undefined' ? window.location.origin : undefined)) {
+      return raw;
+    }
+    return proxyRoot;
+  };
+
   const derivePreviewCodeFromUrl = (url: string): string | null => {
     try {
       const normalized = normalizePreviewUrlHost(url);
@@ -609,24 +681,12 @@ export default function WebContainerRunner({ appId, files, filesReady = true, on
     const raw = normalizePreviewUrlHost(maybeUrl);
     if (!raw) return false;
 
-    try {
-      const u = new URL(raw, typeof window !== 'undefined' ? window.location.origin : undefined);
-      const host = u.hostname.toLowerCase();
-      if (isHubHost(host)) {
-        // Never navigate to hub root; hub previews must be /preview/<code>(/path)? with a viewer token.
-        const parts = u.pathname.split('/').filter(Boolean);
-        return parts.length >= 2 && parts[0] === 'preview' && Boolean(parts[1]);
-      }
-      // For non-hub URLs, accept http(s) URLs.
-      return u.protocol === 'http:' || u.protocol === 'https:';
-    } catch {
-      return false;
-    }
+    return isTrustedBrowserPreviewUrl(raw, typeof window !== 'undefined' ? window.location.origin : undefined);
   };
 
   const requestForceFreshRebuild = (reason: string, previewUrl: string) => {
     if (typeof window === 'undefined') return;
-    const code = derivePreviewCodeFromUrl(previewUrl) || 'unknown';
+    const code = pollingCodeRef.current || derivePreviewCodeFromUrl(previewUrl) || 'unknown';
     if (autoRebuildByCodeRef.current[code]) return;
     autoRebuildByCodeRef.current[code] = true;
 
@@ -780,6 +840,7 @@ export default function WebContainerRunner({ appId, files, filesReady = true, on
   };
 
   const shouldBypassIframeForBrowserCookiePolicy = (url: string): boolean => {
+    if (!isTrustedBrowserPreviewUrl(url, typeof window !== 'undefined' ? window.location.origin : undefined)) return false;
     if (forceExternalPreviewRef.current && isHubPreviewUrl(url)) return true;
     if (!isSafariLikeBrowser()) return false;
 
@@ -1388,6 +1449,7 @@ export default function WebContainerRunner({ appId, files, filesReady = true, on
     pollFetchFailureCountRef.current = 0;
     lastPollFailureSignatureRef.current = '';
     repeatedPollFailureCountRef.current = 0;
+    lastPreviewGenerationKeyRef.current = '';
     lastPollIssueReportKeyRef.current = '';
     if (iframePostLoadTimeoutRef.current) {
       clearTimeout(iframePostLoadTimeoutRef.current);
@@ -1537,6 +1599,7 @@ export default function WebContainerRunner({ appId, files, filesReady = true, on
   const switchToExternalPreviewMode = (url: string, reason: string, opts?: { suppressEmbedBlockedReport?: boolean }) => {
     const normalizedUrl = normalizePreviewUrlHost(url);
     if (!normalizedUrl) return;
+    const browserUrl = buildBrowserPreviewUrl(normalizedUrl);
 
     markSafariEmbedFailure(normalizedUrl);
 
@@ -1559,7 +1622,7 @@ export default function WebContainerRunner({ appId, files, filesReady = true, on
 
     let opened: Window | null = null;
     try {
-      opened = window.open(normalizedUrl, '_blank', 'noopener,noreferrer');
+      opened = window.open(browserUrl, '_blank', 'noopener,noreferrer');
     } catch {
       opened = null;
     }
@@ -1895,7 +1958,7 @@ export default function NavBar() {
       const inferredProgress = (() => {
         if (status === 'ready') return 100;
         if (status === 'building' || status === 'compiling') return 60;
-        if (status === 'booting' || status === 'starting' || status === 'creating_machine') return 20;
+        if (status === 'booting' || status === 'starting' || status === 'creating_machine' || status === 'creating_server') return 20;
         if (transitioning) return 90;
         return 0;
       })();
@@ -1973,10 +2036,47 @@ export default function NavBar() {
   useEffect(() => {
     if (!previewUrl) return;
     const normalized = normalizePreviewUrlHost(previewUrl);
+    const safeBrowserUrl = buildBrowserPreviewUrl(normalized);
+    if (safeBrowserUrl !== previewUrl) {
+      setPreviewUrl(safeBrowserUrl);
+      return;
+    }
     if (normalized !== previewUrl) {
       setPreviewUrl(normalized);
     }
   }, [previewUrl]);
+
+  useEffect(() => {
+    const statusData = currentStatusData || lastBackendStatusRef.current || null;
+    if (!statusData) return;
+
+    const machineId = String((statusData as any)?.machineId || (statusData as any)?.machine?.id || '').trim();
+    const restartCount = Number(
+      (statusData as any)?.restartCount ??
+      (statusData as any)?.backend?.restartCount ??
+      (statusData as any)?.debug?.restartCount ??
+      0,
+    );
+    const bootstrapVersion = String(
+      (statusData as any)?.previewBootstrapVersion ||
+      (statusData as any)?.bootstrapVersion ||
+      (statusData as any)?.previewVersion ||
+      '',
+    ).trim();
+    const appServerKind = String((statusData as any)?.appServerKind || '').trim().toLowerCase();
+    const code = pollingCodeRef.current || derivePreviewCodeFromUrl(String(previewUrlRef.current || '')) || 'unknown';
+    const generationKey = [code, machineId || 'no-machine', Number.isFinite(restartCount) ? String(restartCount) : '0', bootstrapVersion || 'no-bootstrap', appServerKind || ''].join('|');
+
+    if (generationKey === lastPreviewGenerationKeyRef.current) return;
+    lastPreviewGenerationKeyRef.current = generationKey;
+
+    if (!previewUrlRef.current) return;
+    const safePreviewUrl = buildBrowserPreviewUrl(previewUrlRef.current);
+    if (!safePreviewUrl) return;
+
+    setIframeKey((k) => k + 1);
+    setPreviewUrl(withCacheBust(safePreviewUrl));
+  }, [currentStatusData, previewUrl]);
 
   useEffect(() => {
     if (!previewUrl) {
@@ -2362,6 +2462,7 @@ export default function NavBar() {
     pollFetchFailureCountRef.current = 0;
     lastPollIssueReportKeyRef.current = '';
     iframePostLoadRecoveryCountRef.current = 0;
+    lastPreviewGenerationKeyRef.current = '';
     if (iframePostLoadTimeoutRef.current) {
       clearTimeout(iframePostLoadTimeoutRef.current);
       iframePostLoadTimeoutRef.current = null;
@@ -2414,6 +2515,7 @@ export default function NavBar() {
     latestDeploymentUrlRef.current = '';
     hubStatusUrlRef.current = null;
     lastReportedStatusRef.current = '';
+    lastPreviewGenerationKeyRef.current = '';
   }, [appId, reconnectToken]);
 
   // Monitor app loading and surface persistent asset failures
@@ -2632,7 +2734,7 @@ export default function NavBar() {
                     const probe = await probePreviewUrl(appId, statusData.url);
                     if (probe.reachable) {
                       pollingCodeRef.current = existingCode;
-                      setPreviewUrl(statusData.url);
+                      setPreviewUrl(buildBrowserPreviewUrl(statusData.url));
                       setLoadingStatus(`Connected to machine ${statusData.machineId}!`);
                       setIsLoading(false);
                       backendReadyRef.current = true;
@@ -2654,7 +2756,7 @@ export default function NavBar() {
                     // Do NOT clear stored code here. Attempt to load the iframe anyway.
                     console.log(`⚠️ Probe failed for existing container ${existingCode}; attempting to load preview anyway (keeping stored code).`);
                     pollingCodeRef.current = existingCode;
-                    setPreviewUrl(statusData.url);
+                    setPreviewUrl(buildBrowserPreviewUrl(statusData.url));
                     setLoadingStatus(`Connecting to machine ${statusData.machineId}…`);
                     setIsLoading(false);
                     backendReadyRef.current = true;
@@ -2696,7 +2798,7 @@ export default function NavBar() {
                           const probe = await probePreviewUrl(appId, statusData.url);
                           if (probe.reachable) {
                             pollingCodeRef.current = existingCode;
-                            setPreviewUrl(statusData.url);
+                            setPreviewUrl(buildBrowserPreviewUrl(statusData.url));
                             setLoadingStatus(`Connected to machine ${statusData.machineId}!`);
                             setIsLoading(false);
                             appLoadedSuccessfullyRef.current = true;
@@ -2747,7 +2849,7 @@ export default function NavBar() {
                   if (probe.reachable) {
                     console.log(`✅ Probe succeeded for container ${existingCode} (${statusData.machineId})`);
                     pollingCodeRef.current = existingCode;
-                    setPreviewUrl(statusData.url);
+                    setPreviewUrl(buildBrowserPreviewUrl(statusData.url));
                     setLoadingStatus(`Connected to machine ${statusData.machineId}!`);
                     setIsLoading(false);
                     backendReadyRef.current = Boolean(statusData?.ready) || String(statusData?.status || '').toLowerCase() === 'ready';
@@ -2767,7 +2869,7 @@ export default function NavBar() {
                   // Same policy as above: do not discard the saved machine on a transient probe failure.
                   console.log(`⚠️ Probe failed for container ${existingCode}; attempting to load preview anyway (keeping stored code).`);
                   pollingCodeRef.current = existingCode;
-                  setPreviewUrl(statusData.url);
+                    setPreviewUrl(buildBrowserPreviewUrl(statusData.url));
                   setLoadingStatus(`Connecting to machine ${statusData.machineId}…`);
                   setIsLoading(false);
                   backendReadyRef.current = Boolean(statusData?.ready) || String(statusData?.status || '').toLowerCase() === 'ready';
@@ -2846,7 +2948,7 @@ export default function NavBar() {
                     console.log(`✅ Recovered saved machine ${existingCode} after transient status-service failure.`);
                     pollingCodeRef.current = existingCode;
                     iframeLoadedSuccessfullyRef.current = false;
-                    setPreviewUrl(url);
+                    setPreviewUrl(buildBrowserPreviewUrl(url));
                     setConnectingToExisting(false);
                     setIsPolling(false);
                     setIsLoading(false);
@@ -3117,61 +3219,14 @@ export default function NavBar() {
             }
 
             let statusResponse: Response | null = null;
-            const hubStatusUrl = hubStatusUrlRef.current;
-            if (hubStatusUrl) {
-              const hubCode = deriveCodeFromHubStatusUrl(hubStatusUrl);
-              if (hubCode && hubCode !== code) {
-                console.warn('[WebContainerRunner] Ignoring stale hub status url (code mismatch)', {
-                  appId,
-                  expectedCode: code,
-                  hubCode,
-                });
-                hubStatusUrlRef.current = null;
-              }
-            }
-
-            const activeHubStatusUrl = hubStatusUrlRef.current;
-            if (activeHubStatusUrl) {
-              const activeHubCode = deriveCodeFromHubStatusUrl(activeHubStatusUrl);
-              if (activeHubCode && activeCode && activeHubCode !== activeCode) {
-                console.warn('[WebContainerRunner] Ignoring stale hub status url before fetch (active code mismatch)', {
-                  appId,
-                  activeCode,
-                  activeHubCode,
-                });
-                hubStatusUrlRef.current = null;
-              }
-            }
-
-            const nextHubStatusUrl = hubStatusUrlRef.current;
-            if (nextHubStatusUrl) {
-              // Poll the hub status endpoint directly once we have a viewer token.
-              try {
-                statusResponse = await fetch(nextHubStatusUrl, { method: 'GET', cache: 'no-store', credentials: 'omit' });
-              } catch (err) {
-                // If the browser blocks this (CORS) or network fails, fall back to our API proxy.
-                console.warn('[WebContainerRunner] Hub status poll failed; falling back to /api/webcontainer-status', err);
-                hubStatusUrlRef.current = null;
-                statusResponse = null;
-              }
-            } else {
-              // Fallback: poll via our API until the backend returns a URL with viewer token.
-              const headers = await getAuthenticatedHeaders();
-              statusResponse = await fetch(`/api/webcontainer-status?code=${code}&appId=${appId}`, {
-                headers,
-                credentials: "include",
-                cache: 'no-store',
-              });
-            }
-
-            if (!statusResponse) {
-              const headers = await getAuthenticatedHeaders();
-              statusResponse = await fetch(`/api/webcontainer-status?code=${code}&appId=${appId}`, {
-                headers,
-                credentials: "include",
-                cache: 'no-store',
-              });
-            }
+            // Keep all browser polling on the same-origin backend route boundary.
+            hubStatusUrlRef.current = null;
+            const headers = await getAuthenticatedHeaders();
+            statusResponse = await fetch(`/api/webcontainer-status?code=${code}&appId=${appId}`, {
+              headers,
+              credentials: "include",
+              cache: 'no-store',
+            });
 
             if (!statusResponse.ok) {
               if (statusResponse.status === 429) {
@@ -3418,9 +3473,14 @@ export default function NavBar() {
             const status = String((statusData as any)?.status || '').toLowerCase();
             const uiStage = String((statusData as any)?.uiStage || '').toLowerCase();
             const readyFlag = Boolean((statusData as any)?.ready);
+            const attachableFlag = Boolean((statusData as any)?.attachable);
+            const restartPendingFlag = Boolean((statusData as any)?.restartPending || (statusData as any)?.queued || (statusData as any)?.outcome === 'restart_pending');
+            const retryableFlag = Boolean((statusData as any)?.retryable || (statusData as any)?.retryAfterSeconds != null || (statusData as any)?.retry_after_seconds != null);
+            const retryAfterSeconds = asRetryAfterSeconds((statusData as any)?.retryAfterSeconds ?? (statusData as any)?.retry_after_seconds ?? null);
             const backendSignal = classifyBackendSignal(statusData);
             const deploymentUrlRaw = String((statusData as any)?.url || '').trim();
             const deploymentUrl = deploymentUrlRaw ? normalizePreviewUrlHost(deploymentUrlRaw) : '';
+            const browserDeploymentUrl = buildBrowserPreviewUrl(deploymentUrl || latestDeploymentUrlRef.current || null);
             const flyMachineCreateFailure = getFlyMachineCreateFailure(statusData);
             const appServerKindRaw = String((statusData as any)?.appServerKind || '').toLowerCase();
             const appServerKind = (appServerKindRaw === 'fallback' || appServerKindRaw === 'next-dev' || appServerKindRaw === 'next-prod')
@@ -3434,7 +3494,7 @@ export default function NavBar() {
               !readyFlag &&
               !deploymentUrl &&
               !hasMachineId &&
-              ['pending', 'starting', 'booting', 'creating_machine', 'transitioning'].includes(status);
+              ['pending', 'starting', 'booting', 'creating_machine', 'creating_server', 'transitioning'].includes(status);
 
             if (isBootingWithoutMachine) {
               if (noMachineBootSinceRef.current == null) {
@@ -3477,8 +3537,8 @@ export default function NavBar() {
             }
 
             // Fly provider can return a machine-create timeout (HTTP 408) after we already got a preview code.
-            // In that case this code will never become reachable, so stop the spinner and regenerate immediately.
-            if (!readyFlag && flyMachineCreateFailure && flyMachineCreateFailure.status === 408) {
+            // Only treat it as terminal when the backend has not already declared an attachable or recoverable state.
+            if (!readyFlag && !attachableFlag && !restartPendingFlag && !retryableFlag && flyMachineCreateFailure && flyMachineCreateFailure.status === 408) {
               reportPollIssueOnce(`fly-machine-create-timeout:${appId}:${code}`, {
                 appId,
                 code,
@@ -3520,7 +3580,7 @@ export default function NavBar() {
               return;
             }
 
-            if (!readyFlag && backendSignal.hardFailure) {
+            if (!readyFlag && !attachableFlag && !restartPendingFlag && !retryableFlag && backendSignal.hardFailure) {
               const elapsedMs = pollStartedAtRef.current ? Date.now() - pollStartedAtRef.current : undefined;
               reportPollIssueOnce(`backend-hard-failure:${appId}:${code}:${backendSignal.timeoutReason || backendSignal.uiStage || backendSignal.status || 'unknown'}`, {
                 appId,
@@ -3547,6 +3607,73 @@ export default function NavBar() {
               setPreviewUrl(null);
               setError('Preview startup failed before the app became reachable.');
               setCanRetry(true);
+              return;
+            }
+
+            const transitionalAttachStates = new Set(['pending', 'starting', 'booting', 'creating_machine', 'creating_server', 'transitioning']);
+            const isTransitionalAttachState = transitionalAttachStates.has(status) || transitionalAttachStates.has(uiStage);
+
+            if (!readyFlag && attachableFlag) {
+              const attachUrl = isValidPreviewUrlCandidate(browserDeploymentUrl)
+                ? withCacheBust(browserDeploymentUrl)
+                : browserDeploymentUrl;
+
+              backendReadyRef.current = true;
+              lastReadyUrlRef.current = attachUrl || browserDeploymentUrl || null;
+              setError(null);
+              setCanRetry(false);
+              setIsLoading(false);
+              setConnectingToExisting(false);
+              setIsPolling(false);
+              setLoadingStatus('Preview container is attachable. Loading now.');
+
+              if (attachUrl && previewUrlRef.current !== attachUrl) {
+                iframeLoadedSuccessfullyRef.current = false;
+                setPreviewUrl(attachUrl);
+              }
+
+              return;
+            }
+
+            if (!readyFlag && !attachableFlag && isTransitionalAttachState && (restartPendingFlag || retryableFlag)) {
+              const delayMs = retryAfterSeconds !== null ? Math.max(1_000, retryAfterSeconds * 1000) : POLL_INTERVAL_MS;
+              setError(null);
+              setCanRetry(false);
+              setIsLoading(true);
+              setConnectingToExisting(false);
+              setIsPolling(true);
+              setLoadingStatus(
+                retryAfterSeconds !== null
+                  ? `Preview is still starting. Retrying in ${retryAfterSeconds}s…`
+                  : 'Preview is still starting. Retrying automatically…',
+              );
+              setCurrentStatusData((current: any) =>
+                current && typeof current === 'object'
+                  ? {
+                      ...current,
+                      ...statusData,
+                      status: status || current.status || 'starting',
+                      uiStage: uiStage || current.uiStage || 'starting',
+                      uiTitle: 'Starting preview',
+                      uiMessage:
+                        retryAfterSeconds !== null
+                          ? `Preview is still starting. Retrying in ${retryAfterSeconds}s…`
+                          : 'Preview is still starting. Retrying automatically…',
+                      updatedAt: Date.now(),
+                    }
+                  : normalizeStatusDataForUi(code, {
+                      ...statusData,
+                      status: status || 'starting',
+                      uiStage: uiStage || 'starting',
+                      uiTitle: 'Starting preview',
+                      uiMessage:
+                        retryAfterSeconds !== null
+                          ? `Preview is still starting. Retrying in ${retryAfterSeconds}s…`
+                          : 'Preview is still starting. Retrying automatically…',
+                      updatedAt: Date.now(),
+                    }),
+              );
+              statusPollTimeoutRef.current = setTimeout(pollStatus, delayMs);
               return;
             }
 
@@ -3603,34 +3730,23 @@ export default function NavBar() {
                 return;
               }
 
-              latestDeploymentUrlRef.current = deploymentUrl;
-              if (!isValidPreviewUrlCandidate(deploymentUrl)) {
+              latestDeploymentUrlRef.current = browserDeploymentUrl;
+              if (!isValidPreviewUrlCandidate(browserDeploymentUrl)) {
                 console.warn('[WebContainerRunner] Ignoring invalid preview url from status (missing /preview/<code>?)', {
                   appId,
                   code,
-                  deploymentUrl,
+                  deploymentUrl: browserDeploymentUrl,
                 });
-              } else if (status !== 'error' && previewUrlRef.current !== deploymentUrl) {
-                // For non-error states, it is useful to show the preview URL ASAP.
-                // For error states, only navigate after a successful probe (otherwise we can embed a 404 page).
+              } else if ((readyFlag || attachableFlag) && previewUrlRef.current !== browserDeploymentUrl) {
                 iframeLoadedSuccessfullyRef.current = false;
-                setPreviewUrl(deploymentUrl);
+                setPreviewUrl(withCacheBust(browserDeploymentUrl));
               }
 
               // Once we have the viewer token, switch polling to the hub status endpoint.
               const nextHub = buildHubStatusUrl(code, deploymentUrl);
               if (nextHub) {
-                const nextHubCode = deriveCodeFromHubStatusUrl(nextHub);
-                const expectedCode = activePollCodeRef.current || pollingCodeRef.current || code;
-                if (nextHubCode && expectedCode && nextHubCode !== expectedCode) {
-                  console.warn('[WebContainerRunner] Refusing to adopt stale hub status url from status payload', {
-                    appId,
-                    expectedCode,
-                    nextHubCode,
-                  });
-                } else {
-                  hubStatusUrlRef.current = nextHub;
-                }
+                // Keep all browser polling on the same-origin backend route boundary.
+                hubStatusUrlRef.current = null;
               }
             }
 
@@ -3691,29 +3807,34 @@ export default function NavBar() {
               const readyUrl = deploymentUrl || latestDeploymentUrlRef.current;
               console.log('Deployment ready at:', readyUrl);
 
-              lastReadyUrlRef.current = readyUrl || null;
+              const browserReadyUrl = buildBrowserPreviewUrl(readyUrl);
+
+              lastReadyUrlRef.current = browserReadyUrl || null;
 
               if (!readyUrl) {
                 console.error('Backend reported ready but no URL provided:', statusData);
                 throw new Error('Backend reported app ready but did not provide deployment URL');
               }
 
-              if (!isValidPreviewUrlCandidate(readyUrl)) {
+              if (!isValidPreviewUrlCandidate(browserReadyUrl)) {
                 console.warn('[WebContainerRunner] Backend ready URL is not a valid preview URL; refusing to navigate', {
                   appId,
                   code,
-                  readyUrl,
+                  readyUrl: browserReadyUrl,
                 });
+              }
+              if (previewUrlRef.current !== browserReadyUrl) {
+                setPreviewUrl(browserReadyUrl);
               }
 
               // If the parent wants to run its own "Refresh" behavior, notify it once.
               // This is intentionally the AppBuilderEditor "Refresh" (reconnect) semantics.
               if (readyUrl && typeof onBackendReady === 'function') {
-                const key = `${code}|${readyUrl}`;
+                const key = `${code}|${browserReadyUrl}`;
                 if (lastBackendReadyNotifyRef.current !== key) {
                   lastBackendReadyNotifyRef.current = key;
                   try {
-                    onBackendReady({ appId, code, url: readyUrl });
+                    onBackendReady({ appId, code, url: browserReadyUrl });
                   } catch {
                     // ignore
                   }
@@ -3781,7 +3902,7 @@ export default function NavBar() {
                   if (probe.reachable) {
                     console.log('Direct probe successful, proceeding with URL:', deploymentUrl);
                     iframeLoadedSuccessfullyRef.current = false;
-                    setPreviewUrl(deploymentUrl);
+                    setPreviewUrl(buildBrowserPreviewUrl(deploymentUrl));
                     setLoadingStatus('Preview is reachable. Still verifying readiness…');
                     setIsPolling(true);
                     setError(null);
@@ -3811,7 +3932,7 @@ export default function NavBar() {
                   if (probe.reachable) {
                     console.log('Preview URL is reachable despite error status; proceeding with URL:', deploymentUrl);
                     iframeLoadedSuccessfullyRef.current = false;
-                    setPreviewUrl(deploymentUrl);
+                    setPreviewUrl(buildBrowserPreviewUrl(deploymentUrl));
                     setLoadingStatus('Preview is reachable. Still verifying readiness…');
                     setIsPolling(true);
                     setError(null);
@@ -3865,6 +3986,32 @@ export default function NavBar() {
                 return;
               }
 
+              if (backendSignal.recoverable && !backendSignal.hardFailure) {
+                const elapsedMs = pollStartedAtRef.current ? Date.now() - pollStartedAtRef.current : undefined;
+                const retryDelayMs = Math.max(POLL_INTERVAL_MS, getPollBackoffMs(pollFetchFailureCountRef.current));
+
+                setError(null);
+                setCanRetry(false);
+                setIsPolling(true);
+                setIsLoading(false);
+                setConnectingToExisting(false);
+                setLoadingStatus('Preview is temporarily unreachable. Retrying automatically…');
+                setCurrentStatusData(
+                  normalizeStatusDataForUi(code, {
+                    ...statusData,
+                    status: 'starting',
+                    uiStage: backendSignal.uiStage || 'proxy_unreachable_auto',
+                    uiTitle: 'Preview restarting',
+                    uiMessage: 'The preview is temporarily unreachable. Keeping the session alive and retrying automatically…',
+                    uiProgress: typeof statusData?.uiProgress === 'number' ? statusData.uiProgress : 0,
+                    updatedAt: Date.now(),
+                  })
+                );
+
+                statusPollTimeoutRef.current = setTimeout(pollStatus, retryDelayMs);
+                return;
+              }
+
               // Normal error handling
               const flyApi = Array.isArray(statusData?.events)
                 ? statusData.events
@@ -3899,21 +4046,20 @@ export default function NavBar() {
 
             } else if (status === 'pending' || status === 'archiving' ||
               status === 'uploading_archive' || status === 'creating_machine' ||
-              status === 'booting' || status === 'building' ||
+              status === 'creating_server' || status === 'booting' || status === 'building' ||
               status === 'compiling' || status === 'starting' ||
-              status === 'transitioning') {
-              // Still building, continue polling and show progress if available
-              // If we have a URL, we already surfaced it above so the iframe can show its own loader.
+              status === 'transitioning' || restartPendingFlag || retryableFlag) {
+              // Still building or waiting to attach, continue polling and show progress if available.
+              // If retryAfterSeconds is present, honor the backend delay instead of hammering the status endpoint.
 
-              if (statusData.uiTitle && statusData.uiMessage) {
-                // Use the rich progress information from backend
-                // Don't set loadingStatus since it's not displayed during polling
-                // setLoadingStatus(`${statusData.uiTitle}: ${statusData.uiMessage}`);
+              if (statusData.uiTitle && statusData.uiMessage && retryAfterSeconds === null) {
+                // Use the rich progress information from backend.
+              } else if (retryAfterSeconds !== null) {
+                setLoadingStatus(`Preview is still starting. Retrying in ${retryAfterSeconds}s…`);
               } else {
-                // Fallback to generic message - only set if no rich progress data
                 setLoadingStatus('Building app... (this may take several minutes)');
               }
-              statusPollTimeoutRef.current = setTimeout(pollStatus, POLL_INTERVAL_MS);
+              statusPollTimeoutRef.current = setTimeout(pollStatus, retryAfterSeconds !== null ? Math.max(1_000, retryAfterSeconds * 1000) : POLL_INTERVAL_MS);
 
             } else {
               // Unknown status - log it and treat as still building for now
@@ -4469,13 +4615,13 @@ export default function NavBar() {
                   ...prev,
                   uiStage: prev?.uiStage || 'waiting_for_preview',
                   uiTitle: prev?.uiTitle || 'Starting preview',
-                  uiMessage: prev?.uiMessage || 'Preview is still loading. If it stays stuck, click Refresh to reattempt the connection.',
+                  uiMessage: prev?.uiMessage || 'Preview is still loading. If it stays stuck, click Refresh.',
                   updatedAt: Date.now(),
                 }
                 : {
                   uiStage: 'waiting_for_preview',
                   uiTitle: 'Starting preview',
-                  uiMessage: 'Preview is still loading. If it stays stuck, click Refresh to reattempt the connection.',
+                  uiMessage: 'Preview is still loading. If it stays stuck, click Refresh.',
                   updatedAt: Date.now(),
                   status: 'starting',
                   uiProgress: 0,
@@ -4545,34 +4691,22 @@ export default function NavBar() {
     };
   }, [previewUrl, onPreviewReadyChange, externalPreviewMode, PREVIEW_IFRAME_WARN_MS, PREVIEW_IFRAME_CRITICAL_MS]);
 
-  const previewStatus = String((currentStatusData as any)?.status || '').toLowerCase();
-  const terminalPreviewStatus = ['error', 'stopped', 'failed', 'canceled', 'cancelled', 'timeout'].includes(previewStatus);
-  const previewInteractiveByStatus = [
-    'ready',
-    'running',
-    'compiled',
-    'started',
-    'completed',
-    'finished',
-    'active',
-    'online',
-  ].includes(previewStatus);
+  const previewPresentation = classifyPreviewPresentationState(currentStatusData || lastBackendStatusRef.current || null, {
+    previewUrl: previewUrlRef.current,
+    iframeLoaded: iframeLoadedSuccessfullyRef.current,
+    hmrWsStatus,
+    externalPreviewMode,
+  });
+  const previewStatus = previewPresentation.status;
+  const terminalPreviewStatus = previewPresentation.shouldShowTerminalError;
+  const previewInteractiveByStatus = previewPresentation.shouldShowLivePreview;
   const previewUrlAgeMs = previewUrlFirstSeenAtRef.current > 0 ? Date.now() - previewUrlFirstSeenAtRef.current : 0;
   const loadingLower = String(loadingStatus || '').toLowerCase();
-  const stuckConnectingWithUrl =
-    Boolean(previewUrl) &&
-    isPolling &&
-    !externalPreviewMode &&
-    !backendReadyRef.current &&
-    !previewInteractiveByStatus &&
-    (connectingToExisting || loadingLower.includes('connecting to machine')) &&
-    previewUrlAgeMs > 45_000;
 
   const canRenderEmbeddedFrame =
     backendReadyRef.current ||
     hmrWsStatus === 'ok' ||
-    previewInteractiveByStatus ||
-    stuckConnectingWithUrl;
+    previewInteractiveByStatus;
   const showPreviewSurface = Boolean(previewUrl) && !error && !compileErrorState && !terminalPreviewStatus && (externalPreviewMode || canRenderEmbeddedFrame);
   const activePreviewUrl = previewUrl || '';
   const showApplyRefreshingOverlay = showPreviewSurface && isApplyRefreshing;
@@ -5082,22 +5216,10 @@ export default function NavBar() {
               iframeLoadedSuccessfullyRef.current = true;
               appLoadedSuccessfullyRef.current = true;
 
-              const status = String((currentStatusData as any)?.status || '').toLowerCase();
-              const uiReadyByStatus = [
-                'ready',
-                'running',
-                'compiled',
-                'started',
-                'completed',
-                'finished',
-                'active',
-                'online',
-              ].includes(status);
-
               // For the chat UX we want to unlock when the preview is actually usable.
-              // Backend `ready === true` is ideal, but it can lag; HMR websocket `ok`
-              // and strong non-error statuses are good enough to treat as interactive.
-              const uiReady = backendReadyRef.current || hmrWsStatus === 'ok' || uiReadyByStatus;
+              // Backend `ready === true` is authoritative; the shared presentation helper
+              // only upgrades to live when the backend is connectable or the iframe is already healthy.
+              const uiReady = backendReadyRef.current || hmrWsStatus === 'ok' || previewPresentation.shouldShowLivePreview;
 
               if (backendReadyRef.current) {
                 setError(null);
@@ -5259,34 +5381,64 @@ export default function NavBar() {
                 setPreviewUrl(null); // Hide the iframe
                 try { onPreviewReadyChange?.(false); } catch { }
                 scheduleAutomaticPreviewRestart('iframe_onerror_hub', 6000);
-              } else if (activePreviewUrl.includes('.fly.dev') || activePreviewUrl.includes('localhost')) {
-                reportLoadingIssueOnce(`iframe-onerror-unreachable:${appId}:${pollingCodeRef.current || 'unknown'}:${String(activePreviewUrl || '')}`, {
-                  appId,
-                  code: pollingCodeRef.current || undefined,
-                  status: 'iframe_onerror_unreachable_preview',
-                  reason: 'iframe_onerror_unreachable_preview',
-                  message: 'Preview iframe onError fired and preview host looked unreachable.',
-                  ageMs: pollStartedAtRef.current ? Date.now() - pollStartedAtRef.current : undefined,
-                  previewUrl: activePreviewUrl,
-                  browser: detectBrowserLabel(),
-                  userAgent: typeof navigator !== 'undefined' ? String(navigator.userAgent || '') : 'unknown',
-                });
-
-                setError(`Unable to connect to ${activePreviewUrl}. The deployment may still be starting up or has failed. Please try again in a few minutes.`);
-                setCookieRecoveryPromptVisible(false);
-                setCanRetry(true);
-                setIsLoading(false);
-                setIsPolling(false);
-                setConnectingToExisting(false);
-                setCurrentStatusData(null);
-                setLoadingStatus('');
-                iframeLoadedSuccessfullyRef.current = false;
-                appLoadedSuccessfullyRef.current = false;
-                setPreviewUrl(null); // Hide the iframe
-                try { onPreviewReadyChange?.(false); } catch { }
               } else {
-                setCookieRecoveryPromptVisible(false);
-                handleAssetFailure();
+                const latestStatus = lastBackendStatusRef.current;
+                const latestSignal = classifyBackendSignal(latestStatus);
+                const latestRetryAfterSeconds = asRetryAfterSeconds((latestStatus as any)?.retryAfterSeconds ?? (latestStatus as any)?.retry_after_seconds ?? null);
+                const latestRestartPending = Boolean((latestStatus as any)?.restartPending || (latestStatus as any)?.queued || (latestStatus as any)?.outcome === 'restart_pending');
+                const latestRetryable = Boolean((latestStatus as any)?.retryable || (latestStatus as any)?.retryAfterSeconds != null || (latestStatus as any)?.retry_after_seconds != null);
+
+                if (!latestSignal.hardFailure && (latestSignal.recoverable || latestRestartPending || latestRetryable)) {
+                  const retryDelayMs = latestRetryAfterSeconds !== null ? Math.max(1_000, latestRetryAfterSeconds * 1000) : POLL_INTERVAL_MS;
+                  reportLoadingIssueOnce(`iframe-onerror-recoverable:${appId}:${pollingCodeRef.current || 'unknown'}:${String(activePreviewUrl || '')}`, {
+                    appId,
+                    code: pollingCodeRef.current || undefined,
+                    status: 'iframe_onerror_recoverable',
+                    reason: latestSignal.timeoutReason || (latestRestartPending ? 'restart_pending' : 'retryable_pending'),
+                    message: latestRetryAfterSeconds !== null
+                      ? `Preview iframe could not load yet, but the backend said to retry in ${latestRetryAfterSeconds}s.`
+                      : 'Preview iframe could not load yet, but the backend said to keep retrying.',
+                    ageMs: pollStartedAtRef.current ? Date.now() - pollStartedAtRef.current : undefined,
+                    previewUrl: activePreviewUrl,
+                    requestId: latestSignal.requestId,
+                    jobId: latestSignal.jobId,
+                    backendStatusData: latestStatus,
+                  });
+
+                  setError(null);
+                  setCookieRecoveryPromptVisible(false);
+                  setCanRetry(false);
+                  setIsLoading(true);
+                  setIsPolling(true);
+                  setConnectingToExisting(false);
+                  setLoadingStatus(latestRetryAfterSeconds !== null ? `Preview is still starting. Retrying in ${latestRetryAfterSeconds}s…` : 'Preview is still starting. Retrying automatically…');
+                  scheduleAutomaticPreviewRestart('iframe_onerror_recoverable', retryDelayMs);
+                } else {
+                  reportLoadingIssueOnce(`iframe-onerror-unreachable:${appId}:${pollingCodeRef.current || 'unknown'}:${String(activePreviewUrl || '')}`, {
+                    appId,
+                    code: pollingCodeRef.current || undefined,
+                    status: 'iframe_onerror_unreachable_preview',
+                    reason: 'iframe_onerror_unreachable_preview',
+                    message: 'Preview iframe onError fired and the backend did not report a recoverable attach state.',
+                    ageMs: pollStartedAtRef.current ? Date.now() - pollStartedAtRef.current : undefined,
+                    previewUrl: activePreviewUrl,
+                    browser: detectBrowserLabel(),
+                    userAgent: typeof navigator !== 'undefined' ? String(navigator.userAgent || '') : 'unknown',
+                  });
+
+                  setError(`Unable to load preview. The deployment may still be starting up or has failed. Please try again in a few minutes.`);
+                  setCookieRecoveryPromptVisible(false);
+                  setCanRetry(true);
+                  setIsLoading(false);
+                  setIsPolling(false);
+                  setConnectingToExisting(false);
+                  setCurrentStatusData(null);
+                  setLoadingStatus('');
+                  iframeLoadedSuccessfullyRef.current = false;
+                  appLoadedSuccessfullyRef.current = false;
+                  setPreviewUrl(null); // Hide the iframe
+                  try { onPreviewReadyChange?.(false); } catch { }
+                }
               }
             }}
           />

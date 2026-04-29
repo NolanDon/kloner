@@ -218,6 +218,54 @@ describe("appEmbeddingsClient", () => {
         });
     });
 
+    it("forwards search context when requesting an edit plan", async () => {
+        const search = [
+            {
+                path: "public/research/more-control-fidelity-and-expressibility/index.html",
+                chunkIndex: 0,
+                lineRange: { start: 1, end: 12 },
+                sourceHash: "hash-1",
+                embeddingModel: "text-embedding-3-small",
+                embeddingModelVersion: "v1",
+                updatedAt: "2026-04-29T00:00:00.000Z",
+                tokenCount: 120,
+                similarity: 0.91,
+                filePriority: 1,
+                chunkText: "<html>...</html>",
+            },
+        ];
+
+        const fetchSpy = jest.spyOn(globalThis, "fetch" as any).mockResolvedValueOnce({
+            ok: true,
+            status: 200,
+            headers: { get: () => null },
+            json: async () => ({ ok: true, summary: "ok", ops: [], notes: [], search: [] }),
+        } as any);
+
+        await fetchEmbeddingEditPlan(
+            {
+                appId: "app-1",
+                query: "fix the html",
+                requestText: "fix the html",
+                currentPath: "public/research/more-control-fidelity-and-expressibility/index.html",
+                maxChunks: 10,
+                search,
+            },
+            {},
+        );
+
+        expect(fetchSpy).toHaveBeenCalledTimes(1);
+        const [, init] = fetchSpy.mock.calls[0] as [RequestInfo | URL, RequestInit | undefined];
+        expect(init?.body).toEqual(JSON.stringify({
+            appId: "app-1",
+            query: "fix the html",
+            requestText: "fix the html",
+            currentPath: "public/research/more-control-fidelity-and-expressibility/index.html",
+            maxChunks: 10,
+            search,
+        }));
+    });
+
     it("detects edit-plan backpressure and prefers the body retry-after countdown", async () => {
         jest.spyOn(globalThis, "fetch" as any).mockResolvedValueOnce({
             ok: false,

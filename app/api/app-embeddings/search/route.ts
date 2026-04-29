@@ -106,7 +106,7 @@ export async function POST(req: NextRequest) {
                     action: "app_embeddings_search_timeout",
                     userId: uid,
                     requestId: result.reqId || requestId || undefined,
-                    message: `The embedding request timed out after ${Math.round(30_000 / 1000)} seconds. Please try again in a moment.`,
+                    message: `The request timed out after ${Math.round(30_000 / 1000)} seconds. Please try again in a moment.`,
                     service: "app-embeddings",
                     tags: ["app-embeddings", "search", "timeout"],
                     extra: {

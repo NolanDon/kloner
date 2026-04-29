@@ -1,5 +1,5 @@
 
-import { ChevronDown, Info, RotateCcw } from "lucide-react";
+import { ChevronDown, Info } from "lucide-react";
 import { type AppEmbeddingEditPlanJobStatus } from "@/src/lib/appEmbeddingsClient";
 
 function formatSeconds(value: number | null | undefined): string | null {
@@ -17,10 +17,8 @@ interface EditPlanJobStatusCardProps {
     applyStatusMessage?: string | null;
 }
 
-export default function EditPlanJobStatusCard({ job, onDismiss, onRetry, applyStatusMessage }: EditPlanJobStatusCardProps) {
+export default function EditPlanJobStatusCard({ job, onDismiss, onRetry }: EditPlanJobStatusCardProps) {
     const status = String(job.status || "queued").toLowerCase();
-    const ageText = formatSeconds(job.queueAgeSeconds ?? job.queuedForSeconds ?? job.runningForSeconds);
-    const normalizedApplyStatusMessage = typeof applyStatusMessage === "string" ? applyStatusMessage.trim() : null;
     const retryAfterSeconds = typeof (job.error as any)?.retryAfterSeconds === "number"
         ? (job.error as any).retryAfterSeconds
         : null;
@@ -46,36 +44,8 @@ export default function EditPlanJobStatusCard({ job, onDismiss, onRetry, applySt
     const proposalNeedsMoreContext = proposal?.needsMoreContext === true;
     const proposalAutoApplyAllowed = proposal?.autoApplyAllowed !== false;
 
-    const narrative = (() => {
-        switch (status) {
-            case "queued":
-                return "I’ve queued this edit plan. I’m waiting for a worker to pick it up.";
-            case "picked_up":
-            case "working":
-                return "I’m applying the edit plan in the background now.";
-            case "completed":
-                return "The edit plan finished. I’m now sending the apply request so the files can be updated.";
-            case "failed":
-                return "The edit plan stopped before it could finish.";
-            case "expired":
-                return "The edit plan expired before a worker could finish it.";
-            default:
-                return "I’m tracking the edit plan in the background.";
-        }
-    })();
-
-    const mainSentences = [narrative, normalizedApplyStatusMessage].filter((sentence, index, sentences) => {
-        if (!sentence) return false;
-        return sentences.indexOf(sentence) === index;
-    });
-
     const proposalSection = proposal && status === "completed" ? (
         <div className="space-y-4 text-neutral-700 w-full">
-            <p>
-                {proposalAutoApplyAllowed
-                    ? "The proposal is ready and the app is sending the apply request now."
-                    : "The proposal is ready, but it is not marked safe to auto-apply."}
-            </p>
             <details className="group w-full rounded-3xl border border-neutral-200 bg-white/90 shadow-lg shadow-black/5">
                 <summary className="flex w-full cursor-pointer list-none items-center gap-3 px-4 py-4">
                     <div className="min-w-0 flex-1">
@@ -162,14 +132,7 @@ export default function EditPlanJobStatusCard({ job, onDismiss, onRetry, applySt
     return (
         <div className="space-y-4 text-sm leading-relaxed text-neutral-700">
             <div className="min-w-0 space-y-3">
-                <div>
-                    <div className="space-y-2 text-neutral-900 leading-7">
-                        {mainSentences.map((sentence) => (
-                            <p key={sentence}>{sentence}</p>
-                        ))}
-                    </div>
-                    {proposalSection}
-                </div>
+                {proposalSection}
             </div>
 
             {showDevDetails ? (
