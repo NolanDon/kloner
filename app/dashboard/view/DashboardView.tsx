@@ -7020,6 +7020,46 @@ export default function PreviewPage(): JSX.Element {
     const urlRescanBackfillKeyRef = useRef<string>("");
 
     useEffect(() => {
+        if (!user || !docSnap || !docData) return;
+
+        const targetCanonical = targetUrl ? normUrl(targetUrl) : "";
+        const docCanonical = validateAndNormalizePublicHttpUrl(String(docData.url || ""));
+        const currentCanonical = docCanonical ? normUrl(docCanonical) : "";
+        if (!targetCanonical || !currentCanonical || targetCanonical !== currentCanonical) return;
+
+        const localBlockingWarning =
+            urlGenerationHealthWarning &&
+            validateAndNormalizePublicHttpUrl(String(urlGenerationHealthWarning.url || "")) &&
+            normUrl(validateAndNormalizePublicHttpUrl(String(urlGenerationHealthWarning.url || "")) as string) === targetCanonical &&
+            urlGenerationHealthWarning.blocking
+                ? {
+                    blocking: true,
+                    code: urlGenerationHealthWarning.code,
+                    message: urlGenerationHealthWarning.message || "The scan is incomplete or stale. Rescan before generating to avoid bad output.",
+                    details: urlGenerationHealthWarning.details,
+                    action: urlGenerationHealthWarning.action,
+                    retryable: urlGenerationHealthWarning.retryable,
+                }
+                : null;
+
+        const derivedWarning = localBlockingWarning || activeUrlBackendWarning || extractUrlRescanWarning(docData);
+        if (!derivedWarning?.blocking) return;
+        if (hasPersistedUrlRescanFields(docData)) return;
+
+        const patch = buildUrlRescanBackfillPatch(docData, derivedWarning);
+        if (!patch) return;
+
+        const backfillSignature = `${docSnap.id}:${String(patch.warningCode || "")}:${String(patch.warningMessage || "")}:${String(patch.warningAction || "")}:${String(patch.errorCode || "")}:${String(patch.errorReason || "")}`;
+        if (urlRescanBackfillKeyRef.current === backfillSignature) return;
+        urlRescanBackfillKeyRef.current = backfillSignature;
+
+        void updateDoc(docSnap.ref, patch as any).catch((err) => {
+            console.warn("[dashboard] failed to backfill URL rescan warning", err);
+            urlRescanBackfillKeyRef.current = "";
+        });
+    }, [activeUrlBackendWarning, docData, docSnap, targetUrl, urlGenerationHealthWarning, user]);
+
+    useEffect(() => {
         let unsubUrlDoc: Unsubscribe | null = null;
 
         (async () => {
@@ -7036,45 +7076,6 @@ export default function PreviewPage(): JSX.Element {
             if (contextChanged) {
                 setErr("");
                 setInfo("");
-                useEffect(() => {
-                    if (!user || !docSnap || !docData) return;
-
-                    const targetCanonical = targetUrl ? normUrl(targetUrl) : "";
-                    const docCanonical = validateAndNormalizePublicHttpUrl(String(docData.url || ""));
-                    const currentCanonical = docCanonical ? normUrl(docCanonical) : "";
-                    if (!targetCanonical || !currentCanonical || targetCanonical !== currentCanonical) return;
-
-                    const localBlockingWarning =
-                        urlGenerationHealthWarning &&
-                        validateAndNormalizePublicHttpUrl(String(urlGenerationHealthWarning.url || "")) &&
-                        normUrl(validateAndNormalizePublicHttpUrl(String(urlGenerationHealthWarning.url || "")) as string) === targetCanonical &&
-                        urlGenerationHealthWarning.blocking
-                            ? {
-                                blocking: true,
-                                code: urlGenerationHealthWarning.code,
-                                message: urlGenerationHealthWarning.message || "The scan is incomplete or stale. Rescan before generating to avoid bad output.",
-                                details: urlGenerationHealthWarning.details,
-                                action: urlGenerationHealthWarning.action,
-                                retryable: urlGenerationHealthWarning.retryable,
-                            }
-                            : null;
-
-                    const derivedWarning = localBlockingWarning || activeUrlBackendWarning || extractUrlRescanWarning(docData);
-                    if (!derivedWarning?.blocking) return;
-                    if (hasPersistedUrlRescanFields(docData)) return;
-
-                    const patch = buildUrlRescanBackfillPatch(docData, derivedWarning);
-                    if (!patch) return;
-
-                    const backfillSignature = `${docSnap.id}:${String(patch.warningCode || "")}:${String(patch.warningMessage || "")}:${String(patch.warningAction || "")}:${String(patch.errorCode || "")}:${String(patch.errorReason || "")}`;
-                    if (urlRescanBackfillKeyRef.current === backfillSignature) return;
-                    urlRescanBackfillKeyRef.current = backfillSignature;
-
-                    void updateDoc(docSnap.ref, patch as any).catch((err) => {
-                        console.warn("[dashboard] failed to backfill URL rescan warning", err);
-                        urlRescanBackfillKeyRef.current = "";
-                    });
-                }, [activeUrlBackendWarning, docData, docSnap, targetUrl, urlGenerationHealthWarning, user]);
             }
             setLoading(true);
             setDocSnap(null);

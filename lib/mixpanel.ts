@@ -5,6 +5,7 @@ import mixpanel from "mixpanel-browser";
 type MixpanelProps = Record<string, unknown>;
 
 let hasInitAttempted = false;
+let hasInitialized = false;
 let forcedOptOut = false;
 
 function getToken(): string | undefined {
@@ -36,12 +37,36 @@ function getBlockedUids(): string[] {
         .filter(Boolean);
 }
 
+function canUseMixpanel(): boolean {
+    if (forcedOptOut) return false;
+    if (isDisabled()) return false;
+    if (!getToken()) return false;
+    return true;
+}
+
+function ensureMixpanelInitialized(): boolean {
+    if (!canUseMixpanel()) return false;
+    if (hasInitialized) return true;
+
+    try {
+        initMixpanel();
+    } catch {
+        return false;
+    }
+
+    return hasInitialized;
+}
+
 export function applyMixpanelPrivacyForUid(uid?: string | null): boolean {
     const blockedUids = getBlockedUids();
     const isBlocked = !!uid && blockedUids.includes(uid);
 
     if (isBlocked) {
         forcedOptOut = true;
+        const isReady = ensureMixpanelInitialized();
+        if (!isReady) {
+            return true;
+        }
         try {
             (mixpanel as any).stop_session_recording?.();
         } catch {
@@ -67,10 +92,12 @@ export function applyMixpanelPrivacyForUid(uid?: string | null): boolean {
     // If we previously forced opt-out for a blocked uid, allow tracking again for other users.
     if (forcedOptOut) {
         forcedOptOut = false;
-        try {
-            (mixpanel as any).opt_in_tracking?.();
-        } catch {
-            // ignore
+        if (ensureMixpanelInitialized()) {
+            try {
+                (mixpanel as any).opt_in_tracking?.();
+            } catch {
+                // ignore
+            }
         }
     }
 
@@ -88,48 +115,49 @@ function getRecordHeatmapData(): boolean {
     return process.env.NEXT_PUBLIC_MIXPANEL_RECORD_HEATMAP_DATA === "1";
 }
 
-export function initMixpanel() {
-    if (hasInitAttempted) return;
+export function initMixpanel(): boolean {
+    if (hasInitialized) return true;
+    if (hasInitAttempted) return false;
     hasInitAttempted = true;
 
-    if (forcedOptOut) return;
-    if (isDisabled()) return;
+    if (forcedOptOut) return false;
+    if (isDisabled()) return false;
     const token = getToken();
-    if (!token) return;
+    if (!token) return false;
 
     const recordSessionsPercent = getRecordSessionsPercent();
 
-    mixpanel.init(token, {
-        debug: process.env.NODE_ENV !== "production",
-        persistence: "localStorage",
-        ignore_dnt: false,
-        track_pageview: false,
+    try {
+        mixpanel.init(token, {
+            debug: process.env.NODE_ENV !== "production",
+            persistence: "localStorage",
+            ignore_dnt: false,
+            track_pageview: false,
 
-        // Session Replay (rrweb) is disabled unless explicitly enabled.
-        // Set NEXT_PUBLIC_MIXPANEL_RECORD_SESSIONS_PERCENT to a value 1-100.
-        record_sessions_percent: recordSessionsPercent,
-        record_heatmap_data: recordSessionsPercent > 0 ? getRecordHeatmapData() : false,
+            // Session Replay (rrweb) is disabled unless explicitly enabled.
+            // Set NEXT_PUBLIC_MIXPANEL_RECORD_SESSIONS_PERCENT to a value 1-100.
+            record_sessions_percent: recordSessionsPercent,
+            record_heatmap_data: recordSessionsPercent > 0 ? getRecordHeatmapData() : false,
 
-        // Uncensor Session Replay recordings (shows text + inputs).
-        // Note: rrweb/Mixpanel will still avoid recording password fields.
-        record_mask_all_text: false,
-        record_mask_all_inputs: false,
-    });
+            // Uncensor Session Replay recordings (shows text + inputs).
+            // Note: rrweb/Mixpanel will still avoid recording password fields.
+            record_mask_all_text: false,
+            record_mask_all_inputs: false,
+        });
+        hasInitialized = true;
+        return true;
+    } catch {
+        return false;
+    }
 }
 
 export function trackMixpanel(eventName: string, props?: MixpanelProps) {
-    if (forcedOptOut) return;
-    if (isDisabled()) return;
-    if (!getToken()) return;
-    initMixpanel();
+    if (!ensureMixpanelInitialized()) return;
     mixpanel.track(eventName, props);
 }
 
 export function identifyMixpanel(distinctId: string, profileProps?: MixpanelProps) {
-    if (forcedOptOut) return;
-    if (isDisabled()) return;
-    if (!getToken()) return;
-    initMixpanel();
+    if (!ensureMixpanelInitialized()) return;
     mixpanel.identify(distinctId);
     mixpanel.register({ uid: distinctId });
     if (profileProps && Object.keys(profileProps).length > 0) {
@@ -138,35 +166,23 @@ export function identifyMixpanel(distinctId: string, profileProps?: MixpanelProp
 }
 
 export function resetMixpanel() {
-    if (forcedOptOut) return;
-    if (isDisabled()) return;
-    if (!getToken()) return;
-    initMixpanel();
+    if (!ensureMixpanelInitialized()) return;
     mixpanel.reset();
 }
 
 // Session Replay helpers
 export function startMixpanelSessionRecording() {
-    if (forcedOptOut) return;
-    if (isDisabled()) return;
-    if (!getToken()) return;
-    initMixpanel();
+    if (!ensureMixpanelInitialized()) return;
     (mixpanel as any).start_session_recording?.();
 }
 
 export function stopMixpanelSessionRecording() {
-    if (forcedOptOut) return;
-    if (isDisabled()) return;
-    if (!getToken()) return;
-    initMixpanel();
+    if (!ensureMixpanelInitialized()) return;
     (mixpanel as any).stop_session_recording?.();
 }
 
 export function getMixpanelSessionRecordingProperties(): Record<string, unknown> {
-    if (forcedOptOut) return {};
-    if (isDisabled()) return {};
-    if (!getToken()) return {};
-    initMixpanel();
+    if (!ensureMixpanelInitialized()) return {};
     try {
         const props = (mixpanel as any).get_session_recording_properties?.();
         return props && typeof props === "object" ? props : {};
@@ -176,10 +192,7 @@ export function getMixpanelSessionRecordingProperties(): Record<string, unknown>
 }
 
 export function getMixpanelSessionReplayUrl(): string | null {
-    if (forcedOptOut) return null;
-    if (isDisabled()) return null;
-    if (!getToken()) return null;
-    initMixpanel();
+    if (!ensureMixpanelInitialized()) return null;
     try {
         const url = (mixpanel as any).get_session_replay_url?.();
         return typeof url === "string" && url.trim() ? url.trim() : null;

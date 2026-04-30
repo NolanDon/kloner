@@ -286,6 +286,12 @@ function asRecord(value: unknown): Record<string, unknown> | null {
     return value && typeof value === "object" ? (value as Record<string, unknown>) : null;
 }
 
+function unwrapResponseEnvelope(value: unknown): Record<string, unknown> {
+    const source = asRecord(value) || {};
+    const nested = asRecord(source.data) || asRecord(source.payload);
+    return nested || source;
+}
+
 function parseRetryAfterSeconds(value: unknown): number | null {
     const parsed = asNullableNumber(value);
     if (parsed !== null && parsed >= 0) {
@@ -552,16 +558,17 @@ export function normalizeEmbeddingEditPlanPlan(raw: unknown): AppEmbeddingEditPl
 
 export function normalizeEmbeddingEditPlanJobStatus(raw: unknown): AppEmbeddingEditPlanJobStatus {
     const source = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
-    const nestedJob = source.job && typeof source.job === "object" ? (source.job as Record<string, unknown>) : null;
-    const active = nestedJob || source;
+    const envelope = unwrapResponseEnvelope(raw);
+    const nestedJob = asRecord(envelope.job) || asRecord(source.job);
+    const active = nestedJob || envelope;
     const result = active.result && typeof active.result === "object"
         ? normalizeEmbeddingEditPlanPlan(active.result)
-        : source.result && typeof source.result === "object"
-            ? normalizeEmbeddingEditPlanPlan(source.result)
+        : envelope.result && typeof envelope.result === "object"
+            ? normalizeEmbeddingEditPlanPlan(envelope.result)
             : null;
 
     return {
-        ...source,
+        ...envelope,
         status: asString(active.status, 80) || "queued",
         stage: asString(active.stage, 120) || null,
         progress: asNullableNumber(active.progress),
@@ -571,9 +578,9 @@ export function normalizeEmbeddingEditPlanJobStatus(raw: unknown): AppEmbeddingE
         leaseRemainingSeconds: asNullableNumber(active.leaseRemainingSeconds ?? active.lease_remaining_seconds),
         workerId: asString(active.workerId, 200) || null,
         attemptCount: asNullableNumber(active.attemptCount ?? active.attempt_count),
-        requestId: asString(active.requestId ?? source.requestId, 120) || null,
-        jobId: asString(active.jobId ?? source.jobId, 120) || null,
-        statusUrl: asString(active.statusUrl ?? source.statusUrl, 500) || null,
+        requestId: asString(active.requestId ?? envelope.requestId ?? source.requestId, 120) || null,
+        jobId: asString(active.jobId ?? envelope.jobId ?? source.jobId, 120) || null,
+        statusUrl: asString(active.statusUrl ?? envelope.statusUrl ?? source.statusUrl, 500) || null,
         error: typeof active.error === "string"
             ? active.error
             : active.error && typeof active.error === "object"
@@ -585,39 +592,44 @@ export function normalizeEmbeddingEditPlanJobStatus(raw: unknown): AppEmbeddingE
                 }
                 : null,
         result,
-        queued: asBoolean(active.queued ?? source.queued),
+        queued: asBoolean(active.queued ?? envelope.queued ?? source.queued),
         job: nestedJob ? normalizeEmbeddingEditPlanJobStatus(nestedJob) : null,
     } as AppEmbeddingEditPlanJobStatus;
 }
 
 export function normalizeEmbeddingEditPlanResponse(raw: unknown): AppEmbeddingEditPlanResponse {
-    const normalizedPlan = normalizeEmbeddingEditPlanPlan(raw);
-    const normalizedJob = normalizeEmbeddingEditPlanJobStatus(raw);
+    const source = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+    const envelope = unwrapResponseEnvelope(raw);
+    const normalizedPlan = normalizeEmbeddingEditPlanPlan(envelope);
+    const normalizedJob = normalizeEmbeddingEditPlanJobStatus(envelope);
 
     return {
         ...normalizedPlan,
-        queued: asBoolean((raw as any)?.queued),
-        jobId: asString((raw as any)?.jobId, 120) || null,
-        statusUrl: asString((raw as any)?.statusUrl ?? (raw as any)?.status_url, 500) || null,
-        status: asString((raw as any)?.status, 80) || null,
-        stage: asString((raw as any)?.stage, 120) || null,
-        progress: asNullableNumber((raw as any)?.progress),
-        queueAgeSeconds: asNullableNumber((raw as any)?.queueAgeSeconds ?? (raw as any)?.queue_age_seconds),
-        queuedForSeconds: asNullableNumber((raw as any)?.queuedForSeconds ?? (raw as any)?.queued_for_seconds),
-        runningForSeconds: asNullableNumber((raw as any)?.runningForSeconds ?? (raw as any)?.running_for_seconds),
-        leaseRemainingSeconds: asNullableNumber((raw as any)?.leaseRemainingSeconds ?? (raw as any)?.lease_remaining_seconds),
-        workerId: asString((raw as any)?.workerId, 200) || null,
-        attemptCount: asNullableNumber((raw as any)?.attemptCount ?? (raw as any)?.attempt_count),
+        queued: asBoolean(envelope.queued ?? source.queued),
+        jobId: asString(envelope.jobId ?? source.jobId, 120) || null,
+        statusUrl: asString(envelope.statusUrl ?? envelope.status_url ?? source.statusUrl ?? source.status_url, 500) || null,
+        status: asString(envelope.status ?? source.status, 80) || null,
+        stage: asString(envelope.stage ?? source.stage, 120) || null,
+        progress: asNullableNumber(envelope.progress ?? source.progress),
+        queueAgeSeconds: asNullableNumber(envelope.queueAgeSeconds ?? envelope.queue_age_seconds ?? source.queueAgeSeconds ?? source.queue_age_seconds),
+        queuedForSeconds: asNullableNumber(envelope.queuedForSeconds ?? envelope.queued_for_seconds ?? source.queuedForSeconds ?? source.queued_for_seconds),
+        runningForSeconds: asNullableNumber(envelope.runningForSeconds ?? envelope.running_for_seconds ?? source.runningForSeconds ?? source.running_for_seconds),
+        leaseRemainingSeconds: asNullableNumber(envelope.leaseRemainingSeconds ?? envelope.lease_remaining_seconds ?? source.leaseRemainingSeconds ?? source.lease_remaining_seconds),
+        workerId: asString(envelope.workerId ?? source.workerId, 200) || null,
+        attemptCount: asNullableNumber(envelope.attemptCount ?? envelope.attempt_count ?? source.attemptCount ?? source.attempt_count),
         job: normalizedJob,
-        result: (raw as any)?.result && typeof (raw as any).result === "object" ? normalizeEmbeddingEditPlanPlan((raw as any).result) : undefined,
+        result: envelope.result && typeof envelope.result === "object" ? normalizeEmbeddingEditPlanPlan(envelope.result) : source.result && typeof source.result === "object" ? normalizeEmbeddingEditPlanPlan(source.result) : undefined,
     };
 }
 
-const EDIT_PLAN_JOB_ACTIVE_STATUSES = new Set(["queued", "picked_up", "working"]);
+const EDIT_PLAN_JOB_ACTIVE_STATUSES = new Set(["queued", "picked_up", "working", "processing", "running", "applying"]);
 const EDIT_PLAN_JOB_TERMINAL_STATUSES = new Set(["completed", "failed", "expired"]);
 
 export function isEditPlanJobActiveStatus(status: string | null | undefined): boolean {
-    return EDIT_PLAN_JOB_ACTIVE_STATUSES.has(String(status || "").toLowerCase());
+    const normalized = String(status || "").toLowerCase();
+    if (!normalized) return true;
+    if (EDIT_PLAN_JOB_TERMINAL_STATUSES.has(normalized)) return false;
+    return true;
 }
 
 export function isEditPlanJobTerminalStatus(status: string | null | undefined): boolean {
@@ -631,6 +643,8 @@ export function getEditPlanJobDisplayStatus(status: string | null | undefined): 
         case "picked_up":
             return "Picked up by worker";
         case "working":
+            return "Generating edit plan";
+        case "processing":
             return "Generating edit plan";
         case "completed":
             return "Edit plan ready";

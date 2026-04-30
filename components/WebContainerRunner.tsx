@@ -576,6 +576,7 @@ export default function WebContainerRunner({ appId, files, filesReady = true, on
   const stickyProgressByCodeRef = useRef<Record<string, number>>({});
   const lastTimeoutReportKeyRef = useRef<string>('');
   const lastBackendStatusRef = useRef<any>(null);
+  const lastPreviewIssueEmitSignatureRef = useRef<string>('');
   const iframeWarnContextRef = useRef<{ key: string; code: string; previewUrl: string; warnedAt: number } | null>(null);
   const previewActionThrottleRef = useRef<{ refreshAt: number; rebuildAt: number }>({
     refreshAt: 0,
@@ -621,6 +622,10 @@ export default function WebContainerRunner({ appId, files, filesReady = true, on
 
   const DEFAULT_HUB_HOST = 'tracksite-hub.fly.dev';
   const CUSTOM_PREVIEW_HOST = String(process.env.NEXT_PUBLIC_PREVIEW_HOST || 'preview.kloner.app').trim().toLowerCase();
+  const CANONICAL_PREVIEW_ORIGIN = `https://${CUSTOM_PREVIEW_HOST || DEFAULT_HUB_HOST}`;
+  const CANONICAL_API_ORIGIN = String(process.env.NEXT_PUBLIC_PREVIEW_API_ORIGIN || 'https://www.kloner.app')
+    .trim()
+    .replace(/\/+$/, '');
   const HUB_HOSTS = new Set([DEFAULT_HUB_HOST, CUSTOM_PREVIEW_HOST].filter(Boolean));
 
   const isHubHost = (host: string): boolean => HUB_HOSTS.has(String(host || '').toLowerCase());
@@ -653,12 +658,31 @@ export default function WebContainerRunner({ appId, files, filesReady = true, on
   };
 
   const buildBrowserPreviewUrl = (candidate?: string | null): string => {
-    const proxyRoot = `/api/webcontainer/${encodeURIComponent(appId)}/proxy/`;
+    const proxyRootPath = `/api/webcontainer/${encodeURIComponent(appId)}/proxy/`;
     const raw = normalizePreviewUrlHost(String(candidate || ''));
-    if (isTrustedBrowserPreviewUrl(raw, typeof window !== 'undefined' ? window.location.origin : undefined)) {
-      return raw;
+
+    // Always prefer canonical hosted preview URLs when available.
+    if (isHubPreviewUrl(raw)) {
+      try {
+        const u = new URL(raw);
+        return `${CANONICAL_PREVIEW_ORIGIN}${u.pathname}${u.search}${u.hash}`;
+      } catch {
+        return raw;
+      }
     }
-    return proxyRoot;
+
+    // For proxy routes, avoid local-origin relative URLs in local frontend.
+    try {
+      const parsed = new URL(raw || proxyRootPath, typeof window !== 'undefined' ? window.location.origin : CANONICAL_API_ORIGIN);
+      const proxyPathPattern = /^\/api\/(?:webcontainer|preview)\/[\s\S]*/i;
+      if (proxyPathPattern.test(parsed.pathname)) {
+        return `${CANONICAL_API_ORIGIN}${parsed.pathname}${parsed.search}${parsed.hash}`;
+      }
+    } catch {
+      // fall through to deterministic canonical proxy root
+    }
+
+    return `${CANONICAL_API_ORIGIN}${proxyRootPath}`;
   };
 
   const derivePreviewCodeFromUrl = (url: string): string | null => {
@@ -680,6 +704,8 @@ export default function WebContainerRunner({ appId, files, filesReady = true, on
   const isValidPreviewUrlCandidate = (maybeUrl: string): boolean => {
     const raw = normalizePreviewUrlHost(maybeUrl);
     if (!raw) return false;
+
+    if (isHubPreviewUrl(raw)) return true;
 
     return isTrustedBrowserPreviewUrl(raw, typeof window !== 'undefined' ? window.location.origin : undefined);
   };
@@ -2694,16 +2720,10 @@ export default function NavBar() {
                 const allowedStatuses = ['ready', 'running', 'compiled', 'started', 'completed', 'finished', 'active', 'online'];
                 console.log(`ℹ️ Allowed statuses for direct connection: [${allowedStatuses.join(', ')}]`);
 
-                // Allow containers that are either:
-                // 1. In allowed statuses, OR
-                // 2. Booting with high progress (90%+)
-                //
                 // IMPORTANT: do NOT treat "stopped" as reusable even if it still has a URL.
                 // A stopped Fly machine can continue to return a proxied/edge page that makes
                 // the iframe look "loaded" while the app is actually dead.
-                const isAllowedStatus =
-                  allowedStatuses.includes(statusData.status) ||
-                  (statusData.status === 'booting' && statusData.uiProgress >= 90);
+                const isAllowedStatus = allowedStatuses.includes(statusData.status);
 
                 if (isAllowedStatus) {
                   if (statusData.url) {
@@ -2813,9 +2833,9 @@ export default function NavBar() {
 
                     console.log(`🗑️ Clearing stored code for stopped container ${existingCode} - will create a new machine`);
                     await clearStoredContainerCodeEverywhere(appId, user);
-                  } else if (statusData.status === 'booting' && statusData.uiProgress < 50 && (!statusData.url || !statusData.machineId)) {
-                    // Only reject booting containers with low progress if they don't have URL/machineId
-                    console.log(`⏳ Container ${existingCode} is booting at ${statusData.uiProgress}% with incomplete info, will create new one`);
+                  } else if (statusData.status === 'booting') {
+                    console.log(`🗑️ Clearing stored code for booting container ${existingCode} - always create a new machine instead of reconnecting`);
+                    await clearStoredContainerCodeEverywhere(appId, user);
                   } else {
                     console.log(`ℹ️ Container ${existingCode} (${statusData.status}, ${statusData.uiProgress}%) not ideal but has URL/machineId, will try fallback connection`);
                   }
@@ -2823,7 +2843,7 @@ export default function NavBar() {
 
                 // Try fallback connections for containers that have URL and machineId, regardless of status
                 // (as long as they're not in error state)
-                if (statusData.url && statusData.machineId && statusData.status !== 'error' && statusData.status !== 'stopped') {
+                if (statusData.url && statusData.machineId && statusData.status !== 'error' && statusData.status !== 'stopped' && statusData.status !== 'booting') {
                   console.log(`🔄 Existing container ${existingCode} has URL and machineId (${statusData.machineId}), probing before fallback connect:`, statusData.url);
 
                   // Fly is the source of truth here.
@@ -3285,13 +3305,13 @@ export default function NavBar() {
                     ? {
                         ...prev,
                         updatedAt: Date.now(),
-                        uiMessage: 'Preview polling paused due to rate limiting. Please wait and retry.',
+                        uiMessage: 'Preview polling paused. Please refresh',
                       }
                     : {
                         status: 'rate_limited',
                         uiStage: 'rate_limited',
                         uiTitle: 'Rate limited',
-                        uiMessage: 'Preview polling paused due to rate limiting. Please wait and retry.',
+                        uiMessage: 'Preview polling paused. Please refresh',
                         uiProgress: 0,
                         updatedAt: Date.now(),
                       }
@@ -4831,19 +4851,36 @@ export default function NavBar() {
   }, [appId, buildPreviewFixIssueMessage, onCompileErrorFixRequest, previewFailureMessage, previewFailureTitle, previewFailureUi?.correlationId, previewFailureUi?.requestId, previewIssueContextData, startFixWithAiCooldown]);
 
   useEffect(() => {
+    const nextPayload = showTerminalPreviewErrorCard
+      ? {
+          issue: terminalPreviewErrorMessage,
+          diagnostics: previewIssueDiagnostics,
+        }
+      : null;
+
+    const nextSignature = nextPayload
+      ? [
+          'active',
+          nextPayload.issue,
+          String(previewFailureUi?.requestId || ''),
+          String(previewFailureUi?.correlationId || ''),
+          String(previewFailureUi?.backendStatus || ''),
+          String(previewFailureUi?.machineState || ''),
+          String(previewFailureUi?.uiStage || ''),
+        ].join('|')
+      : 'inactive';
+
+    if (nextSignature === lastPreviewIssueEmitSignatureRef.current) {
+      return;
+    }
+    lastPreviewIssueEmitSignatureRef.current = nextSignature;
+
     try {
-      onPreviewIssueChange?.(
-        showTerminalPreviewErrorCard
-          ? {
-              issue: terminalPreviewErrorMessage,
-              diagnostics: previewIssueDiagnostics,
-            }
-          : null,
-      );
+      onPreviewIssueChange?.(nextPayload);
     } catch {
       // ignore
     }
-  }, [onPreviewIssueChange, previewIssueDiagnostics, showTerminalPreviewErrorCard, terminalPreviewErrorMessage]);
+  }, [onPreviewIssueChange, previewFailureUi?.backendStatus, previewFailureUi?.correlationId, previewFailureUi?.machineState, previewFailureUi?.requestId, previewFailureUi?.uiStage, previewIssueDiagnostics, showTerminalPreviewErrorCard, terminalPreviewErrorMessage]);
 
   useEffect(() => {
     if (!debugPreviewScenario) return;
@@ -5459,19 +5496,16 @@ export default function NavBar() {
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
                   <p className={`text-sm font-semibold ${isPositiveStatus ? "text-emerald-950" : "text-rose-950"}`}>{previewFailureTitle}</p>
-                  <span className={`inline-flex items-center rounded-full border bg-white px-2 py-0.5 text-[11px] font-medium ${isPositiveStatus ? "border-emerald-200 text-emerald-700" : "border-rose-200 text-rose-700"}`}>
-                    {isPositiveStatus ? "Ready" : "Error"}
-                  </span>
                 </div>
                 <p className="mt-1 text-sm leading-relaxed text-neutral-700">{previewFailureMessage}</p>
 
                 <div className="mt-3 flex flex-wrap items-center gap-2">
                   <button
                     type="button"
-                    onClick={rebuildPreview}
+                    onClick={retryApp}
                     className="inline-flex items-center justify-center rounded-full border border-neutral-200 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-900 transition-colors hover:bg-neutral-50"
                   >
-                    Restart Preview
+                    Refresh
                   </button>
                 </div>
               </div>

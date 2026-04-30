@@ -710,6 +710,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
     const editPlanJobStableReadsRef = useRef(0);
     const editPlanJobPollTimerRef = useRef<number | null>(null);
     const editPlanJobFetchFailureCountRef = useRef(0);
+    const editPlanJobPollDelayOverrideMsRef = useRef<number | null>(null);
     const previewReadyRef = useRef(Boolean(previewReady));
     const editPlanAutoApplyJobIdRef = useRef<string | null>(null);
     const lastEditPlanPromptRef = useRef<string | null>(null);
@@ -738,6 +739,8 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                 case "picked_up":
                     return "The worker picked up the edit plan. I’m waiting for it to start applying.";
                 case "working":
+                    return "I’m applying the edit plan in the background now.";
+                case "processing":
                     return "I’m applying the edit plan in the background now.";
                 case "completed":
                     return "The edit plan finished.";
@@ -918,7 +921,12 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
         }
 
         const stableReads = editPlanJobStableReadsRef.current;
-        const delayMs = getEditPlanJobPollDelayMs(activeEditPlanJob.status, stableReads);
+        const baseDelayMs = getEditPlanJobPollDelayMs(activeEditPlanJob.status, stableReads);
+        const delayOverrideMs = editPlanJobPollDelayOverrideMsRef.current;
+        const delayMs = typeof delayOverrideMs === "number" && Number.isFinite(delayOverrideMs)
+            ? Math.max(baseDelayMs, Math.max(250, Math.floor(delayOverrideMs)))
+            : baseDelayMs;
+        editPlanJobPollDelayOverrideMsRef.current = null;
 
         editPlanJobPollTimerRef.current = window.setTimeout(() => {
             void (async () => {
@@ -929,6 +937,22 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                     const statusCode = result.status;
                     const failureCount = editPlanJobFetchFailureCountRef.current + 1;
                     editPlanJobFetchFailureCountRef.current = failureCount;
+                    const retryAfterSeconds = getEditPlanRetryAfterSeconds(result);
+                    const retryAfterMs = typeof retryAfterSeconds === "number" ? Math.max(0, Math.ceil(retryAfterSeconds * 1000)) : null;
+                    const code = String(result.code || "").trim().toUpperCase();
+                    const isTransientStatus = statusCode === 0 || statusCode === 408 || statusCode === 425 || statusCode === 429 || statusCode === 500 || statusCode === 502 || statusCode === 503 || statusCode === 504;
+                    const isBackpressure = code === "EMBEDDING_EDIT_PLAN_BACKPRESSURE" || code === "JOB_RATE_LIMITED" || statusCode === 429;
+                    const shouldRetry = isTransientStatus || isBackpressure;
+
+                    if (shouldRetry && failureCount <= 10) {
+                        const exponentialBackoffMs = Math.min(12_000, 1_000 * (2 ** Math.min(failureCount - 1, 4)));
+                        editPlanJobPollDelayOverrideMsRef.current = retryAfterMs !== null
+                            ? Math.max(exponentialBackoffMs, retryAfterMs)
+                            : exponentialBackoffMs;
+                        setActiveEditPlanJob((current) => (current ? { ...current } : current));
+                        return;
+                    }
+
                     const terminalError =
                         statusCode === 403
                             ? { code: "JOB_FORBIDDEN", message: result.error || "You do not have access to this job.", retryAfterSeconds: null }
@@ -938,7 +962,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                     ? {
                                         code: result.code || (statusCode === 429 ? "JOB_RATE_LIMITED" : statusCode === 503 ? "JOB_BACKLOG" : statusCode === 504 ? "JOB_TIMEOUT" : "JOB_STATUS_FAILED"),
                                         message: result.error || "We couldn’t refresh this edit-plan job.",
-                                        retryAfterSeconds: typeof result.retryAfter === "string" && Number.isFinite(Number(result.retryAfter)) ? Math.max(0, Math.ceil(Number(result.retryAfter))) : null,
+                                        retryAfterSeconds,
                                     }
                                     : null;
                     if (!terminalError) {
@@ -959,14 +983,23 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
 
                 editPlanJobFetchFailureCountRef.current = 0;
                 const nextJob = normalizeEmbeddingEditPlanJobStatus(result.data);
-                setActiveEditPlanJob(nextJob);
+                const retryAfterSeconds = getEditPlanRetryAfterSeconds(result);
+                if (typeof retryAfterSeconds === "number") {
+                    editPlanJobPollDelayOverrideMsRef.current = Math.max(0, Math.ceil(retryAfterSeconds * 1000));
+                }
+                const nextJobWithIds = {
+                    ...nextJob,
+                    enqueueRequestId: (activeEditPlanJob as any)?.enqueueRequestId || activeEditPlanJob.requestId || null,
+                    jobRequestId: nextJob.requestId || null,
+                } as AppEmbeddingEditPlanJobStatus;
+                setActiveEditPlanJob(nextJobWithIds);
 
-                if (isEditPlanJobTerminalStatus(nextJob.status)) {
-                    if (nextJob.status === "completed") {
-                        const completedProposal = extractCompletedEditPlanProposal(nextJob);
+                if (isEditPlanJobTerminalStatus(nextJobWithIds.status)) {
+                    if (nextJobWithIds.status === "completed") {
+                        const completedProposal = extractCompletedEditPlanProposal(nextJobWithIds);
                         if (!completedProposal) {
                             setActiveEditPlanJob({
-                                ...nextJob,
+                                ...nextJobWithIds,
                                 status: "failed",
                                 stage: "failed",
                                 error: {
@@ -975,7 +1008,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                     retryAfterSeconds: null,
                                 },
                             });
-                            setEditPlanApplyError(`The job finished, but the edit plan payload was missing.\nRequest ID: ${nextJob.requestId || activeEditPlanJob.requestId || "unknown"}\nJob ID: ${nextJob.jobId || activeEditPlanJob.jobId || "unknown"}`);
+                            setEditPlanApplyError(`The job finished, but the edit plan payload was missing.\nRequest ID: ${nextJobWithIds.requestId || activeEditPlanJob.requestId || "unknown"}\nJob ID: ${nextJobWithIds.jobId || activeEditPlanJob.jobId || "unknown"}`);
                             setEditPlanApplyStatusMessage("The job finished, but the proposal payload was missing.");
                             editPlanJobVersionRef.current += 1;
                             return;
@@ -985,7 +1018,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                         setEditPlanApplyError(null);
                         setEditPlanApplyStatusMessage(
                             completedProposal.needsMoreContext || !Array.isArray(completedProposal.files) || completedProposal.files.length === 0
-                                ? "The worker needs more context before I can continue."
+                                ? "The worker needs more context before I can continue. Try providing more details or files to help the worker complete your change request."
                                 : completedProposal.autoApplyAllowed === false
                                     ? "Proposal ready for review."
                                     : "I’m sending the apply request now.",
@@ -994,19 +1027,19 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                         return;
                     }
 
-                    if (nextJob.status === "expired") {
-                        setActiveEditPlanJob(nextJob);
+                    if (nextJobWithIds.status === "expired") {
+                        setActiveEditPlanJob(nextJobWithIds);
                         setEditPlanApplyError(
                             [
-                                nextJob.error && typeof nextJob.error === "object" && typeof nextJob.error.message === "string"
-                                    ? nextJob.error.message
-                                    : typeof nextJob.error === "string"
-                                        ? nextJob.error
+                                nextJobWithIds.error && typeof nextJobWithIds.error === "object" && typeof nextJobWithIds.error.message === "string"
+                                    ? nextJobWithIds.error.message
+                                    : typeof nextJobWithIds.error === "string"
+                                        ? nextJobWithIds.error
                                         : "The job expired before it could finish.",
-                                `Request ID: ${nextJob.requestId || activeEditPlanJob.requestId || "unknown"}`,
-                                `Job ID: ${nextJob.jobId || activeEditPlanJob.jobId || "unknown"}`,
-                                nextJob.error && typeof nextJob.error === "object" && typeof nextJob.error.retryAfterSeconds === "number"
-                                    ? `Retry after: ${nextJob.error.retryAfterSeconds}s`
+                                `Request ID: ${nextJobWithIds.requestId || activeEditPlanJob.requestId || "unknown"}`,
+                                `Job ID: ${nextJobWithIds.jobId || activeEditPlanJob.jobId || "unknown"}`,
+                                nextJobWithIds.error && typeof nextJobWithIds.error === "object" && typeof nextJobWithIds.error.retryAfterSeconds === "number"
+                                    ? `Retry after: ${nextJobWithIds.error.retryAfterSeconds}s`
                                     : null,
                             ].filter(Boolean).join("\n"),
                         );
@@ -1015,10 +1048,10 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                         return;
                     }
 
-                    if (isEditPlanJobExpiredByQueueAge(nextJob)) {
-                        const queuedAgeSeconds = getEditPlanJobQueueAgeSeconds(nextJob);
+                    if (isEditPlanJobExpiredByQueueAge(nextJobWithIds)) {
+                        const queuedAgeSeconds = getEditPlanJobQueueAgeSeconds(nextJobWithIds);
                         const expiredJob = {
-                            ...nextJob,
+                            ...nextJobWithIds,
                             status: "expired",
                             stage: "expired",
                             error: {
@@ -1030,29 +1063,38 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                             },
                         } as AppEmbeddingEditPlanJobStatus;
                         setActiveEditPlanJob(expiredJob);
-                        setEditPlanApplyError(`${expiredJob.error && typeof expiredJob.error === "object" && typeof expiredJob.error.message === "string" ? expiredJob.error.message : "This job expired before it could be picked up."}\nRequest ID: ${nextJob.requestId || activeEditPlanJob.requestId || "unknown"}\nJob ID: ${nextJob.jobId || activeEditPlanJob.jobId || "unknown"}`);
+                        setEditPlanApplyError(`${expiredJob.error && typeof expiredJob.error === "object" && typeof expiredJob.error.message === "string" ? expiredJob.error.message : "This job expired before it could be picked up."}\nRequest ID: ${nextJobWithIds.requestId || activeEditPlanJob.requestId || "unknown"}\nJob ID: ${nextJobWithIds.jobId || activeEditPlanJob.jobId || "unknown"}`);
                         setEditPlanApplyStatusMessage("The job expired before it could be picked up.");
                         editPlanJobVersionRef.current += 1;
                         return;
                     }
 
-                    if (nextJob.status === "failed") {
-                        setActiveEditPlanJob(nextJob);
+                    if (nextJobWithIds.status === "failed") {
+                        setActiveEditPlanJob(nextJobWithIds);
+                        const failedCode = nextJobWithIds.error && typeof nextJobWithIds.error === "object" && typeof nextJobWithIds.error.code === "string"
+                            ? nextJobWithIds.error.code.toUpperCase()
+                            : null;
+                        if (failedCode === "EMBEDDING_EDIT_PLAN_QUEUE_EXPIRED") {
+                            setEditPlanApplyStatusMessage("The job expired in queue before a worker could pick it up.");
+                        } else if (failedCode === "EMBEDDING_MEMORY_PRESSURE") {
+                            setEditPlanApplyStatusMessage("Worker capacity is temporarily constrained. Please retry in a moment.");
+                        } else {
+                            setEditPlanApplyStatusMessage("The apply step did not complete.");
+                        }
                         setEditPlanApplyError(
                             [
-                                nextJob.error && typeof nextJob.error === "object" && typeof nextJob.error.message === "string"
-                                    ? nextJob.error.message
-                                    : typeof nextJob.error === "string"
-                                        ? nextJob.error
+                                nextJobWithIds.error && typeof nextJobWithIds.error === "object" && typeof nextJobWithIds.error.message === "string"
+                                    ? nextJobWithIds.error.message
+                                    : typeof nextJobWithIds.error === "string"
+                                        ? nextJobWithIds.error
                                         : "The edit plan job failed.",
-                                `Request ID: ${nextJob.requestId || activeEditPlanJob.requestId || "unknown"}`,
-                                `Job ID: ${nextJob.jobId || activeEditPlanJob.jobId || "unknown"}`,
-                                nextJob.error && typeof nextJob.error === "object" && typeof nextJob.error.retryAfterSeconds === "number"
-                                    ? `Retry after: ${nextJob.error.retryAfterSeconds}s`
+                                `Request ID: ${nextJobWithIds.requestId || activeEditPlanJob.requestId || "unknown"}`,
+                                `Job ID: ${nextJobWithIds.jobId || activeEditPlanJob.jobId || "unknown"}`,
+                                nextJobWithIds.error && typeof nextJobWithIds.error === "object" && typeof nextJobWithIds.error.retryAfterSeconds === "number"
+                                    ? `Retry after: ${nextJobWithIds.error.retryAfterSeconds}s`
                                     : null,
                             ].filter(Boolean).join("\n"),
                         );
-                            setEditPlanApplyStatusMessage("The apply step did not complete.");
                         editPlanJobVersionRef.current += 1;
                         return;
                     }
@@ -2059,7 +2101,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
         const bubbleId = editPlanStatusMessageIdRef.current;
         const lastContent = editPlanStatusMessageTextRef.current;
 
-        if (editPlanStatusMessageJobKeyRef.current !== jobKey || !bubbleId || lastContent !== nextContent) {
+        if (editPlanStatusMessageJobKeyRef.current !== jobKey || !bubbleId) {
             const nextBubbleId = `edit_plan_status_${Date.now()}`;
             editPlanStatusMessageJobKeyRef.current = jobKey;
             editPlanStatusMessageIdRef.current = nextBubbleId;
@@ -2076,6 +2118,20 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                 },
             ]);
             return;
+        }
+
+        if (lastContent !== nextContent) {
+            editPlanStatusMessageTextRef.current = nextContent;
+            setMessages((prev) =>
+                prev.map((message) =>
+                    message.id === bubbleId
+                        ? {
+                            ...message,
+                            content: nextContent,
+                        }
+                        : message,
+                ),
+            );
         }
     }, [activeEditPlanJob, buildEditPlanStatusBubbleText]);
 
@@ -2124,6 +2180,18 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
     useLayoutEffect(() => {
         scrollToBottom();
     }, [messages, scrollToBottom]);
+
+    const renderedMessages = useMemo(() => {
+        return messages
+            .map((message, index) => ({ message, index }))
+            .sort((a, b) => {
+                const aTime = a.message.timestamp instanceof Date ? a.message.timestamp.getTime() : new Date(a.message.timestamp).getTime();
+                const bTime = b.message.timestamp instanceof Date ? b.message.timestamp.getTime() : new Date(b.message.timestamp).getTime();
+                if (aTime !== bTime) return aTime - bTime;
+                return a.index - b.index;
+            })
+            .map((entry) => entry.message);
+    }, [messages]);
 
     const selectedRestorePoint = restorePoints.find((item) => item.id === selectedRestorePointId) ?? restorePoints[0] ?? null;
 
@@ -3285,6 +3353,8 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
             };
             const effectiveCurrentFile = resolveFallbackCurrentFile(files, currentFile);
             const frameworkPrompt = buildProjectFrameworkPrompt(projectFramework, messageInput);
+            let scopeRecoveryDuringRun = false;
+            let scopeRecoveryRecoveredDuringRun = false;
             const isScopeErrorResult = <T,>(result: { status: number; code?: string | null }) => {
                 const code = String(result.code || "").trim().toUpperCase();
                 return result.status === 403 && (code === "MISSING_APP_SCOPE" || code === "INVALID_APP_SCOPE");
@@ -3292,6 +3362,8 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
             const recoverAppScopeForAiRequest = async <T,>(retryLabel: string, request: () => Promise<{ ok: boolean; status: number; code?: string | null } & T>): Promise<{ ok: boolean; status: number; code?: string | null } & T> => {
                 const firstResult = await request();
                 if (!isScopeErrorResult(firstResult)) return firstResult;
+
+                scopeRecoveryDuringRun = true;
 
                 const warmed = await bootstrapAppScope().catch(() => false);
                 dispatchAiAgentEvent("app_scope_recovery", {
@@ -3304,7 +3376,10 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
 
                 if (warmed) {
                     const retryResult = await request();
-                    if (!isScopeErrorResult(retryResult)) return retryResult;
+                    if (!isScopeErrorResult(retryResult)) {
+                        scopeRecoveryRecoveredDuringRun = true;
+                        return retryResult;
+                    }
                 }
 
                 notifyScopeRecoveryFailure(retryLabel);
@@ -3359,6 +3434,23 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                     "embedding search",
                     () => fetchEmbeddingSearch(searchRequestBody, requestHeaders),
                 );
+
+                if (scopeRecoveryDuringRun) {
+                    const scopeMessage = scopeRecoveryRecoveredDuringRun
+                        ? "I had to refresh this app session before searching files. Please run your request again so I can continue safely."
+                        : "This app session needs a fresh start. Please reopen the app in App Builder and try again.";
+                    setMessages((prev) => [
+                        ...prev,
+                        {
+                            id: `scope_recovery_search_${Date.now()}`,
+                            role: "assistant",
+                            content: scopeMessage,
+                            timestamp: new Date(),
+                            type: "text",
+                        },
+                    ]);
+                    return;
+                }
 
                 if (isScopeErrorResult(searchResult)) {
                     return;
@@ -3423,11 +3515,29 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
 
                 if (!searchResult.ok) {
                     if (searchResult.status === 409 && normalizedSearch.chunks.length === 0) {
+                        const normalizedSearchCode = String(searchResult.code || "").trim().toUpperCase();
+                        const retryAfterSeconds = (() => {
+                            const fromBody = Number((searchResult.data as any)?.retryAfterSeconds);
+                            if (Number.isFinite(fromBody) && fromBody >= 0) return Math.max(0, Math.ceil(fromBody));
+                            const fromHeader = Number(searchResult.retryAfter);
+                            if (Number.isFinite(fromHeader) && fromHeader >= 0) return Math.max(0, Math.ceil(fromHeader));
+                            return null;
+                        })();
+                        const reqId = searchResult.requestId || (searchResult.data as any)?.requestId || (searchResult.data as any)?.reqId || null;
+                        const retryHint = retryAfterSeconds !== null
+                            ? ` Please retry in about ${retryAfterSeconds} second${retryAfterSeconds === 1 ? "" : "s"}.`
+                            : " Please retry in a moment.";
+                        const softStopMessage = normalizedSearchCode === "EMBEDDING_CHUNK_FETCH_INCOMPLETE"
+                            ? `I couldn’t finish fetching enough file context for this request.${retryHint}`
+                            : "The file search is still updating. I don’t have grounded context yet, so try again in a moment.";
+
                         dispatchAiAgentEvent("search_request_soft_stop", {
                             appId,
                             userId: user?.uid || null,
                             requestId: searchRequestId,
                             status: searchResult.status,
+                            code: searchResult.code || null,
+                            retryAfterSeconds,
                             elapsedMs: searchElapsedMs,
                             chunksLength: 0,
                         });
@@ -3437,7 +3547,10 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                             {
                                 id: `search_note_${Date.now()}`,
                                 role: "assistant",
-                                content: "The file search is still updating. I don’t have grounded context yet, so try again in a moment.",
+                                content: [
+                                    softStopMessage,
+                                    reqId ? `Request ID: ${reqId}` : null,
+                                ].filter(Boolean).join("\n"),
                                 timestamp: new Date(),
                                 type: "text",
                             },
@@ -3689,7 +3802,16 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                 editPlanJobStableSignatureRef.current = "";
                 editPlanJobStableReadsRef.current = 0;
                 editPlanJobFetchFailureCountRef.current = 0;
-                setActiveEditPlanJob({ ...queuedJob, statusUrl: queuedStatusUrl, requestId: queuedJob.requestId || rawPlan.requestId || editPlanResult.requestId || null, jobId: queuedJob.jobId || rawPlan.jobId || null });
+                editPlanJobPollDelayOverrideMsRef.current = null;
+                const enqueueRequestId = rawPlan.requestId || editPlanResult.requestId || null;
+                setActiveEditPlanJob({
+                    ...queuedJob,
+                    statusUrl: queuedStatusUrl,
+                    requestId: queuedJob.requestId || enqueueRequestId,
+                    jobId: queuedJob.jobId || rawPlan.jobId || null,
+                    enqueueRequestId,
+                    jobRequestId: queuedJob.requestId || null,
+                } as AppEmbeddingEditPlanJobStatus);
                 setIsLoading(false);
                 return;
             }
@@ -4276,7 +4398,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                     </div>
                 ) : null}
 
-                {messages.map((message) => (
+                {renderedMessages.map((message) => (
                     <div
                         key={message.id}
                         className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
@@ -5567,22 +5689,22 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                 <p className="mt-1 text-sm leading-relaxed text-neutral-700">
                                     Something went wrong building website.
                                 </p>
-                                <div className="mt-3 flex flex-wrap items-center gap-2">
+                                <div className="mt-3 flex items-center gap-2">
                                     <button
                                         type="button"
                                         onClick={() => {
                                             onPreviewIssueFixRequest?.();
                                         }}
                                         disabled={!hasPreviewIssueFixRequest}
-                                        className="inline-flex items-center justify-center rounded-full border border-rose-200 bg-white px-3 py-1.5 text-xs font-semibold text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                        className="inline-flex shrink-0 items-center justify-center rounded-full border border-rose-200 bg-white px-3 py-1.5 text-xs font-semibold text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
                                     >
                                         Fix with AI
                                     </button>
-                                    <details className="shrink-0">
+                                    <details className="relative ml-auto shrink-0">
                                         <summary className="inline-flex cursor-pointer list-none items-center justify-center rounded-full border border-rose-200 bg-white p-2 text-rose-600 transition hover:bg-rose-50">
                                             <ChevronDown className="h-4 w-4" aria-hidden="true" />
                                         </summary>
-                                        <div className="mt-2 rounded-xl border border-rose-200 bg-white px-3 py-2 shadow-[0_10px_24px_rgba(244,63,94,0.08)] max-w-[100px]">
+                                        <div className="absolute right-0 z-20 mt-2 w-[min(28rem,calc(100vw-4rem))] max-w-[calc(100vw-4rem)] rounded-xl border border-rose-200 bg-white px-3 py-2 shadow-[0_10px_24px_rgba(244,63,94,0.08)]">
                                             <div className="space-y-2">
                                                 <p className="text-sm leading-6 text-neutral-700">
                                                     The preview ran into a problem, but you can still chat here to debug it or ask for help.
