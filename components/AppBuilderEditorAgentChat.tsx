@@ -161,6 +161,27 @@ type RestorePointDetail = {
     after?: Record<string, string>;
 };
 
+type EditHistoryRestorePoint = {
+    restorePointId: string;
+    touchedPaths: string[];
+    restorable: boolean;
+    summary: string;
+    appliedAt: number;
+    query: string;
+    currentPath: string | null;
+};
+
+type EditHistoryState = {
+    undoStack: EditHistoryRestorePoint[];
+    redoQueue: Array<{ query: string; currentPath: string | null }>;
+};
+
+type KeepUndoPromptState = {
+    restorePoint: EditHistoryRestorePoint;
+    skippedPaths: string[];
+    expiresAt: number;
+};
+
 type MigrationApplyFailure = {
     errorText: string;
     errorCode: string | null;
@@ -770,9 +791,15 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
     const [activeEditPlanJob, setActiveEditPlanJob] = useState<AppEmbeddingEditPlanJobStatus | null>(null);
     const [editPlanStatusMessageId, setEditPlanStatusMessageId] = useState<string | null>(null);
     const [showRestorePointsPanel, setShowRestorePointsPanel] = useState(false);
+    const [editHistory, setEditHistory] = useState<EditHistoryState>({ undoStack: [], redoQueue: [] });
+    const [keepUndoPrompt, setKeepUndoPrompt] = useState<KeepUndoPromptState | null>(null);
+    const [keepUndoError, setKeepUndoError] = useState<string | null>(null);
+    const [historyToast, setHistoryToast] = useState<string | null>(null);
     const lastAppliedEditPlanRef = useRef<AppEmbeddingEditPlanProposal | null>(null);
     const editPlanApplyIdempotencyKeyRef = useRef<string | null>(null);
     const applyPendingEditPlanInFlightRef = useRef(false);
+    const keepUndoTimeoutRef = useRef<number | null>(null);
+    const editPlanJobRequestMetaRef = useRef<Record<string, { query: string; currentPath: string | null; requestedAt: number }>>({});
 
     const [stagedBundles, setStagedBundles] = useState<StagedBundle[]>([]);
 
@@ -835,6 +862,34 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
     useEffect(() => {
         previewReadyRef.current = Boolean(previewReady);
     }, [previewReady]);
+
+    useEffect(() => {
+        if (keepUndoTimeoutRef.current) {
+            window.clearTimeout(keepUndoTimeoutRef.current);
+            keepUndoTimeoutRef.current = null;
+        }
+        if (!keepUndoPrompt || isRestoreBusy) return;
+
+        const msRemaining = Math.max(0, keepUndoPrompt.expiresAt - Date.now());
+        keepUndoTimeoutRef.current = window.setTimeout(() => {
+            pushRestorePointToUndoStack(keepUndoPrompt.restorePoint);
+            setKeepUndoPrompt(null);
+            setKeepUndoError(null);
+        }, msRemaining);
+
+        return () => {
+            if (keepUndoTimeoutRef.current) {
+                window.clearTimeout(keepUndoTimeoutRef.current);
+                keepUndoTimeoutRef.current = null;
+            }
+        };
+    }, [isRestoreBusy, keepUndoPrompt]);
+
+    useEffect(() => {
+        if (!historyToast) return;
+        const timer = window.setTimeout(() => setHistoryToast(null), 3200);
+        return () => window.clearTimeout(timer);
+    }, [historyToast]);
 
     const buildEditPlanStatusBubbleText = useCallback((job: AppEmbeddingEditPlanJobStatus): string => {
         const status = String(job.status || "queued").toLowerCase();
@@ -2236,13 +2291,21 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                     ? "The website update is running and the preview is refreshing."
                     : "The website was updated and the preview was refreshed."
             );
+            queueKeepUndoPrompt({
+                restorePointId,
+                touchedPaths: files.map((file) => file.path),
+                skippedPaths: [],
+                restorable: true,
+                summary: proposal.summary || "Edit applied",
+                query: lastEditPlanPromptRef.current || "",
+                currentPath: currentFile || null,
+            });
             upsertApplyMessage(
                 applyNeedsRebuild
                     ? "The website update is running and the preview is refreshing."
                     : "The website was updated and the updated files were synced.",
                 {
                     restorePointId,
-                    restoreActionLabel: "Undo",
                 },
             );
 
@@ -2259,7 +2322,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
             applyPendingEditPlanInFlightRef.current = false;
             setIsApplyingEditPlan(false);
         }
-    }, [appId, createRestorePointBeforeApply, fetchRestorePoints, pendingEditPlan, syncFilesFromServer, withCsrfHeaders]);
+    }, [appId, createRestorePointBeforeApply, currentFile, fetchRestorePoints, pendingEditPlan, syncFilesFromServer, withCsrfHeaders]);
 
     useEffect(() => {
         fetchRestorePoints();
@@ -2375,19 +2438,42 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
 
         const completedResult = extractCompletedEditPlanResult(activeEditPlanJob);
         const backendApplyResult = completedResult?.apply ?? null;
+        const requestMeta = editPlanJobRequestMetaRef.current[jobId]
+            || (activeEditPlanJob.requestId ? editPlanJobRequestMetaRef.current[`req:${activeEditPlanJob.requestId}`] : undefined)
+            || null;
 
         if (backendApplyResult && typeof backendApplyResult === "object") {
             // Backend applied as part of the job — surface the result directly.
             setEditPlanApplyLoaderMessage(null);
             void syncFilesFromServer({ applyToState: true }).catch(() => null);
 
+            const restorePointPayload = (backendApplyResult as any).restorePoint && typeof (backendApplyResult as any).restorePoint === "object"
+                ? (backendApplyResult as any).restorePoint
+                : null;
             const jobRestorePointId: string | null =
-                typeof (backendApplyResult as any).restorePoint?.restorePointId === "string"
-                    ? (backendApplyResult as any).restorePoint.restorePointId
+                typeof restorePointPayload?.restorePointId === "string"
+                    ? String(restorePointPayload.restorePointId).trim()
                     : null;
+            const jobRestorable = restorePointPayload?.restorable !== false;
+            const jobTouchedPaths = Array.isArray(restorePointPayload?.touchedPaths)
+                ? restorePointPayload.touchedPaths.map((path: unknown) => String(path || "").trim()).filter(Boolean)
+                : [];
+            const jobSkippedPaths = Array.isArray(restorePointPayload?.skippedPaths)
+                ? restorePointPayload.skippedPaths.map((path: unknown) => String(path || "").trim()).filter(Boolean)
+                : [];
             if (jobRestorePointId) {
                 setLastRestorePointId(jobRestorePointId);
                 void fetchRestorePoints().catch(() => null);
+
+                queueKeepUndoPrompt({
+                    restorePointId: jobRestorePointId,
+                    touchedPaths: jobTouchedPaths,
+                    skippedPaths: jobSkippedPaths,
+                    restorable: jobRestorable,
+                    summary: pendingEditPlan?.summary || (completedResult?.summary as string) || "Edit applied",
+                    query: requestMeta?.query || lastEditPlanPromptRef.current || "",
+                    currentPath: requestMeta?.currentPath || null,
+                });
             }
 
             const summary: string = pendingEditPlan?.summary
@@ -2412,7 +2498,6 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                         timestamp: new Date(),
                         type: "text" as const,
                         restorePointId: jobRestorePointId || undefined,
-                        restoreActionLabel: jobRestorePointId ? "Undo" : undefined,
                     },
                 ]);
             } else {
@@ -2437,9 +2522,12 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                         timestamp: new Date(),
                         type: "text" as const,
                         restorePointId: jobRestorePointId || undefined,
-                        restoreActionLabel: jobRestorePointId ? "Undo" : undefined,
                     },
                 ]);
+            }
+            delete editPlanJobRequestMetaRef.current[jobId];
+            if (activeEditPlanJob.requestId) {
+                delete editPlanJobRequestMetaRef.current[`req:${activeEditPlanJob.requestId}`];
             }
             return;
         }
@@ -2470,6 +2558,71 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
     }, [messages]);
 
     const selectedRestorePoint = restorePoints.find((item) => item.id === selectedRestorePointId) ?? restorePoints[0] ?? null;
+
+    const formatHistoryRelativeTime = useCallback((appliedAt: number): string => {
+        const deltaMs = Math.max(0, Date.now() - Math.max(0, appliedAt || 0));
+        const seconds = Math.floor(deltaMs / 1000);
+        if (seconds < 45) return "just now";
+        if (seconds < 120) return "1 min ago";
+        if (seconds < 3600) return `${Math.floor(seconds / 60)} min ago`;
+        if (seconds < 7200) return "1 hour ago";
+        if (seconds < 86_400) return `${Math.floor(seconds / 3600)} hours ago`;
+        return `${Math.floor(seconds / 86_400)} days ago`;
+    }, []);
+
+    const pushRestorePointToUndoStack = useCallback((restorePoint: EditHistoryRestorePoint) => {
+        setEditHistory((prev) => ({
+            ...prev,
+            undoStack: [
+                restorePoint,
+                ...prev.undoStack.filter((entry) => entry.restorePointId !== restorePoint.restorePointId),
+            ],
+        }));
+    }, []);
+
+    const queueKeepUndoPrompt = useCallback((input: {
+        restorePointId: string;
+        touchedPaths?: string[] | null;
+        skippedPaths?: string[] | null;
+        restorable?: boolean | null;
+        summary?: string | null;
+        query?: string | null;
+        currentPath?: string | null;
+    }) => {
+        const restorePointId = String(input.restorePointId || "").trim();
+        if (!restorePointId) return;
+
+        setKeepUndoError(null);
+
+        const restorePoint: EditHistoryRestorePoint = {
+            restorePointId,
+            touchedPaths: Array.isArray(input.touchedPaths)
+                ? Array.from(new Set(input.touchedPaths.map((path) => String(path || "").trim()).filter(Boolean)))
+                : [],
+            restorable: input.restorable !== false,
+            summary: String(input.summary || "Edit applied").trim() || "Edit applied",
+            appliedAt: Date.now(),
+            query: String(input.query || "").trim(),
+            currentPath: typeof input.currentPath === "string" && input.currentPath.trim() ? input.currentPath.trim() : null,
+        };
+
+        setKeepUndoPrompt({
+            restorePoint,
+            skippedPaths: Array.isArray(input.skippedPaths)
+                ? Array.from(new Set(input.skippedPaths.map((path) => String(path || "").trim()).filter(Boolean)))
+                : [],
+            expiresAt: Date.now() + 60_000,
+        });
+    }, []);
+
+    const getRestoreErrorMessage = useCallback((status: number, code: string | null | undefined, fallback: string): string => {
+        const normalized = String(code || "").trim().toUpperCase();
+        if (status === 404 || normalized === "RESTORE_POINT_NOT_FOUND") return "This restore point no longer exists.";
+        if (status === 409 || normalized === "RESTORE_POINT_NOT_RESTORABLE") return "Undo unavailable — one or more files were too large to snapshot.";
+        if (status === 401 || normalized === "UNAUTHORIZED") return "Your session expired. Please sign in again.";
+        if (status >= 500 || normalized === "REVERT_FAILED") return "Could not restore files. Please try again.";
+        return fallback || "Could not undo — try again.";
+    }, []);
 
     const formatRestorePointCreatedAt = useCallback((value: any): string => {
         if (!value) return "Just now";
@@ -3289,8 +3442,15 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
         }
     }, [enqueueSupabaseContinuationPrompt, existingSupabaseAnonKey, existingSupabaseProjectRef, existingSupabaseServiceRoleKey, pendingSupabaseFollowupPrompt, user?.uid, withCsrfHeaders]);
 
-    const applyRestorePoint = useCallback(async (restoreId: string, statusMessage?: string) => {
-        if (!restoreId || isRestoreBusy) return;
+    const applyRestorePoint = useCallback(async (
+        restoreId: string,
+        options?: {
+            statusMessage?: string;
+            redoQuery?: string | null;
+            redoCurrentPath?: string | null;
+        },
+    ): Promise<{ ok: boolean; errorMessage?: string }> => {
+        if (!restoreId || isRestoreBusy) return { ok: false, errorMessage: "Could not undo — try again." };
         setIsRestoreBusy(true);
 
         const previousFiles: { [path: string]: { content: string; lastModified: number } } = {};
@@ -3302,25 +3462,68 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
 
         try {
             const headers = await withCsrfHeaders();
-            const res = await fetchWithScopeRetry(
-                `/api/app-builder/${appId}/restore-points/${restoreId}/apply`,
-                { method: "POST", headers, body: JSON.stringify({}) },
-                { retryLabel: "apply restore point" }
-            );
-            const data = await res.json().catch(() => null);
-            if (!res.ok || !data?.ok) {
-                throw new Error(data?.error || "Failed to apply restore point");
+            const idToken = await user?.getIdToken?.().catch(() => null);
+            if (idToken) {
+                headers.Authorization = `Bearer ${idToken}`;
             }
 
-            const newId = typeof data?.newRestorePointId === "string" ? data.newRestorePointId : null;
+            const v1Res = await fetchWithScopeRetry(
+                `/api/v1/app-embeddings/restore-points/${encodeURIComponent(restoreId)}/revert`,
+                { method: "POST", headers, body: JSON.stringify({ appId }) },
+                { retryLabel: "revert restore point" }
+            );
+
+            let res = v1Res;
+            let data = await v1Res.json().catch(() => null);
+
+            // Backward-compatible fallback for environments that still use app-builder restore routes.
+            if (!v1Res.ok && v1Res.status === 404) {
+                res = await fetchWithScopeRetry(
+                    `/api/app-builder/${appId}/restore-points/${restoreId}/apply`,
+                    { method: "POST", headers, body: JSON.stringify({}) },
+                    { retryLabel: "apply restore point" }
+                );
+                data = await res.json().catch(() => null);
+            }
+
+            if (!res.ok || !data?.ok) {
+                const normalizedError = getRestoreErrorMessage(
+                    res.status,
+                    typeof data?.code === "string" ? data.code : null,
+                    typeof data?.error === "string" ? data.error : "Could not undo — try again.",
+                );
+                throw new Error(normalizedError);
+            }
+
+            const newId = typeof data?.newRestorePointId === "string"
+                ? data.newRestorePointId
+                : typeof data?.restorePointId === "string"
+                    ? data.restorePointId
+                    : null;
             if (newId) setLastRestorePointId(newId);
+
+            setEditHistory((prev) => {
+                const nextUndoStack = prev.undoStack.filter((entry) => entry.restorePointId !== restoreId);
+                const redoQuery = String(options?.redoQuery || "").trim();
+                const nextRedoQueue = redoQuery
+                    ? [{ query: redoQuery, currentPath: options?.redoCurrentPath || null }, ...prev.redoQueue]
+                    : prev.redoQueue;
+
+                return {
+                    undoStack: nextUndoStack,
+                    redoQueue: nextRedoQueue,
+                };
+            });
+            setKeepUndoPrompt((prev) => (prev?.restorePoint.restorePointId === restoreId ? null : prev));
+            setKeepUndoError(null);
+            setHistoryToast("Edit undone. Your project has been restored.");
 
             setMessages(prev => [
                 ...prev,
                 {
                     id: `restore_${Date.now()}`,
                     role: "assistant",
-                    content: `${statusMessage || "Applied restore point"}.` + (newId ? " (Redo available)" : ""),
+                    content: options?.statusMessage || "Edit undone. Your project has been restored.",
                     timestamp: new Date(),
                     type: "text",
                     restorePointId: newId || undefined,
@@ -3345,23 +3548,38 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
 
             if (onFilesReplace) onFilesReplace(restoredFiles);
 
+            if (typeof window !== "undefined") {
+                window.dispatchEvent(
+                    new CustomEvent("kloner:preview-force-fresh", {
+                        detail: { appId, reason: "restore-point-revert" },
+                    }),
+                );
+            }
+
+            if (data?.requiresRestart) {
+                setEditPlanApplyStatusMessage("Restore applied. Preview restart is required.");
+            }
+
             await fetchRestorePoints();
+            return { ok: true };
         } catch (err) {
             console.error("Apply restore point failed", err);
+            const errorMessage = String((err as any)?.message || "Could not undo — try again.");
             setMessages(prev => [
                 ...prev,
                 {
                     id: `restore_err_${Date.now()}`,
                     role: "assistant",
-                    content: "Sorry — I couldn't apply that restore point.",
+                    content: errorMessage,
                     timestamp: new Date(),
                     type: "text",
                 },
             ]);
+            return { ok: false, errorMessage };
         } finally {
             setIsRestoreBusy(false);
         }
-    }, [appId, fetchRestorePoints, fetchWithScopeRetry, files, isRestoreBusy, onFilesReplace, onRestoreApplied, syncFilesFromServer, withCsrfHeaders]);
+    }, [appId, fetchRestorePoints, fetchWithScopeRetry, files, getRestoreErrorMessage, isRestoreBusy, onFilesReplace, onRestoreApplied, syncFilesFromServer, user?.getIdToken, withCsrfHeaders]);
 
     const getStatusMessageForAction = useCallback((label?: string) => {
         const v = (label || "").toLowerCase();
@@ -3425,9 +3643,59 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
         }
     }, [appId, fetchRestorePoints, fetchWithScopeRetry, isRestoreBusy, withCsrfHeaders]);
 
+    const keepCurrentEdit = useCallback(() => {
+        if (!keepUndoPrompt) return;
+        pushRestorePointToUndoStack(keepUndoPrompt.restorePoint);
+        setKeepUndoPrompt(null);
+        setKeepUndoError(null);
+    }, [keepUndoPrompt, pushRestorePointToUndoStack]);
+
+    const undoCurrentEdit = useCallback(async () => {
+        if (!keepUndoPrompt) return;
+        if (!keepUndoPrompt.restorePoint.restorable) {
+            setKeepUndoError("Undo unavailable — one or more files were too large to snapshot.");
+            return;
+        }
+        setKeepUndoError(null);
+
+        const result = await applyRestorePoint(keepUndoPrompt.restorePoint.restorePointId, {
+            statusMessage: "Edit undone. Your project has been restored.",
+            redoQuery: keepUndoPrompt.restorePoint.query,
+            redoCurrentPath: keepUndoPrompt.restorePoint.currentPath,
+        });
+
+        if (result.ok) {
+            setKeepUndoPrompt(null);
+            return;
+        }
+
+        setKeepUndoError(result.errorMessage || "Could not undo — try again.");
+    }, [applyRestorePoint, keepUndoPrompt]);
+
+    const redoLastUndo = useCallback(async () => {
+        if (isLoading) return;
+        const item = editHistory.redoQueue[0];
+        if (!item || !String(item.query || "").trim()) return;
+
+        setEditHistory((prev) => ({
+            ...prev,
+            redoQueue: prev.redoQueue.slice(1),
+        }));
+        setHistoryToast("Redo queued. Re-running the previous edit request.");
+
+        await sendMessage({
+            forcedInput: item.query,
+            forcedCurrentPath: item.currentPath,
+        });
+    }, [editHistory.redoQueue, isLoading]);
+
     const undoLastChange = useCallback(() => {
         if (lastRestorePointId) {
-            applyRestorePoint(lastRestorePointId, "Undid last change");
+            void applyRestorePoint(lastRestorePointId, {
+                statusMessage: "Undid last change",
+                redoQuery: lastEditPlanPromptRef.current || "",
+                redoCurrentPath: currentFile || null,
+            });
             return;
         }
         if (checkpoints.length > 1) {
@@ -3438,10 +3706,11 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
             });
             setCheckpoints(prev => prev.slice(0, -1));
         }
-    }, [applyRestorePoint, checkpoints, lastRestorePointId, onFileEdit]);
+    }, [applyRestorePoint, checkpoints, currentFile, lastRestorePointId, onFileEdit]);
 
     const sendMessage = async (opts?: {
         forcedInput?: string;
+        forcedCurrentPath?: string | null;
         forcedCompileFixContext?: CompileErrorQuickFixContext;
         allowWhenChatDisabled?: boolean;
         hideUserMessage?: boolean;
@@ -3628,7 +3897,9 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                 "x-request-id": searchRequestId,
                 "x-client-request-id": searchRequestId,
             };
-            const effectiveCurrentFile = resolveFallbackCurrentFile(files, currentFile);
+            const effectiveCurrentFile = typeof opts?.forcedCurrentPath === "string"
+                ? (opts.forcedCurrentPath.trim() || null)
+                : resolveFallbackCurrentFile(files, currentFile);
             const frameworkPrompt = buildProjectFrameworkPrompt(projectFramework, messageInput);
             let scopeRecoveryDuringRun = false;
             let scopeRecoveryRecoveredDuringRun = false;
@@ -4081,11 +4352,23 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                 editPlanJobFetchFailureCountRef.current = 0;
                 editPlanJobPollDelayOverrideMsRef.current = null;
                 const enqueueRequestId = rawPlan.requestId || editPlanResult.requestId || null;
+                const queuedJobId = queuedJob.jobId || rawPlan.jobId || null;
+                const requestMeta = {
+                    query: messageInput,
+                    currentPath: effectiveCurrentFile || null,
+                    requestedAt: Date.now(),
+                };
+                if (queuedJobId) {
+                    editPlanJobRequestMetaRef.current[queuedJobId] = requestMeta;
+                }
+                if (enqueueRequestId) {
+                    editPlanJobRequestMetaRef.current[`req:${enqueueRequestId}`] = requestMeta;
+                }
                 setActiveEditPlanJob({
                     ...queuedJob,
                     statusUrl: queuedStatusUrl,
                     requestId: queuedJob.requestId || enqueueRequestId,
-                    jobId: queuedJob.jobId || rawPlan.jobId || null,
+                    jobId: queuedJobId,
                     enqueueRequestId,
                     jobRequestId: queuedJob.requestId || null,
                 } as AppEmbeddingEditPlanJobStatus);
@@ -4569,11 +4852,16 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                         onClick={() => setShowRestorePointsPanel((prev) => !prev)}
                         className="inline-flex items-center gap-1.5 rounded-full border border-neutral-200 bg-white px-3 py-1.5 text-xs font-medium text-neutral-700 shadow-sm transition hover:bg-neutral-50"
                         aria-expanded={showRestorePointsPanel}
-                        aria-label="Toggle restore points"
-                        title="Restore points"
+                        aria-label="Toggle edit history"
+                        title="Edit history"
                     >
                         <FileText className="h-3.5 w-3.5" />
-                        <span>Restore points</span>
+                        <span>Edit history</span>
+                        {editHistory.undoStack.length > 0 ? (
+                            <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-neutral-100 px-1.5 text-[10px] text-neutral-600">
+                                {editHistory.undoStack.length}
+                            </span>
+                        ) : null}
                         <ChevronDown className={`h-3.5 w-3.5 transition-transform ${showRestorePointsPanel ? "rotate-180" : ""}`} />
                     </button>
                     <button
@@ -4602,6 +4890,19 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                             <RotateCcw className="w-4 h-4" />
                         </button>
                     )}
+                    {editHistory.redoQueue.length > 0 ? (
+                        <button
+                            type="button"
+                            onClick={() => {
+                                void redoLastUndo();
+                            }}
+                            className="p-1 hover:bg-gray-200 rounded"
+                            title="Redo last undone edit"
+                            disabled={isRestoreBusy || isLoading}
+                        >
+                            <RefreshCw className="w-4 h-4" />
+                        </button>
+                    ) : null}
                 </div>
             </div>
 
@@ -4610,18 +4911,73 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                     <div className="absolute left-3 right-3 top-2 rounded-2xl border border-neutral-200 bg-white p-3 shadow-[0_20px_50px_rgba(15,23,42,0.12)]">
                         <div className="flex items-start justify-between gap-3">
                             <div>
-                                <div className="text-sm font-medium text-neutral-900">Restore points</div>
-                                <div className="mt-1 text-[11px] text-neutral-500">Open this when you need a checkpoint; it stays out of the way otherwise.</div>
+                                <div className="text-sm font-medium text-neutral-900">Edit History</div>
+                                <div className="mt-1 text-[11px] text-neutral-500">Restore any earlier edit, or redo the most recent undone request.</div>
                             </div>
                             <button
                                 type="button"
                                 onClick={() => setShowRestorePointsPanel(false)}
                                 className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-neutral-100 text-neutral-600 transition hover:bg-neutral-200"
-                                aria-label="Close restore points"
+                                aria-label="Close edit history"
                             >
                                 <X className="h-4 w-4" />
                             </button>
                         </div>
+                        <div className="mt-3 space-y-2">
+                            {editHistory.undoStack.length === 0 ? (
+                                <div className="min-w-0 rounded-lg border border-dashed border-[#F55F2A]/20 bg-[#FFF8F5] px-3 py-2 text-xs text-neutral-600">
+                                    No completed edit history yet.
+                                </div>
+                            ) : (
+                                editHistory.undoStack.map((entry) => (
+                                    <div key={entry.restorePointId} className="rounded-lg border border-neutral-200 bg-white px-3 py-2">
+                                        <div className="flex flex-wrap items-center justify-between gap-2">
+                                            <div className="min-w-0 flex-1">
+                                                <div className="truncate text-xs font-medium text-neutral-900">{entry.summary}</div>
+                                                <div className="mt-0.5 text-[11px] text-neutral-500">
+                                                    {formatHistoryRelativeTime(entry.appliedAt)}
+                                                    {entry.touchedPaths.length > 0 ? ` · ${entry.touchedPaths[0]}${entry.touchedPaths.length > 1 ? ` +${entry.touchedPaths.length - 1}` : ""}` : ""}
+                                                </div>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    void applyRestorePoint(entry.restorePointId, {
+                                                        statusMessage: "Edit undone. Your project has been restored.",
+                                                        redoQuery: entry.query,
+                                                        redoCurrentPath: entry.currentPath,
+                                                    });
+                                                }}
+                                                disabled={isRestoreBusy || !entry.restorable}
+                                                className="rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-xs font-medium text-neutral-700 shadow-sm transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                            >
+                                                Restore
+                                            </button>
+                                        </div>
+                                        {!entry.restorable ? (
+                                            <div className="mt-1 text-[11px] text-amber-700">Undo unavailable (file too large to snapshot).</div>
+                                        ) : null}
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                        {editHistory.redoQueue.length > 0 ? (
+                            <div className="mt-3 flex items-center justify-between gap-2 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2">
+                                <div className="text-[11px] text-neutral-600">You have {editHistory.redoQueue.length} redo request{editHistory.redoQueue.length > 1 ? "s" : ""} queued.</div>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        void redoLastUndo();
+                                    }}
+                                    disabled={isLoading || isRestoreBusy}
+                                    className="rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-xs font-medium text-neutral-700 shadow-sm transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                    Redo
+                                </button>
+                            </div>
+                        ) : null}
+                        <div className="mt-3 border-t border-neutral-100 pt-3">
+                            <div className="mb-2 text-[11px] text-neutral-500">Restore points</div>
                         <div className="mt-3 flex flex-wrap items-center gap-2">
                             {restorePoints.length > 1 ? (
                                 <select
@@ -4649,7 +5005,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                 </div>
                             )}
                             <button
-                                onClick={() => selectedRestorePoint && applyRestorePoint(selectedRestorePoint.id, "Applied restore point")}
+                                onClick={() => selectedRestorePoint && applyRestorePoint(selectedRestorePoint.id, { statusMessage: "Applied restore point" })}
                                 disabled={isRestoreBusy || !selectedRestorePoint}
                                 className="rounded-lg border border-neutral-300 bg-white px-3 py-2 text-xs font-medium text-neutral-700 shadow-sm transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50"
                             >
@@ -4663,6 +5019,55 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                 Keep
                             </button>
                         </div>
+                        </div>
+                    </div>
+                </div>
+            ) : null}
+
+            {historyToast ? (
+                <div className="mx-4 mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
+                    {historyToast}
+                </div>
+            ) : null}
+
+            {keepUndoPrompt ? (
+                <div className="mx-4 mt-3 rounded-2xl border border-emerald-200 bg-[linear-gradient(180deg,rgba(236,253,245,0.98),rgba(255,255,255,1))] px-4 py-3 shadow-[0_10px_24px_rgba(5,150,105,0.08)]">
+                    <div className="text-sm text-emerald-900">Edit applied to {keepUndoPrompt.restorePoint.touchedPaths[0] || "your project"}</div>
+                    <div className="mt-1 text-xs text-emerald-800">Looks good? You can undo this change at any time.</div>
+                    {keepUndoPrompt.restorePoint.restorable ? null : (
+                        <div className="mt-2 text-xs text-amber-700">
+                            Undo unavailable (file too large to snapshot).
+                        </div>
+                    )}
+                    {keepUndoPrompt.skippedPaths.length > 0 ? (
+                        <div className="mt-1 text-[11px] text-amber-700">
+                            Skipped files: {keepUndoPrompt.skippedPaths.slice(0, 3).join(", ")}{keepUndoPrompt.skippedPaths.length > 3 ? " ..." : ""}
+                        </div>
+                    ) : null}
+                    {keepUndoError ? (
+                        <div className="mt-2 text-xs text-rose-700">{keepUndoError}</div>
+                    ) : null}
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                        <button
+                            type="button"
+                            onClick={keepCurrentEdit}
+                            className="rounded-full border border-emerald-300 bg-white px-3 py-1.5 text-xs font-medium text-emerald-800 transition hover:bg-emerald-50"
+                            disabled={isRestoreBusy}
+                        >
+                            Keep Changes
+                        </button>
+                        {keepUndoPrompt.restorePoint.restorable ? (
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    void undoCurrentEdit();
+                                }}
+                                className="rounded-full border border-emerald-300 bg-white px-3 py-1.5 text-xs font-medium text-emerald-800 transition hover:bg-emerald-50"
+                                disabled={isRestoreBusy}
+                            >
+                                ↩ Undo Edit
+                            </button>
+                        ) : null}
                     </div>
                 </div>
             ) : null}
@@ -5057,12 +5462,11 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                     })()}
                                     <div className="flex flex-wrap items-center gap-2">
                                         <button
-                                            onClick={() =>
-                                                applyRestorePoint(
-                                                    message.restorePointId!,
-                                                    getStatusMessageForAction(message.restoreActionLabel)
-                                                )
-                                            }
+                                            onClick={() => {
+                                                void applyRestorePoint(message.restorePointId!, {
+                                                    statusMessage: getStatusMessageForAction(message.restoreActionLabel),
+                                                });
+                                            }}
                                             disabled={isRestoreBusy}
                                             className="px-2 py-1 text-xs bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50"
                                             title={message.restoreActionLabel || "Apply"}
