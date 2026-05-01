@@ -6478,7 +6478,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                         <button
                                             type="button"
                                             onClick={() => onPreviewIssueAction?.()}
-                                            className="inline-flex shrink-0 items-center rounded-full border border-neutral-200 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-900 transition hover:bg-neutral-50"
+                                            className="inline-flex shrink-0 items-center rounded-full border border-neutral-300 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-900 transition hover:bg-neutral-100"
                                         >
                                             {String(previewIssueActionLabel || "Refresh").trim() || "Refresh"}
                                         </button>
