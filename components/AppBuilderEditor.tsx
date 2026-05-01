@@ -6003,6 +6003,7 @@ export default function AppBuilderEditor({
                                     previewReady={previewMode !== "webcontainer" ? true : isWebPreviewReady}
                                     previewIssue={previewMode !== "webcontainer" ? null : (previewIssue || autoPreviewError || previewError)}
                                     previewIssueActionLabel={previewIssueActionLabel}
+                                    onPreviewIssueAction={() => void handleRefresh()}
                                     onPreviewIssueFixRequest={canFixPreviewIssueWithAi ? handlePreviewIssueFixRequest : undefined}
                                     onUserMessageSent={() => {
                                         appBuilderAiMessagesSentRef.current += 1;
@@ -6456,7 +6457,7 @@ export default function AppBuilderEditor({
                                                 <span className="kloner-dot" />
                                                 <span className="kloner-dot" />
                                             </div>
-                                            <div className="mt-6 w-full max-w-2xl px-6 py-2 text-left"><div className="text-sm text-black/60"><span>Hydrating files...</span></div></div>
+                                            <div className="mt-6 w-full max-w-2xl px-6 text-left"><div className="text-sm text-black/60"><span>Hydrating files...</span></div></div>
                                         </div>
                                     </div>
                                 )

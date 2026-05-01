@@ -112,6 +112,7 @@ type AppBuilderEditorAgentChatProps = {
     previewReady?: boolean;
     previewIssue?: string | null;
     previewIssueActionLabel?: string | null;
+    onPreviewIssueAction?: () => void;
     onPreviewIssueFixRequest?: () => void;
     onUserMessageSent?: () => void;
     welcomeContext?: {
@@ -547,7 +548,7 @@ function buildRestorePointDiffPreview(detail: RestorePointDetail | null | undefi
     return { before, after };
 }
 
-export default function AppBuilderEditorAgentChat({ appId, files, currentFile, onFileEdit, onFilesReplace, onRestoreApplied, creditError, previewReady, previewIssue, previewIssueActionLabel, onPreviewIssueFixRequest, onUserMessageSent, welcomeContext }: AppBuilderEditorAgentChatProps) {
+export default function AppBuilderEditorAgentChat({ appId, files, currentFile, onFileEdit, onFilesReplace, onRestoreApplied, creditError, previewReady, previewIssue, previewIssueActionLabel, onPreviewIssueAction, onPreviewIssueFixRequest, onUserMessageSent, welcomeContext }: AppBuilderEditorAgentChatProps) {
     const { user, userTier } = useAuth();
     const { showConfirm, showAlert } = useModal();
     const PRO_MONTHLY_PRICE_USD = Number.isFinite(Number(process.env.NEXT_PUBLIC_PRO_MONTHLY_PRICE_USD))
@@ -5165,7 +5166,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                         <div className="max-w-[82%] rounded-2xl border border-gray-200 bg-white p-3 shadow-[0_10px_24px_rgba(15,23,42,0.05)]">
                             <div className="flex items-center gap-2">
                                 <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-accent"></div>
-                                <span className="text-sm font-medium text-gray-700">Working on it</span>
+                                <span className="text-sm text-gray-700">Working on it</span>
                             </div>
                         </div>
                     </div>
@@ -5175,7 +5176,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                         <div className="max-w-[82%] rounded-2xl border border-gray-200 bg-white p-3 shadow-[0_10px_24px_rgba(15,23,42,0.05)]">
                             <div className="flex items-center gap-2">
                                 <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-accent"></div>
-                                <span className="text-sm font-medium text-gray-700">{editPlanApplyLoaderMessage}</span>
+                                <span className="text-sm text-gray-700">{editPlanApplyLoaderMessage}</span>
                             </div>
                         </div>
                     </div>
@@ -5987,15 +5988,19 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                             Fix with AI
                                         </button>
                                     ) : (
-                                        <span className="inline-flex shrink-0 items-center rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800">
+                                        <button
+                                            type="button"
+                                            onClick={() => onPreviewIssueAction?.()}
+                                            className="inline-flex shrink-0 items-center rounded-full border border-neutral-200 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-900 transition hover:bg-neutral-50"
+                                        >
                                             {String(previewIssueActionLabel || "Refresh").trim() || "Refresh"}
-                                        </span>
+                                        </button>
                                     )}
                                     <details className="relative ml-auto shrink-0">
                                         <summary className="inline-flex cursor-pointer list-none items-center justify-center rounded-full border border-rose-200 bg-white p-2 text-rose-600 transition hover:bg-rose-50">
                                             <ChevronDown className="h-4 w-4" aria-hidden="true" />
                                         </summary>
-                                        <div className="absolute right-0 z-20 mt-2 w-[min(28rem,calc(100vw-4rem))] max-w-[calc(100vw-4rem)] rounded-xl border border-rose-200 bg-white px-3 py-2 shadow-[0_10px_24px_rgba(244,63,94,0.08)]">
+                                        <div className="absolute right-0 z-20 bottom-full mb-2 w-[min(28rem,calc(100vw-4rem))] max-w-[calc(100vw-4rem)] rounded-xl border border-rose-200 bg-white px-3 py-2 shadow-[0_10px_24px_rgba(244,63,94,0.08)]">
                                             <div className="space-y-2">
                                                 <p className="text-sm leading-6 text-neutral-700">
                                                     The preview ran into a problem, but you can still chat here to debug it or ask for help.
