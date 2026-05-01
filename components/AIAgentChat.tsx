@@ -298,6 +298,13 @@ function renderTextWithLinks(text: string): React.ReactNode {
     });
 }
 
+function normalizeAssistantMessageText(value: string): string {
+    return String(value || "")
+        .replace(/\s+/g, " ")
+        .trim()
+        .toLowerCase();
+}
+
 function buildCompileFixPrefill(ctx: CompileErrorQuickFixContext): string {
     const immutableContext = {
         appId: ctx.appId,
@@ -535,11 +542,13 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
     const [isApplyingEditPlan, setIsApplyingEditPlan] = useState(false);
     const [editPlanApplyError, setEditPlanApplyError] = useState<string | null>(null);
     const [editPlanApplyStatusMessage, setEditPlanApplyStatusMessage] = useState<string | null>(null);
+    const [editPlanApplyLoaderMessage, setEditPlanApplyLoaderMessage] = useState<string | null>(null);
     const [activeEditPlanJob, setActiveEditPlanJob] = useState<AppEmbeddingEditPlanJobStatus | null>(null);
     const [editPlanStatusMessageId, setEditPlanStatusMessageId] = useState<string | null>(null);
     const [showRestorePointsPanel, setShowRestorePointsPanel] = useState(false);
     const lastAppliedEditPlanRef = useRef<AppEmbeddingEditPlanProposal | null>(null);
     const editPlanApplyIdempotencyKeyRef = useRef<string | null>(null);
+    const applyPendingEditPlanInFlightRef = useRef(false);
 
     const latestAssistantMessageId = useMemo(() => {
         for (let index = messages.length - 1; index >= 0; index -= 1) {
@@ -1511,6 +1520,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                             m.dbSetupStatus === "DISMISS"
                                 ? m.dbSetupStatus
                                 : undefined,
+                        editPlanRetryPrompt: typeof m.editPlanRetryPrompt === "string" ? m.editPlanRetryPrompt : undefined,
                     };
                 };
 
@@ -1542,6 +1552,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                                         type: msg.type === "code" || msg.type === "file-edit" ? msg.type : "text",
                                         restorePointId: typeof msg.restorePointId === "string" ? msg.restorePointId : undefined,
                                         restoreActionLabel: typeof msg.restoreActionLabel === "string" ? msg.restoreActionLabel : undefined,
+                                        editPlanRetryPrompt: typeof msg.editPlanRetryPrompt === "string" ? msg.editPlanRetryPrompt : undefined,
                                     })) as Message[];
 
                                 if (loaded.length) {
@@ -1561,6 +1572,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                                                     timestampMs: m.timestamp.getTime(),
                                                     restorePointId: m.restorePointId ?? null,
                                                     restoreActionLabel: m.restoreActionLabel ?? null,
+                                                    editPlanRetryPrompt: m.editPlanRetryPrompt ?? null,
                                                 })),
                                             }),
                                         },
@@ -1712,6 +1724,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
     );
 
     const applyPendingEditPlan = useCallback(async (proposalArg?: AppEmbeddingEditPlanProposal | null) => {
+        if (applyPendingEditPlanInFlightRef.current) return;
         const proposal = proposalArg ?? pendingEditPlan;
         if (!proposal) return;
         lastAppliedEditPlanRef.current = proposal;
@@ -1732,9 +1745,11 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
             return;
         }
 
+        applyPendingEditPlanInFlightRef.current = true;
         setIsApplyingEditPlan(true);
         setEditPlanApplyError(null);
         setEditPlanApplyStatusMessage(null);
+        setEditPlanApplyLoaderMessage("Applying changes...");
 
         const applyMessageId = `edit_plan_apply_${Date.now()}`;
         const upsertApplyMessage = (content: string, extra?: Partial<Message>) => {
@@ -1782,15 +1797,88 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                 : `${Date.now()}-${Math.random().toString(16).slice(2)}`);
             const applyResult = await applyEditPlanOps({ appId, files, code: null, idempotencyKey: applyIdempotencyKey }, headers);
             const applyData = applyResult.data;
+            const applyOutcome = String(applyData?.outcome || "").trim().toLowerCase();
+            const applyPhase = String(applyData?.phase || "").trim().toLowerCase();
+            const applyReplayed = Boolean(applyData?.replayed);
+            const contradictoryStatus = Boolean(applyData?.contradictoryStatus);
+            const expectedOps = typeof applyData?.expectedOps === "number" ? applyData.expectedOps : null;
+            const machineWrites = typeof (applyData as any)?.machine?.wrote === "number" ? (applyData as any).machine.wrote : null;
             const applyRetryAfterSeconds = typeof applyData?.retryAfterSeconds === "number" ? applyData.retryAfterSeconds : null;
             const applyRestartPending = Boolean(applyData?.restartPending || applyData?.queued || applyData?.outcome === "restart_pending");
-            const applyRestartTimedOut = Boolean(applyData?.outcome === "restart_timeout" || (applyResult.status === 504 && applyData?.retryable));
+            const applyRestartTimedOut = Boolean(applyOutcome === "timeout" || (applyResult.status === 504 && applyData?.retryable));
             const applyRestartConfirmed = Boolean(applyData?.restartConfirmed);
+            const applyRestartInProgress = applyRestartPending && !applyRestartConfirmed;
+
+            if (applyPhase === "accepted" || applyPhase === "applying_files" || applyPhase === "files_applied") {
+                setEditPlanApplyLoaderMessage("Applying changes...");
+            } else if (applyPhase === "restart_pending") {
+                setEditPlanApplyLoaderMessage("Queuing restart...");
+            } else if (applyPhase === "restarting" || applyRestartInProgress) {
+                setEditPlanApplyLoaderMessage("Restarting preview...");
+            }
+
+            if (applyReplayed) {
+                setEditPlanApplyError(null);
+                setEditPlanApplyStatusMessage("This update was already processed. No new apply was started.");
+                upsertApplyMessage("This update was already processed. No new apply was started.");
+                setEditPlanApplyLoaderMessage(null);
+                return;
+            }
+
+            if (contradictoryStatus) {
+                const warning = "Apply may not have taken effect on the preview machine. Please retry apply.";
+                setEditPlanApplyError(warning);
+                setEditPlanApplyStatusMessage(warning);
+                upsertApplyMessage(warning, {
+                    editPlanRetryPrompt: lastEditPlanPromptRef.current?.trim() || "Retry apply",
+                });
+                setEditPlanApplyLoaderMessage(null);
+                return;
+            }
+
+            if (applyData?.saved === false && !applyReplayed && (expectedOps === null || expectedOps > 0)) {
+                const writeFailure = machineWrites === 0
+                    ? "The apply request completed, but no files were written. Please retry apply."
+                    : "The apply request did not save all file changes. Please retry apply.";
+                setEditPlanApplyError(writeFailure);
+                setEditPlanApplyStatusMessage(writeFailure);
+                upsertApplyMessage(writeFailure, {
+                    editPlanRetryPrompt: lastEditPlanPromptRef.current?.trim() || "Retry apply",
+                });
+                setEditPlanApplyLoaderMessage(null);
+                return;
+            }
+
+            if (applyOutcome === "failed") {
+                const failedMessage = "The backend reported that apply failed. Please retry apply.";
+                setEditPlanApplyError(failedMessage);
+                setEditPlanApplyStatusMessage(failedMessage);
+                upsertApplyMessage(failedMessage, {
+                    editPlanRetryPrompt: lastEditPlanPromptRef.current?.trim() || "Retry apply",
+                });
+                setEditPlanApplyLoaderMessage(null);
+                return;
+            }
+
+            if (applyOutcome === "timeout") {
+                const timeoutMessage = "The apply request timed out before restart completed. Please retry in a moment.";
+                setEditPlanApplyError(null);
+                setEditPlanApplyStatusMessage(timeoutMessage);
+                upsertApplyMessage(timeoutMessage, {
+                    editPlanRetryPrompt: lastEditPlanPromptRef.current?.trim() || "Retry apply",
+                });
+                setEditPlanApplyLoaderMessage(null);
+                return;
+            }
 
             if (!applyResult.ok && !applyData?.retryable && !applyRestartTimedOut) {
                 const requestId = applyResult.requestId || proposal.requestId || null;
                 const code = applyResult.code || (applyResult.status === 409 ? "PATCH_RESOLUTION_FAILED" : null);
-                const errorText = String(applyResult.error || (applyData as any)?.error || "Failed to apply edit plan.");
+                const errorText = code === "PROXY_NOT_READY"
+                    ? "The preview proxy is not ready yet. Please retry in a moment."
+                    : code === "RESTART_ENQUEUE_FAILED"
+                        ? "The backend saved files but could not enqueue restart. Please retry apply."
+                        : String(applyResult.error || (applyData as any)?.error || "Failed to apply edit plan.");
                 setEditPlanApplyError(
                     [
                         "The backend could not apply this edit plan.",
@@ -1804,6 +1892,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                 upsertApplyMessage(`The apply request failed: ${errorText}`, {
                     editPlanRetryPrompt: lastEditPlanPromptRef.current?.trim() || "Retry apply",
                 });
+                setEditPlanApplyLoaderMessage(null);
                 return;
             }
 
@@ -1819,6 +1908,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                     editPlanRetryPrompt: lastEditPlanPromptRef.current?.trim() || "Retry apply",
                 });
 
+                setEditPlanApplyLoaderMessage(null);
                 return;
             }
 
@@ -1830,6 +1920,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                     proposal.needsRebuild,
             );
             if (applyNeedsRebuild) {
+                setEditPlanApplyLoaderMessage("Restarting preview...");
                 upsertApplyMessage("Files were saved. Preview restart is pending.");
 
                 void syncFilesFromServer({ applyToState: true }).catch(() => null);
@@ -1855,20 +1946,22 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
             const restartStatus = String(applyData?.restartStatus || applyData?.restart_status || "").trim().toLowerCase();
             const restartMessage = String(applyData?.restartMessage || applyData?.restart_message || "").trim();
             const restartTimedOut = Boolean(
-                applyData?.outcome === "restart_timeout" ||
+                applyOutcome === "timeout" ||
                 (applyData?.retryable && applyData?.saved !== true && !applyRestartConfirmed && !restartPending && restartStatus === "timeout")
             );
 
             if (restartTimedOut || restartPending) {
+                setEditPlanApplyLoaderMessage(restartPending ? "Queuing restart..." : null);
                 const restartContent = restartTimedOut
                     ? restartMessage || "The website update timed out while waiting for the restart to settle. Your files may already be saved."
-                    : restartMessage || "The website update is still restarting. Please try again in a moment.";
+                    : restartMessage || "The website update is still restarting.";
 
                 setEditPlanApplyError(null);
                 setEditPlanApplyStatusMessage(restartContent);
                 upsertApplyMessage(restartContent, {
                     editPlanRetryPrompt: lastEditPlanPromptRef.current?.trim() || "Retry apply",
                 });
+                setEditPlanApplyLoaderMessage(null);
                 return;
             }
 
@@ -1890,11 +1983,14 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
             if (!restartTimedOut && !restartPending) {
                 editPlanApplyIdempotencyKeyRef.current = null;
             }
+            setEditPlanApplyLoaderMessage(null);
         } catch (err: any) {
             setEditPlanApplyError(String(err?.message || "Failed to apply edit plan."));
             setEditPlanApplyStatusMessage(String(err?.message || "Failed to apply edit plan."));
             editPlanApplyIdempotencyKeyRef.current = null;
+            setEditPlanApplyLoaderMessage(null);
         } finally {
+            applyPendingEditPlanInFlightRef.current = false;
             setIsApplyingEditPlan(false);
         }
     }, [appId, createRestorePointBeforeApply, fetchRestorePoints, pendingEditPlan, runPostMigrationRefreshPipeline, syncFilesFromServer, withCsrfHeaders]);
@@ -1937,6 +2033,17 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
         const content = String(editPlanApplyStatusMessage || "").trim();
         if (!content) {
             editPlanApplyStatusBubbleTextRef.current = null;
+            return;
+        }
+
+        const normalizedContent = normalizeAssistantMessageText(content);
+        const recentAssistantMessages = [...messages]
+            .reverse()
+            .filter((message) => message.role === "assistant")
+            .slice(0, 6);
+
+        if (recentAssistantMessages.some((message) => normalizeAssistantMessageText(String(message.content || "")) === normalizedContent)) {
+            editPlanApplyStatusBubbleTextRef.current = content;
             return;
         }
 
@@ -1985,6 +2092,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                 supabaseContinuationStatus: m.supabaseContinuationStatus ?? null,
                 dbSetupPrompt: m.dbSetupPrompt ?? null,
                 dbSetupStatus: m.dbSetupStatus ?? null,
+                editPlanRetryPrompt: m.editPlanRetryPrompt ?? null,
             }));
 
         const encoder = typeof TextEncoder !== "undefined" ? new TextEncoder() : null;
@@ -4127,6 +4235,16 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                             <div className="flex items-center gap-2">
                                 <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-accent"></div>
                                 <span className="text-sm text-gray-600">Thinking...</span>
+                            </div>
+                        </div>
+                    </div>
+                )}
+                {editPlanApplyLoaderMessage && !isLoading && (
+                    <div className="flex justify-start">
+                        <div className="bg-white border border-gray-200 rounded-lg p-3 max-w-[80%]">
+                            <div className="flex items-center gap-2">
+                                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-accent"></div>
+                                <span className="text-sm text-gray-600">{editPlanApplyLoaderMessage}</span>
                             </div>
                         </div>
                     </div>

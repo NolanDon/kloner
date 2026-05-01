@@ -19,6 +19,7 @@ interface EditPlanJobStatusCardProps {
 
 export default function EditPlanJobStatusCard({ job, onDismiss, onRetry }: EditPlanJobStatusCardProps) {
     const status = String(job.status || "queued").toLowerCase();
+    const isActiveStatus = status === "queued" || status === "picked_up" || status === "working";
     const retryAfterSeconds = typeof (job.error as any)?.retryAfterSeconds === "number"
         ? (job.error as any).retryAfterSeconds
         : null;
@@ -30,6 +31,8 @@ export default function EditPlanJobStatusCard({ job, onDismiss, onRetry }: EditP
             : null;
     const showDevDetails = process.env.NODE_ENV !== "production";
     const proposal = job.result?.proposal ?? null;
+    const resultSummary = String(job.result?.summary || "").trim();
+    const resultNeedsMoreContext = job.result?.needsMoreContext === true;
     const proposalFiles = Array.isArray(proposal?.files) ? proposal.files : [];
     const proposalFileCount = typeof proposal?.fileCount === "number" && Number.isFinite(proposal.fileCount) ? proposal.fileCount : proposalFiles.length;
     const linesAdded = typeof proposal?.totalEstimatedLinesAdded === "number" && Number.isFinite(proposal.totalEstimatedLinesAdded) ? proposal.totalEstimatedLinesAdded : null;
@@ -66,6 +69,35 @@ export default function EditPlanJobStatusCard({ job, onDismiss, onRetry }: EditP
                     ) : null}
                 </div>
             </details>
+        </div>
+    ) : null;
+
+    const proposalLoadingSection = !proposalSection && isActiveStatus ? (
+        <div className="w-full rounded-3xl border border-neutral-200 bg-white/90 px-4 py-4 shadow-lg shadow-black/5">
+            <div className="flex items-center gap-2">
+                <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-neutral-300 border-t-neutral-700" aria-hidden="true" />
+                <span className="text-sm font-medium text-neutral-900">Preparing change summary...</span>
+            </div>
+            <p className="mt-2 text-xs text-neutral-500">Files changed will appear here as soon as the plan details are ready.</p>
+        </div>
+    ) : null;
+
+    const fallbackStatusSection = !proposalSection && !proposalLoadingSection ? (
+        <div className="w-full rounded-3xl border border-neutral-200 bg-white/90 px-4 py-4 shadow-lg shadow-black/5">
+            <div className="text-sm font-medium text-neutral-900">
+                {status === "completed"
+                    ? resultNeedsMoreContext
+                        ? "More context is needed before changes can be shown."
+                        : "Preparing change summary..."
+                    : status === "failed"
+                        ? "The change summary could not be prepared."
+                        : status === "expired"
+                            ? "This change request expired before the summary was ready."
+                            : "Preparing change summary..."}
+            </div>
+            <p className="mt-2 text-xs text-neutral-500">
+                {resultSummary || errorMessage || "This chat bubble will update here as soon as the edit-plan details are available."}
+            </p>
         </div>
     ) : null;
 
@@ -132,6 +164,8 @@ export default function EditPlanJobStatusCard({ job, onDismiss, onRetry }: EditP
     return (
         <div className="space-y-4 text-sm leading-relaxed text-neutral-700">
             <div className="min-w-0 space-y-3">
+                {proposalLoadingSection}
+                {fallbackStatusSection}
                 {proposalSection}
             </div>
 

@@ -1,7 +1,7 @@
 import "server-only";
 
 export const SIGNUP_BLOCKED_EMAIL_SUBSTRINGS = ["lulavcstreaming"] as const;
-export const SIGNUP_BLOCKED_IPS = ["179.251.112.179"] as const;
+export const SIGNUP_BLOCKED_IPS = ["179.251.112.179", "70.73.167.92"] as const;
 
 function normalizeEmail(email: string | null | undefined): string {
     return typeof email === "string" ? email.trim().toLowerCase() : "";
@@ -31,7 +31,7 @@ export function getSignupBlockDecision(input: { email?: string | null; ip?: stri
     if (isBlockedSignupEmail(input.email)) {
         return {
             blocked: true,
-            reason: "This signup is blocked.",
+            reason: "Unable to create an account right now.",
             matchedBy: "email",
         };
     }
@@ -39,7 +39,7 @@ export function getSignupBlockDecision(input: { email?: string | null; ip?: stri
     if (isBlockedSignupIp(input.ip)) {
         return {
             blocked: true,
-            reason: "This signup is blocked.",
+            reason: "Unable to create an account right now.",
             matchedBy: "ip",
         };
     }

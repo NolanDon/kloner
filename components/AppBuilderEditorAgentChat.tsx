@@ -303,6 +303,65 @@ function buildEditPlanJobStorageKey(appId: string): string {
     return `kloner:edit-plan-job:${appId}`;
 }
 
+function buildEditPlanJobStorageSnapshot(job: AppEmbeddingEditPlanJobStatus): AppEmbeddingEditPlanJobStatus {
+    const error = job.error && typeof job.error === "object"
+        ? {
+            code: typeof job.error.code === "string" ? job.error.code : undefined,
+            message: typeof job.error.message === "string" ? job.error.message : undefined,
+            retryAfterSeconds: typeof job.error.retryAfterSeconds === "number" ? job.error.retryAfterSeconds : undefined,
+        }
+        : job.error;
+
+    return {
+        status: job.status,
+        stage: job.stage ?? null,
+        progress: job.progress ?? null,
+        queueAgeSeconds: job.queueAgeSeconds ?? null,
+        queuedForSeconds: job.queuedForSeconds ?? null,
+        runningForSeconds: job.runningForSeconds ?? null,
+        leaseRemainingSeconds: job.leaseRemainingSeconds ?? null,
+        workerId: job.workerId ?? null,
+        attemptCount: job.attemptCount ?? null,
+        requestId: job.requestId ?? null,
+        jobId: job.jobId ?? null,
+        statusUrl: job.statusUrl ?? null,
+        queued: job.queued,
+        error,
+    };
+}
+
+function safeSetStorageItem(key: string, value: string): void {
+    try {
+        window.localStorage.setItem(key, value);
+    } catch {
+        // localStorage failed (quota exceeded or access error) – silently skip.
+        // We intentionally do not fall back to sessionStorage here because the
+        // session store can also be full, and the job will simply re-poll on
+        // next mount instead of crashing the dashboard.
+    }
+}
+
+function safeRemoveStorageItem(key: string): void {
+    try {
+        window.localStorage.removeItem(key);
+    } catch {
+        // ignore
+    }
+
+    try {
+        window.sessionStorage.removeItem(key);
+    } catch {
+        // ignore
+    }
+}
+
+function normalizeAssistantMessageText(value: string): string {
+    return String(value || "")
+        .replace(/\s+/g, " ")
+        .trim()
+        .toLowerCase();
+}
+
 const STARTER_PROMPTS = [
     "Improve the hero section with stronger hierarchy and clearer CTA.",
     "Tighten spacing and typography to make the layout feel more polished.",
@@ -692,11 +751,13 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
     const [isApplyingEditPlan, setIsApplyingEditPlan] = useState(false);
     const [editPlanApplyError, setEditPlanApplyError] = useState<string | null>(null);
     const [editPlanApplyStatusMessage, setEditPlanApplyStatusMessage] = useState<string | null>(null);
+    const [editPlanApplyLoaderMessage, setEditPlanApplyLoaderMessage] = useState<string | null>(null);
     const [activeEditPlanJob, setActiveEditPlanJob] = useState<AppEmbeddingEditPlanJobStatus | null>(null);
     const [editPlanStatusMessageId, setEditPlanStatusMessageId] = useState<string | null>(null);
     const [showRestorePointsPanel, setShowRestorePointsPanel] = useState(false);
     const lastAppliedEditPlanRef = useRef<AppEmbeddingEditPlanProposal | null>(null);
     const editPlanApplyIdempotencyKeyRef = useRef<string | null>(null);
+    const applyPendingEditPlanInFlightRef = useRef(false);
 
     const [stagedBundles, setStagedBundles] = useState<StagedBundle[]>([]);
 
@@ -718,6 +779,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
     const editPlanStatusMessageIdRef = useRef<string | null>(null);
     const editPlanStatusMessageTextRef = useRef<string | null>(null);
     const editPlanApplyStatusBubbleTextRef = useRef<string | null>(null);
+    const lastPreviewIssueChatFingerprintRef = useRef<string | null>(null);
     const previewIssueText = String(previewIssue || '').trim();
     const hasPreviewIssue = Boolean(previewIssueText);
     const showPreviewIssueDetails = process.env.NODE_ENV !== "production";
@@ -725,6 +787,33 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
     const hasPreviewIssueFixRequest = typeof onPreviewIssueFixRequest === "function";
 
     const didSyncSupabasePreviewEnvRef = useRef(false);
+
+    useEffect(() => {
+        if (!previewIssueText) {
+            lastPreviewIssueChatFingerprintRef.current = null;
+            return;
+        }
+
+        const normalized = previewIssueText.toLowerCase();
+        const isPhaseFailure = normalized.includes("timed out") || normalized.includes("restart") || normalized.includes("failed");
+        if (!isPhaseFailure) return;
+
+        const fingerprint = `${appId}:${normalized.slice(0, 240)}`;
+        if (lastPreviewIssueChatFingerprintRef.current === fingerprint) return;
+        lastPreviewIssueChatFingerprintRef.current = fingerprint;
+
+        setMessages((prev) => [
+            ...prev,
+            {
+                id: `preview_issue_${Date.now()}`,
+                role: "assistant",
+                content: "Preview restart failed or timed out. You can retry apply, or refresh/rebuild the preview.",
+                timestamp: new Date(),
+                type: "text",
+                editPlanRetryPrompt: lastEditPlanPromptRef.current?.trim() || "Retry apply",
+            },
+        ]);
+    }, [appId, previewIssueText]);
 
     useEffect(() => {
         previewReadyRef.current = Boolean(previewReady);
@@ -858,7 +947,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
     useEffect(() => {
         if (typeof window === "undefined" || !appId) return;
         const storageKey = buildEditPlanJobStorageKey(appId);
-        const raw = window.localStorage.getItem(storageKey);
+        const raw = window.localStorage.getItem(storageKey) || window.sessionStorage.getItem(storageKey);
         if (!raw) return;
         try {
             const parsed = JSON.parse(raw);
@@ -867,10 +956,10 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
             if (activeJob) {
                 setActiveEditPlanJob(activeJob);
             } else {
-                window.localStorage.removeItem(storageKey);
+                safeRemoveStorageItem(storageKey);
             }
         } catch {
-            window.localStorage.removeItem(storageKey);
+            safeRemoveStorageItem(storageKey);
         }
     }, [appId]);
 
@@ -879,12 +968,12 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
         const storageKey = buildEditPlanJobStorageKey(appId);
         if (activeEditPlanJob && activeEditPlanJob.statusUrl) {
             if (isActiveEditPlanJobStatus(activeEditPlanJob.status)) {
-                window.localStorage.setItem(storageKey, JSON.stringify(activeEditPlanJob));
+                safeSetStorageItem(storageKey, JSON.stringify(buildEditPlanJobStorageSnapshot(activeEditPlanJob)));
             } else {
-                window.localStorage.removeItem(storageKey);
+                safeRemoveStorageItem(storageKey);
             }
         } else {
-            window.localStorage.removeItem(storageKey);
+            safeRemoveStorageItem(storageKey);
         }
     }, [activeEditPlanJob, appId]);
 
@@ -996,8 +1085,11 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
 
                 if (isEditPlanJobTerminalStatus(nextJobWithIds.status)) {
                     if (nextJobWithIds.status === "completed") {
+                        const completedResult = extractCompletedEditPlanResult(nextJobWithIds);
                         const completedProposal = extractCompletedEditPlanProposal(nextJobWithIds);
-                        if (!completedProposal) {
+                        const backendApplyResult = completedResult?.apply ?? null;
+
+                        if (!completedProposal && !backendApplyResult) {
                             setActiveEditPlanJob({
                                 ...nextJobWithIds,
                                 status: "failed",
@@ -1010,19 +1102,25 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                             });
                             setEditPlanApplyError(`The job finished, but the edit plan payload was missing.\nRequest ID: ${nextJobWithIds.requestId || activeEditPlanJob.requestId || "unknown"}\nJob ID: ${nextJobWithIds.jobId || activeEditPlanJob.jobId || "unknown"}`);
                             setEditPlanApplyStatusMessage("The job finished, but the proposal payload was missing.");
+                            setEditPlanApplyLoaderMessage(null);
                             editPlanJobVersionRef.current += 1;
                             return;
                         }
 
                         setPendingEditPlan(completedProposal);
                         setEditPlanApplyError(null);
-                        setEditPlanApplyStatusMessage(
-                            completedProposal.needsMoreContext || !Array.isArray(completedProposal.files) || completedProposal.files.length === 0
-                                ? "The worker needs more context before I can continue. Try providing more details or files to help the worker complete your change request."
-                                : completedProposal.autoApplyAllowed === false
-                                    ? "Proposal ready for review."
-                                    : "I’m sending the apply request now.",
-                        );
+                        if (backendApplyResult) {
+                            // Backend already applied — the apply-result effect will surface the outcome.
+                            setEditPlanApplyStatusMessage(null);
+                        } else {
+                            setEditPlanApplyStatusMessage(
+                                completedProposal!.needsMoreContext || !Array.isArray(completedProposal!.files) || completedProposal!.files.length === 0
+                                    ? "The worker needs more context before I can continue. Try providing more details or files to help the worker complete your change request."
+                                    : completedProposal!.autoApplyAllowed === false
+                                        ? "Proposal ready for review."
+                                        : "I'm uploading the changes now.",
+                            );
+                        }
                         editPlanJobVersionRef.current += 1;
                         return;
                     }
@@ -1629,6 +1727,8 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                             m.dbSetupStatus === "DISMISS"
                                 ? m.dbSetupStatus
                                 : undefined,
+                        editPlanRetryPrompt: typeof m.editPlanRetryPrompt === "string" ? m.editPlanRetryPrompt : undefined,
+                        editPlanRebuildPrompt: typeof m.editPlanRebuildPrompt === "boolean" ? m.editPlanRebuildPrompt : undefined,
                     };
                 };
 
@@ -1660,6 +1760,8 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                         type: msg.type === "code" || msg.type === "file-edit" ? msg.type : "text",
                                         restorePointId: typeof msg.restorePointId === "string" ? msg.restorePointId : undefined,
                                         restoreActionLabel: typeof msg.restoreActionLabel === "string" ? msg.restoreActionLabel : undefined,
+                                        editPlanRetryPrompt: typeof msg.editPlanRetryPrompt === "string" ? msg.editPlanRetryPrompt : undefined,
+                                        editPlanRebuildPrompt: typeof msg.editPlanRebuildPrompt === "boolean" ? msg.editPlanRebuildPrompt : undefined,
                                     })) as Message[];
 
                                 if (loaded.length) {
@@ -1679,6 +1781,8 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                                     timestampMs: m.timestamp.getTime(),
                                                     restorePointId: m.restorePointId ?? null,
                                                     restoreActionLabel: m.restoreActionLabel ?? null,
+                                                    editPlanRetryPrompt: m.editPlanRetryPrompt ?? null,
+                                                    editPlanRebuildPrompt: m.editPlanRebuildPrompt ?? null,
                                                 })),
                                             }),
                                         },
@@ -1883,6 +1987,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
     );
 
     const applyPendingEditPlan = useCallback(async (proposalArg?: AppEmbeddingEditPlanProposal | null) => {
+        if (applyPendingEditPlanInFlightRef.current) return;
         const proposal = proposalArg ?? pendingEditPlan;
         if (!proposal) return;
         lastAppliedEditPlanRef.current = proposal;
@@ -1903,9 +2008,11 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
             return;
         }
 
+        applyPendingEditPlanInFlightRef.current = true;
         setIsApplyingEditPlan(true);
         setEditPlanApplyError(null);
         setEditPlanApplyStatusMessage(null);
+        setEditPlanApplyLoaderMessage("Applying changes...");
 
         const applyMessageId = `edit_plan_apply_${Date.now()}`;
         const upsertApplyMessage = (content: string, extra?: Partial<Message>) => {
@@ -1953,15 +2060,88 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                 : `${Date.now()}-${Math.random().toString(16).slice(2)}`);
             const applyResult = await applyEditPlanOps({ appId, files, code: null, idempotencyKey: applyIdempotencyKey }, headers);
             const applyData = applyResult.data;
+            const applyOutcome = String(applyData?.outcome || "").trim().toLowerCase();
+            const applyPhase = String(applyData?.phase || "").trim().toLowerCase();
+            const applyReplayed = Boolean(applyData?.replayed);
+            const contradictoryStatus = Boolean(applyData?.contradictoryStatus);
+            const expectedOps = typeof applyData?.expectedOps === "number" ? applyData.expectedOps : null;
+            const machineWrites = typeof (applyData as any)?.machine?.wrote === "number" ? (applyData as any).machine.wrote : null;
             const applyRetryAfterSeconds = typeof applyData?.retryAfterSeconds === "number" ? applyData.retryAfterSeconds : null;
             const applyRestartPending = Boolean(applyData?.restartPending || applyData?.queued || applyData?.outcome === "restart_pending");
-            const applyRestartTimedOut = Boolean(applyData?.outcome === "restart_timeout" || (applyResult.status === 504 && applyData?.retryable));
+            const applyRestartTimedOut = Boolean(applyOutcome === "timeout" || (applyResult.status === 504 && applyData?.retryable));
             const applyRestartConfirmed = Boolean(applyData?.restartConfirmed);
+            const applyRestartInProgress = applyRestartPending && !applyRestartConfirmed;
+
+            if (applyPhase === "accepted" || applyPhase === "applying_files" || applyPhase === "files_applied") {
+                setEditPlanApplyLoaderMessage("Applying changes...");
+            } else if (applyPhase === "restart_pending") {
+                setEditPlanApplyLoaderMessage("Queuing restart...");
+            } else if (applyPhase === "restarting" || applyRestartInProgress) {
+                setEditPlanApplyLoaderMessage("Restarting preview...");
+            }
+
+            if (applyReplayed) {
+                setEditPlanApplyError(null);
+                setEditPlanApplyStatusMessage("This update was already processed. No new apply was started.");
+                upsertApplyMessage("This update was already processed. No new apply was started.");
+                setEditPlanApplyLoaderMessage(null);
+                return;
+            }
+
+            if (contradictoryStatus) {
+                const warning = "Apply may not have taken effect on the preview machine. Please retry apply.";
+                setEditPlanApplyError(warning);
+                setEditPlanApplyStatusMessage(warning);
+                upsertApplyMessage(warning, {
+                    editPlanRetryPrompt: lastEditPlanPromptRef.current?.trim() || "Retry apply",
+                });
+                setEditPlanApplyLoaderMessage(null);
+                return;
+            }
+
+            if (applyData?.saved === false && !applyReplayed && (expectedOps === null || expectedOps > 0)) {
+                const writeFailure = machineWrites === 0
+                    ? "The apply request completed, but no files were written. Please retry apply."
+                    : "The apply request did not save all file changes. Please retry apply.";
+                setEditPlanApplyError(writeFailure);
+                setEditPlanApplyStatusMessage(writeFailure);
+                upsertApplyMessage(writeFailure, {
+                    editPlanRetryPrompt: lastEditPlanPromptRef.current?.trim() || "Retry apply",
+                });
+                setEditPlanApplyLoaderMessage(null);
+                return;
+            }
+
+            if (applyOutcome === "failed") {
+                const failedMessage = "The backend reported that apply failed. Please retry apply.";
+                setEditPlanApplyError(failedMessage);
+                setEditPlanApplyStatusMessage(failedMessage);
+                upsertApplyMessage(failedMessage, {
+                    editPlanRetryPrompt: lastEditPlanPromptRef.current?.trim() || "Retry apply",
+                });
+                setEditPlanApplyLoaderMessage(null);
+                return;
+            }
+
+            if (applyOutcome === "timeout") {
+                const timeoutMessage = "The apply request timed out before restart completed. Please retry in a moment.";
+                setEditPlanApplyError(null);
+                setEditPlanApplyStatusMessage(timeoutMessage);
+                upsertApplyMessage(timeoutMessage, {
+                    editPlanRetryPrompt: lastEditPlanPromptRef.current?.trim() || "Retry apply",
+                });
+                setEditPlanApplyLoaderMessage(null);
+                return;
+            }
 
             if (!applyResult.ok && !applyData?.retryable && !applyRestartTimedOut) {
                 const requestId = applyResult.requestId || proposal.requestId || null;
                 const code = applyResult.code || (applyResult.status === 409 ? "PATCH_RESOLUTION_FAILED" : null);
-                const errorText = String(applyResult.error || (applyData as any)?.error || "Failed to apply edit plan.");
+                const errorText = code === "PROXY_NOT_READY"
+                    ? "The preview proxy is not ready yet. Please retry in a moment."
+                    : code === "RESTART_ENQUEUE_FAILED"
+                        ? "The backend saved files but could not enqueue restart. Please retry apply."
+                        : String(applyResult.error || (applyData as any)?.error || "Failed to apply edit plan.");
                 setEditPlanApplyError(
                     [
                         "The backend could not apply this edit plan.",
@@ -1975,6 +2155,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                 upsertApplyMessage(`The apply request failed: ${errorText}`, {
                     editPlanRetryPrompt: lastEditPlanPromptRef.current?.trim() || "Retry apply",
                 });
+                setEditPlanApplyLoaderMessage(null);
                 return;
             }
 
@@ -1990,6 +2171,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                     editPlanRetryPrompt: lastEditPlanPromptRef.current?.trim() || "Retry apply",
                 });
 
+                setEditPlanApplyLoaderMessage(null);
                 return;
             }
 
@@ -2001,6 +2183,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                     proposal.needsRebuild,
             );
             if (applyNeedsRebuild) {
+                setEditPlanApplyLoaderMessage("Restarting preview...");
                 upsertApplyMessage("Files were saved. Preview restart is pending.");
 
                 void syncFilesFromServer({ applyToState: true }).catch(() => null);
@@ -2026,14 +2209,15 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
             const restartStatus = String(applyData?.restartStatus || applyData?.restart_status || "").trim().toLowerCase();
             const restartMessage = String(applyData?.restartMessage || applyData?.restart_message || "").trim();
             const restartTimedOut = Boolean(
-                applyData?.outcome === "restart_timeout" ||
+                applyOutcome === "timeout" ||
                 (applyData?.retryable && applyData?.saved !== true && !applyRestartConfirmed && !restartPending && restartStatus === "timeout")
             );
 
             if (restartTimedOut || restartPending) {
+                setEditPlanApplyLoaderMessage(restartPending ? "Queuing restart..." : null);
                 const restartContent = restartTimedOut
                     ? restartMessage || "The website update timed out while waiting for the restart to settle. Your files may already be saved."
-                    : restartMessage || "The website update is still restarting. Please try again in a moment.";
+                    : restartMessage || "The website update is still restarting.";
 
                 setEditPlanApplyError(null);
                 setEditPlanApplyStatusMessage(restartContent);
@@ -2041,6 +2225,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                     editPlanRetryPrompt: lastEditPlanPromptRef.current?.trim() || "Retry apply",
                     editPlanRebuildPrompt: restartTimedOut,
                 });
+                setEditPlanApplyLoaderMessage(null);
                 return;
             }
 
@@ -2062,11 +2247,14 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
             if (!restartTimedOut && !restartPending) {
                 editPlanApplyIdempotencyKeyRef.current = null;
             }
+            setEditPlanApplyLoaderMessage(null);
         } catch (err: any) {
             setEditPlanApplyError(String(err?.message || "Failed to apply edit plan."));
             setEditPlanApplyStatusMessage(String(err?.message || "Failed to apply edit plan."));
             editPlanApplyIdempotencyKeyRef.current = null;
+            setEditPlanApplyLoaderMessage(null);
         } finally {
+            applyPendingEditPlanInFlightRef.current = false;
             setIsApplyingEditPlan(false);
         }
     }, [appId, createRestorePointBeforeApply, fetchRestorePoints, pendingEditPlan, syncFilesFromServer, withCsrfHeaders]);
@@ -2142,6 +2330,17 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
             return;
         }
 
+        const normalizedContent = normalizeAssistantMessageText(content);
+        const recentAssistantMessages = [...messages]
+            .reverse()
+            .filter((message) => message.role === "assistant")
+            .slice(0, 6);
+
+        if (recentAssistantMessages.some((message) => normalizeAssistantMessageText(String(message.content || "")) === normalizedContent)) {
+            editPlanApplyStatusBubbleTextRef.current = content;
+            return;
+        }
+
         if (messages.some((message) => String(message.id || "").startsWith("edit_plan_apply_status_") && String(message.content || "").trim() === content)) {
             editPlanApplyStatusBubbleTextRef.current = content;
             return;
@@ -2213,7 +2412,6 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
         const id = String(message.id || "");
         return ![
             "edit_plan_status_",
-            "edit_plan_apply_status_",
             "mig_progress_",
             "staged_",
             "creating_project_",
@@ -2244,6 +2442,8 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                 supabaseContinuationStatus: m.supabaseContinuationStatus ?? null,
                 dbSetupPrompt: m.dbSetupPrompt ?? null,
                 dbSetupStatus: m.dbSetupStatus ?? null,
+                editPlanRetryPrompt: m.editPlanRetryPrompt ?? null,
+                editPlanRebuildPrompt: m.editPlanRebuildPrompt ?? null,
             }));
 
         const encoder = typeof TextEncoder !== "undefined" ? new TextEncoder() : null;
@@ -4890,6 +5090,16 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                             <div className="flex items-center gap-2">
                                 <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-accent"></div>
                                 <span className="text-sm font-medium text-gray-700">Working on it</span>
+                            </div>
+                        </div>
+                    </div>
+                )}
+                {editPlanApplyLoaderMessage && !isLoading && (
+                    <div className="flex justify-start">
+                        <div className="max-w-[82%] rounded-2xl border border-gray-200 bg-white p-3 shadow-[0_10px_24px_rgba(15,23,42,0.05)]">
+                            <div className="flex items-center gap-2">
+                                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-accent"></div>
+                                <span className="text-sm font-medium text-gray-700">{editPlanApplyLoaderMessage}</span>
                             </div>
                         </div>
                     </div>

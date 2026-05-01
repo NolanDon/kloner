@@ -3027,12 +3027,46 @@ export default function AppBuilderEditor({
 
                 const data = await res.json().catch(() => ({} as any));
                 const apply = normalizePreviewApplyResponse(data, res.status, res.headers.get("retry-after"));
+                const replayedApply = Boolean(apply.replayed);
+                const contradictoryStatus = Boolean(apply.contradictoryStatus);
+                const expectedOps = typeof apply.expectedOps === "number" ? apply.expectedOps : null;
                 const restartPending = Boolean(apply.restartPending || apply.queued || apply.outcome === "restart_pending");
-                const restartTimedOut = Boolean(apply.outcome === "restart_timeout" || (res.status === 504 && apply.retryable));
+                const restartTimedOut = Boolean(apply.outcome === "timeout" || (res.status === 504 && apply.retryable));
                 const retryAfterSeconds = typeof apply.retryAfterSeconds === "number" ? apply.retryAfterSeconds : null;
                 const restartMessage = String(apply.restartMessage || "").trim();
                 const needsRestart = Boolean(apply.requiresRestart || apply.requiresRebuild || apply.needsRebuild || apply.touchesPublicAssets);
                 const retryableApply = Boolean(apply.retryable || restartTimedOut);
+
+                if (replayedApply) {
+                    applyInFlightRef.current = false;
+                    return;
+                }
+
+                if (contradictoryStatus) {
+                    for (const p of paths) {
+                        if (queued[p] !== undefined) applyQueuedRef.current[p] = queued[p];
+                    }
+                    if (interactive) {
+                        void showAlert(
+                            "Apply may not have taken effect on the preview machine. Please retry in a moment.",
+                            "Live update",
+                        );
+                    }
+                    return;
+                }
+
+                if (apply.saved === false && (expectedOps === null || expectedOps > 0)) {
+                    for (const p of paths) {
+                        if (queued[p] !== undefined) applyQueuedRef.current[p] = queued[p];
+                    }
+                    if (interactive) {
+                        void showAlert(
+                            "The backend reported that file writes did not complete. Please retry apply.",
+                            "Live update",
+                        );
+                    }
+                    return;
+                }
 
                 if (!res.ok || !apply.ok) {
                     if (retryableApply) {
@@ -3158,7 +3192,12 @@ export default function AppBuilderEditor({
                     const shouldAlert = interactive || now - lastApplyAlertAtRef.current > 15000;
                     if (shouldAlert) {
                         lastApplyAlertAtRef.current = now;
-                        const msg = String((data as any)?.error || "The preview could not be updated right now.");
+                        const backendCode = String((data as any)?.code || apply.code || "").trim().toUpperCase();
+                        const msg = backendCode === "PROXY_NOT_READY"
+                            ? "The preview proxy is not ready yet. Please retry in a moment."
+                            : backendCode === "RESTART_ENQUEUE_FAILED"
+                                ? "The backend saved files but could not enqueue restart. Please retry apply."
+                                : String((data as any)?.error || "The preview could not be updated right now.");
                         void showAlert(
                             `${msg}\n\nYour changes were kept, and you can try Refresh in a moment.`,
                             "Live update",
@@ -3201,7 +3240,7 @@ export default function AppBuilderEditor({
 
                 // Notify the runner that an apply finished. The runner will do a delayed hard reload
                 // only if HMR websocket is blocked/unknown (prevents "reload too early" issues).
-                if (restartPending || apply.saved || apply.restartConfirmed || apply.outcome === "saved") {
+                if (!replayedApply && (restartPending || apply.saved || apply.restartConfirmed || apply.outcome === "saved")) {
                     setApplyCompleteKey((k) => k + 1);
                 }
 
@@ -3366,10 +3405,37 @@ export default function AppBuilderEditor({
 
                 const data = await res.json().catch(() => ({} as any));
                 const apply = normalizePreviewApplyResponse(data, res.status, res.headers.get("retry-after"));
+                const replayedApply = Boolean(apply.replayed);
+                const contradictoryStatus = Boolean(apply.contradictoryStatus);
+                const expectedOps = typeof apply.expectedOps === "number" ? apply.expectedOps : null;
                 const restartPending = Boolean(apply.restartPending || apply.queued || apply.outcome === "restart_pending");
-                const restartTimedOut = Boolean(apply.outcome === "restart_timeout" || (res.status === 504 && apply.retryable));
+                const restartTimedOut = Boolean(apply.outcome === "timeout" || (res.status === 504 && apply.retryable));
                 const retryAfterSeconds = typeof apply.retryAfterSeconds === "number" ? apply.retryAfterSeconds : null;
                 const retryableApply = Boolean(apply.retryable || restartTimedOut);
+
+                if (replayedApply) {
+                    continue;
+                }
+
+                if (contradictoryStatus) {
+                    if (interactive) {
+                        void showAlert(
+                            "Restore apply may not have taken effect on the preview machine. Please retry.",
+                            "Restore",
+                        );
+                    }
+                    return;
+                }
+
+                if (apply.saved === false && (expectedOps === null || expectedOps > 0)) {
+                    if (interactive) {
+                        void showAlert(
+                            "Restore apply did not write all expected files. Please retry.",
+                            "Restore",
+                        );
+                    }
+                    return;
+                }
 
                 if (!res.ok || !apply.ok) {
                     if (retryableApply) {
@@ -3404,7 +3470,12 @@ export default function AppBuilderEditor({
                         return;
                     }
 
-                    const msg = String((data as any)?.error || `Restore apply failed (HTTP ${res.status})`);
+                    const backendCode = String((data as any)?.code || apply.code || "").trim().toUpperCase();
+                    const msg = backendCode === "PROXY_NOT_READY"
+                        ? "The preview proxy is not ready yet. Please retry in a moment."
+                        : backendCode === "RESTART_ENQUEUE_FAILED"
+                            ? "Files were saved but restart enqueue failed. Please retry apply."
+                            : String((data as any)?.error || `Restore apply failed (HTTP ${res.status})`);
                     if (interactive) void showAlert(msg, "Restore");
                     return;
                 }
@@ -6336,7 +6407,7 @@ export default function AppBuilderEditor({
                                                 <span className="kloner-dot" />
                                                 <span className="kloner-dot" />
                                             </div>
-                                            <div className="text-sm text-black/60">Hydrating files...</div>
+                                            <div className="mt-6 w-full max-w-2xl px-6 py-2 text-left"><div className="text-sm text-black/60"><span>Hydrating files...</span></div></div>
                                         </div>
                                     </div>
                                 )

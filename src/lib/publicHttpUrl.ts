@@ -78,6 +78,26 @@ const SENSITIVE_HOST_FRAGMENTS = [
   "mortgage",
   "wealth",
 ];
+const BLOCKED_URL_TERM_RE = /(?:^|[^a-z0-9])(adult|cam(?:girl|girls|boy|boys)?|casino|cocaine|counterfeit|crypto\s*drainer|deepfake|escort|explosive|fentanyl|firearm|gambl(?:e|ing)|hack(?:ing|er|tool)?|heroin|ketamine|meth(?:amphetamine)?|money\s*launder(?:ing)?|nsfw|onlyfans|opiate|opioid|phish(?:ing)?|porn(?:hub)?|ransomware|sex(?:cam|chat|toy)?|sexual|slot(?:s)?|weapon(?:s)?|xhamster|xvideo(?:s)?|xxx)(?:[^a-z0-9]|$)/i;
+
+function buildUrlTextForScreening(parsed: URL): string {
+  const hostname = parsed.hostname.toLowerCase();
+  const pathname = parsed.pathname.toLowerCase();
+  const search = parsed.search.toLowerCase();
+  const hash = parsed.hash.toLowerCase();
+  return [hostname, pathname, search, hash].filter(Boolean).join(" ");
+}
+
+function getSensitiveUrlTermRejectionReason(parsed: URL): string | null {
+  const text = buildUrlTextForScreening(parsed);
+  if (!text) return null;
+
+  if (BLOCKED_URL_TERM_RE.test(text)) {
+    return "Sexually explicit, financial-account, and dangerous-use URLs are blocked.";
+  }
+
+  return null;
+}
 
 export function getPublicHttpUrlRejectionReason(input: string): string | null {
   const s = (input ?? "").trim();
@@ -119,6 +139,11 @@ export function getPublicHttpUrlRejectionReason(input: string): string | null {
 
     if (SENSITIVE_HOST_FRAGMENTS.some((fragment) => hostLower.includes(fragment))) {
       return "Banking, government, and account-access URLs are blocked.";
+    }
+
+    const sensitiveUrlReason = getSensitiveUrlTermRejectionReason(parsed);
+    if (sensitiveUrlReason) {
+      return sensitiveUrlReason;
     }
 
     return null;

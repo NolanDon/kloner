@@ -3492,9 +3492,16 @@ export default function NavBar() {
 
             const status = String((statusData as any)?.status || '').toLowerCase();
             const uiStage = String((statusData as any)?.uiStage || '').toLowerCase();
-            const readyFlag = Boolean((statusData as any)?.ready);
+            const phase = String((statusData as any)?.phase || '').trim().toLowerCase();
+            const step = String((statusData as any)?.step || '').trim().toLowerCase();
             const attachableFlag = Boolean((statusData as any)?.attachable);
             const restartPendingFlag = Boolean((statusData as any)?.restartPending || (statusData as any)?.queued || (statusData as any)?.outcome === 'restart_pending');
+            const restartConfirmedFlag = Boolean((statusData as any)?.restartConfirmed);
+            const activeRestartSignal = restartPendingFlag && !restartConfirmedFlag;
+            const readyByLifecycle = phase === 'ready' || restartConfirmedFlag;
+            const phaseTimedOut = phase === 'timeout';
+            const phaseFailed = phase === 'failed';
+            const readyFlag = Boolean((statusData as any)?.ready || readyByLifecycle);
             const retryableFlag = Boolean((statusData as any)?.retryable || (statusData as any)?.retryAfterSeconds != null || (statusData as any)?.retry_after_seconds != null);
             const retryAfterSeconds = asRetryAfterSeconds((statusData as any)?.retryAfterSeconds ?? (statusData as any)?.retry_after_seconds ?? null);
             const backendSignal = classifyBackendSignal(statusData);
@@ -3630,6 +3637,78 @@ export default function NavBar() {
               return;
             }
 
+            if (!readyFlag && !attachableFlag && (phaseFailed || phaseTimedOut)) {
+              stopAllTimers();
+              setIsPolling(false);
+              setIsLoading(false);
+              setConnectingToExisting(false);
+              setLoadingStatus('');
+              setPreviewUrl(null);
+              setCanRetry(true);
+              setError(
+                phaseTimedOut
+                  ? 'Preview restart timed out. Please click Refresh to retry.'
+                  : 'Preview restart failed. Please click Refresh to retry.',
+              );
+              setCurrentStatusData(
+                normalizeStatusDataForUi(code, {
+                  ...statusData,
+                  status: status || 'error',
+                  uiStage: uiStage || step || phase || 'error',
+                  uiTitle: phaseTimedOut ? 'Preview restart timed out' : 'Preview restart failed',
+                  uiMessage: phaseTimedOut
+                    ? 'The restart did not complete in time. Try refresh to retry.'
+                    : 'The restart did not complete successfully. Try refresh to retry.',
+                  updatedAt: Date.now(),
+                }),
+              );
+              return;
+            }
+
+            const applyPhase = phase === 'accepted' || phase === 'applying_files' || phase === 'files_applied';
+            const queueRestartPhase = phase === 'restart_pending';
+            const restartingPhase = phase === 'restarting' || activeRestartSignal;
+
+            if (!readyFlag && !attachableFlag && (applyPhase || queueRestartPhase || restartingPhase)) {
+              const delayMs = retryAfterSeconds !== null ? Math.max(1_000, retryAfterSeconds * 1000) : POLL_INTERVAL_MS;
+              const phaseMessage = applyPhase
+                ? 'Applying changes…'
+                : queueRestartPhase
+                  ? 'Queuing restart…'
+                  : retryAfterSeconds !== null
+                    ? `Restarting preview… retrying in ${retryAfterSeconds}s…`
+                    : 'Restarting preview…';
+
+              setError(null);
+              setCanRetry(false);
+              setIsLoading(true);
+              setConnectingToExisting(false);
+              setIsPolling(true);
+              setLoadingStatus(phaseMessage);
+              setCurrentStatusData((current: any) =>
+                current && typeof current === 'object'
+                  ? {
+                    ...current,
+                    ...statusData,
+                    status: status || current.status || 'starting',
+                    uiStage: uiStage || step || phase || current.uiStage || 'starting',
+                    uiTitle: applyPhase ? 'Applying changes' : restartingPhase ? 'Restarting preview' : 'Queuing restart',
+                    uiMessage: phaseMessage,
+                    updatedAt: Date.now(),
+                  }
+                  : normalizeStatusDataForUi(code, {
+                    ...statusData,
+                    status: status || 'starting',
+                    uiStage: uiStage || step || phase || 'starting',
+                    uiTitle: applyPhase ? 'Applying changes' : restartingPhase ? 'Restarting preview' : 'Queuing restart',
+                    uiMessage: phaseMessage,
+                    updatedAt: Date.now(),
+                  }),
+              );
+              statusPollTimeoutRef.current = setTimeout(pollStatus, delayMs);
+              return;
+            }
+
             const transitionalAttachStates = new Set(['pending', 'starting', 'booting', 'creating_machine', 'creating_server', 'transitioning']);
             const isTransitionalAttachState = transitionalAttachStates.has(status) || transitionalAttachStates.has(uiStage);
 
@@ -3655,18 +3734,17 @@ export default function NavBar() {
               return;
             }
 
-            if (!readyFlag && !attachableFlag && isTransitionalAttachState && (restartPendingFlag || retryableFlag)) {
+            if (!readyFlag && !attachableFlag && isTransitionalAttachState && (activeRestartSignal || retryableFlag || restartPendingFlag)) {
               const delayMs = retryAfterSeconds !== null ? Math.max(1_000, retryAfterSeconds * 1000) : POLL_INTERVAL_MS;
+              const transitionMessage = activeRestartSignal
+                ? (retryAfterSeconds !== null ? `Restarting preview… retrying in ${retryAfterSeconds}s…` : 'Restarting preview…')
+                : (retryAfterSeconds !== null ? `Preview is still starting. Retrying in ${retryAfterSeconds}s…` : 'Preview is still starting. Retrying automatically…');
               setError(null);
               setCanRetry(false);
               setIsLoading(true);
               setConnectingToExisting(false);
               setIsPolling(true);
-              setLoadingStatus(
-                retryAfterSeconds !== null
-                  ? `Preview is still starting. Retrying in ${retryAfterSeconds}s…`
-                  : 'Preview is still starting. Retrying automatically…',
-              );
+              setLoadingStatus(transitionMessage);
               setCurrentStatusData((current: any) =>
                 current && typeof current === 'object'
                   ? {
@@ -3674,22 +3752,16 @@ export default function NavBar() {
                       ...statusData,
                       status: status || current.status || 'starting',
                       uiStage: uiStage || current.uiStage || 'starting',
-                      uiTitle: 'Starting preview',
-                      uiMessage:
-                        retryAfterSeconds !== null
-                          ? `Preview is still starting. Retrying in ${retryAfterSeconds}s…`
-                          : 'Preview is still starting. Retrying automatically…',
+                      uiTitle: activeRestartSignal ? 'Restarting preview' : 'Starting preview',
+                      uiMessage: transitionMessage,
                       updatedAt: Date.now(),
                     }
                   : normalizeStatusDataForUi(code, {
                       ...statusData,
                       status: status || 'starting',
                       uiStage: uiStage || 'starting',
-                      uiTitle: 'Starting preview',
-                      uiMessage:
-                        retryAfterSeconds !== null
-                          ? `Preview is still starting. Retrying in ${retryAfterSeconds}s…`
-                          : 'Preview is still starting. Retrying automatically…',
+                    uiTitle: activeRestartSignal ? 'Restarting preview' : 'Starting preview',
+                    uiMessage: transitionMessage,
                       updatedAt: Date.now(),
                     }),
               );
@@ -4728,7 +4800,7 @@ export default function NavBar() {
     hmrWsStatus === 'ok' ||
     previewInteractiveByStatus;
   const showPreviewSurface = Boolean(previewUrl) && !error && !compileErrorState && !terminalPreviewStatus && (externalPreviewMode || canRenderEmbeddedFrame);
-  const activePreviewUrl = previewUrl || '';
+  const activePreviewUrl = withPreviewPath(previewUrl || '', navigatePath || '');
   const showApplyRefreshingOverlay = showPreviewSurface && isApplyRefreshing;
   const terminalPreviewStatusData = terminalPreviewStatus ? (currentStatusData || lastBackendStatusRef.current || null) : null;
   const showTerminalPreviewErrorCard = Boolean(error) || terminalPreviewStatus;

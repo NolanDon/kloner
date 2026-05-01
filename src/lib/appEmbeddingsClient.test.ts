@@ -404,9 +404,9 @@ describe("appEmbeddingsClient", () => {
             retryAfterSeconds: 12,
         });
 
-        expect(normalizePreviewApplyResponse({ ok: true, outcome: "restart_timeout", saved: true, retryable: true, retryAfterSeconds: 9 }, 504, null)).toMatchObject({
+        expect(normalizePreviewApplyResponse({ ok: true, outcome: "timeout", saved: true, retryable: true, retryAfterSeconds: 9 }, 504, null)).toMatchObject({
             ok: true,
-            outcome: "restart_timeout",
+            outcome: "timeout",
             saved: true,
             restartPending: false,
             retryable: true,

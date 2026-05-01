@@ -117,6 +117,28 @@ export type AppEmbeddingEditPlanResponse = {
     [key: string]: unknown;
 };
 
+export type AppEmbeddingJobApplyResult = {
+    ok: boolean;
+    patchedFileCount?: number | null;
+    wrote?: number | null;
+    deleted?: number | null;
+    requiresRestart?: boolean | null;
+    requiresRebuild?: boolean | null;
+    hmrLikely?: boolean | null;
+    machineStatus?: string | null;
+    machineError?: string | null;
+    patchErrors?: Array<{ path?: string | null; op?: string | null; code?: string | null; message?: string | null; [key: string]: unknown }> | null;
+    restorePoint?: {
+        restorePointId?: string | null;
+        fileCount?: number | null;
+        touchedPaths?: string[] | null;
+        skippedPaths?: string[] | null;
+        restorable?: boolean | null;
+        [key: string]: unknown;
+    } | null;
+    [key: string]: unknown;
+};
+
 export type AppEmbeddingEditPlanPlan = {
     formatVersion: string | null;
     summary: string;
@@ -132,6 +154,7 @@ export type AppEmbeddingEditPlanPlan = {
     questions?: string[];
     clarifyingQuestions?: string[];
     proposal?: AppEmbeddingEditPlanProposal | null;
+    apply?: AppEmbeddingJobApplyResult | null;
     requestId?: string | null;
     code?: string | null;
     error?: string | null;
@@ -158,16 +181,20 @@ export type AppEmbeddingEditPlanJobStatus = {
     [key: string]: unknown;
 };
 
-export type AppPreviewApplyOutcome = "saved" | "restart_pending" | "restart_timeout" | "failed" | (string & {});
+export type AppPreviewApplyOutcome = "saved" | "restart_pending" | "failed" | "timeout" | (string & {});
 
 export type AppPreviewApplyResponse = {
     ok: boolean;
     outcome?: AppPreviewApplyOutcome | null;
     saved?: boolean | null;
+    replayed?: boolean | null;
+    contradictoryStatus?: boolean | null;
     restartPending?: boolean | null;
     restartConfirmed?: boolean | null;
     retryable?: boolean | null;
     retryAfterSeconds?: number | null;
+    phase?: string | null;
+    step?: string | null;
     requestId?: string | null;
     idempotencyKey?: string | null;
     machineId?: string | null;
@@ -181,6 +208,11 @@ export type AppPreviewApplyResponse = {
     queued?: boolean | null;
     restartStatus?: string | null;
     restartMessage?: string | null;
+    restartWorkflow?: { queued?: boolean | null; restartJobId?: string | null; [key: string]: unknown } | null;
+    machine?: { wrote?: number | null; deleted?: number | null; [key: string]: unknown } | null;
+    expectedWrites?: number | null;
+    expectedDeletes?: number | null;
+    expectedOps?: number | null;
     error?: string | { code?: string; message?: string; retryAfterSeconds?: number | null; [key: string]: unknown } | null;
     [key: string]: unknown;
 };
@@ -787,9 +819,9 @@ export function normalizePreviewApplyResponse(raw: unknown, status: number, retr
     const restartPending = Boolean(source.restartPending ?? source.restart_pending ?? source.queued);
     const restartConfirmed = Boolean(source.restartConfirmed ?? source.restart_confirmed);
     const explicitRetryable = typeof source.retryable === "boolean" ? source.retryable : false;
-    const saved = typeof source.saved === "boolean" ? source.saved : normalizedOutcome === "saved" || restartPending || restartConfirmed;
+    const saved = typeof source.saved === "boolean" ? source.saved : normalizedOutcome === "saved";
     const backendRetryableFailure = Boolean(
-        normalizedOutcome === "restart_timeout" ||
+        normalizedOutcome === "timeout" ||
         (status >= 500 && status < 600 && !saved && !restartPending && !restartConfirmed)
     );
     const retryable = Boolean(
@@ -802,10 +834,14 @@ export function normalizePreviewApplyResponse(raw: unknown, status: number, retr
         ok: typeof source.ok === "boolean" ? source.ok : status >= 200 && status < 300,
         outcome: normalizedOutcome,
         saved,
+        replayed: typeof source.replayed === "boolean" ? source.replayed : undefined,
+        contradictoryStatus: typeof source.contradictoryStatus === "boolean" ? source.contradictoryStatus : typeof source.contradictory_status === "boolean" ? source.contradictory_status : undefined,
         restartPending,
         restartConfirmed,
         retryable,
         retryAfterSeconds: normalizedRetryAfterSeconds,
+        phase: asString(source.phase, 80) || null,
+        step: asString(source.step, 120) || null,
         requestId: asString(source.requestId, 120) || null,
         idempotencyKey: asString(source.idempotencyKey ?? source.idempotency_key, 200) || null,
         machineId: asString(source.machineId ?? source.machine_id, 200) || null,
@@ -819,6 +855,11 @@ export function normalizePreviewApplyResponse(raw: unknown, status: number, retr
         queued: typeof source.queued === "boolean" ? source.queued : undefined,
         restartStatus: asString(source.restartStatus ?? source.restart_status, 80) || null,
         restartMessage: asString(source.restartMessage ?? source.restart_message, 20_000) || null,
+        restartWorkflow: asRecord(source.restartWorkflow ?? source.restart_workflow),
+        machine: asRecord(source.machine),
+        expectedWrites: asNullableNumber(source.expectedWrites ?? source.expected_writes),
+        expectedDeletes: asNullableNumber(source.expectedDeletes ?? source.expected_deletes),
+        expectedOps: asNullableNumber(source.expectedOps ?? source.expected_ops),
     };
 }
 

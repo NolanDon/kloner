@@ -4,6 +4,7 @@ import { getAdminAuth, CSRF_COOKIE, SESSION_COOKIE_NAME } from "../../_lib/auth"
 import { captureCriticalEvent, captureException } from "@/lib/observability";
 import { getClientIp } from "../../_lib/route-guard";
 import { getSignupBlockDecision } from "@/src/lib/signupBlocklist";
+import { sendBlockedSignupIpAlert } from "../../_lib/signupBlocklistAlert";
 
 const COOKIE = SESSION_COOKIE_NAME;
 const MAX_AGE_MS = 5 * 24 * 60 * 60 * 1000; // 5 days
@@ -34,8 +35,19 @@ export async function POST(req: NextRequest) {
         });
 
         if (decision.blocked) {
+            const clientIp = getClientIp(req);
+            if (decision.matchedBy === "ip" && clientIp) {
+                await sendBlockedSignupIpAlert({
+                    ip: clientIp,
+                    email: typeof decoded.email === "string" ? decoded.email : null,
+                    route: "/api/auth/session",
+                    matchedBy: "ip",
+                    userAgent: req.headers.get("user-agent"),
+                });
+            }
+
             return NextResponse.json(
-                { error: "Sign-up blocked" },
+                { error: decision.reason || "Unable to create an account right now." },
                 {
                     status: 403,
                     headers: {

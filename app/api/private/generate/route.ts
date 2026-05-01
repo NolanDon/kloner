@@ -6,6 +6,7 @@ import { requireSessionAndMaybeCsrf } from "../../_lib/route-guard";
 import { getAuthoritativeUserTier } from "../../_lib/userTier";
 import { captureCriticalEvent } from "@/lib/observability";
 import type { UserTier } from "@/src/lib/credits";
+import { getPublicHttpUrlRejectionReason, validateAndNormalizePublicHttpUrl } from "@/src/lib/publicHttpUrl";
 import {
     peekUserCredit,
     consumeUserCredit,
@@ -15,16 +16,6 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
 export const revalidate = 0;
-
-function isHttpUrl(s?: string): s is string {
-    if (!s) return false;
-    try {
-        const u = new URL(s);
-        return u.protocol === "http:" || u.protocol === "https:";
-    } catch {
-        return false;
-    }
-}
 
 async function captureUrlScanFailure(params: {
     uid?: string;
@@ -78,9 +69,10 @@ export async function POST(req: NextRequest) {
             const body = (await req.json().catch(() => ({}))) as { url?: string };
             const { url } = body;
 
-            if (!isHttpUrl(url)) {
+            const normalizedUrl = typeof url === "string" ? validateAndNormalizePublicHttpUrl(url) : null;
+            if (!normalizedUrl) {
                 return jsonNoStatusAlert(
-                    { error: "Invalid URL" },
+                    { error: getPublicHttpUrlRejectionReason(typeof url === "string" ? url : "") || "Invalid URL" },
                     { status: 400 }
                 );
             }
@@ -122,7 +114,7 @@ export async function POST(req: NextRequest) {
                 const r = await callBackend(req, {
                     path: "/generate-screenshots",
                     method: "POST",
-                    body: { url },
+                    body: { url: normalizedUrl },
                     timeoutMs: 60_000,
                     acceptOnTimeout: true,
                     userCtx: {
@@ -251,7 +243,7 @@ export async function POST(req: NextRequest) {
             } catch (e: any) {
                 await captureUrlScanFailure({
                     uid: decoded.uid,
-                    targetUrl: url,
+                    targetUrl: normalizedUrl,
                     reason: e?.message || "Proxy failed",
                     statusCode: 502,
                     extra: {
