@@ -879,7 +879,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
             {
                 id: `preview_issue_${Date.now()}`,
                 role: "assistant",
-                content: "Preview restart failed or timed out. You can retry apply, or refresh/rebuild the preview.",
+                content: "Your changes may not have saved. If your changes are not showing, rebuild first.",
                 timestamp: new Date(),
                 type: "text",
                 editPlanRetryPrompt: lastEditPlanPromptRef.current?.trim() || "Retry apply",
@@ -2216,9 +2216,16 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
             }
 
             if (applyData?.saved === false && !applyReplayed && (expectedOps === null || expectedOps > 0)) {
+                const applyCode = String((applyData as any)?.code || applyResult.code || "").trim().toUpperCase();
+                const applyReason = String((applyData as any)?.reason || "").trim().toLowerCase();
+                const isProxyApplyFailure = applyCode === "APPLY_PROXY_ERROR" || applyReason === "proxy_request_error";
                 const writeFailure = machineWrites === 0
-                    ? "The apply request completed, but no files were written. Please retry apply."
-                    : "The apply request did not save all file changes. Please retry apply.";
+                    ? (isProxyApplyFailure
+                        ? "Your changes may not have saved. If your changes are not showing, rebuild first."
+                        : "The apply request completed, but no files were written. Please retry apply.")
+                    : (isProxyApplyFailure
+                        ? "Your changes may not have saved. If your changes are not showing, rebuild first."
+                        : "The apply request did not save all file changes. Please retry apply.");
                 setEditPlanApplyError(writeFailure);
                 setEditPlanApplyStatusMessage(writeFailure);
                 upsertApplyMessage(writeFailure, {
@@ -2229,7 +2236,12 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
             }
 
             if (applyOutcome === "failed") {
-                const failedMessage = "The backend reported that apply failed. Please retry apply.";
+                const applyCode = String((applyData as any)?.code || applyResult.code || "").trim().toUpperCase();
+                const applyReason = String((applyData as any)?.reason || "").trim().toLowerCase();
+                const isProxyApplyFailure = applyCode === "APPLY_PROXY_ERROR" || applyReason === "proxy_request_error";
+                const failedMessage = isProxyApplyFailure
+                    ? "Your changes may not have saved. If your changes are not showing, rebuild first."
+                    : "The backend reported that apply failed. Please retry apply.";
                 setEditPlanApplyError(failedMessage);
                 setEditPlanApplyStatusMessage(failedMessage);
                 upsertApplyMessage(failedMessage, {
@@ -2629,8 +2641,10 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
     }, [messages, scrollToBottom]);
 
     const renderedMessages = useMemo(() => {
+        const legacySuppressedText = "preview restart failed or timed out. you can retry apply, or refresh/rebuild the preview.";
         return messages
             .map((message, index) => ({ message, index }))
+            .filter(({ message }) => String(message.content || "").trim().toLowerCase() !== legacySuppressedText)
             .sort((a, b) => {
                 const aTime = a.message.timestamp instanceof Date ? a.message.timestamp.getTime() : new Date(a.message.timestamp).getTime();
                 const bTime = b.message.timestamp instanceof Date ? b.message.timestamp.getTime() : new Date(b.message.timestamp).getTime();

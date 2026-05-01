@@ -576,6 +576,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
     const editPlanStatusMessageJobKeyRef = useRef<string | null>(null);
     const editPlanStatusMessageIdRef = useRef<string | null>(null);
     const editPlanStatusMessageTextRef = useRef<string | null>(null);
+    const editPlanSummaryMessageKeyRef = useRef<string | null>(null);
     const editPlanApplyStatusBubbleTextRef = useRef<string | null>(null);
     const previewReadyRef = useRef(Boolean(previewReady));
 
@@ -1839,7 +1840,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
             if (applyData?.saved === false && !applyReplayed && (expectedOps === null || expectedOps > 0)) {
                 const writeFailure = machineWrites === 0
                     ? "The apply request completed, but no files were written. Please retry apply."
-                    : "The apply request did not save all file changes. Please retry apply.";
+                    : "The apply request may not have saved all file changes. Please rebuild first.";
                 setEditPlanApplyError(writeFailure);
                 setEditPlanApplyStatusMessage(writeFailure);
                 upsertApplyMessage(writeFailure, {
@@ -2028,6 +2029,47 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
             return;
         }
     }, [activeEditPlanJob, buildEditPlanStatusBubbleText]);
+
+    useEffect(() => {
+        if (!activeEditPlanJob) return;
+        if (String(activeEditPlanJob.status || "").toLowerCase() !== "completed") return;
+
+        const jobKey = activeEditPlanJob.jobId || activeEditPlanJob.requestId || activeEditPlanJob.statusUrl || null;
+        if (!jobKey) return;
+
+        const completedResult = activeEditPlanJob.result && typeof activeEditPlanJob.result === "object"
+            ? (activeEditPlanJob.result as Record<string, unknown>)
+            : activeEditPlanJob.job?.result && typeof activeEditPlanJob.job.result === "object"
+                ? (activeEditPlanJob.job.result as Record<string, unknown>)
+                : null;
+        const proposalSummary = String(((completedResult?.proposal as any)?.summary || "")).trim();
+        const resultSummary = String(completedResult?.summary || "").trim();
+        const summary = proposalSummary || resultSummary;
+        if (!summary) return;
+
+        const normalizedSummary = normalizeAssistantMessageText(summary);
+        const messageKey = `${jobKey}:${normalizedSummary}`;
+        if (editPlanSummaryMessageKeyRef.current === messageKey) return;
+
+        const alreadyVisible = messages.some(
+            (message) =>
+                message.role === "assistant" &&
+                normalizeAssistantMessageText(String(message.content || "")) === normalizedSummary,
+        );
+        editPlanSummaryMessageKeyRef.current = messageKey;
+        if (alreadyVisible) return;
+
+        setMessages((prev) => [
+            ...prev,
+            {
+                id: `edit_plan_summary_${Date.now()}`,
+                role: "assistant",
+                content: summary,
+                timestamp: new Date(),
+                type: "text",
+            },
+        ]);
+    }, [activeEditPlanJob, messages]);
 
     useEffect(() => {
         const content = String(editPlanApplyStatusMessage || "").trim();
