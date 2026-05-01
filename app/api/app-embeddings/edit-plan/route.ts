@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireSessionAndMaybeCsrf } from "../../_lib/route-guard";
 import { assertAppBuilderScope } from "../../_lib/appBuilderScope";
+import { getAdminDb } from "../../_lib/auth";
 import { callBackend } from "@/src/lib/callBackend";
 import { captureAuditEvent, captureCriticalEvent } from "@/lib/observability";
 
@@ -32,6 +33,164 @@ function parseRetryAfterSeconds(value: string | null): number | null {
     }
 
     return null;
+}
+
+function toSafeArray<T>(value: unknown): T[] {
+    return Array.isArray(value) ? (value as T[]) : [];
+}
+
+function toBoolean(value: unknown): boolean | null {
+    return typeof value === "boolean" ? value : null;
+}
+
+function buildNeedsMoreContextSnapshot(params: {
+    uid: string;
+    appId: string;
+    query: string;
+    currentPath: string | null;
+    maxChunks: number;
+    framework: string | null;
+    frameworkLabel: string | null;
+    frameworkConfidence: string | null;
+    frameworkReason: string | null;
+    requestId: string | null;
+    resultReqId: string | null;
+    payload: Record<string, unknown>;
+    search: unknown[];
+}) {
+    const { payload } = params;
+    const payloadJob = payload.job && typeof payload.job === "object" ? (payload.job as Record<string, unknown>) : null;
+    const payloadResult = payload.result && typeof payload.result === "object" ? (payload.result as Record<string, unknown>) : null;
+    const nestedResult = payloadJob?.result && typeof payloadJob.result === "object" ? (payloadJob.result as Record<string, unknown>) : null;
+
+    const resolvedResult = payloadResult || nestedResult || null;
+    const resolvedProposal = resolvedResult?.proposal && typeof resolvedResult.proposal === "object"
+        ? (resolvedResult.proposal as Record<string, unknown>)
+        : null;
+
+    const needsMoreContext =
+        toBoolean(resolvedProposal?.needsMoreContext) ??
+        toBoolean(resolvedResult?.needsMoreContext) ??
+        toBoolean(payload.needsMoreContext) ??
+        false;
+
+    const files = toSafeArray<Record<string, unknown>>(resolvedProposal?.files ?? payload.files);
+    const summary = asString((resolvedProposal?.summary ?? resolvedResult?.summary ?? payload.summary) as unknown, 10_000) || null;
+    const model = asString((resolvedProposal?.model ?? resolvedResult?.model ?? payload.model) as unknown, 120) || null;
+    const status = asString((payload.status ?? payloadJob?.status) as unknown, 80) || null;
+    const stage = asString((payload.stage ?? payloadJob?.stage) as unknown, 120) || null;
+    const statusUrl = asString((payload.statusUrl ?? payloadJob?.statusUrl) as unknown, 2_000) || null;
+    const jobId = asString((payload.jobId ?? payloadJob?.jobId) as unknown, 200) || null;
+    const requestId = asString((payload.requestId ?? payloadJob?.requestId ?? params.resultReqId ?? params.requestId) as unknown, 200) || null;
+
+    const compactSearchChunks = params.search
+        .slice(0, 20)
+        .map((chunk: any) => ({
+            path: asString(chunk?.path, 500) || null,
+            lineRange: chunk?.lineRange && typeof chunk.lineRange === "object"
+                ? {
+                    start: Number((chunk.lineRange as any).start ?? 0) || 0,
+                    end: Number((chunk.lineRange as any).end ?? 0) || 0,
+                }
+                : null,
+            similarity: typeof chunk?.similarity === "number" ? chunk.similarity : null,
+            filePriority: typeof chunk?.filePriority === "number" ? chunk.filePriority : null,
+            tokenCount: typeof chunk?.tokenCount === "number" ? chunk.tokenCount : null,
+            chunkTextPreview: asString(chunk?.chunkText, 300) || null,
+        }));
+
+    const questions = toSafeArray<string>(resolvedResult?.questions ?? resolvedProposal?.questions ?? payload.questions)
+        .map((q) => asString(q, 500))
+        .filter(Boolean)
+        .slice(0, 8);
+
+    const copyPastePayload = {
+        type: "app_embeddings_needs_more_context",
+        createdAt: new Date().toISOString(),
+        uid: params.uid,
+        appId: params.appId,
+        request: {
+            query: params.query,
+            currentPath: params.currentPath,
+            maxChunks: params.maxChunks,
+            framework: params.framework,
+            frameworkLabel: params.frameworkLabel,
+            frameworkConfidence: params.frameworkConfidence,
+            frameworkReason: params.frameworkReason,
+            requestId: params.requestId,
+        },
+        searchContext: {
+            chunkCount: params.search.length,
+            chunks: compactSearchChunks,
+        },
+        editPlan: {
+            status,
+            stage,
+            statusUrl,
+            requestId,
+            jobId,
+            model,
+            needsMoreContext,
+            needsRebuild: toBoolean(resolvedProposal?.needsRebuild ?? resolvedResult?.needsRebuild ?? payload.needsRebuild),
+            fileCount: typeof resolvedProposal?.fileCount === "number" ? resolvedProposal.fileCount : files.length,
+            estimatedLinesAdded: typeof resolvedProposal?.totalEstimatedLinesAdded === "number" ? resolvedProposal.totalEstimatedLinesAdded : null,
+            estimatedLinesRemoved: typeof resolvedProposal?.totalEstimatedLinesRemoved === "number" ? resolvedProposal.totalEstimatedLinesRemoved : null,
+            summary,
+            questions,
+        },
+    };
+
+    const copyPasteText = JSON.stringify(copyPastePayload, null, 2);
+
+    return {
+        needsMoreContext,
+        copyPastePayload,
+        copyPasteText,
+    };
+}
+
+async function logNeedsMoreContextCase(params: {
+    uid: string;
+    appId: string;
+    query: string;
+    currentPath: string | null;
+    maxChunks: number;
+    framework: string | null;
+    frameworkLabel: string | null;
+    frameworkConfidence: string | null;
+    frameworkReason: string | null;
+    requestId: string | null;
+    resultReqId: string | null;
+    payload: Record<string, unknown>;
+    search: unknown[];
+}) {
+    const snapshot = buildNeedsMoreContextSnapshot(params);
+    if (!snapshot.needsMoreContext) return;
+
+    try {
+        const db = getAdminDb();
+        const ref = db
+            .collection("embeddings_needs_more_context")
+            .doc();
+
+        await ref.set({
+            type: "app_embeddings_needs_more_context",
+            createdAt: new Date().toISOString(),
+            uid: params.uid,
+            appId: params.appId,
+            requestId: params.requestId || null,
+            backendReqId: params.resultReqId || null,
+            payload: snapshot.copyPastePayload,
+            copyPasteText: snapshot.copyPasteText,
+        });
+    } catch (error) {
+        console.warn("[app-embeddings][edit-plan] failed to log needs-more-context snapshot", {
+            appId: params.appId,
+            uid: params.uid,
+            requestId: params.requestId,
+            error,
+        });
+    }
 }
 
 export async function POST(req: NextRequest) {
@@ -102,6 +261,23 @@ export async function POST(req: NextRequest) {
             }
 
             const payload = result.json as any;
+
+            await logNeedsMoreContextCase({
+                uid,
+                appId,
+                query,
+                currentPath,
+                maxChunks,
+                framework,
+                frameworkLabel,
+                frameworkConfidence,
+                frameworkReason,
+                requestId,
+                resultReqId: result.reqId || null,
+                payload: (payload && typeof payload === "object" ? payload : {}) as Record<string, unknown>,
+                search: Array.isArray(search) ? search : [],
+            });
+
             const files = Array.isArray(payload?.files) ? payload.files : [];
             const dbMigrations = Array.isArray(payload?.dbMigrations) ? payload.dbMigrations : [];
             if (files.length === 0 && dbMigrations.length === 0) {

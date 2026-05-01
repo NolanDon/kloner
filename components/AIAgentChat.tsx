@@ -132,7 +132,7 @@ type RestorePointItem = {
     undoOf?: string | null;
 };
 
-const PRODUCTION_AGENT_CHAT_BLOCKED = process.env.NODE_ENV === "production";
+const PRODUCTION_AGENT_CHAT_BLOCKED = process.env.NEXT_PUBLIC_AGENT_CHAT_BLOCKED === "1";
 const PRODUCTION_AGENT_CHAT_BLOCK_MESSAGE = "We’re working on some updates to reduce your token usage. Please check back soon.";
 
 type MigrationApplyFailure = {
