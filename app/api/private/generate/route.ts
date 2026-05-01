@@ -194,7 +194,7 @@ export async function POST(req: NextRequest) {
 
                     await captureUrlScanFailure({
                         uid: decoded.uid,
-                        targetUrl: url,
+                        targetUrl: normalizedUrl,
                         reason,
                         statusCode: status,
                         requestId: r.reqId,
