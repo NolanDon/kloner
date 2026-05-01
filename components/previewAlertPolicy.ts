@@ -1,3 +1,5 @@
+import { normalizePreviewFailureContract } from './previewFailureContract';
+
 export const PREVIEW_ALERT_DEDUPE_TTL_MS = 5 * 60 * 1000;
 
 const HARD_FAILURE_TIMEOUT_REASONS = new Set([
@@ -130,11 +132,17 @@ export function classifyPreviewPresentationState(statusData: any, opts?: {
   const restartPending = Boolean(statusData?.restartPending || statusData?.queued || statusData?.outcome === 'restart_pending');
   const retryable = Boolean(statusData?.retryable || statusData?.retryAfterSeconds != null);
   const backendSignal = classifyBackendSignal(statusData);
+  const hasFailureClassification = Boolean(normalizePreviewFailureContract(statusData));
 
   const terminalStatus = new Set(['error', 'failed', 'fatal', 'stopped', 'cancelled', 'canceled', 'timeout']);
   const transitionalStatus = new Set(['pending', 'starting', 'booting', 'creating_machine', 'creating_server', 'transitioning', 'restarting']);
   const connectableStatus = new Set(['ready', 'running', 'compiled', 'started', 'completed', 'finished', 'active', 'online']);
-  const terminal = (terminalStatus.has(status) || terminalStatus.has(uiStage)) && !backendSignal.recoverable && !restartPending && !retryable;
+  const terminal =
+    hasFailureClassification &&
+    (terminalStatus.has(status) || terminalStatus.has(uiStage)) &&
+    !backendSignal.recoverable &&
+    !restartPending &&
+    !retryable;
   const recoverable = Boolean(
     restartPending ||
       retryable ||

@@ -16,6 +16,13 @@ import {
   isTrustedBrowserPreviewUrl,
   shouldDedupeAlert,
 } from './previewAlertPolicy';
+import {
+  canShowPreviewFixWithAi,
+  mapPreviewUserActionLabel,
+  normalizePreviewFailureContract,
+  type PreviewFailureContract,
+  type PreviewFailureUserAction,
+} from './previewFailureContract';
 
 const getStoredContainerCode = async (appId: string, user: any): Promise<string | null> => {
   try {
@@ -321,7 +328,12 @@ interface WebContainerRunnerProps {
   filesReady?: boolean;
   onFileChange?: (path: string, content: string) => void;
   onPreviewReadyChange?: (ready: boolean) => void;
-  onPreviewIssueChange?: (issue: { issue: string | null; diagnostics?: string | null } | null) => void;
+  onPreviewIssueChange?: (issue: {
+    issue: string | null;
+    diagnostics?: string | null;
+    failure?: PreviewFailureContract | null;
+    recommendedActionLabel?: string | null;
+  } | null) => void;
   onBackendReady?: (args: { appId: string; code: string; url: string }) => void;
   onRequestRebuild?: () => void | Promise<void>;
   reloadToken?: number;
@@ -500,10 +512,10 @@ export default function WebContainerRunner({ appId, files, filesReady = true, on
     detail: string;
     fingerprint: string;
     quickFixEligible: boolean;
-    noCredit: boolean;
     actionType: 'quick_fix_compile';
     fixAction?: string;
-    canShowFreeFixCta: boolean;
+    userAction: PreviewFailureUserAction;
+    canShowFixWithAiCta: boolean;
   } | null>(null);
   const compileFixRequestCooldownRef = useRef<{ fingerprint: string; until: number } | null>(null);
   const fixWithAiCooldownTimerRef = useRef<number | null>(null);
@@ -1273,27 +1285,22 @@ export default function WebContainerRunner({ appId, files, filesReady = true, on
   }, [appId]);
 
   const getCompileErrorStateFromStatus = useCallback((code: string, statusData: any) => {
-    const compileError = statusData?.compileError && typeof statusData.compileError === 'object' ? statusData.compileError : {};
-    const summary = String(compileError?.summary || '').trim();
-    const detail = String(compileError?.detail || statusData?.error || statusData?.uiMessage || '').trim();
-    const fingerprint = String(compileError?.fingerprint || `${code}:${summary || 'compile_error'}`).trim();
-    const quickFixEligible = compileError?.quickFixEligible === true;
-    const noCredit = compileError?.noCredit === true;
-    const fixActionFromCompileError = String(compileError?.fixAction || '').trim();
+    const failure = normalizePreviewFailureContract(statusData);
+    if (!failure) return null;
+    if (!canShowPreviewFixWithAi(failure)) return null;
 
-    const status = String(statusData?.status || '').toLowerCase();
-    const uiStage = String(statusData?.uiStage || '').toLowerCase();
+    const compileErrorFromFailure = failure.compileError || null;
+    const compileError = statusData?.compileError && typeof statusData.compileError === 'object' ? statusData.compileError : {};
+    const summary = String(compileErrorFromFailure?.summary || compileError?.summary || '').trim();
+    const detail = String(compileErrorFromFailure?.detail || compileError?.detail || statusData?.error || statusData?.uiMessage || '').trim();
+    const fingerprint = String(compileErrorFromFailure?.fingerprint || compileError?.fingerprint || `${code}:${summary || 'compile_error'}`).trim();
+    const quickFixEligible = compileErrorFromFailure?.quickFixEligible === true || compileError?.quickFixEligible === true;
+
     const quickActions = Array.isArray(statusData?.quickActions) ? statusData.quickActions : [];
     const quickFixAction = quickActions.find((action: any) => String(action?.type || '').toLowerCase() === 'quick_fix_compile');
-    const quickFixNoCredit = quickFixAction?.noCredit === true;
-    const fixActionId = String(fixActionFromCompileError || quickFixAction?.id || quickFixAction?.actionId || '').trim();
+    const fixActionId = String(compileError?.fixAction || quickFixAction?.id || quickFixAction?.actionId || '').trim();
 
-    const compileErrorActive =
-      Boolean(summary) ||
-      uiStage === 'compile_error' ||
-      (status === 'error' && Boolean(quickFixAction));
-
-    if (!compileErrorActive) return null;
+    const canShowFixWithAiCta = canShowPreviewFixWithAi(failure);
 
     const normalizedSummary = summary || 'Compilation failed while preparing your preview.';
     return {
@@ -1302,10 +1309,10 @@ export default function WebContainerRunner({ appId, files, filesReady = true, on
       detail,
       fingerprint,
       quickFixEligible,
-      noCredit,
       actionType: 'quick_fix_compile' as const,
       fixAction: fixActionId || undefined,
-      canShowFreeFixCta: quickFixEligible && noCredit && Boolean(quickFixAction) && quickFixNoCredit,
+      userAction: failure.userAction,
+      canShowFixWithAiCta,
     };
   }, []);
 
@@ -3555,7 +3562,7 @@ export default function NavBar() {
                 setLoadingStatus('');
                 setCurrentStatusData(null);
                 setPreviewUrl(null);
-                setError('Preview startup failed before a machine was created. Please refresh or try Fix with AI.');
+                setError('Preview startup failed before a machine was created. Please refresh or rebuild.');
                 setCanRetry(true);
                 return;
               }
@@ -4859,8 +4866,10 @@ export default function NavBar() {
   const previewIssueContextData = error
     ? (currentStatusData || lastBackendStatusRef.current || null)
     : terminalPreviewStatusData;
+  const previewFailureContract = normalizePreviewFailureContract(previewIssueContextData);
+  const canFixPreviewFailureWithAi = canShowPreviewFixWithAi(previewFailureContract);
   const terminalPreviewErrorMessage = buildPreviewFixIssueMessage(
-    error || 'Something went wrong while starting the preview. Use Fix with AI to send the locked technical issue to the agent.',
+    error || 'Something went wrong while starting the preview.',
     previewIssueContextData,
   );
   const previewIssueDiagnostics = previewIssueContextData
@@ -4886,9 +4895,28 @@ export default function NavBar() {
     : null;
   const previewFailureUi = previewIssueContextData ? normalizePreviewFailureDetails(previewIssueContextData) : null;
   const previewFailureTitle = previewFailureUi?.uiTitle || (previewFailureUi?.stalePreviewCode ? 'Preview replaced or deleted' : 'Something went wrong');
-  const previewFailureMessage = previewFailureUi?.uiMessage || (previewFailureUi?.stalePreviewCode
-    ? 'This preview code is no longer valid. Refresh to reopen the latest preview or reopen the latest preview from the app shell.'
-    : 'Check chat for details.');
+  const previewFailureMessage = previewFailureUi?.uiMessage || (previewFailureContract
+    ? (() => {
+        switch (previewFailureContract.errorClass) {
+          case 'machine_timeout':
+            return 'Preview is taking longer than expected.';
+          case 'proxy_unreachable':
+            return 'Preview server is unreachable.';
+          case 'runtime_crash':
+            return 'Preview server crashed.';
+          case 'preview_replaced_or_deleted':
+            return 'This preview has ended.';
+          case 'app_unreachable':
+            return 'Preview app is unreachable.';
+          case 'unknown':
+            return 'Preview could not start.';
+          default:
+            return 'Check chat for details.';
+        }
+      })()
+    : (previewFailureUi?.stalePreviewCode
+      ? 'This preview code is no longer valid. Refresh to reopen the latest preview or reopen the latest preview from the app shell.'
+      : 'Check chat for details.'));
   const isFixWithAiCoolingDown = fixWithAiCooldownUntil > Date.now();
   const startFixWithAiCooldown = useCallback(() => {
     const cooldownMs = 5_000;
@@ -4905,6 +4933,7 @@ export default function NavBar() {
   }, []);
   const handlePreviewFailureFixRequest = useCallback(() => {
     if (!previewIssueContextData) return;
+    if (!canFixPreviewFailureWithAi) return;
 
     startFixWithAiCooldown();
     const detail = buildPreviewFixIssueMessage(previewFailureMessage, previewIssueContextData);
@@ -4920,13 +4949,15 @@ export default function NavBar() {
         fingerprint: `preview_issue:${appId}:${String(previewFailureUi?.requestId || previewFailureUi?.correlationId || previewFailureTitle).slice(0, 120)}`,
       },
     });
-  }, [appId, buildPreviewFixIssueMessage, onCompileErrorFixRequest, previewFailureMessage, previewFailureTitle, previewFailureUi?.correlationId, previewFailureUi?.requestId, previewIssueContextData, startFixWithAiCooldown]);
+  }, [appId, buildPreviewFixIssueMessage, canFixPreviewFailureWithAi, onCompileErrorFixRequest, previewFailureMessage, previewFailureTitle, previewFailureUi?.correlationId, previewFailureUi?.requestId, previewIssueContextData, startFixWithAiCooldown]);
 
   useEffect(() => {
     const nextPayload = showTerminalPreviewErrorCard
       ? {
           issue: terminalPreviewErrorMessage,
           diagnostics: previewIssueDiagnostics,
+          failure: previewFailureContract,
+          recommendedActionLabel: mapPreviewUserActionLabel(previewFailureContract?.userAction),
         }
       : null;
 
@@ -4939,6 +4970,10 @@ export default function NavBar() {
           String(previewFailureUi?.backendStatus || ''),
           String(previewFailureUi?.machineState || ''),
           String(previewFailureUi?.uiStage || ''),
+          String(previewFailureContract?.errorClass || ''),
+          String(previewFailureContract?.aiFixEligible || ''),
+          String(previewFailureContract?.fixActionType || ''),
+          String(previewFailureContract?.userAction || ''),
         ].join('|')
       : 'inactive';
 
@@ -4952,7 +4987,7 @@ export default function NavBar() {
     } catch {
       // ignore
     }
-  }, [onPreviewIssueChange, previewFailureUi?.backendStatus, previewFailureUi?.correlationId, previewFailureUi?.machineState, previewFailureUi?.requestId, previewFailureUi?.uiStage, previewIssueDiagnostics, showTerminalPreviewErrorCard, terminalPreviewErrorMessage]);
+  }, [onPreviewIssueChange, previewFailureContract, previewFailureUi?.backendStatus, previewFailureUi?.correlationId, previewFailureUi?.machineState, previewFailureUi?.requestId, previewFailureUi?.uiStage, previewIssueDiagnostics, showTerminalPreviewErrorCard, terminalPreviewErrorMessage]);
 
   useEffect(() => {
     if (!debugPreviewScenario) return;
@@ -4979,7 +5014,7 @@ export default function NavBar() {
       ],
     };
 
-    setError('Something went wrong while starting the preview. Fix with AI is the primary action.');
+    setError('Something went wrong while starting the preview.');
     setCanRetry(true);
     setIsPolling(false);
     setIsLoading(false);
@@ -5038,7 +5073,7 @@ export default function NavBar() {
               </details>
 
               <div className="flex flex-wrap items-center gap-2">
-                {compileErrorState.canShowFreeFixCta ? (
+                {compileErrorState.canShowFixWithAiCta ? (
                   <button
                     type="button"
                     onClick={() => {
@@ -5078,10 +5113,10 @@ export default function NavBar() {
 
                 <button
                   type="button"
-                  onClick={retryApp}
+                  onClick={compileErrorState.userAction === 'rebuild' ? rebuildPreview : retryApp}
                   className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-xs border border-black/15 bg-white text-black/80 hover:bg-black/5 transition-colors"
                 >
-                  Refresh
+                  {mapPreviewUserActionLabel(compileErrorState.userAction)}
                 </button>
               </div>
             </div>
@@ -5572,12 +5607,44 @@ export default function NavBar() {
                 <p className="mt-1 text-sm leading-relaxed text-neutral-700">{previewFailureMessage}</p>
 
                 <div className="mt-3 flex flex-wrap items-center gap-2">
+                  {canFixPreviewFailureWithAi ? (
+                    <button
+                      type="button"
+                      onClick={handlePreviewFailureFixRequest}
+                      disabled={isFixWithAiCoolingDown}
+                      className="inline-flex items-center justify-center rounded-full bg-accent px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-[#e54f1a] disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Fix with AI
+                    </button>
+                  ) : null}
                   <button
                     type="button"
-                    onClick={retryApp}
+                    onClick={() => {
+                      const action = previewFailureContract?.userAction || 'refresh';
+                      if (action === 'rebuild') {
+                        void rebuildPreview();
+                        return;
+                      }
+                      if (action === 'reconnect') {
+                        reconnectOnlyRef.current = true;
+                        retryApp();
+                        return;
+                      }
+                      if (action === 'contact_support') {
+                        try {
+                          if (typeof window !== 'undefined') {
+                            window.open('mailto:support@kloner.com', '_blank', 'noopener,noreferrer');
+                          }
+                        } catch {
+                          // ignore
+                        }
+                        return;
+                      }
+                      retryApp();
+                    }}
                     className="inline-flex items-center justify-center rounded-full border border-neutral-200 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-900 transition-colors hover:bg-neutral-50"
                   >
-                    Refresh
+                    {mapPreviewUserActionLabel(previewFailureContract?.userAction)}
                   </button>
                 </div>
               </div>

@@ -111,6 +111,7 @@ type AppBuilderEditorAgentChatProps = {
     creditError?: string | null;
     previewReady?: boolean;
     previewIssue?: string | null;
+    previewIssueActionLabel?: string | null;
     onPreviewIssueFixRequest?: () => void;
     onUserMessageSent?: () => void;
     welcomeContext?: {
@@ -546,7 +547,7 @@ function buildRestorePointDiffPreview(detail: RestorePointDetail | null | undefi
     return { before, after };
 }
 
-export default function AppBuilderEditorAgentChat({ appId, files, currentFile, onFileEdit, onFilesReplace, onRestoreApplied, creditError, previewReady, previewIssue, onPreviewIssueFixRequest, onUserMessageSent, welcomeContext }: AppBuilderEditorAgentChatProps) {
+export default function AppBuilderEditorAgentChat({ appId, files, currentFile, onFileEdit, onFilesReplace, onRestoreApplied, creditError, previewReady, previewIssue, previewIssueActionLabel, onPreviewIssueFixRequest, onUserMessageSent, welcomeContext }: AppBuilderEditorAgentChatProps) {
     const { user, userTier } = useAuth();
     const { showConfirm, showAlert } = useModal();
     const PRO_MONTHLY_PRICE_USD = Number.isFinite(Number(process.env.NEXT_PUBLIC_PRO_MONTHLY_PRICE_USD))
@@ -797,6 +798,8 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
     const hasPreviewIssue = Boolean(previewIssueText);
     const showPreviewIssueDetails = process.env.NODE_ENV !== "production";
     const chatDisabled = PRODUCTION_AGENT_CHAT_BLOCKED || (previewReady === false && !freeCompileFixContext && !hasPreviewIssue);
+    // Contract gate is owned by the parent editor; chat only renders Fix with AI
+    // when the gated callback is provided.
     const hasPreviewIssueFixRequest = typeof onPreviewIssueFixRequest === "function";
 
     const didSyncSupabasePreviewEnvRef = useRef(false);
@@ -5128,12 +5131,12 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                             <RotateCcw className="h-3.5 w-3.5" />
                                         </button>
                                     ) : null}
-                                    {message.role === "assistant" && message.editPlanRebuildPrompt ? (
+                                    {message.role === "assistant" && message.editPlanRebuildPrompt && hasPreviewIssueFixRequest ? (
                                         <button
                                             type="button"
-                                            disabled={!hasPreviewIssueFixRequest || isLoading}
+                                            disabled={isLoading}
                                             onClick={() => {
-                                                if (!hasPreviewIssueFixRequest || isLoading) return;
+                                                if (isLoading) return;
                                                 onPreviewIssueFixRequest?.();
                                             }}
                                             className="rounded p-1 transition-colors text-gray-500 hover:text-gray-900 hover:bg-black/5 disabled:opacity-50"
@@ -5973,16 +5976,21 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                     Something went wrong building website.
                                 </p>
                                 <div className="mt-3 flex items-center gap-2">
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            onPreviewIssueFixRequest?.();
-                                        }}
-                                        disabled={!hasPreviewIssueFixRequest}
-                                        className="inline-flex shrink-0 items-center justify-center rounded-full border border-rose-200 bg-white px-3 py-1.5 text-xs font-semibold text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
-                                    >
-                                        Fix with AI
-                                    </button>
+                                    {hasPreviewIssueFixRequest ? (
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                onPreviewIssueFixRequest?.();
+                                            }}
+                                            className="inline-flex shrink-0 items-center justify-center rounded-full border border-rose-200 bg-white px-3 py-1.5 text-xs font-semibold text-rose-700 transition hover:bg-rose-50"
+                                        >
+                                            Fix with AI
+                                        </button>
+                                    ) : (
+                                        <span className="inline-flex shrink-0 items-center rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800">
+                                            {String(previewIssueActionLabel || "Refresh").trim() || "Refresh"}
+                                        </span>
+                                    )}
                                     <details className="relative ml-auto shrink-0">
                                         <summary className="inline-flex cursor-pointer list-none items-center justify-center rounded-full border border-rose-200 bg-white p-2 text-rose-600 transition hover:bg-rose-50">
                                             <ChevronDown className="h-4 w-4" aria-hidden="true" />

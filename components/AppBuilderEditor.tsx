@@ -22,10 +22,47 @@ import { recordAppBuilderSessionAnalytics } from "@/components/analytics";
 import { motion } from "framer-motion";
 import { detectProjectFramework } from "@/src/lib/projectFramework";
 import { normalizePreviewApplyResponse } from "@/src/lib/appEmbeddingsClient";
+import {
+    canShowPreviewFixWithAi,
+    normalizePreviewFailureContract,
+    type PreviewFailureContract,
+} from "./previewFailureContract";
 
 const VERCEL_INTEGRATION_SLUG =
     process.env.NEXT_PUBLIC_VERCEL_INTEGRATION_SLUG || "kloner";
 const APP_BUILDER_PENDING_SHARE_KEY = "kloner_vercel_pending_app_share";
+
+type PreviewIssueFixDecision = {
+    eligible: boolean;
+    reason: "compile_fixable" | "failure_present_but_not_fixable" | "missing_failure_classification";
+};
+
+function safeParseDiagnostics(raw: string | null | undefined): Record<string, any> | null {
+    if (!raw || typeof raw !== "string") return null;
+    try {
+        const parsed = JSON.parse(raw);
+        return parsed && typeof parsed === "object" ? parsed : null;
+    } catch {
+        return null;
+    }
+}
+
+function getPreviewIssueFixDecision(issueText: string | null | undefined, diagnosticsRaw: string | null | undefined, explicitFailure: PreviewFailureContract | null | undefined): PreviewIssueFixDecision {
+    const issue = String(issueText || "").trim();
+    if (!issue) return { eligible: false, reason: "missing_failure_classification" };
+
+    const diagnostics = safeParseDiagnostics(diagnosticsRaw);
+    const fallbackFailure = normalizePreviewFailureContract(diagnostics?.currentStatusData?.failure);
+    const failure = explicitFailure || fallbackFailure;
+    if (!failure) {
+        return { eligible: false, reason: "missing_failure_classification" };
+    }
+
+    return {
+        eligible: canShowPreviewFixWithAi(failure),
+        reason: canShowPreviewFixWithAi(failure) ? "compile_fixable" : "failure_present_but_not_fixable",
+    };
+}
 
 function DevOnlyIconBadge({ title }: { title: string }) {
     return (
@@ -1739,6 +1776,8 @@ export default function AppBuilderEditor({
     const [autoPreviewError, setAutoPreviewError] = useState<string | null>(null);
     const [previewIssue, setPreviewIssue] = useState<string | null>(null);
     const [previewIssueDiagnostics, setPreviewIssueDiagnostics] = useState<string | null>(null);
+    const [previewIssueFailure, setPreviewIssueFailure] = useState<PreviewFailureContract | null>(null);
+    const [previewIssueActionLabel, setPreviewIssueActionLabel] = useState<string | null>(null);
     const [deployBannerFromApp, setDeployBannerFromApp] = useState<DeployStatusBanner | null>(null);
     const [deployBannerFromRoute, setDeployBannerFromRoute] = useState<DeployStatusBanner | null>(null);
     const [dismissedDeployBannerFingerprint, setDismissedDeployBannerFingerprint] = useState<string | null>(null);
@@ -1763,6 +1802,11 @@ export default function AppBuilderEditor({
         saveAt: 0,
     });
     const suppressNextPreviewNavigateTokenRef = useRef(false);
+    const previewIssueFixDecision = useMemo(
+        () => getPreviewIssueFixDecision(previewIssue || autoPreviewError || previewError, previewIssueDiagnostics, previewIssueFailure),
+        [autoPreviewError, previewError, previewIssue, previewIssueDiagnostics, previewIssueFailure],
+    );
+    const canFixPreviewIssueWithAi = previewIssueFixDecision.eligible;
 
     useEffect(() => {
         if (previewMode !== "webcontainer") return;
@@ -1833,6 +1877,7 @@ export default function AppBuilderEditor({
     }, [isMobile]);
 
     const handlePreviewIssueFixRequest = useCallback(() => {
+        if (!canFixPreviewIssueWithAi) return;
         const issue = String(previewIssue || autoPreviewError || previewError || "").trim();
         if (!issue) return;
 
@@ -1878,7 +1923,8 @@ export default function AppBuilderEditor({
             bundleSignals,
             missingFiles,
             missingFileCount: missingFiles.length,
-            previewIssueDiagnostics: previewIssueDiagnostics ? JSON.parse(previewIssueDiagnostics) : null,
+            previewIssueDiagnostics: safeParseDiagnostics(previewIssueDiagnostics),
+            previewIssueFixDecision,
         };
 
         handleCompileErrorFixRequest({
@@ -1893,7 +1939,7 @@ export default function AppBuilderEditor({
                 fingerprint,
             },
         });
-    }, [appId, app?.files, autoPreviewError, handleCompileErrorFixRequest, previewError, previewIssue, previewIssueDiagnostics, projectFramework]);
+    }, [appId, app?.files, autoPreviewError, canFixPreviewIssueWithAi, handleCompileErrorFixRequest, previewError, previewIssue, previewIssueDiagnostics, previewIssueFixDecision, projectFramework]);
 
     const effectiveDeployBanner = deployBannerFromRoute || deployBannerFromApp;
 
@@ -5956,7 +6002,8 @@ export default function AppBuilderEditor({
                                     creditError={agentCreditError}
                                     previewReady={previewMode !== "webcontainer" ? true : isWebPreviewReady}
                                     previewIssue={previewMode !== "webcontainer" ? null : (previewIssue || autoPreviewError || previewError)}
-                                    onPreviewIssueFixRequest={handlePreviewIssueFixRequest}
+                                    previewIssueActionLabel={previewIssueActionLabel}
+                                    onPreviewIssueFixRequest={canFixPreviewIssueWithAi ? handlePreviewIssueFixRequest : undefined}
                                     onUserMessageSent={() => {
                                         appBuilderAiMessagesSentRef.current += 1;
                                     }}
@@ -6378,6 +6425,8 @@ export default function AppBuilderEditor({
                                             onPreviewIssueChange={(payload) => {
                                                 setPreviewIssue(payload?.issue || null);
                                                 setPreviewIssueDiagnostics(payload?.diagnostics || null);
+                                                setPreviewIssueFailure(normalizePreviewFailureContract(payload?.failure));
+                                                setPreviewIssueActionLabel(payload?.recommendedActionLabel || null);
                                             }}
                                             onNavigatePathChange={handlePreviewRouteChange}
                                             onCompileErrorFixRequest={handleCompileErrorFixRequest}

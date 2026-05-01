@@ -87,6 +87,24 @@ describe('previewAlertPolicy', () => {
     expect(state.shouldKeepPolling).toBe(true);
   });
 
+  test('does not terminalize when failure classification is absent', () => {
+    const state = classifyPreviewPresentationState({
+      status: 'error',
+      uiStage: 'machine_timeout',
+      ready: false,
+      retryable: false,
+      restartPending: false,
+    }, {
+      previewUrl: '/api/webcontainer/app-1/proxy/',
+      iframeLoaded: false,
+      hmrWsStatus: 'unknown',
+    });
+
+    expect(state.terminal).toBe(false);
+    expect(state.shouldShowTerminalError).toBe(false);
+    expect(state.shouldKeepPolling).toBe(true);
+  });
+
   test('rejects raw fly and private browser preview urls', () => {
     expect(isTrustedBrowserPreviewUrl('https://tracksite-hub.fly.dev/preview/code?t=token')).toBe(false);
     expect(isTrustedBrowserPreviewUrl('https://10.0.0.12/preview/code?t=token')).toBe(false);
