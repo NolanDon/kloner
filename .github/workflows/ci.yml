@@ -2,13 +2,15 @@ name: CI
 
 on:
   pull_request:
+    branches:
+      - main
   push:
     branches:
       - main
 
 jobs:
-  test:
-    name: test
+  quality-gate:
+    name: quality-gate
     runs-on: ubuntu-latest
 
     steps:
@@ -24,8 +26,11 @@ jobs:
       - name: Install
         run: npm ci
 
+      - name: Lint
+        run: npm run lint
+
       - name: Unit tests
-        run: npm test --silent
+        run: npm test -- --runInBand --ci --silent
 
       - name: Typecheck
         run: npx tsc -p tsconfig.json --noEmit
