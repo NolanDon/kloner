@@ -151,7 +151,7 @@ async function handler(req: NextRequest, uid: string) {
             cancel_url: cancelUrl,
             payment_method_options: {
                 card: {
-                    request_three_d_secure: "automatic",
+                    request_three_d_secure: "any",
                 },
             },
             line_items: [

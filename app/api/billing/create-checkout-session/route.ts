@@ -396,7 +396,7 @@ async function handler({ req, uid }: { req: NextRequest; uid: string }) {
             metadata: baseMeta,
             payment_method_options: {
                 card: {
-                    request_three_d_secure: "automatic",
+                    request_three_d_secure: "any",
                 },
             },
 

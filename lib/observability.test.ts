@@ -1,9 +1,11 @@
 export {};
 
 const setMock = jest.fn<Promise<void>, [any]>(async () => {});
+const createMock = jest.fn<Promise<void>, [any]>(async () => {});
 const docMock = jest.fn(() => ({
     id: "evt_test_1",
     set: setMock,
+    create: createMock,
 }));
 const collectionMock = jest.fn(() => ({
     doc: docMock,

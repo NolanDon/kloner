@@ -168,7 +168,7 @@ describe("appEmbeddingsClient", () => {
 
         const request = withLoadingState(setLoading, () => fetchEmbeddingSearch({ appId: "app-1", query: "hero" }, {}));
 
-        await jest.advanceTimersByTimeAsync(42_100);
+        await jest.advanceTimersByTimeAsync(61_000);
 
         await expect(request).resolves.toMatchObject({
             ok: false,

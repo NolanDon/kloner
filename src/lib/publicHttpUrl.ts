@@ -341,9 +341,10 @@ const BLOCKED_URL_TERM_RE = new RegExp(
 
 function buildUrlTextForScreening(parsed: URL): string {
   const hostname = parsed.hostname.toLowerCase();
-  const pathname = parsed.pathname.toLowerCase();
-  const search = parsed.search.toLowerCase();
-  const hash = parsed.hash.toLowerCase();
+  const decodeSafe = (s: string) => { try { return decodeURIComponent(s); } catch { return s; } };
+  const pathname = decodeSafe(parsed.pathname).toLowerCase();
+  const search = decodeSafe(parsed.search).toLowerCase();
+  const hash = decodeSafe(parsed.hash).toLowerCase();
   return [hostname, pathname, search, hash].filter(Boolean).join(" ");
 }
 

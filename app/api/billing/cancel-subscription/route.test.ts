@@ -25,14 +25,10 @@ jest.mock("../../_lib/route-guard", () => {
     };
 });
 
-const getSubscriptionIdForUid = jest.fn<Promise<string | null>, [string]>(async () => "sub_1");
-
-jest.mock("../../_lib/billing", () => {
-    return {
-        __esModule: true,
-        getSubscriptionIdForUid: (uid: string) => getSubscriptionIdForUid(uid),
-    };
-});
+jest.mock("../../_lib/billing", () => ({
+    __esModule: true,
+    getSubscriptionIdForUid: jest.fn(async () => "sub_1"),
+}));
 
 function createFirestoreMock() {
     const store = new Map<string, any>();
@@ -61,11 +57,13 @@ function createFirestoreMock() {
 describe("POST /api/billing/cancel-subscription", () => {
     beforeEach(() => {
         jest.resetModules();
-        getSubscriptionIdForUid.mockClear();
     });
 
     it("returns 400 when no subscription is linked", async () => {
-        getSubscriptionIdForUid.mockResolvedValueOnce(null as any);
+        jest.doMock("../../_lib/billing", () => ({
+            __esModule: true,
+            getSubscriptionIdForUid: jest.fn(async () => null),
+        }));
 
         const { db } = createFirestoreMock();
 
@@ -96,6 +94,10 @@ describe("POST /api/billing/cancel-subscription", () => {
     });
 
     it("updates Stripe cancel_at_period_end and mirrors fields onto kloner_users", async () => {
+        jest.doMock("../../_lib/billing", () => ({
+            __esModule: true,
+            getSubscriptionIdForUid: jest.fn(async () => "sub_1"),
+        }));
         const { db, store } = createFirestoreMock();
 
         jest.doMock("firebase-admin", () => ({
@@ -105,7 +107,24 @@ describe("POST /api/billing/cancel-subscription", () => {
                 firestore: Object.assign(() => db, {
                     FieldValue: { serverTimestamp: () => ({ __type: "serverTimestamp" }) },
                 }),
+                auth: () => ({
+                    getUser: async () => ({ email: "user@example.com", displayName: "Test User" }),
+                }),
             },
+        }));
+
+        jest.doMock("@/lib/observability", () => ({
+            __esModule: true,
+            captureCriticalEvent: jest.fn(async () => {}),
+            captureException: jest.fn(async () => {}),
+            captureAuditEvent: jest.fn(async () => {}),
+        }));
+
+        jest.doMock("resend", () => ({
+            __esModule: true,
+            Resend: jest.fn().mockImplementation(() => ({
+                emails: { send: jest.fn(async () => ({ id: "email_1" })) },
+            })),
         }));
 
         const updateMock = jest.fn(async () => ({
@@ -122,7 +141,7 @@ describe("POST /api/billing/cancel-subscription", () => {
         }));
 
         const { POST } = await import("./route");
-        const req = { json: async () => ({ atPeriodEnd: true }) } as any;
+        const req = { json: async () => ({ atPeriodEnd: true, cancellationReason: "pricing" }) } as any;
 
         const res: any = await POST(req);
         const body = await res.json();

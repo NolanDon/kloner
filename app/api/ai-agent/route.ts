@@ -1154,7 +1154,7 @@ function isInternalAiResponseLeak(text: string): boolean {
     ].some((needle) => value.includes(needle));
 }
 
-function buildUserFacingNoOpMessage(params: { currentFile: string | null; needsMoreContext?: boolean }): string {
+export function buildUserFacingNoOpMessage(params: { currentFile: string | null; needsMoreContext?: boolean }): string {
     const { currentFile, needsMoreContext } = params;
     if (needsMoreContext) {
         return currentFile
@@ -1167,7 +1167,7 @@ function buildUserFacingNoOpMessage(params: { currentFile: string | null; needsM
         : "I couldn’t place that link confidently yet. Point me to the footer or navigation area, and I’ll add it there.";
 }
 
-function sanitizeUserFacingAiMessage(params: { text: unknown; fallback: string }): string {
+export function sanitizeUserFacingAiMessage(params: { text: unknown; fallback: string }): string {
     const raw = safeString(params.text || "", 1200).trim();
     if (!raw) return params.fallback;
     if (looksLikeProviderLeak(raw)) return params.fallback;
@@ -1195,7 +1195,7 @@ type RetrievedChunk = {
     source?: string;
 };
 
-function formatRetrievedChunksSection(chunks: unknown): string {
+export function formatRetrievedChunksSection(chunks: unknown): string {
     if (!Array.isArray(chunks) || chunks.length === 0) return "";
 
     const lines: string[] = ["Retrieved embedding chunks:"];

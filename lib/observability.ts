@@ -393,7 +393,7 @@ async function postToSlack(event: StoredEvent, eventId: string) {
     if (shouldSuppressSlackWebhook(event)) return;
 
     const body: Record<string, unknown> = {
-        text: withFrontendLabel(event, `${event.severity.toUpperCase()} ${event.message}`),
+        text: withFrontendLabel(event, `${event.severity.toUpperCase()}${typeof event.statusCode === "number" ? ` (${event.statusCode})` : ""} ${event.message}`),
         blocks: toSlackBlocks(event, eventId),
         unfurl_links: false,
         unfurl_media: false,
