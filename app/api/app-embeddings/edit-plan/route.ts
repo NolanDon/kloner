@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireSessionAndMaybeCsrf } from "../../_lib/route-guard";
 import { assertAppBuilderScope } from "../../_lib/appBuilderScope";
-import { getAdminDb } from "../../_lib/auth";
+import { Resend } from "resend";
 import { callBackend } from "@/src/lib/callBackend";
 import { captureAuditEvent, captureCriticalEvent } from "@/lib/observability";
 
@@ -9,6 +9,14 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const EDIT_PLAN_TIMEOUT_MS = 45_000;
+const NEEDS_MORE_CONTEXT_EMAIL_TO =
+    (process.env.EMBEDDINGS_NEEDS_MORE_CONTEXT_TO || process.env.SUPPORT_TO || "support@kloner.app").trim();
+
+function getResend() {
+    const key = process.env.RESEND_API_KEY;
+    if (!key) throw new Error("RESEND_API_KEY env not set");
+    return new Resend(key);
+}
 
 function asString(value: unknown, max = 10_000): string {
     const text = typeof value === "string" ? value.trim() : "";
@@ -149,7 +157,7 @@ function buildNeedsMoreContextSnapshot(params: {
     };
 }
 
-async function logNeedsMoreContextCase(params: {
+async function emailNeedsMoreContextCase(params: {
     uid: string;
     appId: string;
     query: string;
@@ -168,23 +176,30 @@ async function logNeedsMoreContextCase(params: {
     if (!snapshot.needsMoreContext) return;
 
     try {
-        const db = getAdminDb();
-        const ref = db
-            .collection("embeddings_needs_more_context")
-            .doc();
+        const resend = getResend();
+        const from = (process.env.ALERT_EMAIL_FROM || "support@kloner.app").trim();
+        const requestId = params.requestId || params.resultReqId || "unknown";
 
-        await ref.set({
-            type: "app_embeddings_needs_more_context",
-            createdAt: new Date().toISOString(),
-            uid: params.uid,
-            appId: params.appId,
-            requestId: params.requestId || null,
-            backendReqId: params.resultReqId || null,
-            payload: snapshot.copyPastePayload,
-            copyPasteText: snapshot.copyPasteText,
+        const subject = `Kloner · Needs more context (${params.appId}) · ${requestId}`;
+        const text = [
+            "Embedding edit-plan returned needsMoreContext=true.",
+            `UID: ${params.uid}`,
+            `App ID: ${params.appId}`,
+            `Request ID: ${params.requestId || "-"}`,
+            `Backend Request ID: ${params.resultReqId || "-"}`,
+            "",
+            "Copy/paste payload:",
+            snapshot.copyPasteText,
+        ].join("\n");
+
+        await resend.emails.send({
+            from,
+            to: NEEDS_MORE_CONTEXT_EMAIL_TO,
+            subject,
+            text,
         });
     } catch (error) {
-        console.warn("[app-embeddings][edit-plan] failed to log needs-more-context snapshot", {
+        console.warn("[app-embeddings][edit-plan] failed to email needs-more-context snapshot", {
             appId: params.appId,
             uid: params.uid,
             requestId: params.requestId,
@@ -262,7 +277,7 @@ export async function POST(req: NextRequest) {
 
             const payload = result.json as any;
 
-            await logNeedsMoreContextCase({
+            await emailNeedsMoreContextCase({
                 uid,
                 appId,
                 query,
