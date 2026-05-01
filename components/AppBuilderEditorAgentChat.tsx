@@ -398,6 +398,34 @@ function extractCompletedEditPlanResult(job: AppEmbeddingEditPlanJobStatus | nul
     return result;
 }
 
+function isApplyUncertainResult(payload: unknown): boolean {
+    const data = payload && typeof payload === "object" ? (payload as Record<string, unknown>) : null;
+    if (!data) return false;
+
+    const code = String(data.code || "").trim().toUpperCase();
+    const outcome = String(data.outcome || "").trim().toLowerCase();
+    return (
+        code === "APPLY_STATE_UNCERTAIN" ||
+        data.uncertain === true ||
+        data.applyUncertain === true ||
+        outcome === "apply_uncertain" ||
+        outcome === "saved_source_machine_uncertain"
+    );
+}
+
+function getApplyUncertainMessage(payload: unknown): string {
+    const data = payload && typeof payload === "object" ? (payload as Record<string, unknown>) : {};
+    const backendMessage = typeof data.userMessage === "string" ? data.userMessage.trim() : "";
+    if (backendMessage) return backendMessage;
+
+    const savedToSource = data.savedToSource === true;
+    if (savedToSource) {
+        return "Your changes were saved, but the preview may not have picked them up yet. Perform a rebuild to load the latest version.";
+    }
+
+    return "We had a hiccup while reconnecting to the preview. Your changes may have been saved, but the live preview may not be up to date yet. Perform a rebuild to pick up the latest changes.";
+}
+
 const STARTER_PROMPTS = [
     "Improve the hero section with stronger hierarchy and clearer CTA.",
     "Tighten spacing and typography to make the layout feel more polished.",
@@ -2162,6 +2190,31 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                 return;
             }
 
+            if (isApplyUncertainResult(applyData) || isApplyUncertainResult({
+                code: applyResult.code,
+                outcome: applyData?.outcome,
+                uncertain: (applyData as any)?.uncertain,
+                applyUncertain: (applyData as any)?.applyUncertain,
+            })) {
+                const uncertainMessage = getApplyUncertainMessage({
+                    ...(applyData as any),
+                    code: (applyData as any)?.code || applyResult.code,
+                });
+                const recommendedAction = String((applyData as any)?.recommendedAction || "").trim().toLowerCase();
+                const retryPrompt = (applyData?.retryable || applyResult.status === 202)
+                    ? lastEditPlanPromptRef.current?.trim() || "Retry apply"
+                    : undefined;
+
+                setEditPlanApplyError(null);
+                setEditPlanApplyStatusMessage(uncertainMessage);
+                upsertApplyMessage(uncertainMessage, {
+                    editPlanRebuildPrompt: recommendedAction === "rebuild_preview" || Boolean(applyData?.requiresRestart || applyData?.restartPending),
+                    editPlanRetryPrompt: retryPrompt,
+                });
+                setEditPlanApplyLoaderMessage(null);
+                return;
+            }
+
             if (applyData?.saved === false && !applyReplayed && (expectedOps === null || expectedOps > 0)) {
                 const writeFailure = machineWrites === 0
                     ? "The apply request completed, but no files were written. Please retry apply."
@@ -2481,6 +2534,36 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                 : (backendApplyResult as any).ok
                     ? "The website was updated."
                     : "The change couldn't be fully applied.";
+
+            if (isApplyUncertainResult(backendApplyResult)) {
+                const uncertainMessage = getApplyUncertainMessage(backendApplyResult);
+                const recommendedAction = String((backendApplyResult as any)?.recommendedAction || "").trim().toLowerCase();
+                const retryPrompt = (backendApplyResult as any)?.retryAfterSeconds !== undefined
+                    ? (lastEditPlanPromptRef.current?.trim() || "Retry apply")
+                    : undefined;
+
+                setEditPlanApplyError(null);
+                setEditPlanApplyStatusMessage(uncertainMessage);
+                setMessages((prev) => [
+                    ...prev,
+                    {
+                        id: `edit_plan_apply_uncertain_${Date.now()}`,
+                        role: "assistant" as const,
+                        content: uncertainMessage,
+                        timestamp: new Date(),
+                        type: "text" as const,
+                        restorePointId: jobRestorePointId || undefined,
+                        editPlanRebuildPrompt: recommendedAction === "rebuild_preview" || Boolean((backendApplyResult as any)?.requiresRestart || (backendApplyResult as any)?.restartPending),
+                        editPlanRetryPrompt: retryPrompt,
+                    },
+                ]);
+
+                delete editPlanJobRequestMetaRef.current[jobId];
+                if (activeEditPlanJob.requestId) {
+                    delete editPlanJobRequestMetaRef.current[`req:${activeEditPlanJob.requestId}`];
+                }
+                return;
+            }
 
             if ((backendApplyResult as any).ok) {
                 const chips: string[] = [];
