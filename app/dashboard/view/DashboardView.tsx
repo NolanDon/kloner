@@ -2927,7 +2927,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                                     <div className="min-w-0 flex-1 space-y-1">
                                                         <div className="flex min-w-0 flex-wrap items-start gap-2 sm:items-center">
                                                             <div className="min-w-0 text-sm font-semibold text-neutral-900 break-words">
-                                                                Website (NextJS)
+                                                                Website
                                                             </div>
                                                             <span className="inline-flex max-w-full items-center rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-800 whitespace-nowrap">
                                                                 15 preview credits
