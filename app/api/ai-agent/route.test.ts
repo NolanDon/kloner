@@ -1,4 +1,4 @@
-import { formatRetrievedChunksSection } from "./route";
+import { formatRetrievedChunksSection } from "./messageHelpers";
 
 describe("formatRetrievedChunksSection", () => {
     it("renders chunkText content instead of object stringification", () => {

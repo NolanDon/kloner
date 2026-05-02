@@ -1,4 +1,4 @@
-import { buildUserFacingNoOpMessage, sanitizeUserFacingAiMessage } from "./route";
+import { buildUserFacingNoOpMessage, sanitizeUserFacingAiMessage } from "./messageHelpers";
 
 describe("sanitizeUserFacingAiMessage", () => {
     it("replaces technical search internals with a plain user-facing fallback", () => {
