@@ -193,7 +193,7 @@ describe("chatRestorePoints", () => {
       restorePointCardVisible: true,
       hasLatestRestorePoint: true,
     });
-    expect(successMessage).toContain("latest restore point");
+    expect(successMessage).toContain("restore point above");
     expect(successMessage).toContain("undo");
 
     const fallbackMessage = buildMissingApplyContractUserMessage({

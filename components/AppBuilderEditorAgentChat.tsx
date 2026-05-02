@@ -915,8 +915,6 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
     const [chatRestorePointsRequestId, setChatRestorePointsRequestId] = useState<string | null>(null);
     const [chatRestorePointRevertingId, setChatRestorePointRevertingId] = useState<string | null>(null);
     const [summaryFeedbackStateByMessageId, setSummaryFeedbackStateByMessageId] = useState<Record<string, "up" | "down" | "sending" | "error">>({});
-    const [restoreReasonExpandedByMessageId, setRestoreReasonExpandedByMessageId] = useState<Record<string, boolean>>({});
-    const [restoreReasonOverflowByMessageId, setRestoreReasonOverflowByMessageId] = useState<Record<string, boolean>>({});
     const [editHistory, setEditHistory] = useState<EditHistoryState>({ undoStack: [], redoQueue: [] });
     const [keepUndoPrompt, setKeepUndoPrompt] = useState<KeepUndoPromptState | null>(null);
     const [keepUndoError, setKeepUndoError] = useState<string | null>(null);
@@ -1193,7 +1191,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
             {
                 id: `restore_points_card_${Date.now()}`,
                 role: "assistant",
-                    content: "Restore point saved, Tap Undo to revert if you don't like the change.",
+                    content: "Restore point saved, tap undo to revert if you don't like the change.",
                 timestamp: new Date(),
                 type: "text",
                 restorePointsCard: true,
@@ -3638,15 +3636,6 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
         },
         [showAlert],
     );
-
-    const measureRestoreReasonOverflow = useCallback((messageId: string, element: HTMLDivElement | null) => {
-        if (!element) return;
-        const isOverflowing = element.scrollWidth > element.clientWidth;
-        setRestoreReasonOverflowByMessageId((prev) => {
-            if (prev[messageId] === isOverflowing) return prev;
-            return { ...prev, [messageId]: isOverflowing };
-        });
-    }, []);
 
     // Save chat history via server (debounced)
     useEffect(() => {
@@ -6213,48 +6202,20 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                             const point = preferredChatRestorePoint;
                                             const isUndoBusy = chatRestorePointRevertingId === point.restorePointId;
                                             const reasonText = String(point.reason || "").trim();
-                                            const firstSentence = (() => {
-                                                const sentenceMatch = reasonText.match(/^[\s\S]*?[.!?](?:\s|$)/);
-                                                return (sentenceMatch ? sentenceMatch[0] : reasonText).trim();
-                                            })();
-                                            const isExpanded = restoreReasonExpandedByMessageId[message.id] === true;
-                                            const hasOverflow = restoreReasonOverflowByMessageId[message.id] === true;
-                                            const showToggle = hasOverflow || isExpanded;
                                             return (
                                                 <div className="text-sm text-neutral-800 space-y-4">
                                                     {reasonText ? (
-                                                        <div
-                                                            className="rounded-3xl border border-neutral-200 bg-white/90 px-4 py-4 text-sm font-medium text-neutral-900 shadow-lg shadow-black/5"
-                                                            title={!isExpanded ? reasonText : undefined}
-                                                        >
-                                                            <div className="flex items-center gap-2">
-                                                                <div
-                                                                    ref={(element) => {
-                                                                        if (isExpanded) return;
-                                                                        measureRestoreReasonOverflow(message.id, element);
-                                                                    }}
-                                                                    className={`min-w-0 flex-1 ${isExpanded ? "whitespace-pre-wrap break-words" : "truncate"}`}
-                                                                >
-                                                                    {isExpanded ? reasonText : firstSentence}
+                                                        <details className="group w-full rounded-3xl border border-neutral-200 bg-white/90 shadow-lg shadow-black/5">
+                                                            <summary className="flex w-full cursor-pointer list-none items-center gap-2 px-4 py-4">
+                                                                <div className="min-w-0 flex-1 truncate font-medium text-neutral-900 text-sm">
+                                                                    {reasonText}
                                                                 </div>
-                                                                {showToggle ? (
-                                                                    <button
-                                                                        type="button"
-                                                                        onClick={() => {
-                                                                            setRestoreReasonExpandedByMessageId((prev) => ({
-                                                                                ...prev,
-                                                                                [message.id]: !isExpanded,
-                                                                            }));
-                                                                        }}
-                                                                        className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-700"
-                                                                        title={isExpanded ? "Collapse" : "Expand"}
-                                                                        aria-label={isExpanded ? "Collapse" : "Expand"}
-                                                                    >
-                                                                        <ChevronDown className={`h-4 w-4 transition-transform ${isExpanded ? "rotate-180" : ""}`} />
-                                                                    </button>
-                                                                ) : null}
+                                                                <ChevronDown className="h-4 w-4 shrink-0 text-neutral-500 transition-transform group-open:rotate-180" />
+                                                            </summary>
+                                                            <div className="border-t border-neutral-200 bg-neutral-50/40 px-4 py-4">
+                                                                <p className="text-sm text-neutral-800 whitespace-pre-wrap break-words">{reasonText}</p>
                                                             </div>
-                                                        </div>
+                                                        </details>
                                                     ) : null}
                                                     <div className="flex items-center gap-2">
                                                         <button

@@ -3290,25 +3290,8 @@ export default function AppBuilderEditor({
                     setApplyCompleteKey((k) => k + 1);
                 }
 
-                if (restartPending) {
-                    const now = Date.now();
-                    if (interactive || now - lastApplyAlertAtRef.current > 15000) {
-                        lastApplyAlertAtRef.current = now;
-                        void showAlert(
-                            restartMessage ||
-                                "Your files were saved, but the preview restart may still be in progress. If the change does not appear, click Rebuild app.",
-                            "Restart pending",
-                        );
-                    }
-                } else if (requiresRestart) {
-                    const now = Date.now();
-                    if (interactive || now - lastApplyAlertAtRef.current > 15000) {
-                        lastApplyAlertAtRef.current = now;
-                        void showAlert(
-                            "This change can’t be hot-updated. Your files are saved, but you may need to restart the preview to see it.",
-                            "Restart needed",
-                        );
-                    }
+                if (restartPending || requiresRestart) {
+                    void restartLocalPreview(false);
                 } else if (apply.outcome === "saved") {
                     const now = Date.now();
                     if (interactive || now - lastApplyAlertAtRef.current > 15000) {
@@ -3561,14 +3544,7 @@ export default function AppBuilderEditor({
                 overallNeedsRebuild = overallNeedsRebuild || needsRebuild;
 
                 if (restartPending) {
-                    const now = Date.now();
-                    if (interactive || now - lastApplyAlertAtRef.current > 15000) {
-                        lastApplyAlertAtRef.current = now;
-                        void showAlert(
-                            String(apply.restartMessage || "Your files were saved, but the preview restart may still be in progress. If the change does not appear, click Rebuild app."),
-                            "Restart pending",
-                        );
-                    }
+                    void restartLocalPreview(false);
                 }
             }
 
@@ -3586,7 +3562,7 @@ export default function AppBuilderEditor({
                 const rdata = await rres.json().catch(() => ({} as any));
                 if (!rres.ok || !(rdata as any)?.ok) {
                     const msg = String((rdata as any)?.error || `Restart failed (HTTP ${rres.status})`);
-                    if (interactive) void showAlert(msg, "Restart needed");
+                    if (interactive) void restartLocalPreview(false);
                 }
             }
 
@@ -3606,14 +3582,7 @@ export default function AppBuilderEditor({
                 const p = String(c?.path || "").trim();
                 if (!p) continue;
                 if (changeIsNotHotUpdatable(p)) {
-                    const now = Date.now();
-                    if (interactive || now - lastApplyAlertAtRef.current > 15000) {
-                        lastApplyAlertAtRef.current = now;
-                        void showAlert(
-                            "This change needs a restart to take effect. Your change is saved.",
-                            "Restart needed",
-                        );
-                    }
+                    void restartLocalPreview(false);
                     continue;
                 }
 
