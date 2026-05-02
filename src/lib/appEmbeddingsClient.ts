@@ -410,8 +410,8 @@ function normalizeEmbeddingEditPlanProposalFile(raw: unknown): AppEmbeddingEditP
             lineStart: Number.isFinite(Number((file.target as Record<string, unknown>).lineStart)) ? Math.floor(Number((file.target as Record<string, unknown>).lineStart)) : null,
             lineEnd: Number.isFinite(Number((file.target as Record<string, unknown>).lineEnd)) ? Math.floor(Number((file.target as Record<string, unknown>).lineEnd)) : null,
             anchorText: asString((file.target as Record<string, unknown>).anchorText, 4000) || null,
-            beforeText: asString((file.target as Record<string, unknown>).beforeText, 4000) || null,
-            afterText: asString((file.target as Record<string, unknown>).afterText, 4000) || null,
+            beforeText: asString((file.target as Record<string, unknown>).beforeText, 20_000) || null,
+            afterText: asString((file.target as Record<string, unknown>).afterText, 20_000) || null,
         }
         : null;
 

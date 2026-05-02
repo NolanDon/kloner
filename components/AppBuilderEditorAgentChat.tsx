@@ -2,7 +2,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo } from "react";
-import { Send, Bot, RotateCcw, Database, FileText, RefreshCw, X, AlertTriangle, ChevronDown, ChevronUp, ExternalLink, Copy, Check, Info } from "lucide-react";
+import { Send, Bot, RotateCcw, Database, FileText, RefreshCw, X, AlertTriangle, ChevronDown, ChevronUp, ExternalLink, Copy, Check, Info, ThumbsUp, ThumbsDown } from "lucide-react";
 import { ensureSessionAndCsrf } from "@/lib/auth-client";
 import { useAuth } from "@/src/hooks/useAuth";
 import { db } from "@/lib/firebase";
@@ -39,6 +39,44 @@ import {
     detectProjectFramework,
     planWouldSwitchFramework,
 } from "@/src/lib/projectFramework";
+import {
+    buildChatRestorePointRevertSuccessMessage,
+    buildChatRestorePointsErrorMessage,
+    buildRestorePointEndpointAuditPrompt,
+    getLatestChatRestorePoint,
+    getPreferredOrLatestChatRestorePoint,
+    isRestorePointListEndpointMissing,
+    normalizeChatRestorePoints,
+    type ChatEmbeddingRestorePoint,
+} from "@/src/lib/chatRestorePoints";
+import {
+    resolveApplyState,
+    hasWriteProof,
+    buildApplyStateMessage,
+} from "@/src/lib/editPlanApplyContract";
+
+type SummarySearchFeedbackContext = {
+    query: string;
+    currentPath: string | null;
+    requestedAt: number;
+    search?: {
+        request?: Record<string, unknown> | null;
+        response?: Record<string, unknown> | null;
+    } | null;
+    jobId?: string | null;
+    requestId?: string | null;
+};
+
+type EditPlanRequestMeta = {
+    query: string;
+    currentPath: string | null;
+    requestedAt: number;
+    preflightRestorePointId?: string | null;
+    search?: {
+        request?: Record<string, unknown> | null;
+        response?: Record<string, unknown> | null;
+    } | null;
+};
 
 type Message = {
     id: string;
@@ -67,6 +105,9 @@ type Message = {
     retryStatus?: number;
     editPlanRetryPrompt?: string;
     editPlanRebuildPrompt?: boolean;
+    restorePointsCard?: boolean;
+    restorePointsCardReason?: string;
+    summaryFeedbackContext?: SummarySearchFeedbackContext;
 };
 
 type StagedBundle = {
@@ -283,6 +324,13 @@ function formatEditPlanSeconds(value: number | null | undefined): string | null 
     return seconds > 0 ? `${minutes}m ${seconds}s` : `${minutes}m`;
 }
 
+function buildEditPlanDetailsChatMessage(job: AppEmbeddingEditPlanJobStatus): string {
+    const proposalSummary = String(job.result?.proposal?.summary || "").trim();
+    const resultSummary = String(job.result?.summary || "").trim();
+    const summary = proposalSummary || resultSummary;
+    return summary;
+}
+
 function buildNeedsMoreContextMessage(plan: AppEmbeddingEditPlanResponse, currentFile: string | null): string {
     const questions = [
         ...(Array.isArray(plan.questions) ? plan.questions : []),
@@ -398,6 +446,51 @@ function extractCompletedEditPlanResult(job: AppEmbeddingEditPlanJobStatus | nul
     return result;
 }
 
+function buildMissingApplyContractFulfillmentPrompt(input: {
+    jobId: string | null;
+    requestId: string | null;
+    statusUrl: string | null;
+    summary: string | null;
+    proposalFileCount: number;
+    proposalPaths: string[];
+}): string {
+    const compactPaths = input.proposalPaths.slice(0, 12);
+    const payload = {
+        jobId: input.jobId,
+        requestId: input.requestId,
+        statusUrl: input.statusUrl,
+        summary: input.summary,
+        proposalFileCount: input.proposalFileCount,
+        proposalPaths: compactPaths,
+        requirement: {
+            field: "result.apply",
+            reason: "frontend apply-state + restore-point UX requires backend apply contract",
+            requiredShape: {
+                outcome: "confirmed_success | restart_pending | restart_confirmed | uncertain | failed",
+                patchedFileCount: "number",
+                restorePoint: {
+                    restorePointId: "string",
+                    restorable: "boolean",
+                    touchedPaths: ["string"],
+                    skippedPaths: ["string"],
+                },
+                userMessage: "string",
+                requestId: "string",
+                code: "string",
+                retryable: "boolean",
+                retryAfterSeconds: "number",
+                recommendedAction: "string",
+            },
+        },
+    };
+
+    return [
+        "Backend contract fulfillment request:",
+        "For completed edit-plan jobs that write files, include a non-null result.apply object so frontend can reliably surface undo/restore behavior.",
+        JSON.stringify(payload, null, 2),
+    ].join("\n");
+}
+
 function isApplyUncertainResult(payload: unknown): boolean {
     const data = payload && typeof payload === "object" ? (payload as Record<string, unknown>) : null;
     if (!data) return false;
@@ -429,8 +522,8 @@ function getApplyUncertainMessage(payload: unknown): string {
 const STARTER_PROMPTS = [
     "Improve the hero section with stronger hierarchy and clearer CTA.",
     "Tighten spacing and typography to make the layout feel more polished.",
-    "Add a pricing section with plans, feature bullets, and a compare view.",
-    "Refine mobile responsiveness for navigation, spacing, and tap targets.",
+    // "Add a pricing section with plans, feature bullets, and a compare view.",
+    // "Refine mobile responsiveness for navigation, spacing, and tap targets.",
 ];
 
 const PRODUCTION_AGENT_CHAT_BLOCKED = process.env.NEXT_PUBLIC_AGENT_CHAT_BLOCKED === "1";
@@ -732,8 +825,6 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
         return () => document.removeEventListener("keydown", onKey);
     }, [topupModalOpen]);
     const makeWelcomeMessage = useCallback((ctx?: AppBuilderEditorAgentChatProps["welcomeContext"]) => {
-        const base = "Agent ready.";
-
         const cleanOneLine = (v: unknown, max = 180) => {
             const raw = typeof v === "string" ? v : "";
             const collapsed = raw.replace(/\s+/g, " ").trim();
@@ -756,8 +847,6 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
         }
 
         return [
-            base,
-            "",
             contextLine,
             "",
             "I can help with layout, styling, copy, and features.",
@@ -818,7 +907,16 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
     const [editPlanApplyLoaderMessage, setEditPlanApplyLoaderMessage] = useState<string | null>(null);
     const [activeEditPlanJob, setActiveEditPlanJob] = useState<AppEmbeddingEditPlanJobStatus | null>(null);
     const [editPlanStatusMessageId, setEditPlanStatusMessageId] = useState<string | null>(null);
+    const [editPlanFilesCardMessageId, setEditPlanFilesCardMessageId] = useState<string | null>(null);
     const [showRestorePointsPanel, setShowRestorePointsPanel] = useState(false);
+    const [chatRestorePoints, setChatRestorePoints] = useState<ChatEmbeddingRestorePoint[]>([]);
+    const [chatRestorePointsLoading, setChatRestorePointsLoading] = useState(false);
+    const [chatRestorePointsError, setChatRestorePointsError] = useState<string | null>(null);
+    const [chatRestorePointsRequestId, setChatRestorePointsRequestId] = useState<string | null>(null);
+    const [chatRestorePointRevertingId, setChatRestorePointRevertingId] = useState<string | null>(null);
+    const [summaryFeedbackStateByMessageId, setSummaryFeedbackStateByMessageId] = useState<Record<string, "up" | "down" | "sending" | "error">>({});
+    const [restoreReasonExpandedByMessageId, setRestoreReasonExpandedByMessageId] = useState<Record<string, boolean>>({});
+    const [restoreReasonOverflowByMessageId, setRestoreReasonOverflowByMessageId] = useState<Record<string, boolean>>({});
     const [editHistory, setEditHistory] = useState<EditHistoryState>({ undoStack: [], redoQueue: [] });
     const [keepUndoPrompt, setKeepUndoPrompt] = useState<KeepUndoPromptState | null>(null);
     const [keepUndoError, setKeepUndoError] = useState<string | null>(null);
@@ -827,7 +925,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
     const editPlanApplyIdempotencyKeyRef = useRef<string | null>(null);
     const applyPendingEditPlanInFlightRef = useRef(false);
     const keepUndoTimeoutRef = useRef<number | null>(null);
-    const editPlanJobRequestMetaRef = useRef<Record<string, { query: string; currentPath: string | null; requestedAt: number }>>({});
+    const editPlanJobRequestMetaRef = useRef<Record<string, EditPlanRequestMeta>>({});
 
     const [stagedBundles, setStagedBundles] = useState<StagedBundle[]>([]);
 
@@ -850,6 +948,17 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
     const editPlanStatusMessageTextRef = useRef<string | null>(null);
     const editPlanApplyStatusBubbleTextRef = useRef<string | null>(null);
     const lastPreviewIssueChatFingerprintRef = useRef<string | null>(null);
+    const chatRestorePointsCardKeyRef = useRef<string | null>(null);
+    const chatRestorePointsStableSignalRef = useRef<string | null>(null);
+    /** Tracks the jobId for which we have already emitted a restart_pending bubble,
+     *  so we don't spam the message on every poll tick while waiting for restartConfirmed. */
+    const editPlanRestartPendingEmittedJobIdRef = useRef<string | null>(null);
+    const editPlanDetailsMessageKeyRef = useRef<string | null>(null);
+    const editPlanDetailsMessageIdRef = useRef<string | null>(null);
+    const editPlanDetailsMessageTextRef = useRef<string | null>(null);
+    const editPlanFilesCardMessageJobKeyRef = useRef<string | null>(null);
+    const latestInquiryMetaRef = useRef<EditPlanRequestMeta | null>(null);
+    const latestSummaryFeedbackContextRef = useRef<SummarySearchFeedbackContext | null>(null);
     const previewIssueText = String(previewIssue || '').trim();
     const hasPreviewIssue = Boolean(previewIssueText);
     const showPreviewIssueDetails = process.env.NODE_ENV !== "production";
@@ -985,6 +1094,342 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
         if (csrf) headers["x-csrf"] = String(csrf);
         return headers;
     }, []);
+
+    const formatChatRestorePointTime = useCallback((value: string | null | undefined): string => {
+        if (!value) return "Unknown time";
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return "Unknown time";
+        return date.toLocaleString();
+    }, []);
+
+    const fetchChatRestorePoints = useCallback(async (opts?: { silent?: boolean; limit?: number }): Promise<{ ok: boolean; points: ChatEmbeddingRestorePoint[]; endpointMissing?: boolean }> => {
+        const silent = opts?.silent === true;
+        const limit = Math.min(50, Math.max(1, Math.floor(Number(opts?.limit ?? 20) || 20)));
+
+        if (!silent) setChatRestorePointsLoading(true);
+        setChatRestorePointsError(null);
+        setChatRestorePointsRequestId(null);
+
+        try {
+            const headers = await withCsrfHeaders();
+            const endpoint = `/api/app-builder/${encodeURIComponent(appId)}/restore-points?limit=${limit}`;
+            const res = await fetch(endpoint, {
+                method: "GET",
+                headers,
+                credentials: "include",
+                cache: "no-store",
+            });
+            const data = await res.json().catch(() => ({} as any));
+            const requestId = typeof data?.requestId === "string" ? data.requestId : null;
+            setChatRestorePointsRequestId(requestId);
+
+            if (res.status === 401) {
+                setChatRestorePointsError("Session expired. Please sign in again.");
+                return { ok: false, points: [] };
+            }
+
+            if (!res.ok || data?.ok === false) {
+                const endpointMissing = isRestorePointListEndpointMissing({
+                    status: res.status,
+                    code: data?.code,
+                });
+
+                if (endpointMissing) {
+                    const auditPrompt = buildRestorePointEndpointAuditPrompt({
+                        endpoint,
+                        appId,
+                        status: res.status,
+                        requestId,
+                        expectedResponseShape: {
+                            ok: true,
+                            restorePoints: [
+                                {
+                                    restorePointId: "string",
+                                    requestId: "string",
+                                    reason: "string",
+                                    createdAt: "string|null",
+                                    updatedAt: "string|null",
+                                    fileCount: "number",
+                                    touchedPaths: ["string"],
+                                    skippedPaths: ["string"],
+                                    restorable: "boolean",
+                                },
+                            ],
+                        },
+                    });
+                    console.warn("[restore-point-endpoint-missing]", auditPrompt);
+                    setChatRestorePointsError("Couldn’t load the latest restore point right now. Please retry.");
+                    return { ok: false, points: [], endpointMissing: true };
+                }
+
+                setChatRestorePointsError(buildChatRestorePointsErrorMessage({
+                    status: res.status,
+                    code: data?.code,
+                    error: data?.error,
+                    requestId,
+                }));
+                return { ok: false, points: [] };
+            }
+
+            const points = normalizeChatRestorePoints(data);
+            setChatRestorePoints(points);
+            return { ok: true, points };
+        } catch {
+            setChatRestorePointsError("Couldn’t load the latest restore point right now. Please retry.");
+            return { ok: false, points: [] };
+        } finally {
+            setChatRestorePointsLoading(false);
+        }
+    }, [appId, withCsrfHeaders]);
+
+    const pushRestorePointsCardMessage = useCallback((reason: string) => {
+        const normalizedReason = String(reason || "").trim() || "update";
+        const cardKey = `${normalizedReason}:${Math.floor(Date.now() / 10_000)}`;
+        if (chatRestorePointsCardKeyRef.current === cardKey) return;
+        chatRestorePointsCardKeyRef.current = cardKey;
+
+        setMessages((prev) => [
+            ...prev,
+            {
+                id: `restore_points_card_${Date.now()}`,
+                role: "assistant",
+                    content: "Restore point saved, Tap Undo to revert if you don't like the change.",
+                timestamp: new Date(),
+                type: "text",
+                restorePointsCard: true,
+                restorePointsCardReason: normalizedReason,
+            },
+        ]);
+    }, []);
+
+    const showRestorePointsCard = useCallback(async (reason: string): Promise<{ cardVisible: boolean; hasLatestRestorePoint: boolean }> => {
+        pushRestorePointsCardMessage(reason);
+        const fetchResult = await fetchChatRestorePoints({ silent: false, limit: 20 });
+        return {
+            cardVisible: fetchResult.ok,
+            hasLatestRestorePoint: fetchResult.ok && fetchResult.points.length > 0,
+        };
+    }, [fetchChatRestorePoints, pushRestorePointsCardMessage]);
+
+    const revertChatRestorePoint = useCallback(async (restorePointId: string) => {
+        const id = String(restorePointId || "").trim();
+        if (!id) return;
+        if (chatRestorePointRevertingId) return;
+
+        setChatRestorePointRevertingId(id);
+        setChatRestorePointsError(null);
+        try {
+            const headers = await withCsrfHeaders();
+            const endpoint = `/api/app-builder/${encodeURIComponent(appId)}/restore-points/${encodeURIComponent(id)}/apply`;
+            const res = await fetch(endpoint, {
+                method: "POST",
+                headers,
+                credentials: "include",
+                cache: "no-store",
+                body: JSON.stringify({}),
+            });
+            const data = await res.json().catch(() => ({} as any));
+            const requestId = typeof data?.requestId === "string" ? data.requestId : null;
+
+            if (res.status === 401) {
+                setMessages((prev) => [
+                    ...prev,
+                    {
+                        id: `restore_points_auth_${Date.now()}`,
+                        role: "assistant",
+                        content: "Session expired. Please sign in again to continue reverting restore points.",
+                        timestamp: new Date(),
+                        type: "text",
+                    },
+                ]);
+                return;
+            }
+
+            if (!res.ok || data?.ok === false) {
+                const code = String(data?.code || "").trim().toUpperCase();
+                if (isRestorePointListEndpointMissing({ status: res.status, code })) {
+                    const auditPrompt = buildRestorePointEndpointAuditPrompt({
+                        endpoint,
+                        appId,
+                        status: res.status,
+                        requestId,
+                        expectedResponseShape: {
+                            ok: true,
+                            applied: "number",
+                            newRestorePointId: "string",
+                        },
+                    });
+                    console.warn("[restore-point-apply-endpoint-missing]", auditPrompt);
+                    setChatRestorePointsError("Couldn’t revert this restore point right now. Please retry.");
+                    return;
+                }
+
+                if (res.status === 404 || code === "RESTORE_POINT_NOT_FOUND") {
+                    setMessages((prev) => [
+                        ...prev,
+                        {
+                            id: `restore_points_missing_${Date.now()}`,
+                            role: "assistant",
+                            content: "That restore point is no longer available. I refreshed the list.",
+                            timestamp: new Date(),
+                            type: "text",
+                        },
+                    ]);
+                    void fetchChatRestorePoints({ silent: false, limit: 20 });
+                    return;
+                }
+
+                if (res.status === 409 || code === "RESTORE_POINT_NOT_RESTORABLE") {
+                    const message = buildChatRestorePointsErrorMessage({
+                        status: res.status,
+                        code,
+                        error: data?.error,
+                        requestId,
+                    });
+                    setChatRestorePointsError(message);
+                    setMessages((prev) => [
+                        ...prev,
+                        {
+                            id: `restore_points_not_restorable_${Date.now()}`,
+                            role: "assistant",
+                            content: message,
+                            timestamp: new Date(),
+                            type: "text",
+                        },
+                    ]);
+                    return;
+                }
+
+                const withReq = buildChatRestorePointsErrorMessage({
+                    status: res.status,
+                    code,
+                    error: data?.error,
+                    requestId,
+                });
+                setChatRestorePointsError(withReq);
+                if (res.status >= 500) {
+                    setMessages((prev) => [
+                        ...prev,
+                        {
+                            id: `restore_points_server_error_${Date.now()}`,
+                            role: "assistant",
+                            content: `Restore point revert failed on the server. Please retry.${requestId ? ` Request ID: ${requestId}` : ""}`,
+                            timestamp: new Date(),
+                            type: "text",
+                        },
+                    ]);
+                }
+                return;
+            }
+
+            const restoredFiles = Number.isFinite(Number(data?.restoredFiles)) ? Math.max(0, Math.floor(Number(data.restoredFiles))) : 0;
+            const wrote = Number.isFinite(Number(data?.wrote)) ? Math.max(0, Math.floor(Number(data.wrote))) : 0;
+            const deleted = Number.isFinite(Number(data?.deleted)) ? Math.max(0, Math.floor(Number(data.deleted))) : 0;
+            const requiresRestart = data?.requiresRestart === true;
+            const requiresRebuild = data?.requiresRebuild === true;
+
+            const successMessage = buildChatRestorePointRevertSuccessMessage({
+                restorePointId: id,
+                restoredFiles,
+                wrote,
+                deleted,
+                requiresRestart,
+                requiresRebuild,
+                requestId,
+            });
+
+            setMessages((prev) => [
+                ...prev,
+                {
+                    id: `restore_points_reverted_${Date.now()}`,
+                    role: "assistant",
+                    content: successMessage,
+                    timestamp: new Date(),
+                    type: "text",
+                },
+            ]);
+
+            await fetchChatRestorePoints({ silent: false, limit: 20 });
+            pushRestorePointsCardMessage("after_revert");
+        } catch {
+            setChatRestorePointsError("Could not revert this restore point. Please retry.");
+        } finally {
+            setChatRestorePointRevertingId(null);
+        }
+    }, [appId, chatRestorePointRevertingId, fetchChatRestorePoints, pushRestorePointsCardMessage, withCsrfHeaders]);
+
+    const submitSummaryFeedback = useCallback(async (message: Message, vote: "up" | "down") => {
+        const messageId = String(message.id || "").trim();
+        if (!messageId) return;
+        if (vote === "up") {
+            setSummaryFeedbackStateByMessageId((prev) => ({ ...prev, [messageId]: "up" }));
+            return;
+        }
+
+        setSummaryFeedbackStateByMessageId((prev) => ({ ...prev, [messageId]: "sending" }));
+        try {
+            const headers = await withCsrfHeaders();
+            const res = await fetch("/api/support/summary-feedback", {
+                method: "POST",
+                headers,
+                credentials: "include",
+                cache: "no-store",
+                body: JSON.stringify({
+                    appId,
+                    messageId,
+                    summary: String(message.content || "").trim(),
+                    feedback: "down",
+                    context: message.summaryFeedbackContext || latestSummaryFeedbackContextRef.current || null,
+                }),
+            });
+            const data = await res.json().catch(() => ({} as any));
+            if (!res.ok || data?.ok === false) {
+                throw new Error(String(data?.error || "Failed to submit feedback."));
+            }
+            setSummaryFeedbackStateByMessageId((prev) => ({ ...prev, [messageId]: "down" }));
+            setMessages((prev) => [
+                ...prev,
+                {
+                    id: `summary_feedback_thanks_${Date.now()}`,
+                    role: "assistant",
+                    content: "Thanks, this was sent to support for review.",
+                    timestamp: new Date(),
+                    type: "text",
+                },
+            ]);
+        } catch {
+            setSummaryFeedbackStateByMessageId((prev) => ({ ...prev, [messageId]: "error" }));
+            setMessages((prev) => [
+                ...prev,
+                {
+                    id: `summary_feedback_error_${Date.now()}`,
+                    role: "assistant",
+                    content: "Could not send feedback right now. Please try again.",
+                    timestamp: new Date(),
+                    type: "text",
+                },
+            ]);
+        }
+    }, [appId, withCsrfHeaders]);
+
+    useEffect(() => {
+        if (!previewReady) return;
+        const statusText = String(editPlanApplyStatusMessage || "").trim().toLowerCase();
+        if (!statusText) return;
+
+        const looksSettled =
+            statusText.includes("preview was refreshed") ||
+            statusText.includes("preview is refreshing") ||
+            statusText.includes("website was updated") ||
+            statusText.includes("restart") ||
+            statusText.includes("rebuild");
+        if (!looksSettled) return;
+
+        const signal = `${statusText}:${Math.floor(Date.now() / 30_000)}`;
+        if (chatRestorePointsStableSignalRef.current === signal) return;
+        chatRestorePointsStableSignalRef.current = signal;
+        showRestorePointsCard("after_restart_stable");
+    }, [editPlanApplyStatusMessage, previewReady, showRestorePointsCard]);
 
     const startCreditTopup = useCallback(async (credits: number) => {
         if (topupBusy) return;
@@ -1185,6 +1630,23 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
 
                 if (isEditPlanJobTerminalStatus(nextJobWithIds.status)) {
                     if (nextJobWithIds.status === "completed") {
+                        // Check if restart is still pending — keep polling until confirmed.
+                        const rawApply = (nextJobWithIds.result as any)?.apply ?? (nextJobWithIds.job?.result as any)?.apply ?? null;
+                        if (rawApply && typeof rawApply === "object") {
+                            const restartStillPending = (rawApply as any).restartPending === true && (rawApply as any).restartConfirmed !== true;
+                            if (restartStillPending) {
+                                const awaitJobId = nextJobWithIds.jobId || nextJobWithIds.requestId || null;
+                                if (awaitJobId && editPlanRestartPendingEmittedJobIdRef.current !== awaitJobId) {
+                                    editPlanRestartPendingEmittedJobIdRef.current = awaitJobId;
+                                    setEditPlanApplyStatusMessage(buildApplyStateMessage("restart_pending", rawApply));
+                                }
+                                // Synthetic active status keeps the polling effect alive.
+                                setActiveEditPlanJob({ ...nextJobWithIds, status: "awaiting_restart", stage: "awaiting_restart" });
+                                // Do NOT increment editPlanJobVersionRef — allow polling to continue.
+                                return;
+                            }
+                        }
+
                         const completedProposal = extractCompletedEditPlanProposal(nextJobWithIds);
                         if (!completedProposal) {
                             setActiveEditPlanJob({
@@ -1820,6 +2282,8 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                 : undefined,
                         editPlanRetryPrompt: typeof m.editPlanRetryPrompt === "string" ? m.editPlanRetryPrompt : undefined,
                         editPlanRebuildPrompt: typeof m.editPlanRebuildPrompt === "boolean" ? m.editPlanRebuildPrompt : undefined,
+                        restorePointsCard: m.restorePointsCard === true,
+                        restorePointsCardReason: typeof m.restorePointsCardReason === "string" ? m.restorePointsCardReason : undefined,
                     };
                 };
 
@@ -1853,6 +2317,8 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                         restoreActionLabel: typeof msg.restoreActionLabel === "string" ? msg.restoreActionLabel : undefined,
                                         editPlanRetryPrompt: typeof msg.editPlanRetryPrompt === "string" ? msg.editPlanRetryPrompt : undefined,
                                         editPlanRebuildPrompt: typeof msg.editPlanRebuildPrompt === "boolean" ? msg.editPlanRebuildPrompt : undefined,
+                                        restorePointsCard: msg.restorePointsCard === true,
+                                        restorePointsCardReason: typeof msg.restorePointsCardReason === "string" ? msg.restorePointsCardReason : undefined,
                                     })) as Message[];
 
                                 if (loaded.length) {
@@ -1874,6 +2340,8 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                                     restoreActionLabel: m.restoreActionLabel ?? null,
                                                     editPlanRetryPrompt: m.editPlanRetryPrompt ?? null,
                                                     editPlanRebuildPrompt: m.editPlanRebuildPrompt ?? null,
+                                                    restorePointsCard: m.restorePointsCard ?? null,
+                                                    restorePointsCardReason: m.restorePointsCardReason ?? null,
                                                 })),
                                             }),
                                         },
@@ -2373,6 +2841,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                     restorePointId,
                 },
             );
+            showRestorePointsCard("after_apply");
 
             if (!restartTimedOut && !restartPending) {
                 editPlanApplyIdempotencyKeyRef.current = null;
@@ -2387,7 +2856,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
             applyPendingEditPlanInFlightRef.current = false;
             setIsApplyingEditPlan(false);
         }
-    }, [appId, createRestorePointBeforeApply, currentFile, fetchRestorePoints, pendingEditPlan, syncFilesFromServer, withCsrfHeaders]);
+    }, [appId, createRestorePointBeforeApply, currentFile, fetchRestorePoints, pendingEditPlan, showRestorePointsCard, syncFilesFromServer, withCsrfHeaders]);
 
     useEffect(() => {
         fetchRestorePoints();
@@ -2454,6 +2923,133 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
     }, [activeEditPlanJob, buildEditPlanStatusBubbleText]);
 
     useEffect(() => {
+        if (!activeEditPlanJob) return;
+
+        const jobKey = activeEditPlanJob.jobId || activeEditPlanJob.requestId || activeEditPlanJob.statusUrl || null;
+        if (!jobKey) return;
+
+        const details = buildEditPlanDetailsChatMessage(activeEditPlanJob);
+        if (!details) {
+            if (editPlanDetailsMessageKeyRef.current !== jobKey) {
+                editPlanDetailsMessageKeyRef.current = jobKey;
+                editPlanDetailsMessageIdRef.current = null;
+                editPlanDetailsMessageTextRef.current = null;
+            }
+            return;
+        }
+        const requestMeta = editPlanJobRequestMetaRef.current[jobKey]
+            || editPlanJobRequestMetaRef.current[`status:${jobKey}`]
+            || (activeEditPlanJob.statusUrl ? editPlanJobRequestMetaRef.current[`status:${activeEditPlanJob.statusUrl}`] : undefined)
+            || (activeEditPlanJob.requestId ? editPlanJobRequestMetaRef.current[`req:${activeEditPlanJob.requestId}`] : undefined)
+            || (activeEditPlanJob.jobId ? editPlanJobRequestMetaRef.current[activeEditPlanJob.jobId] : undefined)
+            || ((activeEditPlanJob as any)?.enqueueRequestId ? editPlanJobRequestMetaRef.current[`req:${String((activeEditPlanJob as any).enqueueRequestId)}`] : undefined)
+            || ((activeEditPlanJob as any)?.jobRequestId ? editPlanJobRequestMetaRef.current[`req:${String((activeEditPlanJob as any).jobRequestId)}`] : undefined)
+            || latestInquiryMetaRef.current
+            || null;
+        const feedbackContext = requestMeta
+            ? {
+                query: requestMeta.query,
+                currentPath: requestMeta.currentPath,
+                requestedAt: requestMeta.requestedAt,
+                search: requestMeta.search || null,
+                jobId: activeEditPlanJob.jobId || null,
+                requestId: activeEditPlanJob.requestId || null,
+            }
+            : undefined;
+        if (feedbackContext) {
+            latestSummaryFeedbackContextRef.current = feedbackContext;
+        }
+        const existingMessageId = editPlanDetailsMessageIdRef.current;
+        const existingMessageText = editPlanDetailsMessageTextRef.current;
+
+        if (editPlanDetailsMessageKeyRef.current !== jobKey || !existingMessageId) {
+            const nextBubbleId = `edit_plan_details_${Date.now()}`;
+            editPlanDetailsMessageKeyRef.current = jobKey;
+            editPlanDetailsMessageIdRef.current = nextBubbleId;
+            editPlanDetailsMessageTextRef.current = details;
+
+            setMessages((prev) => [
+                ...prev,
+                {
+                    id: nextBubbleId,
+                    role: "assistant",
+                    content: details,
+                    timestamp: new Date(),
+                    type: "text",
+                    summaryFeedbackContext: feedbackContext,
+                },
+            ]);
+            return;
+        }
+
+        if (existingMessageText !== details) {
+            editPlanDetailsMessageTextRef.current = details;
+            setMessages((prev) =>
+                prev.map((message) =>
+                    message.id === existingMessageId
+                        ? {
+                            ...message,
+                            content: details,
+                            summaryFeedbackContext: message.summaryFeedbackContext || feedbackContext,
+                        }
+                        : message,
+                ),
+            );
+        }
+    }, [activeEditPlanJob]);
+
+    useEffect(() => {
+        if (!activeEditPlanJob) return;
+
+        const proposal = activeEditPlanJob?.result?.proposal ?? activeEditPlanJob?.job?.result?.proposal ?? null;
+        const proposalFiles = Array.isArray(proposal?.files) ? proposal.files : [];
+        const proposalFileCount =
+            typeof proposal?.fileCount === "number" && Number.isFinite(proposal.fileCount)
+                ? proposal.fileCount
+                : proposalFiles.length;
+        const linesAdded =
+            typeof proposal?.totalEstimatedLinesAdded === "number" && Number.isFinite(proposal.totalEstimatedLinesAdded)
+                ? proposal.totalEstimatedLinesAdded
+                : null;
+        const linesRemoved =
+            typeof proposal?.totalEstimatedLinesRemoved === "number" && Number.isFinite(proposal.totalEstimatedLinesRemoved)
+                ? proposal.totalEstimatedLinesRemoved
+                : null;
+        const hasMeaningfulData =
+            String(activeEditPlanJob.status || "").toLowerCase() === "completed"
+            && Boolean(proposal)
+            && (
+                proposalFileCount > 0
+                || (typeof linesAdded === "number" && linesAdded > 0)
+                || (typeof linesRemoved === "number" && linesRemoved > 0)
+                || proposalFiles.some((file) => {
+                    const added = typeof file?.estimatedLinesAdded === "number" ? file.estimatedLinesAdded : 0;
+                    const removed = typeof file?.estimatedLinesRemoved === "number" ? file.estimatedLinesRemoved : 0;
+                    return added > 0 || removed > 0 || Boolean(String(file?.beforePreview || "").trim()) || Boolean(String(file?.afterPreview || "").trim());
+                })
+            );
+        if (!hasMeaningfulData) return;
+
+        const jobKey = activeEditPlanJob.jobId || activeEditPlanJob.requestId || activeEditPlanJob.statusUrl || null;
+        if (!jobKey) return;
+        if (editPlanFilesCardMessageJobKeyRef.current === jobKey && editPlanFilesCardMessageId) return;
+
+        const nextBubbleId = `edit_plan_files_card_${Date.now()}`;
+        editPlanFilesCardMessageJobKeyRef.current = jobKey;
+        setEditPlanFilesCardMessageId(nextBubbleId);
+        setMessages((prev) => [
+            ...prev,
+            {
+                id: nextBubbleId,
+                role: "assistant",
+                content: "Files changed",
+                timestamp: new Date(),
+                type: "text",
+            },
+        ]);
+    }, [activeEditPlanJob, editPlanFilesCardMessageId]);
+
+    useEffect(() => {
         const content = String(editPlanApplyStatusMessage || "").trim();
         if (!content) {
             editPlanApplyStatusBubbleTextRef.current = null;
@@ -2508,7 +3104,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
             || null;
 
         if (backendApplyResult && typeof backendApplyResult === "object") {
-            // Backend applied as part of the job — surface the result directly.
+            // Backend applied as part of the job — surface the result using the apply contract.
             setEditPlanApplyLoaderMessage(null);
             void syncFilesFromServer({ applyToState: true }).catch(() => null);
 
@@ -2541,89 +3137,200 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                 });
             }
 
-            const summary: string = pendingEditPlan?.summary
-                ? String(pendingEditPlan.summary).trim()
-                : (backendApplyResult as any).ok
-                    ? "The website was updated."
-                    : "The change couldn't be fully applied.";
+            // Determine apply state using the backend contract.
+            const applyState = resolveApplyState(backendApplyResult);
+            // Prefer pendingEditPlan summary as userMessage fallback for success states.
+            const applyResultForMsg = {
+                ...(backendApplyResult as Record<string, unknown>),
+                userMessage: (backendApplyResult as any).userMessage
+                    || (applyState === "confirmed_success" || applyState === "restart_pending" || applyState === "restart_confirmed"
+                        ? pendingEditPlan?.summary?.trim() || null
+                        : null),
+            };
+            const applyMsg = buildApplyStateMessage(applyState, applyResultForMsg);
 
-            if (isApplyUncertainResult(backendApplyResult)) {
-                const uncertainMessage = getApplyUncertainMessage(backendApplyResult);
-                const recommendedAction = String((backendApplyResult as any)?.recommendedAction || "").trim().toLowerCase();
-                const retryPrompt = (backendApplyResult as any)?.retryAfterSeconds !== undefined
-                    ? (lastEditPlanPromptRef.current?.trim() || "Retry apply")
-                    : undefined;
-
-                setEditPlanApplyError(null);
-                setEditPlanApplyStatusMessage(uncertainMessage);
-                setMessages((prev) => [
-                    ...prev,
-                    {
-                        id: `edit_plan_apply_uncertain_${Date.now()}`,
-                        role: "assistant" as const,
-                        content: uncertainMessage,
-                        timestamp: new Date(),
-                        type: "text" as const,
-                        restorePointId: jobRestorePointId || undefined,
-                        editPlanRebuildPrompt: recommendedAction === "rebuild_preview" || Boolean((backendApplyResult as any)?.requiresRestart || (backendApplyResult as any)?.restartPending),
-                        editPlanRetryPrompt: retryPrompt,
-                    },
-                ]);
-
-                delete editPlanJobRequestMetaRef.current[jobId];
-                if (activeEditPlanJob.requestId) {
-                    delete editPlanJobRequestMetaRef.current[`req:${activeEditPlanJob.requestId}`];
+            switch (applyState) {
+                case "confirmed_success": {
+                    const pfc = (backendApplyResult as any).patchedFileCount;
+                    const patchedChip = typeof pfc === "number" && pfc > 0 ? `${pfc} file${pfc !== 1 ? "s" : ""} patched` : null;
+                    const content = patchedChip ? `${applyMsg} (${patchedChip})` : applyMsg;
+                    setEditPlanApplyError(null);
+                    setEditPlanApplyStatusMessage(content);
+                    setMessages((prev) => [
+                        ...prev,
+                        {
+                            id: `edit_plan_apply_success_${Date.now()}`,
+                            role: "assistant" as const,
+                            content,
+                            timestamp: new Date(),
+                            type: "text" as const,
+                            restorePointId: jobRestorePointId || undefined,
+                        },
+                    ]);
+                    showRestorePointsCard("after_apply");
+                    break;
                 }
-                return;
+                case "restart_pending": {
+                    setEditPlanApplyError(null);
+                    setEditPlanApplyStatusMessage(applyMsg);
+                    setMessages((prev) => [
+                        ...prev,
+                        {
+                            id: `edit_plan_apply_restart_pending_${Date.now()}`,
+                            role: "assistant" as const,
+                            content: applyMsg,
+                            timestamp: new Date(),
+                            type: "text" as const,
+                            restorePointId: jobRestorePointId || undefined,
+                            editPlanRebuildPrompt: true,
+                        },
+                    ]);
+                    showRestorePointsCard("after_apply");
+                    break;
+                }
+                case "restart_confirmed": {
+                    setEditPlanApplyError(null);
+                    setEditPlanApplyStatusMessage(applyMsg);
+                    setMessages((prev) => [
+                        ...prev,
+                        {
+                            id: `edit_plan_apply_restart_confirmed_${Date.now()}`,
+                            role: "assistant" as const,
+                            content: applyMsg,
+                            timestamp: new Date(),
+                            type: "text" as const,
+                            restorePointId: jobRestorePointId || undefined,
+                        },
+                    ]);
+                    showRestorePointsCard("after_apply");
+                    break;
+                }
+                case "uncertain": {
+                    const recommendedAction = String((backendApplyResult as any)?.recommendedAction || "").trim().toLowerCase();
+                    const retryable = (backendApplyResult as any)?.retryable === true || typeof (backendApplyResult as any)?.retryAfterSeconds === "number";
+                    setEditPlanApplyError(null);
+                    setEditPlanApplyStatusMessage(applyMsg);
+                    setMessages((prev) => [
+                        ...prev,
+                        {
+                            id: `edit_plan_apply_uncertain_${Date.now()}`,
+                            role: "assistant" as const,
+                            content: applyMsg,
+                            timestamp: new Date(),
+                            type: "text" as const,
+                            restorePointId: jobRestorePointId || undefined,
+                            editPlanRebuildPrompt: recommendedAction === "rebuild_preview" || Boolean((backendApplyResult as any)?.requiresRestart || (backendApplyResult as any)?.restartPending),
+                            editPlanRetryPrompt: retryable ? (lastEditPlanPromptRef.current?.trim() || "Retry apply") : undefined,
+                        },
+                    ]);
+                    // Show restore points if a restore point was created (partial write may have occurred).
+                    if (jobRestorePointId) showRestorePointsCard("after_uncertain_apply");
+                    break;
+                }
+                case "failed": {
+                    const patchErrors: Array<{ path?: string | null; message?: string | null; code?: string | null }> =
+                        Array.isArray((backendApplyResult as any).patchErrors) ? (backendApplyResult as any).patchErrors : [];
+                    const machineError: string | null =
+                        typeof (backendApplyResult as any).machineError === "string" ? (backendApplyResult as any).machineError : null;
+                    const errorLines: string[] = [applyMsg];
+                    if (machineError) errorLines.push(machineError);
+                    if (patchErrors.length > 0) {
+                        errorLines.push(`Patch errors:\n${patchErrors.map((e) => `- ${e.path || "?"}: ${e.message || e.code || "error"}`).join("\n")}`);
+                    }
+                    const errorContent = errorLines.join("\n");
+                    setEditPlanApplyError(errorContent);
+                    setEditPlanApplyStatusMessage(applyMsg);
+                    setMessages((prev) => [
+                        ...prev,
+                        {
+                            id: `edit_plan_apply_failed_${Date.now()}`,
+                            role: "assistant" as const,
+                            content: errorContent,
+                            timestamp: new Date(),
+                            type: "text" as const,
+                            restorePointId: jobRestorePointId || undefined,
+                        },
+                    ]);
+                    break;
+                }
             }
 
-            if ((backendApplyResult as any).ok) {
-                const chips: string[] = [];
-                const pfc = (backendApplyResult as any).patchedFileCount;
-                if (typeof pfc === "number" && pfc > 0) chips.push(`${pfc} file${pfc !== 1 ? "s" : ""} patched`);
-                if ((backendApplyResult as any).requiresRestart || (backendApplyResult as any).requiresRebuild) chips.push("restart queued");
-                const content = chips.length > 0 ? `${summary} (${chips.join(", ")})` : summary;
-                setEditPlanApplyStatusMessage(content);
-                setMessages((prev) => [
-                    ...prev,
-                    {
-                        id: `edit_plan_apply_${Date.now()}`,
-                        role: "assistant" as const,
-                        content,
-                        timestamp: new Date(),
-                        type: "text" as const,
-                        restorePointId: jobRestorePointId || undefined,
-                    },
-                ]);
-            } else {
-                const patchErrors: Array<{ path?: string | null; message?: string | null; code?: string | null }> =
-                    Array.isArray((backendApplyResult as any).patchErrors) ? (backendApplyResult as any).patchErrors : [];
-                const machineError: string | null =
-                    typeof (backendApplyResult as any).machineError === "string" ? (backendApplyResult as any).machineError : null;
-                const errorLines: string[] = ["The change couldn't be fully applied to the preview machine."];
-                if (machineError) errorLines.push(machineError);
-                if (patchErrors.length > 0) {
-                    errorLines.push(`Patch errors:\n${patchErrors.map((e) => `- ${e.path || "?"}: ${e.message || e.code || "error"}`).join("\n")}`);
-                }
-                const errorContent = errorLines.join("\n");
-                setEditPlanApplyError(errorContent);
-                setEditPlanApplyStatusMessage("The change couldn't be fully applied to the preview machine.");
-                setMessages((prev) => [
-                    ...prev,
-                    {
-                        id: `edit_plan_apply_err_${Date.now()}`,
-                        role: "assistant" as const,
-                        content: errorContent,
-                        timestamp: new Date(),
-                        type: "text" as const,
-                        restorePointId: jobRestorePointId || undefined,
-                    },
-                ]);
+            return;
+        }
+
+        const completedProposal = completedResult && typeof completedResult === "object"
+            ? (((completedResult as any).proposal && typeof (completedResult as any).proposal === "object")
+                ? (completedResult as any).proposal
+                : null)
+            : null;
+        const completedProposalFiles = Array.isArray(completedProposal?.files) ? completedProposal.files : [];
+        const completedProposalFileCount =
+            typeof completedProposal?.fileCount === "number" && Number.isFinite(completedProposal.fileCount)
+                ? completedProposal.fileCount
+                : completedProposalFiles.length;
+        const completedLinesAdded =
+            typeof completedProposal?.totalEstimatedLinesAdded === "number" && Number.isFinite(completedProposal.totalEstimatedLinesAdded)
+                ? completedProposal.totalEstimatedLinesAdded
+                : null;
+        const completedLinesRemoved =
+            typeof completedProposal?.totalEstimatedLinesRemoved === "number" && Number.isFinite(completedProposal.totalEstimatedLinesRemoved)
+                ? completedProposal.totalEstimatedLinesRemoved
+                : null;
+        const hasMeaningfulCompletedWrite = Boolean(
+            completedProposal
+            && (
+                completedProposalFileCount > 0
+                || (typeof completedLinesAdded === "number" && completedLinesAdded > 0)
+                || (typeof completedLinesRemoved === "number" && completedLinesRemoved > 0)
+                || (() => {
+                    for (const file of completedProposalFiles as Array<Record<string, unknown>>) {
+                        const added = typeof file?.estimatedLinesAdded === "number" ? file.estimatedLinesAdded : 0;
+                        const removed = typeof file?.estimatedLinesRemoved === "number" ? file.estimatedLinesRemoved : 0;
+                        if (added > 0 || removed > 0 || Boolean(String(file?.beforePreview || "").trim()) || Boolean(String(file?.afterPreview || "").trim())) {
+                            return true;
+                        }
+                    }
+                    return false;
+                })()
+            ),
+        );
+
+        if (hasMeaningfulCompletedWrite) {
+            setEditPlanApplyLoaderMessage(null);
+            void syncFilesFromServer({ applyToState: true }).catch(() => null);
+            void fetchRestorePoints().catch(() => null);
+            if (requestMeta?.preflightRestorePointId) {
+                setLastRestorePointId(requestMeta.preflightRestorePointId);
             }
-            delete editPlanJobRequestMetaRef.current[jobId];
-            if (activeEditPlanJob.requestId) {
-                delete editPlanJobRequestMetaRef.current[`req:${activeEditPlanJob.requestId}`];
-            }
+
+            const contractPrompt = buildMissingApplyContractFulfillmentPrompt({
+                jobId: activeEditPlanJob.jobId || null,
+                requestId: activeEditPlanJob.requestId || null,
+                statusUrl: activeEditPlanJob.statusUrl || null,
+                summary: typeof (completedResult as any)?.summary === "string" ? (completedResult as any).summary : null,
+                proposalFileCount: completedProposalFileCount,
+                proposalPaths: completedProposalFiles.map((file: any) => String(file?.path || "").trim()).filter(Boolean),
+            });
+
+            dispatchAiAgentEvent("edit_plan_apply_contract_missing", {
+                appId,
+                userId: user?.uid || null,
+                jobId: activeEditPlanJob.jobId || null,
+                requestId: activeEditPlanJob.requestId || null,
+                statusUrl: activeEditPlanJob.statusUrl || null,
+                proposalFileCount: completedProposalFileCount,
+            });
+
+            console.warn("[edit-plan] backend result.apply missing for completed write", {
+                jobId: activeEditPlanJob.jobId || null,
+                requestId: activeEditPlanJob.requestId || null,
+                statusUrl: activeEditPlanJob.statusUrl || null,
+                proposalFileCount: completedProposalFileCount,
+                proposalPaths: completedProposalFiles.map((file: any) => String(file?.path || "").trim()).filter(Boolean),
+                prompt: contractPrompt,
+            });
+
+            void showRestorePointsCard("after_apply_missing_contract");
             return;
         }
 
@@ -2635,7 +3342,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
 
         // No user-facing message here: apply/restart ownership is server-side.
         return;
-    }, [activeEditPlanJob, fetchRestorePoints, isApplyingEditPlan, pendingEditPlan, setLastRestorePointId, setMessages, syncFilesFromServer]);
+    }, [activeEditPlanJob, fetchRestorePoints, isApplyingEditPlan, pendingEditPlan, setLastRestorePointId, setMessages, showRestorePointsCard, syncFilesFromServer]);
 
     // Scroll whenever the chat grows so new messages stay in view.
     useLayoutEffect(() => {
@@ -2643,10 +3350,13 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
     }, [messages, scrollToBottom]);
 
     const renderedMessages = useMemo(() => {
-        const legacySuppressedText = "preview restart failed or timed out. you can retry apply, or refresh/rebuild the preview.";
+        const suppressedTexts = [
+            "preview restart failed or timed out. you can retry apply, or refresh/rebuild the preview.",
+            "I created you a restore point above, so you can undo this change if needed.",
+        ];
         return messages
             .map((message, index) => ({ message, index }))
-            .filter(({ message }) => String(message.content || "").trim().toLowerCase() !== legacySuppressedText)
+            .filter(({ message }) => !suppressedTexts.includes(String(message.content || "").trim().toLowerCase()))
             .sort((a, b) => {
                 const aTime = a.message.timestamp instanceof Date ? a.message.timestamp.getTime() : new Date(a.message.timestamp).getTime();
                 const bTime = b.message.timestamp instanceof Date ? b.message.timestamp.getTime() : new Date(b.message.timestamp).getTime();
@@ -2655,6 +3365,49 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
             })
             .map((entry) => entry.message);
     }, [messages]);
+
+    const activeEditPlanProposal = activeEditPlanJob?.result?.proposal
+        ?? activeEditPlanJob?.job?.result?.proposal
+        ?? null;
+    const activeEditPlanProposalFiles = Array.isArray(activeEditPlanProposal?.files) ? activeEditPlanProposal.files : [];
+    const activeEditPlanProposalFileCount =
+        typeof activeEditPlanProposal?.fileCount === "number" && Number.isFinite(activeEditPlanProposal.fileCount)
+            ? activeEditPlanProposal.fileCount
+            : activeEditPlanProposalFiles.length;
+    const activeEditPlanLinesAdded =
+        typeof activeEditPlanProposal?.totalEstimatedLinesAdded === "number" && Number.isFinite(activeEditPlanProposal.totalEstimatedLinesAdded)
+            ? activeEditPlanProposal.totalEstimatedLinesAdded
+            : null;
+    const activeEditPlanLinesRemoved =
+        typeof activeEditPlanProposal?.totalEstimatedLinesRemoved === "number" && Number.isFinite(activeEditPlanProposal.totalEstimatedLinesRemoved)
+            ? activeEditPlanProposal.totalEstimatedLinesRemoved
+            : null;
+    const hasMeaningfulFileChangeData =
+        activeEditPlanProposalFileCount > 0
+        || (typeof activeEditPlanLinesAdded === "number" && activeEditPlanLinesAdded > 0)
+        || (typeof activeEditPlanLinesRemoved === "number" && activeEditPlanLinesRemoved > 0)
+        || activeEditPlanProposalFiles.some((file) => {
+            const added = typeof file?.estimatedLinesAdded === "number" ? file.estimatedLinesAdded : 0;
+            const removed = typeof file?.estimatedLinesRemoved === "number" ? file.estimatedLinesRemoved : 0;
+            return added > 0 || removed > 0 || Boolean(String(file?.beforePreview || "").trim()) || Boolean(String(file?.afterPreview || "").trim());
+        });
+    const activeEditPlanStatus = String(activeEditPlanJob?.status || "").toLowerCase();
+    const showFileChangesCardBubble = Boolean(
+        activeEditPlanJob
+        && activeEditPlanStatus === "completed"
+        && activeEditPlanProposal
+        && hasMeaningfulFileChangeData,
+    );
+    const showActiveEditPlanStatusBubble = Boolean(
+        activeEditPlanJob
+        && isActiveEditPlanJobStatus(activeEditPlanJob.status),
+    );
+    const showPreparingChangeSummaryBubble = Boolean(
+        showActiveEditPlanStatusBubble
+        && !showFileChangesCardBubble
+    );
+    const latestChatRestorePoint = getLatestChatRestorePoint(chatRestorePoints);
+    const preferredChatRestorePoint = getPreferredOrLatestChatRestorePoint(chatRestorePoints, lastRestorePointId);
 
     const selectedRestorePoint = restorePoints.find((item) => item.id === selectedRestorePointId) ?? restorePoints[0] ?? null;
 
@@ -2773,6 +3526,8 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                 dbSetupStatus: m.dbSetupStatus ?? null,
                 editPlanRetryPrompt: m.editPlanRetryPrompt ?? null,
                 editPlanRebuildPrompt: m.editPlanRebuildPrompt ?? null,
+                restorePointsCard: m.restorePointsCard ?? null,
+                restorePointsCardReason: m.restorePointsCardReason ?? null,
             }));
 
         const encoder = typeof TextEncoder !== "undefined" ? new TextEncoder() : null;
@@ -2883,6 +3638,15 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
         },
         [showAlert],
     );
+
+    const measureRestoreReasonOverflow = useCallback((messageId: string, element: HTMLDivElement | null) => {
+        if (!element) return;
+        const isOverflowing = element.scrollWidth > element.clientWidth;
+        setRestoreReasonOverflowByMessageId((prev) => {
+            if (prev[messageId] === isOverflowing) return prev;
+            return { ...prev, [messageId]: isOverflowing };
+        });
+    }, []);
 
     // Save chat history via server (debounced)
     useEffect(() => {
@@ -3999,6 +4763,26 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
             const effectiveCurrentFile = typeof opts?.forcedCurrentPath === "string"
                 ? (opts.forcedCurrentPath.trim() || null)
                 : resolveFallbackCurrentFile(files, currentFile);
+            const inquiryRequestedAt = Date.now();
+            latestInquiryMetaRef.current = {
+                query: messageInput,
+                currentPath: effectiveCurrentFile || null,
+                requestedAt: inquiryRequestedAt,
+                search: bypassInitialSearch
+                    ? {
+                        request: {
+                            skipped: true,
+                            reason: "bypassInitialSearch",
+                            query: messageInput,
+                            currentPath: effectiveCurrentFile || null,
+                        },
+                        response: {
+                            skipped: true,
+                            reason: "bypassInitialSearch",
+                        },
+                    }
+                    : null,
+            };
             const frameworkPrompt = buildProjectFrameworkPrompt(projectFramework, messageInput);
             let scopeRecoveryDuringRun = false;
             let scopeRecoveryRecoveredDuringRun = false;
@@ -4052,6 +4836,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
             }
             let normalizedSearch = normalizeEmbeddingSearchResponse({});
             let refreshQueuedNotice: string | null = null;
+            let summarySearchContext: { request?: Record<string, unknown> | null; response?: Record<string, unknown> | null } | null = null;
             if (!bypassInitialSearch) {
                 const searchRequestBody = {
                     appId,
@@ -4143,6 +4928,34 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                         }
                     }
                 }
+
+                summarySearchContext = {
+                    request: searchRequestBody as Record<string, unknown>,
+                    response: {
+                        ok: searchResult.ok,
+                        status: searchResult.status,
+                        code: searchResult.code || null,
+                        requestId: searchResult.requestId || null,
+                        retryAfter: searchResult.retryAfter || null,
+                        refreshQueued: normalizedSearch.refreshQueued === true,
+                        returned: typeof (searchResult.data as any)?.returned === "number" ? (searchResult.data as any).returned : null,
+                        candidates: Array.isArray((searchResult.data as any)?.candidates)
+                            ? (searchResult.data as any).candidates.length
+                            : null,
+                        chunks: normalizedSearch.chunks.slice(0, 10).map((chunk) => ({
+                            path: chunk.path,
+                            lineRange: chunk.lineRange,
+                            chunkIndex: chunk.chunkIndex,
+                            similarity: chunk.similarity,
+                        })),
+                    },
+                };
+                latestInquiryMetaRef.current = {
+                    query: messageInput,
+                    currentPath: effectiveCurrentFile || null,
+                    requestedAt: inquiryRequestedAt,
+                    search: summarySearchContext,
+                };
 
                 dispatchAiAgentEvent("search_request_end", {
                     appId,
@@ -4450,18 +5263,32 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                 editPlanJobStableReadsRef.current = 0;
                 editPlanJobFetchFailureCountRef.current = 0;
                 editPlanJobPollDelayOverrideMsRef.current = null;
+                editPlanFilesCardMessageJobKeyRef.current = null;
+                setEditPlanFilesCardMessageId(null);
+                const preflightRestorePointId = await createRestorePointBeforeApply(
+                    messageInput,
+                    effectiveCurrentFile ? [effectiveCurrentFile] : undefined,
+                );
+                if (preflightRestorePointId) {
+                    setLastRestorePointId(preflightRestorePointId);
+                }
                 const enqueueRequestId = rawPlan.requestId || editPlanResult.requestId || null;
                 const queuedJobId = queuedJob.jobId || rawPlan.jobId || null;
-                const requestMeta = {
+                const requestMeta: EditPlanRequestMeta = {
                     query: messageInput,
                     currentPath: effectiveCurrentFile || null,
-                    requestedAt: Date.now(),
+                    requestedAt: inquiryRequestedAt,
+                    preflightRestorePointId: preflightRestorePointId || null,
+                    search: summarySearchContext || latestInquiryMetaRef.current?.search || null,
                 };
                 if (queuedJobId) {
                     editPlanJobRequestMetaRef.current[queuedJobId] = requestMeta;
                 }
                 if (enqueueRequestId) {
                     editPlanJobRequestMetaRef.current[`req:${enqueueRequestId}`] = requestMeta;
+                }
+                if (queuedStatusUrl) {
+                    editPlanJobRequestMetaRef.current[`status:${queuedStatusUrl}`] = requestMeta;
                 }
                 setActiveEditPlanJob({
                     ...queuedJob,
@@ -4951,14 +5778,14 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                         onClick={() => setShowRestorePointsPanel((prev) => !prev)}
                         className="inline-flex items-center gap-1.5 rounded-full border border-neutral-200 bg-white px-3 py-1.5 text-xs font-medium text-neutral-700 shadow-sm transition hover:bg-neutral-50"
                         aria-expanded={showRestorePointsPanel}
-                        aria-label="Toggle edit history"
-                        title="Edit history"
+                        aria-label="Toggle timeline"
+                        title="Timeline"
                     >
                         <FileText className="h-3.5 w-3.5" />
-                        <span>Edit history</span>
-                        {editHistory.undoStack.length > 0 ? (
+                        <span>Timeline</span>
+                        {restorePoints.length > 0 ? (
                             <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-neutral-100 px-1.5 text-[10px] text-neutral-600">
-                                {editHistory.undoStack.length}
+                                {restorePoints.length}
                             </span>
                         ) : null}
                         <ChevronDown className={`h-3.5 w-3.5 transition-transform ${showRestorePointsPanel ? "rotate-180" : ""}`} />
@@ -5007,117 +5834,61 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
 
             {showRestorePointsPanel ? (
                 <div className="relative z-20 flex-shrink-0">
-                    <div className="absolute left-3 right-3 top-2 rounded-2xl border border-neutral-200 bg-white p-3 shadow-[0_20px_50px_rgba(15,23,42,0.12)]">
+                    <div className="absolute left-2 right-2 top-2 max-h-[65vh] overflow-y-auto rounded-2xl border border-neutral-200 bg-white p-3 shadow-[0_20px_50px_rgba(15,23,42,0.12)] sm:left-3 sm:right-3 sm:p-4">
                         <div className="flex items-start justify-between gap-3">
                             <div>
-                                <div className="text-sm font-medium text-neutral-900">Edit History</div>
-                                <div className="mt-1 text-[11px] text-neutral-500">Restore any earlier edit, or redo the most recent undone request.</div>
+                                <div className="text-sm font-medium text-neutral-900">Timeline</div>
+                                <div className="mt-1 text-[11px] text-neutral-500">Revert to any restore point. This rolls back changes made after that point.</div>
                             </div>
                             <button
                                 type="button"
                                 onClick={() => setShowRestorePointsPanel(false)}
                                 className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-neutral-100 text-neutral-600 transition hover:bg-neutral-200"
-                                aria-label="Close edit history"
+                                aria-label="Close timeline"
                             >
                                 <X className="h-4 w-4" />
                             </button>
                         </div>
                         <div className="mt-3 space-y-2">
-                            {editHistory.undoStack.length === 0 ? (
+                            {restorePoints.length === 0 ? (
                                 <div className="min-w-0 rounded-lg border border-dashed border-[#F55F2A]/20 bg-[#FFF8F5] px-3 py-2 text-xs text-neutral-600">
-                                    No completed edit history yet.
+                                    No timeline checkpoints yet. A restore point is created automatically before AI applies edits.
                                 </div>
                             ) : (
-                                editHistory.undoStack.map((entry) => (
-                                    <div key={entry.restorePointId} className="rounded-lg border border-neutral-200 bg-white px-3 py-2">
-                                        <div className="flex flex-wrap items-center justify-between gap-2">
-                                            <div className="min-w-0 flex-1">
-                                                <div className="truncate text-xs font-medium text-neutral-900">{entry.summary}</div>
-                                                <div className="mt-0.5 text-[11px] text-neutral-500">
-                                                    {formatHistoryRelativeTime(entry.appliedAt)}
-                                                    {entry.touchedPaths.length > 0 ? ` · ${entry.touchedPaths[0]}${entry.touchedPaths.length > 1 ? ` +${entry.touchedPaths.length - 1}` : ""}` : ""}
+                                restorePoints.map((rp) => {
+                                    const rpLabel = String(rp.label || "Restore point").trim() || "Restore point";
+                                    const rpTime = formatRestorePointCreatedAt(rp.createdAt);
+                                    const canRevert = !isRestoreBusy;
+                                    return (
+                                        <div key={rp.id} className="rounded-xl border border-neutral-200 bg-white px-3 py-2.5 shadow-sm">
+                                            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                                                <div className="min-w-0 flex-1">
+                                                    <div className="truncate text-xs font-medium text-neutral-900">{rpLabel}</div>
+                                                    <div className="mt-0.5 text-[11px] text-neutral-500">
+                                                        {rpTime}{rp.kept ? " · kept" : ""}
+                                                    </div>
                                                 </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        const confirmRollback = window.confirm(
+                                                            "Revert to this timeline checkpoint?\n\nYour project will roll back to this point and all changes made after it will be lost.",
+                                                        );
+                                                        if (!confirmRollback) return;
+                                                        void applyRestorePoint(rp.id, {
+                                                            statusMessage: "Project rolled back to the selected timeline checkpoint. Rebuilding preview now.",
+                                                        });
+                                                    }}
+                                                    disabled={!canRevert}
+                                                    className="inline-flex items-center justify-center rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-xs font-medium text-neutral-700 shadow-sm transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                                >
+                                                    Revert
+                                                </button>
                                             </div>
-                                            <button
-                                                type="button"
-                                                onClick={() => {
-                                                    void applyRestorePoint(entry.restorePointId, {
-                                                        statusMessage: "Edit undone. Your project has been restored.",
-                                                        redoQuery: entry.query,
-                                                        redoCurrentPath: entry.currentPath,
-                                                    });
-                                                }}
-                                                disabled={isRestoreBusy || !entry.restorable}
-                                                className="rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-xs font-medium text-neutral-700 shadow-sm transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50"
-                                            >
-                                                Restore
-                                            </button>
                                         </div>
-                                        {!entry.restorable ? (
-                                            <div className="mt-1 text-[11px] text-amber-700">Undo unavailable (file too large to snapshot).</div>
-                                        ) : null}
-                                    </div>
-                                ))
+                                    );
+                                })
                             )}
-                        </div>
-                        {editHistory.redoQueue.length > 0 ? (
-                            <div className="mt-3 flex items-center justify-between gap-2 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2">
-                                <div className="text-[11px] text-neutral-600">You have {editHistory.redoQueue.length} redo request{editHistory.redoQueue.length > 1 ? "s" : ""} queued.</div>
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        void redoLastUndo();
-                                    }}
-                                    disabled={isLoading || isRestoreBusy}
-                                    className="rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-xs font-medium text-neutral-700 shadow-sm transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50"
-                                >
-                                    Redo
-                                </button>
-                            </div>
-                        ) : null}
-                        <div className="mt-3 border-t border-neutral-100 pt-3">
-                            <div className="mb-2 text-[11px] text-neutral-500">Restore points</div>
-                        <div className="mt-3 flex flex-wrap items-center gap-2">
-                            {restorePoints.length > 1 ? (
-                                <select
-                                    value={selectedRestorePointId || restorePoints[0]?.id || ""}
-                                    onChange={(event) => setSelectedRestorePointId(event.target.value || null)}
-                                    className="min-w-[220px] max-w-full flex-1 rounded-lg border border-neutral-200 bg-white px-3 py-2 text-xs text-neutral-700 shadow-sm outline-none transition focus:border-[#F55F2A]/50"
-                                    disabled={isRestoreBusy}
-                                >
-                                    {restorePoints.map((rp) => (
-                                        <option key={rp.id} value={rp.id}>
-                                            {rp.label} · {formatRestorePointCreatedAt(rp.createdAt)}
-                                        </option>
-                                    ))}
-                                </select>
-                            ) : selectedRestorePoint ? (
-                                <div className="min-w-0 flex-1 rounded-lg border border-neutral-200 bg-white px-3 py-2 text-xs text-neutral-700 shadow-sm">
-                                    <div className="min-w-0 truncate font-medium text-neutral-900">{selectedRestorePoint.label}</div>
-                                    <div className="min-w-0 truncate text-[11px] text-neutral-500">
-                                        {formatRestorePointCreatedAt(selectedRestorePoint.createdAt)}{selectedRestorePoint.kept ? " · kept" : ""}
-                                    </div>
-                                </div>
-                            ) : (
-                                <div className="min-w-0 flex-1 rounded-lg border border-dashed border-[#F55F2A]/20 bg-[#FFF8F5] px-3 py-2 text-xs text-neutral-600">
-                                    No restore points yet. The editor will create one automatically before applying AI edits.
-                                </div>
-                            )}
-                            <button
-                                onClick={() => selectedRestorePoint && applyRestorePoint(selectedRestorePoint.id, { statusMessage: "Applied restore point" })}
-                                disabled={isRestoreBusy || !selectedRestorePoint}
-                                className="rounded-lg border border-neutral-300 bg-white px-3 py-2 text-xs font-medium text-neutral-700 shadow-sm transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50"
-                            >
-                                Apply
-                            </button>
-                            <button
-                                onClick={() => selectedRestorePoint && keepRestorePoint(selectedRestorePoint.id)}
-                                disabled={isRestoreBusy || !selectedRestorePoint}
-                                className="rounded-lg border border-neutral-300 bg-white px-3 py-2 text-xs font-medium text-neutral-700 shadow-sm transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50"
-                            >
-                                Keep
-                            </button>
-                        </div>
                         </div>
                     </div>
                 </div>
@@ -5179,7 +5950,22 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                     </div>
                 ) : null}
 
-                {renderedMessages.map((message) => (
+                {renderedMessages.map((message) => {
+                    const isStatusPlaceholderBubble = Boolean(
+                        message.role === "assistant"
+                        && message.id === editPlanStatusMessageId
+                        && activeEditPlanJob,
+                    );
+                    const isFilesCardPlaceholderBubble = Boolean(
+                        message.role === "assistant"
+                        && message.id === editPlanFilesCardMessageId
+                        && !showFileChangesCardBubble,
+                    );
+                    if (isStatusPlaceholderBubble || isFilesCardPlaceholderBubble) {
+                        return null;
+                    }
+
+                    return (
                     <div
                         key={message.id}
                         className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
@@ -5195,6 +5981,49 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                 <div className={`whitespace-pre-wrap break-words text-sm leading-relaxed ${message.role === "user" ? "text-white/95" : "text-neutral-900"}`}>
                                     {renderTextWithLinks(message.content)}
                                 </div>
+                            ) : null}
+
+                            {message.role === "assistant" && String(message.id || "").startsWith("edit_plan_details_") ? (
+                                (() => {
+                                    const feedbackState = summaryFeedbackStateByMessageId[message.id] || null;
+                                    if (feedbackState === "up" || feedbackState === "down") return null;
+                                    return (
+                                        <div className="mt-3 flex flex-col items-center justify-center gap-2 text-center">
+                                            <div className="text-[11px] font-medium text-neutral-500">How was this response?</div>
+                                            <div className="flex items-center justify-center gap-4">
+                                                <button
+                                                    type="button"
+                                                    title="Good response"
+                                                    aria-label="Good response"
+                                                    disabled={feedbackState === "sending"}
+                                                    onClick={() => {
+                                                        void submitSummaryFeedback(message, "up");
+                                                    }}
+                                                    className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-600 transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                                >
+                                                    <ThumbsUp className="h-4 w-4" />
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    title="Needs improvement"
+                                                    aria-label="Needs improvement"
+                                                    disabled={feedbackState === "sending"}
+                                                    onClick={() => {
+                                                        void submitSummaryFeedback(message, "down");
+                                                    }}
+                                                    className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-600 transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                                >
+                                                    <ThumbsDown className="h-4 w-4" />
+                                                </button>
+                                            </div>
+                                            {feedbackState === "sending" ? (
+                                                <div className="text-[10px] text-neutral-400">Sending feedback...</div>
+                                            ) : feedbackState === "error" ? (
+                                                <div className="text-[10px] text-red-500">Could not send feedback. Try again.</div>
+                                            ) : null}
+                                        </div>
+                                    );
+                                })()
                             ) : null}
 
                             {message.role === "assistant" && message.debugDetails && process.env.NODE_ENV !== "production" ? (
@@ -5363,6 +6192,95 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                 </div>
                             ) : null}
 
+                            {message.restorePointsCard ? (
+                                <div className="mt-2 space-y-4 p-1">
+                                    {chatRestorePointsLoading ? (
+                                        <div className="text-xs text-neutral-500">Loading latest restore point...</div>
+                                    ) : null}
+
+                                    {chatRestorePointsError ? (
+                                        <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">
+                                            {chatRestorePointsError}
+                                        </div>
+                                    ) : null}
+
+                                    {!chatRestorePointsLoading && chatRestorePoints.length === 0 ? (
+                                        <div className="text-xs text-neutral-500">No restore point available yet.</div>
+                                    ) : null}
+
+                                    {preferredChatRestorePoint ? (
+                                        (() => {
+                                            const point = preferredChatRestorePoint;
+                                            const isUndoBusy = chatRestorePointRevertingId === point.restorePointId;
+                                            const reasonText = String(point.reason || "").trim();
+                                            const firstSentence = (() => {
+                                                const sentenceMatch = reasonText.match(/^[\s\S]*?[.!?](?:\s|$)/);
+                                                return (sentenceMatch ? sentenceMatch[0] : reasonText).trim();
+                                            })();
+                                            const isExpanded = restoreReasonExpandedByMessageId[message.id] === true;
+                                            const hasOverflow = restoreReasonOverflowByMessageId[message.id] === true;
+                                            const showToggle = hasOverflow || isExpanded;
+                                            return (
+                                                <div className="text-sm text-neutral-800 space-y-4">
+                                                    {reasonText ? (
+                                                        <div
+                                                            className="rounded-3xl border border-neutral-200 bg-white/90 px-4 py-4 text-sm font-medium text-neutral-900 shadow-lg shadow-black/5"
+                                                            title={!isExpanded ? reasonText : undefined}
+                                                        >
+                                                            <div className="flex items-center gap-2">
+                                                                <div
+                                                                    ref={(element) => {
+                                                                        if (isExpanded) return;
+                                                                        measureRestoreReasonOverflow(message.id, element);
+                                                                    }}
+                                                                    className={`min-w-0 flex-1 ${isExpanded ? "whitespace-pre-wrap break-words" : "truncate"}`}
+                                                                >
+                                                                    {isExpanded ? reasonText : firstSentence}
+                                                                </div>
+                                                                {showToggle ? (
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => {
+                                                                            setRestoreReasonExpandedByMessageId((prev) => ({
+                                                                                ...prev,
+                                                                                [message.id]: !isExpanded,
+                                                                            }));
+                                                                        }}
+                                                                        className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-700"
+                                                                        title={isExpanded ? "Collapse" : "Expand"}
+                                                                        aria-label={isExpanded ? "Collapse" : "Expand"}
+                                                                    >
+                                                                        <ChevronDown className={`h-4 w-4 transition-transform ${isExpanded ? "rotate-180" : ""}`} />
+                                                                    </button>
+                                                                ) : null}
+                                                            </div>
+                                                        </div>
+                                                    ) : null}
+                                                    <div className="flex items-center gap-2">
+                                                        <button
+                                                            type="button"
+                                                            disabled={!point.restorable || isUndoBusy || isRestoreBusy}
+                                                            onClick={() => void revertChatRestorePoint(point.restorePointId)}
+                                                            className="rounded-full bg-[#F55F2A] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#E04E1B] disabled:cursor-not-allowed disabled:opacity-50"
+                                                        >
+                                                            {isUndoBusy ? "Undoing..." : "Undo"}
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            disabled={isRestoreBusy}
+                                                            onClick={() => void keepRestorePoint(point.restorePointId)}
+                                                            className="rounded-full border border-neutral-300 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-800 transition hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-50"
+                                                        >
+                                                            Keep
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })()
+                                    ) : null}
+                                </div>
+                            ) : null}
+
                             {message.stagedBundleId ? (
                                 <div className="mt-2 text-[11px] text-gray-600">
                                     Code changes are staged (not saved) and will apply after the database update.
@@ -5382,8 +6300,8 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                 </div>
                             )}
 
-                            {message.role === "assistant" && message.id === editPlanStatusMessageId && activeEditPlanJob ? (
-                                <div className="flex justify-start">
+                            {message.role === "assistant" && message.id === editPlanFilesCardMessageId && activeEditPlanJob && showFileChangesCardBubble ? (
+                                <div className="mt-3 flex justify-start">
                                     <div className="w-full max-w-none px-0 py-0 shadow-none">
                                         <EditPlanJobStatusCard
                                             job={activeEditPlanJob}
@@ -5673,13 +6591,24 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                             </div>
                         </div>
                     </div>
-                ))}
+                    );
+                })}
                 {isLoading && (
                     <div className="flex justify-start">
                         <div className="max-w-[82%] rounded-2xl border border-gray-200 bg-white p-3 shadow-[0_10px_24px_rgba(15,23,42,0.05)]">
                             <div className="flex items-center gap-2">
                                 <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-accent"></div>
                                 <span className="text-sm text-gray-700">Working on it</span>
+                            </div>
+                        </div>
+                    </div>
+                )}
+                {showPreparingChangeSummaryBubble && !isLoading && !editPlanApplyLoaderMessage && (
+                    <div className="flex justify-start">
+                        <div className="max-w-[82%] rounded-2xl border border-gray-200 bg-white p-3 shadow-[0_10px_24px_rgba(15,23,42,0.05)]">
+                            <div className="flex items-center gap-2">
+                                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-accent"></div>
+                                <span className="text-sm text-gray-700">Preparing change summary...</span>
                             </div>
                         </div>
                     </div>

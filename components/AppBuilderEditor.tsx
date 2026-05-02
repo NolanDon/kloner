@@ -3610,7 +3610,7 @@ export default function AppBuilderEditor({
                     if (interactive || now - lastApplyAlertAtRef.current > 15000) {
                         lastApplyAlertAtRef.current = now;
                         void showAlert(
-                            "This change needs a restart to take effect. Your change is saved. Click Rebuild preview to apply it.",
+                            "This change needs a restart to take effect. Your change is saved.",
                             "Restart needed",
                         );
                     }

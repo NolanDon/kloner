@@ -110,7 +110,7 @@ export default function EditPlanJobStatusCard({ job, onDismiss, onRetry }: EditP
         return (
             <div className={`space-y-2 rounded-2xl border px-4 py-4 ${toneClasses}`}>
                 <div className="text-[11px] font-semibold uppercase tracking-[0.12em]">{label}</div>
-                <pre className="max-h-[28rem] overflow-auto whitespace-pre font-mono text-[12px] leading-6 text-neutral-900 rounded-xl border border-white/70 bg-white/95 px-4 py-4 shadow-sm">
+                <pre className="max-h-[28rem] overflow-y-auto whitespace-pre-wrap break-words font-mono text-[12px] leading-6 text-neutral-900 rounded-xl border border-white/70 bg-white/95 px-4 py-4 shadow-sm">
                     {content}
                 </pre>
             </div>
@@ -124,8 +124,15 @@ export default function EditPlanJobStatusCard({ job, onDismiss, onRetry }: EditP
         const estimatedLinesRemoved = typeof file.estimatedLinesRemoved === "number" && Number.isFinite(file.estimatedLinesRemoved) ? file.estimatedLinesRemoved : null;
         const lineStart = typeof file.target?.lineStart === "number" && Number.isFinite(file.target.lineStart) ? file.target.lineStart : null;
         const lineEnd = typeof file.target?.lineEnd === "number" && Number.isFinite(file.target.lineEnd) ? file.target.lineEnd : null;
-        const addedPreview = file.afterPreview || file.content || null;
-        const deletedPreview = file.beforePreview || null;
+        const fullAddedText = typeof file.content === "string" && file.content.trim() ? file.content : null;
+        const targetAfterText = typeof file.target?.afterText === "string" && file.target.afterText.trim() ? file.target.afterText : null;
+        const fullDeletedText = typeof (file as any).beforeContent === "string" && String((file as any).beforeContent).trim()
+            ? String((file as any).beforeContent)
+            : typeof file.target?.beforeText === "string" && file.target.beforeText.trim()
+                ? file.target.beforeText
+                : null;
+        const addedPreview = fullAddedText || targetAfterText || file.afterPreview || null;
+        const deletedPreview = fullDeletedText || file.beforePreview || null;
 
         return (
             <details key={file.path} className="group w-full rounded-3xl border border-neutral-200 bg-white shadow-lg shadow-black/5">

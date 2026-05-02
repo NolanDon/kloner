@@ -581,6 +581,7 @@ export default function WebContainerRunner({ appId, files, filesReady = true, on
   const noMachineBootSinceRef = useRef<number | null>(null);
   const pollFetchFailureCountRef = useRef(0);
   const pollRateLimitCountRef = useRef(0);
+  const webcontainerStartCooldownUntilRef = useRef<number>(0);
   const lastPollFailureSignatureRef = useRef('');
   const repeatedPollFailureCountRef = useRef(0);
   const lastPollIssueReportKeyRef = useRef<string>('');
@@ -3127,17 +3128,37 @@ export default function NavBar() {
           });
         };
 
+        {
+          const now = Date.now();
+          if (webcontainerStartCooldownUntilRef.current > now) {
+            const waitSeconds = Math.max(1, Math.ceil((webcontainerStartCooldownUntilRef.current - now) / 1000));
+            throw new Error(`Preview start was rate-limited. Please wait about ${waitSeconds}s before trying again.`);
+          }
+        }
+
         await ensureAppScopeCookie();
         let response = await postWebcontainer(0);
 
         if (!response.ok) {
+          const retryAfterMs = parseRetryAfterMs(response.headers.get('retry-after')) || 0;
           const errorData = await response.json().catch(() => ({} as any));
           const errorMsg = String(errorData?.error || 'Failed to start app');
           const errorCode = String(errorData?.code || '').trim();
+          const retryAfterFromBodyMs = (() => {
+            const n = Number((errorData as any)?.retryAfterSeconds);
+            if (!Number.isFinite(n) || n <= 0) return 0;
+            return Math.round(n * 1000);
+          })();
           const isScopeProblem =
             errorCode === 'MISSING_APP_SCOPE' ||
             errorCode === 'INVALID_APP_SCOPE' ||
             errorMsg.toLowerCase().includes('app scope');
+
+          if (response.status === 429) {
+            const cooldownMs = Math.max(30_000, retryAfterMs, retryAfterFromBodyMs);
+            webcontainerStartCooldownUntilRef.current = Date.now() + cooldownMs;
+            throw new Error(`Preview start was rate-limited (429). Please wait about ${Math.max(30, Math.round(cooldownMs / 1000))}s and click Refresh.`);
+          }
 
           // CSRF can drift (cookie/header mismatch). Refresh token and retry once.
           if (response.status === 403 && errorMsg.toLowerCase().includes('csrf')) {
@@ -3158,6 +3179,7 @@ export default function NavBar() {
         }
 
         const data = await response.json();
+        webcontainerStartCooldownUntilRef.current = 0;
         console.log('Container creation response:', data);
         const { code } = data;
 
@@ -4336,6 +4358,10 @@ export default function NavBar() {
           errorMessage.includes('We couldn\'t start the preview') ||
           errorMessage.includes('Please try again');
 
+        const isRateLimited = errorMessage.includes('rate-limited') ||
+          errorMessage.includes('(429)') ||
+          errorMessage.includes('Too Many Requests');
+
         const isTimeout = errorMessage.includes('timeout') ||
           errorMessage.includes('did not become ready');
 
@@ -4355,9 +4381,9 @@ export default function NavBar() {
           errorMessage.includes('Failed to install dependencies') ||
           errorMessage.includes('Could not resolve dependencies');
 
-        const isRetryable = (isNetworkError || isServerError || isTimeout || isProxyError || isBuildError) && !isDiskSpaceError && !isPreconditionError;
+        const isRetryable = (isNetworkError || isServerError || isTimeout || isProxyError || isBuildError) && !isDiskSpaceError && !isPreconditionError && !isRateLimited;
 
-        console.log(`Error classification: Network=${isNetworkError}, Server=${isServerError}, Timeout=${isTimeout}, Proxy=${isProxyError}, Build=${isBuildError}, DiskSpace=${isDiskSpaceError}, Precondition=${isPreconditionError}, Retryable=${isRetryable}`);
+        console.log(`Error classification: Network=${isNetworkError}, Server=${isServerError}, Timeout=${isTimeout}, Proxy=${isProxyError}, Build=${isBuildError}, RateLimited=${isRateLimited}, DiskSpace=${isDiskSpaceError}, Precondition=${isPreconditionError}, Retryable=${isRetryable}`);
 
         // Circuit breaker: prevent infinite retries
         totalAttemptsRef.current += 1;
@@ -4426,7 +4452,9 @@ export default function NavBar() {
           console.log('Error is not retryable:', errorMessage);
           let finalErrorMessage = errorMessage;
 
-          if (isDiskSpaceError) {
+          if (isRateLimited) {
+            setCanRetry(true);
+          } else if (isDiskSpaceError) {
             finalErrorMessage += ' Error E004: Disk space low.';
           } else if (isPreconditionError) {
             finalErrorMessage += ' Error E005: Machine state conflict.';
@@ -4435,7 +4463,7 @@ export default function NavBar() {
           }
 
           setError(finalErrorMessage);
-          setCanRetry(false);
+          if (!isRateLimited) setCanRetry(false);
           setLoadingStatus(''); // Clear loading status on non-retryable error
         }
       } finally {
@@ -5698,7 +5726,7 @@ export default function NavBar() {
                 {renderLiveStatusLine({
                   uiStage: connectingToExisting ? 'reconnecting' : 'starting_app',
                   uiTitle: connectingToExisting ? 'Connecting to existing machine' : 'Starting your app',
-                  uiMessage: connectingToExisting ? 'Reconnecting to your saved session' : 'Setting up your environment',
+                  uiMessage: connectingToExisting ? 'Reconnecting' : 'Setting up your environment',
                   updatedAt: Date.now(),
                 })}
               </>
