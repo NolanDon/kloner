@@ -117,20 +117,34 @@ describe("chatRestorePoints", () => {
     ).toBe("Restore point request failed. Please retry. Request ID: req-502");
   });
 
-  test("builds revert success message and includes restart guidance edge case", () => {
+  test("builds revert success message with humanized text", () => {
     const message = buildChatRestorePointRevertSuccessMessage({
-      restorePointId: "abcdef123456",
-      restoredFiles: 2,
-      wrote: 1,
-      deleted: 1,
+      applied: 2,
       requiresRestart: true,
       requestId: "req-1",
     });
 
-    expect(message).toContain("Restore point abcdef12 was reverted.");
-    expect(message).toContain("Restored files: 2. Wrote: 1. Deleted: 1.");
-    expect(message).toContain("Changes may not be visible yet.");
+    expect(message).toContain("Restore point fulfilled");
+    expect(message).toContain("2 files");
     expect(message).toContain("Request ID: req-1");
+  });
+
+  test("builds revert success message with singular file count", () => {
+    const message = buildChatRestorePointRevertSuccessMessage({
+      applied: 1,
+    });
+
+    expect(message).toContain("Restore point fulfilled");
+    expect(message).toContain("1 file");
+  });
+
+  test("builds revert success message with no file count when applied is 0", () => {
+    const message = buildChatRestorePointRevertSuccessMessage({
+      applied: 0,
+    });
+
+    expect(message).toContain("Restore point fulfilled");
+    expect(message).not.toContain("file");
   });
 
   test("returns latest restore point or null", () => {

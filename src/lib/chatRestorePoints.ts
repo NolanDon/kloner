@@ -127,20 +127,18 @@ export function buildChatRestorePointsErrorMessage(args: {
 }
 
 export function buildChatRestorePointRevertSuccessMessage(args: {
-    restorePointId: string;
-    restoredFiles: number;
-    wrote: number;
-    deleted: number;
+    applied: number;
     requiresRestart?: boolean;
     requiresRebuild?: boolean;
     requestId?: string | null;
 }): string {
+    const applied = Math.max(0, Math.floor(Number(args.applied) || 0));
+    const fileLabel = applied === 1 ? "1 file" : applied > 1 ? `${applied} files` : null;
+    const base = fileLabel
+        ? `Restore point fulfilled — ${fileLabel} restored.`
+        : "Restore point fulfilled.";
     const lines = [
-        `Restore point ${asString(args.restorePointId).slice(0, 8)} was reverted.`,
-        `Restored files: ${Math.max(0, Math.floor(Number(args.restoredFiles) || 0))}. Wrote: ${Math.max(0, Math.floor(Number(args.wrote) || 0))}. Deleted: ${Math.max(0, Math.floor(Number(args.deleted) || 0))}.`,
-        args.requiresRestart || args.requiresRebuild
-            ? "Changes may not be visible yet. Wait for restart/rebuild to settle, then refresh/rebuild if needed."
-            : null,
+        base,
         asString(args.requestId) ? `Request ID: ${asString(args.requestId)}` : null,
     ].filter(Boolean);
 

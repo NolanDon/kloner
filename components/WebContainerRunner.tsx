@@ -3131,8 +3131,11 @@ export default function NavBar() {
         {
           const now = Date.now();
           if (webcontainerStartCooldownUntilRef.current > now) {
-            const waitSeconds = Math.max(1, Math.ceil((webcontainerStartCooldownUntilRef.current - now) / 1000));
-            throw new Error(`Preview start was rate-limited. Please wait about ${waitSeconds}s before trying again.`);
+            const waitMs = Math.max(0, webcontainerStartCooldownUntilRef.current - now);
+            if (waitMs > 0) {
+              await new Promise((resolve) => setTimeout(resolve, waitMs));
+            }
+            webcontainerStartCooldownUntilRef.current = 0;
           }
         }
 
@@ -3157,18 +3160,20 @@ export default function NavBar() {
           if (response.status === 429) {
             const cooldownMs = Math.max(30_000, retryAfterMs, retryAfterFromBodyMs);
             webcontainerStartCooldownUntilRef.current = Date.now() + cooldownMs;
-            throw new Error(`Preview start was rate-limited (429). Please wait about ${Math.max(30, Math.round(cooldownMs / 1000))}s and click Refresh.`);
+            await new Promise((resolve) => setTimeout(resolve, cooldownMs));
+            webcontainerStartCooldownUntilRef.current = 0;
+            response = await postWebcontainer(1);
           }
 
           // CSRF can drift (cookie/header mismatch). Refresh token and retry once.
-          if (response.status === 403 && errorMsg.toLowerCase().includes('csrf')) {
+          if (!response.ok && response.status === 403 && errorMsg.toLowerCase().includes('csrf')) {
             console.warn('Webcontainer start hit CSRF 403; retrying once with fresh CSRF token');
             response = await postWebcontainer(1);
-          } else if (response.status === 403 && isScopeProblem) {
+          } else if (!response.ok && response.status === 403 && isScopeProblem) {
             console.warn('Webcontainer start hit app-scope 403; refreshing scope cookie and retrying once');
             await ensureAppScopeCookie();
             response = await postWebcontainer(1);
-          } else {
+          } else if (!response.ok) {
             throw new Error(errorMsg);
           }
         }
@@ -3329,28 +3334,9 @@ export default function NavBar() {
                 });
 
                 setLoadingStatus('Preview is still starting...');
-                setCurrentStatusData((prev: any) =>
-                  prev && typeof prev === 'object'
-                    ? {
-                        ...prev,
-                        updatedAt: Date.now(),
-                        uiMessage: 'Preview polling paused. Please refresh',
-                      }
-                    : {
-                        status: 'rate_limited',
-                        uiStage: 'rate_limited',
-                        uiTitle: 'Rate limited',
-                        uiMessage: 'Preview polling paused. Please refresh',
-                        uiProgress: 0,
-                        updatedAt: Date.now(),
-                      }
-                );
-                stopAllTimers();
-                setIsPolling(false);
-                setIsLoading(false);
-                setConnectingToExisting(false);
-                setError(`Preview polling was rate-limited (429). Please wait about ${Math.max(30, Math.round(nextDelay / 1000))}s and click Refresh.`);
-                setCanRetry(true);
+                setError(null);
+                setCanRetry(false);
+                statusPollTimeoutRef.current = setTimeout(pollStatus, nextDelay);
                 return;
               }
 

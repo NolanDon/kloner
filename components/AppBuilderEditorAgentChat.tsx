@@ -104,7 +104,13 @@ type Message = {
     retryPrompt?: string;
     retryStatus?: number;
     editPlanRetryPrompt?: string;
+    editPlanRetryCurrentPath?: string | null;
     editPlanRebuildPrompt?: boolean;
+    editPlanFailure?: boolean;
+    editPlanFailureCode?: string;
+    editPlanFailureJobId?: string;
+    editPlanFailureRequestId?: string;
+    editPlanFailureHttpStatus?: number;
     restorePointsCard?: boolean;
     restorePointsCardReason?: string;
     summaryFeedbackContext?: SummarySearchFeedbackContext;
@@ -322,6 +328,31 @@ function formatEditPlanSeconds(value: number | null | undefined): string | null 
     const minutes = Math.floor(value / 60);
     const seconds = Math.round(value % 60);
     return seconds > 0 ? `${minutes}m ${seconds}s` : `${minutes}m`;
+}
+
+function getEditPlanFailureFriendlyMessage(code: string | null | undefined, fallback: string | null | undefined): string {
+    const normalizedCode = String(code || "").trim().toUpperCase();
+    if (normalizedCode === "EDIT_PLAN_APPLY_FAILURE_INCOMPLETE") {
+        return "We could not verify the apply result from the worker. Please retry.";
+    }
+    if (normalizedCode === "EMBEDDING_EDIT_PLAN_QUEUE_FAILED") {
+        return "Edit plan queue is unavailable right now. Please retry.";
+    }
+    if (normalizedCode === "EMBEDDING_MEMORY_PRESSURE") {
+        return "Server is under load. Please retry in a moment.";
+    }
+    if (normalizedCode === "JOB_LOOKUP_FAILED") {
+        return "Could not load edit plan status. Please retry.";
+    }
+
+    const safeFallback = String(fallback || "").trim();
+    return safeFallback || "Edit plan failed. Please retry.";
+}
+
+function getEditPlanPollCadenceMs(elapsedMs: number): number {
+    if (elapsedMs < 10_000) return 1_200;
+    if (elapsedMs < 60_000) return 2_500;
+    return 5_000;
 }
 
 function buildEditPlanDetailsChatMessage(job: AppEmbeddingEditPlanJobStatus): string {
@@ -700,6 +731,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
     // Supabase OAuth setup is safe to expose in production (still requires session + CSRF on the server).
     const allowDatabaseSetupUi = true;
     const [aiCreditsRemaining, setAiCreditsRemaining] = useState<number | null>(null);
+    const [showCreditsAccuracyNotice, setShowCreditsAccuracyNotice] = useState(true);
     const [topupBusy, setTopupBusy] = useState(false);
     const [topupModalOpen, setTopupModalOpen] = useState(false);
     const [topupCredits, setTopupCredits] = useState<number>(500);
@@ -945,6 +977,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
     const editPlanStatusMessageIdRef = useRef<string | null>(null);
     const editPlanStatusMessageTextRef = useRef<string | null>(null);
     const editPlanApplyStatusBubbleTextRef = useRef<string | null>(null);
+    const editPlanFailureSurfaceKeyRef = useRef<string | null>(null);
     const lastPreviewIssueChatFingerprintRef = useRef<string | null>(null);
     const chatRestorePointsCardKeyRef = useRef<string | null>(null);
     const chatRestorePointsStableSignalRef = useRef<string | null>(null);
@@ -1068,6 +1101,75 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
             // ignore
         }
     }, []);
+
+    const surfaceEditPlanFailure = useCallback((args: {
+        body?: string | null;
+        code?: string | null;
+        jobStatus?: string | null;
+        httpStatus?: number | null;
+        jobId?: string | null;
+        requestId?: string | null;
+        retryable: boolean;
+        retryPrompt?: string | null;
+        retryCurrentPath?: string | null;
+    }) => {
+        const code = String(args.code || "").trim() || null;
+        const jobStatus = String(args.jobStatus || "").trim().toLowerCase() || null;
+        const httpStatus = typeof args.httpStatus === "number" && Number.isFinite(args.httpStatus)
+            ? Math.max(0, Math.floor(args.httpStatus))
+            : null;
+        const jobId = String(args.jobId || "").trim() || null;
+        const requestId = String(args.requestId || "").trim() || null;
+        const body = getEditPlanFailureFriendlyMessage(code, args.body || null);
+        const retryPrompt = String(args.retryPrompt || "").trim() || String(lastEditPlanPromptRef.current || "").trim() || null;
+        const retryCurrentPath = typeof args.retryCurrentPath === "string" ? (args.retryCurrentPath.trim() || null) : null;
+
+        const dedupeKey = [
+            body,
+            code || "",
+            jobStatus || "",
+            String(httpStatus || ""),
+            jobId || "",
+            requestId || "",
+        ].join("|");
+        if (editPlanFailureSurfaceKeyRef.current === dedupeKey) return;
+        editPlanFailureSurfaceKeyRef.current = dedupeKey;
+
+        setEditPlanApplyLoaderMessage(null);
+        setEditPlanApplyStatusMessage("Could not apply changes");
+        setEditPlanApplyError([
+            body,
+            requestId ? `Request ID: ${requestId}` : null,
+            jobId ? `Job ID: ${jobId}` : null,
+        ].filter(Boolean).join("\n"));
+
+        setMessages((prev) => [
+            ...prev,
+            {
+                id: `edit_plan_failure_${Date.now()}`,
+                role: "assistant",
+                content: body,
+                timestamp: new Date(),
+                type: "text",
+                editPlanFailure: true,
+                editPlanFailureCode: code || undefined,
+                editPlanFailureJobId: jobId || undefined,
+                editPlanFailureRequestId: requestId || undefined,
+                editPlanFailureHttpStatus: httpStatus ?? undefined,
+                editPlanRetryPrompt: args.retryable ? (retryPrompt || "Retry apply") : undefined,
+                editPlanRetryCurrentPath: retryCurrentPath,
+            },
+        ]);
+
+        dispatchAiAgentEvent("edit_plan_failure_shown", {
+            code,
+            jobStatus,
+            httpStatus,
+            jobId,
+            requestId,
+            retryable: args.retryable,
+        });
+    }, [dispatchAiAgentEvent]);
 
     const withCsrfHeaders = useCallback(async () => {
         let csrf: string | null = null;
@@ -1320,17 +1422,14 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                 return;
             }
 
-            const restoredFiles = Number.isFinite(Number(data?.restoredFiles)) ? Math.max(0, Math.floor(Number(data.restoredFiles))) : 0;
-            const wrote = Number.isFinite(Number(data?.wrote)) ? Math.max(0, Math.floor(Number(data.wrote))) : 0;
-            const deleted = Number.isFinite(Number(data?.deleted)) ? Math.max(0, Math.floor(Number(data.deleted))) : 0;
+            const applied = Number.isFinite(Number(data?.applied)) ? Math.max(0, Math.floor(Number(data.applied))) : 0;
             const requiresRestart = data?.requiresRestart === true;
             const requiresRebuild = data?.requiresRebuild === true;
 
+            // False-positive guard: applied must be > 0 for a meaningful revert.
+            // The API returns applied=1 even for a single file, so trust it.
             const successMessage = buildChatRestorePointRevertSuccessMessage({
-                restorePointId: id,
-                restoredFiles,
-                wrote,
-                deleted,
+                applied,
                 requiresRestart,
                 requiresRebuild,
                 requestId,
@@ -1346,6 +1445,15 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                     type: "text",
                 },
             ]);
+
+            // Trigger preview refresh so the reverted files are visible.
+            if (typeof window !== "undefined") {
+                window.dispatchEvent(
+                    new CustomEvent("kloner:preview-force-fresh", {
+                        detail: { appId, reason: "restore-point-revert" },
+                    }),
+                );
+            }
 
             await fetchChatRestorePoints({ silent: false, limit: 20 });
             pushRestorePointsCardMessage("after_revert");
@@ -1534,6 +1642,43 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
         if (!activeEditPlanJob?.statusUrl || !isActiveEditPlanJobStatus(activeEditPlanJob.status)) return;
 
         const jobStatusUrl = activeEditPlanJob.statusUrl;
+        const jobKey = activeEditPlanJob.jobId || activeEditPlanJob.requestId || jobStatusUrl;
+        const requestMeta = editPlanJobRequestMetaRef.current[jobKey]
+            || editPlanJobRequestMetaRef.current[`status:${jobStatusUrl}`]
+            || (activeEditPlanJob.requestId ? editPlanJobRequestMetaRef.current[`req:${activeEditPlanJob.requestId}`] : undefined)
+            || (activeEditPlanJob.jobId ? editPlanJobRequestMetaRef.current[activeEditPlanJob.jobId] : undefined)
+            || latestInquiryMetaRef.current
+            || null;
+        const pollElapsedMs = Math.max(0, Date.now() - Math.max(0, Number(requestMeta?.requestedAt) || Date.now()));
+        if (pollElapsedMs >= 120_000) {
+            const timeoutCode = "JOB_LOOKUP_TIMEOUT";
+            const timeoutMessage = "Edit plan timed out while waiting for a terminal result. Please retry.";
+            const timedOutJob = {
+                ...activeEditPlanJob,
+                status: "failed",
+                stage: "failed",
+                error: {
+                    code: timeoutCode,
+                    message: timeoutMessage,
+                    retryAfterSeconds: null,
+                },
+            } as AppEmbeddingEditPlanJobStatus;
+            setActiveEditPlanJob(timedOutJob);
+            surfaceEditPlanFailure({
+                body: timeoutMessage,
+                code: timeoutCode,
+                jobStatus: "failed",
+                httpStatus: null,
+                jobId: activeEditPlanJob.jobId || null,
+                requestId: activeEditPlanJob.requestId || null,
+                retryable: true,
+                retryPrompt: requestMeta?.query || lastEditPlanPromptRef.current || null,
+                retryCurrentPath: requestMeta?.currentPath || null,
+            });
+            editPlanJobVersionRef.current += 1;
+            return;
+        }
+
         const pollVersion = ++editPlanJobVersionRef.current;
         const signature = [
             activeEditPlanJob.status,
@@ -1552,8 +1697,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
             editPlanJobStableReadsRef.current = 0;
         }
 
-        const stableReads = editPlanJobStableReadsRef.current;
-        const baseDelayMs = getEditPlanJobPollDelayMs(activeEditPlanJob.status, stableReads);
+        const baseDelayMs = getEditPlanPollCadenceMs(pollElapsedMs);
         const delayOverrideMs = editPlanJobPollDelayOverrideMsRef.current;
         const delayMs = typeof delayOverrideMs === "number" && Number.isFinite(delayOverrideMs)
             ? Math.max(baseDelayMs, Math.max(250, Math.floor(delayOverrideMs)))
@@ -1572,6 +1716,35 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                     const retryAfterSeconds = getEditPlanRetryAfterSeconds(result);
                     const retryAfterMs = typeof retryAfterSeconds === "number" ? Math.max(0, Math.ceil(retryAfterSeconds * 1000)) : null;
                     const code = String(result.code || "").trim().toUpperCase();
+
+                    if (statusCode === 409) {
+                        const contractFailureMessage = getEditPlanFailureFriendlyMessage(code, result.error || null);
+                        const contractFailedJob = {
+                            ...activeEditPlanJob,
+                            status: "failed",
+                            stage: "failed",
+                            error: {
+                                code: code || "EDIT_PLAN_APPLY_FAILURE_INCOMPLETE",
+                                message: contractFailureMessage,
+                                retryAfterSeconds,
+                            },
+                        } as AppEmbeddingEditPlanJobStatus;
+                        setActiveEditPlanJob(contractFailedJob);
+                        surfaceEditPlanFailure({
+                            body: contractFailureMessage,
+                            code: code || "EDIT_PLAN_APPLY_FAILURE_INCOMPLETE",
+                            jobStatus: "failed",
+                            httpStatus: statusCode,
+                            jobId: activeEditPlanJob.jobId || null,
+                            requestId: activeEditPlanJob.requestId || null,
+                            retryable: true,
+                            retryPrompt: requestMeta?.query || lastEditPlanPromptRef.current || null,
+                            retryCurrentPath: requestMeta?.currentPath || null,
+                        });
+                        editPlanJobVersionRef.current += 1;
+                        return;
+                    }
+
                     const isTransientStatus = statusCode === 0 || statusCode === 408 || statusCode === 425 || statusCode === 429 || statusCode === 500 || statusCode === 502 || statusCode === 503 || statusCode === 504;
                     const isBackpressure = code === "EMBEDDING_EDIT_PLAN_BACKPRESSURE" || code === "JOB_RATE_LIMITED" || statusCode === 429;
                     const shouldRetry = isTransientStatus || isBackpressure;
@@ -1608,7 +1781,17 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                         stage: "failed",
                         error: terminalError,
                     });
-                    setEditPlanApplyError(`${terminalError.message}\nRequest ID: ${activeEditPlanJob.requestId || "unknown"}\nJob ID: ${activeEditPlanJob.jobId || "unknown"}`);
+                    surfaceEditPlanFailure({
+                        body: terminalError.message,
+                        code: terminalError.code,
+                        jobStatus: "failed",
+                        httpStatus: statusCode,
+                        jobId: activeEditPlanJob.jobId || null,
+                        requestId: activeEditPlanJob.requestId || null,
+                        retryable: true,
+                        retryPrompt: requestMeta?.query || lastEditPlanPromptRef.current || null,
+                        retryCurrentPath: requestMeta?.currentPath || null,
+                    });
                     editPlanJobVersionRef.current += 1;
                     return;
                 }
@@ -1657,8 +1840,17 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                     retryAfterSeconds: null,
                                 },
                             });
-                            setEditPlanApplyError(`The job finished, but the edit plan payload was missing.\nRequest ID: ${nextJobWithIds.requestId || activeEditPlanJob.requestId || "unknown"}\nJob ID: ${nextJobWithIds.jobId || activeEditPlanJob.jobId || "unknown"}`);
-                            setEditPlanApplyStatusMessage("The job finished, but the proposal payload was missing.");
+                            surfaceEditPlanFailure({
+                                body: "The job finished, but the proposal payload was missing.",
+                                code: "JOB_RESULT_MISSING",
+                                jobStatus: "failed",
+                                httpStatus: result.status,
+                                jobId: nextJobWithIds.jobId || activeEditPlanJob.jobId || null,
+                                requestId: nextJobWithIds.requestId || activeEditPlanJob.requestId || null,
+                                retryable: true,
+                                retryPrompt: requestMeta?.query || lastEditPlanPromptRef.current || null,
+                                retryCurrentPath: requestMeta?.currentPath || null,
+                            });
                             editPlanJobVersionRef.current += 1;
                             return;
                         }
@@ -1678,21 +1870,23 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
 
                     if (nextJobWithIds.status === "expired") {
                         setActiveEditPlanJob(nextJobWithIds);
-                        setEditPlanApplyError(
-                            [
-                                nextJobWithIds.error && typeof nextJobWithIds.error === "object" && typeof nextJobWithIds.error.message === "string"
-                                    ? nextJobWithIds.error.message
-                                    : typeof nextJobWithIds.error === "string"
-                                        ? nextJobWithIds.error
-                                        : "The job expired before it could finish.",
-                                `Request ID: ${nextJobWithIds.requestId || activeEditPlanJob.requestId || "unknown"}`,
-                                `Job ID: ${nextJobWithIds.jobId || activeEditPlanJob.jobId || "unknown"}`,
-                                nextJobWithIds.error && typeof nextJobWithIds.error === "object" && typeof nextJobWithIds.error.retryAfterSeconds === "number"
-                                    ? `Retry after: ${nextJobWithIds.error.retryAfterSeconds}s`
-                                    : null,
-                            ].filter(Boolean).join("\n"),
-                        );
-                            setEditPlanApplyStatusMessage("The job expired before it could be applied.");
+                        surfaceEditPlanFailure({
+                            body: nextJobWithIds.error && typeof nextJobWithIds.error === "object" && typeof nextJobWithIds.error.message === "string"
+                                ? nextJobWithIds.error.message
+                                : typeof nextJobWithIds.error === "string"
+                                    ? nextJobWithIds.error
+                                    : "The job expired before it could finish.",
+                            code: nextJobWithIds.error && typeof nextJobWithIds.error === "object" && typeof nextJobWithIds.error.code === "string"
+                                ? nextJobWithIds.error.code
+                                : "JOB_EXPIRED",
+                            jobStatus: "expired",
+                            httpStatus: result.status,
+                            jobId: nextJobWithIds.jobId || activeEditPlanJob.jobId || null,
+                            requestId: nextJobWithIds.requestId || activeEditPlanJob.requestId || null,
+                            retryable: true,
+                            retryPrompt: requestMeta?.query || lastEditPlanPromptRef.current || null,
+                            retryCurrentPath: requestMeta?.currentPath || null,
+                        });
                         editPlanJobVersionRef.current += 1;
                         return;
                     }
@@ -1712,8 +1906,19 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                             },
                         } as AppEmbeddingEditPlanJobStatus;
                         setActiveEditPlanJob(expiredJob);
-                        setEditPlanApplyError(`${expiredJob.error && typeof expiredJob.error === "object" && typeof expiredJob.error.message === "string" ? expiredJob.error.message : "This job expired before it could be picked up."}\nRequest ID: ${nextJobWithIds.requestId || activeEditPlanJob.requestId || "unknown"}\nJob ID: ${nextJobWithIds.jobId || activeEditPlanJob.jobId || "unknown"}`);
-                        setEditPlanApplyStatusMessage("The job expired before it could be picked up.");
+                        surfaceEditPlanFailure({
+                            body: expiredJob.error && typeof expiredJob.error === "object" && typeof expiredJob.error.message === "string"
+                                ? expiredJob.error.message
+                                : "This job expired before it could be picked up.",
+                            code: "JOB_QUEUE_TIMEOUT",
+                            jobStatus: "expired",
+                            httpStatus: result.status,
+                            jobId: nextJobWithIds.jobId || activeEditPlanJob.jobId || null,
+                            requestId: nextJobWithIds.requestId || activeEditPlanJob.requestId || null,
+                            retryable: true,
+                            retryPrompt: requestMeta?.query || lastEditPlanPromptRef.current || null,
+                            retryCurrentPath: requestMeta?.currentPath || null,
+                        });
                         editPlanJobVersionRef.current += 1;
                         return;
                     }
@@ -1723,34 +1928,39 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                         const failedCode = nextJobWithIds.error && typeof nextJobWithIds.error === "object" && typeof nextJobWithIds.error.code === "string"
                             ? nextJobWithIds.error.code.toUpperCase()
                             : null;
-                        if (failedCode === "EMBEDDING_EDIT_PLAN_QUEUE_EXPIRED") {
-                            setEditPlanApplyStatusMessage("The job expired in queue before a worker could pick it up.");
-                        } else if (failedCode === "EMBEDDING_MEMORY_PRESSURE") {
-                            setEditPlanApplyStatusMessage("Worker capacity is temporarily constrained. Please retry in a moment.");
-                        } else {
-                            setEditPlanApplyStatusMessage("The apply step did not complete.");
-                        }
-                        setEditPlanApplyError(
-                            [
-                                nextJobWithIds.error && typeof nextJobWithIds.error === "object" && typeof nextJobWithIds.error.message === "string"
-                                    ? nextJobWithIds.error.message
-                                    : typeof nextJobWithIds.error === "string"
-                                        ? nextJobWithIds.error
-                                        : "The edit plan job failed.",
-                                `Request ID: ${nextJobWithIds.requestId || activeEditPlanJob.requestId || "unknown"}`,
-                                `Job ID: ${nextJobWithIds.jobId || activeEditPlanJob.jobId || "unknown"}`,
-                                nextJobWithIds.error && typeof nextJobWithIds.error === "object" && typeof nextJobWithIds.error.retryAfterSeconds === "number"
-                                    ? `Retry after: ${nextJobWithIds.error.retryAfterSeconds}s`
-                                    : null,
-                            ].filter(Boolean).join("\n"),
-                        );
+                        const failedMessage = nextJobWithIds.error && typeof nextJobWithIds.error === "object" && typeof nextJobWithIds.error.message === "string"
+                            ? nextJobWithIds.error.message
+                            : typeof nextJobWithIds.error === "string"
+                                ? nextJobWithIds.error
+                                : getEditPlanFailureFriendlyMessage(failedCode, "Edit plan failed. Please retry.");
+                        surfaceEditPlanFailure({
+                            body: failedMessage,
+                            code: failedCode,
+                            jobStatus: "failed",
+                            httpStatus: result.status,
+                            jobId: nextJobWithIds.jobId || activeEditPlanJob.jobId || null,
+                            requestId: nextJobWithIds.requestId || activeEditPlanJob.requestId || null,
+                            retryable: true,
+                            retryPrompt: requestMeta?.query || lastEditPlanPromptRef.current || null,
+                            retryCurrentPath: requestMeta?.currentPath || null,
+                        });
                         editPlanJobVersionRef.current += 1;
                         return;
                     }
                 }
             })().catch((err) => {
                 if (pollVersion !== editPlanJobVersionRef.current) return;
-                setEditPlanApplyError(String(err?.message || "Failed to refresh edit-plan job status."));
+                surfaceEditPlanFailure({
+                    body: String(err?.message || "Failed to refresh edit-plan job status."),
+                    code: "JOB_LOOKUP_FAILED",
+                    jobStatus: activeEditPlanJob.status,
+                    httpStatus: null,
+                    jobId: activeEditPlanJob.jobId || null,
+                    requestId: activeEditPlanJob.requestId || null,
+                    retryable: true,
+                    retryPrompt: requestMeta?.query || lastEditPlanPromptRef.current || null,
+                    retryCurrentPath: requestMeta?.currentPath || null,
+                });
             });
         }, delayMs);
 
@@ -1760,7 +1970,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                 editPlanJobPollTimerRef.current = null;
             }
         };
-    }, [activeEditPlanJob, setMessages]);
+    }, [activeEditPlanJob, surfaceEditPlanFailure]);
 
     useEffect(() => {
         if (allowDatabaseSetupUi) return;
@@ -2279,7 +2489,13 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                 ? m.dbSetupStatus
                                 : undefined,
                         editPlanRetryPrompt: typeof m.editPlanRetryPrompt === "string" ? m.editPlanRetryPrompt : undefined,
+                        editPlanRetryCurrentPath: typeof m.editPlanRetryCurrentPath === "string" ? m.editPlanRetryCurrentPath : undefined,
                         editPlanRebuildPrompt: typeof m.editPlanRebuildPrompt === "boolean" ? m.editPlanRebuildPrompt : undefined,
+                        editPlanFailure: m.editPlanFailure === true,
+                        editPlanFailureCode: typeof m.editPlanFailureCode === "string" ? m.editPlanFailureCode : undefined,
+                        editPlanFailureJobId: typeof m.editPlanFailureJobId === "string" ? m.editPlanFailureJobId : undefined,
+                        editPlanFailureRequestId: typeof m.editPlanFailureRequestId === "string" ? m.editPlanFailureRequestId : undefined,
+                        editPlanFailureHttpStatus: typeof m.editPlanFailureHttpStatus === "number" ? m.editPlanFailureHttpStatus : undefined,
                         restorePointsCard: m.restorePointsCard === true,
                         restorePointsCardReason: typeof m.restorePointsCardReason === "string" ? m.restorePointsCardReason : undefined,
                     };
@@ -2314,7 +2530,13 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                         restorePointId: typeof msg.restorePointId === "string" ? msg.restorePointId : undefined,
                                         restoreActionLabel: typeof msg.restoreActionLabel === "string" ? msg.restoreActionLabel : undefined,
                                         editPlanRetryPrompt: typeof msg.editPlanRetryPrompt === "string" ? msg.editPlanRetryPrompt : undefined,
+                                        editPlanRetryCurrentPath: typeof msg.editPlanRetryCurrentPath === "string" ? msg.editPlanRetryCurrentPath : undefined,
                                         editPlanRebuildPrompt: typeof msg.editPlanRebuildPrompt === "boolean" ? msg.editPlanRebuildPrompt : undefined,
+                                        editPlanFailure: msg.editPlanFailure === true,
+                                        editPlanFailureCode: typeof msg.editPlanFailureCode === "string" ? msg.editPlanFailureCode : undefined,
+                                        editPlanFailureJobId: typeof msg.editPlanFailureJobId === "string" ? msg.editPlanFailureJobId : undefined,
+                                        editPlanFailureRequestId: typeof msg.editPlanFailureRequestId === "string" ? msg.editPlanFailureRequestId : undefined,
+                                        editPlanFailureHttpStatus: typeof msg.editPlanFailureHttpStatus === "number" ? msg.editPlanFailureHttpStatus : undefined,
                                         restorePointsCard: msg.restorePointsCard === true,
                                         restorePointsCardReason: typeof msg.restorePointsCardReason === "string" ? msg.restorePointsCardReason : undefined,
                                     })) as Message[];
@@ -2337,7 +2559,13 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                                     restorePointId: m.restorePointId ?? null,
                                                     restoreActionLabel: m.restoreActionLabel ?? null,
                                                     editPlanRetryPrompt: m.editPlanRetryPrompt ?? null,
+                                                    editPlanRetryCurrentPath: m.editPlanRetryCurrentPath ?? null,
                                                     editPlanRebuildPrompt: m.editPlanRebuildPrompt ?? null,
+                                                    editPlanFailure: m.editPlanFailure ?? null,
+                                                    editPlanFailureCode: m.editPlanFailureCode ?? null,
+                                                    editPlanFailureJobId: m.editPlanFailureJobId ?? null,
+                                                    editPlanFailureRequestId: m.editPlanFailureRequestId ?? null,
+                                                    editPlanFailureHttpStatus: m.editPlanFailureHttpStatus ?? null,
                                                     restorePointsCard: m.restorePointsCard ?? null,
                                                     restorePointsCardReason: m.restorePointsCardReason ?? null,
                                                 })),
@@ -3328,6 +3556,17 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                 prompt: contractPrompt,
             });
 
+            surfaceEditPlanFailure({
+                body: "We could not verify the apply result from the worker. Please retry.",
+                code: "EDIT_PLAN_APPLY_FAILURE_INCOMPLETE",
+                jobStatus: "failed",
+                httpStatus: 409,
+                jobId: activeEditPlanJob.jobId || null,
+                requestId: activeEditPlanJob.requestId || null,
+                retryable: true,
+                retryPrompt: requestMeta?.query || lastEditPlanPromptRef.current || null,
+                retryCurrentPath: requestMeta?.currentPath || null,
+            });
             void showRestorePointsCard("after_apply_missing_contract");
             return;
         }
@@ -3340,7 +3579,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
 
         // No user-facing message here: apply/restart ownership is server-side.
         return;
-    }, [activeEditPlanJob, fetchRestorePoints, isApplyingEditPlan, pendingEditPlan, setLastRestorePointId, setMessages, showRestorePointsCard, syncFilesFromServer]);
+    }, [activeEditPlanJob, fetchRestorePoints, isApplyingEditPlan, pendingEditPlan, setLastRestorePointId, setMessages, showRestorePointsCard, surfaceEditPlanFailure, syncFilesFromServer]);
 
     // Scroll whenever the chat grows so new messages stay in view.
     useLayoutEffect(() => {
@@ -3523,7 +3762,13 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                 dbSetupPrompt: m.dbSetupPrompt ?? null,
                 dbSetupStatus: m.dbSetupStatus ?? null,
                 editPlanRetryPrompt: m.editPlanRetryPrompt ?? null,
+                editPlanRetryCurrentPath: m.editPlanRetryCurrentPath ?? null,
                 editPlanRebuildPrompt: m.editPlanRebuildPrompt ?? null,
+                editPlanFailure: m.editPlanFailure ?? null,
+                editPlanFailureCode: m.editPlanFailureCode ?? null,
+                editPlanFailureJobId: m.editPlanFailureJobId ?? null,
+                editPlanFailureRequestId: m.editPlanFailureRequestId ?? null,
+                editPlanFailureHttpStatus: m.editPlanFailureHttpStatus ?? null,
                 restorePointsCard: m.restorePointsCard ?? null,
                 restorePointsCardReason: m.restorePointsCardReason ?? null,
             }));
@@ -5075,6 +5320,8 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                             type: "text",
                             retryPrompt: messageInput,
                             retryStatus: 429,
+                            editPlanRetryPrompt: messageInput,
+                            editPlanRetryCurrentPath: effectiveCurrentFile || null,
                         },
                     ]);
                     return;
@@ -5110,6 +5357,8 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                             type: "text",
                             retryPrompt: messageInput,
                             retryStatus: 503,
+                            editPlanRetryPrompt: messageInput,
+                            editPlanRetryCurrentPath: effectiveCurrentFile || null,
                         },
                     ]);
                     return;
@@ -5127,6 +5376,8 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                             type: "text",
                             retryPrompt: messageInput,
                             retryStatus: 503,
+                            editPlanRetryPrompt: messageInput,
+                            editPlanRetryCurrentPath: effectiveCurrentFile || null,
                         },
                     ]);
                     setIsLoading(false);
@@ -5159,6 +5410,14 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                         const terminalMessageText = buildEditPlanTerminalSummary(retryRequestId, retryCode, retryReason);
 
                         await showAlert(terminalMessage, "Update couldn’t finish");
+                        dispatchAiAgentEvent("edit_plan_failure_shown", {
+                            code: retryCode,
+                            jobStatus: null,
+                            httpStatus: retryEditPlanResult.status,
+                            jobId: null,
+                            requestId: retryRequestId,
+                            retryable: true,
+                        });
                         setMessages((prev) => [
                             ...prev,
                             {
@@ -5169,6 +5428,12 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                 type: "text",
                                 retryPrompt: messageInput,
                                 retryStatus: 503,
+                                editPlanRetryPrompt: messageInput,
+                                editPlanRetryCurrentPath: effectiveCurrentFile || null,
+                                editPlanFailure: true,
+                                editPlanFailureCode: retryCode,
+                                editPlanFailureRequestId: retryRequestId || undefined,
+                                editPlanFailureHttpStatus: retryEditPlanResult.status,
                             },
                         ]);
                         return;
@@ -5192,6 +5457,14 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                     const terminalMessageText = buildEditPlanTerminalSummary(requestIdText, editPlanErrorCode, reasonText);
 
                     await showAlert(terminalMessage, "Update couldn’t finish");
+                    dispatchAiAgentEvent("edit_plan_failure_shown", {
+                        code: editPlanErrorCode,
+                        jobStatus: null,
+                        httpStatus: editPlanResult.status,
+                        jobId: null,
+                        requestId: requestIdText,
+                        retryable: true,
+                    });
                     setMessages((prev) => [
                         ...prev,
                         {
@@ -5202,6 +5475,12 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                             type: "text",
                             retryPrompt: messageInput,
                             retryStatus: 503,
+                            editPlanRetryPrompt: messageInput,
+                            editPlanRetryCurrentPath: effectiveCurrentFile || null,
+                            editPlanFailure: true,
+                            editPlanFailureCode: editPlanErrorCode,
+                            editPlanFailureRequestId: requestIdText,
+                            editPlanFailureHttpStatus: editPlanResult.status,
                         },
                     ]);
                     return;
@@ -5967,9 +6246,32 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                 }`}
                         >
                             {!(message.role === "assistant" && message.id === editPlanStatusMessageId && activeEditPlanJob) ? (
-                                <div className={`whitespace-pre-wrap break-words text-sm leading-relaxed ${message.role === "user" ? "text-white/95" : "text-neutral-900"}`}>
-                                    {renderTextWithLinks(message.content)}
-                                </div>
+                                message.editPlanFailure ? (
+                                    <div className="space-y-2">
+                                        <div className="inline-flex items-center gap-2 text-sm font-semibold text-neutral-900">
+                                            <AlertTriangle className="h-4 w-4 text-amber-600" />
+                                            <span>Could not apply changes</span>
+                                        </div>
+                                        <div className="whitespace-pre-wrap break-words text-sm leading-relaxed text-neutral-900">{message.content}</div>
+                                        {showPreviewIssueDetails ? (
+                                            <details className="rounded-xl border border-neutral-200 bg-neutral-50/70 px-3 py-2">
+                                                <summary className="cursor-pointer list-none text-xs font-medium text-neutral-700">
+                                                    View technical details
+                                                </summary>
+                                                <div className="mt-2 space-y-1 text-xs text-neutral-600 break-all">
+                                                    {message.editPlanFailureCode ? <div>Code: {message.editPlanFailureCode}</div> : null}
+                                                    {message.editPlanFailureJobId ? <div>Job: {message.editPlanFailureJobId}</div> : null}
+                                                    {message.editPlanFailureRequestId ? <div>Request: {message.editPlanFailureRequestId}</div> : null}
+                                                    {typeof message.editPlanFailureHttpStatus === "number" ? <div>HTTP: {message.editPlanFailureHttpStatus}</div> : null}
+                                                </div>
+                                            </details>
+                                        ) : null}
+                                    </div>
+                                ) : (
+                                    <div className={`whitespace-pre-wrap break-words text-sm leading-relaxed ${message.role === "user" ? "text-white/95" : "text-neutral-900"}`}>
+                                        {renderTextWithLinks(message.content)}
+                                    </div>
+                                )
                             ) : null}
 
                             {message.role === "assistant" && String(message.id || "").startsWith("edit_plan_details_") ? (
@@ -6270,10 +6572,20 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                             onRetry={
                                                 (activeEditPlanJob.status === "failed" || activeEditPlanJob.status === "expired") && lastEditPlanPromptRef.current?.trim()
                                                     ? () => {
-                                                        const retryPrompt = lastEditPlanPromptRef.current?.trim();
+                                                        const jobKey = activeEditPlanJob.jobId || activeEditPlanJob.requestId || activeEditPlanJob.statusUrl || "";
+                                                        const requestMeta = editPlanJobRequestMetaRef.current[jobKey]
+                                                            || (activeEditPlanJob.statusUrl ? editPlanJobRequestMetaRef.current[`status:${activeEditPlanJob.statusUrl}`] : undefined)
+                                                            || (activeEditPlanJob.requestId ? editPlanJobRequestMetaRef.current[`req:${activeEditPlanJob.requestId}`] : undefined)
+                                                            || (activeEditPlanJob.jobId ? editPlanJobRequestMetaRef.current[activeEditPlanJob.jobId] : undefined)
+                                                            || null;
+                                                        const retryPrompt = String(requestMeta?.query || lastEditPlanPromptRef.current || "").trim();
+                                                        const retryCurrentPath = typeof requestMeta?.currentPath === "string"
+                                                            ? (requestMeta.currentPath.trim() || null)
+                                                            : null;
                                                         if (!retryPrompt) return;
                                                         void sendMessage({
                                                             forcedInput: retryPrompt,
+                                                            forcedCurrentPath: retryCurrentPath,
                                                             allowWhenChatDisabled: true,
                                                             hideUserMessage: true,
                                                             bypassInitialSearch: true,
@@ -6509,9 +6821,13 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                                 const prompt = retryPrompt && retryPrompt.toLowerCase() !== "retry apply"
                                                     ? retryPrompt
                                                     : String(lastEditPlanPromptRef.current || "").trim();
+                                                const retryCurrentPath = typeof message.editPlanRetryCurrentPath === "string"
+                                                    ? (message.editPlanRetryCurrentPath.trim() || null)
+                                                    : null;
                                                 if (!prompt) return;
                                                 void sendMessage({
                                                     forcedInput: prompt,
+                                                    forcedCurrentPath: retryCurrentPath,
                                                     allowWhenChatDisabled: true,
                                                     hideUserMessage: true,
                                                     bypassInitialSearch: true,
@@ -7129,6 +7445,29 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
 
             {/* Input */}
             <div className="p-4 border-t bg-white rounded-lg flex-shrink-0">
+                {showCreditsAccuracyNotice ? (
+                    <div className="mb-2 flex items-start justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50/70 px-3 py-2">
+                        <div className="text-sm leading-5 text-amber-800">
+                            <span>We make daily accuracy improvements. Please use </span>
+                            <span className="inline-flex items-center gap-1 align-middle">
+                                <ThumbsUp className="h-3.5 w-3.5" aria-hidden="true" />
+                                <span>/</span>
+                                <ThumbsDown className="h-3.5 w-3.5" aria-hidden="true" />
+                            </span>
+                            <span> feedback to help us improve your experience.</span>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => setShowCreditsAccuracyNotice(false)}
+                            className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-amber-700 transition hover:bg-amber-100"
+                            aria-label="Dismiss credit accuracy notice"
+                            title="Dismiss"
+                        >
+                            <X className="h-3.5 w-3.5" />
+                        </button>
+                    </div>
+                ) : null}
+
                 <div className="mb-2 flex items-center justify-between">
                     <div className="text-[12px] text-gray-700">
                         {aiCreditsRemaining == null
