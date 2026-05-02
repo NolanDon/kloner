@@ -94,7 +94,7 @@ export async function GET(request: NextRequest) {
       { csrf: false, methods: ['GET'] } // Status polling doesn't need CSRF
     );
 
-    if (response.status === 429 || response.status === 401 || response.status >= 500) {
+    if (response.status === 401 || response.status >= 500) {
       console.warn('[webcontainer-status] polling request diagnostics', {
         appId,
         code,
@@ -113,7 +113,7 @@ export async function GET(request: NextRequest) {
 
   try {
     const response = await handleWebcontainerStatus(code, appId);
-    if (response.status === 429 || response.status >= 500) {
+    if (response.status >= 500) {
       console.warn('[webcontainer-status] internal polling request diagnostics', {
         appId,
         code,

@@ -333,7 +333,7 @@ function formatEditPlanSeconds(value: number | null | undefined): string | null 
 function getEditPlanFailureFriendlyMessage(code: string | null | undefined, fallback: string | null | undefined): string {
     const normalizedCode = String(code || "").trim().toUpperCase();
     if (normalizedCode === "EDIT_PLAN_APPLY_FAILURE_INCOMPLETE") {
-        return "We could not verify the apply result from the worker. Please retry.";
+        return "We could not verify the apply result from the worker. Please click refresh, if your changes do not appear, please retry the edit.";
     }
     if (normalizedCode === "EMBEDDING_EDIT_PLAN_QUEUE_FAILED") {
         return "Edit plan queue is unavailable right now. Please retry.";
@@ -353,6 +353,52 @@ function getEditPlanPollCadenceMs(elapsedMs: number): number {
     if (elapsedMs < 10_000) return 1_200;
     if (elapsedMs < 60_000) return 2_500;
     return 5_000;
+}
+
+function extractJobApplyRetryInfo(job: AppEmbeddingEditPlanJobStatus | null | undefined): {
+    state: string | null;
+    attempt: number | null;
+    maxAttempts: number | null;
+    nextRetryAfterSeconds: number | null;
+    lastFailureMessage: string | null;
+} {
+    const rootRetry = job && typeof (job as any)?.applyRetry === "object" ? (job as any).applyRetry : null;
+    const resultApply = job && typeof (job as any)?.result?.apply === "object"
+        ? (job as any).result.apply
+        : job && typeof (job as any)?.job?.result?.apply === "object"
+            ? (job as any).job.result.apply
+            : null;
+
+    const state = String(rootRetry?.state || resultApply?.state || resultApply?.applyRetryState || "").trim().toLowerCase() || null;
+    const attemptRaw = Number(rootRetry?.attempt ?? resultApply?.applyAttempts);
+    const maxAttemptsRaw = Number(rootRetry?.maxAttempts ?? resultApply?.applyMaxAttempts);
+    const nextRetryAfterRaw = Number(rootRetry?.nextRetryAfterSeconds ?? resultApply?.nextRetryAfterSeconds);
+    const lastFailure = rootRetry?.lastFailure && typeof rootRetry.lastFailure === "object" ? rootRetry.lastFailure : null;
+    const lastFailureMessage = String(
+        lastFailure?.error ||
+        lastFailure?.reason ||
+        lastFailure?.code ||
+        "",
+    ).trim() || null;
+
+    return {
+        state,
+        attempt: Number.isFinite(attemptRaw) && attemptRaw > 0 ? Math.floor(attemptRaw) : null,
+        maxAttempts: Number.isFinite(maxAttemptsRaw) && maxAttemptsRaw > 0 ? Math.floor(maxAttemptsRaw) : null,
+        nextRetryAfterSeconds: Number.isFinite(nextRetryAfterRaw) && nextRetryAfterRaw > 0 ? Math.ceil(nextRetryAfterRaw) : null,
+        lastFailureMessage,
+    };
+}
+
+function shouldSuggestRebuildFromFailure(code: string | null | undefined, body: string | null | undefined): boolean {
+    const haystack = `${String(code || "")} ${String(body || "")}`.toLowerCase();
+    return (
+        haystack.includes("machine") ||
+        haystack.includes("proxy") ||
+        haystack.includes("webcontainer") ||
+        haystack.includes("preview") ||
+        haystack.includes("restart")
+    );
 }
 
 function buildEditPlanDetailsChatMessage(job: AppEmbeddingEditPlanJobStatus): string {
@@ -1061,6 +1107,26 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
 
     const buildEditPlanStatusBubbleText = useCallback((job: AppEmbeddingEditPlanJobStatus): string => {
         const status = String(job.status || "queued").toLowerCase();
+        const applyRetryInfo = extractJobApplyRetryInfo(job);
+        const isRetryingApply =
+            (status === "working" || status === "processing" || status === "applying")
+            && applyRetryInfo.state === "retrying";
+
+        if (isRetryingApply) {
+            const attemptLabel = applyRetryInfo.attempt !== null && applyRetryInfo.maxAttempts !== null
+                ? `${applyRetryInfo.attempt} of ${applyRetryInfo.maxAttempts}`
+                : applyRetryInfo.attempt !== null
+                    ? `${applyRetryInfo.attempt}`
+                    : "current";
+            const retryInLabel = applyRetryInfo.nextRetryAfterSeconds !== null
+                ? ` in ${applyRetryInfo.nextRetryAfterSeconds}s`
+                : " shortly";
+            const detail = applyRetryInfo.lastFailureMessage
+                ? `\nLast issue: ${applyRetryInfo.lastFailureMessage}`
+                : "";
+            return `Applying changes to preview failed temporarily. Retrying (attempt ${attemptLabel})${retryInLabel}.${detail}`;
+        }
+
         const narrative = (() => {
             switch (status) {
                 case "queued":
@@ -1112,6 +1178,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
         retryable: boolean;
         retryPrompt?: string | null;
         retryCurrentPath?: string | null;
+        suggestRebuild?: boolean;
     }) => {
         const code = String(args.code || "").trim() || null;
         const jobStatus = String(args.jobStatus || "").trim().toLowerCase() || null;
@@ -1158,6 +1225,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                 editPlanFailureHttpStatus: httpStatus ?? undefined,
                 editPlanRetryPrompt: args.retryable ? (retryPrompt || "Retry apply") : undefined,
                 editPlanRetryCurrentPath: retryCurrentPath,
+                editPlanRebuildPrompt: args.suggestRebuild === true,
             },
         ]);
 
@@ -1928,13 +1996,18 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                         const failedCode = nextJobWithIds.error && typeof nextJobWithIds.error === "object" && typeof nextJobWithIds.error.code === "string"
                             ? nextJobWithIds.error.code.toUpperCase()
                             : null;
+                        const retryInfo = extractJobApplyRetryInfo(nextJobWithIds);
+                        const attemptSuffix = retryInfo.attempt !== null && retryInfo.maxAttempts !== null
+                            ? ` Failed after ${retryInfo.attempt}/${retryInfo.maxAttempts} apply attempts.`
+                            : "";
                         const failedMessage = nextJobWithIds.error && typeof nextJobWithIds.error === "object" && typeof nextJobWithIds.error.message === "string"
                             ? nextJobWithIds.error.message
                             : typeof nextJobWithIds.error === "string"
                                 ? nextJobWithIds.error
                                 : getEditPlanFailureFriendlyMessage(failedCode, "Edit plan failed. Please retry.");
+                        const finalFailureMessage = `${failedMessage}${attemptSuffix}`.trim();
                         surfaceEditPlanFailure({
-                            body: failedMessage,
+                            body: finalFailureMessage,
                             code: failedCode,
                             jobStatus: "failed",
                             httpStatus: result.status,
@@ -1943,6 +2016,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                             retryable: true,
                             retryPrompt: requestMeta?.query || lastEditPlanPromptRef.current || null,
                             retryCurrentPath: requestMeta?.currentPath || null,
+                            suggestRebuild: shouldSuggestRebuildFromFailure(failedCode, finalFailureMessage),
                         });
                         editPlanJobVersionRef.current += 1;
                         return;
@@ -3365,6 +3439,13 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
 
             // Determine apply state using the backend contract.
             const applyState = resolveApplyState(backendApplyResult);
+            const applyRetryState = String((backendApplyResult as any)?.applyRetryState || "").trim().toLowerCase();
+            const applyAttempts = Number((backendApplyResult as any)?.applyAttempts);
+            const applyMaxAttempts = Number((backendApplyResult as any)?.applyMaxAttempts);
+            const retrySuccessNotice =
+                applyRetryState === "succeeded_after_retry" && Number.isFinite(applyAttempts) && applyAttempts > 1
+                    ? `Applied after retry (${Math.floor(applyAttempts)} attempts).`
+                    : null;
             // Prefer pendingEditPlan summary as userMessage fallback for success states.
             const applyResultForMsg = {
                 ...(backendApplyResult as Record<string, unknown>),
@@ -3379,7 +3460,8 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                 case "confirmed_success": {
                     const pfc = (backendApplyResult as any).patchedFileCount;
                     const patchedChip = typeof pfc === "number" && pfc > 0 ? `${pfc} file${pfc !== 1 ? "s" : ""} patched` : null;
-                    const content = patchedChip ? `${applyMsg} (${patchedChip})` : applyMsg;
+                    const contentBase = patchedChip ? `${applyMsg} (${patchedChip})` : applyMsg;
+                    const content = retrySuccessNotice ? `${contentBase}\n${retrySuccessNotice}` : contentBase;
                     setEditPlanApplyError(null);
                     setEditPlanApplyStatusMessage(content);
                     setMessages((prev) => [
@@ -3397,14 +3479,15 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                     break;
                 }
                 case "restart_pending": {
+                    const content = retrySuccessNotice ? `${applyMsg}\n${retrySuccessNotice}` : applyMsg;
                     setEditPlanApplyError(null);
-                    setEditPlanApplyStatusMessage(applyMsg);
+                    setEditPlanApplyStatusMessage(content);
                     setMessages((prev) => [
                         ...prev,
                         {
                             id: `edit_plan_apply_restart_pending_${Date.now()}`,
                             role: "assistant" as const,
-                            content: applyMsg,
+                            content,
                             timestamp: new Date(),
                             type: "text" as const,
                             restorePointId: jobRestorePointId || undefined,
@@ -3415,14 +3498,15 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                     break;
                 }
                 case "restart_confirmed": {
+                    const content = retrySuccessNotice ? `${applyMsg}\n${retrySuccessNotice}` : applyMsg;
                     setEditPlanApplyError(null);
-                    setEditPlanApplyStatusMessage(applyMsg);
+                    setEditPlanApplyStatusMessage(content);
                     setMessages((prev) => [
                         ...prev,
                         {
                             id: `edit_plan_apply_restart_confirmed_${Date.now()}`,
                             role: "assistant" as const,
-                            content: applyMsg,
+                            content,
                             timestamp: new Date(),
                             type: "text" as const,
                             restorePointId: jobRestorePointId || undefined,
@@ -3463,6 +3547,13 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                     if (patchErrors.length > 0) {
                         errorLines.push(`Patch errors:\n${patchErrors.map((e) => `- ${e.path || "?"}: ${e.message || e.code || "error"}`).join("\n")}`);
                     }
+                    if (applyRetryState === "exhausted") {
+                        if (Number.isFinite(applyAttempts) && Number.isFinite(applyMaxAttempts) && applyAttempts > 0 && applyMaxAttempts > 0) {
+                            errorLines.push(`Failed after ${Math.floor(applyAttempts)}/${Math.floor(applyMaxAttempts)} apply attempts.`);
+                        } else if (Number.isFinite(applyAttempts) && applyAttempts > 0) {
+                            errorLines.push(`Failed after ${Math.floor(applyAttempts)} apply attempts.`);
+                        }
+                    }
                     const errorContent = errorLines.join("\n");
                     setEditPlanApplyError(errorContent);
                     setEditPlanApplyStatusMessage(applyMsg);
@@ -3475,6 +3566,9 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                             timestamp: new Date(),
                             type: "text" as const,
                             restorePointId: jobRestorePointId || undefined,
+                            editPlanRetryPrompt: lastEditPlanPromptRef.current?.trim() || "Retry apply",
+                            editPlanRetryCurrentPath: requestMeta?.currentPath || null,
+                            editPlanRebuildPrompt: shouldSuggestRebuildFromFailure(String((backendApplyResult as any)?.code || ""), errorContent),
                         },
                     ]);
                     break;

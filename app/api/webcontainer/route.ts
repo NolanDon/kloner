@@ -271,10 +271,6 @@ async function handleWebcontainerPostAuthed(body: any, uid: string) {
       const code = typeof data?.containerCode === 'string' ? String(data.containerCode).trim() : '';
       if (code) return NextResponse.json({ code });
     }
-    return NextResponse.json(
-      { error: 'Preview is already starting. Please retry in a few seconds.' },
-      { status: 409 },
-    );
   }
 
   // Start a new preview.

@@ -580,8 +580,6 @@ export default function WebContainerRunner({ appId, files, filesReady = true, on
   const iframePostLoadRecoveryCountRef = useRef<number>(0);
   const noMachineBootSinceRef = useRef<number | null>(null);
   const pollFetchFailureCountRef = useRef(0);
-  const pollRateLimitCountRef = useRef(0);
-  const webcontainerStartCooldownUntilRef = useRef<number>(0);
   const lastPollFailureSignatureRef = useRef('');
   const repeatedPollFailureCountRef = useRef(0);
   const lastPollIssueReportKeyRef = useRef<string>('');
@@ -618,20 +616,6 @@ export default function WebContainerRunner({ appId, files, filesReady = true, on
   const MIN_STATUS_FETCH_INTERVAL_MS = 2_000;
   const lastStatusFetchAtRef = useRef<number>(0);
   const HARD_POLL_TIMEOUT_MS = 12 * 60 * 1000;
-
-  const parseRetryAfterMs = (value: string | null): number | null => {
-    const raw = String(value || '').trim();
-    if (!raw) return null;
-
-    const numericSeconds = Number(raw);
-    if (Number.isFinite(numericSeconds) && numericSeconds >= 0) {
-      return Math.max(0, Math.round(numericSeconds * 1000));
-    }
-
-    const untilMs = Date.parse(raw);
-    if (!Number.isFinite(untilMs)) return null;
-    return Math.max(0, untilMs - Date.now());
-  };
 
   const DEFAULT_HUB_HOST = 'tracksite-hub.fly.dev';
   const CUSTOM_PREVIEW_HOST = String(process.env.NEXT_PUBLIC_PREVIEW_HOST || 'preview.kloner.app').trim().toLowerCase();
@@ -3128,42 +3112,17 @@ export default function NavBar() {
           });
         };
 
-        {
-          const now = Date.now();
-          if (webcontainerStartCooldownUntilRef.current > now) {
-            const waitMs = Math.max(0, webcontainerStartCooldownUntilRef.current - now);
-            if (waitMs > 0) {
-              await new Promise((resolve) => setTimeout(resolve, waitMs));
-            }
-            webcontainerStartCooldownUntilRef.current = 0;
-          }
-        }
-
         await ensureAppScopeCookie();
         let response = await postWebcontainer(0);
 
         if (!response.ok) {
-          const retryAfterMs = parseRetryAfterMs(response.headers.get('retry-after')) || 0;
           const errorData = await response.json().catch(() => ({} as any));
           const errorMsg = String(errorData?.error || 'Failed to start app');
           const errorCode = String(errorData?.code || '').trim();
-          const retryAfterFromBodyMs = (() => {
-            const n = Number((errorData as any)?.retryAfterSeconds);
-            if (!Number.isFinite(n) || n <= 0) return 0;
-            return Math.round(n * 1000);
-          })();
           const isScopeProblem =
             errorCode === 'MISSING_APP_SCOPE' ||
             errorCode === 'INVALID_APP_SCOPE' ||
             errorMsg.toLowerCase().includes('app scope');
-
-          if (response.status === 429) {
-            const cooldownMs = Math.max(30_000, retryAfterMs, retryAfterFromBodyMs);
-            webcontainerStartCooldownUntilRef.current = Date.now() + cooldownMs;
-            await new Promise((resolve) => setTimeout(resolve, cooldownMs));
-            webcontainerStartCooldownUntilRef.current = 0;
-            response = await postWebcontainer(1);
-          }
 
           // CSRF can drift (cookie/header mismatch). Refresh token and retry once.
           if (!response.ok && response.status === 403 && errorMsg.toLowerCase().includes('csrf')) {
@@ -3184,7 +3143,6 @@ export default function NavBar() {
         }
 
         const data = await response.json();
-        webcontainerStartCooldownUntilRef.current = 0;
         console.log('Container creation response:', data);
         const { code } = data;
 
@@ -3283,63 +3241,6 @@ export default function NavBar() {
             });
 
             if (!statusResponse.ok) {
-              if (statusResponse.status === 429) {
-                pollRateLimitCountRef.current += 1;
-                const rateData = await statusResponse.clone().json().catch(() => ({} as any));
-                const retryAfterMs = parseRetryAfterMs(statusResponse.headers.get('retry-after'));
-                const retryAfterFromBodyMs = (() => {
-                  const n = Number((rateData as any)?.retryAfterSeconds);
-                  if (!Number.isFinite(n) || n <= 0) return 0;
-                  return Math.round(n * 1000);
-                })();
-                const elapsedMs = pollStartedAtRef.current ? Date.now() - pollStartedAtRef.current : undefined;
-                const nextDelay = Math.max(
-                  30_000,
-                  Math.min(15 * 60_000, Math.max(retryAfterMs || 0, retryAfterFromBodyMs || 0)),
-                  getPollBackoffMs(pollRateLimitCountRef.current + 4),
-                );
-
-                reportPollIssueOnce(`poll-rate-limited:${appId}:${String((rateData as any)?.scope || 'global')}`, {
-                  appId,
-                  code,
-                  action: 'preview_backend_rate_limited',
-                  severity: 'critical',
-                  statusCode: 429,
-                  status: 'rate_limited',
-                  reason: String((rateData as any)?.reason || (rateData as any)?.code || 'rate_limited').toLowerCase(),
-                  message: 'Preview backend responded with rate limit while polling status.',
-                  elapsedMs,
-                  previewUrl: previewUrlRef.current,
-                  requestId: String((rateData as any)?.requestId || '').trim() || undefined,
-                  jobId: String((rateData as any)?.jobId || '').trim() || undefined,
-                  alertKeyOverride: `rate_limited:${user?.uid || 'anonymous'}:${appId}:${String((rateData as any)?.scope || 'global').toLowerCase()}`,
-                  dedupeTtlMs: 15 * 60 * 1000,
-                  backendStatusData: {
-                    status: 'rate_limited',
-                    uiStage: String((rateData as any)?.scope || 'global').trim().toLowerCase(),
-                    debug: {
-                      timeoutReason: String((rateData as any)?.reason || (rateData as any)?.code || 'rate_limited').trim().toLowerCase(),
-                      machine: {
-                        state: (rateData as any)?.scope ?? null,
-                        restartCount: null,
-                      },
-                      compile: {
-                        summary: null,
-                      },
-                      storage: {
-                        rootfsIoCorruption: null,
-                      },
-                    },
-                  },
-                });
-
-                setLoadingStatus('Preview is still starting...');
-                setError(null);
-                setCanRetry(false);
-                statusPollTimeoutRef.current = setTimeout(pollStatus, nextDelay);
-                return;
-              }
-
               if (statusResponse.status === 410) {
                 const stalePreviewData = await statusResponse.json().catch(() => ({} as any));
                 const stalePreviewStatusData = normalizeStatusDataForUi(code, {
@@ -3497,7 +3398,6 @@ export default function NavBar() {
             // Reset 404 counter on successful response
             containerNotFoundCountRef.current = 0;
             pollFetchFailureCountRef.current = 0;
-            pollRateLimitCountRef.current = 0;
             lastPollFailureSignatureRef.current = '';
             repeatedPollFailureCountRef.current = 0;
             setPollNetworkWarning(null);
@@ -4344,10 +4244,6 @@ export default function NavBar() {
           errorMessage.includes('We couldn\'t start the preview') ||
           errorMessage.includes('Please try again');
 
-        const isRateLimited = errorMessage.includes('rate-limited') ||
-          errorMessage.includes('(429)') ||
-          errorMessage.includes('Too Many Requests');
-
         const isTimeout = errorMessage.includes('timeout') ||
           errorMessage.includes('did not become ready');
 
@@ -4367,9 +4263,9 @@ export default function NavBar() {
           errorMessage.includes('Failed to install dependencies') ||
           errorMessage.includes('Could not resolve dependencies');
 
-        const isRetryable = (isNetworkError || isServerError || isTimeout || isProxyError || isBuildError) && !isDiskSpaceError && !isPreconditionError && !isRateLimited;
+        const isRetryable = (isNetworkError || isServerError || isTimeout || isProxyError || isBuildError) && !isDiskSpaceError && !isPreconditionError;
 
-        console.log(`Error classification: Network=${isNetworkError}, Server=${isServerError}, Timeout=${isTimeout}, Proxy=${isProxyError}, Build=${isBuildError}, RateLimited=${isRateLimited}, DiskSpace=${isDiskSpaceError}, Precondition=${isPreconditionError}, Retryable=${isRetryable}`);
+        console.log(`Error classification: Network=${isNetworkError}, Server=${isServerError}, Timeout=${isTimeout}, Proxy=${isProxyError}, Build=${isBuildError}, DiskSpace=${isDiskSpaceError}, Precondition=${isPreconditionError}, Retryable=${isRetryable}`);
 
         // Circuit breaker: prevent infinite retries
         totalAttemptsRef.current += 1;
@@ -4438,9 +4334,7 @@ export default function NavBar() {
           console.log('Error is not retryable:', errorMessage);
           let finalErrorMessage = errorMessage;
 
-          if (isRateLimited) {
-            setCanRetry(true);
-          } else if (isDiskSpaceError) {
+          if (isDiskSpaceError) {
             finalErrorMessage += ' Error E004: Disk space low.';
           } else if (isPreconditionError) {
             finalErrorMessage += ' Error E005: Machine state conflict.';
@@ -4449,7 +4343,7 @@ export default function NavBar() {
           }
 
           setError(finalErrorMessage);
-          if (!isRateLimited) setCanRetry(false);
+          setCanRetry(false);
           setLoadingStatus(''); // Clear loading status on non-retryable error
         }
       } finally {
@@ -5712,7 +5606,7 @@ export default function NavBar() {
                 {renderLiveStatusLine({
                   uiStage: connectingToExisting ? 'reconnecting' : 'starting_app',
                   uiTitle: connectingToExisting ? 'Connecting to existing machine' : 'Starting your app',
-                  uiMessage: connectingToExisting ? 'Reconnecting' : 'Setting up your environment',
+                  uiMessage: connectingToExisting ? 'Reconnecting' : 'Creating environment',
                   updatedAt: Date.now(),
                 })}
               </>
