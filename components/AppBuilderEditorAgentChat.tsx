@@ -2627,13 +2627,15 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
             return;
         }
 
-        // No backend apply result — fall through to proposal-based apply.
+        // Do not call /api/v1/webcontainer/apply from the frontend in this flow.
+        // Backend workers now own preview-machine apply and restart orchestration.
         if (!pendingEditPlan) return;
         if (pendingEditPlan.needsMoreContext || pendingEditPlan.autoApplyAllowed === false) return;
         if (!Array.isArray(pendingEditPlan.files) || pendingEditPlan.files.length === 0) return;
 
-        void applyPendingEditPlan(pendingEditPlan);
-    }, [activeEditPlanJob, applyPendingEditPlan, fetchRestorePoints, isApplyingEditPlan, pendingEditPlan, setLastRestorePointId, setMessages, syncFilesFromServer]);
+        // No user-facing message here: apply/restart ownership is server-side.
+        return;
+    }, [activeEditPlanJob, fetchRestorePoints, isApplyingEditPlan, pendingEditPlan, setLastRestorePointId, setMessages, syncFilesFromServer]);
 
     // Scroll whenever the chat grows so new messages stay in view.
     useLayoutEffect(() => {
@@ -5624,7 +5626,17 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                             disabled={isLoading}
                                             onClick={() => {
                                                 if (isLoading) return;
-                                                void applyPendingEditPlan(pendingEditPlan ?? lastAppliedEditPlanRef.current);
+                                                const retryPrompt = String(message.editPlanRetryPrompt || "").trim();
+                                                const prompt = retryPrompt && retryPrompt.toLowerCase() !== "retry apply"
+                                                    ? retryPrompt
+                                                    : String(lastEditPlanPromptRef.current || "").trim();
+                                                if (!prompt) return;
+                                                void sendMessage({
+                                                    forcedInput: prompt,
+                                                    allowWhenChatDisabled: true,
+                                                    hideUserMessage: true,
+                                                    bypassInitialSearch: true,
+                                                });
                                             }}
                                             className="rounded p-1 transition-colors text-gray-500 hover:text-gray-900 hover:bg-black/5 disabled:opacity-50"
                                             title="Retry apply"
