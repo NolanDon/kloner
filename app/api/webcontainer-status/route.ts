@@ -56,13 +56,20 @@ async function handleWebcontainerStatus(code: string, appId: string, uid?: strin
       userCtx: uid ? { uid } : undefined,
       noPrefix: true,
     });
+    const responseHeaders = new Headers();
+    const retryAfter = response.upstream?.headers?.get?.('retry-after');
+    const upstreamRequestId = response.upstream?.headers?.get?.('x-request-id');
+
+    if (retryAfter) responseHeaders.set('retry-after', retryAfter);
+    if (upstreamRequestId) responseHeaders.set('x-request-id', upstreamRequestId);
+
     if (response.status >= 400) {
       const payload = (response.json && typeof response.json === 'object') ? response.json : {};
       const error = (payload as any)?.error || 'Backend error';
       // Preserve backend diagnostics (uiTitle/uiMessage/events/etc) so the frontend can render them.
-      return NextResponse.json({ ...payload, error }, { status: response.status });
+      return NextResponse.json({ ...payload, error }, { status: response.status, headers: responseHeaders });
     }
-    return NextResponse.json(response.json);
+    return NextResponse.json(response.json, { headers: responseHeaders });
   } catch (error) {
     console.error('Backend call error:', error);
     return NextResponse.json({ error: 'Failed to get status' }, { status: 500 });

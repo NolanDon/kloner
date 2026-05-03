@@ -365,6 +365,16 @@ interface WebContainerRunnerProps {
   onNavigatePathChange?: (path: string | null) => void;
 }
 
+type PollTelemetryEntry = {
+  startedAt: number;
+  requestCount: number;
+  lastRequestAt: number;
+  lastDelayMs: number;
+  lastReason: string;
+  lastHttpStatus: number | null;
+  rateLimitCount: number;
+};
+
 export default function WebContainerRunner({ appId, files, filesReady = true, onFileChange, onPreviewReadyChange, onPreviewIssueChange, onBackendReady, onRequestRebuild, onCompileErrorFixRequest, debugPreviewScenario, reloadToken, applyToken, restartToken, reconnectToken, forceFreshStart, pollingConfig, navigatePath, navigatePathToken, onNavigatePathChange }: WebContainerRunnerProps) {
 
   type DebugEvent = {
@@ -583,6 +593,7 @@ export default function WebContainerRunner({ appId, files, filesReady = true, on
   const lastPollFailureSignatureRef = useRef('');
   const repeatedPollFailureCountRef = useRef(0);
   const lastPollIssueReportKeyRef = useRef<string>('');
+  const pollTelemetryByCodeRef = useRef<Record<string, PollTelemetryEntry>>({});
   const lastAppServerKindRef = useRef<'fallback' | 'next-dev' | 'next-prod' | ''>('');
   const stickyProgressByCodeRef = useRef<Record<string, number>>({});
   const lastTimeoutReportKeyRef = useRef<string>('');
@@ -609,7 +620,10 @@ export default function WebContainerRunner({ appId, files, filesReady = true, on
   // Default status polling interval while the preview is booting/compiling.
   // We keep this relatively infrequent; readiness is primarily driven by the
   // preview URL/iframe once available.
-  const POLL_INTERVAL_MS = 10_000;
+  // The backend limiter allows 60 requests per 900 seconds. A single 10s
+  // poller can exceed that by itself, so keep the steady-state interval above
+  // the 15s floor with some headroom for reconnects and retries.
+  const POLL_INTERVAL_MS = 20_000;
 
   // Throttle: regardless of code path, never issue status checks more frequently
   // than this (prevents duplicate loops and tight retry paths from spamming).
@@ -886,6 +900,24 @@ export default function WebContainerRunner({ appId, files, filesReady = true, on
   };
 
   const stopAllTimers = () => {
+    const code = activePollCodeRef.current || pollingCodeRef.current;
+    if (code) {
+      const telemetry = pollTelemetryByCodeRef.current[code];
+      if (telemetry) {
+        console.info('[WebContainerRunner] poll stop', {
+          appId,
+          code,
+          requestCount: telemetry.requestCount,
+          rateLimitCount: telemetry.rateLimitCount,
+          elapsedMs: Date.now() - telemetry.startedAt,
+          lastDelayMs: telemetry.lastDelayMs,
+          lastReason: telemetry.lastReason,
+          lastHttpStatus: telemetry.lastHttpStatus,
+        });
+        delete pollTelemetryByCodeRef.current[code];
+      }
+    }
+
     if (retryTimeoutRef.current) {
       clearTimeout(retryTimeoutRef.current);
       retryTimeoutRef.current = null;
@@ -910,6 +942,80 @@ export default function WebContainerRunner({ appId, files, filesReady = true, on
       clearTimeout(iframePostLoadTimeoutRef.current);
       iframePostLoadTimeoutRef.current = null;
     }
+  };
+
+  const ensurePollTelemetry = (code: string): PollTelemetryEntry => {
+    const existing = pollTelemetryByCodeRef.current[code];
+    if (existing) return existing;
+
+    const created: PollTelemetryEntry = {
+      startedAt: Date.now(),
+      requestCount: 0,
+      lastRequestAt: 0,
+      lastDelayMs: POLL_INTERVAL_MS,
+      lastReason: 'poll_start',
+      lastHttpStatus: null,
+      rateLimitCount: 0,
+    };
+
+    pollTelemetryByCodeRef.current[code] = created;
+    console.info('[WebContainerRunner] poll start', { appId, code });
+    return created;
+  };
+
+  const notePollDispatch = (code: string) => {
+    const telemetry = ensurePollTelemetry(code);
+    telemetry.requestCount += 1;
+    telemetry.lastRequestAt = Date.now();
+
+    if (
+      telemetry.requestCount === 1 ||
+      telemetry.requestCount === 5 ||
+      telemetry.requestCount % 10 === 0
+    ) {
+      console.info('[WebContainerRunner] poll request', {
+        appId,
+        code,
+        requestCount: telemetry.requestCount,
+      });
+    }
+  };
+
+  const notePollResponse = (code: string, status: number) => {
+    const telemetry = ensurePollTelemetry(code);
+    telemetry.lastHttpStatus = status;
+  };
+
+  const schedulePoll = (
+    code: string,
+    pollStatus: () => Promise<void>,
+    delayMs: number,
+    reason: string,
+    meta?: Record<string, unknown>
+  ) => {
+    const telemetry = ensurePollTelemetry(code);
+    telemetry.lastDelayMs = delayMs;
+    telemetry.lastReason = reason;
+    if (reason === 'http_429_rate_limited') {
+      telemetry.rateLimitCount += 1;
+    }
+
+    if (statusPollTimeoutRef.current) {
+      clearTimeout(statusPollTimeoutRef.current);
+      statusPollTimeoutRef.current = null;
+    }
+
+    console.info('[WebContainerRunner] poll schedule', {
+      appId,
+      code,
+      delayMs,
+      reason,
+      requestCount: telemetry.requestCount,
+      rateLimitCount: telemetry.rateLimitCount,
+      ...(meta || {}),
+    });
+
+    statusPollTimeoutRef.current = setTimeout(pollStatus, delayMs);
   };
   
   useEffect(() => {
@@ -3154,6 +3260,7 @@ export default function NavBar() {
         pollingCodeRef.current = code;
         activePollCodeRef.current = code;
         previewRegistrationGraceUntilRef.current = Date.now() + (isForceFreshStart ? 4 * 60_000 : 2 * 60_000);
+        ensurePollTelemetry(code);
 
         // Store the container code for future connections
         await storeContainerCode(appId, code, user);
@@ -3280,13 +3387,90 @@ export default function NavBar() {
             // Keep all browser polling on the same-origin backend route boundary.
             hubStatusUrlRef.current = null;
             const headers = await getAuthenticatedHeaders();
+            notePollDispatch(code);
             statusResponse = await fetch(`/api/webcontainer-status?code=${code}&appId=${appId}`, {
               headers,
               credentials: "include",
               cache: 'no-store',
             });
+            notePollResponse(code, statusResponse.status);
 
             if (!statusResponse.ok) {
+              if (statusResponse.status === 429) {
+                const rateLimitData = await statusResponse.json().catch(() => ({} as any));
+                const retryAfterSeconds = asRetryAfterSeconds(
+                  (rateLimitData as any)?.retryAfterSeconds ??
+                  (rateLimitData as any)?.retry_after_seconds ??
+                  statusResponse.headers.get('retry-after')
+                );
+                const requestId = pickFirstString(
+                  (rateLimitData as any)?.reqId,
+                  (rateLimitData as any)?.requestId,
+                  (rateLimitData as any)?.debug?.reqId,
+                  (rateLimitData as any)?.debug?.requestId,
+                );
+                const delayMs = Math.max(POLL_INTERVAL_MS, retryAfterSeconds !== null ? retryAfterSeconds * 1000 : 60_000);
+
+                console.warn('[WebContainerRunner] status poll rate limited', {
+                  appId,
+                  code,
+                  retryAfterSeconds,
+                  requestId,
+                  body: rateLimitData,
+                });
+
+                setError(null);
+                setCanRetry(false);
+                setIsLoading(true);
+                setConnectingToExisting(false);
+                setIsPolling(true);
+                setLoadingStatus(
+                  retryAfterSeconds !== null
+                    ? `Preview is still starting. Rate limited, retrying in ${retryAfterSeconds}s…`
+                    : 'Preview is still starting. Rate limited, retrying automatically…'
+                );
+                setCurrentStatusData((current: any) =>
+                  normalizeStatusDataForUi(code, {
+                    ...(current && typeof current === 'object' ? current : {}),
+                    ...(rateLimitData && typeof rateLimitData === 'object' ? rateLimitData : {}),
+                    status: 'starting',
+                    uiStage: 'status_rate_limited',
+                    uiTitle: 'Preview status delayed',
+                    uiMessage:
+                      retryAfterSeconds !== null
+                        ? `The status service asked the browser to wait ${retryAfterSeconds}s before polling again.`
+                        : 'The status service asked the browser to slow down before polling again.',
+                    retryAfterSeconds: retryAfterSeconds ?? undefined,
+                    updatedAt: Date.now(),
+                    __httpStatus: 429,
+                    httpStatus: 429,
+                  })
+                );
+
+                reportPollIssueOnce(`status-rate-limited:${appId}:${code}:${requestId || 'unknown'}`, {
+                  appId,
+                  code,
+                  action: 'preview_status_rate_limited',
+                  severity: 'warning',
+                  statusCode: 429,
+                  status: 'status_rate_limited',
+                  reason: 'backend_rate_limit',
+                  message:
+                    retryAfterSeconds !== null
+                      ? `Status polling hit backend rate limiting and will retry in ${retryAfterSeconds}s.`
+                      : 'Status polling hit backend rate limiting and will retry with backoff.',
+                  previewUrl: previewUrlRef.current,
+                  requestId: requestId || undefined,
+                  backendStatusData: rateLimitData,
+                });
+
+                schedulePoll(code, pollStatus, delayMs, 'http_429_rate_limited', {
+                  retryAfterSeconds,
+                  requestId,
+                });
+                return;
+              }
+
               if (statusResponse.status === 410) {
                 const stalePreviewData = await statusResponse.json().catch(() => ({} as any));
                 const stalePreviewStatusData = normalizeStatusDataForUi(code, {
@@ -3392,7 +3576,7 @@ export default function NavBar() {
                 }
 
                 // For 404s, retry more frequently since the container might not be registered yet
-                statusPollTimeoutRef.current = setTimeout(pollStatus, POLL_INTERVAL_MS);
+                schedulePoll(code, pollStatus, POLL_INTERVAL_MS, 'http_404_registration_wait');
                 return;
               }
               throw new Error(`Status check failed: ${statusResponse.status}`);
@@ -3666,7 +3850,7 @@ export default function NavBar() {
                     updatedAt: Date.now(),
                   }),
               );
-              statusPollTimeoutRef.current = setTimeout(pollStatus, delayMs);
+              schedulePoll(code, pollStatus, delayMs, 'apply_or_restart_pending', { retryAfterSeconds });
               return;
             }
 
@@ -3726,7 +3910,7 @@ export default function NavBar() {
                       updatedAt: Date.now(),
                     }),
               );
-              statusPollTimeoutRef.current = setTimeout(pollStatus, delayMs);
+              schedulePoll(code, pollStatus, delayMs, 'transitional_attach_state', { retryAfterSeconds });
               return;
             }
 
@@ -3753,7 +3937,7 @@ export default function NavBar() {
                 });
               }
 
-              statusPollTimeoutRef.current = setTimeout(pollStatus, POLL_INTERVAL_MS);
+              schedulePoll(code, pollStatus, POLL_INTERVAL_MS, 'compile_error_poll_continue');
               return;
             }
 
@@ -3779,7 +3963,7 @@ export default function NavBar() {
                   deploymentUrl,
                 });
                 hubStatusUrlRef.current = null;
-                statusPollTimeoutRef.current = setTimeout(pollStatus, POLL_INTERVAL_MS);
+                schedulePoll(code, pollStatus, POLL_INTERVAL_MS, 'stale_deployment_url_code_mismatch');
                 return;
               }
 
@@ -3841,7 +4025,7 @@ export default function NavBar() {
               setCanRetry(false);
               setIsPolling(true);
               setIsLoading(false);
-              statusPollTimeoutRef.current = setTimeout(pollStatus, POLL_INTERVAL_MS);
+              schedulePoll(code, pollStatus, POLL_INTERVAL_MS, 'ui_stage_restarting');
               return;
             }
 
@@ -3898,7 +4082,7 @@ export default function NavBar() {
                 if (!iframeLoadedSuccessfullyRef.current) {
                   setIsPolling(true);
                   setIsLoading(false);
-                  statusPollTimeoutRef.current = setTimeout(pollStatus, POLL_INTERVAL_MS);
+                  schedulePoll(code, pollStatus, POLL_INTERVAL_MS, 'ready_waiting_for_iframe_with_callback');
                   return;
                 }
 
@@ -3921,7 +4105,7 @@ export default function NavBar() {
               if (!iframeLoadedSuccessfullyRef.current) {
                 setIsPolling(true);
                 setIsLoading(false);
-                statusPollTimeoutRef.current = setTimeout(pollStatus, POLL_INTERVAL_MS);
+                schedulePoll(code, pollStatus, POLL_INTERVAL_MS, 'ready_waiting_for_iframe');
                 return;
               }
 
@@ -3962,7 +4146,7 @@ export default function NavBar() {
                     setCanRetry(false);
                     appLoadedSuccessfullyRef.current = true;
                     pollingRetryCountRef.current = 0;
-                    statusPollTimeoutRef.current = setTimeout(pollStatus, POLL_INTERVAL_MS);
+                      schedulePoll(code, pollStatus, POLL_INTERVAL_MS, 'error_handoff_direct_probe');
                     return;
                   }
                   if (probe.status === 404 || probe.status === 410) {
@@ -3992,7 +4176,7 @@ export default function NavBar() {
                     setCanRetry(false);
                     appLoadedSuccessfullyRef.current = true;
                     pollingRetryCountRef.current = 0;
-                    statusPollTimeoutRef.current = setTimeout(pollStatus, POLL_INTERVAL_MS);
+                    schedulePoll(code, pollStatus, POLL_INTERVAL_MS, 'error_handoff_probe_reachable');
                     return;
                   }
 
@@ -4035,7 +4219,7 @@ export default function NavBar() {
                 setLoadingStatus('Preview is still starting (this can take a few minutes)…');
 
                 // Continue polling a bit faster during grace.
-                statusPollTimeoutRef.current = setTimeout(pollStatus, POLL_INTERVAL_MS);
+                schedulePoll(code, pollStatus, POLL_INTERVAL_MS, 'fresh_error_grace_window');
                 return;
               }
 
@@ -4061,7 +4245,7 @@ export default function NavBar() {
                   })
                 );
 
-                statusPollTimeoutRef.current = setTimeout(pollStatus, retryDelayMs);
+                schedulePoll(code, pollStatus, retryDelayMs, 'backend_recoverable_error', { retryDelayMs });
                 return;
               }
 
@@ -4094,7 +4278,7 @@ export default function NavBar() {
             } else if (status === 'ready' && !readyFlag) {
               // Some backend flows emit status='ready' before flipping the authoritative ready=true flag.
               // This is expected; keep polling, and avoid showing an 'unknown status' warning.
-              statusPollTimeoutRef.current = setTimeout(pollStatus, POLL_INTERVAL_MS);
+              schedulePoll(code, pollStatus, POLL_INTERVAL_MS, 'status_ready_without_ready_flag');
               return;
 
             } else if (status === 'pending' || status === 'archiving' ||
@@ -4112,13 +4296,19 @@ export default function NavBar() {
               } else {
                 setLoadingStatus('Building app... (this may take several minutes)');
               }
-              statusPollTimeoutRef.current = setTimeout(pollStatus, retryAfterSeconds !== null ? Math.max(1_000, retryAfterSeconds * 1000) : POLL_INTERVAL_MS);
+              schedulePoll(
+                code,
+                pollStatus,
+                retryAfterSeconds !== null ? Math.max(1_000, retryAfterSeconds * 1000) : POLL_INTERVAL_MS,
+                'status_transitional',
+                { retryAfterSeconds, status, uiStage }
+              );
 
             } else {
               // Unknown status - log it and treat as still building for now
               console.warn('Unknown status received from backend:', statusData.status, statusData);
               setLoadingStatus(`Building app... (status: ${status})`);
-              statusPollTimeoutRef.current = setTimeout(pollStatus, POLL_INTERVAL_MS);
+              schedulePoll(code, pollStatus, POLL_INTERVAL_MS, 'status_unknown', { status, uiStage });
             }
 
           } catch (err) {
@@ -4202,7 +4392,7 @@ export default function NavBar() {
               errorMessage.includes('FieldValue.serverTimestamp() cannot be used inside of an array')) {
               console.error('Backend Firestore error detected - this is a server-side issue that should be fixed');
               // Don't count this as a polling retry, just try again
-              statusPollTimeoutRef.current = setTimeout(pollStatus, POLL_INTERVAL_MS);
+              schedulePoll(code, pollStatus, POLL_INTERVAL_MS, 'poll_firestore_backend_bug');
               return;
             } else if (errorMessage.includes('files is not iterable')) {
               console.error('Backend validation error - this appears to be a server-side bug');
@@ -4261,14 +4451,17 @@ export default function NavBar() {
               console.log(`Polling retry ${pollingRetryCountRef.current}/${maxPollingRetries}`);
               setLoadingStatus(`Retrying status check... (${pollingRetryCountRef.current}/${maxPollingRetries})`);
               const nextDelay = Math.max(POLL_INTERVAL_MS, getPollBackoffMs(pollFetchFailureCountRef.current));
-              statusPollTimeoutRef.current = setTimeout(pollStatus, nextDelay);
+              schedulePoll(code, pollStatus, nextDelay, 'poll_retry_after_error', {
+                retryCount: pollingRetryCountRef.current,
+                pollFetchFailureCount: pollFetchFailureCountRef.current,
+              });
             }
           }
         };
 
         pollStartedAtRef.current = Date.now();
         // Start polling quickly; the iframe URL will appear as soon as the backend issues it.
-        statusPollTimeoutRef.current = setTimeout(pollStatus, POLL_INTERVAL_MS);
+        schedulePoll(code, pollStatus, POLL_INTERVAL_MS, 'initial_poll_start');
 
       } catch (err) {
         console.error('Error starting app:', err);
