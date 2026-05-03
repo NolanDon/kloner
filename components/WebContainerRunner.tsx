@@ -3187,6 +3187,52 @@ export default function NavBar() {
             const suspectedInterference = pollFetchFailureCountRef.current >= 3 && online !== false;
             const timeoutReportKey = `hard-timeout:${appId}:${code}`;
             const timeoutContext = extractTimeoutBackendContext(currentStatusData || lastBackendStatusRef.current || null);
+            const previewAlreadyVisible = Boolean(previewUrlRef.current) && (iframeLoadedSuccessfullyRef.current || appLoadedSuccessfullyRef.current);
+
+            if (previewAlreadyVisible) {
+              console.warn('[WebContainerRunner] Hard poll timeout reached after preview became visible; stopping background polling without surfacing an error', {
+                appId,
+                code,
+                previewUrl: previewUrlRef.current,
+                iframeLoaded: iframeLoadedSuccessfullyRef.current,
+                appLoaded: appLoadedSuccessfullyRef.current,
+              });
+
+              if (lastTimeoutReportKeyRef.current !== timeoutReportKey) {
+                lastTimeoutReportKeyRef.current = timeoutReportKey;
+                void reportPreviewTimeout({
+                  appId,
+                  code,
+                  status: 'poll_timeout_after_preview_visible',
+                  reason: suspectedInterference
+                    ? 'poll_timeout_after_preview_visible_network_interference_suspected'
+                    : 'poll_timeout_after_preview_visible',
+                  severity: 'warning',
+                  message: suspectedInterference
+                    ? `Preview became visible, but backend readiness polling exceeded 12 minutes after repeated fetch failures while connected to machine ${timeoutContext.machineId || 'unknown'}.`
+                    : `Preview became visible, but backend readiness polling exceeded 12 minutes${timeoutContext.machineId ? ` while connected to machine ${timeoutContext.machineId}` : ''}.`,
+                  ageMs: timedOutAgeMs,
+                  previewUrl: previewUrlRef.current,
+                  browser: detectBrowserLabel(),
+                  userAgent: typeof navigator !== 'undefined' ? String(navigator.userAgent || '') : 'unknown',
+                  requestId: timeoutContext.requestId || undefined,
+                  jobId: timeoutContext.jobId || undefined,
+                  backend: timeoutContext.backend,
+                });
+              }
+
+              stopAllTimers();
+              setIsPolling(false);
+              setIsLoading(false);
+              setConnectingToExisting(false);
+              setLoadingStatus('');
+              setCurrentStatusData(null);
+              setError(null);
+              setCanRetry(false);
+              try { onPreviewReadyChange?.(true); } catch { }
+              return;
+            }
+
             if (lastTimeoutReportKeyRef.current !== timeoutReportKey) {
               lastTimeoutReportKeyRef.current = timeoutReportKey;
               void reportPreviewTimeout({
@@ -3214,7 +3260,7 @@ export default function NavBar() {
             setConnectingToExisting(false);
             setLoadingStatus('');
             setCurrentStatusData(null);
-            setError(`Preview is taking longer than expected${timeoutContext.machineId ? ` while connecting to machine ${timeoutContext.machineId}` : ''} (12 minute timeout). Try Refresh first, if it still fails, please contact support.`);
+            setError('Preview startup timed out. Click Refresh to try again.');
             setCanRetry(true);
             return;
           }
@@ -4205,7 +4251,7 @@ export default function NavBar() {
               setConnectingToExisting(false);
               setCurrentStatusData(null); // Clear status data
               setLoadingStatus(''); // Clear loading status on timeout
-              setError(`Build is taking longer than expected${timeoutContext.machineId ? ` while connecting to machine ${timeoutContext.machineId}` : ''}. The app may still be starting up. Try Refresh first, if it still fails, please contact support.`);
+              setError('Build is still starting. Click Refresh to retry.');
               setCanRetry(true);
               setPreviewUrl(null);
               stopAllTimers();
@@ -4720,26 +4766,7 @@ export default function NavBar() {
   const terminalPreviewStatusData = terminalPreviewStatus ? (currentStatusData || lastBackendStatusRef.current || null) : null;
   const showTerminalPreviewErrorCard = Boolean(error) || terminalPreviewStatus;
   const buildPreviewFixIssueMessage = useCallback((baseMessage: string, rawStatusData: any) => {
-    const backendContext = extractTimeoutBackendContext(rawStatusData || null);
     const failure = normalizePreviewFailureDetails(rawStatusData || null);
-    const backend = backendContext.backend || null;
-    const debug = (backend?.debug && typeof backend.debug === 'object' ? backend.debug : {}) as Record<string, any>;
-    const details: string[] = [];
-
-    if (backendContext.machineId) details.push(`machineId=${backendContext.machineId}`);
-    if (backendContext.machineState) details.push(`machineState=${backendContext.machineState}`);
-    if (typeof backendContext.restartCount === 'number') details.push(`restartCount=${backendContext.restartCount}`);
-    if (backendContext.requestId) details.push(`requestId=${backendContext.requestId}`);
-    if (backendContext.jobId) details.push(`jobId=${backendContext.jobId}`);
-    if (backend?.status) details.push(`backendStatus=${backend.status}`);
-    if (backend?.uiStage) details.push(`uiStage=${backend.uiStage}`);
-    if (debug?.timeoutReason) details.push(`timeoutReason=${debug.timeoutReason}`);
-    if (debug?.compile?.summary) details.push(`compileSummary=${debug.compile.summary}`);
-    if (debug?.storage?.rootfsIoCorruption != null) {
-      details.push(`rootfsIoCorruption=${String(debug.storage.rootfsIoCorruption)}`);
-    }
-    if (failure.suggestedFix) details.push(`suggestedFix=${failure.suggestedFix}`);
-    if (failure.correlationId) details.push(`correlationId=${failure.correlationId}`);
 
     const structuredSections: string[] = [];
     if (failure.suggestedFix) {
@@ -4766,7 +4793,6 @@ export default function NavBar() {
 
     return [
       baseMessage,
-      details.length ? `Backend context: ${details.join('; ')}` : '',
       ...structuredSections,
     ].filter(Boolean).join('\n\n');
   }, []);
