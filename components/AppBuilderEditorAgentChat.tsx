@@ -1826,34 +1826,34 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                     const retryAfterMs = typeof retryAfterSeconds === "number" ? Math.max(0, Math.ceil(retryAfterSeconds * 1000)) : null;
                     const code = String(result.code || "").trim().toUpperCase();
 
-                    if (statusCode === 409) {
-                        const contractFailureMessage = getEditPlanFailureFriendlyMessage(code, result.error || null);
-                        const resolvedContractCode = code || "EDIT_PLAN_APPLY_FAILURE_MISSING_CODE_AND_REASON";
-                        const contractFailedJob = {
-                            ...activeEditPlanJob,
-                            status: "failed",
-                            stage: "failed",
-                            error: {
-                                code: resolvedContractCode,
-                                message: contractFailureMessage,
-                                retryAfterSeconds,
-                            },
-                        } as AppEmbeddingEditPlanJobStatus;
-                        setActiveEditPlanJob(contractFailedJob);
-                        surfaceEditPlanFailure({
-                            body: contractFailureMessage,
-                            code: resolvedContractCode,
-                            jobStatus: "failed",
-                            httpStatus: statusCode,
-                            jobId: activeEditPlanJob.jobId || null,
-                            requestId: activeEditPlanJob.requestId || null,
-                            retryable: true,
-                            retryPrompt: requestMeta?.query || lastEditPlanPromptRef.current || null,
-                            retryCurrentPath: requestMeta?.currentPath || null,
-                        });
-                        editPlanJobVersionRef.current += 1;
-                        return;
-                    }
+                    // if (statusCode === 409) {
+                    //     const contractFailureMessage = getEditPlanFailureFriendlyMessage(code, result.error || null);
+                    //     const resolvedContractCode = code || "EDIT_PLAN_APPLY_FAILURE_MISSING_CODE_AND_REASON";
+                    //     const contractFailedJob = {
+                    //         ...activeEditPlanJob,
+                    //         status: "failed",
+                    //         stage: "failed",
+                    //         error: {
+                    //             code: resolvedContractCode,
+                    //             message: contractFailureMessage,
+                    //             retryAfterSeconds,
+                    //         },
+                    //     } as AppEmbeddingEditPlanJobStatus;
+                    //     setActiveEditPlanJob(contractFailedJob);
+                    //     surfaceEditPlanFailure({
+                    //         body: contractFailureMessage,
+                    //         code: resolvedContractCode,
+                    //         jobStatus: "failed",
+                    //         httpStatus: statusCode,
+                    //         jobId: activeEditPlanJob.jobId || null,
+                    //         requestId: activeEditPlanJob.requestId || null,
+                    //         retryable: true,
+                    //         retryPrompt: requestMeta?.query || lastEditPlanPromptRef.current || null,
+                    //         retryCurrentPath: requestMeta?.currentPath || null,
+                    //     });
+                    //     editPlanJobVersionRef.current += 1;
+                    //     return;
+                    // }
 
                     const isTransientStatus = statusCode === 0 || statusCode === 408 || statusCode === 425 || statusCode === 429 || statusCode === 500 || statusCode === 502 || statusCode === 503 || statusCode === 504;
                     const isBackpressure = code === "EMBEDDING_EDIT_PLAN_BACKPRESSURE" || code === "JOB_RATE_LIMITED" || statusCode === 429;
@@ -3693,17 +3693,17 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                 prompt: contractPrompt,
             });
 
-            surfaceEditPlanFailure({
-                body: "We could not verify the apply result from the worker. Please retry.",
-                code: "EDIT_PLAN_APPLY_FAILURE_LEGACY_SHAPE_MISMATCH",
-                jobStatus: "failed",
-                httpStatus: 409,
-                jobId: activeEditPlanJob.jobId || null,
-                requestId: activeEditPlanJob.requestId || null,
-                retryable: true,
-                retryPrompt: requestMeta?.query || lastEditPlanPromptRef.current || null,
-                retryCurrentPath: requestMeta?.currentPath || null,
-            });
+            // surfaceEditPlanFailure({
+            //     body: "We could not verify the apply result from the worker. Please retry.",
+            //     code: "EDIT_PLAN_APPLY_FAILURE_LEGACY_SHAPE_MISMATCH",
+            //     jobStatus: "failed",
+            //     httpStatus: 409,
+            //     jobId: activeEditPlanJob.jobId || null,
+            //     requestId: activeEditPlanJob.requestId || null,
+            //     retryable: true,
+            //     retryPrompt: requestMeta?.query || lastEditPlanPromptRef.current || null,
+            //     retryCurrentPath: requestMeta?.currentPath || null,
+            // });
             void showRestorePointsCard("after_apply_missing_contract");
             return;
         }
