@@ -1667,7 +1667,6 @@ export default function AppBuilderEditor({
     const isDev = process.env.NODE_ENV !== "production";
     const filteredCodeFileTree = useMemo(() => filterFileTree(fileTree, codeFileSearch), [codeFileSearch, fileTree]);
     const codeFileSearchActive = Boolean(codeFileSearch.trim());
-    const currentAiPromptFile = currentFile || "(no file selected)";
 
     const pageOptions = useMemo(() => {
         const seen = new Set<string>();
@@ -1721,7 +1720,8 @@ export default function AppBuilderEditor({
         () => pageOptions.find((page) => page.path === previewPagePath) || null,
         [pageOptions, previewPagePath],
     );
-    const aiCurrentFile = currentFile || selectedPreviewPage?.path || null;
+    const aiCurrentFile = selectedPreviewPage?.path || null;
+    const aiSearchCurrentFileLabel = aiCurrentFile || "(none)";
     const previewNavigatePath = selectedPreviewPage?.route || null;
     const selectedPageLabel = useMemo(() => {
         const route = String(selectedPreviewPage?.route || "").trim();
@@ -6328,7 +6328,8 @@ export default function AppBuilderEditor({
                             ) : null}
 
                                 {!IS_PRODUCTION && pageOptions.length > 0 ? (
-                                        <div className="relative ml-3" ref={pageDropdownRef}>
+                                    <div className="ml-3 flex items-center gap-2">
+                                        <div className="relative" ref={pageDropdownRef}>
                                         {hasPageDropdown ? (
                                             <button
                                                 type="button"
@@ -6376,6 +6377,15 @@ export default function AppBuilderEditor({
                                                 </div>
                                             </div>
                                         ) : null}
+                                        </div>
+                                        <div
+                                            className="inline-flex max-w-[320px] items-center gap-1.5 rounded-full border border-neutral-200 bg-neutral-50 px-3 py-1.5 text-xs font-medium text-neutral-700"
+                                            title={`Current file sent to AI search: ${aiSearchCurrentFileLabel}`}
+                                        >
+                                            <span className="text-neutral-500">search file:</span>
+                                            <span className="truncate">{aiSearchCurrentFileLabel}</span>
+                                            <DevOnlyIconBadge title="Development-only AI currentFile debug" />
+                                        </div>
                                     </div>
                                 ) : null}
 
