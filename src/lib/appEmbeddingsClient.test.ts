@@ -19,6 +19,7 @@ import {
     normalizeEmbeddingSearchResponse,
     withLoadingState,
 } from "./appEmbeddingsClient";
+import { deriveEmbeddingCurrentPath } from "./embeddingCurrentPath";
 
 describe("appEmbeddingsClient", () => {
     afterEach(() => {
@@ -263,6 +264,57 @@ describe("appEmbeddingsClient", () => {
             currentPath: "public/research/more-control-fidelity-and-expressibility/index.html",
             maxChunks: 10,
             search,
+        }));
+    });
+
+    it("sends the derived currentPath in the final search payload", async () => {
+        const files = {
+            "server.js": { content: "const express = require('express');", lastModified: 1 },
+            "public/index.html": { content: "<html><body><button id='close'>Close</button></body></html>", lastModified: 1 },
+        };
+
+        const decision = deriveEmbeddingCurrentPath({
+            selectedFile: "server.js",
+            query: "when i click close on the chrome extension popup hide it",
+            files,
+        });
+
+        const fetchSpy = jest.spyOn(globalThis, "fetch" as any).mockResolvedValueOnce({
+            ok: true,
+            status: 200,
+            headers: { get: () => null },
+            json: async () => ({ chunks: [] }),
+        } as any);
+
+        await fetchEmbeddingSearch(
+            {
+                appId: "app-1",
+                query: "when i click close on the chrome extension popup hide it",
+                currentPath: decision.derivedCurrentPath,
+                debugCurrentPath: {
+                    selectedFile: decision.selectedFile,
+                    derivedCurrentPath: decision.derivedCurrentPath,
+                    intentClassification: decision.intentClassification,
+                    reason: decision.reason,
+                },
+            },
+            {},
+        );
+
+        expect(fetchSpy).toHaveBeenCalledTimes(1);
+        const [, init] = fetchSpy.mock.calls[0] as [RequestInfo | URL, RequestInit | undefined];
+        expect(init?.body).toEqual(JSON.stringify({
+            appId: "app-1",
+            query: "when i click close on the chrome extension popup hide it",
+            requestText: "when i click close on the chrome extension popup hide it",
+            currentPath: "public/index.html",
+            debugCurrentPath: {
+                selectedFile: "server.js",
+                derivedCurrentPath: "public/index.html",
+                intentClassification: "ui",
+                reason: "ui_intent_backend_selected_remapped_to_frontend_path",
+            },
+            maxChunks: 10,
         }));
     });
 

@@ -2,6 +2,12 @@ export type AppEmbeddingSearchRequest = {
     appId: string;
     query: string;
     currentPath?: string | null;
+    debugCurrentPath?: {
+        selectedFile: string | null;
+        derivedCurrentPath: string | null;
+        intentClassification: "ui" | "backend" | "unknown";
+        reason: string;
+    } | null;
     maxChunks?: number;
     requestText?: string;
     framework?: string | null;
@@ -1027,6 +1033,7 @@ export async function fetchEmbeddingSearch(
             query: request.query,
             requestText: request.requestText ?? request.query,
             currentPath: request.currentPath || null,
+            ...(request.debugCurrentPath ? { debugCurrentPath: request.debugCurrentPath } : {}),
             maxChunks,
             ...(request.framework ? { framework: request.framework } : {}),
             ...(request.frameworkLabel ? { frameworkLabel: request.frameworkLabel } : {}),
@@ -1050,6 +1057,7 @@ export async function fetchEmbeddingEditPlan(
             query: request.query,
             requestText: request.requestText ?? request.query,
             currentPath: request.currentPath || null,
+            ...(request.debugCurrentPath ? { debugCurrentPath: request.debugCurrentPath } : {}),
             maxChunks,
             ...(search ? { search } : {}),
         },

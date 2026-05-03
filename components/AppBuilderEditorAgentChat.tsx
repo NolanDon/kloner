@@ -39,6 +39,7 @@ import {
     detectProjectFramework,
     planWouldSwitchFramework,
 } from "@/src/lib/projectFramework";
+import { deriveEmbeddingCurrentPath } from "@/src/lib/embeddingCurrentPath";
 import {
     buildChatRestorePointRevertSuccessMessage,
     buildChatRestorePointsErrorMessage,
@@ -5088,9 +5089,27 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                 "x-request-id": searchRequestId,
                 "x-client-request-id": searchRequestId,
             };
-            const effectiveCurrentFile = typeof opts?.forcedCurrentPath === "string"
+            const selectedCurrentFile = typeof opts?.forcedCurrentPath === "string"
                 ? (opts.forcedCurrentPath.trim() || null)
                 : resolveFallbackCurrentFile(files, currentFile);
+            const currentPathDecision = deriveEmbeddingCurrentPath({
+                selectedFile: selectedCurrentFile,
+                query: messageInput,
+                files,
+                frameworkInfo: projectFramework,
+            });
+            const effectiveCurrentFile = currentPathDecision.derivedCurrentPath;
+            const currentPathDebug = {
+                selectedFile: currentPathDecision.selectedFile,
+                derivedCurrentPath: currentPathDecision.derivedCurrentPath,
+                intentClassification: currentPathDecision.intentClassification,
+                reason: currentPathDecision.reason,
+            };
+            console.info("[AppBuilderEditorAgentChat] embedding currentPath decision", {
+                appId,
+                queryPreview: messageInput.slice(0, 200),
+                ...currentPathDebug,
+            });
             const inquiryRequestedAt = Date.now();
             latestInquiryMetaRef.current = {
                 query: messageInput,
@@ -5103,6 +5122,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                             reason: "bypassInitialSearch",
                             query: messageInput,
                             currentPath: effectiveCurrentFile || null,
+                            debugCurrentPath: currentPathDebug,
                         },
                         response: {
                             skipped: true,
@@ -5171,6 +5191,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                     query: messageInput,
                     requestText: frameworkPrompt,
                     currentPath: effectiveCurrentFile,
+                    debugCurrentPath: currentPathDebug,
                     maxChunks: 10,
                     framework: projectFramework.key,
                     frameworkLabel: projectFramework.label,
@@ -5186,6 +5207,9 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                     requestId: searchRequestId,
                     bodySizeBytes: searchRequestBodyBytes,
                     currentPath: effectiveCurrentFile,
+                    selectedFile: currentPathDebug.selectedFile,
+                    intentClassification: currentPathDebug.intentClassification,
+                    currentPathReason: currentPathDebug.reason,
                     maxChunks: 10,
                     queryLen: messageInput.length,
                 });
@@ -5382,6 +5406,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                         query: messageInput,
                         requestText: frameworkPrompt,
                         currentPath: effectiveCurrentFile,
+                        debugCurrentPath: currentPathDebug,
                         maxChunks: 10,
                     },
                     requestHeaders,
@@ -5486,6 +5511,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                 query: messageInput,
                                 requestText: frameworkPrompt,
                                 currentPath: effectiveCurrentFile,
+                                debugCurrentPath: currentPathDebug,
                                 maxChunks: 10,
                             },
                             requestHeaders,
