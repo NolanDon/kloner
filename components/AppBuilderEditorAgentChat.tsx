@@ -176,6 +176,38 @@ function resolveFallbackCurrentFile(files: { [path: string]: { content: string; 
     return chooseFrameworkCurrentFile(files, framework, currentFile);
 }
 
+function normalizeServerFilesMap(
+    input: unknown,
+): { [path: string]: { content: string; lastModified: number } } {
+    const source = input && typeof input === "object" ? (input as Record<string, unknown>) : {};
+    const normalized: { [path: string]: { content: string; lastModified: number } } = {};
+
+    for (const [path, raw] of Object.entries(source)) {
+        const cleanPath = String(path || "").trim();
+        if (!cleanPath) continue;
+
+        if (typeof raw === "string") {
+            normalized[cleanPath] = { content: raw, lastModified: Date.now() };
+            continue;
+        }
+
+        if (!raw || typeof raw !== "object") {
+            normalized[cleanPath] = { content: "", lastModified: Date.now() };
+            continue;
+        }
+
+        const file = raw as Record<string, unknown>;
+        const content = typeof file.content === "string" ? file.content : "";
+        const lastModified = typeof file.lastModified === "number" && Number.isFinite(file.lastModified)
+            ? file.lastModified
+            : Date.now();
+
+        normalized[cleanPath] = { content, lastModified };
+    }
+
+    return normalized;
+}
+
 type CompileErrorQuickFixContext = {
     appId: string;
     code: string;
@@ -333,7 +365,15 @@ function formatEditPlanSeconds(value: number | null | undefined): string | null 
 
 function getEditPlanFailureFriendlyMessage(code: string | null | undefined, fallback: string | null | undefined): string {
     const normalizedCode = String(code || "").trim().toUpperCase();
-    if (normalizedCode === "EDIT_PLAN_APPLY_FAILURE_INCOMPLETE") {
+    const applyContractFailureCodes = new Set([
+        "EDIT_PLAN_APPLY_FAILURE_INCOMPLETE",
+        "EDIT_PLAN_APPLY_FAILURE_MISSING_CODE",
+        "EDIT_PLAN_APPLY_FAILURE_MISSING_REASON",
+        "EDIT_PLAN_APPLY_FAILURE_MISSING_CODE_AND_REASON",
+        "EDIT_PLAN_APPLY_FAILURE_MALFORMED_PAYLOAD",
+        "EDIT_PLAN_APPLY_FAILURE_LEGACY_SHAPE_MISMATCH",
+    ]);
+    if (applyContractFailureCodes.has(normalizedCode)) {
         return "We could not verify the apply result from the worker. Please click refresh, if your changes do not appear, please retry the edit.";
     }
     if (normalizedCode === "EMBEDDING_EDIT_PLAN_QUEUE_FAILED") {
@@ -1788,12 +1828,13 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
 
                     if (statusCode === 409) {
                         const contractFailureMessage = getEditPlanFailureFriendlyMessage(code, result.error || null);
+                        const resolvedContractCode = code || "EDIT_PLAN_APPLY_FAILURE_MISSING_CODE_AND_REASON";
                         const contractFailedJob = {
                             ...activeEditPlanJob,
                             status: "failed",
                             stage: "failed",
                             error: {
-                                code: code || "EDIT_PLAN_APPLY_FAILURE_INCOMPLETE",
+                                code: resolvedContractCode,
                                 message: contractFailureMessage,
                                 retryAfterSeconds,
                             },
@@ -1801,7 +1842,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                         setActiveEditPlanJob(contractFailedJob);
                         surfaceEditPlanFailure({
                             body: contractFailureMessage,
-                            code: code || "EDIT_PLAN_APPLY_FAILURE_INCOMPLETE",
+                            code: resolvedContractCode,
                             jobStatus: "failed",
                             httpStatus: statusCode,
                             jobId: activeEditPlanJob.jobId || null,
@@ -2766,8 +2807,9 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
             if (!res.ok) return null;
             const data = await res.json().catch(() => null);
             if (data?.files && typeof data.files === "object") {
-                if (applyToState && onFilesReplace) onFilesReplace(data.files);
-                return data.files as { [path: string]: { content: string; lastModified: number } };
+                const normalizedFiles = normalizeServerFilesMap(data.files);
+                if (applyToState && onFilesReplace) onFilesReplace(normalizedFiles);
+                return normalizedFiles;
             }
         } catch {
             // ignore
@@ -3653,7 +3695,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
 
             surfaceEditPlanFailure({
                 body: "We could not verify the apply result from the worker. Please retry.",
-                code: "EDIT_PLAN_APPLY_FAILURE_INCOMPLETE",
+                code: "EDIT_PLAN_APPLY_FAILURE_LEGACY_SHAPE_MISMATCH",
                 jobStatus: "failed",
                 httpStatus: 409,
                 jobId: activeEditPlanJob.jobId || null,
@@ -4739,6 +4781,10 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
             }
 
             if (onFilesReplace) onFilesReplace(restoredFiles);
+
+            // Explicit post-undo rehydrate to pick up any delayed backend writes
+            // and keep index html style entry files aligned with server state.
+            await syncFilesFromServer({ applyToState: true }).catch(() => null);
 
             if (typeof window !== "undefined") {
                 window.dispatchEvent(

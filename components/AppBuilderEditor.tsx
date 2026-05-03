@@ -391,6 +391,36 @@ function mergeFilesPreferNewest(
     return merged;
 }
 
+function normalizeIncomingFilesMap(input: unknown): AppData["files"] {
+    const source = input && typeof input === "object" ? (input as Record<string, unknown>) : {};
+    const normalized: AppData["files"] = {};
+
+    for (const [path, raw] of Object.entries(source)) {
+        const cleanPath = String(path || "").trim();
+        if (!cleanPath) continue;
+
+        if (typeof raw === "string") {
+            normalized[cleanPath] = { content: raw, lastModified: Date.now() };
+            continue;
+        }
+
+        if (!raw || typeof raw !== "object") {
+            normalized[cleanPath] = { content: "", lastModified: Date.now() };
+            continue;
+        }
+
+        const file = raw as Record<string, unknown>;
+        const content = typeof file.content === "string" ? file.content : "";
+        const lastModified = typeof file.lastModified === "number" && Number.isFinite(file.lastModified)
+            ? file.lastModified
+            : Date.now();
+
+        normalized[cleanPath] = { content, lastModified };
+    }
+
+    return normalized;
+}
+
 function ensureCompilerOptionsObject(jsonText: string): { ok: true; normalized: string } | { ok: false } {
     try {
         const parsed: any = JSON.parse(jsonText);
@@ -4278,12 +4308,14 @@ export default function AppBuilderEditor({
 
     const handleFilesReplaceFromServer = useCallback(
         (nextFiles: { [path: string]: { content: string; lastModified: number } }) => {
+            const normalizedNextFiles = normalizeIncomingFilesMap(nextFiles);
+
             if (suppressNextFilesReplaceApplyRef.current) {
                 suppressNextFilesReplaceApplyRef.current = false;
-                setApp((prev) => (prev ? { ...prev, files: nextFiles } : null));
-                buildFileTree(nextFiles as any);
+                setApp((prev) => (prev ? { ...prev, files: normalizedNextFiles } : null));
+                buildFileTree(normalizedNextFiles as any);
                 if (currentFile) {
-                    const next = nextFiles[currentFile]?.content;
+                    const next = normalizedNextFiles[currentFile]?.content;
                     if (typeof next === "string") setCode(next);
                     else setCode("");
                 }
@@ -4295,8 +4327,8 @@ export default function AppBuilderEditor({
             try {
                 const prevFiles = appRef.current?.files || ({} as any);
                 const changes: Array<{ path: string; content: string }> = [];
-                for (const p of Object.keys(nextFiles || {})) {
-                    const nextContent = (nextFiles as any)?.[p]?.content;
+                for (const p of Object.keys(normalizedNextFiles || {})) {
+                    const nextContent = (normalizedNextFiles as any)?.[p]?.content;
                     if (typeof nextContent !== "string") continue;
                     const prevContent = (prevFiles as any)?.[p]?.content;
                     if (typeof prevContent === "string" && prevContent === nextContent) continue;
@@ -4309,13 +4341,13 @@ export default function AppBuilderEditor({
                 // ignore
             }
 
-            setApp((prev) => (prev ? { ...prev, files: nextFiles } : null));
+            setApp((prev) => (prev ? { ...prev, files: normalizedNextFiles } : null));
 
             // Keep file tree in sync (e.g. newly created files).
-            buildFileTree(nextFiles as any);
+            buildFileTree(normalizedNextFiles as any);
 
             if (currentFile) {
-                const next = nextFiles[currentFile]?.content;
+                const next = normalizedNextFiles[currentFile]?.content;
                 if (typeof next === "string") setCode(next);
                 else setCode("");
             }

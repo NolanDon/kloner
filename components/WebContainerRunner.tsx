@@ -3154,7 +3154,7 @@ export default function NavBar() {
         // Ensure all file entries have the correct structure
         const validatedFiles: { [path: string]: any } = {};
         for (const [path, file] of Object.entries(filesRef.current)) {
-          if (!file || typeof file !== 'object' || !file.content || typeof file.content !== 'string') {
+          if (!file || typeof file !== 'object' || typeof file.content !== 'string') {
             console.error('Invalid file entry:', path, file);
             throw new Error(`Invalid file structure for ${path}`);
           }
