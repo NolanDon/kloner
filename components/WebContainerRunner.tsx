@@ -2726,8 +2726,21 @@ export default function NavBar() {
 
         const startKey = `${appId}|${startAttempt}|${manualStartNonce}|${restartToken ?? 0}|${reconnectToken ?? 0}|${forceFreshStart ?? 0}`;
         if (lastStartKeyRef.current === startKey) {
-          console.log('Already started, skipping duplicate startApp call');
-          return;
+          const hasActivePreview = Boolean(previewUrlRef.current);
+          const hasScheduledPoll = Boolean(statusPollTimeoutRef.current);
+          const hasPollingCode = Boolean(pollingCodeRef.current || activePollCodeRef.current);
+
+          if (hasActivePreview || hasScheduledPoll || hasPollingCode) {
+            console.log('Already started, skipping duplicate startApp call');
+            return;
+          }
+
+          // Recovery path: a prior render cycle may have cleared timers, so allow startup to continue.
+          console.warn('[WebContainerRunner] start key matched but no active preview/poll detected; recovering startup loop', {
+            appId,
+            startKey,
+          });
+          lastStartKeyRef.current = null;
         }
         lastStartKeyRef.current = startKey;
 
@@ -4600,6 +4613,9 @@ export default function NavBar() {
     return () => {
       clearTimeout(startTimer);
 
+      // Abort any in-flight start/poll loop for this effect instance.
+      startRunIdRef.current = runId + 1;
+
       // Clear any pending retry timeout
       if (retryTimeoutRef.current) {
         clearTimeout(retryTimeoutRef.current);
@@ -4623,9 +4639,6 @@ export default function NavBar() {
         clearTimeout(iframeLoadTimeoutRef.current);
         iframeLoadTimeoutRef.current = null;
       }
-      // Abort any in-flight start/poll loop.
-      startRunIdRef.current = runId + 1;
-      startRunIdRef.current = runId + 1;
 
       // Only cleanup if there's no active preview URL (app not successfully loaded)
       // This prevents killing apps that are actively being viewed

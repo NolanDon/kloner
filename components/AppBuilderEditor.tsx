@@ -1790,7 +1790,7 @@ export default function AppBuilderEditor({
     }, [isPageDropdownOpen]);
 
     useEffect(() => {
-        if (IS_PRODUCTION && viewMode === "code") {
+        if (IS_PRODUCTION && (viewMode === "code" || viewMode === "images")) {
             setViewMode("ai");
         }
     }, [viewMode]);
@@ -5710,57 +5710,60 @@ export default function AppBuilderEditor({
 
                         {/* Project controls (moved off top-right) */}
                         <div className="ml-2 hidden md:flex items-center gap-2">
-                            <button
-                                onClick={() => void openDatabaseConnect()}
-                                className={`min-w-[170px] px-4 py-2 text-xs font-semibold rounded-full flex items-center justify-center gap-2 transition-colors whitespace-nowrap ${
-                                    supabaseConnected === null
-                                        ? "bg-white text-gray-500 border border-gray-200"
-                                        : supabaseConnected
-                                          ? supabaseDbReachable === false
-                                              ? (supabaseDbReason === "project_paused" || supabaseDbReason === "timeout_or_network")
-                                                  ? "bg-amber-100 text-amber-900 hover:bg-amber-200"
-                                                  : "bg-red-100 text-red-900 hover:bg-red-200"
-                                              : supabaseDbReachable === true
-                                                ? "bg-green-100 text-green-900 hover:bg-green-200"
-                                                : "bg-white text-green-900 border border-green-200 hover:bg-green-50"
-                                          : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-100"
-                                }`}
-                                title={
-                                    supabaseConnected
-                                        ? `${supabaseDbReachable === false ? "Database unreachable" : "Database connected"}${supabaseProjectName ? `: ${supabaseProjectName}` : ""}${supabaseDbStatusText ? `\n\n${supabaseDbStatusText}` : ""}`
-                                        : "Connect your database"
-                                }
-                            >
-                                <Database className="w-4 h-4 shrink-0" />
-                                {supabaseConnected === null ? (
-                                    <span>Database: Verifying…</span>
-                                ) : supabaseConnected ? (
-                                    <span className="flex flex-col items-start leading-tight">
-                                        <span className="text-[10px] font-bold uppercase tracking-wide opacity-70">
-                                            {supabaseDbReachable === false
-                                                ? supabaseDbReason === "project_paused"
-                                                    ? "Database: Paused"
-                                                    : supabaseDbReason === "timeout_or_network"
-                                                      ? "Database: Resuming"
-                                                      : "Unreachable"
-                                                : supabaseDbReachable === true
-                                                  ? "Database: Healthy"
-                                                  : "Database: Connected"}
+                            {isDev ? (
+                                <button
+                                    onClick={() => void openDatabaseConnect()}
+                                    className={`min-w-[170px] px-4 py-2 text-xs font-semibold rounded-full flex items-center justify-center gap-2 transition-colors whitespace-nowrap ${
+                                        supabaseConnected === null
+                                            ? "bg-white text-gray-500 border border-gray-200"
+                                            : supabaseConnected
+                                              ? supabaseDbReachable === false
+                                                  ? (supabaseDbReason === "project_paused" || supabaseDbReason === "timeout_or_network")
+                                                      ? "bg-amber-100 text-amber-900 hover:bg-amber-200"
+                                                      : "bg-red-100 text-red-900 hover:bg-red-200"
+                                                  : supabaseDbReachable === true
+                                                    ? "bg-green-100 text-green-900 hover:bg-green-200"
+                                                    : "bg-white text-green-900 border border-green-200 hover:bg-green-50"
+                                              : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-100"
+                                    }`}
+                                    title={
+                                        supabaseConnected
+                                            ? `${supabaseDbReachable === false ? "Database unreachable" : "Database connected"}${supabaseProjectName ? `: ${supabaseProjectName}` : ""}${supabaseDbStatusText ? `\n\n${supabaseDbStatusText}` : ""}`
+                                            : "Connect your database"
+                                    }
+                                >
+                                    <Database className="w-4 h-4 shrink-0" />
+                                    {supabaseConnected === null ? (
+                                        <span>Database: Verifying…</span>
+                                    ) : supabaseConnected ? (
+                                        <span className="flex flex-col items-start leading-tight">
+                                            <span className="text-[10px] font-bold uppercase tracking-wide opacity-70">
+                                                {supabaseDbReachable === false
+                                                    ? supabaseDbReason === "project_paused"
+                                                        ? "Database: Paused"
+                                                        : supabaseDbReason === "timeout_or_network"
+                                                          ? "Database: Resuming"
+                                                          : "Unreachable"
+                                                    : supabaseDbReachable === true
+                                                      ? "Database: Healthy"
+                                                      : "Database: Connected"}
+                                            </span>
+                                            {supabaseProjectName ? (
+                                                <span className="max-w-[110px] truncate font-semibold" title={supabaseProjectName}>
+                                                    {supabaseProjectName}
+                                                </span>
+                                            ) : supabaseProjectRef ? (
+                                                <span className="max-w-[110px] truncate font-mono text-[10px]" title={supabaseProjectRef}>
+                                                    {supabaseProjectRef}
+                                                </span>
+                                            ) : null}
                                         </span>
-                                        {supabaseProjectName ? (
-                                            <span className="max-w-[110px] truncate font-semibold" title={supabaseProjectName}>
-                                                {supabaseProjectName}
-                                            </span>
-                                        ) : supabaseProjectRef ? (
-                                            <span className="max-w-[110px] truncate font-mono text-[10px]" title={supabaseProjectRef}>
-                                                {supabaseProjectRef}
-                                            </span>
-                                        ) : null}
-                                    </span>
-                                ) : (
-                                    <span>Connect Database</span>
-                                )}
-                            </button>
+                                    ) : (
+                                        <span>Connect Database</span>
+                                    )}
+                                    <DevOnlyIconBadge title="Development-only database controls" />
+                                </button>
+                            ) : null}
 
                             {lastDeployLiveUrl ? (
                                 <button
@@ -5773,7 +5776,7 @@ export default function AppBuilderEditor({
                                 </button>
                             ) : null}
 
-                            {supabaseConnected ? (
+                            {isDev && supabaseConnected ? (
                                 <button
                                     onClick={() => void disconnectSupabase()}
                                     className="p-2 rounded-full border border-red-200 bg-white text-red-700 hover:bg-red-50 transition-colors"
@@ -5947,7 +5950,7 @@ export default function AppBuilderEditor({
                     >
                         {/* View Mode Toggle */}
                         <div className="p-3 border-b sticky top-0 z-10 bg-gray-50">
-                            <div className={`grid gap-2 ${IS_PRODUCTION ? "grid-cols-2" : "grid-cols-3"}`}>
+                            <div className={`grid gap-2 ${IS_PRODUCTION ? "grid-cols-1" : "grid-cols-3"}`}>
                                 <button
                                     onClick={() => setViewMode("ai")}
                                     className={`flex-1 px-4 py-2 text-xs font-semibold rounded-full flex items-center justify-center gap-2 transition-colors ${
@@ -5975,18 +5978,21 @@ export default function AppBuilderEditor({
                                         <DevOnlyIconBadge title="Development-only code tab" />
                                     </button>
                                 ) : null}
-                                <button
-                                    onClick={() => setViewMode("images")}
-                                    className={`flex-1 px-4 py-2 text-xs font-semibold rounded-full flex items-center justify-center gap-2 transition-colors ${
-                                        viewMode === "images"
-                                            ? "bg-neutral-100 text-neutral-900 border border-neutral-300 shadow-sm"
-                                            : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50"
-                                    }`}
-                                    title="Images"
-                                >
-                                    <Images className="w-4 h-4" />
-                                    Images
-                                </button>
+                                {!IS_PRODUCTION ? (
+                                    <button
+                                        onClick={() => setViewMode("images")}
+                                        className={`flex-1 px-4 py-2 text-xs font-semibold rounded-full flex items-center justify-center gap-2 transition-colors ${
+                                            viewMode === "images"
+                                                ? "bg-neutral-100 text-neutral-900 border border-neutral-300 shadow-sm"
+                                                : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50"
+                                        }`}
+                                        title="Images"
+                                    >
+                                        <Images className="w-4 h-4" />
+                                        Images
+                                        <DevOnlyIconBadge title="Development-only images tab" />
+                                    </button>
+                                ) : null}
                             </div>
                         </div>
 
@@ -6748,24 +6754,27 @@ export default function AppBuilderEditor({
                                         <span>Rebuild</span>
                                     </button>
 
-                                    <button
-                                        onClick={() => void openDatabaseConnect()}
-                                        className="inline-flex items-center justify-center gap-2 rounded-full px-4 py-2 text-sm font-semibold border border-neutral-300 bg-white text-neutral-800"
-                                        title={supabaseConnected && (supabaseProjectName || supabaseProjectRef) ? `Connected to: ${supabaseProjectName || supabaseProjectRef}` : supabaseConnected ? "Open Supabase" : "Connect Database"}
-                                    >
-                                        <Database className="h-4 w-4 shrink-0" />
-                                        {supabaseConnected && (supabaseProjectName || supabaseProjectRef) ? (
-                                            <span className="flex flex-col items-start leading-tight">
-                                                <span className="text-[10px] uppercase tracking-wide opacity-60">Database</span>
-                                                <span className="max-w-[140px] truncate">{supabaseProjectName || supabaseProjectRef}</span>
-                                            </span>
-                                        ) : (
-                                            <span>{supabaseConnected ? "Database" : "Connect Database"}</span>
-                                        )}
-                                    </button>
+                                    {isDev ? (
+                                        <button
+                                            onClick={() => void openDatabaseConnect()}
+                                            className="inline-flex items-center justify-center gap-2 rounded-full px-4 py-2 text-sm font-semibold border border-neutral-300 bg-white text-neutral-800"
+                                            title={supabaseConnected && (supabaseProjectName || supabaseProjectRef) ? `Connected to: ${supabaseProjectName || supabaseProjectRef}` : supabaseConnected ? "Open Supabase" : "Connect Database"}
+                                        >
+                                            <Database className="h-4 w-4 shrink-0" />
+                                            {supabaseConnected && (supabaseProjectName || supabaseProjectRef) ? (
+                                                <span className="flex flex-col items-start leading-tight">
+                                                    <span className="text-[10px] uppercase tracking-wide opacity-60">Database</span>
+                                                    <span className="max-w-[140px] truncate">{supabaseProjectName || supabaseProjectRef}</span>
+                                                </span>
+                                            ) : (
+                                                <span>{supabaseConnected ? "Database" : "Connect Database"}</span>
+                                            )}
+                                            <DevOnlyIconBadge title="Development-only database controls" />
+                                        </button>
+                                    ) : null}
                                 </div>
 
-                                {supabaseConnected ? (
+                                {isDev && supabaseConnected ? (
                                     <button
                                         onClick={() => {
                                             setMobileControlsOpen(false);
