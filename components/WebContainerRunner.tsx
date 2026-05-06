@@ -23,6 +23,13 @@ import {
   type PreviewFailureContract,
   type PreviewFailureUserAction,
 } from './previewFailureContract';
+import {
+  buildPreviewStartupUrl,
+  decidePreviewStartupPath,
+  normalizeStartupPath,
+  type PreviewStartupPathDecision,
+  shouldSendExplicitStartupNavigate,
+} from './previewStartupPath';
 
 const getStoredContainerCode = async (appId: string, user: any): Promise<string | null> => {
   try {
@@ -1682,6 +1689,13 @@ export default function WebContainerRunner({ appId, files, filesReady = true, on
   const lastRestartTokenRef = useRef<number | null>(null);
   const lastReconnectTokenRef = useRef<number | null>(null);
   const lastNavigatePathTokenRef = useRef<number | null>(null);
+  const pendingExplicitStartupRef = useRef<{
+    appId: string;
+    path: string;
+    token: number;
+  } | null>(null);
+  const startupDecisionByPreviewCodeRef = useRef<Record<string, PreviewStartupPathDecision>>({});
+  const explicitStartupNavigateSentByCodeRef = useRef<Record<string, boolean>>({});
   const lastPreviewUrlForLoadRef = useRef<string | null>(null);
   const lastExternalPreviewOpenedUrlRef = useRef<string | null>(null);
   const lastCookieBlockReportKeyRef = useRef<string>('');
@@ -1700,6 +1714,12 @@ export default function WebContainerRunner({ appId, files, filesReady = true, on
   const EMBED_POLICY_SPAM_WINDOW_MS = 12_000;
   const EMBED_POLICY_SPAM_THRESHOLD = 4;
   const EMBED_POLICY_SPAM_MUTED_MS = 2 * 60 * 1000;
+
+  useEffect(() => {
+    pendingExplicitStartupRef.current = null;
+    startupDecisionByPreviewCodeRef.current = {};
+    explicitStartupNavigateSentByCodeRef.current = {};
+  }, [appId]);
 
   const registerEmbedPolicySignal = (): { triggered: boolean; count: number } => {
     const now = Date.now();
@@ -2434,27 +2454,6 @@ export default function NavBar() {
     }
   };
 
-  const withPreviewPath = (url: string, path: string) => {
-    const raw = String(path || '').trim();
-    if (!raw) return url;
-    // Strip any accidental query/hash.
-    const cleaned = raw.split('?')[0].split('#')[0];
-    const normalized = ('/' + cleaned).replace(/\/+/g, '/').replace(/\s+/g, '');
-
-    try {
-      const u = new URL(url);
-      const segs = u.pathname.split('/').filter(Boolean);
-      if (segs.length >= 2 && segs[0] === 'preview') {
-        const base = `/${segs[0]}/${segs[1]}`;
-        u.pathname = normalized === '/' ? base : `${base}${normalized}`;
-        return u.toString();
-      }
-      return url;
-    } catch {
-      return url;
-    }
-  };
-
   const toPreviewRootUrl = (url: string) => {
     try {
       const u = new URL(url, typeof window !== 'undefined' ? window.location.origin : undefined);
@@ -2543,10 +2542,16 @@ export default function NavBar() {
     if (navigatePathToken <= 0) return;
     if (lastNavigatePathTokenRef.current === navigatePathToken) return;
 
-    if (!navigatePath) return;
-    sendPreviewNavigateCommand(navigatePath);
+    const normalizedPath = normalizeStartupPath(navigatePath);
+    pendingExplicitStartupRef.current = {
+      appId,
+      path: normalizedPath,
+      token: navigatePathToken,
+    };
+
+    sendPreviewNavigateCommand(normalizedPath);
     lastNavigatePathTokenRef.current = navigatePathToken;
-  }, [navigatePath, navigatePathToken, sendPreviewNavigateCommand]);
+  }, [appId, navigatePath, navigatePathToken, sendPreviewNavigateCommand]);
 
   // If the parent requests a restart, we must actually tear down our local
   // "already started" guard and avoid reconnecting to a stale machine.
@@ -3031,6 +3036,62 @@ export default function NavBar() {
                   `⚠️ Status service error for container ${existingCode}: ${statusResponse.status} ${statusResponse.statusText}. Retrying briefly before fresh-machine fallback.`
                 );
 
+                const canonicalRecoveryUrl = buildBrowserPreviewUrl(
+                  `https://${CUSTOM_PREVIEW_HOST || DEFAULT_HUB_HOST}/preview/${encodeURIComponent(existingCode)}`
+                );
+
+                const tryDirectPreviewRecovery = async (reason: string): Promise<boolean> => {
+                  const candidates = Array.from(new Set([
+                    lastReadyUrlRef.current,
+                    previewUrlRef.current,
+                    canonicalRecoveryUrl,
+                  ].filter((value): value is string => Boolean(String(value || '').trim()))));
+
+                  for (const candidateUrl of candidates) {
+                    if (startRunIdRef.current !== runId) return false;
+
+                    const probe = await probePreviewUrl(appId, candidateUrl);
+                    if (startRunIdRef.current !== runId) return false;
+
+                    if (!probe.reachable) {
+                      if (probe.status === 404 || probe.status === 410) {
+                        console.log(`🗑️ Direct preview probe returned ${probe.status} for container ${existingCode}; clearing stored code.`);
+                        await clearStoredContainerCodeEverywhere(appId, user);
+                        return false;
+                      }
+                      continue;
+                    }
+
+                    console.log('[WebContainerRunner] Recovered saved machine from direct preview probe', {
+                      appId,
+                      code: existingCode,
+                      reason,
+                      candidateUrl,
+                    });
+
+                    pollingCodeRef.current = existingCode;
+                    const browserUrl = buildBrowserPreviewUrl(candidateUrl);
+                    iframeLoadedSuccessfullyRef.current = false;
+                    setPreviewUrl(browserUrl);
+                    setConnectingToExisting(false);
+                    setIsPolling(false);
+                    setIsLoading(false);
+                    setError(null);
+                    setCanRetry(false);
+                    setLoadingStatus('Connected to existing machine.');
+                    backendReadyRef.current = true;
+                    lastReadyUrlRef.current = candidateUrl;
+                    appLoadedSuccessfullyRef.current = true;
+                    return true;
+                  }
+
+                  return false;
+                };
+
+                if (await tryDirectPreviewRecovery('status_service_5xx_initial')) {
+                  return;
+                }
+
                 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
                 let recovered = false;
 
@@ -3056,6 +3117,11 @@ export default function NavBar() {
                     }
 
                     if (!res.ok) continue;
+
+                    if (await tryDirectPreviewRecovery(`status_service_5xx_retry_${attempt}`)) {
+                      recovered = true;
+                      return;
+                    }
 
                     const statusData = await res.json().catch(() => ({} as any));
                     const status = String((statusData as any)?.status || '').toLowerCase();
@@ -3096,6 +3162,10 @@ export default function NavBar() {
 
                 if (startRunIdRef.current !== runId) return;
                 if (!recovered) {
+                  if (await tryDirectPreviewRecovery('status_service_5xx_final')) {
+                    return;
+                  }
+
                   console.log(`🧹 Saved machine ${existingCode} did not recover after status 5xx retries; clearing and starting fresh machine.`);
                   await clearStoredContainerCodeEverywhere(appId, user);
                   setConnectingToExisting(false);
@@ -4967,7 +5037,64 @@ export default function NavBar() {
     hmrWsStatus === 'ok' ||
     previewInteractiveByStatus;
   const showPreviewSurface = Boolean(previewUrl) && !error && !compileErrorState && !terminalPreviewStatus && (externalPreviewMode || canRenderEmbeddedFrame);
-  const activePreviewUrl = withPreviewPath(previewUrl || '', navigatePath || '');
+  const currentPreviewCode = derivePreviewCodeFromUrl(previewUrl || '');
+  const persistedPathSeen = normalizeStartupPath(navigatePath);
+
+  let startupDecision: PreviewStartupPathDecision = {
+    initialPath: '/',
+    source: 'default_root',
+    explicitInputPath: null,
+    persistedPathSeen,
+  };
+
+  if (currentPreviewCode) {
+    const existingDecision = startupDecisionByPreviewCodeRef.current[currentPreviewCode];
+    if (!existingDecision) {
+      const pendingExplicit = pendingExplicitStartupRef.current;
+      const explicitContext = pendingExplicit && pendingExplicit.appId === appId
+        ? {
+            appId,
+            previewCode: currentPreviewCode,
+            path: pendingExplicit.path,
+          }
+        : null;
+
+      const nextDecision = decidePreviewStartupPath({
+        appId,
+        previewCode: currentPreviewCode,
+        explicitContext,
+        persistedPathSeen,
+      });
+
+      startupDecisionByPreviewCodeRef.current[currentPreviewCode] = nextDecision;
+      startupDecision = nextDecision;
+      if (pendingExplicit && pendingExplicit.appId === appId) {
+        pendingExplicitStartupRef.current = null;
+      }
+
+      if (nextDecision.source === 'stale_state_blocked') {
+        console.info('[WebContainerRunner] Ignoring stale persisted startup path', {
+          appId,
+          previewCode: currentPreviewCode,
+          persistedPathSeen: nextDecision.persistedPathSeen,
+          explicitInputPath: nextDecision.explicitInputPath,
+        });
+      }
+
+      console.info('[WebContainerRunner] Preview startup path selected', {
+        appId,
+        previewCode: currentPreviewCode,
+        selectedInitialPath: nextDecision.initialPath,
+        source: nextDecision.source,
+        explicitInputPath: nextDecision.explicitInputPath,
+        persistedPathSeen: nextDecision.persistedPathSeen,
+      });
+    } else {
+      startupDecision = existingDecision;
+    }
+  }
+
+  const activePreviewUrl = buildPreviewStartupUrl(previewUrl || '', startupDecision.initialPath);
   const showApplyRefreshingOverlay = showPreviewSurface && isApplyRefreshing;
   const terminalPreviewStatusData = terminalPreviewStatus ? (currentStatusData || lastBackendStatusRef.current || null) : null;
   const showTerminalPreviewErrorCard = Boolean(error) || terminalPreviewStatus;
@@ -5460,8 +5587,12 @@ export default function NavBar() {
                 // ignore
               }
 
-              if (navigatePath) {
-                sendPreviewNavigateCommand(navigatePath);
+              if (currentPreviewCode && shouldSendExplicitStartupNavigate(startupDecision)) {
+                const alreadySent = explicitStartupNavigateSentByCodeRef.current[currentPreviewCode] === true;
+                if (!alreadySent) {
+                  sendPreviewNavigateCommand(startupDecision.initialPath);
+                  explicitStartupNavigateSentByCodeRef.current[currentPreviewCode] = true;
+                }
               }
 
               if (iframeCriticalTimeoutRef.current) {

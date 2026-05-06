@@ -3,6 +3,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { callBackend } from '../../../src/lib/callBackend';
 import { requireSessionAndMaybeCsrf } from '../_lib/route-guard';
 
+const DEFAULT_HUB_HOST = 'tracksite-hub.fly.dev';
+const CUSTOM_PREVIEW_HOST = String(process.env.NEXT_PUBLIC_PREVIEW_HOST || 'preview.kloner.app').trim().toLowerCase();
+const PREVIEW_HOST = CUSTOM_PREVIEW_HOST || DEFAULT_HUB_HOST;
+
 type RequestDiagnostics = {
   callerType: 'browser' | 'internal-machine' | 'anonymous-script' | 'unknown';
   userAgent: string;
@@ -48,6 +52,34 @@ function getRequestDiagnostics(request: NextRequest, isInternal: boolean): Reque
   };
 }
 
+async function probeCanonicalPreviewUrl(code: string): Promise<{ reachable: boolean; status: number; finalUrl: string | null }> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8_000);
+
+  try {
+    const targetUrl = `https://${PREVIEW_HOST}/preview/${encodeURIComponent(code)}`;
+    const response = await fetch(targetUrl, {
+      method: 'GET',
+      redirect: 'follow',
+      cache: 'no-store',
+      signal: controller.signal,
+      headers: {
+        accept: 'text/html,application/json;q=0.9,*/*;q=0.1',
+        'user-agent': 'kloner-status-recovery/1.0',
+      },
+    });
+
+    const finalUrl = response.url || null;
+    const reachable = response.status >= 200 && response.status < 400;
+    return { reachable, status: response.status, finalUrl };
+  } catch (error: any) {
+    const aborted = error?.name === 'AbortError';
+    return { reachable: false, status: aborted ? 504 : 502, finalUrl: null };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 async function handleWebcontainerStatus(code: string, appId: string, uid?: string) {
   try {
     const response = await callBackend({ headers: {} } as any, {
@@ -64,6 +96,34 @@ async function handleWebcontainerStatus(code: string, appId: string, uid?: strin
     if (upstreamRequestId) responseHeaders.set('x-request-id', upstreamRequestId);
 
     if (response.status >= 400) {
+      if (response.status >= 500) {
+        const recovery = await probeCanonicalPreviewUrl(code);
+        if (recovery.reachable) {
+          console.warn('[webcontainer-status] recovered healthy preview from canonical probe after upstream 5xx', {
+            appId,
+            code,
+            status: response.status,
+            recoveredUrl: recovery.finalUrl,
+            previewHost: PREVIEW_HOST,
+          });
+
+          return NextResponse.json(
+            {
+              ok: true,
+              status: 'ready',
+              ready: true,
+              uiStage: 'app_ready',
+              uiTitle: 'Preview recovered',
+              uiMessage: 'Recovered preview health after a transient status service error.',
+              url: recovery.finalUrl || `https://${PREVIEW_HOST}/preview/${encodeURIComponent(code)}`,
+              machineId: null,
+              recoveredFromStatusError: true,
+            },
+            { headers: responseHeaders },
+          );
+        }
+      }
+
       const payload = (response.json && typeof response.json === 'object') ? response.json : {};
       const error = (payload as any)?.error || 'Backend error';
       // Preserve backend diagnostics (uiTitle/uiMessage/events/etc) so the frontend can render them.

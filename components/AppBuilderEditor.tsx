@@ -1831,22 +1831,11 @@ export default function AppBuilderEditor({
         rebuildAt: 0,
         saveAt: 0,
     });
-    const suppressNextPreviewNavigateTokenRef = useRef(false);
     const previewIssueFixDecision = useMemo(
         () => getPreviewIssueFixDecision(previewIssue || autoPreviewError || previewError, previewIssueDiagnostics, previewIssueFailure),
         [autoPreviewError, previewError, previewIssue, previewIssueDiagnostics, previewIssueFailure],
     );
     const canFixPreviewIssueWithAi = previewIssueFixDecision.eligible;
-
-    useEffect(() => {
-        if (previewMode !== "webcontainer") return;
-        if (!previewNavigatePath) return;
-        if (suppressNextPreviewNavigateTokenRef.current) {
-            suppressNextPreviewNavigateTokenRef.current = false;
-            return;
-        }
-        setPreviewNavigateToken((token) => token + 1);
-    }, [previewMode, previewNavigatePath]);
 
     const handlePreviewRouteChange = useCallback((nextPath: string | null) => {
         const raw = String(nextPath || "").trim();
@@ -1857,7 +1846,6 @@ export default function AppBuilderEditor({
 
         setPreviewPagePath((current) => {
             if (current === matched.path) return current;
-            suppressNextPreviewNavigateTokenRef.current = true;
             return matched.path;
         });
     }, [pageOptions]);
@@ -6400,6 +6388,7 @@ export default function AppBuilderEditor({
                                                                 type="button"
                                                                 onClick={() => {
                                                                     setPreviewPagePath(page.path);
+                                                                    setPreviewNavigateToken((token) => token + 1);
                                                                     handleFileSelect(page.path);
                                                                     setIsPageDropdownOpen(false);
                                                                 }}
