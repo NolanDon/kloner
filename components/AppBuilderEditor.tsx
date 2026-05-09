@@ -6338,7 +6338,6 @@ export default function AppBuilderEditor({
                                             <Images className="h-4 w-4" />
                                         )}
                                         Images
-                                        <DevOnlyIconBadge title="Development-only images tab" />
                                     </button>
                                 {/* ) : null} */}
                                 {/* {!IS_PRODUCTION ? ( */}
@@ -6358,7 +6357,6 @@ export default function AppBuilderEditor({
                                             <Paintbrush className="h-4 w-4" />
                                         )}
                                         Custom
-                                        <DevOnlyIconBadge title="Development-only custom visual editor" />
                                     </button>
                                 {/* ) : null} */}
                             </div>

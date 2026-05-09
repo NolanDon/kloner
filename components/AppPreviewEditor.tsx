@@ -4804,7 +4804,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                     </div>
                                                 </div>
 
-                                                <div className="space-y-3 text-[12px] max-h-64 overflow-y-auto pr-1 lg:max-h-none">
+                                                <div className="space-y-4 text-[12px] max-h-64 overflow-y-auto pr-1 lg:max-h-none">
                                                     {(mergedThemeColors.length || theme.fontFamilies.length) > 0 && (
                                                         <div className="space-y-4">
                                                             {mergedThemeColors.length > 0 && (
@@ -4923,7 +4923,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
 
                                                     {/* Font */}
                                                     <div>
-                                                        <div className="mb-2 text-[13px] font-medium text-neutral-800">
+                                                        <div className="mb-3 text-[18px] font-medium text-neutral-800">
                                                             Font
                                                         </div>
                                                         <select
@@ -4958,7 +4958,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
 
                                                     {/* Size & headings */}
                                                     <div>
-                                                        <div className="mb-2 text-[13px] font-medium text-neutral-800">
+                                                        <div className="mb-3 text-[18px] font-medium text-neutral-800">
                                                             Size
                                                         </div>
                                                         <div className="flex flex-wrap gap-2">
@@ -4983,7 +4983,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
 
                                                     {/* Text align */}
                                                     <div>
-                                                        <div className="mb-2 text-[13px] font-medium text-neutral-800">
+                                                        <div className="mb-3 text-[18px] font-medium text-neutral-800">
                                                             Align
                                                         </div>
                                                         <div className="flex gap-2">
@@ -5012,7 +5012,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
 
                                                     {/* Weight & transform */}
                                                     <div>
-                                                        <div className="mb-2 text-[13px] font-medium text-neutral-800">
+                                                        <div className="mb-3 text-[18px] font-medium text-neutral-800">
                                                             Weight
                                                         </div>
 
@@ -5087,7 +5087,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
 
                                                     {/* Text transform */}
                                                     <div>
-                                                        <div className="mb-2 text-[13px] font-medium text-neutral-800">
+                                                        <div className="mb-3 text-[18px] font-medium text-neutral-800">
                                                             Transform
                                                         </div>
                                                         <div className="flex gap-2">
@@ -5122,7 +5122,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
 
                                                     {/* Text color */}
                                                     <div>
-                                                        <div className="mb-2 text-[13px] font-medium text-neutral-800">
+                                                        <div className="mb-3 text-[18px] font-medium text-neutral-800">
                                                             Text Color
                                                         </div>
 
@@ -5192,7 +5192,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
 
                                                     {/* Background */}
                                                     <div>
-                                                        <div className="mb-2 text-[13px] font-medium text-neutral-800">
+                                                        <div className="mb-3 text-[18px] font-medium text-neutral-800">
                                                             Background
                                                         </div>
                                                         <div className="grid grid-cols-6 gap-2">
