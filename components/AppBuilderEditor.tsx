@@ -6282,12 +6282,12 @@ export default function AppBuilderEditor({
                                     : ""
                             }`}
                         >
-                            <div className={`grid gap-2 ${IS_PRODUCTION ? "grid-cols-1" : "grid-cols-4"}`}>
+                            <div className="flex flex-nowrap gap-2 overflow-x-auto">
                                 <button
                                     onClick={() => { void requestViewModeChange("ai"); }}
                                     disabled={isModeSwitching}
                                     data-tour-chat-tab
-                                    className={`flex-1 px-4 py-2 text-xs font-semibold rounded-full flex items-center justify-center gap-2 transition-colors ${
+                                    className={`flex-1 shrink-0 min-w-[96px] px-4 py-2 text-xs font-semibold rounded-full flex items-center justify-center gap-2 transition-colors ${
                                         viewMode === "ai"
                                             ? "bg-neutral-100 text-neutral-900 border border-neutral-300 shadow-sm"
                                             : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50"
@@ -6305,7 +6305,7 @@ export default function AppBuilderEditor({
                                     <button
                                         onClick={() => { void requestViewModeChange("code"); }}
                                         disabled={isModeSwitching}
-                                        className={`flex-1 px-4 py-2 text-xs font-semibold rounded-full flex items-center justify-center gap-2 transition-colors ${
+                                        className={`flex-1 shrink-0 min-w-[96px] px-4 py-2 text-xs font-semibold rounded-full flex items-center justify-center gap-2 transition-colors ${
                                             viewMode === "code"
                                                 ? "bg-neutral-100 text-neutral-900 border border-neutral-300 shadow-sm"
                                                 : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50"
@@ -6325,7 +6325,7 @@ export default function AppBuilderEditor({
                                     <button
                                         onClick={() => { void requestViewModeChange("images"); }}
                                         disabled={isModeSwitching}
-                                        className={`flex-1 px-4 py-2 text-xs font-semibold rounded-full flex items-center justify-center gap-2 transition-colors ${
+                                        className={`flex-1 shrink-0 min-w-[96px] px-4 py-2 text-xs font-semibold rounded-full flex items-center justify-center gap-2 transition-colors ${
                                             viewMode === "images"
                                                 ? "bg-neutral-100 text-neutral-900 border border-neutral-300 shadow-sm"
                                                 : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50"
@@ -6344,7 +6344,7 @@ export default function AppBuilderEditor({
                                     <button
                                         onClick={() => { void requestViewModeChange("custom"); }}
                                         disabled={isModeSwitching}
-                                        className={`flex-1 px-4 py-2 text-xs font-semibold rounded-full flex items-center justify-center gap-2 transition-colors ${
+                                        className={`flex-1 shrink-0 min-w-[96px] px-4 py-2 text-xs font-semibold rounded-full flex items-center justify-center gap-2 transition-colors ${
                                             viewMode === "custom"
                                                 ? "bg-neutral-100 text-neutral-900 border border-neutral-300 shadow-sm"
                                                 : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50"
@@ -6810,7 +6810,7 @@ export default function AppBuilderEditor({
                                                 <span className="kloner-dot" />
                                                 <span className="kloner-dot" />
                                             </div>
-                                            <div className="mt-6 w-full max-w-2xl px-6 text-left"><div className="text-sm text-black/60"><span>Hydrating files...</span></div></div>
+                                            <div className="mt-6 w-full max-w-2xl px-6 text-left"><div className="text-sm text-black/60"><span>Hydrating files</span></div></div>
                                         </div>
                                     </div>
                                 )
