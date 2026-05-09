@@ -11463,14 +11463,13 @@ export default function PreviewPage(): JSX.Element {
                                                     </div>
                                                 </div>
 
-                                                <div className="rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2 text-[11px] text-neutral-700">
-                                                    {/* <span className="font-semibold text-neutral-800">Status:</span>{" "} */}
+                                                {/* <div className="rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2 text-[11px] text-neutral-700">
                                                     {isVercelChecking
                                                         ? "Checking connection…"
                                                         : isVercelConnected
                                                             ? ""
                                                             : "Not connected"}
-                                                </div>
+                                                </div> */}
 
                                                 {isVercelConnected && !isVercelChecking ? (
                                                     <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-sm text-emerald-800">
@@ -11479,7 +11478,7 @@ export default function PreviewPage(): JSX.Element {
                                                         </div>
                                                         <div>
                                                             {/* <p className="text-neutral-900">Connected</p> */}
-                                                            <p className="text-[11px] text-emerald-700">Continuing to deploy…</p>
+                                                            <p className="text-[13px] text-emerald-700">Continuing to deploy…</p>
                                                         </div>
                                                     </div>
                                                 ) : null}

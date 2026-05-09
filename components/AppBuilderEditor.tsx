@@ -4,8 +4,9 @@
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import Editor from "@monaco-editor/react";
 import Image from "next/image";
-import { Folder, File, Upload, X, RefreshCw, MessageSquare, Code, Check, RotateCcw, Database, Rocket, Monitor, SlidersHorizontal, Images, Send, Pencil, Loader2, Share2, ExternalLink, Copy, ChevronDown, ChevronRight, AlertTriangle, Search } from "lucide-react";
+import { Folder, File, Upload, X, RefreshCw, MessageSquare, Code, Check, RotateCcw, Database, Rocket, Monitor, SlidersHorizontal, Images, Send, Pencil, Loader2, Share2, ExternalLink, Copy, ChevronDown, ChevronRight, AlertTriangle, Search, Paintbrush } from "lucide-react";
 import AppBuilderEditorAgentChat from "./AppBuilderEditorAgentChat";
+import AppPreviewEditor from "./AppPreviewEditor";
 import KlonerLoader from "./KlonerLoader";
 import WebContainerRunner from "./WebContainerRunner";
 import { bootstrapServerSession, ensureSessionAndCsrf, resetAuthClientCaches } from "@/lib/auth-client";
@@ -27,6 +28,7 @@ import {
     normalizePreviewFailureContract,
     type PreviewFailureContract,
 } from "./previewFailureContract";
+import { postPreviewApply } from "./previewMachineApply";
 
 const VERCEL_INTEGRATION_SLUG =
     process.env.NEXT_PUBLIC_VERCEL_INTEGRATION_SLUG || "kloner";
@@ -160,7 +162,7 @@ type AutoPreviewPhase =
     | "enabling-bypass"
     | "error";
 
-type LeftViewMode = "ai" | "code" | "images";
+type LeftViewMode = "ai" | "code" | "images" | "custom";
 
 type PreviewMode = "webcontainer" | "vercel";
 
@@ -384,9 +386,17 @@ function mergeFilesPreferNewest(
         const localTs = typeof local?.lastModified === "number" ? local.lastModified : 0;
         const remoteTs = typeof remote?.lastModified === "number" ? remote.lastModified : 0;
 
-        // Prefer the newest edit; if tied, prefer local to avoid "undo" flicker
-        // while a client write is still in-flight.
-        merged[key] = remoteTs > localTs ? remote : local;
+        // Prefer the newest edit. On ties with differing content, prefer remote
+        // so backend-hydrated files are not masked by stale local state.
+        if (remoteTs > localTs) {
+            merged[key] = remote;
+        } else if (localTs > remoteTs) {
+            merged[key] = local;
+        } else {
+            const localContent = typeof local?.content === "string" ? local.content : "";
+            const remoteContent = typeof remote?.content === "string" ? remote.content : "";
+            merged[key] = remoteContent !== localContent ? remote : local;
+        }
     }
     return merged;
 }
@@ -1675,6 +1685,7 @@ export default function AppBuilderEditor({
     const forceFreshStartRef = useRef(false);
     const forceFreshStartKey = useRef(0);
     const [viewMode, setViewMode] = useState<LeftViewMode>("ai"); // Default to AI chat
+    const [isModeSwitching, setIsModeSwitching] = useState(false);
     const [stagedImages, setStagedImages] = useState<StagedImage[]>([]);
     const stagedImagesRef = useRef<StagedImage[]>([]);
     const [autoCompressImages, setAutoCompressImages] = useState(true);
@@ -1690,13 +1701,28 @@ export default function AppBuilderEditor({
     const [isDeploying, setIsDeploying] = useState(false);
     const [isSharingPreview, setIsSharingPreview] = useState(false);
     const [isPreviewBuilding, setIsPreviewBuilding] = useState(false);
+    const [isCustomSidebarOpen, setIsCustomSidebarOpen] = useState(true);
+    const [customPreviewScale, setCustomPreviewScale] = useState<number>(() => {
+        if (typeof window === "undefined") return isMobile ? 1.05 : 0.7;
+        const v = Number(localStorage.getItem("kloner:uiScale"));
+        return Number.isFinite(v) && v >= 0.5 && v <= 1.25 ? v : (isMobile ? 1.05 : 0.7);
+    });
     const [previewPagePath, setPreviewPagePath] = useState<string | null>(null);
     const [previewNavigateToken, setPreviewNavigateToken] = useState(0);
     const [isPageDropdownOpen, setIsPageDropdownOpen] = useState(false);
     const pageDropdownRef = useRef<HTMLDivElement | null>(null);
+    const previewEditorFlushRef = useRef<null | (() => Promise<void>)>(null);
+    const lastVisualEditedHtmlPathRef = useRef<string | null>(null);
+    const applyPreviewChangesNowRef = useRef<null | ((changes: Array<{ path: string; content: string }>, opts: { interactive: boolean; source?: string }) => Promise<void>)>(null);
     const isDev = process.env.NODE_ENV !== "production";
+    const isVisualEditorMode = viewMode === "custom" || viewMode === "images";
     const filteredCodeFileTree = useMemo(() => filterFileTree(fileTree, codeFileSearch), [codeFileSearch, fileTree]);
     const codeFileSearchActive = Boolean(codeFileSearch.trim());
+
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+        localStorage.setItem("kloner:uiScale", String(customPreviewScale));
+    }, [customPreviewScale]);
 
     const pageOptions = useMemo(() => {
         const seen = new Set<string>();
@@ -1790,10 +1816,99 @@ export default function AppBuilderEditor({
     }, [isPageDropdownOpen]);
 
     useEffect(() => {
-        if (IS_PRODUCTION && (viewMode === "code" || viewMode === "images")) {
+        if (IS_PRODUCTION && (viewMode === "code" || viewMode === "images" || viewMode === "custom")) {
             setViewMode("ai");
         }
     }, [viewMode]);
+
+    const requestViewModeChange = useCallback(async (nextMode: LeftViewMode) => {
+        // Prevent multiple simultaneous mode switches
+        if (isModeSwitching) return;
+        
+        const leavingVisual = (viewMode === "custom" || viewMode === "images") && !(nextMode === "custom" || nextMode === "images");
+        const enteringVisual = !(viewMode === "custom" || viewMode === "images") && (nextMode === "custom" || nextMode === "images");
+        
+        setIsModeSwitching(true);
+        
+        try {
+            if (leavingVisual) {
+                if (previewEditorFlushRef.current) {
+                    try {
+                        await previewEditorFlushRef.current();
+                    } catch (err) {
+                        console.error("[app-builder] pre-switch preview flush failed", err);
+                        await showAlert("Could not sync your latest visual edits. Please save again and retry.", "Sync failed");
+                        return;
+                    }
+                }
+
+                try {
+                    const synced = await fetchAndHydrateAppFiles({ forceRefreshToken: true });
+                    if (synced?.files) {
+                        setApp(synced);
+                        buildFileTree(synced.files);
+
+                        const preferredEditedPath = String(lastVisualEditedHtmlPathRef.current || "").trim();
+                        const resolvedEditedPath = preferredEditedPath
+                            ? canonicalizeEditPath(preferredEditedPath, synced.files as any)
+                            : "";
+                        const targetPath =
+                            resolvedEditedPath && (synced.files as any)?.[resolvedEditedPath]
+                                ? resolvedEditedPath
+                                : (currentFileRef.current && (synced.files as any)?.[currentFileRef.current]
+                                    ? currentFileRef.current
+                                    : "");
+
+                        if (targetPath) {
+                            setPreviewPagePath(targetPath);
+                            if (currentFileRef.current !== targetPath) setCurrentFile(targetPath);
+                            const nextContent = (synced.files as any)?.[targetPath]?.content;
+                            if (typeof nextContent === "string") {
+                                setCode(nextContent);
+
+                                // Force a real file write to the running machine and wait for it
+                                // before reconnecting, so refresh happens after apply completes.
+                                await applyPreviewChangesNowRef.current?.([{ path: targetPath, content: nextContent }], {
+                                    interactive: false,
+                                });
+                            }
+                        }
+
+                        // Ensure Builder preview reflects visual edits immediately
+                        // after switching out of visual mode.
+                        setPreviewMode("webcontainer");
+                        setReconnectKey((k) => k + 1);
+                        setRefreshKey((k) => k + 1);
+                    }
+                } catch (rehydrateErr) {
+                    console.error("[app-builder] post-flush rehydrate failed", rehydrateErr);
+                    await showAlert("Your latest edits were saved, but reload from source failed. Please retry.", "Sync warning");
+                    return;
+                }
+            }
+            
+            // When entering visual mode, rehydrate BEFORE changing mode so preview gets latest files
+            if (enteringVisual) {
+                try {
+                    const synced = await fetchAndHydrateAppFiles({ forceRefreshToken: true });
+                    if (synced?.files) {
+                        setApp(synced);
+                        buildFileTree(synced.files);
+                        // Trigger preview refresh to reflect any changes made in builder while in preview
+                        // This ensures the machine/iframe preview reflects the latest file content
+                        setReconnectKey((k) => k + 1);
+                    }
+                } catch (err) {
+                    console.warn("[app-builder] pre-visual-enter rehydrate failed", err);
+                    // Don't block mode switch on this, just warn
+                }
+            }
+        } finally {
+            // Change mode AFTER rehydration completes
+            setViewMode(nextMode);
+            setIsModeSwitching(false);
+        }
+    }, [fetchAndHydrateAppFiles, showAlert, viewMode, isModeSwitching]);
 
     const [previewError, setPreviewError] = useState<string | null>(null);
     const [protectedPreviewUrl, setProtectedPreviewUrl] = useState<string | null>(null);
@@ -3309,6 +3424,14 @@ export default function AppBuilderEditor({
                 }
 
                 if (restartPending || requiresRestart) {
+                    const now = Date.now();
+                    if (interactive || now - lastApplyAlertAtRef.current > 15000) {
+                        lastApplyAlertAtRef.current = now;
+                        void showAlert(
+                            "Your changes were saved. This update needs a preview restart/rebuild before it appears live. We are restarting now, and you can continue editing while it boots.",
+                            "Live update",
+                        );
+                    }
                     void restartLocalPreview(false);
                 } else if (apply.outcome === "saved") {
                     const now = Date.now();
@@ -3625,6 +3748,103 @@ export default function AppBuilderEditor({
         },
         [appId, changeIsNotHotUpdatable, flushPreviewApply, showAlert]
     );
+
+    const applyPreviewChangesNow = useCallback(
+        async (
+            changes: Array<{ path: string; content: string }>,
+            { interactive, source }: { interactive: boolean; source?: string }
+        ) => {
+            if (!appId) return;
+            if (!changes?.length) return;
+
+            const files: Array<{ path: string; content: string }> = [];
+            for (const c of changes) {
+                const p = String(c?.path || "").trim();
+                if (!p) continue;
+                if (changeIsNotHotUpdatable(p)) {
+                    await restartLocalPreview(false);
+                    return;
+                }
+
+                const nextContent = String(c?.content ?? "");
+                delete lastAppliedContentRef.current[p];
+                files.push({ path: p, content: nextContent });
+            }
+
+            if (files.length === 0) return;
+
+            const csrf = await fetchFreshCsrf();
+            const activeCode = getStoredPreviewCode();
+            let nextCode = "";
+            try {
+                const result = await postPreviewApply({
+                    appId,
+                    files,
+                    csrf,
+                    code: activeCode,
+                    idempotencyKey: getApplyIdempotencyKey(),
+                    source,
+                });
+                nextCode = result.nextCode;
+
+                const restartRequired = Boolean(
+                    result.restartPending ||
+                    result.requiresRestart ||
+                    result.requiresRebuild ||
+                    result.needsRebuild ||
+                    result.touchesPublicAssets ||
+                    result.hmrLikely === false
+                );
+
+                console.info("[preview-apply] backend apply result", {
+                    source: source || "unknown",
+                    outcome: result.outcome,
+                    restartPending: result.restartPending,
+                    requiresRestart: result.requiresRestart,
+                    requiresRebuild: result.requiresRebuild,
+                    needsRebuild: result.needsRebuild,
+                    touchesPublicAssets: result.touchesPublicAssets,
+                    hmrLikely: result.hmrLikely,
+                    retryable: result.retryable,
+                    retryAfterSeconds: result.retryAfterSeconds,
+                });
+
+                if (restartRequired) {
+                    console.warn("[preview-apply] apply wrote files but restart is required; restarting preview", {
+                        source: source || "unknown",
+                        outcome: result.outcome,
+                    });
+                    await restartLocalPreview(false);
+                }
+            } catch (err) {
+                if (interactive) {
+                    const message = err instanceof Error ? err.message : String(err || "Preview apply failed");
+                    void showAlert(message, "Live update");
+                }
+                throw err;
+            }
+
+            if (nextCode) {
+                try {
+                    localStorage.setItem(
+                        `webcontainer_${appId}`,
+                        JSON.stringify({ code: nextCode, timestamp: Date.now() }),
+                    );
+                } catch {
+                    // ignore
+                }
+            }
+
+            for (const file of files) {
+                lastAppliedContentRef.current[file.path] = file.content;
+            }
+        },
+        [appId, changeIsNotHotUpdatable, fetchFreshCsrf, getApplyIdempotencyKey, getStoredPreviewCode, restartLocalPreview, showAlert]
+    );
+
+    useEffect(() => {
+        applyPreviewChangesNowRef.current = applyPreviewChangesNow;
+    }, [applyPreviewChangesNow]);
 
     useEffect(() => {
         // Keep the draft in sync when app data loads.
@@ -4475,6 +4695,19 @@ export default function AppBuilderEditor({
             if ((files as any)?.[mapped]) return mapped;
         }
 
+        // Keep HTML route paths canonical between source writes and live apply.
+        // Example: app/page.html -> app/page/index.html (and src/app/* equivalent)
+        const appHtmlMatch = p.match(/^(src\/app|app)\/(.+)\.html$/i);
+        if (appHtmlMatch) {
+            const root = appHtmlMatch[1];
+            const routePart = appHtmlMatch[2];
+            if (routePart && routePart !== "index" && !/\/index$/i.test(routePart)) {
+                const normalizedHtmlPath = `${root}/${routePart}/index.html`;
+                if ((files as any)?.[normalizedHtmlPath]) return normalizedHtmlPath;
+                p = normalizedHtmlPath;
+            }
+        }
+
         // If the agent targets a common entrypoint but uses the "wrong" extension,
         // prefer whichever sibling file already exists.
         const candidatesForSameBase = (base: string) => [
@@ -4968,6 +5201,91 @@ export default function AppBuilderEditor({
             setIsSaving(false);
         }
     };
+
+    const handleApplyCustomHtml = useCallback(
+        async (path: string, html: string, skipMachineApply?: boolean) => {
+            const activeFiles = appRef.current?.files || app?.files;
+            const canonicalPath = canonicalizeEditPath(path, activeFiles as any);
+            if (!canonicalPath) {
+                throw new Error("Invalid HTML file path.");
+            }
+            lastVisualEditedHtmlPathRef.current = canonicalPath;
+
+            const wasCurrentFile = currentFile === canonicalPath;
+
+            const ok = await saveFileToServer(canonicalPath, html, { afterSave: "none", interactive: true });
+            if (!ok) {
+                console.error("[preview-apply] source save failed; skipping machine apply", {
+                    path: canonicalPath,
+                    source: "preview-apply",
+                });
+                throw new Error("Failed to save custom HTML changes.");
+            }
+
+            console.info("[preview-apply] source save complete", {
+                path: canonicalPath,
+                source: "preview-apply",
+            });
+
+            setApp((prev) => {
+                if (!prev) return prev;
+                const nextFiles = {
+                    ...prev.files,
+                    [canonicalPath]: { content: html, lastModified: Date.now() },
+                };
+                return {
+                    ...prev,
+                    files: nextFiles,
+                };
+            });
+
+            buildFileTree({
+                ...(appRef.current?.files || app?.files || {}),
+                [canonicalPath]: { content: html, lastModified: Date.now() },
+            } as any);
+
+            if (currentFile === canonicalPath) {
+                setCode(html);
+            }
+
+            if (skipMachineApply) {
+                console.warn("[preview-apply] machine apply skipped by caller", {
+                    path: canonicalPath,
+                    source: "preview-apply",
+                });
+            } else {
+                console.info("[preview-apply] triggering machine apply", {
+                    path: canonicalPath,
+                    source: "preview-apply",
+                });
+                try {
+                    await applyPreviewChangesNow([{ path: canonicalPath, content: html }], {
+                        interactive: true,
+                        source: "preview-apply",
+                    });
+                    console.info("[preview-apply] machine apply completed", {
+                        path: canonicalPath,
+                        source: "preview-apply",
+                    });
+
+                    // Trigger background rebuild so preview is ready when user switches back
+                    console.info("[preview-apply] triggering background rebuild", {
+                        path: canonicalPath,
+                        source: "preview-apply",
+                    });
+                    void restartLocalPreview(true);
+                } catch (err) {
+                    console.error("[preview-apply] machine apply failed", {
+                        path: canonicalPath,
+                        source: "preview-apply",
+                        error: err,
+                    });
+                    throw err;
+                }
+            }
+        },
+        [app?.files, applyPreviewChangesNow, currentFile, saveFileToServer, restartLocalPreview],
+    );
 
     const handleDeploy = async () => {
         if (!app || isDeploying) return;
@@ -5698,7 +6016,7 @@ export default function AppBuilderEditor({
 
                         {/* Project controls (moved off top-right) */}
                         <div className="ml-2 hidden md:flex items-center gap-2">
-                            {isDev ? (
+                            {isDev && !isVisualEditorMode ? (
                                 <button
                                     onClick={() => void openDatabaseConnect()}
                                     className={`min-w-[170px] px-4 py-2 text-xs font-semibold rounded-full flex items-center justify-center gap-2 transition-colors whitespace-nowrap ${
@@ -5756,7 +6074,7 @@ export default function AppBuilderEditor({
                             {lastDeployLiveUrl ? (
                                 <button
                                     onClick={() => window.open(lastDeployLiveUrl, "_blank", "noopener,noreferrer")}
-                                    className="inline-flex items-center justify-center gap-2 rounded-full border border-neutral-300 bg-white px-3 py-2 text-xs font-semibold text-neutral-700 hover:bg-neutral-50"
+                                    className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full border border-neutral-300 bg-white px-3 py-2 text-xs font-semibold text-neutral-700 hover:bg-neutral-50"
                                     title="Open live deployment"
                                 >
                                     <Rocket className="h-4 w-4" />
@@ -5764,7 +6082,31 @@ export default function AppBuilderEditor({
                                 </button>
                             ) : null}
 
-                            {isDev && supabaseConnected ? (
+                            {(
+                                <div className="inline-flex items-center gap-1 rounded-full border border-neutral-300 bg-white px-2 py-1 shadow-sm">
+                                    <button
+                                        type="button"
+                                        onClick={() => setCustomPreviewScale((s) => Math.max(0.5, +(s - 0.05).toFixed(2)))}
+                                        className="inline-flex h-6 w-6 items-center justify-center rounded-md text-neutral-700 hover:bg-neutral-100"
+                                        title="Zoom out"
+                                    >
+                                        −
+                                    </button>
+                                    <span className="w-10 text-center text-xs font-semibold text-neutral-700">
+                                        {Math.round(customPreviewScale * 100)}%
+                                    </span>
+                                    <button
+                                        type="button"
+                                        onClick={() => setCustomPreviewScale((s) => Math.min(1.25, +(s + 0.05).toFixed(2)))}
+                                        className="inline-flex h-6 w-6 items-center justify-center rounded-md text-neutral-700 hover:bg-neutral-100"
+                                        title="Zoom in"
+                                    >
+                                        +
+                                    </button>
+                                </div>
+                            )}
+
+                            {isDev && supabaseConnected && !isVisualEditorMode ? (
                                 <button
                                     onClick={() => void disconnectSupabase()}
                                     className="p-2 rounded-full border border-red-200 bg-white text-red-700 hover:bg-red-50 transition-colors"
@@ -5776,6 +6118,8 @@ export default function AppBuilderEditor({
                             ) : null}
                         </div>
                     </div>
+                    {/* Portal target for Custom tab toolbar buttons */}
+                    <div id="kloner-custom-toolbar-portal" className="hidden md:flex items-center gap-2 mx-2" />
                     <div className="relative z-10 flex shrink-0 gap-2 items-center">
                         {!(isRenaming && isMobile) ? (
                             <button
@@ -5789,7 +6133,7 @@ export default function AppBuilderEditor({
                         ) : null}
 
                         {/* Top-right reserved for machine + deploy (PreviewEditorV2-style) */}
-                        <div className="hidden md:inline-flex items-center gap-2 rounded-full border border-neutral-200 bg-white px-2 py-1 shadow-md">
+                        <div className={`hidden md:inline-flex items-center gap-2 rounded-full border border-neutral-200 bg-white px-2 py-1 shadow-md ${isVisualEditorMode ? "invisible pointer-events-none" : ""}`}>
                             <div className="px-2 text-[11px] font-semibold text-neutral-700 whitespace-nowrap">
                                 <span
                                     className={`mr-2 inline-block h-2 w-2 rounded-full ${
@@ -5908,14 +6252,6 @@ export default function AppBuilderEditor({
                     className="hidden"
                     onChange={handleFaviconFileChange}
                 />
-                <input
-                    ref={imageInputRef}
-                    type="file"
-                    accept="image/*"
-                    multiple
-                    className="hidden"
-                    onChange={handleImageFileChange}
-                />
 
                 {isEmbeddingProcessing ? (
                     <div className="border-b bg-sky-50 px-4 py-2 text-xs text-sky-900">
@@ -5933,55 +6269,100 @@ export default function AppBuilderEditor({
                 <div className="flex flex-1 min-h-0" data-app-builder-container>
                     {/* Left Panel - AI Chat and Controls */}
                     <div 
-                        className={`${showLeftPanel ? "flex" : "hidden"} flex-col bg-gray-50 flex-shrink-0 min-h-0 overflow-hidden w-full md:w-auto md:border-r`}
-                        style={!isMobile ? { width: `${leftPanelWidth}px` } : undefined}
+                        className={`${showLeftPanel ? "flex" : "hidden"} flex-col bg-gray-50 flex-shrink-0 min-h-0 overflow-hidden w-full md:w-auto ${!isVisualEditorMode ? "md:border-r" : ""}`}
+                        style={!isMobile && !isVisualEditorMode ? { width: `${leftPanelWidth}px` } : isVisualEditorMode ? { width: "100%" } : undefined}
                     >
                         {/* View Mode Toggle */}
-                        <div className="p-3 border-b sticky top-0 z-10 bg-gray-50">
-                            <div className={`grid gap-2 ${IS_PRODUCTION ? "grid-cols-1" : "grid-cols-3"}`}>
+                        <div
+                            className={`p-3 border-b sticky top-0 z-10 bg-gray-50 ${
+                                isVisualEditorMode
+                                    ? isCustomSidebarOpen
+                                        ? "w-[min(92vw,520px)]"
+                                        : "hidden"
+                                    : ""
+                            }`}
+                        >
+                            <div className={`grid gap-2 ${IS_PRODUCTION ? "grid-cols-1" : "grid-cols-4"}`}>
                                 <button
-                                    onClick={() => setViewMode("ai")}
+                                    onClick={() => { void requestViewModeChange("ai"); }}
+                                    disabled={isModeSwitching}
+                                    data-tour-chat-tab
                                     className={`flex-1 px-4 py-2 text-xs font-semibold rounded-full flex items-center justify-center gap-2 transition-colors ${
                                         viewMode === "ai"
                                             ? "bg-neutral-100 text-neutral-900 border border-neutral-300 shadow-sm"
                                             : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50"
-                                    }`}
-                                    title="UI"
+                                    } ${isModeSwitching ? "opacity-60 cursor-not-allowed" : ""}`}
+                                    title="Chat"
                                 >
-                                    <MessageSquare className="w-4 h-4" />
-                                    UI
+                                    {isModeSwitching && viewMode !== "ai" ? (
+                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                    ) : (
+                                        <MessageSquare className="h-4 w-4" />
+                                    )}
+                                    Chat
                                 </button>
                                 {!IS_PRODUCTION ? (
                                     <button
-                                        onClick={() => setViewMode("code")}
+                                        onClick={() => { void requestViewModeChange("code"); }}
+                                        disabled={isModeSwitching}
                                         className={`flex-1 px-4 py-2 text-xs font-semibold rounded-full flex items-center justify-center gap-2 transition-colors ${
                                             viewMode === "code"
                                                 ? "bg-neutral-100 text-neutral-900 border border-neutral-300 shadow-sm"
                                                 : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50"
-                                        }`}
+                                        } ${isModeSwitching ? "opacity-60 cursor-not-allowed" : ""}`}
                                         title="Code"
                                     >
-                                        <Code className="w-4 h-4" />
+                                        {isModeSwitching && viewMode !== "code" ? (
+                                            <Loader2 className="h-4 w-4 animate-spin" />
+                                        ) : (
+                                            <Code className="h-4 w-4" />
+                                        )}
                                         Code
                                         <DevOnlyIconBadge title="Development-only code tab" />
                                     </button>
                                 ) : null}
-                                {!IS_PRODUCTION ? (
+                                {/* {!IS_PRODUCTION ? ( */}
                                     <button
-                                        onClick={() => setViewMode("images")}
+                                        onClick={() => { void requestViewModeChange("images"); }}
+                                        disabled={isModeSwitching}
                                         className={`flex-1 px-4 py-2 text-xs font-semibold rounded-full flex items-center justify-center gap-2 transition-colors ${
                                             viewMode === "images"
                                                 ? "bg-neutral-100 text-neutral-900 border border-neutral-300 shadow-sm"
                                                 : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50"
-                                        }`}
+                                        } ${isModeSwitching ? "opacity-60 cursor-not-allowed" : ""}`}
                                         title="Images"
                                     >
-                                        <Images className="w-4 h-4" />
+                                        {isModeSwitching && viewMode !== "images" ? (
+                                            <Loader2 className="h-4 w-4 animate-spin" />
+                                        ) : (
+                                            <Images className="h-4 w-4" />
+                                        )}
                                         Images
                                         <DevOnlyIconBadge title="Development-only images tab" />
                                     </button>
-                                ) : null}
+                                {/* ) : null} */}
+                                {/* {!IS_PRODUCTION ? ( */}
+                                    <button
+                                        onClick={() => { void requestViewModeChange("custom"); }}
+                                        disabled={isModeSwitching}
+                                        className={`flex-1 px-4 py-2 text-xs font-semibold rounded-full flex items-center justify-center gap-2 transition-colors ${
+                                            viewMode === "custom"
+                                                ? "bg-neutral-100 text-neutral-900 border border-neutral-300 shadow-sm"
+                                                : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50"
+                                        } ${isModeSwitching ? "opacity-60 cursor-not-allowed" : ""}`}
+                                        title="Custom"
+                                    >
+                                        {isModeSwitching && viewMode !== "custom" ? (
+                                            <Loader2 className="h-4 w-4 animate-spin" />
+                                        ) : (
+                                            <Paintbrush className="h-4 w-4" />
+                                        )}
+                                        Custom
+                                        <DevOnlyIconBadge title="Development-only custom visual editor" />
+                                    </button>
+                                {/* ) : null} */}
                             </div>
+
                         </div>
 
                         {/* AI Chat or Code View */}
@@ -6076,7 +6457,7 @@ export default function AppBuilderEditor({
                                 </div>
                             </div>
 
-                            <div className={viewMode === "images" ? "h-full flex flex-col" : "hidden"}>
+                            <div className="hidden">
                                 <div className="border-b p-3 space-y-3">
                                     <div className="flex items-center justify-end gap-3">
                                         {lastImageInsert ? (
@@ -6236,18 +6617,49 @@ export default function AppBuilderEditor({
                                     })}
                                 </div>
                             </div>
+
+                            <div className={isVisualEditorMode ? "h-full flex flex-col" : "hidden"}>
+                                <AppPreviewEditor
+                                    appId={appId}
+                                    files={app?.files || {}}
+                                    initialPath={currentFile}
+                                    onApplyHtml={handleApplyCustomHtml}
+                                    onSelectPath={handleFileSelect}
+                                    currentHtmlPath={currentFile || undefined}
+                                    onSelectHtmlPath={handleFileSelect}
+                                    editableHtmlPaths={Object.keys(app?.files || {})
+                                        .filter((path) => /\.html?$/i.test(path))
+                                        .sort((a, b) => a.localeCompare(b))}
+                                    onClose={() => { void requestViewModeChange("ai"); }}
+                                    appName={app?.name}
+                                    onRenameSuccess={(newName) => setApp(prev => prev ? { ...prev, name: newName } : null)}
+                                    baseHref={(protectedPreviewUrl || app?.previewUrl || previewSrc || undefined)}
+                                    viewMode={viewMode}
+                                    onChangeViewMode={(mode) => { void requestViewModeChange(mode); }}
+                                    isProduction={IS_PRODUCTION}
+                                    onSidebarVisibilityChange={setIsCustomSidebarOpen}
+                                    sharedUiScale={customPreviewScale}
+                                    onSharedUiScaleChange={setCustomPreviewScale}
+                                    preferredSidePanelMode={viewMode === "images" ? "ai-library" : "style"}
+                                    registerBeforeExitFlush={(fn) => {
+                                        previewEditorFlushRef.current = fn;
+                                    }}
+                                />
+                            </div>
                         </div>
                     </div>
 
                     {/* Resize Handle */}
+                    {!isVisualEditorMode && (
                     <div
                         className="hidden md:block w-1 bg-gray-300 hover:bg-gray-400 cursor-col-resize transition-colors flex-shrink-0"
                         onMouseDown={() => setIsResizing(true)}
                         title="Drag to resize panels"
                     />
+                    )}
 
                     {/* Right Panel - Browser-like App View */}
-                    <div className={`${showRightPanel ? "flex" : "hidden"} flex-1 flex flex-col min-h-0`}>
+                    <div className={`${showRightPanel && !isVisualEditorMode ? "flex" : "hidden"} flex-1 flex flex-col min-h-0`}>
                         {showDeployBanner ? (
                             <div
                                 className={`border-b px-4 py-3 sm:px-4 ${effectiveDeployBanner?.kind === "error"
@@ -6352,69 +6764,6 @@ export default function AppBuilderEditor({
                                     </button>
                                 </div>
                             ) : null}
-
-                                {!IS_PRODUCTION && pageOptions.length > 0 ? (
-                                    <div className="ml-3 flex items-center gap-2">
-                                        <div className="relative" ref={pageDropdownRef}>
-                                        {hasPageDropdown ? (
-                                            <button
-                                                type="button"
-                                                onClick={() => setIsPageDropdownOpen((prev) => !prev)}
-                                                className="inline-flex items-center gap-1.5 rounded-full border border-neutral-200 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-800 shadow-sm transition hover:bg-neutral-50"
-                                                title={`Current page: ${pageDropdownLabel}`}
-                                                aria-haspopup="menu"
-                                                aria-expanded={isPageDropdownOpen}
-                                            >
-                                                <span className="max-w-[180px] truncate lowercase">{pageDropdownLabel}</span>
-                                                <ChevronDown className={`h-3.5 w-3.5 shrink-0 transition-transform ${isPageDropdownOpen ? "rotate-180" : ""}`} />
-                                                    <DevOnlyIconBadge title="Development-only page chooser" />
-                                            </button>
-                                        ) : (
-                                                <div className="inline-flex items-center gap-1.5 rounded-full border border-neutral-200 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-800 shadow-sm" title={`Current page: ${pageDropdownLabel}`}>
-                                                <span className="max-w-[180px] truncate lowercase">{pageDropdownLabel}</span>
-                                                    <DevOnlyIconBadge title="Development-only page chooser" />
-                                            </div>
-                                        )}
-
-                                        {hasPageDropdown && isPageDropdownOpen ? (
-                                            <div className="absolute left-0 top-[calc(100%+0.5rem)] z-50 w-72 overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-[0_18px_40px_rgba(15,23,42,0.12)]">
-                                                <div className="max-h-64 overflow-y-auto py-1">
-                                                    {pageOptions.map((page) => {
-                                                        const isActive = selectedPreviewPage?.path === page.path;
-                                                        const routeLabel = String(page.route || "").replace(/^\//, "") || "home";
-                                                        return (
-                                                            <button
-                                                                key={page.path}
-                                                                type="button"
-                                                                onClick={() => {
-                                                                    setPreviewPagePath(page.path);
-                                                                    setPreviewNavigateToken((token) => token + 1);
-                                                                    handleFileSelect(page.path);
-                                                                    setIsPageDropdownOpen(false);
-                                                                }}
-                                                                className={`flex w-full items-center justify-between px-4 py-2 text-left text-sm transition-colors hover:bg-orange-50 hover:text-[#F55F2A] ${
-                                                                    isActive ? "bg-orange-50/70 text-[#F55F2A]" : "text-neutral-700"
-                                                                }`}
-                                                            >
-                                                                <span className="truncate lowercase">{routeLabel}</span>
-                                                                {isActive ? <span className="ml-3 shrink-0 h-2 w-2 rounded-full bg-[#F55F2A]" aria-hidden="true" /> : null}
-                                                            </button>
-                                                        );
-                                                    })}
-                                                </div>
-                                            </div>
-                                        ) : null}
-                                        </div>
-                                        <div
-                                            className="inline-flex max-w-[320px] items-center gap-1.5 rounded-full border border-neutral-200 bg-neutral-50 px-3 py-1.5 text-xs font-medium text-neutral-700"
-                                            title={`Current file sent to AI search: ${aiSearchCurrentFileLabel}`}
-                                        >
-                                            <span className="text-neutral-500">search file:</span>
-                                            <span className="truncate">{aiSearchCurrentFileLabel}</span>
-                                            <DevOnlyIconBadge title="Development-only AI currentFile debug" />
-                                        </div>
-                                    </div>
-                                ) : null}
 
                         </div>
 

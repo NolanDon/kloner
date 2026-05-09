@@ -10,6 +10,146 @@ function formatSeconds(value: number | null | undefined): string | null {
     return seconds > 0 ? `${minutes}m ${seconds}s` : `${minutes}m`;
 }
 
+function normalizeStringList(value: unknown): string[] | null {
+    if (Array.isArray(value)) {
+        const items = value.map((item) => String(item || "").trim()).filter(Boolean);
+        return items.length > 0 ? items : null;
+    }
+
+    if (typeof value === "string") {
+        const item = value.trim();
+        return item ? [item] : null;
+    }
+
+    return null;
+}
+
+function getCompletedEditPlanDiagnosis(job: AppEmbeddingEditPlanJobStatus): unknown {
+    const status = String(job.status || "").toLowerCase();
+    if (status !== "completed") return null;
+
+    const apply = job.result?.apply && typeof job.result.apply === "object"
+        ? (job.result.apply as Record<string, unknown>)
+        : job.job?.result?.apply && typeof job.job.result.apply === "object"
+            ? (job.job.result.apply as Record<string, unknown>)
+            : null;
+    const applyDiagnosis = apply?.diagnosis;
+    if (applyDiagnosis !== undefined && applyDiagnosis !== null) return applyDiagnosis;
+
+    const diagnostic = (job as any)?.diagnostic;
+    const diagnosticDiagnosis = diagnostic && typeof diagnostic === "object"
+        ? (diagnostic as Record<string, unknown>).diagnosis
+        : null;
+    if (diagnosticDiagnosis !== undefined && diagnosticDiagnosis !== null) return diagnosticDiagnosis;
+
+    return null;
+}
+
+function renderDiagnosisDetails(diagnosis: unknown) {
+    if (diagnosis === null || diagnosis === undefined) return null;
+
+    if (typeof diagnosis !== "object" || Array.isArray(diagnosis)) {
+        return (
+            <pre className="mt-2 whitespace-pre-wrap break-words rounded-xl border border-neutral-200 bg-white/95 px-3 py-2 font-mono text-[11px] leading-5 text-neutral-700 shadow-sm">
+                {JSON.stringify(diagnosis, null, 2)}
+            </pre>
+        );
+    }
+
+    const source = diagnosis as Record<string, unknown>;
+    const whereFailed = String(source.whereFailed ?? source.where_failed ?? source.failedWhere ?? "").trim();
+    const whatFailed = String(source.whatFailed ?? source.what_failed ?? source.failedWhat ?? "").trim();
+    const code = String(source.code ?? source.errorCode ?? source.error_code ?? "").trim();
+    const reason = String(source.reason ?? source.message ?? source.error ?? "").trim();
+    const missingData = source.missingData ?? source.missing_data ?? null;
+    const requestIds = normalizeStringList(
+        source.requestIds
+        ?? source.request_ids
+        ?? source.requestId
+        ?? source.request_id
+        ?? source.requestIdsList,
+    );
+    const evidence = source.evidence ?? source.evidenceData ?? source.evidence_data ?? source.details ?? null;
+
+    const knownKeys = new Set([
+        "whereFailed",
+        "where_failed",
+        "failedWhere",
+        "whatFailed",
+        "what_failed",
+        "failedWhat",
+        "code",
+        "errorCode",
+        "error_code",
+        "reason",
+        "message",
+        "error",
+        "missingData",
+        "missing_data",
+        "requestIds",
+        "request_ids",
+        "requestId",
+        "request_id",
+        "requestIdsList",
+        "evidence",
+        "evidenceData",
+        "evidence_data",
+        "details",
+    ]);
+    const extraKeys = Object.keys(source).filter((key) => !knownKeys.has(key));
+
+    return (
+        <div className="mt-2 space-y-3 rounded-xl border border-neutral-200 bg-white/95 px-3 py-3 shadow-sm">
+            <div className="grid gap-2 text-[11px] text-neutral-600 sm:grid-cols-2">
+                <div className="sm:col-span-2">
+                    <span className="font-medium text-neutral-700">Where failed:</span> {whereFailed || "unknown"}
+                </div>
+                <div className="sm:col-span-2">
+                    <span className="font-medium text-neutral-700">What failed:</span> {whatFailed || "unknown"}
+                </div>
+                <div>
+                    <span className="font-medium text-neutral-700">Code:</span> {code || "unknown"}
+                </div>
+                <div>
+                    <span className="font-medium text-neutral-700">Reason:</span> {reason || "unknown"}
+                </div>
+                <div className="sm:col-span-2">
+                    <span className="font-medium text-neutral-700">Missing data:</span>{" "}
+                    {missingData === null || missingData === undefined || missingData === ""
+                        ? "none"
+                        : <span className="whitespace-pre-wrap break-words">{typeof missingData === "string" ? missingData : JSON.stringify(missingData, null, 2)}</span>}
+                </div>
+                <div className="sm:col-span-2">
+                    <span className="font-medium text-neutral-700">Request IDs:</span>{" "}
+                    {requestIds && requestIds.length > 0 ? requestIds.join(", ") : "none"}
+                </div>
+            </div>
+
+            {evidence !== null && evidence !== undefined ? (
+                <details className="rounded-lg border border-neutral-200 bg-neutral-50/80 px-3 py-2">
+                    <summary className="cursor-pointer list-none text-[11px] font-medium text-neutral-700">
+                        Evidence
+                    </summary>
+                    <pre className="mt-2 whitespace-pre-wrap break-words font-mono text-[11px] leading-5 text-neutral-700">
+                        {JSON.stringify(evidence, null, 2)}
+                    </pre>
+                </details>
+            ) : null}
+
+            {extraKeys.length > 0 ? (
+                <details className="rounded-lg border border-neutral-200 bg-neutral-50/80 px-3 py-2">
+                    <summary className="cursor-pointer list-none text-[11px] font-medium text-neutral-700">
+                        Raw diagnosis payload
+                    </summary>
+                    <pre className="mt-2 whitespace-pre-wrap break-words font-mono text-[11px] leading-5 text-neutral-700">
+                        {JSON.stringify(source, null, 2)}
+                    </pre>
+                </details>
+            ) : null}
+        </div>
+    );
+}
+
 interface EditPlanJobStatusCardProps {
     job: AppEmbeddingEditPlanJobStatus;
     onDismiss?: () => void;
@@ -46,6 +186,7 @@ export default function EditPlanJobStatusCard({ job, onDismiss, onRetry }: EditP
     const proposalNeedsRebuild = proposal?.needsRebuild === true;
     const proposalNeedsMoreContext = proposal?.needsMoreContext === true;
     const proposalAutoApplyAllowed = proposal?.autoApplyAllowed !== false;
+    const diagnosis = getCompletedEditPlanDiagnosis(job);
 
     const proposalSection = proposal && status === "completed" ? (
         <div className="space-y-4 text-neutral-700 w-full">
@@ -204,6 +345,14 @@ export default function EditPlanJobStatusCard({ job, onDismiss, onRetry }: EditP
                         <div>Needs more context: {proposalNeedsMoreContext ? "yes" : "no"}.</div>
                         {proposalModel ? <div>Model: {proposalModel}.</div> : null}
                         {proposalSummary ? <div>Summary: {proposalSummary}.</div> : null}
+                        {diagnosis !== null ? (
+                            <div className="pt-2">
+                                <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-neutral-500">
+                                    Diagnosis
+                                </div>
+                                {renderDiagnosisDetails(diagnosis)}
+                            </div>
+                        ) : null}
                         {typeof job.queueAgeSeconds === "number" && Number.isFinite(job.queueAgeSeconds) ? <div>Waiting time: {formatSeconds(job.queueAgeSeconds)}.</div> : null}
                         {typeof job.queuedForSeconds === "number" && Number.isFinite(job.queuedForSeconds) ? <div>Queued for: {formatSeconds(job.queuedForSeconds)}.</div> : null}
                         {typeof job.runningForSeconds === "number" && Number.isFinite(job.runningForSeconds) ? <div>Running for: {formatSeconds(job.runningForSeconds)}.</div> : null}

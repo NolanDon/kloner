@@ -365,21 +365,6 @@ export function MiniToolbar({
                     <Plus className="h-5 w-5" />
                 </button>
 
-                {/* AI */}
-                <button
-                    type="button"
-                    onClick={() => {
-                        if (disabled) return;
-                        setAiOpen((v) => !v);
-                    }}
-                    disabled={disabled}
-                    className={`inline-flex h-7 w-7 items-center justify-center rounded-full bg-accent/95 hover:bg-accent hover:text-white ${disabled ? "cursor-not-allowed opacity-50" : ""
-                        }`}
-                    title="AI edit this block"
-                >
-                    <Sparkles className="h-5 w-5" />
-                </button>
-
                 {/* DELETE (red trash, at far right) */}
                 <button
                     type="button"

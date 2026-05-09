@@ -569,6 +569,7 @@ function buildMissingApplyContractFulfillmentPrompt(input: {
     requestId: string | null;
     statusUrl: string | null;
     summary: string | null;
+    diagnosis: string | null;
     proposalFileCount: number;
     proposalPaths: string[];
 }): string {
@@ -578,6 +579,7 @@ function buildMissingApplyContractFulfillmentPrompt(input: {
         requestId: input.requestId,
         statusUrl: input.statusUrl,
         summary: input.summary,
+        diagnosis: input.diagnosis || "empty",
         proposalFileCount: input.proposalFileCount,
         proposalPaths: compactPaths,
         requirement: {
@@ -3670,6 +3672,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                 requestId: activeEditPlanJob.requestId || null,
                 statusUrl: activeEditPlanJob.statusUrl || null,
                 summary: typeof (completedResult as any)?.summary === "string" ? (completedResult as any).summary : null,
+                diagnosis: typeof (completedResult as any)?.diagnosis === "string" ? (completedResult as any).diagnosis : null,
                 proposalFileCount: completedProposalFileCount,
                 proposalPaths: completedProposalFiles.map((file: any) => String(file?.path || "").trim()).filter(Boolean),
             });
@@ -7610,7 +7613,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
 
             {/* Input */}
             <div className="p-4 border-t bg-white rounded-lg flex-shrink-0">
-                {showCreditsAccuracyNotice ? (
+                {/* {showCreditsAccuracyNotice ? (
                     <div className="mb-2 flex items-start justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50/70 px-3 py-2">
                         <div className="text-sm leading-5 text-amber-800">
                             <span>We make daily accuracy improvements. Please use </span>
@@ -7631,7 +7634,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                             <X className="h-3.5 w-3.5" />
                         </button>
                     </div>
-                ) : null}
+                ) : null} */}
 
                 <div className="mb-2 flex items-center justify-between">
                     <div className="text-[12px] text-gray-700">

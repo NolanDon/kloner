@@ -2,7 +2,8 @@
 "use client";
 
 import { ensureSessionAndCsrf } from "@/lib/auth-client";
-import { useEffect, useMemo, useRef, useState, useCallback, ChangeEvent } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback, ChangeEvent, type ComponentProps } from "react";
+import { createPortal } from "react-dom";
 import { motion, AnimatePresence, useDragControls } from "framer-motion";
 import Image from 'next/image'
 
@@ -70,6 +71,26 @@ type Props = {
     pages?: EditorPage[];
     initialPageId?: string;
     onPageHtmlChange?: (pageId: string, html: string) => void;
+    baseHref?: string;
+    viewMode?: "ai" | "code" | "images" | "custom";
+    onChangeViewMode?: (mode: "ai" | "code" | "images" | "custom") => void;
+    isProduction?: boolean;
+    appName?: string;
+    isRenaming?: boolean;
+    tempName?: string;
+    onTempNameChange?: (name: string) => void;
+    startRename?: () => void;
+    cancelRename?: () => void;
+    handleRename?: () => Promise<void>;
+    onSidebarVisibilityChange?: (open: boolean) => void;
+    sharedUiScale?: number;
+    onSharedUiScaleChange?: (scale: number) => void;
+    editableHtmlPaths?: string[];
+    currentHtmlPath?: string;
+    onSelectHtmlPath?: (path: string) => void;
+    preferredSidePanelMode?: "style" | "ai-library";
+    sourceFiles?: { [path: string]: { content: string; lastModified: number } };
+    registerBeforeExitFlush?: (fn: (() => Promise<void>) | null) => void;
 };
 
 const ACCENT = "#f55f2a";
@@ -416,6 +437,66 @@ export function stripScripts(html: string) {
     );
 }
 
+function normalizePathLike(inputPath: string): string {
+    const parts = String(inputPath || "")
+        .replace(/\\/g, "/")
+        .split("/");
+    const stack: string[] = [];
+    for (const part of parts) {
+        if (!part || part === ".") continue;
+        if (part === "..") {
+            if (stack.length) stack.pop();
+            continue;
+        }
+        stack.push(part);
+    }
+    return stack.join("/");
+}
+
+function resolveStylesheetFromSourceFiles(
+    href: string,
+    currentHtmlPath: string | undefined,
+    sourceFiles: { [path: string]: { content: string; lastModified: number } } | undefined,
+): string | null {
+    if (!sourceFiles) return null;
+    const rawHref = String(href || "").trim();
+    if (!rawHref) return null;
+    if (/^(?:[a-z][a-z0-9+.-]*:|\/\/|#|data:|blob:|javascript:|mailto:|tel:)/i.test(rawHref)) {
+        return null;
+    }
+
+    const noHash = rawHref.split("#")[0] || "";
+    const noQuery = noHash.split("?")[0] || "";
+    const hrefPath = normalizePathLike(noQuery.replace(/^\/+/, ""));
+    if (!hrefPath) return null;
+
+    const candidates: string[] = [];
+    const addCandidate = (p: string) => {
+        const normalized = normalizePathLike(p);
+        if (!normalized) return;
+        if (!candidates.includes(normalized)) candidates.push(normalized);
+    };
+
+    addCandidate(hrefPath);
+    addCandidate(`public/${hrefPath}`);
+
+    const current = normalizePathLike(String(currentHtmlPath || "").replace(/^\/+/, ""));
+    if (current) {
+        const slash = current.lastIndexOf("/");
+        const dir = slash >= 0 ? current.slice(0, slash) : "";
+        const resolvedFromCurrent = normalizePathLike(`${dir}/${noQuery}`);
+        addCandidate(resolvedFromCurrent);
+        addCandidate(`public/${resolvedFromCurrent}`);
+    }
+
+    for (const key of candidates) {
+        const hit = sourceFiles[key];
+        if (hit && typeof hit.content === "string") return hit.content;
+    }
+
+    return null;
+}
+
 export function applySeoMetaToHtml(html: string, meta: SeoMetaMap): string {
     if (!html) return html;
 
@@ -649,17 +730,16 @@ import { db, storage } from "@/lib/firebase"; // or wherever your db is
 import type { User as FirebaseUser } from "firebase/auth";
 import { RenderDoc } from "@/app/dashboard/view/DashboardView";
 import { useAuth } from "@/src/hooks/useAuth";
-import { Camera, Code2, Eye, EyeOff, FileText, Images, Loader2, Maximize2, MessageSquare, Minimize2, Monitor, Palette, Redo2, Rocket, RotateCcw, RotateCw, SlidersHorizontal, Smartphone, Tablet, Trash2Icon, Undo2 } from "lucide-react";
+import { Camera, Check, ChevronDown, Code2, Eye, EyeOff, FileText, Images, Loader2, Maximize2, MessageSquare, Minimize2, Monitor, Palette, Pencil, Redo2, Rocket, RotateCcw, RotateCw, SlidersHorizontal, Smartphone, Tablet, Trash2Icon, Undo2, X } from "lucide-react";
 import { compressImageForUpload } from "@/src/lib/clientImageCompression";
-import { EditorSessionCounters, EditorSessionMetrics, EditorSessionUser, ExportAnalyticsUser, recordEditorSessionAnalytics, recordExportAnalytics } from "../../components/analytics";
-import PreviewEditorAgentPanel from "../../components/editor/PreviewEditorAgentPanel";
-import { PreviewEditorTour } from "../../components/PreviewEditorTour";
+import { EditorSessionCounters, EditorSessionMetrics, EditorSessionUser, ExportAnalyticsUser, recordEditorSessionAnalytics, recordExportAnalytics } from "./analytics";
+import { PreviewEditorTour } from "./PreviewEditorTour";
 import { injectEditableOverlay } from "@/src/lib/klonerIframeRuntime";
-import { MetaSettings, UploadedAsset } from "../../components/MetaSettings";
-import { AiImageLibraryPanel } from "../../components/AiImageLibraryPanel";
-import { IS_MOBILE, sanitizeImageName } from "../../components/helpers";
-import MiniToolbar from "../../src/lib/miniToolbarV2";
-import FloatingBlockToolbar from "../../src/lib/floatingToolbar";
+import { MetaSettings, UploadedAsset } from "./MetaSettings";
+import { AiImageLibraryPanel } from "./AiImageLibraryPanel";
+import { IS_MOBILE, sanitizeImageName } from "./helpers";
+import MiniToolbar from "@/src/lib/miniToolbarV2";
+import FloatingBlockToolbar from "@/src/lib/floatingToolbar";
 
 function formatSnapshotTime(ts: number) {
     try {
@@ -1099,7 +1179,7 @@ type DraftSnapshot = {
 
 const SINGLE_PAGE_KEY = "__single__";
 
-export default function PreviewEditorV2({
+function AppPreviewEditorCore({
     initialHtml,
     sourceImage,
     onClose,
@@ -1116,6 +1196,26 @@ export default function PreviewEditorV2({
     initialSeoMetaByPage,
     onArchivedPageIdsChange,
     isAdmin = false,
+    baseHref,
+    viewMode = "custom",
+    onChangeViewMode,
+    isProduction = false,
+    appName,
+    isRenaming,
+    tempName,
+    onTempNameChange,
+    startRename,
+    cancelRename,
+    handleRename,
+    onSidebarVisibilityChange,
+    sharedUiScale,
+    onSharedUiScaleChange,
+    editableHtmlPaths,
+    currentHtmlPath,
+    onSelectHtmlPath,
+    preferredSidePanelMode,
+    sourceFiles,
+    registerBeforeExitFlush,
 }: Props) {
     const { user } = useAuth();
     const isDevCodeMode = process.env.NODE_ENV === "development";
@@ -1220,8 +1320,8 @@ export default function PreviewEditorV2({
     const [saveNudgeArmed, setSaveNudgeArmed] = useState(false);
 
     const [aiHistory, setAiHistory] = useState<AiEditSuggestion[]>([]);
-    const [historyOpen, setHistoryOpen] = useState(true);
-    const [sidebarHidden, setSidebarHidden] = useState(true);
+    const [historyOpen, setHistoryOpen] = useState(false);
+    const [sidebarHidden, setSidebarHidden] = useState(IS_MOBILE);
     const [isCompactLayout, setIsCompactLayout] = useState(IS_MOBILE);
     const [mobileTab, setMobileTab] = useState<"preview" | "panel">("preview");
     const [mobileControlsOpen, setMobileControlsOpen] = useState(false);
@@ -1269,7 +1369,8 @@ export default function PreviewEditorV2({
                 setSidebarHidden(false);
                 setMobileTab("panel");
             } else if (event.data?.type === "kloner:tour-show-ai-panel") {
-                setSidePanelMode("revision-chat");
+                // AI chat is handled in AppBuilderEditor; keep preview editor manual-only.
+                setSidePanelMode("style");
                 setSidebarHidden(false);
                 setMobileTab("panel");
             }
@@ -1425,6 +1526,8 @@ export default function PreviewEditorV2({
     const [lastSelectedPath, setLastSelectedPath] = useState(null);
     const [archivedPageIds, setArchivedPageIds] = useState<string[]>([]);
     const [showPageLayers, setShowPageLayers] = useState(false);
+        const [isPageDropdownOpen, setIsPageDropdownOpen] = useState(false);
+        const pageDropdownRef = useRef<HTMLDivElement | null>(null);
 
     // inside your component body
     const [isPreviewFullscreen, setIsPreviewFullscreen] = useState(false);
@@ -1432,6 +1535,22 @@ export default function PreviewEditorV2({
     const togglePreviewFullscreen = () => {
         setIsPreviewFullscreen((prev) => !prev);
     };
+
+        useEffect(() => {
+            if (!isPageDropdownOpen) return;
+            const onPointerDown = (e: MouseEvent) => {
+                if (pageDropdownRef.current && !pageDropdownRef.current.contains(e.target as Node)) {
+                    setIsPageDropdownOpen(false);
+                }
+            };
+            const onKeyDown = (e: KeyboardEvent) => { if (e.key === "Escape") setIsPageDropdownOpen(false); };
+            document.addEventListener("mousedown", onPointerDown);
+            document.addEventListener("keydown", onKeyDown);
+            return () => {
+                document.removeEventListener("mousedown", onPointerDown);
+                document.removeEventListener("keydown", onKeyDown);
+            };
+        }, [isPageDropdownOpen]);
 
     useEffect(() => {
         const win = iframeRef.current?.contentWindow as any;
@@ -1904,15 +2023,22 @@ export default function PreviewEditorV2({
     );
 
     const [uiScale, setUiScale] = useState<number>(() => {
+        if (typeof sharedUiScale === "number") return sharedUiScale;
         if (typeof window === "undefined") return (IS_MOBILE ? 1.05 : 0.70)
         const v = Number(localStorage.getItem("kloner:uiScale"));
         return Number.isFinite(v) && v >= 0.5 && v <= 1.25 ? v : (IS_MOBILE ? 1.05 : 0.70)
     });
 
     useEffect(() => {
+        if (typeof sharedUiScale !== "number") return;
+        setUiScale((prev) => (Math.abs(prev - sharedUiScale) > 0.0001 ? sharedUiScale : prev));
+    }, [sharedUiScale]);
+
+    useEffect(() => {
         if (typeof window === "undefined") return;
         localStorage.setItem("kloner:uiScale", String(uiScale));
-    }, [uiScale]);
+        onSharedUiScaleChange?.(uiScale);
+    }, [onSharedUiScaleChange, uiScale]);
 
 
     // derive pages from initialHtml once
@@ -1990,209 +2116,53 @@ export default function PreviewEditorV2({
     );
 
 
-    // DRAFT & LOCAL STORAGE (render-scoped, timestamped, revert-focused)
+    // DRAFT STATE (in-memory only)
 
     const MAX_HISTORY_SNAPSHOTS = 40;
-
-    // v2 envelopes (so you never accidentally treat valid data as legacy)
-    type V2CurrentDraft = { v: 2; html: string; updatedAt: number };
-    type V2History = { v: 2; items: DraftSnapshot[]; updatedAt: number };
-
-    const safeJsonParse = <T,>(s: string | null): T | null => {
-        if (!s) return null;
-        try {
-            return JSON.parse(s) as T;
-        } catch {
-            return null;
-        }
-    };
-
-    // Render-scoped keys so drafts/history never bleed across previews
-    const CURRENT_DRAFT_KEY = (renderId?: string | null) =>
-        `kloner:render:${renderId || "__anonymous"}:currentHtml`;
-
-    const HISTORY_KEY = (renderId?: string | null) =>
-        `kloner:render:${renderId || "__anonymous"}:history`;
 
     // --- state ---
     const [history, setHistory] = useState<DraftSnapshot[]>([]);
     const [activeHistoryId, setActiveHistoryId] = useState<string | null>(null);
 
-    // ✅ hydration gate so we NEVER overwrite stored history with [] on first mount
-    const [lsReady, setLsReady] = useState(false);
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+        try {
+            const keys = Object.keys(window.localStorage || {});
+            for (const key of keys) {
+                if (
+                    key.startsWith("kloner:render:") ||
+                    key.startsWith("kloner:draft:") ||
+                    key.startsWith("kloner:draftHistory:")
+                ) {
+                    window.localStorage.removeItem(key);
+                }
+            }
+        } catch {
+            // ignore
+        }
+    }, []);
 
     useEffect(() => {
         if (typeof window === "undefined") return;
         if (!draftId) return;
+        try {
+            window.localStorage.removeItem(`kloner:render:${draftId}:currentHtml`);
+            window.localStorage.removeItem(`kloner:render:${draftId}:history`);
+            window.localStorage.removeItem(`kloner:draftHistory:${draftId}`);
+            window.localStorage.removeItem(`kloner:draft:${draftId}`);
+        } catch {
+            // ignore
+        }
+    }, [draftId]);
 
-        setLsReady(false);
-
-        const LEGACY_HISTORY_KEY = (id: string) => `kloner:draftHistory:${id}`;
-        const LEGACY_CURRENT_KEY = (id: string) => `kloner:draft:${id}`;
-
-        const makeId = (createdAt: number) =>
-            typeof crypto !== "undefined" && "randomUUID" in crypto
-                ? (crypto as any).randomUUID()
-                : `${createdAt}-${Math.random().toString(36).slice(2, 8)}`;
-
-        // 1) current html (v2)
-        const currentKey = CURRENT_DRAFT_KEY(draftId);
-        const current = safeJsonParse<V2CurrentDraft>(localStorage.getItem(currentKey));
-        const baseHtml = stripScripts((current?.v === 2 ? current.html : null) || initialHtml || "");
-
+    useEffect(() => {
+        const baseHtml = stripScripts(initialHtml || "");
         setHtmlDraft(baseHtml);
         setPreviewHtml(baseHtml);
         setDirty(false);
-
-        // 2) history (v2)
-        const hk = HISTORY_KEY(draftId);
-        const h = safeJsonParse<V2History>(localStorage.getItem(hk));
-
-        let restored: DraftSnapshot[] =
-            h?.v === 2 && Array.isArray(h.items)
-                ? h.items
-                    .map((s: any) => ({
-                        id: String(s?.id || ""),
-                        createdAt: Number(s?.createdAt || 0),
-                        source: s?.source,
-                        html: typeof s?.html === "string" ? s.html : "",
-                        summary: s?.summary,
-                        prompt: s?.prompt,
-                    }))
-                    .filter((s) => s.id && s.createdAt && s.html && s.html.trim().length > 0)
-                : [];
-
-        // 3) MIGRATE legacy -> v2 (only if v2 history empty)
-        if (restored.length === 0) {
-            const legacyRaw = localStorage.getItem(LEGACY_HISTORY_KEY(draftId));
-            const legacyParsed = safeJsonParse<any>(legacyRaw);
-
-            if (Array.isArray(legacyParsed) && legacyParsed.length) {
-                const normalized: DraftSnapshot[] = legacyParsed
-                    .map((s: any) => {
-                        const html =
-                            (typeof s?.html === "string" && s.html) ||
-                            (typeof s?.value === "string" && s.value) ||
-                            (typeof s?.content === "string" && s.content) ||
-                            "";
-
-                        const createdAt =
-                            Number(s?.createdAt) ||
-                            Number(s?.updatedAt) ||
-                            Number(s?.savedAt) ||
-                            Number(s?.ts) ||
-                            0;
-
-                        const trimmed = (html || "").trim();
-                        if (!trimmed) return null;
-
-                        const id = typeof s?.id === "string" && s.id ? s.id : makeId(createdAt || Date.now());
-                        const source = s?.source || "auto";
-
-                        return {
-                            id,
-                            createdAt: createdAt || Date.now(),
-                            source,
-                            html: trimmed,
-                            summary: s?.summary,
-                            prompt: s?.prompt,
-                        } as any;
-                    })
-                    .filter(Boolean) as DraftSnapshot[];
-
-                normalized.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-                restored = normalized.slice(0, MAX_HISTORY_SNAPSHOTS);
-
-                setHistory(restored);
-                setActiveHistoryId(restored[0]?.id || null);
-
-                // persist as v2 immediately
-                const payload: V2History = { v: 2, items: restored, updatedAt: Date.now() };
-                try {
-                    localStorage.setItem(hk, JSON.stringify(payload));
-                    localStorage.removeItem(LEGACY_HISTORY_KEY(draftId));
-                } catch { }
-
-                setLsReady(true);
-                return;
-            }
-
-            // 4) If there is no legacy history, but there is legacy current, seed from that
-            const legacyCurrent = localStorage.getItem(LEGACY_CURRENT_KEY(draftId));
-            const seedHtml = (legacyCurrent || baseHtml || "").trim();
-
-            if (seedHtml) {
-                const createdAt = Number(current?.updatedAt) || Date.now();
-                const seedId = `seed-${createdAt}`;
-
-                const seed: DraftSnapshot = {
-                    id: seedId,
-                    createdAt,
-                    source: "auto",
-                    html: seedHtml,
-                    summary: undefined,
-                    prompt: undefined,
-                } as any;
-
-                restored = [seed];
-
-                setHistory(restored);
-                setActiveHistoryId(seedId);
-
-                const payload: V2History = { v: 2, items: restored, updatedAt: Date.now() };
-                try {
-                    localStorage.setItem(hk, JSON.stringify(payload));
-                } catch { }
-
-                setLsReady(true);
-                return;
-            }
-        }
-
-        restored.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-        const capped = restored.slice(0, MAX_HISTORY_SNAPSHOTS);
-
-        setHistory(capped);
-        setActiveHistoryId(capped[0]?.id || null);
-
-        setLsReady(true);
+        setHistory([]);
+        setActiveHistoryId(null);
     }, [draftId, initialHtml]);
-
-    // persist monolithic draft (current) to localStorage (THIS render only) (v2)
-    // ✅ gated so hydration never overwrites stored values
-    useEffect(() => {
-        if (typeof window === "undefined") return;
-        if (!draftId) return;
-        if (!lsReady) return;
-
-        const currentKey = CURRENT_DRAFT_KEY(draftId);
-        const payload: V2CurrentDraft = { v: 2, html: htmlDraft, updatedAt: Date.now() };
-
-        try {
-            localStorage.setItem(currentKey, JSON.stringify(payload));
-        } catch { }
-
-        setDirty(true);
-    }, [htmlDraft, draftId, lsReady]);
-
-    // persist history array to localStorage (THIS render only) (v2)
-    // ✅ gated so hydration never overwrites stored values
-    useEffect(() => {
-        if (typeof window === "undefined") return;
-        if (!draftId) return;
-        if (!lsReady) return;
-
-        const hk = HISTORY_KEY(draftId);
-        const payload: V2History = {
-            v: 2,
-            items: history.slice(0, MAX_HISTORY_SNAPSHOTS),
-            updatedAt: Date.now(),
-        };
-
-        try {
-            localStorage.setItem(hk, JSON.stringify(payload));
-        } catch { }
-    }, [history, draftId, lsReady]);
 
     // ---------- snapshot helper for saving/exporting ----------
     const snapshotFromIframeOrDraft = useCallback(() => {
@@ -2290,7 +2260,6 @@ export default function PreviewEditorV2({
     useEffect(() => {
         if (!draftId) return;
         if (typeof window === "undefined") return;
-        if (!lsReady) return;
 
         const intervalMs = 60_000;
         const id = window.setInterval(() => {
@@ -2299,7 +2268,7 @@ export default function PreviewEditorV2({
         }, intervalMs);
 
         return () => window.clearInterval(id);
-    }, [draftId, snapshotDraft, lsReady]);
+    }, [draftId, snapshotDraft]);
 
     // KEEP: restore behavior (this is the whole point of the fallback)
     const handleRestoreSnapshot = useCallback(
@@ -2450,8 +2419,8 @@ export default function PreviewEditorV2({
 
     const [aiEditing, setAiEditing] = useState(false);
 
-    async function doSave(options?: { applyToPreview?: boolean }) {
-        if (savingDraft) return;
+    async function doSave(options?: { applyToPreview?: boolean; persistToSource?: boolean; skipMachineApply?: boolean }) {
+        if (savingDraft || applyingPreview || exporting) return;
 
         if (!draftId) {
             console.error("doSave called without draftId");
@@ -2459,6 +2428,7 @@ export default function PreviewEditorV2({
         }
 
         setSavingDraft(true);
+        setApplyingPreview(true);
 
         try {
             const doc = iframeRef.current?.contentDocument ?? document;
@@ -2492,71 +2462,21 @@ export default function PreviewEditorV2({
             // manual snapshot when user hits save
             snapshotDraft("manual");
 
-            // Immediately persist the current draft and a manual-history snapshot
-            // to localStorage so manual saves are durable even if the page unloads.
-            try {
-                const currentKey = CURRENT_DRAFT_KEY(draftId);
-                const hk = HISTORY_KEY(draftId);
-
-                const createdAt = Date.now();
-                const manualId =
-                    typeof crypto !== "undefined" && "randomUUID" in crypto
-                        ? (crypto as any).randomUUID()
-                        : `${createdAt}-${Math.random().toString(36).slice(2, 8)}`;
-
-                const manualSnap = {
-                    id: manualId,
-                    createdAt,
-                    source: "manual",
-                    html: (nextHtml || "").trim(),
-                } as any;
-
-                // Persist current draft
-                const currentPayload: V2CurrentDraft = {
-                    v: 2,
-                    html: (nextHtml || "").trim(),
-                    updatedAt: Date.now(),
-                };
-
-                // Merge into history in localStorage (without waiting for React state)
-                const raw = localStorage.getItem(hk);
-                let existing: V2History | null = null;
-                try {
-                    existing = raw ? JSON.parse(raw) as V2History : null;
-                } catch { existing = null; }
-
-                const nextItems = [manualSnap].concat(Array.isArray(existing?.items) ? existing!.items : history);
-
-                const nextHistory: V2History = {
-                    v: 2,
-                    items: nextItems.slice(0, MAX_HISTORY_SNAPSHOTS),
-                    updatedAt: Date.now(),
-                };
-
-                try {
-                    localStorage.setItem(currentKey, JSON.stringify(currentPayload));
-                } catch (err: any) {
-                    if (err && (err.name === "QuotaExceededError" || err.code === 22)) {
-                        try { window.alert("Unable to persist current draft: localStorage quota exceeded."); } catch { }
-                    }
-                }
-
-                try {
-                    localStorage.setItem(hk, JSON.stringify(nextHistory));
-                } catch (err: any) {
-                    if (err && (err.name === "QuotaExceededError" || err.code === 22)) {
-                        try { window.alert("Unable to persist history snapshot: localStorage quota exceeded."); } catch { }
-                    }
-                }
-            } catch (err) {
-                console.warn("[PreviewEditor] immediate manual persist failed", err);
-            }
-
             if (!saveDraft) {
                 setPreviewHtml(nextHtml);
                 if (options?.applyToPreview) {
                     emitLive(nextHtml);
                 }
+
+                const shouldPersistToSource = options?.persistToSource !== false;
+                if (shouldPersistToSource) {
+                    await onExport(nextHtml, nameHint || undefined, options?.skipMachineApply);
+                }
+
+                if (onPageHtmlChange && activePageId) {
+                    onPageHtmlChange(activePageId, nextHtml);
+                }
+
                 setDirty(false);
                 return;
             }
@@ -2608,6 +2528,11 @@ export default function PreviewEditorV2({
                 emitLive(nextHtml);
             }
 
+            const shouldPersistToSource = options?.persistToSource !== false;
+            if (shouldPersistToSource) {
+                await onExport(nextHtml, nameHint || undefined, options?.skipMachineApply);
+            }
+
             if (onPageHtmlChange && activePageId) {
                 onPageHtmlChange(activePageId, nextHtml);
             }
@@ -2615,8 +2540,25 @@ export default function PreviewEditorV2({
             setDirty(false);
         } finally {
             setSavingDraft(false);
+            setApplyingPreview(false);
         }
     }
+
+    useEffect(() => {
+        // Don't register pre-exit flush. Only save when user clicks Apply Changes.
+        registerBeforeExitFlush?.(null);
+
+        return () => {
+            registerBeforeExitFlush?.(null);
+        };
+    }, [registerBeforeExitFlush]);
+
+    const prevBuilderViewModeRef = useRef<"ai" | "code" | "images" | "custom">(viewMode);
+    useEffect(() => {
+        const prev = prevBuilderViewModeRef.current;
+        prevBuilderViewModeRef.current = viewMode;
+        // Don't auto-save on mode change. Users should only save via Apply Changes button.
+    }, [viewMode]);
 
     // ----------------------
     // NEW PAGE STATE + LOGIC (patched end-to-end)
@@ -2773,6 +2715,66 @@ export default function PreviewEditorV2({
         let base = stripScripts(stripEditorArtifacts(previewHtml || ""));
         if (!base) return base;
 
+        // Inject <base href> so relative CSS/JS/image paths resolve when the
+        // iframe uses srcdoc (which has no origin by itself).
+        if (baseHref) {
+            let resolvedBaseHref = baseHref;
+            let resolvedOrigin = "";
+            try {
+                const parsed = new URL(baseHref);
+                // Use origin-root so relative assets don't resolve under /dashboard/*
+                resolvedBaseHref = `${parsed.origin}/`;
+                resolvedOrigin = parsed.origin;
+            } catch {
+                resolvedBaseHref = baseHref.replace(/\/?$/, "/");
+            }
+            const tag = `<base href="${resolvedBaseHref}">`;
+            if (/<base\b/i.test(base)) {
+                base = base.replace(/<base\b[^>]*>/i, tag);
+            } else if (base.includes("</head>")) {
+                base = base.replace("</head>", `${tag}</head>`);
+            } else if (base.includes("<head>")) {
+                base = base.replace("<head>", `<head>${tag}`);
+            } else {
+                base = `${tag}${base}`;
+            }
+
+            if (resolvedOrigin) {
+                const escapedOrigin = resolvedOrigin.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+                base = base
+                    .replace(/(\b(?:href|src)=['"])https?:\/\/localhost(?::\d+)?\//gi, "$1/")
+                    .replace(/(\b(?:href|src)=['"])https?:\/\/127\.0\.0\.1(?::\d+)?\//gi, "$1/")
+                    .replace(new RegExp(`(\\b(?:href|src)=['"])${escapedOrigin}/dashboard/`, "gi"), "$1/");
+            }
+        }
+
+        // Some generated/exported Next HTML uses relative "_next/..." or "./_next/..."
+        // paths; inside /dashboard these resolve to /dashboard/_next and 404. Force root.
+        base = base
+            .replace(/(\b(?:href|src)=['"])(?:\.\/)?_next\//gi, "$1/_next/")
+            .replace(/(\bdata-href=['"])(?:\.\/)?_next\//gi, "$1/_next/")
+            .replace(/(\b(?:srcset|imagesrcset)=['"][^'"]*?)(?:,\s*)?(?:\.\/)?_next\//gi, "$1/_next/")
+            .replace(/(url\((?:['"])?)(?:\.\/)?_next\//gi, "$1/_next/")
+            .replace(/(\b(?:href|src)=['"])\/dashboard\//gi, "$1/")
+            .replace(/(url\((?:['"])?)\/dashboard\//gi, "$1/");
+
+        // Fallback for editor previews: inline local CSS files from sourceFiles when href paths are brittle.
+        base = base.replace(/<link\b[^>]*>/gi, (tag) => {
+            const isStylesheet = /\brel\s*=\s*(["'])[^"']*stylesheet[^"']*\1/i.test(tag) || /\brel\s*=\s*stylesheet\b/i.test(tag);
+            if (!isStylesheet) return tag;
+
+            const quotedHref = tag.match(/\bhref\s*=\s*(["'])(.*?)\1/i);
+            const bareHref = tag.match(/\bhref\s*=\s*([^\s>]+)/i);
+            const href = quotedHref ? quotedHref[2] : (bareHref ? bareHref[1] : "");
+            if (!href) return tag;
+
+            const css = resolveStylesheetFromSourceFiles(href, currentHtmlPath, sourceFiles);
+            if (css == null) return tag;
+
+            const safeHref = href.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
+            return `<style data-kloner-inline-href="${safeHref}">\n${css}\n</style>`;
+        });
+
         // IMPORTANT: keep global header/footer always visible across routes
         base = hoistGlobalHeaderFooter(base);
 
@@ -2830,7 +2832,7 @@ export default function PreviewEditorV2({
         if (base.includes("</head>")) return base.replace("</head>", `${styleTag}</head>`);
         if (base.includes("<head>")) return base.replace("<head>", `<head>${styleTag}`);
         return styleTag + base;
-    }, [previewHtml, activePageId, allPages, createdPages]);
+    }, [previewHtml, activePageId, allPages, createdPages, baseHref, currentHtmlPath, sourceFiles]);
 
     useEffect(() => {
         if (mode === "screenshot") return;
@@ -4067,81 +4069,6 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
             html: fullHtml,
             source: "auto",
         });
-
-        // Immediately persist history + current draft to localStorage to avoid
-        // relying on the next render/effect cycle which might be delayed.
-        try {
-            const hk = HISTORY_KEY(draftId);
-            const currentKey = CURRENT_DRAFT_KEY(draftId);
-
-            // Build payloads consistent with v2 envelopes
-            const nextHistory: V2History = {
-                v: 2,
-                items: [
-                    {
-                        id: typeof crypto !== "undefined" && "randomUUID" in crypto
-                            ? (crypto as any).randomUUID()
-                            : `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-                        createdAt: Date.now(),
-                        source: "before-ai",
-                        html: (fullHtml || "").trim(),
-                    } as any,
-                    ...history,
-                ].slice(0, MAX_HISTORY_SNAPSHOTS),
-                updatedAt: Date.now(),
-            };
-
-            const currentPayload: V2CurrentDraft = {
-                v: 2,
-                html: (fullHtml || "").trim(),
-                updatedAt: Date.now(),
-            };
-
-            const historyStr = JSON.stringify(nextHistory);
-            const currentStr = JSON.stringify(currentPayload);
-
-            // Warn if the payloads are large (approximate in bytes)
-            const totalBytes = historyStr.length + currentStr.length;
-            const WARN_BYTES = 1_500_000; // ~1.5MB heuristic
-            if (totalBytes > WARN_BYTES) {
-                // Inform the user their localStorage may be near quota.
-                try {
-                    if (typeof window !== "undefined") {
-                        window.alert(
-                            "Local save is large and may exceed your browser storage quota. Consider clearing older drafts/history if saves fail."
-                        );
-                    }
-                } catch {
-                    // ignore
-                }
-            }
-
-            try {
-                localStorage.setItem(hk, historyStr);
-            } catch (err: any) {
-                if (err && (err.name === "QuotaExceededError" || err.code === 22)) {
-                    try {
-                        window.alert(
-                            "Unable to save undo snapshot: localStorage quota exceeded. Clear storage or export your drafts to continue."
-                        );
-                    } catch { }
-                }
-            }
-
-            try {
-                localStorage.setItem(currentKey, currentStr);
-            } catch (err: any) {
-                if (err && (err.name === "QuotaExceededError" || err.code === 22)) {
-                    try {
-                        window.alert(
-                            "Unable to persist current draft: localStorage quota exceeded. Clear storage or export your drafts to continue."
-                        );
-                    } catch { }
-                }
-            }
-        } catch (err) {
-            console.warn("[PreviewEditor] snapshotBeforeAiEdit immediate persist failed", err);
-        }
     }
 
     const saveImageToLibrary = useCallback(async (url: string, name?: string) => {
@@ -4385,21 +4312,19 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
 
     const openSidePanelMode = useCallback(
         (nextMode: "style" | "meta" | "code" | "ai-library" | "revision-chat") => {
-            setSidePanelMode(nextMode);
+            const resolvedMode = nextMode === "revision-chat" ? "style" : nextMode;
+            setSidePanelMode(resolvedMode);
             setSidebarHidden(false);
             setMobileControlsOpen(false);
 
-            if (nextMode === "code") {
+            if (resolvedMode === "code") {
                 if (isDevCodeMode) handleModeClick("code");
             } else if (mode !== "preview") {
                 handleModeClick("preview");
             }
 
             if (isCompactLayout) {
-                // Keep preview visible on mobile for style/ai-library, but hide for code/meta
-                if (nextMode !== "style" && nextMode !== "ai-library") {
-                    setMobileTab("panel");
-                }
+                setMobileTab("panel");
             }
         },
         [handleModeClick, isCompactLayout, isDevCodeMode, mode],
@@ -4418,10 +4343,27 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
         if (sidePanelMode === "meta") return "SEO / Meta";
         if (sidePanelMode === "ai-library") return "AI Images";
         if (sidePanelMode === "code") return "Code";
-        return "AI Edits";
+        return "Styles";
+    }, [sidePanelMode]);
+
+    useEffect(() => {
+        if (sidePanelMode === "revision-chat") {
+            setSidePanelMode("style");
+        }
     }, [sidePanelMode]);
 
     const showSidebarPanel = isCompactLayout ? mobileTab === "panel" : !sidebarHidden;
+
+    useEffect(() => {
+        onSidebarVisibilityChange?.(showSidebarPanel);
+    }, [onSidebarVisibilityChange, showSidebarPanel]);
+
+    useEffect(() => {
+        if (!preferredSidePanelMode) return;
+        setSidePanelMode(preferredSidePanelMode);
+        setSidebarHidden(false);
+        if (isCompactLayout) setMobileTab("panel");
+    }, [preferredSidePanelMode, isCompactLayout]);
     const showCanvasPanel = !isCompactLayout || mobileTab === "preview";
     const effectiveUiScale = isCompactLayout ? 1 : uiScale;
 
@@ -4464,7 +4406,10 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                 if (mode === "preview") {
                     injectEditableOverlay(
                         doc,
-                        (updated) => setHtmlDraft(updated),
+                        (updated) => {
+                            setHtmlDraft(updated);
+                            setDirty(true);
+                        },
                         device,
                     );
                     iframeRef.current?.contentWindow?.focus();
@@ -4496,11 +4441,11 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
         <div
             ref={containerRef}
             tabIndex={-1}
-            className="fixed inset-0 z-[9999] bg-black/50"
+            className="h-full w-full bg-white flex flex-col"
         >
             {!isCompactLayout && (<PreviewEditorTour />)}
 
-            <div className={`absolute overflow-hidden ${isCompactLayout ? "inset-0 bg-white" : "inset-4"}`}>
+            <div className={`h-full w-full overflow-hidden ${isCompactLayout ? "flex flex-col" : "grid grid-rows-[1fr_auto]"}`}>
 
                 {isCompactLayout && (
                     <div className="absolute inset-x-0 top-0 z-[104] border-b border-neutral-200 bg-gray-50/95 px-3 py-2 backdrop-blur">
@@ -4581,287 +4526,182 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                     </div>
                 )}
 
-                {/* Top right controls */}
-                {!isCompactLayout && (
-                    <div className="absolute top-5 right-5 z-[102] flex items-center gap-2">
-                        {/* Deploy button */}
-                        <button
-                            type="button"
-                            onClick={() => setExportPrompt(true)}
-                            disabled={exporting}
-                            data-tour-deploy
-                            className={`inline-flex h-8 items-center gap-1.5 rounded-full border border-[#f55f2a] bg-[#f55f2a] px-3 py-1 text-[13px] font-semibold text-white shadow-md transition ${
-                                exporting
-                                    ? "cursor-not-allowed opacity-60"
-                                    : "hover:bg-[#e54f1a] hover:shadow-lg"
-                            }`}
-                            style={{
-                                boxShadow: exporting 
-                                    ? "0 4px 6px -1px rgba(0, 0, 0, 0.1)" 
-                                    : "0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 0 8px rgba(245, 95, 42, 0.3)"
-                            }}
-                            title="Deploy"
-                            aria-label="Deploy"
-                        >
-                            <Rocket className="h-3 w-3" aria-hidden="true" />
-                            <span>Deploy</span>
-                        </button>
-                        
-                        {/* Close button */}
-                        <button
-                            type="button"
-                            onClick={() => {
-                                if (dirty) setClosePrompt(true);
-                                else performClose("discard");
-                            }}
-                            disabled={closing || aiEditing}
-                            aria-label="Close editor"
-                            className={`inline-flex h-6 w-6 items-center justify-center rounded-full border border-neutral-300 bg-white text-neutral-700 shadow-md transition ${
-                                closing
-                                    ? "cursor-not-allowed opacity-60"
-                                    : "hover:bg-neutral-50 hover:text-neutral-900"
-                            }`}
-                        >
-                            <span className="block h-[18px] w-[18px]">
-                                <svg
-                                    viewBox="0 0 24 24"
-                                    className="h-full w-full"
-                                    aria-hidden="true"
-                                >
-                                    <path
-                                        d="M6 6l12 12M18 6L6 18"
-                                        fill="none"
-                                        stroke="currentColor"
-                                        strokeWidth="1.8"
-                                        strokeLinecap="round"
-                                    />
-                                </svg>
-                            </span>
-                        </button>
-                    </div>
-                )}
-
                 {/* V2 Badge moved to bottom right area */}
 
-                {/* TOP TOOLBAR (tools + device) */}
-                {!isCompactLayout && (
-                <div
-                    id="kloner-device-toggle"
-                    className="absolute z-[101] flex items-center justify-center top-5 left-5 right-5"
-                >
-                    <div className="flex items-center gap-2">
-                        {/* Tools strip (left of device) */}
-                        <div className="p-1 flex min-w-0 flex-1 items-center gap-2 overflow-x-auto whitespace-nowrap [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-                        {/* Mode switcher */}
-                        <div className="shrink-0 inline-flex items-center gap-1 rounded-full border border-neutral-200 bg-white px-2 py-1 shadow-md">
-                            <button
-                                type="button"
-                                onClick={() => handleModeClick("preview")}
-                                className={`inline-flex h-6 w-6 items-center justify-center rounded-full transition-colors ${
-                                    mode === "preview"
-                                        ? "bg-[#f55f2a] text-white"
-                                        : "bg-white text-neutral-600 hover:bg-neutral-100"
-                                }`}
-                                title="Preview"
-                                aria-label="Preview"
-                            >
-                                <Eye className="h-3 w-3" aria-hidden="true" />
-                            </button>
+                {/* Portal toolbar buttons into AppBuilderEditor's top bar */}
+                {typeof document !== "undefined" && (() => {
+                    if (viewMode !== "custom" && viewMode !== "images") return null;
+                    const portalTarget = document.getElementById("kloner-custom-toolbar-portal");
+                    if (!portalTarget) return null;
+                    const editableFiles = editableHtmlPaths ?? [];
+                    const hasFileDropdown = editableFiles.length > 1;
+                    const currentFileLabel = currentHtmlPath || "(none)";
+                    const labelFromPath = (path: string) => {
+                        const normalized = String(path || "")
+                            .replace(/^\/+/, "")
+                            .replace(/^public\//, "");
+                        if (!normalized) return "index";
+                        const withoutExt = normalized.replace(/\.html?$/i, "");
+                        const withoutIndex = withoutExt.replace(/\/index$/i, "");
+                        return withoutIndex || "index";
+                    };
+                    const currentPageLabel = labelFromPath(currentHtmlPath || "");
+                    return createPortal(
+                        <div className="flex items-center gap-2">
+                            {/* File switcher */}
+                            {editableFiles.length > 0 ? (
+                                <div className="shrink-0 flex items-center gap-2">
+                                    <div className="relative" ref={pageDropdownRef} id="kloner-page-switcher">
+                                        {hasFileDropdown ? (
+                                            <button
+                                                type="button"
+                                                onClick={() => setIsPageDropdownOpen((prev) => !prev)}
+                                                className="inline-flex items-center gap-1.5 rounded-full border border-neutral-200 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-800 shadow-sm transition hover:bg-neutral-50"
+                                                title={`Current page: ${currentPageLabel}`}
+                                                aria-haspopup="menu"
+                                                aria-expanded={isPageDropdownOpen}
+                                            >
+                                                <span className="max-w-[180px] truncate lowercase">{currentPageLabel}</span>
+                                                <ChevronDown className={`h-3.5 w-3.5 shrink-0 transition-transform ${isPageDropdownOpen ? "rotate-180" : ""}`} />
+                                            </button>
+                                        ) : (
+                                            <div className="inline-flex items-center gap-1.5 rounded-full border border-neutral-200 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-800 shadow-sm" title={`Current page: ${currentPageLabel}`}>
+                                                <span className="max-w-[180px] truncate lowercase">{currentPageLabel}</span>
+                                            </div>
+                                        )}
 
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    setSidebarHidden(true);
-                                    setSidePanelMode("style");
-                                    handleModeClick("screenshot");
-                                }}
-                                className={`inline-flex h-6 w-6 items-center justify-center rounded-full transition-colors ${
-                                    mode === "screenshot"
-                                        ? "bg-[#f55f2a] text-white"
-                                        : "bg-white text-neutral-600 hover:bg-neutral-100"
-                                }`}
-                                title="Screenshot"
-                                aria-label="Screenshot"
-                            >
-                                <Camera className="h-3 w-3" aria-hidden="true" />
-                            </button>
+                                        {hasFileDropdown && isPageDropdownOpen ? (
+                                            <div className="absolute left-0 top-[calc(100%+0.5rem)] z-50 w-72 overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-[0_18px_40px_rgba(15,23,42,0.12)]">
+                                                <div className="max-h-64 overflow-y-auto py-1">
+                                                    {editableFiles.map((path) => {
+                                                        const isActive = path === currentHtmlPath;
+                                                        const label = labelFromPath(path);
+                                                        return (
+                                                            <button
+                                                                key={path}
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    onSelectHtmlPath?.(path);
+                                                                    setIsPageDropdownOpen(false);
+                                                                }}
+                                                                className={`flex w-full items-center justify-between px-4 py-2 text-left text-sm transition-colors hover:bg-orange-50 hover:text-[#F55F2A] ${
+                                                                    isActive ? "bg-orange-50/70 text-[#F55F2A]" : "text-neutral-700"
+                                                                }`}
+                                                            >
+                                                                <span className="truncate lowercase">{label}</span>
+                                                                {isActive ? <span className="ml-3 shrink-0 h-2 w-2 rounded-full bg-[#F55F2A]" aria-hidden="true" /> : null}
+                                                            </button>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </div>
+                                        ) : null}
+                                    </div>
+                                    <div
+                                        className="inline-flex max-w-[320px] items-center gap-1.5 rounded-full border border-neutral-200 bg-neutral-50 px-3 py-1.5 text-xs font-medium text-neutral-700"
+                                        title={`Current editable file: ${currentFileLabel}`}
+                                    >
+                                        <span className="text-neutral-500">current file:</span>
+                                        <span className="truncate">{currentFileLabel}</span>
+                                    </div>
+                                </div>
+                            ) : null}
 
-                            {isDevCodeMode && (
+                            {/* Panel tools */}
+                            <div className="shrink-0 inline-flex items-center gap-1 rounded-full border border-neutral-200 bg-white px-2 py-1 shadow-md">
                                 <button
                                     type="button"
                                     onClick={() => {
-                                        setSidebarHidden(false);
-                                        setSidePanelMode("code");
-                                        handleModeClick("code");
+                                        const isActive = !sidebarHidden && sidePanelMode === "style" && mode === "preview";
+                                        if (isActive) {
+                                            setSidebarHidden(true);
+                                        } else {
+                                            setSidePanelMode("style");
+                                            setSidebarHidden(false);
+                                            if (mode === "screenshot" || mode === "code") handleModeClick("preview");
+                                        }
                                     }}
                                     className={`inline-flex h-6 w-6 items-center justify-center rounded-full transition-colors ${
-                                        mode === "code"
+                                        !sidebarHidden && sidePanelMode === "style" && mode === "preview"
                                             ? "bg-[#f55f2a] text-white"
                                             : "bg-white text-neutral-600 hover:bg-neutral-100"
                                     }`}
-                                    title="Code"
-                                    aria-label="Code"
+                                    title="Styles"
+                                    aria-label="Styles"
                                 >
-                                    <Code2 className="h-3 w-3" aria-hidden="true" />
+                                    <Palette className="h-3 w-3" aria-hidden="true" />
                                 </button>
-                            )}
-                        </div>
 
-                        {/* Panel tools */}
-                        <div className="shrink-0 inline-flex items-center gap-1 rounded-full border border-neutral-200 bg-white px-2 py-1 shadow-md">
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    const isActive = !sidebarHidden && sidePanelMode === "style" && mode === "preview";
-                                    if (isActive) {
-                                        setSidebarHidden(true);
-                                    } else {
-                                        setSidePanelMode("style");
-                                        setSidebarHidden(false);
-                                        if (mode === "screenshot" || mode === "code") handleModeClick("preview");
-                                    }
-                                }}
-                                className={`inline-flex h-6 w-6 items-center justify-center rounded-full transition-colors ${
-                                    !sidebarHidden && sidePanelMode === "style" && mode === "preview"
-                                        ? "bg-[#f55f2a] text-white"
-                                        : "bg-white text-neutral-600 hover:bg-neutral-100"
-                                }`}
-                                title="Styles"
-                                aria-label="Styles"
-                            >
-                                <Palette className="h-3 w-3" aria-hidden="true" />
-                            </button>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        const isActive = !sidebarHidden && sidePanelMode === "ai-library";
+                                        if (isActive) {
+                                            setSidebarHidden(true);
+                                        } else {
+                                            setSidePanelMode("ai-library");
+                                            setSidebarHidden(false);
+                                            if (mode === "screenshot") handleModeClick("preview");
+                                        }
+                                    }}
+                                    className={`inline-flex h-6 w-6 items-center justify-center rounded-full transition-colors ${
+                                        !sidebarHidden && sidePanelMode === "ai-library"
+                                            ? "bg-[#f55f2a] text-white"
+                                            : "bg-white text-neutral-600 hover:bg-neutral-100"
+                                    }`}
+                                    title="Images"
+                                    aria-label="Images"
+                                >
+                                    <Images className="h-3 w-3" aria-hidden="true" />
+                                </button>
+                            </div>
 
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    const isActive = !sidebarHidden && sidePanelMode === "meta";
-                                    if (isActive) {
-                                        setSidebarHidden(true);
-                                    } else {
-                                        setSidePanelMode("meta");
-                                        setSidebarHidden(false);
-                                        if (mode !== "preview") handleModeClick("preview");
-                                    }
-                                }}
-                                className={`inline-flex h-6 w-6 items-center justify-center rounded-full transition-colors ${
-                                    !sidebarHidden && sidePanelMode === "meta"
-                                        ? "bg-[#f55f2a] text-white"
-                                        : "bg-white text-neutral-600 hover:bg-neutral-100"
-                                }`}
-                                title="SEO / Meta"
-                                aria-label="SEO / Meta"
-                            >
-                                <FileText className="h-3 w-3" aria-hidden="true" />
-                            </button>
+                            {/* Device switcher */}
+                            <div className="shrink-0 inline-flex items-center gap-1 rounded-full border border-neutral-200 bg-white px-2 py-1 shadow-md">
+                                <button
+                                    disabled={aiEditing}
+                                    type="button"
+                                    onClick={() => handleDeviceChange("desktop")}
+                                    className={`flex h-6 w-6 items-center justify-center rounded-full transition-colors ${
+                                        device === "desktop" ? "bg-[#f55f2a] text-white" : "bg-white text-neutral-600 hover:bg-neutral-100"
+                                    }`}
+                                    title="Desktop"
+                                >
+                                    <Monitor className="h-3 w-3" />
+                                </button>
+                                <button
+                                    disabled={aiEditing}
+                                    type="button"
+                                    onClick={() => handleDeviceChange("tablet")}
+                                    className={`flex h-6 w-6 items-center justify-center rounded-full transition-colors ${
+                                        device === "tablet" ? "bg-[#f55f2a] text-white" : "bg-white text-neutral-600 hover:bg-neutral-100"
+                                    }`}
+                                    title="Tablet"
+                                >
+                                    <Tablet className="h-3 w-3" />
+                                </button>
+                                <button
+                                    disabled={aiEditing}
+                                    type="button"
+                                    onClick={() => handleDeviceChange("mobile")}
+                                    className={`flex h-6 w-6 items-center justify-center rounded-full transition-colors ${
+                                        device === "mobile" ? "bg-[#f55f2a] text-white" : "bg-white text-neutral-600 hover:bg-neutral-100"
+                                    }`}
+                                    title="Mobile"
+                                >
+                                    <Smartphone className="h-3 w-3" />
+                                </button>
+                            </div>
+                        </div>,
+                        portalTarget
+                    );
+                })()}
 
-                            <button
-                                id="kloner-ai-sidebar"
-                                type="button"
-                                onClick={() => {
-                                    const isActive = !sidebarHidden && sidePanelMode === "revision-chat";
-                                    if (isActive) {
-                                        setSidebarHidden(true);
-                                    } else {
-                                        setSidePanelMode("revision-chat");
-                                        setSidebarHidden(false);
-                                        if (mode !== "preview") handleModeClick("preview");
-                                    }
-                                }}
-                                className={`inline-flex h-6 w-6 items-center justify-center rounded-full transition-colors ${
-                                    !sidebarHidden && sidePanelMode === "revision-chat"
-                                        ? "bg-[#f55f2a] text-white"
-                                        : "bg-white text-neutral-600 hover:bg-neutral-100"
-                                }`}
-                                title="AI edits"
-                                aria-label="AI edits"
-                            >
-                                <MessageSquare className="h-3 w-3" aria-hidden="true" />
-                            </button>
 
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    const isActive = !sidebarHidden && sidePanelMode === "ai-library";
-                                    if (isActive) {
-                                        setSidebarHidden(true);
-                                    } else {
-                                        setSidePanelMode("ai-library");
-                                        setSidebarHidden(false);
-                                        if (mode === "screenshot") handleModeClick("preview");
-                                    }
-                                }}
-                                className={`inline-flex h-6 w-6 items-center justify-center rounded-full transition-colors ${
-                                    !sidebarHidden && sidePanelMode === "ai-library"
-                                        ? "bg-[#f55f2a] text-white"
-                                        : "bg-white text-neutral-600 hover:bg-neutral-100"
-                                }`}
-                                title="AI images"
-                                aria-label="AI images"
-                            >
-                                <Images className="h-3 w-3" aria-hidden="true" />
-                            </button>
-                        </div>
-                        </div>
-
-                        {/* Device switcher */}
-                        <div className="shrink-0 inline-flex items-center gap-1 rounded-full border border-neutral-200 bg-white px-2 py-1 shadow-md">
-                            <motion.button
-                                disabled={aiEditing}
-                                type="button"
-                                onClick={() => handleDeviceChange("desktop")}
-                                whileHover={{ scale: 1.05 }}
-                                whileTap={{ scale: 0.96 }}
-                                className={`flex h-6 w-6 items-center justify-center rounded-full transition-colors ${
-                                    device === "desktop"
-                                        ? "bg-[#f55f2a] text-white"
-                                        : "bg-white text-neutral-600 hover:bg-neutral-100"
-                                }`}
-                                title="Desktop"
-                            >
-                                <Monitor className="h-3 w-3" />
-                            </motion.button>
-
-                            <motion.button
-                                disabled={aiEditing}
-                                type="button"
-                                onClick={() => handleDeviceChange("tablet")}
-                                whileHover={{ scale: 1.05 }}
-                                whileTap={{ scale: 0.96 }}
-                                className={`flex h-6 w-6 items-center justify-center rounded-full transition-colors ${
-                                    device === "tablet"
-                                        ? "bg-[#f55f2a] text-white"
-                                        : "bg-white text-neutral-600 hover:bg-neutral-100"
-                                }`}
-                                title="Tablet"
-                            >
-                                <Tablet className="h-3 w-3" />
-                            </motion.button>
-
-                            <motion.button
-                                type="button"
-                                disabled={aiEditing}
-                                onClick={() => handleDeviceChange("mobile")}
-                                whileHover={{ scale: 1.05 }}
-                                whileTap={{ scale: 0.96 }}
-                                className={`flex h-6 w-6 items-center justify-center rounded-full transition-colors ${
-                                    device === "mobile"
-                                        ? "bg-[#f55f2a] text-white"
-                                        : "bg-white text-neutral-600 hover:bg-neutral-100"
-                                }`}
-                                title="Mobile"
-                            >
-                                <Smartphone className="h-3 w-3" />
-                            </motion.button>
-                        </div>
-                    </div>
-                </div>
-                )}
-
-                {/* UI scale moved to bottom right */}
-
+                {/* Scale wrapper: clips the oversized scaled child */}
+                <div className={isCompactLayout ? "flex h-full flex-col" : "overflow-hidden h-full"}>
                 <div
-                    className={`relative ${isCompactLayout ? "flex h-full flex-col bg-white pt-[58px]" : "grid h-full grid-cols-1 gap-4 rounded-xl bg-white/90 p-4 shadow-xl"}`}
+                    className={`relative ${isCompactLayout ? "flex h-full flex-col bg-white pt-[58px]" : "flex flex-col rounded-xl bg-white/90 p-4 shadow-xl"}`}
                     style={isCompactLayout ? undefined : {
                         transform: `scale(${effectiveUiScale})`,
                         transformOrigin: "top left",
@@ -4877,74 +4717,16 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                             className={`pointer-events-auto bg-white flex flex-col overflow-hidden ${
                                 isCompactLayout
                                     ? "relative z-20 h-full w-full bg-gray-50"
-                                    : "fixed bottom-0 left-0 top-0 z-40 w-[min(92vw,520px)] rounded-r-2xl border-r border-neutral-200 shadow-xl"
+                                    : "absolute bottom-0 left-0 top-0 z-40 w-[min(92vw,520px)] rounded-r-2xl border-r border-neutral-200 shadow-xl"
                             }`}
                             initial={isCompactLayout ? { opacity: 0, y: 8 } : { x: -16, opacity: 0 }}
                             animate={{ x: 0, opacity: 1 }}
                             exit={isCompactLayout ? { opacity: 0, y: 8 } : { x: -16, opacity: 0 }}
                             transition={{ duration: 0.18, ease: "easeOut" }}
                         >
-                            {/* Panel header */}
-                            <div className="flex items-center justify-between px-4 py-3" style={{ backgroundColor: "rgba(245, 95, 42, 0.08)" }}>
-                                <div>
-                                <div className="text-sm font-semibold text-[#f55f2a]">
-                                    {sidePanelMode === "style" && "🎨 Styles"}
-                                    {sidePanelMode === "meta" && "🔍 SEO / Meta"}
-                                    {sidePanelMode === "ai-library" && "🖼️ AI Images"}
-                                    {sidePanelMode === "revision-chat" && "💬 AI Edits"}
-                                    {sidePanelMode === "code" && "⌨️ Code"}
-                                </div>
-                                {isCompactLayout && (
-                                    <div className="mt-0.5 text-[11px] text-neutral-600">
-                                        Switch back to preview any time from the footer.
-                                    </div>
-                                )}
-                                </div>
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        if (isCompactLayout) {
-                                            setMobileTab("preview");
-                                        } else {
-                                            setSidebarHidden(true);
-                                        }
-                                    }}
-                                    disabled={closing || aiEditing}
-                                    className={`inline-flex h-8 w-8 items-center justify-center rounded-full bg-white text-neutral-600 shadow-sm transition ${
-                                        closing ? "cursor-not-allowed opacity-60" : "hover:bg-neutral-50"
-                                    }`}
-                                    aria-label="Close panel"
-                                    title={isCompactLayout ? "Back to preview" : "Close panel"}
-                                >
-                                    <span className="block h-4 w-4">
-                                        <svg viewBox="0 0 24 24" className="h-full w-full" aria-hidden="true">
-                                            <path
-                                                d="M6 6l12 12M18 6L6 18"
-                                                fill="none"
-                                                stroke="currentColor"
-                                                strokeWidth="1.8"
-                                                strokeLinecap="round"
-                                            />
-                                        </svg>
-                                    </span>
-                                </button>
-                            </div>
-
                             {isCompactLayout && (
                                 <div className="border-b border-neutral-200 bg-white px-4 py-3">
                                     <div className="flex items-center gap-2 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-                                        <button
-                                            type="button"
-                                            onClick={() => openSidePanelMode("revision-chat")}
-                                            className={`shrink-0 inline-flex items-center gap-2 rounded-full border px-3 py-2 text-xs font-semibold transition-colors ${
-                                                sidePanelMode === "revision-chat"
-                                                    ? "border-[#f55f2a] bg-[#f55f2a] text-white"
-                                                    : "border-neutral-300 bg-white text-neutral-700"
-                                            }`}
-                                        >
-                                            <MessageSquare className="h-3.5 w-3.5" />
-                                            <span>AI</span>
-                                        </button>
                                         <button
                                             type="button"
                                             onClick={() => openSidePanelMode("style")}
@@ -5001,11 +4783,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
 
                             {/* Panel body */}
                             <div
-                                className={
-                                    sidePanelMode === "revision-chat"
-                                        ? "min-h-0 flex-1 overflow-hidden"
-                                        : `min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-6 ${isCompactLayout ? "pb-36" : ""}`
-                                }
+                                className={`min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-6 ${isCompactLayout ? "pb-36" : ""}`}
                             >
                                 {/* STYLE MODE BODY */}
                                 {!controlsCollapsed && sidePanelMode === "style" && (
@@ -5028,7 +4806,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
 
                                                 <div className="space-y-3 text-[12px] max-h-64 overflow-y-auto pr-1 lg:max-h-none">
                                                     {(mergedThemeColors.length || theme.fontFamilies.length) > 0 && (
-                                                        <div className="space-y-4 rounded-lg border border-neutral-200 bg-neutral-50/50 p-3">
+                                                        <div className="space-y-4">
                                                             {mergedThemeColors.length > 0 && (
                                                                 <div>
                                                                     <div className="mb-2 text-[16px] font-medium text-neutral-600">
@@ -5144,7 +4922,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                     )}
 
                                                     {/* Font */}
-                                                    <div className="rounded-lg border border-neutral-200 bg-neutral-50/50 p-3">
+                                                    <div>
                                                         <div className="mb-2 text-[13px] font-medium text-neutral-800">
                                                             Font
                                                         </div>
@@ -5179,7 +4957,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                     </div>
 
                                                     {/* Size & headings */}
-                                                    <div className="rounded-lg border border-neutral-200 bg-neutral-50/50 p-3">
+                                                    <div>
                                                         <div className="mb-2 text-[13px] font-medium text-neutral-800">
                                                             Size
                                                         </div>
@@ -5204,7 +4982,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                     </div>
 
                                                     {/* Text align */}
-                                                    <div className="rounded-lg border border-neutral-200 bg-neutral-50/50 p-3">
+                                                    <div>
                                                         <div className="mb-2 text-[13px] font-medium text-neutral-800">
                                                             Align
                                                         </div>
@@ -5233,7 +5011,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                     </div>
 
                                                     {/* Weight & transform */}
-                                                    <div className="rounded-lg border border-neutral-200 bg-neutral-50/50 p-3">
+                                                    <div>
                                                         <div className="mb-2 text-[13px] font-medium text-neutral-800">
                                                             Weight
                                                         </div>
@@ -5601,27 +5379,6 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                     />
                                 )}
 
-                                {sidePanelMode === "revision-chat" && (
-                                    <PreviewEditorAgentPanel
-                                        renderId={draftId ?? undefined}
-                                        refreshNonce={aiHistoryRefreshNonce}
-                                        preloadedSuggestions={prefetchedAiSuggestions}
-                                        preloadedMeta={prefetchedAiMeta}
-                                        preloadedHistoryError={prefetchedAiHistoryError}
-                                        disableAutoHistoryFetch
-                                        externalHistoryLoading={prefetchedAiHistoryLoading}
-                                        getSelectedBlockHtml={getSelectedBlockHtml}
-                                        selectionMeta={selectionMeta}
-                                        onAiHistoryChange={(items) => {
-                                            setAiHistory(items);
-                                            setPrefetchedAiSuggestions(items);
-                                        }}
-                                        onApplyBlockHtml={applyAiEditedBlockHtml}
-                                        onAiEditingStateChange={(isEditing) => {
-                                            setAiEditing(isEditing);
-                                        }}
-                                    />
-                                )}
                             </div>
                         </motion.aside>
                     )}
@@ -6005,30 +5762,6 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                     </div>
 
                                                     <div id="kloner-quick-undo" className="flex items-center gap-1.5">
-                                                                                                                <button
-                                                                                                                    type="button"
-                                                                                                                    onClick={() => {
-                                                                                                                        const api = iframeRef.current?.contentWindow?.__klonerApi;
-                                                                                                                        if (api?.undo) api.undo();
-                                                                                                                    }}
-                                                                                                                    className="inline-flex h-8 w-8 items-center justify-center rounded-md text-neutral-400 hover:text-neutral-100 hover:bg-neutral-800/80 transition"
-                                                                                                                    aria-label="Undo"
-                                                                                                                    title="Undo"
-                                                                                                                >
-                                                                                                                    <Undo2 className="h-5 w-5" />
-                                                                                                                </button>
-                                                                                                                <button
-                                                                                                                    type="button"
-                                                                                                                    onClick={() => {
-                                                                                                                        const api = iframeRef.current?.contentWindow?.__klonerApi;
-                                                                                                                        if (api?.redo) api.redo();
-                                                                                                                    }}
-                                                                                                                    className="inline-flex h-8 w-8 items-center justify-center rounded-md text-neutral-400 hover:text-neutral-100 hover:bg-neutral-800/80 transition"
-                                                                                                                    aria-label="Redo"
-                                                                                                                    title="Redo"
-                                                                                                                >
-                                                                                                                    <Redo2 className="h-5 w-5" />
-                                                                                                                </button>
                                                         <button
                                                             type="button"
                                                             onClick={togglePreviewFullscreen}
@@ -6086,6 +5819,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                 className="cursor-move mx-auto w-[380px] sm:w-[460px] max-w-full rounded-[36px] border border-neutral-800 bg-neutral-950/90 px-3 pt-4 pb-5 shadow-xl"
                                             >
                                                 <div className="flex items-center justify-end gap-1.5">
+                                                    {/* UNDO
                                                     <button
                                                         type="button"
                                                         onClick={() => {
@@ -6094,7 +5828,6 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                         }}
                                                         className="inline-flex h-7 w-7 items-center justify-center rounded-md text-neutral-400 hover:text-neutral-100 hover:bg-neutral-800/80 transition"
                                                         aria-label="Undo"
-                                                        title="Undo"
                                                     >
                                                         <Undo2 className="h-5 w-5" />
                                                     </button>
@@ -6107,10 +5840,9 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                         }}
                                                         className="inline-flex h-7 w-7 items-center justify-center rounded-md text-neutral-400 hover:text-neutral-100 hover:bg-neutral-800/80 transition"
                                                         aria-label="Redo"
-                                                        title="Redo"
                                                     >
                                                         <Redo2 className="h-5 w-5" />
-                                                    </button>
+                                                    </button> */}
                                                 </div>
                                                 <div className="mx-auto mb-3 h-2 w-24 rounded-full bg-neutral-700" />
                                                 <div
@@ -6123,10 +5855,12 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                             </div>
                                         )}
 
+
                                     </motion.div>
                                 </AnimatePresence>
                             </div>
                         )}
+
 
                         <MiniToolbar
                             iframeRef={iframeRef}
@@ -6259,8 +5993,8 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                 <motion.button
                                     whileHover={{ y: -0.5 }}
                                     whileTap={{ scale: 0.99 }}
-                                    onClick={() => doSave()}
-                                    disabled={closing || savingDraft || !dirty}
+                                    onClick={() => doSave({ persistToSource: true })}
+                                    disabled={closing || savingDraft || applyingPreview || exporting || !dirty}
                                     aria-busy={applyingPreview}
                                     className={`w-full rounded-md px-3 py-3 text-lg font-semibold transition focus:outline-none focus:ring-2 focus:ring-neutral-300 disabled:opacity-60 ${dirty
                                         ? "bg-green-600 text-white hover:bg-green-700"
@@ -6294,61 +6028,6 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                         </div>
                         )}
 
-
-                        {!isCompactLayout && (
-                        <div className="hidden lg:block mb-3" style={{ marginLeft: !sidebarHidden ? "540px" : "20px", marginRight: "20px" }} id="kloner-apply-changes">
-                            {/* V2 Badge above Apply button */}
-                            <div className="flex items-center justify-between mb-2">
-                                <div className="inline-flex items-center gap-1 rounded-full bg-[#f55f2a] px-2 py-1 text-[10px] font-semibold text-white shadow-md">
-                                    V2
-                                </div>
-                                {/* UI scale controls */}
-                                <div className="flex items-center gap-2 rounded-full bg-white shadow-md px-2 py-1">
-                                    <div className="flex items-center gap-1 text-[13px] font-semibold text-slate-600">
-                                        <button
-                                            className="inline-flex h-6 w-6 items-center justify-center rounded-md bg-white text-neutral-600 shadow-md hover:bg-neutral-50"
-                                            onClick={() => setUiScale((s) => Math.max(0.5, +(s - 0.05).toFixed(2)))}
-                                            disabled={closing}
-                                        >
-                                            −
-                                        </button>
-                                        <span className="w-10 text-center">{Math.round(uiScale * 100)}%</span>
-                                        <button
-                                            className="inline-flex h-6 w-6 items-center justify-center rounded-md bg-white text-neutral-600 shadow-md hover:bg-neutral-50"
-                                            onClick={() => setUiScale((s) => Math.min(1.25, +(s + 0.05).toFixed(2)))}
-                                            disabled={closing}
-                                        >
-                                            +
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                            <button
-                                onClick={() => {
-                                    bumpSessionCounter("save")
-                                    doSave()
-                                }}
-                                disabled={closing || savingDraft || !dirty}
-                                aria-busy={applyingPreview}
-                                className={`rounded-xl px-4 py-4 w-full text-xl font-semibold transition disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-green-500 active:scale-[.99] ${dirty
-                                    ? "bg-green-600 text-white hover:bg-green-700 shadow-lg"
-                                    : "bg-neutral-100 text-neutral-600 pointer-events-none"
-                                    }`}
-                                title="Apply current draft to the live preview"
-                            >
-                                {applyingPreview || savingDraft ? (
-                                    <div className="flex items-center justify-center gap-2">
-                                        <Loader2 className="h-5 w-5 animate-spin" />
-                                        Updating preview…
-                                    </div>
-                                ) : dirty ? (
-                                    "Apply changes"
-                                ) : (
-                                    "Preview is up to date"
-                                )}
-                            </button>
-                        </div>
-                        )}
 
                         {isCompactLayout && mobileControlsOpen && (
                             <div
@@ -6402,50 +6081,12 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                     <Eye className="h-4 w-4" />
                                                     <span>Preview</span>
                                                 </button>
-                                                <button
-                                                    type="button"
-                                                    onClick={openScreenshotMode}
-                                                    className={`inline-flex items-center justify-center gap-2 rounded-full border px-4 py-2.5 text-sm font-semibold ${
-                                                        mode === "screenshot"
-                                                            ? "border-[#f55f2a] bg-[#f55f2a] text-white"
-                                                            : "border-neutral-300 bg-white text-neutral-800"
-                                                    }`}
-                                                >
-                                                    <Camera className="h-4 w-4" />
-                                                    <span>Reference</span>
-                                                </button>
-                                                {isDevCodeMode && (
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => openSidePanelMode("code")}
-                                                        className={`col-span-2 inline-flex items-center justify-center gap-2 rounded-full border px-4 py-2.5 text-sm font-semibold ${
-                                                            mode === "code"
-                                                                ? "border-[#f55f2a] bg-[#f55f2a] text-white"
-                                                                : "border-neutral-300 bg-white text-neutral-800"
-                                                        }`}
-                                                    >
-                                                        <Code2 className="h-4 w-4" />
-                                                        <span>Code</span>
-                                                    </button>
-                                                )}
                                             </div>
                                         </div>
 
                                         <div>
                                             <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-neutral-500">Panel</div>
                                             <div className="grid grid-cols-2 gap-2">
-                                                <button
-                                                    type="button"
-                                                    onClick={() => openSidePanelMode("revision-chat")}
-                                                    className={`inline-flex items-center justify-center gap-2 rounded-full border px-4 py-2.5 text-sm font-semibold ${
-                                                        sidePanelMode === "revision-chat"
-                                                            ? "border-[#f55f2a] bg-[#f55f2a] text-white"
-                                                            : "border-neutral-300 bg-white text-neutral-800"
-                                                    }`}
-                                                >
-                                                    <MessageSquare className="h-4 w-4" />
-                                                    <span>AI edits</span>
-                                                </button>
                                                 <button
                                                     type="button"
                                                     onClick={() => openSidePanelMode("style")}
@@ -6458,18 +6099,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                     <Palette className="h-4 w-4" />
                                                     <span>Styles</span>
                                                 </button>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => openSidePanelMode("meta")}
-                                                    className={`inline-flex items-center justify-center gap-2 rounded-full border px-4 py-2.5 text-sm font-semibold ${
-                                                        sidePanelMode === "meta"
-                                                            ? "border-[#f55f2a] bg-[#f55f2a] text-white"
-                                                            : "border-neutral-300 bg-white text-neutral-800"
-                                                    }`}
-                                                >
-                                                    <FileText className="h-4 w-4" />
-                                                    <span>SEO</span>
-                                                </button>
+
                                                 <button
                                                     type="button"
                                                     onClick={() => openSidePanelMode("ai-library")}
@@ -6753,6 +6383,38 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                 )}
 
                 <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+
+                </div>{/* end scale wrapper */}
+
+                {/* Apply changes footer - auto row of grid, outside scaled container */}
+                {!isCompactLayout && (
+                <div className="hidden lg:block shrink-0 px-5 py-3" id="kloner-apply-changes">
+                    <button
+                        onClick={() => {
+                            bumpSessionCounter("save")
+                            doSave({ persistToSource: true })
+                        }}
+                        disabled={closing || savingDraft || applyingPreview || exporting || !dirty}
+                        aria-busy={applyingPreview}
+                        className={`rounded-xl px-4 py-4 w-full text-xl font-semibold transition disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-green-500 active:scale-[.99] ${dirty
+                            ? "bg-green-600 text-white hover:bg-green-700 shadow-lg"
+                            : "bg-neutral-100 text-neutral-600 pointer-events-none"
+                            }`}
+                        title="Apply current draft to the live preview"
+                    >
+                        {applyingPreview || savingDraft ? (
+                            <div className="flex items-center justify-center gap-2">
+                                <Loader2 className="h-5 w-5 animate-spin" />
+                                Updating preview…
+                            </div>
+                        ) : dirty ? (
+                            "Apply changes"
+                        ) : (
+                            "Preview is up to date"
+                        )}
+                    </button>
+                </div>
+                )}
             </div>
         </div>
     );
@@ -6766,6 +6428,240 @@ function Spinner({ size = 18 }: { size?: number }) {
             style={{ width: size, height: size, animation: "spin .8s linear infinite" }}
             aria-hidden
         />
+    );
+}
+
+type AppSourcePreviewEditorProps = {
+    appId: string;
+    files: { [path: string]: { content: string; lastModified: number } };
+    initialPath?: string | null;
+    onApplyHtml: (path: string, html: string, skipMachineApply?: boolean) => Promise<void>;
+    onSelectPath?: (path: string) => void;
+    onClose?: () => void;
+    appName?: string;
+    onRenameSuccess?: (newName: string) => void;
+    baseHref?: string;
+    viewMode?: "ai" | "code" | "images" | "custom";
+    onChangeViewMode?: (mode: "ai" | "code" | "images" | "custom") => void;
+    isProduction?: boolean;
+    onSidebarVisibilityChange?: (open: boolean) => void;
+    sharedUiScale?: number;
+    onSharedUiScaleChange?: (scale: number) => void;
+    editableHtmlPaths?: string[];
+    currentHtmlPath?: string;
+    onSelectHtmlPath?: (path: string) => void;
+    preferredSidePanelMode?: "style" | "ai-library";
+    sourceFiles?: { [path: string]: { content: string; lastModified: number } };
+    registerBeforeExitFlush?: (fn: (() => Promise<void>) | null) => void;
+};
+
+function isHtmlPath(path: string): boolean {
+    return /\.html?$/i.test(String(path || ""));
+}
+
+function makeDraftId(appId: string, path: string): string {
+    const slug = String(path || "")
+        .replace(/[^a-zA-Z0-9._-]+/g, "-")
+        .replace(/-+/g, "-")
+        .replace(/^-|-$/g, "")
+        .slice(0, 80);
+    return `app-${appId}-${slug || "html"}`;
+}
+
+type CoreProps = ComponentProps<typeof AppPreviewEditorCore>;
+
+export default function AppPreviewEditor({
+    appId,
+    files,
+    initialPath,
+    onApplyHtml,
+    onSelectPath,
+    onClose,
+    appName,
+    onRenameSuccess,
+    baseHref,
+    viewMode = "custom",
+    onChangeViewMode,
+    isProduction = false,
+    onSidebarVisibilityChange,
+    sharedUiScale,
+    onSharedUiScaleChange,
+    editableHtmlPaths,
+    currentHtmlPath,
+    onSelectHtmlPath,
+    preferredSidePanelMode,
+    sourceFiles,
+    registerBeforeExitFlush,
+}: AppSourcePreviewEditorProps) {
+    const htmlPaths = useMemo(
+        () => Object.keys(files || {}).filter(isHtmlPath).sort((a, b) => a.localeCompare(b)),
+        [files],
+    );
+
+    const [selectedPath, setSelectedPath] = useState<string>("");
+    const [applyError, setApplyError] = useState<string | null>(null);
+    const [isRenaming, setIsRenaming] = useState(false);
+    const [tempName, setTempName] = useState("");
+
+    useEffect(() => {
+        const controlledPath = String(currentHtmlPath || "").trim();
+        if (!controlledPath) return;
+        if (!htmlPaths.includes(controlledPath)) return;
+        setSelectedPath((prev) => (prev === controlledPath ? prev : controlledPath));
+    }, [currentHtmlPath, htmlPaths]);
+
+    const activeHtmlPath = useMemo(() => {
+        const controlledPath = String(currentHtmlPath || "").trim();
+        if (controlledPath && htmlPaths.includes(controlledPath)) return controlledPath;
+
+        const selected = String(selectedPath || "").trim();
+        if (selected && htmlPaths.includes(selected)) return selected;
+
+        return htmlPaths[0] || "";
+    }, [currentHtmlPath, htmlPaths, selectedPath]);
+
+    const startRename = () => {
+        setTempName(appName || "");
+        setIsRenaming(true);
+    };
+    const cancelRename = () => {
+        setIsRenaming(false);
+        setTempName("");
+    };
+    const handleRename = async () => {
+        if (!tempName.trim()) return;
+        try {
+            const csrf = await ensureSessionAndCsrf().catch(() => null);
+            const res = await fetch(`/api/app-builder/${appId}/rename`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    ...(typeof csrf === "string" && csrf ? { "x-csrf": csrf } : {}),
+                },
+                body: JSON.stringify({ name: tempName.trim() }),
+            });
+            if (!res.ok) throw new Error("Failed to rename");
+            onRenameSuccess?.(tempName.trim());
+            setIsRenaming(false);
+        } catch (err) {
+            console.error("Rename failed", err);
+        }
+    };
+
+    useEffect(() => {
+        if (!htmlPaths.length) {
+            setSelectedPath("");
+            return;
+        }
+
+        const preferred = initialPath && htmlPaths.includes(initialPath) ? initialPath : "";
+        setSelectedPath((prev) => {
+            if (prev && htmlPaths.includes(prev)) return prev;
+            return preferred || htmlPaths[0];
+        });
+    }, [htmlPaths, initialPath]);
+
+    const selectedHtml = activeHtmlPath ? String(files?.[activeHtmlPath]?.content || "") : "";
+
+    const handlePathChange = useCallback(
+        (path: string) => {
+            setSelectedPath(path);
+            setApplyError(null);
+            onSelectPath?.(path);
+        },
+        [onSelectPath],
+    );
+
+    const handleExport = useCallback<CoreProps["onExport"]>(
+        async (html: string, nameHint?: string, skipBuildFinalExport?: boolean) => {
+            const exportPath = activeHtmlPath || htmlPaths[0] || "";
+            if (!exportPath) {
+                throw new Error("No active HTML file selected.");
+            }
+            setApplyError(null);
+            try {
+                await onApplyHtml(exportPath, html, skipBuildFinalExport);
+            } catch (err: any) {
+                const msg = err instanceof Error ? err.message : String(err || "Failed to apply changes");
+                setApplyError(msg || "Failed to apply changes");
+                throw err;
+            }
+        },
+        [activeHtmlPath, htmlPaths, onApplyHtml],
+    );
+
+    const handleViewModeClick = useCallback(
+        (nextMode: "ai" | "code" | "images" | "custom") => {
+            if (nextMode === "ai" && !onChangeViewMode) {
+                onClose?.();
+                return;
+            }
+            onChangeViewMode?.(nextMode);
+        },
+        [onChangeViewMode, onClose],
+    );
+
+    if (!htmlPaths.length) {
+        return (
+            <div className="h-full overflow-auto p-4">
+                <div className="rounded-xl border border-dashed border-neutral-300 bg-white p-4 text-sm text-neutral-700">
+                    No HTML files found in this app yet. The Custom editor works on any `.html` file from your source files.
+                </div>
+            </div>
+        );
+    }
+
+    if (!activeHtmlPath || !files[activeHtmlPath]) {
+        return (
+            <div className="h-full overflow-auto p-4">
+                <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                    The selected HTML file is unavailable. Pick another HTML file.
+                </div>
+            </div>
+        );
+    }
+
+    return (
+        <div className="h-full flex flex-col app-preview-editor-no-ai">
+            <div className="flex-1 min-h-0">
+                <AppPreviewEditorCore
+                    key={activeHtmlPath}
+                    initialHtml={selectedHtml}
+                    draftId={makeDraftId(appId, activeHtmlPath)}
+                    onClose={() => onClose?.()}
+                    onExport={handleExport}
+                    baseHref={baseHref}
+                    viewMode={viewMode}
+                    onChangeViewMode={onChangeViewMode}
+                    isProduction={isProduction}
+                    onSidebarVisibilityChange={onSidebarVisibilityChange}
+                    sharedUiScale={sharedUiScale}
+                    onSharedUiScaleChange={onSharedUiScaleChange}
+                    editableHtmlPaths={editableHtmlPaths || htmlPaths}
+                    currentHtmlPath={activeHtmlPath}
+                    onSelectHtmlPath={onSelectHtmlPath || handlePathChange}
+                    preferredSidePanelMode={preferredSidePanelMode}
+                    sourceFiles={sourceFiles || files}
+                    registerBeforeExitFlush={registerBeforeExitFlush}
+                    appName={appName}
+                    isRenaming={isRenaming}
+                    tempName={tempName}
+                    onTempNameChange={setTempName}
+                    startRename={startRename}
+                    cancelRename={cancelRename}
+                    handleRename={handleRename}
+                />
+            </div>
+
+            <style jsx global>{`
+                .app-preview-editor-no-ai button[title="AI edits"],
+                .app-preview-editor-no-ai button[aria-label="AI edits"],
+                .app-preview-editor-no-ai button[title="AI image library"],
+                .app-preview-editor-no-ai button[aria-label="AI image library"] {
+                    display: none !important;
+                }
+            `}</style>
+        </div>
     );
 }
 

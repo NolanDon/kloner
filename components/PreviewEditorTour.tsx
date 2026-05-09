@@ -12,24 +12,24 @@ const steps = [
         content: "This is your live editable preview. Feel free to drag it around.",
         action: "none"
     },
-    {
-        target: "#kloner-page-switcher",
-        title: "Page switcher",
-        content: "Jump between pages like Home, Pricing, and About. Generate a new page using the plus button, simply describe your page and let AI do the work.",
-        action: "none"
-    },
-    {
-        target: "#kloner-history, #kloner-history-button",
-        title: "History",
-        content: "Made a mistake? Revert back by clicking previous versions in this history section.",
-        action: "none"
-    },
-    {
-        target: "#kloner-style-sidebar",
-        title: "AI Editor",
-        content: "Use the powerful AI editor to intelligently edit content, generate new sections, and make smart content modifications with natural language prompts.",
-        action: "showAiPanel"
-    },
+    // {
+    //     target: "#kloner-page-switcher",
+    //     title: "Page switcher",
+    //     content: "Jump between pages like Home, Pricing, and About. Generate a new page using the plus button, simply describe your page and let AI do the work.",
+    //     action: "none"
+    // },
+        {
+            target: "#kloner-page-switcher",
+            title: "Page switcher",
+            content: "Jump between pages like Home, Pricing, and About using the dropdown in the toolbar.",
+            action: "none"
+        },
+        {
+            target: "[data-tour-chat-tab]",
+            title: "Chat with AI",
+            content: "Use Chat to ask AI for visual tweaks, like adjusting spacing, typography, colors, section layout, and component styling without hunting through files.",
+            action: "none"
+        },
     {
         target: "#kloner-style-sidebar",
         title: "Style Panel",
@@ -78,10 +78,6 @@ export function PreviewEditorTour() {
             case "showStylePanel":
                 // Trigger style panel to show
                 window.postMessage({ type: "kloner:tour-show-style-panel" }, "*");
-                break;
-            case "showAiPanel":
-                // Trigger AI panel to show  
-                window.postMessage({ type: "kloner:tour-show-ai-panel" }, "*");
                 break;
             default:
                 break;

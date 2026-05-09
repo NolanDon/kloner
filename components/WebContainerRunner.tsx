@@ -5969,7 +5969,7 @@ export default function NavBar() {
                 {renderLiveStatusLine({
                   uiStage: connectingToExisting ? 'reconnecting' : 'starting_app',
                   uiTitle: connectingToExisting ? 'Connecting to existing machine' : 'Starting your app',
-                  uiMessage: connectingToExisting ? 'Reconnecting' : 'Creating environment',
+                  uiMessage: connectingToExisting ? 'Reconnecting' : 'Booting',
                   updatedAt: Date.now(),
                 })}
               </>

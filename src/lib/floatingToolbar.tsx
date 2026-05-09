@@ -464,9 +464,6 @@ function BlockToolbar({
                                 <MobileActionBtn title="Redo" onClick={() => callApi("historyRedo")}>
                                     <Redo2 className="h-4 w-4" />
                                 </MobileActionBtn>
-                                <MobileActionBtn title="Edit link" onClick={() => callApi("linkEdit")}>
-                                    <Link2 className="h-4 w-4" />
-                                </MobileActionBtn>
                                 <MobileActionBtn title="Add image" onClick={() => callApi("imgInsert")}>
                                     <ImageIcon className="h-4 w-4" />
                                 </MobileActionBtn>
@@ -903,15 +900,6 @@ function BlockToolbar({
                                     <TypeIcon className="h-3.5 w-3.5" />
                                     <span>Text</span>
                                 </button>
-                                <button
-                                    type="button"
-                                    onClick={() => callApi("linkEdit")}
-                                    className="flex-1 inline-flex items-center justify-center gap-1 rounded-md border border-neutral-200 bg-white px-1.5 py-1 text-[10px] hover:bg-neutral-50"
-                                    onMouseDown={(e) => e.stopPropagation()}
-                                >
-                                    <Link2 className="h-3.5 w-3.5" />
-                                    <span>Link</span>
-                                </button>
                             </div>
                         </div>
 
@@ -1037,18 +1025,6 @@ function BlockToolbar({
                             </div>
                         </div>
 
-                        {/* Quick link editor access even if no link exists */}
-                        {!hasNavLink ? (
-                            <div>
-                                <div className="mb-0.5 text-[8px] font-semibold uppercase tracking-[0.16em] text-neutral-500">
-                                    Link
-                                </div>
-                                <MiniPill title="Edit link" onClick={() => callApi("linkEdit")} className="w-full justify-center">
-                                    <Link2 className="h-3.5 w-3.5" />
-                                    Edit
-                                </MiniPill>
-                            </div>
-                        ) : null}
                     </div>
                 </div>
             </div>

@@ -43,9 +43,10 @@ export function AiImageLibraryPanel({ iframeRef, user, renderId }: Props) {
 
         try {
             const paths = [
-                // NEW STRUCTURE: images are stored under kloner_ai_images/{renderId}
+                // Canonical path currently written by PreviewEditor saveImageToLibrary.
+                `kloner_images/${uid}`,
+                // Legacy/optional paths retained for backward compatibility.
                 `kloner_ai_images/${rid}`,
-                // keep home images per user
                 `kloner_ai_home/${uid}`,
             ];
 
@@ -69,8 +70,11 @@ export function AiImageLibraryPanel({ iframeRef, user, renderId }: Props) {
 
                     allItems.push(...fromPath);
                 } catch (innerErr: any) {
-                    const msg = innerErr?.message || "";
+                    const msg = String(innerErr?.message || "");
+                    const code = String(innerErr?.code || "").toLowerCase();
+                    const status = Number(innerErr?.customData?.serverResponse?.status || innerErr?.status || 0);
                     if (
+                        code.includes("unauthorized") ||
                         msg.includes("storage/unauthorized") ||
                         msg.includes("permission") ||
                         msg.includes("denied")
@@ -80,6 +84,9 @@ export function AiImageLibraryPanel({ iframeRef, user, renderId }: Props) {
                             innerErr,
                         );
                         setError("You don't have permission to load some images.");
+                    } else if (code.includes("storage/unknown") || status === 400) {
+                        // Bucket/listing config can return 400 for list operations; skip noisy warnings.
+                        console.info(`[AiImageLibraryPanel] listing unsupported or empty for path ${basePath}`);
                     } else {
                         console.warn(
                             `[AiImageLibraryPanel] skipped path ${basePath}`,
@@ -189,17 +196,12 @@ export function AiImageLibraryPanel({ iframeRef, user, renderId }: Props) {
         <div className="flex h-full flex-col gap-3 px-4 py-3">
             <div className="flex items-center justify-between">
                 <div>
-                    <div className="mt-1 text-sm text-neutral-500">
-                        Select a slot from your preview, then click an image to insert it.
-                        Or use the background action to set it as the section background.
-                        <br />
-                        <br />
-                        Make sure to click save after inserting, or use the undo buttons to
-                        remove it.
+                    <div className="mt-1 text-base text-neutral-500 leading-relaxed">
+                        Click an image to insert it into a selected slot, or set as background. Use save or undo to confirm.
                     </div>
 
                     {error && (
-                        <div className="mt-1 max-w-[220px] text-xs text-red-500">
+                        <div className="mt-3 max-w-[220px] text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1">
                             {error}
                         </div>
                     )}
@@ -224,9 +226,17 @@ export function AiImageLibraryPanel({ iframeRef, user, renderId }: Props) {
             )}
 
             {!loading && !error && items.length === 0 && (
-                <div className="flex flex-1 flex-col items-center justify-center gap-2 text-center text-md text-neutral-500">
-                    <ImageIcon className="h-6 w-6 text-neutral-300" />
-                    <p>No saved AI images found for this project yet.</p>
+                <div className="flex flex-1 flex-col items-center justify-center gap-4 text-center">
+                    <p className="text-sm text-neutral-600">Select an element on your canvas, then use these controls:</p>
+                    <div className="flex items-center justify-center gap-2">
+                        <button disabled className="flex items-center gap-1.5 px-3 py-1.5 rounded border border-neutral-200 bg-white text-sm text-neutral-700 cursor-not-allowed opacity-60">
+                            <ImageIcon className="h-4 w-4" />
+                            Add
+                        </button>
+                        <button disabled className="px-3 py-1.5 rounded border border-neutral-200 bg-white text-sm text-neutral-700 cursor-not-allowed opacity-60">
+                            BG
+                        </button>
+                    </div>
                 </div>
             )}
 
