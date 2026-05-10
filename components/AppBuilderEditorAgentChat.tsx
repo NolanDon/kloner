@@ -163,6 +163,7 @@ type AppBuilderEditorAgentChatProps = {
     onPreviewIssueAction?: () => void;
     onPreviewIssueFixRequest?: () => void;
     onUserMessageSent?: () => void;
+    onIntroSequenceComplete?: () => void;
     welcomeContext?: {
         source?: "prompt" | "url" | "quickstart" | "template" | "sample" | "unknown";
         prompt?: string | null;
@@ -639,15 +640,17 @@ function getApplyUncertainMessage(payload: unknown): string {
     return "We had a hiccup while reconnecting to the preview. Your changes may have been saved, but the live preview may not be up to date yet. Perform a rebuild to pick up the latest changes.";
 }
 
-const STARTER_PROMPTS = [
-    "Improve the hero section with stronger hierarchy and clearer CTA.",
-    "Tighten spacing and typography to make the layout feel more polished.",
-    // "Add a pricing section with plans, feature bullets, and a compare view.",
-    // "Refine mobile responsiveness for navigation, spacing, and tap targets.",
-];
-
 const PRODUCTION_AGENT_CHAT_BLOCKED = process.env.NEXT_PUBLIC_AGENT_CHAT_BLOCKED === "1";
 const PRODUCTION_AGENT_CHAT_BLOCK_MESSAGE = "We’re working on some updates to reduce your token usage. Please check back soon.";
+const FORCE_INTRO_REPLAY_IN_DEV = process.env.NODE_ENV !== "production";
+const BUILDER_CHAT_INTRO_KEY = "kloner_builder_chat_intro_seen_v1";
+const BUILDER_TOUR_CHAT_HIGHLIGHT_EVENT = "kloner:builder-tour-chat-highlighted";
+const RETURNING_WELCOME_MESSAGE = "Hi, im your personal AI assistant, let me know what changes you want and i'll try my best to make that change for you";
+const FIRST_VISIT_INTRO_LINES = [
+    "Hi, im your personal ai assistant",
+    "I'm here to help with anything you need",
+    "I can change styles, help you connect a database, or make small copywriting tweaks",
+];
 
 function stripMarkdownBold(text: string): string {
     // Chat renders content as plain text (not markdown), so remove bold markers.
@@ -810,7 +813,7 @@ function buildRestorePointDiffPreview(detail: RestorePointDetail | null | undefi
     return { before, after };
 }
 
-export default function AppBuilderEditorAgentChat({ appId, files, currentFile, onFileEdit, onFilesReplace, onRestoreApplied, creditError, previewReady, previewIssue, previewIssueActionLabel, onPreviewIssueAction, onPreviewIssueFixRequest, onUserMessageSent, welcomeContext }: AppBuilderEditorAgentChatProps) {
+export default function AppBuilderEditorAgentChat({ appId, files, currentFile, onFileEdit, onFilesReplace, onRestoreApplied, creditError, previewReady, previewIssue, previewIssueActionLabel, onPreviewIssueAction, onPreviewIssueFixRequest, onUserMessageSent, onIntroSequenceComplete, welcomeContext }: AppBuilderEditorAgentChatProps) {
     const { user, userTier } = useAuth();
     const { showConfirm, showAlert } = useModal();
     const PRO_MONTHLY_PRICE_USD = Number.isFinite(Number(process.env.NEXT_PUBLIC_PRO_MONTHLY_PRICE_USD))
@@ -944,47 +947,11 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
         document.addEventListener("keydown", onKey);
         return () => document.removeEventListener("keydown", onKey);
     }, [topupModalOpen]);
-    const makeWelcomeMessage = useCallback((ctx?: AppBuilderEditorAgentChatProps["welcomeContext"]) => {
-        const cleanOneLine = (v: unknown, max = 180) => {
-            const raw = typeof v === "string" ? v : "";
-            const collapsed = raw.replace(/\s+/g, " ").trim();
-            if (!collapsed) return "";
-            return collapsed.length > max ? `${collapsed.slice(0, max - 1)}…` : collapsed;
-        };
-
-        const prompt = cleanOneLine(ctx?.prompt);
-        const urlRaw = cleanOneLine(ctx?.url, 220);
-        const templateName = cleanOneLine(ctx?.templateName, 80);
-
-        let contextLine = "";
-        if (prompt) {
-            contextLine = `I saw your request: “${prompt}”`;
-        } else if (urlRaw) {
-            const nice = urlRaw.replace(/^https?:\/\//i, "");
-            contextLine = `I saw you're cloning: ${nice}`;
-        } else if (templateName) {
-            contextLine = `You're starting from the ${templateName} template.`;
-        }
-
-        return [
-            contextLine,
-            "",
-            "I can help with layout, styling, copy, and features.",
-            "Choose a direction below or type your own request.",
-        ]
-            .filter(Boolean)
-            .join("\n");
-    }, []);
-
-    const [messages, setMessages] = useState<Message[]>(() => [
-        {
-            id: "welcome",
-            role: "assistant",
-            content: makeWelcomeMessage(welcomeContext),
-            timestamp: new Date(),
-            type: "text",
-        },
-    ]);
+    const [messages, setMessages] = useState<Message[]>([]);
+    const [showIntroTyping, setShowIntroTyping] = useState(false);
+    const [chatHistoryResolved, setChatHistoryResolved] = useState(false);
+    const [chatHasHistory, setChatHasHistory] = useState(false);
+    const [introRequestedByTour, setIntroRequestedByTour] = useState(false);
     const [input, setInput] = useState("");
     const [freeCompileFixContext, setFreeCompileFixContext] = useState<CompileErrorQuickFixContext | null>(null);
     const [isLoading, setIsLoading] = useState(false);
@@ -2284,6 +2251,8 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
     }, [messages]);
 
     const loadedFromRemoteRef = useRef(false);
+    const introCompletionNotifiedRef = useRef<string | null>(null);
+    const onIntroCompleteRef = useRef<AppBuilderEditorAgentChatProps["onIntroSequenceComplete"]>(onIntroSequenceComplete);
     const initialLoadCompletedRef = useRef(false);
     const lastSavedPayloadRef = useRef<string | null>(null);
     const debugChatIo = useCallback(() => {
@@ -2528,6 +2497,34 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
     const scopeBootstrappedForAppIdRef = useRef<string | null>(null);
     const [scopeWarmupComplete, setScopeWarmupComplete] = useState(false);
 
+    useEffect(() => {
+        loadedFromRemoteRef.current = false;
+        initialLoadCompletedRef.current = false;
+        introCompletionNotifiedRef.current = null;
+        setChatHistoryResolved(false);
+        setChatHasHistory(false);
+        setIntroRequestedByTour(false);
+        setShowIntroTyping(false);
+        setMessages([]);
+    }, [appId]);
+
+    useEffect(() => {
+        onIntroCompleteRef.current = onIntroSequenceComplete;
+    }, [onIntroSequenceComplete]);
+
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+
+        const onTourMessage = (event: MessageEvent) => {
+            if (event.data?.type === BUILDER_TOUR_CHAT_HIGHLIGHT_EVENT) {
+                setIntroRequestedByTour(true);
+            }
+        };
+
+        window.addEventListener("message", onTourMessage);
+        return () => window.removeEventListener("message", onTourMessage);
+    }, []);
+
     // Proactively issue the scope cookie once per appId to avoid noisy 403s.
     useEffect(() => {
         if (!user?.uid || !appId) {
@@ -2620,7 +2617,10 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
 
                 if (stored) {
                     const loaded = stored.map(toMessage).filter(Boolean) as Message[];
-                    if (loaded.length) setMessages(loaded);
+                    if (loaded.length && !FORCE_INTRO_REPLAY_IN_DEV) {
+                        setMessages(loaded);
+                        setChatHasHistory(true);
+                    }
                     loadedFromRemoteRef.current = true;
                     return;
                 }
@@ -2659,7 +2659,10 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                     })) as Message[];
 
                                 if (loaded.length) {
-                                    setMessages(loaded);
+                                    if (!FORCE_INTRO_REPLAY_IN_DEV) {
+                                        setMessages(loaded);
+                                        setChatHasHistory(true);
+                                    }
                                     const headers = await withCsrfHeaders();
                                     await fetchWithScopeRetry(
                                         `/api/app-builder/${appId}/ai-chat`,
@@ -2719,6 +2722,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
             } finally {
                 // Allow saving after the first load attempt finishes.
                 initialLoadCompletedRef.current = true;
+                setChatHistoryResolved(true);
                 if (debugChatIo()) console.log("[AppBuilderEditorAgentChat] chat load complete", { appId });
             }
         })();
@@ -2727,6 +2731,122 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
             cancelled = true;
         };
     }, [appId, debugChatIo, fetchWithScopeRetry, scopeWarmupComplete, user?.uid, withCsrfHeaders]);
+
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+        if (!chatHistoryResolved) return;
+        if (!introRequestedByTour) return;
+        if (introCompletionNotifiedRef.current === appId) return;
+
+        const notifyIntroCompleteOnce = () => {
+            if (introCompletionNotifiedRef.current === appId) return;
+            introCompletionNotifiedRef.current = appId;
+            onIntroCompleteRef.current?.();
+        };
+
+        if (FORCE_INTRO_REPLAY_IN_DEV) {
+            let cancelled = false;
+            const timers: number[] = [];
+
+            setMessages([]);
+            setShowIntroTyping(true);
+
+            FIRST_VISIT_INTRO_LINES.forEach((line, idx) => {
+                const delay = 1200 + idx * 2400;
+                const timer = window.setTimeout(() => {
+                    if (cancelled) return;
+
+                    setMessages((prev) => [
+                        ...prev,
+                        {
+                            id: `welcome_intro_${idx + 1}`,
+                            role: "assistant",
+                            content: line,
+                            timestamp: new Date(),
+                            type: "text",
+                        },
+                    ]);
+
+                    const isLast = idx === FIRST_VISIT_INTRO_LINES.length - 1;
+                    setShowIntroTyping(!isLast);
+
+                    if (isLast) {
+                        notifyIntroCompleteOnce();
+                    }
+                }, delay);
+                timers.push(timer);
+            });
+
+            return () => {
+                cancelled = true;
+                timers.forEach((timer) => window.clearTimeout(timer));
+            };
+        }
+
+        if (chatHasHistory) {
+            setShowIntroTyping(false);
+            notifyIntroCompleteOnce();
+            return;
+        }
+
+        const hasSeenIntro = window.localStorage.getItem(BUILDER_CHAT_INTRO_KEY) === "1";
+        if (hasSeenIntro) {
+            setShowIntroTyping(false);
+            setMessages([
+                {
+                    id: "welcome",
+                    role: "assistant",
+                    content: RETURNING_WELCOME_MESSAGE,
+                    timestamp: new Date(),
+                    type: "text",
+                },
+            ]);
+            notifyIntroCompleteOnce();
+            return;
+        }
+
+        let cancelled = false;
+        const timers: number[] = [];
+
+        setMessages([]);
+        setShowIntroTyping(true);
+
+        FIRST_VISIT_INTRO_LINES.forEach((line, idx) => {
+            const delay = 1200 + idx * 2400;
+            const timer = window.setTimeout(() => {
+                if (cancelled) return;
+
+                setMessages((prev) => [
+                    ...prev,
+                    {
+                        id: `welcome_intro_${idx + 1}`,
+                        role: "assistant",
+                        content: line,
+                        timestamp: new Date(),
+                        type: "text",
+                    },
+                ]);
+
+                const isLast = idx === FIRST_VISIT_INTRO_LINES.length - 1;
+                setShowIntroTyping(!isLast);
+
+                if (isLast) {
+                    try {
+                        window.localStorage.setItem(BUILDER_CHAT_INTRO_KEY, "1");
+                    } catch {
+                        // ignore storage failures
+                    }
+                    notifyIntroCompleteOnce();
+                }
+            }, delay);
+            timers.push(timer);
+        });
+
+        return () => {
+            cancelled = true;
+            timers.forEach((timer) => window.clearTimeout(timer));
+        };
+    }, [appId, chatHasHistory, chatHistoryResolved, introRequestedByTour]);
 
     const fetchRestorePoints = useCallback(async () => {
         if (!scopeWarmupComplete) return;
@@ -6382,7 +6502,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
             <div className="flex-1 min-h-0 overflow-y-auto px-4 py-5 space-y-4 bg-[radial-gradient(circle_at_top,_rgba(245,95,42,0.10),_transparent_36%),linear-gradient(180deg,rgba(255,250,247,0.96),rgba(255,255,255,1))]">
                 {messages.length === 0 && !isLoading ? (
                     <div className="rounded-2xl border border-dashed border-[#F55F2A]/20 bg-white/80 px-4 py-10 text-center text-sm text-neutral-500 shadow-[0_10px_24px_rgba(15,23,42,0.05)]">
-                        No messages yet. Start with one of the suggestions below.
+                        No messages yet. Start by typing what you want to change.
                     </div>
                 ) : null}
 
@@ -6629,25 +6749,6 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                     >
                                         Dismiss
                                     </button>
-                                </div>
-                            ) : null}
-
-                            {message.id === "welcome" && message.role === "assistant" ? (
-                                <div className="mt-3 flex w-full flex-col gap-2">
-                                    {STARTER_PROMPTS.map((starter) => (
-                                        <button
-                                            key={starter}
-                                            type="button"
-                                            onClick={() => {
-                                                setInput(starter);
-                                                inputRef.current?.focus();
-                                            }}
-                                            className="flex min-h-[3.25rem] w-full items-center rounded-2xl border border-[#F55F2A]/15 bg-white px-4 py-3 text-left text-sm font-medium text-neutral-900 whitespace-normal break-words shadow-[0_8px_18px_rgba(15,23,42,0.05)] transition hover:-translate-y-0.5 hover:border-[#F55F2A]/30 hover:shadow-[0_16px_30px_rgba(245,95,42,0.10)]"
-                                            title="Use this as your prompt"
-                                        >
-                                            {starter}
-                                        </button>
-                                    ))}
                                 </div>
                             ) : null}
 
@@ -7068,10 +7169,15 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                         </div>
                     </div>
                 )}
+                {showIntroTyping ? (
+                    <div className="flex justify-start">
+                        <div className="rounded-[1.35rem] border border-[#F55F2A]/14 bg-[linear-gradient(180deg,rgba(255,251,248,0.98),rgba(255,255,255,0.95))] px-4 py-2 text-sm text-neutral-700 shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
+                            typing...
+                        </div>
+                    </div>
+                ) : null}
                 <div ref={messagesEndRef} />
             </div>
-
-            {/* Database Connections */}
                             {activeRestorePointPreviewData ? (
                                 <div
                                     className="fixed inset-0 z-[17000] bg-black/30 px-3 py-3 sm:px-4 sm:py-6"

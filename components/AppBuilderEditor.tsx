@@ -6,6 +6,7 @@ import Editor from "@monaco-editor/react";
 import Image from "next/image";
 import { Folder, File, Upload, X, RefreshCw, MessageSquare, Code, Check, RotateCcw, Database, Rocket, Monitor, SlidersHorizontal, Images, Send, Pencil, Loader2, Share2, ExternalLink, Copy, ChevronDown, ChevronRight, AlertTriangle, Search, Paintbrush } from "lucide-react";
 import AppBuilderEditorAgentChat from "./AppBuilderEditorAgentChat";
+import { AppBuilderEditorTour } from "./AppBuilderEditorTour";
 import AppPreviewEditor from "./AppPreviewEditor";
 import KlonerLoader from "./KlonerLoader";
 import WebContainerRunner from "./WebContainerRunner";
@@ -1680,6 +1681,7 @@ export default function AppBuilderEditor({
     const [isWebPreviewReady, setIsWebPreviewReady] = useState(false);
     const [dismissedGenerationError, setDismissedGenerationError] = useState(false);
     const [agentCreditError, setAgentCreditError] = useState<string | null>(null);
+    const [builderTourStartToken, setBuilderTourStartToken] = useState(0);
     const lastConsumedAiCreditRequestIdRef = useRef<string | null>(null);
     const [forceFreshStart, setForceFreshStart] = useState(false);
     const forceFreshStartRef = useRef(false);
@@ -1694,6 +1696,13 @@ export default function AppBuilderEditor({
     const [isMobile, setIsMobile] = useState(false);
     const [mobileTab, setMobileTab] = useState<"app" | "prompt">("app");
     const [mobileControlsOpen, setMobileControlsOpen] = useState(false);
+    const [desktopOnlyToast, setDesktopOnlyToast] = useState(false);
+    const desktopOnlyToastTimerRef = useRef<number | null>(null);
+    const showDesktopOnlyToast = () => {
+        setDesktopOnlyToast(true);
+        if (desktopOnlyToastTimerRef.current) window.clearTimeout(desktopOnlyToastTimerRef.current);
+        desktopOnlyToastTimerRef.current = window.setTimeout(() => setDesktopOnlyToast(false), 2800);
+    };
     const [isRenaming, setIsRenaming] = useState(false);
     const [tempName, setTempName] = useState("");
     const [isSaving, setIsSaving] = useState(false);
@@ -1723,6 +1732,11 @@ export default function AppBuilderEditor({
         if (typeof window === "undefined") return;
         localStorage.setItem("kloner:uiScale", String(customPreviewScale));
     }, [customPreviewScale]);
+
+    useEffect(() => {
+        if (!appId) return;
+        setBuilderTourStartToken((token) => token + 1);
+    }, [appId]);
 
     const pageOptions = useMemo(() => {
         const seen = new Set<string>();
@@ -6083,7 +6097,7 @@ export default function AppBuilderEditor({
                             ) : null}
 
                             {(
-                                <div className="inline-flex items-center gap-1 rounded-full border border-neutral-300 bg-white px-2 py-1 shadow-sm">
+                                <div data-tour-ui-scale className="inline-flex items-center gap-1 rounded-full border border-neutral-300 bg-white px-2 py-1 shadow-sm">
                                     <button
                                         type="button"
                                         onClick={() => setCustomPreviewScale((s) => Math.max(0.5, +(s - 0.05).toFixed(2)))}
@@ -6124,6 +6138,7 @@ export default function AppBuilderEditor({
                         {!(isRenaming && isMobile) ? (
                             <button
                                 onClick={() => setMobileControlsOpen(true)}
+                                data-tour-mobile-controls
                                 className="md:hidden inline-flex h-8 w-8 items-center justify-center rounded-full border border-neutral-300 bg-white text-neutral-700 shadow-md transition hover:bg-neutral-50"
                                 title="Controls"
                                 aria-label="Controls"
@@ -6153,6 +6168,7 @@ export default function AppBuilderEditor({
                             <button
                                 onClick={handleReconnect}
                                 disabled={isRefreshing || isPreviewBuilding}
+                                data-tour-refresh
                                 className="inline-flex h-7 items-center justify-center gap-1.5 rounded-full border border-neutral-300 bg-white px-2.5 text-[12px] font-semibold text-neutral-700 shadow-sm transition hover:bg-neutral-50 disabled:opacity-60"
                                 title="Reconnect to the existing machine without restarting"
                             >
@@ -6163,6 +6179,7 @@ export default function AppBuilderEditor({
                             <button
                                 onClick={() => handleRefresh(true)}
                                 disabled={isPreviewBuilding || isRefreshing}
+                                data-tour-rebuild
                                 className="inline-flex h-7 items-center justify-center gap-1.5 rounded-full border border-neutral-300 bg-white px-2.5 text-[12px] font-semibold text-neutral-700 shadow-sm transition hover:bg-neutral-50 disabled:opacity-60"
                                 title="Delete current machine and rebuild app (this will not delete your website)"
                             >
@@ -6209,20 +6226,25 @@ export default function AppBuilderEditor({
 
                         {!(isRenaming && isMobile) ? (
                             <>
-                                <button
-                                    onClick={() => void handleSharePreview()}
-                                    disabled={isSharingPreview}
-                                    className="inline-flex h-8 items-center gap-1.5 rounded-full border border-neutral-300 bg-white px-3 py-1 text-[13px] font-semibold text-neutral-700 shadow-md transition hover:bg-neutral-50 disabled:opacity-60"
-                                    title={shareChoiceError || "Create a shareable preview link"}
-                                    aria-label="Share preview"
-                                >
-                                    <Share2 className="h-3.5 w-3.5" aria-hidden="true" />
-                                    <span>{isSharingPreview ? "Sharing…" : "Share"}</span>
-                                </button>
+                                {isDev ? (
+                                    <button
+                                        onClick={() => void handleSharePreview()}
+                                        disabled={isSharingPreview}
+                                        data-tour-share
+                                        className="inline-flex h-8 items-center gap-1.5 rounded-full border border-neutral-300 bg-white px-3 py-1 text-[13px] font-semibold text-neutral-700 shadow-md transition hover:bg-neutral-50 disabled:opacity-60"
+                                        title={shareChoiceError || "Create a shareable preview link"}
+                                        aria-label="Share preview"
+                                    >
+                                        <Share2 className="h-3.5 w-3.5" aria-hidden="true" />
+                                        <span>{isSharingPreview ? "Sharing…" : "Share"}</span>
+                                        <DevOnlyIconBadge title="Development-only share control" />
+                                    </button>
+                                ) : null}
 
                                 <button
                                     onClick={handleDeploy}
                                     disabled={isDeploying}
+                                    data-tour-deploy
                                     className="inline-flex h-8 items-center gap-1.5 rounded-full border border-[#f55f2a] bg-[#f55f2a] px-3 py-1 text-[13px] font-semibold text-white shadow-md transition hover:opacity-90 disabled:opacity-60"
                                     title="Deploy"
                                     aria-label="Deploy"
@@ -6282,12 +6304,12 @@ export default function AppBuilderEditor({
                                     : ""
                             }`}
                         >
-                            <div className="flex gap-2">
+                            <div className="flex gap-2 overflow-x-auto scrollbar-hide min-w-0">
                                 <button
                                     onClick={() => { void requestViewModeChange("ai"); }}
                                     disabled={isModeSwitching}
                                     data-tour-chat-tab
-                                    className={`px-4 py-2 text-xs font-semibold rounded-full flex items-center justify-center gap-2 transition-colors flex-1 ${
+                                    className={`px-3 sm:px-4 py-2 text-xs font-semibold rounded-full flex items-center justify-center gap-1.5 transition-colors flex-shrink-0 ${
                                         viewMode === "ai"
                                             ? "bg-neutral-100 text-neutral-900 border border-neutral-300 shadow-sm"
                                             : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50"
@@ -6305,7 +6327,7 @@ export default function AppBuilderEditor({
                                     <button
                                         onClick={() => { void requestViewModeChange("code"); }}
                                         disabled={isModeSwitching}
-                                        className={`px-4 py-2 text-xs font-semibold rounded-full flex items-center justify-center gap-2 transition-colors flex-1 ${
+                                        className={`px-3 sm:px-4 py-2 text-xs font-semibold rounded-full flex items-center justify-center gap-1.5 transition-colors flex-shrink-0 ${
                                             viewMode === "code"
                                                 ? "bg-neutral-100 text-neutral-900 border border-neutral-300 shadow-sm"
                                                 : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50"
@@ -6323,9 +6345,10 @@ export default function AppBuilderEditor({
                                 ) : null}
                                 {/* {!IS_PRODUCTION ? ( */}
                                     <button
-                                        onClick={() => { void requestViewModeChange("images"); }}
+                                        onClick={() => { if (isMobile) { showDesktopOnlyToast(); return; } void requestViewModeChange("images"); }}
                                         disabled={isModeSwitching}
-                                        className={`px-4 py-2 text-xs font-semibold rounded-full flex items-center justify-center gap-2 transition-colors flex-1 ${
+                                        data-tour-images-tab
+                                        className={`px-3 sm:px-4 py-2 text-xs font-semibold rounded-full flex items-center justify-center gap-1.5 transition-colors flex-shrink-0 ${
                                             viewMode === "images"
                                                 ? "bg-neutral-100 text-neutral-900 border border-neutral-300 shadow-sm"
                                                 : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50"
@@ -6342,9 +6365,10 @@ export default function AppBuilderEditor({
                                 {/* ) : null} */}
                                 {/* {!IS_PRODUCTION ? ( */}
                                     <button
-                                        onClick={() => { void requestViewModeChange("custom"); }}
+                                        onClick={() => { if (isMobile) { showDesktopOnlyToast(); return; } void requestViewModeChange("custom"); }}
                                         disabled={isModeSwitching}
-                                        className={`px-4 py-2 text-xs font-semibold rounded-full flex items-center justify-center gap-2 transition-colors flex-1 ${
+                                        data-tour-custom-tab
+                                        className={`px-3 sm:px-4 py-2 text-xs font-semibold rounded-full flex items-center justify-center gap-1.5 transition-colors flex-shrink-0 ${
                                             viewMode === "custom"
                                                 ? "bg-neutral-100 text-neutral-900 border border-neutral-300 shadow-sm"
                                                 : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50"
@@ -6365,7 +6389,7 @@ export default function AppBuilderEditor({
 
                         {/* AI Chat or Code View */}
                         <div className="flex-1 min-h-0 overflow-hidden">
-                            <div className={viewMode === "ai" ? "h-full" : "hidden"}>
+                            <div data-tour-chat-panel className={viewMode === "ai" ? "h-full" : "hidden"}>
                                 <AppBuilderEditorAgentChat
                                     appId={appId}
                                     files={app.files}
@@ -6689,7 +6713,7 @@ export default function AppBuilderEditor({
                                                 type="button"
                                                 onClick={handleDeployBannerFixRequest}
                                                 className="inline-flex w-full items-center justify-center gap-1.5 rounded-full bg-[#f55f2a] px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-[#e14f1c] sm:w-auto"
-                                            >,
+                                            >
                                                 Fix with AI
                                             </button>
                                         ) : null}
@@ -6766,7 +6790,7 @@ export default function AppBuilderEditor({
                         </div>
 
                         {/* App Content */}
-                        <div className="flex-1 bg-white">
+                        <div data-tour-builder-preview className="flex-1 bg-white">
                             {previewMode === "webcontainer" ? (
                                 filesHydrated ? (
                                     <div className="h-full w-full p-3">
@@ -6960,12 +6984,19 @@ export default function AppBuilderEditor({
                 </div>
 
                 {/* Mobile bottom tabs: keep preview in focus */}
+                {desktopOnlyToast ? (
+                    <div className="md:hidden fixed bottom-20 left-1/2 -translate-x-1/2 z-[99999] flex items-center gap-2 rounded-full border border-neutral-200 bg-neutral-900 px-4 py-2 text-sm font-medium text-white shadow-xl">
+                        <Monitor className="h-4 w-4 shrink-0 opacity-70" />
+                        <span>Available on desktop</span>
+                    </div>
+                ) : null}
                 <div className="md:hidden border-t bg-white px-2 py-2">
                     <div role="tablist" aria-label="Builder tabs" className="grid grid-cols-2 gap-2">
                         <button
                             type="button"
                             role="tab"
                             aria-selected={mobileTab === "app"}
+                            data-tour-mobile-preview
                             onClick={() => {
                                 setMobileTab("app");
                                 setMobileControlsOpen(false);
@@ -6984,6 +7015,7 @@ export default function AppBuilderEditor({
                             type="button"
                             role="tab"
                             aria-selected={mobileTab === "prompt"}
+                            data-tour-mobile-prompt
                             onClick={() => {
                                 setMobileTab("prompt");
                                 setMobileControlsOpen(false);
@@ -7159,18 +7191,21 @@ export default function AppBuilderEditor({
                                     </button>
                                 ) : null}
 
-                                <button
-                                    onClick={() => {
-                                        setMobileControlsOpen(false);
-                                        void handleSharePreview();
-                                    }}
-                                    disabled={isSharingPreview}
-                                    className="w-full inline-flex items-center justify-center gap-2 rounded-full px-4 py-2 text-sm font-semibold border border-neutral-300 bg-white text-neutral-800 disabled:opacity-60"
-                                    title={shareChoiceError || "Create a shareable preview link"}
-                                >
-                                    <Share2 className="h-4 w-4" />
-                                    <span>{isSharingPreview ? "Sharing…" : "Share preview"}</span>
-                                </button>
+                                {isDev ? (
+                                    <button
+                                        onClick={() => {
+                                            setMobileControlsOpen(false);
+                                            void handleSharePreview();
+                                        }}
+                                        disabled={isSharingPreview}
+                                        className="w-full inline-flex items-center justify-center gap-2 rounded-full px-4 py-2 text-sm font-semibold border border-neutral-300 bg-white text-neutral-800 disabled:opacity-60"
+                                        title={shareChoiceError || "Create a shareable preview link"}
+                                    >
+                                        <Share2 className="h-4 w-4" />
+                                        <span>{isSharingPreview ? "Sharing…" : "Share preview"}</span>
+                                        <DevOnlyIconBadge title="Development-only share control" />
+                                    </button>
+                                ) : null}
 
                                 {showShareSuccess ? (
                                     <div className="rounded-xl border border-blue-200 bg-blue-50/70 px-3 py-2 text-xs text-blue-900">
@@ -7211,6 +7246,8 @@ export default function AppBuilderEditor({
                         </div>
                     </div>
                 ) : null}
+
+                <AppBuilderEditorTour startToken={builderTourStartToken} />
 
                 {showAppBuilderTrialPrompt ? (
                     <motion.div

@@ -998,33 +998,6 @@ function BlockToolbar({
                             />
                         </div>
 
-                        {/* History */}
-                        <div>
-                            <div className="mb-0.5 text-[8px] font-semibold uppercase tracking-[0.16em] text-neutral-500">
-                                History
-                            </div>
-                            <div className="flex items-center gap-1">
-                                <button
-                                    type="button"
-                                    onClick={() => callApi("historyUndo")}
-                                    className="flex-1 inline-flex items-center justify-center gap-1 rounded-md border border-neutral-200 bg-accent px-1.5 py-1 text-[10px] hover:bg-accent-50 text-white"
-                                    onMouseDown={(e) => e.stopPropagation()}
-                                >
-                                    <Undo2 className="h-3.5 w-3.5" />
-                                    <span>Undo</span>
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => callApi("historyRedo")}
-                                    className="flex-1 inline-flex items-center justify-center gap-1 rounded-md border border-neutral-200 bg-accent px-1.5 py-1 text-[10px] hover:bg-accent-50 text-white"
-                                    onMouseDown={(e) => e.stopPropagation()}
-                                >
-                                    <Redo2 className="h-3.5 w-3.5" />
-                                    <span>Redo</span>
-                                </button>
-                            </div>
-                        </div>
-
                     </div>
                 </div>
             </div>

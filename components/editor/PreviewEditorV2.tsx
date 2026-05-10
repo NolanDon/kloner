@@ -1904,9 +1904,9 @@ export default function PreviewEditorV2({
     );
 
     const [uiScale, setUiScale] = useState<number>(() => {
-        if (typeof window === "undefined") return (IS_MOBILE ? 1.05 : 0.70)
+        if (typeof window === "undefined") return (IS_MOBILE ? 1.05 : 0.75)
         const v = Number(localStorage.getItem("kloner:uiScale"));
-        return Number.isFinite(v) && v >= 0.5 && v <= 1.25 ? v : (IS_MOBILE ? 1.05 : 0.70)
+        return Number.isFinite(v) && v >= 0.5 && v <= 1.25 ? v : (IS_MOBILE ? 1.05 : 0.75)
     });
 
     useEffect(() => {

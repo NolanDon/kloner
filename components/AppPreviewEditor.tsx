@@ -2024,9 +2024,9 @@ function AppPreviewEditorCore({
 
     const [uiScale, setUiScale] = useState<number>(() => {
         if (typeof sharedUiScale === "number") return sharedUiScale;
-        if (typeof window === "undefined") return (IS_MOBILE ? 1.05 : 0.70)
+        if (typeof window === "undefined") return (IS_MOBILE ? 1.05 : 0.75)
         const v = Number(localStorage.getItem("kloner:uiScale"));
-        return Number.isFinite(v) && v >= 0.5 && v <= 1.25 ? v : (IS_MOBILE ? 1.05 : 0.70)
+        return Number.isFinite(v) && v >= 0.5 && v <= 1.25 ? v : (IS_MOBILE ? 1.05 : 0.75)
     });
 
     useEffect(() => {
@@ -4668,70 +4668,13 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                             className={`pointer-events-auto bg-white flex flex-col overflow-hidden ${
                                 isCompactLayout
                                     ? "relative z-20 h-full w-full bg-gray-50"
-                                    : "absolute bottom-0 left-0 top-0 z-40 w-[min(92vw,520px)] rounded-r-2xl border-r border-neutral-200 shadow-xl"
+                                    : "absolute bottom-0 left-0 top-0 z-40 rounded-r-2xl border-r border-neutral-200 shadow-xl"
                             }`}
                             initial={isCompactLayout ? { opacity: 0, y: 8 } : { x: -16, opacity: 0 }}
                             animate={{ x: 0, opacity: 1 }}
                             exit={isCompactLayout ? { opacity: 0, y: 8 } : { x: -16, opacity: 0 }}
                             transition={{ duration: 0.18, ease: "easeOut" }}
                         >
-                            {isCompactLayout && (
-                                <div className="border-b border-neutral-200 bg-white px-4 py-3">
-                                    <div className="flex items-center gap-2 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-                                        <button
-                                            type="button"
-                                            onClick={() => openSidePanelMode("style")}
-                                            className={`shrink-0 inline-flex items-center gap-2 rounded-full border px-3 py-2 text-xs font-semibold transition-colors ${
-                                                sidePanelMode === "style"
-                                                    ? "border-[#f55f2a] bg-[#f55f2a] text-white"
-                                                    : "border-neutral-300 bg-white text-neutral-700"
-                                            }`}
-                                        >
-                                            <Palette className="h-3.5 w-3.5" />
-                                            <span>Styles</span>
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => openSidePanelMode("meta")}
-                                            className={`shrink-0 inline-flex items-center gap-2 rounded-full border px-3 py-2 text-xs font-semibold transition-colors ${
-                                                sidePanelMode === "meta"
-                                                    ? "border-[#f55f2a] bg-[#f55f2a] text-white"
-                                                    : "border-neutral-300 bg-white text-neutral-700"
-                                            }`}
-                                        >
-                                            <FileText className="h-3.5 w-3.5" />
-                                            <span>SEO</span>
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => openSidePanelMode("ai-library")}
-                                            className={`shrink-0 inline-flex items-center gap-2 rounded-full border px-3 py-2 text-xs font-semibold transition-colors ${
-                                                sidePanelMode === "ai-library"
-                                                    ? "border-[#f55f2a] bg-[#f55f2a] text-white"
-                                                    : "border-neutral-300 bg-white text-neutral-700"
-                                            }`}
-                                        >
-                                            <Images className="h-3.5 w-3.5" />
-                                            <span>Images</span>
-                                        </button>
-                                        {isDevCodeMode && (
-                                            <button
-                                                type="button"
-                                                onClick={() => openSidePanelMode("code")}
-                                                className={`shrink-0 inline-flex items-center gap-2 rounded-full border px-3 py-2 text-xs font-semibold transition-colors ${
-                                                    sidePanelMode === "code"
-                                                        ? "border-[#f55f2a] bg-[#f55f2a] text-white"
-                                                        : "border-neutral-300 bg-white text-neutral-700"
-                                                }`}
-                                            >
-                                                <Code2 className="h-3.5 w-3.5" />
-                                                <span>Code</span>
-                                            </button>
-                                        )}
-                                    </div>
-                                </div>
-                            )}
-
                             {/* Panel body */}
                             <div
                                 className={`min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-6 ${isCompactLayout ? "pb-36" : ""}`}
