@@ -649,7 +649,7 @@ const RETURNING_WELCOME_MESSAGE = "Hi, im your personal AI assistant, let me kno
 const FIRST_VISIT_INTRO_LINES = [
     "Hi, im your personal ai assistant",
     "I'm here to help with anything you need",
-    "I can change styles, help you connect a database, or make small copywriting tweaks",
+    "I can change styles, help you connect a database, or make small copywriting tweaks. Just send me your request below and i'll try my best to make that change for you",
 ];
 
 function stripMarkdownBold(text: string): string {
@@ -2752,7 +2752,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
             setShowIntroTyping(true);
 
             FIRST_VISIT_INTRO_LINES.forEach((line, idx) => {
-                const delay = 1200 + idx * 2400;
+                const delay = idx * 3000;
                 const timer = window.setTimeout(() => {
                     if (cancelled) return;
 
@@ -2812,7 +2812,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
         setShowIntroTyping(true);
 
         FIRST_VISIT_INTRO_LINES.forEach((line, idx) => {
-            const delay = 1200 + idx * 2400;
+            const delay = idx * 3000;
             const timer = window.setTimeout(() => {
                 if (cancelled) return;
 
@@ -7169,7 +7169,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                         </div>
                     </div>
                 )}
-                {showIntroTyping ? (
+                {showIntroTyping && messages.length > 0 ? (
                     <div className="flex justify-start">
                         <div className="rounded-[1.35rem] border border-[#F55F2A]/14 bg-[linear-gradient(180deg,rgba(255,251,248,0.98),rgba(255,255,255,0.95))] px-4 py-2 text-sm text-neutral-700 shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
                             typing...

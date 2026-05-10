@@ -85,6 +85,10 @@ function isDevBuild() {
     return process.env.NODE_ENV !== "production";
 }
 
+function isChatIntroTarget(target: string | undefined) {
+    return target === "[data-tour-chat-panel]" || target === "[data-tour-mobile-prompt]";
+}
+
 export function AppBuilderEditorTour({ startToken }: { startToken: number }) {
     const [running, setRunning] = useState(false);
     const [index, setIndex] = useState(0);
@@ -95,6 +99,12 @@ export function AppBuilderEditorTour({ startToken }: { startToken: number }) {
     const highlightRef = useRef<HTMLDivElement | null>(null);
     const isDev = useMemo(() => isDevBuild(), []);
     const steps = isMobile ? mobileSteps : desktopSteps;
+
+    const broadcastChatHighlightForStep = (stepIndex: number) => {
+        if (typeof window === "undefined") return;
+        if (!isChatIntroTarget(steps[stepIndex]?.target)) return;
+        window.postMessage({ type: "kloner:builder-tour-chat-highlighted" }, "*");
+    };
 
     const clearHighlight = () => {
         if (highlightRef.current) {
@@ -190,9 +200,7 @@ export function AppBuilderEditorTour({ startToken }: { startToken: number }) {
     useEffect(() => {
         if (!running) return;
 
-        if (typeof window !== "undefined" && steps[index]?.target === "[data-tour-chat-panel]") {
-            window.postMessage({ type: "kloner:builder-tour-chat-highlighted" }, "*");
-        }
+        broadcastChatHighlightForStep(index);
 
         updatePosition();
         const retries = [100, 260, 520].map((ms) => window.setTimeout(updatePosition, ms));
@@ -207,7 +215,7 @@ export function AppBuilderEditorTour({ startToken }: { startToken: number }) {
             window.removeEventListener("resize", onResize);
             window.removeEventListener("scroll", onScroll, true);
         };
-    }, [index, running]);
+    }, [index, running, steps]);
 
     useEffect(() => {
         if (running) return;
@@ -273,7 +281,9 @@ export function AppBuilderEditorTour({ startToken }: { startToken: number }) {
                                         finish();
                                         return;
                                     }
-                                    setIndex((i) => Math.min(steps.length - 1, i + 1));
+                                    const nextIndex = Math.min(steps.length - 1, index + 1);
+                                    broadcastChatHighlightForStep(nextIndex);
+                                    setIndex(nextIndex);
                                 }}
                                 className="px-4 py-2 rounded-xl text-sm font-semibold bg-accent text-white shadow-sm pointer-events-auto inline-flex items-center gap-2"
                             >
