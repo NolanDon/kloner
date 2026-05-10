@@ -4608,7 +4608,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                             ) : null}
 
                             {/* Device switcher */}
-                            <div className="shrink-0 inline-flex items-center gap-1 rounded-full border border-neutral-200 bg-white px-2 py-1 shadow-md">
+                            <div id="kloner-device-toggle" className="shrink-0 inline-flex items-center gap-1 rounded-full border border-neutral-200 bg-white px-2 py-1 shadow-md">
                                 <button
                                     disabled={aiEditing}
                                     type="button"

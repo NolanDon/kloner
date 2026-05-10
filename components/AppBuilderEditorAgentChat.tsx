@@ -1937,7 +1937,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                         setEditPlanApplyError(null);
                         setEditPlanApplyStatusMessage(
                             completedProposal.needsMoreContext || !Array.isArray(completedProposal.files) || completedProposal.files.length === 0
-                                ? "The worker needs more context before I can continue. Try providing more details or files to help the worker complete your change request."
+                                ? "Hi, I need more context before I can continue. Try providing more details to help me complete your change request."
                                 : completedProposal.autoApplyAllowed === false
                                     ? "Proposal ready for review."
                                     : "I’m uploading the changes now.",
