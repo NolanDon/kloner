@@ -9,14 +9,11 @@ import {
     ArrowRight,
     Link2,
     Image as ImageIcon,
-    Undo2,
-    Redo2,
     RotateCcw,
     Layers,
     Move,
     Check,
     ChevronDown,
-    Type as TypeIcon,
 } from "lucide-react";
 import type { SelectionMeta } from "@/components/editor/PreviewEditor";
 
@@ -458,12 +455,6 @@ function BlockToolbar({
                             </div>
 
                             <div className="ml-auto flex items-center gap-1">
-                                <MobileActionBtn title="Undo" onClick={() => callApi("historyUndo")}>
-                                    <Undo2 className="h-4 w-4" />
-                                </MobileActionBtn>
-                                <MobileActionBtn title="Redo" onClick={() => callApi("historyRedo")}>
-                                    <Redo2 className="h-4 w-4" />
-                                </MobileActionBtn>
                                 <MobileActionBtn title="Add image" onClick={() => callApi("imgInsert")}>
                                     <ImageIcon className="h-4 w-4" />
                                 </MobileActionBtn>
@@ -858,51 +849,6 @@ function BlockToolbar({
                             </div>
                         </div>
 
-                        {/* Layering (block) */}
-                        <div>
-                            <div className="mb-0.5 text-[8px] font-semibold uppercase tracking-[0.16em] text-neutral-500">
-                                Layer
-                            </div>
-                            <div className="flex items-center gap-1">
-                                <button
-                                    type="button"
-                                    onClick={() => callApi("bringBlockForward")}
-                                    className="flex-1 inline-flex items-center justify-center gap-1 rounded-md border border-neutral-200 bg-white px-1.5 py-1 text-[10px] hover:bg-neutral-50"
-                                    onMouseDown={(e) => e.stopPropagation()}
-                                >
-                                    <ArrowUp className="h-3 w-3" />
-                                    <span>Front</span>
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => callApi("sendBlockBackward")}
-                                    className="flex-1 inline-flex items-center justify-center gap-1 rounded-md border border-neutral-200 bg-white px-1.5 py-1 text-[10px] hover:bg-neutral-50"
-                                    onMouseDown={(e) => e.stopPropagation()}
-                                >
-                                    <ArrowDown className="h-3 w-3" />
-                                    <span>Back</span>
-                                </button>
-                            </div>
-                        </div>
-
-                        {/* Text & links */}
-                        <div>
-                            <div className="mb-0.5 text-[8px] font-semibold uppercase tracking-[0.16em] text-neutral-500">
-                                Text & links
-                            </div>
-                            <div className="flex items-center gap-1">
-                                <button
-                                    type="button"
-                                    onClick={() => callApi("textboxAdd")}
-                                    className="flex-1 inline-flex items-center justify-center gap-1 rounded-md border border-neutral-200 bg-white px-1.5 py-1 text-[10px] hover:bg-neutral-50"
-                                    onMouseDown={(e) => e.stopPropagation()}
-                                >
-                                    <TypeIcon className="h-3.5 w-3.5" />
-                                    <span>Text</span>
-                                </button>
-                            </div>
-                        </div>
-
                         {/* Images */}
                         <div>
                             <div className="mb-0.5 text-[8px] font-semibold uppercase tracking-[0.16em] text-neutral-500">
@@ -996,33 +942,6 @@ function BlockToolbar({
                                     setCurrentFontFamily(family);
                                 }}
                             />
-                        </div>
-
-                        {/* History */}
-                        <div>
-                            <div className="mb-0.5 text-[8px] font-semibold uppercase tracking-[0.16em] text-neutral-500">
-                                History
-                            </div>
-                            <div className="flex items-center gap-1">
-                                <button
-                                    type="button"
-                                    onClick={() => callApi("historyUndo")}
-                                    className="flex-1 inline-flex items-center justify-center gap-1 rounded-md border border-neutral-200 bg-accent px-1.5 py-1 text-[10px] hover:bg-accent-50 text-white"
-                                    onMouseDown={(e) => e.stopPropagation()}
-                                >
-                                    <Undo2 className="h-3.5 w-3.5" />
-                                    <span>Undo</span>
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => callApi("historyRedo")}
-                                    className="flex-1 inline-flex items-center justify-center gap-1 rounded-md border border-neutral-200 bg-accent px-1.5 py-1 text-[10px] hover:bg-accent-50 text-white"
-                                    onMouseDown={(e) => e.stopPropagation()}
-                                >
-                                    <Redo2 className="h-3.5 w-3.5" />
-                                    <span>Redo</span>
-                                </button>
-                            </div>
                         </div>
 
                     </div>

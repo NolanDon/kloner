@@ -730,7 +730,7 @@ import { db, storage } from "@/lib/firebase"; // or wherever your db is
 import type { User as FirebaseUser } from "firebase/auth";
 import { RenderDoc } from "@/app/dashboard/view/DashboardView";
 import { useAuth } from "@/src/hooks/useAuth";
-import { Camera, Check, ChevronDown, Code2, Eye, EyeOff, FileText, Images, Loader2, Maximize2, MessageSquare, Minimize2, Monitor, Palette, Pencil, Redo2, Rocket, RotateCcw, RotateCw, SlidersHorizontal, Smartphone, Tablet, Trash2Icon, Undo2, X } from "lucide-react";
+import { Camera, Check, ChevronDown, Code2, Eye, EyeOff, FileText, Images, Loader2, Maximize2, MessageSquare, Minimize2, Monitor, Palette, Pencil, Pipette, Redo2, Rocket, RotateCcw, RotateCw, SlidersHorizontal, Smartphone, Tablet, Trash2Icon, Undo2, X } from "lucide-react";
 import { compressImageForUpload } from "@/src/lib/clientImageCompression";
 import { EditorSessionCounters, EditorSessionMetrics, EditorSessionUser, ExportAnalyticsUser, recordEditorSessionAnalytics, recordExportAnalytics } from "./analytics";
 import { PreviewEditorTour } from "./PreviewEditorTour";
@@ -4607,55 +4607,6 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                 </div>
                             ) : null}
 
-                            {/* Panel tools */}
-                            <div className="shrink-0 inline-flex items-center gap-1 rounded-full border border-neutral-200 bg-white px-2 py-1 shadow-md">
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        const isActive = !sidebarHidden && sidePanelMode === "style" && mode === "preview";
-                                        if (isActive) {
-                                            setSidebarHidden(true);
-                                        } else {
-                                            setSidePanelMode("style");
-                                            setSidebarHidden(false);
-                                            if (mode === "screenshot" || mode === "code") handleModeClick("preview");
-                                        }
-                                    }}
-                                    className={`inline-flex h-6 w-6 items-center justify-center rounded-full transition-colors ${
-                                        !sidebarHidden && sidePanelMode === "style" && mode === "preview"
-                                            ? "bg-[#f55f2a] text-white"
-                                            : "bg-white text-neutral-600 hover:bg-neutral-100"
-                                    }`}
-                                    title="Styles"
-                                    aria-label="Styles"
-                                >
-                                    <Palette className="h-3 w-3" aria-hidden="true" />
-                                </button>
-
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        const isActive = !sidebarHidden && sidePanelMode === "ai-library";
-                                        if (isActive) {
-                                            setSidebarHidden(true);
-                                        } else {
-                                            setSidePanelMode("ai-library");
-                                            setSidebarHidden(false);
-                                            if (mode === "screenshot") handleModeClick("preview");
-                                        }
-                                    }}
-                                    className={`inline-flex h-6 w-6 items-center justify-center rounded-full transition-colors ${
-                                        !sidebarHidden && sidePanelMode === "ai-library"
-                                            ? "bg-[#f55f2a] text-white"
-                                            : "bg-white text-neutral-600 hover:bg-neutral-100"
-                                    }`}
-                                    title="Images"
-                                    aria-label="Images"
-                                >
-                                    <Images className="h-3 w-3" aria-hidden="true" />
-                                </button>
-                            </div>
-
                             {/* Device switcher */}
                             <div className="shrink-0 inline-flex items-center gap-1 rounded-full border border-neutral-200 bg-white px-2 py-1 shadow-md">
                                 <button
@@ -4809,10 +4760,13 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                         <div className="space-y-4">
                                                             {mergedThemeColors.length > 0 && (
                                                                 <div>
-                                                                    <div className="mb-2 text-[16px] font-medium text-neutral-600">
-                                                                        Text
+                                                                    <div className="mb-2 border-b border-neutral-200 pb-1">
+                                                                        <div className="inline-flex items-center gap-2 text-[18px] font-medium text-neutral-800">
+                                                                            <Palette className="h-4 w-4 text-neutral-500" />
+                                                                            Text
+                                                                        </div>
                                                                     </div>
-                                                                    <div className="grid grid-cols-6 gap-2">
+                                                                    <div className="mb-3 grid grid-cols-6 gap-2">
                                                                         {mergedThemeColors.map((c) => (
                                                                             <button
                                                                                 key={`theme-text-${c}`}
@@ -4828,14 +4782,42 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                                                 }
                                                                             />
                                                                         ))}
+
+                                                                        <label
+                                                                            className="relative inline-flex h-8 w-8 cursor-pointer items-center justify-center overflow-hidden rounded border border-black/10 shadow-sm"
+                                                                            style={{
+                                                                                background:
+                                                                                    "conic-gradient(from 180deg at 50% 50%, #ff3b30, #ff9500, #ffcc00, #34c759, #0a84ff, #5e5ce6, #bf5af2, #ff2d55, #ff3b30)",
+                                                                            }}
+                                                                            title="Pick custom text color"
+                                                                        >
+                                                                            <Pipette className="h-3.5 w-3.5 text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.45)]" />
+                                                                            <input
+                                                                                type="color"
+                                                                                value={customTextColor}
+                                                                                disabled={closing}
+                                                                                onChange={(e) => {
+                                                                                    const value = e.target.value;
+                                                                                    setCustomTextColor(value);
+                                                                                    sendStyleCommand({
+                                                                                        kind: "textColor",
+                                                                                        value,
+                                                                                    });
+                                                                                }}
+                                                                                className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                                                                            />
+                                                                        </label>
                                                                     </div>
                                                                 </div>
                                                             )}
 
                                                             {mergedThemeColors.length > 0 && (
                                                                 <div>
-                                                                    <div className="mb-2 text-[16px] font-medium text-neutral-600">
-                                                                        Background
+                                                                    <div className="mb-2 border-b border-neutral-200 pb-1">
+                                                                        <div className="inline-flex items-center gap-2 text-[18px] font-medium text-neutral-800">
+                                                                            <Palette className="h-4 w-4 text-neutral-500" />
+                                                                            Background
+                                                                        </div>
                                                                     </div>
 
                                                                     <div className="mb-3 grid grid-cols-6 gap-2">
@@ -4870,51 +4852,31 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                                         >
                                                                             ⌀
                                                                         </button>
-                                                                    </div>
 
-                                                                    <div className="flex items-center gap-2">
-                                                                        <span className="text-[16px] font-medium text-neutral-600">
-                                                                            Custom
-                                                                        </span>
-
-                                                                        <input
-                                                                            type="color"
-                                                                            value={customBgColor}
-                                                                            disabled={closing}
-                                                                            onChange={(e) => {
-                                                                                const value = e.target.value;
-                                                                                setCustomBgColor(value);
-                                                                                sendStyleCommand({
-                                                                                    kind: "bgColor",
-                                                                                    value,
-                                                                                });
+                                                                        <label
+                                                                            className="relative inline-flex h-8 w-8 cursor-pointer items-center justify-center overflow-hidden rounded border border-black/10 shadow-sm"
+                                                                            style={{
+                                                                                background:
+                                                                                    "conic-gradient(from 180deg at 50% 50%, #ff3b30, #ff9500, #ffcc00, #34c759, #0a84ff, #5e5ce6, #bf5af2, #ff2d55, #ff3b30)",
                                                                             }}
-                                                                            className="h-6 w-6 cursor-pointer rounded border border-black/10 bg-transparent p-0"
-                                                                        />
-
-                                                                        <input
-                                                                            type="text"
-                                                                            value={customBgColor}
-                                                                            disabled={closing}
-                                                                            onChange={(e) => {
-                                                                                const raw = e.target.value.trim();
-                                                                                setCustomBgColor(raw);
-                                                                            }}
-                                                                            onBlur={() => {
-                                                                                const v = customBgColor.trim();
-                                                                                if (!v) return;
-                                                                                const hex = v.startsWith("#") ? v : `#${v}`;
-                                                                                if (hex.length === 4 || hex.length === 7) {
-                                                                                    setCustomBgColor(hex);
+                                                                            title="Pick custom background color"
+                                                                        >
+                                                                            <Pipette className="h-3.5 w-3.5 text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.45)]" />
+                                                                            <input
+                                                                                type="color"
+                                                                                value={customBgColor}
+                                                                                disabled={closing}
+                                                                                onChange={(e) => {
+                                                                                    const value = e.target.value;
+                                                                                    setCustomBgColor(value);
                                                                                     sendStyleCommand({
                                                                                         kind: "bgColor",
-                                                                                        value: hex,
+                                                                                        value,
                                                                                     });
-                                                                                }
-                                                                            }}
-                                                                            className="h-6 flex-1 rounded border border-neutral-300 bg-white px-2 text-[12px] text-neutral-700 shadow-sm focus:outline-none focus:ring-1 focus:ring-neutral-400"
-                                                                            placeholder="#ffffff"
-                                                                        />
+                                                                                }}
+                                                                                className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                                                                            />
+                                                                        </label>
                                                                     </div>
                                                                 </div>
                                                             )}
@@ -4923,8 +4885,11 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
 
                                                     {/* Font */}
                                                     <div>
-                                                        <div className="mb-3 text-[18px] font-medium text-neutral-800">
-                                                            Font
+                                                        <div className="mb-3 border-b border-neutral-200 pb-1">
+                                                            <div className="inline-flex items-center gap-2 text-[18px] font-medium text-neutral-800">
+                                                                <SlidersHorizontal className="h-4 w-4 text-neutral-500" />
+                                                                Font
+                                                            </div>
                                                         </div>
                                                         <select
                                                             className="w-full rounded border border-neutral-300 bg-white px-3 py-2 text-[12px] shadow-sm focus:outline-none focus:ring-1 focus:ring-neutral-400 disabled:opacity-50"
@@ -4958,8 +4923,11 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
 
                                                     {/* Size & headings */}
                                                     <div>
-                                                        <div className="mb-3 text-[18px] font-medium text-neutral-800">
-                                                            Size
+                                                        <div className="mb-3 border-b border-neutral-200 pb-1">
+                                                            <div className="inline-flex items-center gap-2 text-[18px] font-medium text-neutral-800">
+                                                                <SlidersHorizontal className="h-4 w-4 text-neutral-500" />
+                                                                Size
+                                                            </div>
                                                         </div>
                                                         <div className="flex flex-wrap gap-2">
                                                             {FONT_SIZE_PRESETS.map((s) => (
@@ -4983,8 +4951,11 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
 
                                                     {/* Text align */}
                                                     <div>
-                                                        <div className="mb-3 text-[18px] font-medium text-neutral-800">
-                                                            Align
+                                                        <div className="mb-3 border-b border-neutral-200 pb-1">
+                                                            <div className="inline-flex items-center gap-2 text-[18px] font-medium text-neutral-800">
+                                                                <SlidersHorizontal className="h-4 w-4 text-neutral-500" />
+                                                                Align
+                                                            </div>
                                                         </div>
                                                         <div className="flex gap-2">
                                                             {[
@@ -5012,8 +4983,11 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
 
                                                     {/* Weight & transform */}
                                                     <div>
-                                                        <div className="mb-3 text-[18px] font-medium text-neutral-800">
-                                                            Weight
+                                                        <div className="mb-3 border-b border-neutral-200 pb-1">
+                                                            <div className="inline-flex items-center gap-2 text-[18px] font-medium text-neutral-800">
+                                                                <SlidersHorizontal className="h-4 w-4 text-neutral-500" />
+                                                                Weight
+                                                            </div>
                                                         </div>
 
                                                         <div className="flex flex-wrap gap-2">
@@ -5087,8 +5061,11 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
 
                                                     {/* Text transform */}
                                                     <div>
-                                                        <div className="mb-3 text-[18px] font-medium text-neutral-800">
-                                                            Transform
+                                                        <div className="mb-3 border-b border-neutral-200 pb-1">
+                                                            <div className="inline-flex items-center gap-2 text-[18px] font-medium text-neutral-800">
+                                                                <SlidersHorizontal className="h-4 w-4 text-neutral-500" />
+                                                                Transform
+                                                            </div>
                                                         </div>
                                                         <div className="flex gap-2">
                                                             <button
@@ -5120,104 +5097,13 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                         </div>
                                                     </div>
 
-                                                    {/* Text color */}
-                                                    <div>
-                                                        <div className="mb-3 text-[18px] font-medium text-neutral-800">
-                                                            Text Color
-                                                        </div>
-
-                                                        <div className="mb-3 grid grid-cols-6 gap-2">
-                                                            {TEXT_COLOR_SWATCHES.map((c) => (
-                                                                <button
-                                                                    key={c}
-                                                                    type="button"
-                                                                    className="h-8 w-8 rounded border border-black/10 shadow-sm transition hover:scale-105 active:scale-95 disabled:opacity-40"
-                                                                    style={{ background: c }}
-                                                                    disabled={closing}
-                                                                    onClick={() =>
-                                                                        sendStyleCommand({
-                                                                            kind: "textColor",
-                                                                            value: c,
-                                                                        })
-                                                                    }
-                                                                />
-                                                            ))}
-                                                        </div>
-
-                                                        <div className="flex items-center gap-2">
-                                                            <span className="text-[16px] font-medium text-neutral-600">
-                                                                Custom
-                                                            </span>
-
-                                                            <input
-                                                                type="color"
-                                                                value={customTextColor}
-                                                                disabled={closing}
-                                                                onChange={(e) => {
-                                                                    const value = e.target.value;
-                                                                    setCustomTextColor(value);
-                                                                    sendStyleCommand({
-                                                                        kind: "textColor",
-                                                                        value,
-                                                                    });
-                                                                }}
-                                                                className="h-6 w-6 cursor-pointer rounded border border-black/10 bg-transparent p-0"
-                                                            />
-
-                                                            <input
-                                                                type="text"
-                                                                value={customTextColor}
-                                                                disabled={closing}
-                                                                onChange={(e) => {
-                                                                    const raw = e.target.value.trim();
-                                                                    setCustomTextColor(raw);
-                                                                }}
-                                                                onBlur={() => {
-                                                                    const v = customTextColor.trim();
-                                                                    if (!v) return;
-                                                                    const hex = v.startsWith("#") ? v : `#${v}`;
-                                                                    if (hex.length === 4 || hex.length === 7) {
-                                                                        setCustomTextColor(hex);
-                                                                        sendStyleCommand({
-                                                                            kind: "textColor",
-                                                                            value: hex,
-                                                                        });
-                                                                    }
-                                                                }}
-                                                                className="h-6 flex-1 rounded border border-neutral-300 bg-white px-2 text-[12px] text-neutral-700 shadow-sm focus:outline-none focus:ring-1 focus:ring-neutral-400"
-                                                                placeholder="#111827"
-                                                            />
-                                                        </div>
-                                                    </div>
-
-                                                    {/* Background */}
-                                                    <div>
-                                                        <div className="mb-3 text-[18px] font-medium text-neutral-800">
-                                                            Background
-                                                        </div>
-                                                        <div className="grid grid-cols-6 gap-2">
-                                                            {BG_COLOR_SWATCHES.map((c) => (
-                                                                <button
-                                                                    key={c}
-                                                                    type="button"
-                                                                    className="h-8 w-8 rounded border border-black/10 shadow-sm transition hover:scale-105 active:scale-95 disabled:opacity-40"
-                                                                    style={{ background: c }}
-                                                                    disabled={closing}
-                                                                    onClick={() =>
-                                                                        sendStyleCommand({
-                                                                            kind: "bgColor",
-                                                                            value: c,
-                                                                        })
-                                                                    }
-                                                                />
-                                                            ))}
-                                                        </div>
-                                                    </div>
-
                                                     {/* Spacing */}
                                                     <div>
-                                                        <div className="mb-2 text-[13px] font-medium text-neutral-800">
-                                                            Spacing
+                                                        <div className="mb-3 border-b border-neutral-200 pb-1">
+                                                            <div className="inline-flex items-center gap-2 text-[18px] font-medium text-neutral-800">
+                                                                <SlidersHorizontal className="h-4 w-4 text-neutral-500" />
+                                                                Spacing
+                                                            </div>
                                                         </div>
                                                         <div className="flex gap-2">
                                                             <button
@@ -5264,8 +5150,11 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
 
                                                     {/* Layout */}
                                                     <div>
-                                                        <div className="mb-2 text-[13px] font-medium text-neutral-800">
-                                                            Layout
+                                                        <div className="mb-3 border-b border-neutral-200 pb-1">
+                                                            <div className="inline-flex items-center gap-2 text-[18px] font-medium text-neutral-800">
+                                                                <SlidersHorizontal className="h-4 w-4 text-neutral-500" />
+                                                                Layout
+                                                            </div>
                                                         </div>
                                                         <div className="flex gap-2">
                                                             <button
@@ -5387,7 +5276,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
 
                     {/* Right / canvas */}
                     {showCanvasPanel && (
-                    <section className={`relative flex flex-col overflow-hidden ${isCompactLayout ? "min-h-0 flex-1 bg-slate-50 pb-32" : "max-lg:order-1 rounded-lg border bg-slate-50"}`}>
+                    <section className={`relative flex flex-col ${isCompactLayout ? "min-h-0 flex-1 pb-32" : "max-lg:order-1"}`}>
                         {mode === "preview" && draftId && (
                             <div
                                 className="border-t max-h-72 overflow-auto"
@@ -5712,9 +5601,37 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                         ? "flex-1 min-h-0 flex flex-col overflow-hidden"
                                         : isCompactLayout
                                             ? "flex-1 overflow-auto px-3 pb-6 pt-3"
-                                            : "flex-1 overflow-auto p-3 sm:p-6"
+                                            : "flex-1 p-3 sm:p-6"
                                 }
                             >
+                                <div className="mb-3 flex items-center justify-center">
+                                    <div className="inline-flex items-center gap-2 rounded-xl border border-neutral-200 bg-white/95 p-1 shadow-sm">
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                const api = iframeRef.current?.contentWindow?.__klonerApi;
+                                                if (api?.undo) api.undo();
+                                            }}
+                                            className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-accent px-4 py-1.5 text-sm font-semibold text-white hover:brightness-95"
+                                            aria-label="Undo"
+                                        >
+                                            <Undo2 className="h-4 w-4" />
+                                            <span>Undo</span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                const api = iframeRef.current?.contentWindow?.__klonerApi;
+                                                if (api?.redo) api.redo();
+                                            }}
+                                            className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-accent px-4 py-1.5 text-sm font-semibold text-white hover:brightness-95"
+                                            aria-label="Redo"
+                                        >
+                                            <Redo2 className="h-4 w-4" />
+                                            <span>Redo</span>
+                                        </button>
+                                    </div>
+                                </div>
                                 <AnimatePresence mode="wait">
                                     <motion.div
                                         key={activePageId}
