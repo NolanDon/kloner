@@ -2874,11 +2874,6 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                                             Ideal for brochure sites, one-pagers, and straightforward pages when you want a lightweight HTML build.
                                                         </div>
 
-                                                        {sourceUrlCannotGenerate ? (
-                                                            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                                                                URL scan failed earlier, but you can still start a fresh rescan from here.
-                                                            </div>
-                                                        ) : null}
                                                     </div>
                                                 </div>
                                                 <div className="mt-2 rounded-lg border border-neutral-200 bg-neutral-50 px-2.5 py-2">
@@ -12835,7 +12830,7 @@ export default function PreviewPage(): JSX.Element {
                                                 <span className="mt-[1px] inline-flex h-6 w-6 items-center justify-center rounded-full text-[12px] font-semibold text-accent shrink-0">
                                                     ✓
                                                 </span>
-                                                <span>Deploy 40+ apps or websites per month</span>
+                                                <span>Deploy 40+ websites per month</span>
                                             </div>
 
                                             <div className="flex items-start gap-3 text-sm leading-relaxed text-neutral-800">
