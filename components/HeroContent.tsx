@@ -1,14 +1,11 @@
 "use client";
 
-import { AnimatePresence, motion } from "framer-motion";
-import { useEffect, useRef, useState } from "react";
+import { motion } from "framer-motion";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { auth } from "@/lib/firebase";
-import { ArrowRightSquare, Send } from "lucide-react";
-import { PROMPT_PLACEHOLDERS } from "@/src/lib/promptPlaceholders";
-import { useRotatingPlaceholderIndex } from "@/src/hooks/useRotatingPlaceholderIndex";
+import { ArrowRightSquare } from "lucide-react";
 import { getPublicHttpUrlRejectionReason, stripProtocol, validateAndNormalizePublicHttpUrl } from "@/src/lib/publicHttpUrl";
-
 
 export default function HeroContent({
   displayClassName,
@@ -16,43 +13,13 @@ export default function HeroContent({
   displayClassName: string;
 }) {
   const router = useRouter();
-  const [mode, setMode] = useState<"url" | "prompt">("url");
-  const promptModeEnabled = true;
   const [url, setUrl] = useState("");
-  const [prompt, setPrompt] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const inputRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
-  const [isFocused, setIsFocused] = useState(false);
-  const promptPlaceholderIdx = useRotatingPlaceholderIndex({
-    enabled: mode === "prompt",
-    length: PROMPT_PLACEHOLDERS.length,
-    intervalMs: 3200,
-  });
+  const inputRef = useRef<HTMLInputElement | null>(null);
 
   function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     const user = auth.currentUser;
-
-    if (mode === "prompt") {
-      const p = (prompt || "").trim();
-      if (p.length < 10) {
-        setError("Please enter a short prompt.");
-        return;
-      }
-      setError(null);
-
-      if (user) {
-        router.push(`/dashboard/view?wizard=1&source=prompt&prompt=${encodeURIComponent(p)}`);
-        return;
-      }
-
-      try {
-        localStorage.removeItem("kloner.pendingUrl");
-        localStorage.setItem("kloner.pendingPrompt", p);
-      } catch {}
-      router.push(`/login?mode=signup&prompt=${encodeURIComponent(p)}`);
-      return;
-    }
 
     const stripped = stripProtocol(url);
     const normalized = validateAndNormalizePublicHttpUrl(stripped);
@@ -72,20 +39,13 @@ export default function HeroContent({
     try {
       localStorage.removeItem("kloner.pendingPrompt");
       localStorage.setItem("kloner.pendingUrl", normalized);
-    } catch {}
+    } catch {
+      // ignore
+    }
     router.push(`/login?mode=signup&u=${encodeURIComponent(normalized)}`);
   }
 
-  function handleChange(
-    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
-  ) {
-    if (mode === "prompt") {
-      const v = e.target.value;
-      setPrompt(v);
-      setError(v.trim().length > 0 && v.trim().length < 10 ? "Please enter a short prompt." : null);
-      return;
-    }
-
+  function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
     const cleaned = stripProtocol(e.target.value);
     setUrl(cleaned);
     setError(
@@ -95,17 +55,10 @@ export default function HeroContent({
     );
   }
 
-  function handlePaste(
-    e: React.ClipboardEvent<HTMLInputElement | HTMLTextAreaElement>
-  ) {
+  function handlePaste(e: React.ClipboardEvent<HTMLInputElement>) {
     const pasted = e.clipboardData.getData("text");
     if (!pasted) return;
     e.preventDefault();
-    if (mode === "prompt") {
-      setPrompt(pasted);
-      setError(pasted.trim().length > 0 && pasted.trim().length < 10 ? "Please enter a short prompt." : null);
-      return;
-    }
 
     const cleaned = stripProtocol(pasted);
     setUrl(cleaned);
@@ -140,110 +93,35 @@ export default function HeroContent({
         </p>
 
         <form onSubmit={onSubmit} className="mt-[clamp(1rem,3.2vh,2.5rem)] w-full max-w-2xl mx-auto">
-          <div className="mb-3 flex items-center justify-center gap-2 text-xs text-white/80">
-            <button
-              type="button"
-              onClick={() => {
-                setMode("url");
-                setError(null);
-                setTimeout(() => inputRef.current?.focus(), 0);
-              }}
-              className={`rounded-full px-3 py-1 ring-1 transition ${mode === "url" ? "bg-white/15 ring-white/30 text-white" : "bg-transparent ring-white/15 hover:bg-white/10"}`}
-            >
-              URL
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                if (!promptModeEnabled) return;
-                setMode("prompt");
-                setError(null);
-                setTimeout(() => inputRef.current?.focus(), 0);
-              }}
-              disabled={!promptModeEnabled}
-              className={`rounded-full px-3 py-1 ring-1 transition ${mode === "prompt" ? "bg-white/15 ring-white/30 text-white" : "bg-transparent ring-white/15 hover:bg-white/10"}`}
-            >
-              Prompt
-            </button>
-          </div>
           <div
             className={
-              "relative flex items-center bg-white/95 backdrop-blur-md p-2 pl-4 sm:pl-6 shadow-[0_20px_50px_rgba(0,0,0,0.3)] ring-1 ring-white/20 transition-all duration-300 ease-out " +
-              (mode === "prompt"
-                ? "rounded-3xl h-[116px] sm:h-[116px]"
-                : "rounded-full h-[64px] sm:h-[72px]")
+              "relative flex items-center bg-white/95 backdrop-blur-md p-2 pl-4 sm:pl-6 shadow-[0_20px_50px_rgba(0,0,0,0.3)] ring-1 ring-white/20 transition-all duration-300 ease-out rounded-full h-[64px] sm:h-[72px]"
             }
           >
-            {mode === "url" ? (
-              <span className="hidden sm:inline text-neutral-400 text-lg font-medium mr-1">
-                https://
-              </span>
-            ) : null}
+            <span className="hidden sm:inline text-neutral-400 text-lg font-medium mr-1">
+              https://
+            </span>
 
-            {mode === "prompt" ? (
-              <textarea
-                ref={inputRef as any}
-                value={prompt}
-                onChange={handleChange}
-                onPaste={handlePaste}
-                placeholder=""
-                rows={3}
-                onFocus={() => setIsFocused(true)}
-                onBlur={() => setIsFocused(false)}
-                className="flex-1 bg-transparent outline-none text-neutral-700 text-base sm:text-lg placeholder:text-neutral-400 font-medium resize-none h-full py-3 leading-snug"
-              />
-            ) : (
-              <input
-                ref={inputRef as any}
-                value={url}
-                onChange={handleChange}
-                onPaste={handlePaste}
-                placeholder="example.com"
-                onFocus={() => setIsFocused(true)}
-                onBlur={() => setIsFocused(false)}
-                className="flex-1 bg-transparent outline-none text-neutral-700 text-base sm:text-lg placeholder:text-neutral-400 font-medium"
-              />
-            )}
+            <input
+              ref={inputRef}
+              value={url}
+              onChange={handleChange}
+              onPaste={handlePaste}
+              placeholder="example.com"
+              className="flex-1 bg-transparent outline-none text-neutral-700 text-base sm:text-lg placeholder:text-neutral-400 font-medium"
+              autoComplete="off"
+            />
 
-            {mode === "prompt" && !prompt ? (
-              <div
-                className={
-                  "pointer-events-none absolute left-0 right-0 top-0 pl-4 sm:pl-6 pr-[72px] sm:pr-[80px] pt-4 text-left " +
-                  (isFocused ? "opacity-60" : "opacity-100")
-                }
-                aria-hidden
-              >
-                <AnimatePresence mode="wait">
-                  <motion.span
-                    key={promptPlaceholderIdx}
-                    initial={{ opacity: 0, y: 6 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -6 }}
-                    transition={{ duration: 0.35, ease: "easeOut" }}
-                    className="block ml-[0.65ch] text-neutral-400/90 text-base sm:text-lg font-medium leading-snug max-h-[4.4em] overflow-hidden"
-                  >
-                    {PROMPT_PLACEHOLDERS[promptPlaceholderIdx]}
-                  </motion.span>
-                </AnimatePresence>
-              </div>
-            ) : null}
             <button
               type="submit"
-              disabled={mode === "prompt" ? !prompt.trim() || !!error : !url || !!error}
-              className={
-                "inline-flex h-11 shrink-0 items-center justify-center rounded-full bg-[#f26522] px-4 text-white transition-all active:scale-95 hover:bg-[#ff7a3d] disabled:cursor-not-allowed disabled:opacity-60 md:px-6 " +
-                (mode === "prompt" ? " gap-2" : "")
-              }
-              aria-label={mode === "prompt" ? "Create from prompt" : "Clone website from URL"}
+              disabled={!url || !!error}
+              className="inline-flex h-11 shrink-0 items-center justify-center rounded-full bg-[#f26522] px-4 text-white transition-all active:scale-95 hover:bg-[#ff7a3d] disabled:cursor-not-allowed disabled:opacity-60 md:px-6"
+              aria-label="Clone website from URL"
             >
               <span className="inline-flex items-center gap-2">
-                {mode === "prompt" ? (
-                  <Send className="h-4 w-4" />
-                ) : (
-                  <ArrowRightSquare className="h-4 w-4" />
-                )}
-                <span className="sr-only">{mode === "prompt" ? "Preview" : "Clone"}</span>
-                <span className="hidden md:inline">{mode === "prompt" ? "Preview" : "Clone"}</span>
+                <ArrowRightSquare className="h-4 w-4" />
+                <span className="sr-only">Clone</span>
+                <span className="hidden md:inline">Clone</span>
               </span>
             </button>
           </div>

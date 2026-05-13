@@ -72,6 +72,7 @@ import {
     ExternalLink,
     Copy,
     ArrowUpRight,
+    ArrowRightSquare,
     Plus,
     CrownIcon,
     Edit2,
@@ -106,8 +107,6 @@ import SuccessConfetti from "../../../components/tools/SuccessConfetti";
 import { extractArchivedPageIdsFromRender, fetchRenderForDeployment, getArchivedRoutesForRender, persistArchivedPageIds, scrubArchivedRoutes, secureHtmlForPreviewIframe, withArchivedPageIds } from "@/components/helpers";
 import { useModal } from "@/components/ui/ModalContext";
 import AppBuilderEditor from "@/components/AppBuilderEditor";
-import { PROMPT_PLACEHOLDERS } from "@/src/lib/promptPlaceholders";
-import { useRotatingPlaceholderIndex } from "@/src/hooks/useRotatingPlaceholderIndex";
 import { getPublicHttpUrlRejectionReason, validateAndNormalizePublicHttpUrl } from "@/src/lib/publicHttpUrl";
 import { recordAppBuilderSessionAnalytics, recordDeployAnalytics } from "@/components/analytics";
 
@@ -611,14 +610,6 @@ function writeUrlRetryBackoffMap(map: UrlRetryBackoffMap): void {
     }
 }
 
-function stripHttpsUrlsFromPrompt(input: string): string {
-    const raw = String(input || "");
-    if (!raw) return "";
-    return raw
-        .replace(/https:\/\/[^\s]+/gi, "")
-        .replace(/[ \t]{2,}/g, " ");
-}
-
 function truncateMiddle(value: string, maxLen = 72): string {
     const text = String(value || "");
     if (text.length <= maxLen) return text;
@@ -760,7 +751,6 @@ function RedIssueBanner({ message, onDismiss, details }: RedIssueBannerProps) {
 
 type MiniDashboardEntryProps = {
     onSubmitUrl: (rawUrl: string) => void;
-    onSubmitPrompt: (prompt: string) => void;
     planLabel?: string;
     stripeStatus?: string | null;
     stripeCancelAtPeriodEnd?: boolean;
@@ -781,7 +771,6 @@ type MiniDashboardEntryProps = {
 
 function MiniDashboardEntry({
     onSubmitUrl,
-    onSubmitPrompt,
     planLabel,
     stripeStatus,
     stripeCancelAtPeriodEnd = false,
@@ -800,19 +789,11 @@ function MiniDashboardEntry({
     hideCaptureQueueStatus = false,
 }: MiniDashboardEntryProps) {
     const isCompact = size === "compact";
-    const [mode, setMode] = useState<"url" | "prompt">("url");
     const [url, setUrl] = useState("");
-    const [prompt, setPrompt] = useState("");
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [dismissedCaptureIssueNotice, setDismissedCaptureIssueNotice] = useState(false);
-    const inputRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
-    const [isFocused, setIsFocused] = useState(false);
-    const promptPlaceholderIdx = useRotatingPlaceholderIndex({
-        enabled: mode === "prompt",
-        length: PROMPT_PLACEHOLDERS.length,
-        intervalMs: 3200,
-    });
+    const inputRef = useRef<HTMLInputElement | null>(null);
 
     const isActiveTrial = stripeStatus === "trialing" && !stripeCancelAtPeriodEnd;
     const badgeLabel = isActiveTrial ? "trialing" : planLabel;
@@ -839,27 +820,17 @@ function MiniDashboardEntry({
         setError(null);
         setBusy(true);
         try {
-            if (mode === "url") {
-                const v = (url || "").trim();
-                if (!v) {
-                    setError("Enter a URL to continue.");
-                    return;
-                }
-                const normalized = validateAndNormalizePublicHttpUrl(v);
-                if (!normalized) {
-                    setError("Please enter a valid public http(s) URL.");
-                    return;
-                }
-                onSubmitUrl(normalized);
+            const v = (url || "").trim();
+            if (!v) {
+                setError("Enter a URL to continue.");
                 return;
             }
-
-            const p = stripHttpsUrlsFromPrompt(prompt || "").trim();
-            if (!p) {
-                setError("Enter a prompt to continue.");
+            const normalized = validateAndNormalizePublicHttpUrl(v);
+            if (!normalized) {
+                setError("Please enter a valid public http(s) URL.");
                 return;
             }
-            onSubmitPrompt(p);
+            onSubmitUrl(normalized);
         } finally {
             setBusy(false);
         }
@@ -963,148 +934,51 @@ function MiniDashboardEntry({
                 </div>
             </div>
 
-            <div className={"mt-6 inline-flex rounded-full border border-neutral-200 bg-white p-1 " + (isCompact ? "text-[11px]" : "text-xs")}>
-                <button
-                    type="button"
-                    onClick={() => {
-                        setMode("url");
-                        setError(null);
-                        setTimeout(() => inputRef.current?.focus(), 0);
-                    }}
-                    disabled={disabled}
-                    className="rounded-full px-3 py-1.5 transition text-white"
-                    style={mode === "url" ? { backgroundColor: ACCENT } : { backgroundColor: "transparent", color: "#404040" }}
-                >
-                    URL
-                </button>
-                <button
-                    type="button"
-                    onClick={() => {
-                        setMode("prompt");
-                        setError(null);
-                        setTimeout(() => inputRef.current?.focus(), 0);
-                    }}
-                    disabled={disabled}
-                    className="rounded-full px-3 py-1.5 transition text-white"
-                    style={mode === "prompt" ? { backgroundColor: ACCENT } : { backgroundColor: "transparent", color: "#404040" }}
-                >
-                    Prompt
-                </button>
-            </div>
-
             <form onSubmit={(e) => void handleSubmit(e)} className="mt-4">
                 <div
                     className={
                         "relative flex items-center bg-white/95 backdrop-blur-md p-2 pl-4 sm:pl-6 shadow-[0_12px_30px_rgba(0,0,0,0.08)] ring-1 ring-neutral-200 transition-all duration-300 ease-out " +
-                        (mode === "prompt"
-                            ? isCompact
-                                ? "rounded-3xl h-[84px] sm:h-[92px]"
-                                : "rounded-3xl h-[116px] sm:h-[116px]"
-                            : isCompact
-                                ? "rounded-full h-[48px] sm:h-[52px]"
-                                : "rounded-full h-[64px] sm:h-[72px]")
+                        (isCompact
+                            ? "rounded-full h-[48px] sm:h-[52px]"
+                            : "rounded-full h-[64px] sm:h-[72px]")
                     }
                 >
-                    {mode === "url" ? (
-                        <span className={"hidden sm:inline text-neutral-400 font-medium mr-1 " + (isCompact ? "text-sm" : "text-lg")}>
-                            https://
-                        </span>
-                    ) : null}
+                    <span className={"hidden sm:inline text-neutral-400 font-medium mr-1 " + (isCompact ? "text-sm" : "text-lg")}>
+                        https://
+                    </span>
 
-                    {mode === "prompt" ? (
-                        <textarea
-                            ref={inputRef as any}
-                            value={prompt}
-                            onChange={(e) => {
-                                const v = stripHttpsUrlsFromPrompt(e.target.value);
-                                setPrompt(v);
-                                setError(null);
-                            }}
-                            onPaste={(e) => {
-                                const pasted = e.clipboardData.getData("text");
-                                if (!pasted) return;
-                                e.preventDefault();
-                                setPrompt(stripHttpsUrlsFromPrompt(pasted));
-                                setError(null);
-                            }}
-                            placeholder=""
-                            rows={3}
-                            onFocus={() => setIsFocused(true)}
-                            onBlur={() => setIsFocused(false)}
-                            disabled={disabled}
-                            className={
-                                "flex-1 bg-transparent outline-none text-neutral-700 placeholder:text-neutral-400 font-medium resize-none h-full leading-snug " +
-                                (isCompact ? "text-[13px] sm:text-sm py-2" : "text-[15px] sm:text-base py-3")
-                            }
-                            autoComplete="off"
-                        />
-                    ) : (
-                        <input
-                            ref={inputRef as any}
-                            value={url}
-                            onChange={(e) => {
-                                const value = e.target.value;
-                                setUrl(value);
-                                const cleaned = value.trim();
-                                setError(cleaned ? getPublicHttpUrlRejectionReason(cleaned) : null);
-                            }}
-                            onPaste={(e) => {
-                                const pasted = e.clipboardData.getData("text");
-                                if (!pasted) return;
-                                e.preventDefault();
-                                const cleaned = pasted.trim();
-                                setUrl(pasted);
-                                setError(cleaned ? getPublicHttpUrlRejectionReason(cleaned) : null);
-                            }}
-                            placeholder="example.com"
-                            onFocus={() => setIsFocused(true)}
-                            onBlur={() => setIsFocused(false)}
-                            disabled={disabled}
-                            className={
-                                "flex-1 bg-transparent outline-none text-neutral-700 placeholder:text-neutral-400 font-medium " +
-                                (isCompact ? "text-[13px] sm:text-sm" : "text-[15px] sm:text-base")
-                            }
-                            autoComplete="off"
-                        />
-                    )}
-
-                    {mode === "prompt" && !prompt ? (
-                        <div
-                            className={
-                                "pointer-events-none absolute left-0 right-0 top-0 pl-4 sm:pl-6 pr-[72px] sm:pr-[80px] pt-4 text-left " +
-                                (isFocused ? "opacity-60" : "opacity-100")
-                            }
-                            aria-hidden
-                        >
-                            <AnimatePresence mode="wait">
-                                <motion.span
-                                    key={promptPlaceholderIdx}
-                                    initial={{ opacity: 0, y: 6 }}
-                                    animate={{ opacity: 1, y: 0 }}
-                                    exit={{ opacity: 0, y: -6 }}
-                                    transition={{ duration: 0.35, ease: "easeOut" }}
-                                    className={
-                                        "block ml-[0.65ch] text-neutral-400/90 font-medium leading-snug max-h-[4.4em] overflow-hidden " +
-                                        (isCompact ? "text-[13px] sm:text-sm" : "text-[15px] sm:text-base")
-                                    }
-                                >
-                                    {PROMPT_PLACEHOLDERS[promptPlaceholderIdx]}
-                                </motion.span>
-                            </AnimatePresence>
-                        </div>
-                    ) : null}
+                    <input
+                        ref={inputRef}
+                        value={url}
+                        onChange={(e) => {
+                            const value = e.target.value;
+                            setUrl(value);
+                            const cleaned = value.trim();
+                            setError(cleaned ? getPublicHttpUrlRejectionReason(cleaned) : null);
+                        }}
+                        onPaste={(e) => {
+                            const pasted = e.clipboardData.getData("text");
+                            if (!pasted) return;
+                            e.preventDefault();
+                            const cleaned = pasted.trim();
+                            setUrl(pasted);
+                            setError(cleaned ? getPublicHttpUrlRejectionReason(cleaned) : null);
+                        }}
+                        placeholder="example.com"
+                        disabled={disabled}
+                        className={
+                            "flex-1 bg-transparent outline-none text-neutral-700 placeholder:text-neutral-400 font-medium " +
+                            (isCompact ? "text-[13px] sm:text-sm" : "text-[15px] sm:text-base")
+                        }
+                        autoComplete="off"
+                    />
 
                     <button
                         type="submit"
-                        disabled={disabled || busy || (mode === "prompt" ? !prompt.trim() : !url.trim())}
-                        className={
-                            "shrink-0 rounded-full text-white transition-all active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed " +
-                            (mode === "prompt"
-                                ? "h-11 w-11 grid place-items-center"
-                                : "grid h-8 w-8 place-items-center px-0 md:h-full md:w-auto md:px-10")
-                        }
+                        disabled={disabled || busy || !url.trim()}
+                        className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-white transition-all active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed px-0 md:h-full md:w-auto md:px-10"
                         style={{ backgroundColor: ACCENT }}
-                        aria-label={mode === "prompt" ? "Create from prompt" : "Preview from URL"}
+                        aria-label="Preview from URL"
                     >
                         {showQueuedScanStatus ? (
                             <>
@@ -1113,14 +987,9 @@ function MiniDashboardEntry({
                                     {captureStatus === "queued" ? "Queued" : "Processing"}
                                 </span>
                             </>
-                        ) : mode === "prompt" ? (
-                            <>
-                                <Send className="h-4 w-4" />
-                                <span className="sr-only">Preview</span>
-                            </>
                         ) : (
                             <>
-                                <Send className="h-4 w-4 md:hidden" />
+                                <ArrowRightSquare className="h-4 w-4 md:hidden" />
                                 <span className="hidden md:inline">Add URL</span>
                                 <span className="sr-only">Add URL</span>
                             </>
@@ -3236,8 +3105,7 @@ export default function PreviewPage(): JSX.Element {
         Record<
             string,
             {
-                source?: "prompt" | "url" | "quickstart" | "template" | "sample" | "unknown";
-                prompt?: string | null;
+                source?: "url" | "quickstart" | "template" | "sample" | "unknown";
                 url?: string | null;
                 templateName?: string | null;
             }
@@ -3429,9 +3297,7 @@ export default function PreviewPage(): JSX.Element {
     const [appWizardError, setAppWizardError] = useState<string | null>(null);
     const [appWizardUrl, setAppWizardUrl] = useState<string>("");
     const [appWizardShotsUrl, setAppWizardShotsUrl] = useState<string>("");
-    const [appWizardSource, setAppWizardSource] = useState<"website" | "prompt" | null>(null);
-    const [appWizardPrompt, setAppWizardPrompt] = useState<string>("");
-    const [appWizardPromptFocused, setAppWizardPromptFocused] = useState(false);
+    const [appWizardSource, setAppWizardSource] = useState<"website" | null>(null);
     const [appWizardSeedRenderId, setAppWizardSeedRenderId] = useState<string | null>(null);
     const [urlGenerationErrorDetails, setUrlGenerationErrorDetails] = useState<string>("");
     const [urlGenerationHealthWarning, setUrlGenerationHealthWarning] = useState<null | {
@@ -3459,14 +3325,6 @@ export default function PreviewPage(): JSX.Element {
         message: "",
         url: "",
     });
-    const appWizardPromptPlaceholderIdx = useRotatingPlaceholderIndex({
-        enabled: appWizardOpen && appWizardSource === "prompt" && !appWizardPrompt.trim(),
-        length: PROMPT_PLACEHOLDERS.length,
-        intervalMs: 3200,
-    });
-    const appWizardPromptLength = appWizardPrompt.length;
-    const appWizardPromptOverLimit = appWizardPromptLength > APP_WIZARD_PROMPT_MAX_CHARS;
-
     const {
         status: vercelStatus,
         checking: vercelChecking,
@@ -3768,16 +3626,12 @@ export default function PreviewPage(): JSX.Element {
     }, [search, user, router, deployWizardProjectName]);
 
     // Open the web app wizard from query params.
-    // Example: /dashboard/view?wizard=1&source=prompt&prompt=...
+    // Example: /dashboard/view?wizard=1
     useEffect(() => {
         if (!user) return;
         const wizardParam = search.get("wizard");
-        const sourceParam = (search.get("source") || "").toLowerCase();
-        const promptParam = stripHttpsUrlsFromPrompt(search.get("prompt") || "");
 
         if (wizardParam !== "1") return;
-        if (sourceParam !== "prompt") return;
-        if (!promptParam.trim()) return;
 
         if (userTier === "free" && stripeStatus !== "trialing") {
             showWebsiteExitOfferPaywall();
@@ -3800,16 +3654,13 @@ export default function PreviewPage(): JSX.Element {
         setAppWizardOpen(true);
         setAppWizardBusy(false);
         setAppWizardError(null);
-        setAppWizardSource("prompt");
-        setAppWizardPrompt(promptParam);
+        setAppWizardSource("website");
 
         // best-effort: clear wizard params so refresh doesn't re-open
         try {
             const url = new URL(window.location.href);
             const params = url.searchParams;
             params.delete("wizard");
-            params.delete("source");
-            params.delete("prompt");
             const qs = params.toString();
             const next = qs ? `${url.pathname}?${qs}` : url.pathname;
             router.replace(next, { scroll: false });
@@ -4341,8 +4192,7 @@ export default function PreviewPage(): JSX.Element {
     }
 
     const handleCreateApp = useCallback(async (
-        mode: "clone" | "url" | "prompt",
-        prompt?: string,
+        mode: "clone" | "url",
         renderId?: string,
         url?: string,
         opts?: { screenshotKeys?: string[]; zipUrl?: string; zipPath?: string; onError?: (message: string) => void; skipCookieConsent?: boolean; openAppBuilderImmediately?: boolean; generationFormat?: "nextjs" | "html" },
@@ -4401,9 +4251,6 @@ export default function PreviewPage(): JSX.Element {
             } else if (mode === "url") {
                 appName = url ? appNameFromUrl(url) : "Clone from URL";
                 finalRenderId = undefined; // No render for URL mode
-            } else if (mode === "prompt") {
-                appName = "Untitled Website";
-                finalRenderId = undefined; // No render for prompt mode
             }
 
             const shouldShowPendingAppUi = mode !== "url" || !opts?.openAppBuilderImmediately;
@@ -4580,35 +4427,6 @@ export default function PreviewPage(): JSX.Element {
 
                     throw new Error(parsed.message);
                 }
-            } else if (mode === "prompt" && prompt) {
-                const sanitizedPrompt = stripHttpsUrlsFromPrompt(prompt).trim();
-                if (!sanitizedPrompt) {
-                    throw new Error("Prompt cannot be empty after removing URLs");
-                }
-                // Use the new prompt generation endpoint
-                const csrf = await ensureSessionAndCsrf().catch(() => null);
-                const res = await fetch("/api/generate-app-from-prompt", {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                        ...(csrf ? { "x-csrf": csrf } : {}),
-                    },
-                    body: JSON.stringify({ prompt: sanitizedPrompt, name: appName }),
-                    credentials: "include",
-                });
-
-                if (res.status === 202) {
-                    const data: any = await res.json().catch(() => ({} as any));
-                    const generatedAppId = typeof data?.appId === "string" ? data.appId.trim() : "";
-                    if (!generatedAppId) {
-                        const reqId = typeof data?.reqId === "string" ? data.reqId : "";
-                        throw new Error(reqId ? `Generation accepted but no appId returned (reqId: ${reqId})` : "Generation accepted but no appId returned");
-                    }
-                    appId = generatedAppId;
-                } else {
-                    const data = await res.json().catch(() => ({} as any));
-                    throw new Error(data?.error || "Failed to generate app from prompt");
-                }
             } else {
                 // Use the existing create endpoint for clone mode
                 const res = await fetch("/api/app-builder/create", {
@@ -4643,9 +4461,7 @@ export default function PreviewPage(): JSX.Element {
             // Tailor the AI agent's first message for this new app (unobtrusive; only affects the default welcome).
             setAgentWelcomeContextByAppId((prev) => {
                 const next = { ...prev };
-                if (mode === "prompt") {
-                    next[appId] = { source: "prompt", prompt: stripHttpsUrlsFromPrompt(prompt || "").trim() || null };
-                } else if (mode === "url") {
+                if (mode === "url") {
                     next[appId] = { source: "url", url: (url || "").trim() || null };
                 } else {
                     // leave as-is
@@ -4792,7 +4608,7 @@ export default function PreviewPage(): JSX.Element {
     const createWebsitePlusBusy = Boolean(nextJsGenerationPendingUrl || htmlGenerationPendingUrl);
 
     const startWebAppWizard = useCallback(
-        (opts?: { seedRenderId?: string | null; url?: string | null; source?: "website" | "prompt" | null }) => {
+        (opts?: { seedRenderId?: string | null; url?: string | null }) => {
             // Always refresh Vercel status when opening the wizard so we don't
             // accidentally auto-advance from stale "connected" state.
             void refreshVercelStatus();
@@ -4800,8 +4616,7 @@ export default function PreviewPage(): JSX.Element {
             setAppWizardUrl(url);
             setAppWizardShotsUrl(url);
             setAppWizardSeedRenderId(opts?.seedRenderId ?? null);
-            setAppWizardSource(opts?.source ?? null);
-            setAppWizardPrompt("");
+            setAppWizardSource("website");
             setAppWizardError(null);
             setAppWizardBusy(false);
             setAppWizardOpen(true);
@@ -4865,7 +4680,7 @@ export default function PreviewPage(): JSX.Element {
                     .slice(0, 6)
                 : [];
 
-            const created = await handleCreateApp("url", undefined, undefined, url, {
+            const created = await handleCreateApp("url", undefined, url, {
                 screenshotKeys,
                 onError: setAppWizardError,
             });
@@ -4877,37 +4692,6 @@ export default function PreviewPage(): JSX.Element {
         }
     }, [appWizardBusy, appWizardUrl, appWizardShotsUrl, user, shots, handleCreateApp, urls, canProceedWithAppWizardGeneration]);
 
-    const submitAppWizardPrompt = useCallback(async () => {
-        if (appWizardBusy) return;
-
-        if (!(await canProceedWithAppWizardGeneration())) {
-            return;
-        }
-
-        const prompt = stripHttpsUrlsFromPrompt(appWizardPrompt || "").trim();
-        if (!prompt) {
-            setAppWizardError("Enter a prompt to continue.");
-            return;
-        }
-        if (prompt.length > APP_WIZARD_PROMPT_MAX_CHARS) {
-            // Inline counter/help text already explains the limit; avoid duplicate top-level error.
-            return;
-        }
-
-        setAppWizardBusy(true);
-        setAppWizardError(null);
-
-        try {
-            const created = await handleCreateApp("prompt", prompt, undefined, undefined, {
-                onError: setAppWizardError,
-            });
-            if (created) {
-                setAppWizardOpen(false);
-            }
-        } finally {
-            setAppWizardBusy(false);
-        }
-    }, [appWizardBusy, appWizardPrompt, handleCreateApp, canProceedWithAppWizardGeneration]);
     // New: create an app from the starter template (free)
     const handleCreateTemplateApp = useCallback(async () => {
         if (!user) return;
@@ -5603,7 +5387,7 @@ export default function PreviewPage(): JSX.Element {
     }, [urlParam]);
 
     const startNextJsAppBuilder = useCallback(async (url: string) => {
-        await handleCreateApp("url", undefined, undefined, url, {
+        await handleCreateApp("url", undefined, url, {
             skipCookieConsent: true,
             openAppBuilderImmediately: true,
             generationFormat: "nextjs",
@@ -5611,7 +5395,7 @@ export default function PreviewPage(): JSX.Element {
     }, [handleCreateApp]);
 
     const startHtmlAppBuilder = useCallback(async (url: string) => {
-        await handleCreateApp("url", undefined, undefined, url, {
+        await handleCreateApp("url", undefined, url, {
             skipCookieConsent: true,
             openAppBuilderImmediately: true,
             generationFormat: "html",
@@ -5683,19 +5467,6 @@ export default function PreviewPage(): JSX.Element {
             router.push(`/dashboard/view?u=${encodeURIComponent(normalized)}`, { scroll: false });
         },
         [canUseScreenshotCredit, push, router]
-    );
-
-    const submitMiniPrompt = useCallback(
-        (prompt: string) => {
-            const p = stripHttpsUrlsFromPrompt(prompt || "").trim();
-            if (!p) return;
-            if (userTier === "free" && stripeStatus !== "trialing") {
-                showWebsiteExitOfferPaywall();
-                return;
-            }
-            router.push(`/dashboard/view?wizard=1&source=prompt&prompt=${encodeURIComponent(p)}`, { scroll: false });
-        },
-        [router, showWebsiteExitOfferPaywall, stripeStatus, userTier]
     );
 
     const [urlMenuOpen, setUrlMenuOpen] = useState(false);
@@ -10314,7 +10085,6 @@ export default function PreviewPage(): JSX.Element {
                 <section className="mb-10">
                     <MiniDashboardEntry
                         onSubmitUrl={submitMiniUrl}
-                        onSubmitPrompt={submitMiniPrompt}
                         planLabel={planLabel}
                         stripeStatus={stripeStatus}
                         stripeCancelAtPeriodEnd={stripeCancelAtPeriodEnd}
@@ -10850,8 +10620,8 @@ export default function PreviewPage(): JSX.Element {
                         onArchivedPageIdsChange={
                             handleArchivedPageIdsChange
                         }
-                        onCreateApp={async (mode, prompt, renderId) => {
-                            await handleCreateApp(mode, prompt, renderId);
+                        onCreateApp={async (mode, _prompt, renderId) => {
+                            await handleCreateApp(mode as "clone" | "url", renderId);
                         }}
                         onClose={() => {
                             setEditorOpen(false);
@@ -11024,7 +10794,7 @@ export default function PreviewPage(): JSX.Element {
                                         <div className="space-y-1">
                                             <div className="text-sm font-semibold text-neutral-900">Create a Website</div>
                                             <div className="text-xs text-neutral-600">
-                                                Start building now. Choose to clone from a URL or generate from a prompt. You can customize and deploy it live, all within our platform.
+                                                Start building now from a URL. You can customize and deploy it live, all within our platform.
                                             </div>
                                         </div>
                                         <button
@@ -11059,7 +10829,6 @@ export default function PreviewPage(): JSX.Element {
                                                     type="button"
                                                     onClick={() => {
                                                         setAppWizardSource("website");
-                                                        setAppWizardPrompt("");
                                                         setAppWizardUrl((prev) => (prev || successfulScannedUrls[0] || ""));
                                                         setAppWizardShotsUrl((prev) => (prev || targetUrl || ""));
                                                     }}
@@ -11103,81 +10872,7 @@ export default function PreviewPage(): JSX.Element {
                                                     </div>
 
                                                 </button>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => {
-                                                        setAppWizardSource("prompt");
-                                                        setAppWizardError(null);
-                                                    }}
-                                                    className={`relative w-full rounded-xl border p-4 pb-14 text-left transition ${appWizardSource === "prompt"
-                                                        ? "border-[#f55f2a] bg-[#f55f2a]/5"
-                                                        : "border-neutral-200 bg-white hover:bg-neutral-50"
-                                                        }`}
-                                                >
-                                                    <div className="text-sm font-semibold text-neutral-900">Build from a prompt</div>
-                                                    <div className="mt-1 text-xs text-neutral-600">Describe the site you want and generate a fresh starting point.</div>
-                                                </button>
                                             </div>
-
-                                            {appWizardSource === "prompt" ? (
-                                                <div className="mt-2 space-y-2">
-                                                    <label className="text-xs font-semibold text-neutral-700">
-                                                        Prompt
-                                                    </label>
-                                                    <div className="relative rounded-2xl border border-neutral-200 bg-white/95 p-3 shadow-[0_10px_24px_rgba(0,0,0,0.07)] ring-1 ring-neutral-200/80 transition-all duration-300 ease-out">
-                                                        <textarea
-                                                            value={appWizardPrompt}
-                                                            onChange={(e) => {
-                                                                const nextPrompt = stripHttpsUrlsFromPrompt(e.target.value);
-                                                                setAppWizardPrompt(nextPrompt);
-                                                                setAppWizardError(null);
-                                                            }}
-                                                            onPaste={(e) => {
-                                                                const pasted = e.clipboardData.getData("text");
-                                                                if (!pasted) return;
-                                                                e.preventDefault();
-                                                                const nextPrompt = stripHttpsUrlsFromPrompt(pasted);
-                                                                setAppWizardPrompt(nextPrompt);
-                                                                setAppWizardError(null);
-                                                            }}
-                                                            onFocus={() => setAppWizardPromptFocused(true)}
-                                                            onBlur={() => setAppWizardPromptFocused(false)}
-                                                            rows={5}
-                                                            className="relative z-[1] min-h-[124px] w-full resize-none bg-transparent text-sm font-medium leading-snug text-neutral-800 outline-none"
-                                                            placeholder=""
-                                                        />
-                                                        {!appWizardPrompt.trim() ? (
-                                                            <div
-                                                                className={`pointer-events-none absolute inset-x-3 top-3 pr-1 text-left transition-opacity ${appWizardPromptFocused ? "opacity-60" : "opacity-100"}`}
-                                                                aria-hidden
-                                                            >
-                                                                <AnimatePresence mode="wait">
-                                                                    <motion.span
-                                                                        key={appWizardPromptPlaceholderIdx}
-                                                                        initial={{ opacity: 0, y: 6 }}
-                                                                        animate={{ opacity: 1, y: 0 }}
-                                                                        exit={{ opacity: 0, y: -6 }}
-                                                                        transition={{ duration: 0.35, ease: "easeOut" }}
-                                                                        className="block text-sm font-medium leading-snug text-neutral-400/90"
-                                                                    >
-                                                                        {PROMPT_PLACEHOLDERS[appWizardPromptPlaceholderIdx]}
-                                                                    </motion.span>
-                                                                </AnimatePresence>
-                                                            </div>
-                                                        ) : null}
-                                                    </div>
-                                                    <div className="mt-1 flex items-center justify-between text-[11px]">
-                                                        <span className={appWizardPromptOverLimit ? "text-red-600" : "text-neutral-500"}>
-                                                            {appWizardPromptOverLimit
-                                                                ? `Please shorten your prompt to ${APP_WIZARD_PROMPT_MAX_CHARS} characters.`
-                                                                : "Keep it concise for best results."}
-                                                        </span>
-                                                        <span className={`tabular-nums ${appWizardPromptOverLimit ? "text-red-600 font-semibold" : "text-neutral-500"}`}>
-                                                            {appWizardPromptLength}/{APP_WIZARD_PROMPT_MAX_CHARS}
-                                                        </span>
-                                                    </div>
-                                                </div>
-                                            ) : null}
 
                                         </div>
                                     </div>
@@ -11197,8 +10892,7 @@ export default function PreviewPage(): JSX.Element {
                                         <button
                                             type="button"
                                             onClick={() => {
-                                                if (appWizardSource === "website") return void submitAppWizardWebsite();
-                                                return void submitAppWizardPrompt();
+                                                return void submitAppWizardWebsite();
                                             }}
                                             disabled={appWizardBusy || !appWizardSource}
                                             className="rounded-xl px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-60"
