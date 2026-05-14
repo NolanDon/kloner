@@ -1019,7 +1019,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
     const [chatHasHistory, setChatHasHistory] = useState(false);
     const [introRequestedByTour, setIntroRequestedByTour] = useState(false);
     const [input, setInput] = useState("");
-    const [requestPageOverride, setRequestPageOverride] = useState<string | null>(null);
+    const [requestPageOverrides, setRequestPageOverrides] = useState<string[]>([]);
     const [requestPageSearch, setRequestPageSearch] = useState("");
     const [freeCompileFixContext, setFreeCompileFixContext] = useState<CompileErrorQuickFixContext | null>(null);
     const [isLoading, setIsLoading] = useState(false);
@@ -1110,12 +1110,17 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
         return requestPageOptions.find((page) => page.route === "/")?.path ?? requestPageOptions[0]?.path ?? null;
     }, [currentFile, requestPageOptions]);
 
-    const selectedRequestCurrentPath = useMemo(() => {
-        if (requestPageOverride && requestPageOptions.some((page) => page.path === requestPageOverride)) {
-            return requestPageOverride;
-        }
-        return autoRequestCurrentPath;
-    }, [autoRequestCurrentPath, requestPageOptions, requestPageOverride]);
+    const selectedRequestPaths = useMemo(() => {
+        const manual = requestPageOverrides
+            .map((path) => String(path || "").trim())
+            .filter((path) => requestPageOptions.some((page) => page.path === path))
+            .slice(0, 3);
+
+        if (manual.length > 0) return manual;
+        return autoRequestCurrentPath ? [autoRequestCurrentPath] : [];
+    }, [autoRequestCurrentPath, requestPageOptions, requestPageOverrides]);
+
+    const selectedRequestCurrentPath = selectedRequestPaths[0] || null;
 
     const selectedRequestPage = useMemo(
         () => requestPageOptions.find((page) => page.path === selectedRequestCurrentPath) || null,
@@ -1132,15 +1137,33 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
     }, [requestPageOptions, requestPageSearch]);
 
     const selectedRequestPageLabel = useMemo(() => {
-        if (!selectedRequestPage) return "Auto";
-        return requestPageOverride ? selectedRequestPage.label : `Auto: ${selectedRequestPage.label}`;
-    }, [requestPageOverride, selectedRequestPage]);
+        if (!selectedRequestPaths.length) return "Auto";
+        if (requestPageOverrides.length === 0) {
+            return `Auto: ${selectedRequestPage?.label || "current page"}`;
+        }
+        if (selectedRequestPaths.length === 1) {
+            return selectedRequestPage?.label || "Selected";
+        }
+        return `${selectedRequestPaths.length} files selected`;
+    }, [requestPageOverrides.length, selectedRequestPage, selectedRequestPaths]);
+
+    const requestFileContractPrompt = useMemo(() => {
+        const selectedList = selectedRequestPaths.length ? selectedRequestPaths.join(", ") : "(none)";
+        return [
+            "File selection contract update:",
+            "The request may include up to 3 explicitly selected files.",
+            "Treat currentPath as the primary visible page and selectedFiles as additional explicitly requested context.",
+            `selectedFiles: ${selectedList}`,
+            "If multiple files are provided, read them together and do not assume a single-file contract.",
+        ].join("\n");
+    }, [selectedRequestPaths]);
 
     useEffect(() => {
-        if (!requestPageOverride) return;
-        if (requestPageOptions.some((page) => page.path === requestPageOverride)) return;
-        setRequestPageOverride(null);
-    }, [requestPageOptions, requestPageOverride]);
+        if (!requestPageOverrides.length) return;
+        const next = requestPageOverrides.filter((path) => requestPageOptions.some((page) => page.path === path)).slice(0, 3);
+        if (next.length === requestPageOverrides.length && next.every((path, index) => path === requestPageOverrides[index])) return;
+        setRequestPageOverrides(next);
+    }, [requestPageOptions, requestPageOverrides]);
 
     const [stagedBundles, setStagedBundles] = useState<StagedBundle[]>([]);
 
@@ -2794,7 +2817,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                         setChatHasHistory(true);
                                     }
                                     const headers = await withCsrfHeaders();
-                                    await fetchWithScopeRetry(
+                                    const migrateRes = await fetchWithScopeRetry(
                                         `/api/app-builder/${appId}/ai-chat`,
                                         {
                                             method: "POST",
@@ -2823,17 +2846,19 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                         },
                                         { retryLabel: "migrate legacy chat" },
                                     ).catch(() => null);
+
+                                    if (migrateRes?.ok) {
+                                        try {
+                                            localStorage.removeItem(`chat_history_${appId}`);
+                                        } catch {
+                                            // ignore
+                                        }
+                                    }
                                 }
                             }
                         }
                     } catch {
                         // ignore migration errors
-                    }
-
-                    try {
-                        localStorage.removeItem(`chat_history_${appId}`);
-                    } catch {
-                        // ignore
                     }
                 }
 
@@ -5488,9 +5513,10 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                 const searchRequestBody = {
                     appId,
                     query: messageInput,
-                    requestText: frameworkPrompt,
+                    requestText: `${frameworkPrompt}\n\n${requestFileContractPrompt}`,
                     currentPath: visualCurrentFile,
                     debugCurrentPath: currentPathDebug,
+                    selectedFiles: selectedRequestPaths,
                     maxChunks: 10,
                     framework: projectFramework.key,
                     frameworkLabel: projectFramework.label,
@@ -5703,9 +5729,10 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                     {
                         appId,
                         query: messageInput,
-                        requestText: frameworkPrompt,
+                        requestText: `${frameworkPrompt}\n\n${requestFileContractPrompt}`,
                         currentPath: visualCurrentFile,
                         debugCurrentPath: currentPathDebug,
+                        selectedFiles: selectedRequestPaths,
                         maxChunks: 10,
                     },
                     requestHeaders,
@@ -5808,9 +5835,10 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                             {
                                 appId,
                                 query: messageInput,
-                                requestText: frameworkPrompt,
+                                requestText: `${frameworkPrompt}\n\n${requestFileContractPrompt}`,
                                 currentPath: visualCurrentFile,
                                 debugCurrentPath: currentPathDebug,
+                                selectedFiles: selectedRequestPaths,
                                 maxChunks: 10,
                             },
                             requestHeaders,
@@ -8189,10 +8217,10 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                     <button
                                         type="button"
                                         onClick={() => {
-                                            setRequestPageOverride(null);
+                                            setRequestPageOverrides([]);
                                             setRequestPageSearch("");
                                         }}
-                                        className={`mb-1 flex w-full items-start justify-between gap-3 rounded-xl px-3 py-2 text-left text-sm transition ${!requestPageOverride ? "bg-orange-50 text-neutral-900" : "hover:bg-neutral-50"}`}
+                                        className={`mb-1 flex w-full items-start justify-between gap-3 rounded-xl px-3 py-2 text-left text-sm transition ${requestPageOverrides.length === 0 ? "bg-orange-50 text-neutral-900" : "hover:bg-neutral-50"}`}
                                     >
                                         <div className="min-w-0">
                                             <div className="font-semibold">Auto: current page</div>
@@ -8200,19 +8228,27 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                                 {selectedRequestPage?.path || currentFile || "Current visible page"}
                                             </div>
                                         </div>
+                                        {requestPageOverrides.length === 0 ? <Check className="mt-0.5 h-4 w-4 shrink-0 text-[#F55F2A]" aria-hidden="true" /> : null}
                                     </button>
 
                                     {filteredRequestPageOptions.map((page) => {
-                                        const active = page.path === selectedRequestCurrentPath;
+                                        const active = selectedRequestPaths.includes(page.path);
+                                        const atLimit = requestPageOverrides.length >= 3;
                                         return (
                                             <button
                                                 key={page.path}
                                                 type="button"
                                                 onClick={() => {
-                                                    setRequestPageOverride(page.path);
+                                                    setRequestPageOverrides((prev) => {
+                                                        const isActive = prev.includes(page.path);
+                                                        if (isActive) return prev.filter((path) => path !== page.path);
+                                                        if (prev.length >= 3) return prev;
+                                                        return [...prev, page.path];
+                                                    });
                                                     setRequestPageSearch("");
                                                 }}
-                                                className={`flex w-full items-start justify-between gap-3 rounded-xl px-3 py-2 text-left text-sm transition ${active ? "bg-orange-50 text-neutral-900" : "hover:bg-neutral-50"}`}
+                                                disabled={!active && atLimit}
+                                                className={`flex w-full items-start justify-between gap-3 rounded-xl px-3 py-2 text-left text-sm transition ${active ? "bg-orange-50 text-neutral-900" : "hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-60"}`}
                                             >
                                                 <div className="min-w-0">
                                                     <div className="font-semibold">{page.label}</div>
@@ -8226,6 +8262,10 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                     {!filteredRequestPageOptions.length ? (
                                         <div className="px-3 py-3 text-sm text-neutral-500">No matching pages.</div>
                                     ) : null}
+
+                                    <div className="px-3 pb-1 pt-2 text-[11px] text-neutral-500">
+                                        Select up to 3 pages. Auto uses the visible page.
+                                    </div>
                                 </div>
                             </div>
                         </details>

@@ -217,6 +217,9 @@ export async function POST(req: NextRequest) {
             const appId = asString(body?.appId, 200);
             const query = asString(body?.query ?? body?.requestText, 10_000);
             const currentPath = asString(body?.currentPath, 500) || null;
+            const selectedFiles = Array.isArray(body?.selectedFiles)
+                ? body.selectedFiles.map((path: unknown) => asString(path, 500)).filter(Boolean).slice(0, 3)
+                : [];
             const maxChunks = toMaxChunks(body?.maxChunks);
             const search = Array.isArray(body?.search) ? body.search : undefined;
             const framework = asString(body?.framework, 80) || null;
@@ -240,6 +243,7 @@ export async function POST(req: NextRequest) {
                     query,
                     requestText: query,
                     ...(currentPath ? { currentPath } : {}),
+                    ...(selectedFiles.length ? { selectedFiles } : {}),
                     maxChunks,
                     ...(search ? { search } : {}),
                     ...(framework ? { framework } : {}),
@@ -265,6 +269,7 @@ export async function POST(req: NextRequest) {
                     extra: {
                         appId,
                         currentPath,
+                        selectedFiles,
                         maxChunks,
                         timeoutMs: EDIT_PLAN_TIMEOUT_MS,
                         requestId: result.reqId || requestId || undefined,
@@ -282,6 +287,7 @@ export async function POST(req: NextRequest) {
                 appId,
                 query,
                 currentPath,
+                selectedFiles,
                 maxChunks,
                 framework,
                 frameworkLabel,
@@ -309,6 +315,7 @@ export async function POST(req: NextRequest) {
                     extra: {
                         appId,
                         currentPath,
+                        selectedFiles,
                         query,
                         maxChunks,
                         searchChunkCount: Array.isArray(payload?.search) ? payload.search.length : Array.isArray(search) ? search.length : 0,

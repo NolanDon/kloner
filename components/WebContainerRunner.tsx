@@ -630,7 +630,7 @@ export default function WebContainerRunner({ appId, files, filesReady = true, on
   // The backend limiter allows 60 requests per 900 seconds. A single 10s
   // poller can exceed that by itself, so keep the steady-state interval above
   // the 15s floor with some headroom for reconnects and retries.
-  const POLL_INTERVAL_MS = 20_000;
+  const POLL_INTERVAL_MS = 15_000;
 
   // Throttle: regardless of code path, never issue status checks more frequently
   // than this (prevents duplicate loops and tight retry paths from spamming).
@@ -3342,7 +3342,7 @@ export default function NavBar() {
         console.log('App creation started, tracking code:', code);
         pollingCodeRef.current = code;
         activePollCodeRef.current = code;
-        previewRegistrationGraceUntilRef.current = Date.now() + (isForceFreshStart ? 4 * 60_000 : 2 * 60_000);
+        previewRegistrationGraceUntilRef.current = Date.now() + (isForceFreshStart ? 75_000 : 45_000);
         ensurePollTelemetry(code);
 
         // Store the container code for future connections
@@ -3623,10 +3623,10 @@ export default function NavBar() {
                 const now = Date.now();
                 const inRegistrationGrace = previewRegistrationGraceUntilRef.current > now;
                 const baseMaxNotFoundAttempts = isForceFreshStart
-                  ? Math.max(maxContainerNotFound, 15)
-                  : Math.max(maxContainerNotFound, 15);
+                  ? Math.max(maxContainerNotFound, 4)
+                  : Math.max(maxContainerNotFound, 3);
                 const maxNotFoundAttempts = inRegistrationGrace
-                  ? Math.max(baseMaxNotFoundAttempts, 15)
+                  ? Math.max(baseMaxNotFoundAttempts, 4)
                   : baseMaxNotFoundAttempts;
                 console.log(`Container not found (404) - attempt ${containerNotFoundCountRef.current}/${maxNotFoundAttempts}`);
 
@@ -3658,8 +3658,9 @@ export default function NavBar() {
                   return;
                 }
 
-                // For 404s, retry more frequently since the container might not be registered yet
-                schedulePoll(code, pollStatus, POLL_INTERVAL_MS, 'http_404_registration_wait');
+                // For 404s, retry quickly during startup, but do not stretch a missing preview into a long hang.
+                const retryDelayMs = Math.min(POLL_INTERVAL_MS, 10_000);
+                schedulePoll(code, pollStatus, retryDelayMs, 'http_404_registration_wait');
                 return;
               }
               throw new Error(`Status check failed: ${statusResponse.status}`);

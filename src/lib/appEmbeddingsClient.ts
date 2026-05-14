@@ -2,6 +2,7 @@ export type AppEmbeddingSearchRequest = {
     appId: string;
     query: string;
     currentPath?: string | null;
+    selectedFiles?: string[] | null;
     debugCurrentPath?: {
         selectedFile: string | null;
         derivedCurrentPath: string | null;
@@ -1033,6 +1034,7 @@ export async function fetchEmbeddingSearch(
             query: request.query,
             requestText: request.requestText ?? request.query,
             currentPath: request.currentPath || null,
+            ...(Array.isArray(request.selectedFiles) ? { selectedFiles: request.selectedFiles.slice(0, 3) } : {}),
             ...(request.debugCurrentPath ? { debugCurrentPath: request.debugCurrentPath } : {}),
             maxChunks,
             ...(request.framework ? { framework: request.framework } : {}),
@@ -1057,6 +1059,7 @@ export async function fetchEmbeddingEditPlan(
             query: request.query,
             requestText: request.requestText ?? request.query,
             currentPath: request.currentPath || null,
+            ...(Array.isArray(request.selectedFiles) ? { selectedFiles: request.selectedFiles.slice(0, 3) } : {}),
             ...(request.debugCurrentPath ? { debugCurrentPath: request.debugCurrentPath } : {}),
             maxChunks,
             ...(search ? { search } : {}),
