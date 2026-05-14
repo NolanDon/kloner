@@ -4,7 +4,7 @@
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import Editor from "@monaco-editor/react";
 import Image from "next/image";
-import { Folder, File, Upload, X, RefreshCw, MessageSquare, Code, Check, RotateCcw, Database, Rocket, Monitor, SlidersHorizontal, Images, Send, Pencil, Loader2, Share2, ExternalLink, Copy, ChevronDown, ChevronRight, AlertTriangle, Search, Paintbrush } from "lucide-react";
+import { Folder, File, Upload, X, RefreshCw, MessageSquare, Code, Check, RotateCcw, Database, Rocket, Monitor, SlidersHorizontal, Images, Send, Pencil, Loader2, Share2, ExternalLink, Copy, ChevronDown, ChevronRight, AlertTriangle, Search, Paintbrush, MoreVertical } from "lucide-react";
 import AppBuilderEditorAgentChat from "./AppBuilderEditorAgentChat";
 import { AppBuilderEditorTour } from "./AppBuilderEditorTour";
 import AppPreviewEditor from "./AppPreviewEditor";
@@ -34,6 +34,7 @@ import { postPreviewApply } from "./previewMachineApply";
 const VERCEL_INTEGRATION_SLUG =
     process.env.NEXT_PUBLIC_VERCEL_INTEGRATION_SLUG || "kloner";
 const APP_BUILDER_PENDING_SHARE_KEY = "kloner_vercel_pending_app_share";
+const APP_BUILDER_PENDING_AI_IMAGES_KEY = "kloner_vercel_pending_ai_images";
 
 type PreviewIssueFixDecision = {
     eligible: boolean;
@@ -115,7 +116,6 @@ type AppData = {
         status?: string | null;
         stage?: string | null;
         progress?: number | null;
-        message?: string | null;
         title?: string | null;
         jobId?: string | null;
         requestId?: string | null;
@@ -231,7 +231,7 @@ function buildDeploySuccessBanner(params: {
     };
 }
 
-type VercelOAuthFlow = "preview" | "share";
+type VercelOAuthFlow = "preview" | "share" | "images";
 
 type CodedError = Error & {
     code?: string;
@@ -1697,8 +1697,10 @@ export default function AppBuilderEditor({
     const [isMobile, setIsMobile] = useState(false);
     const [mobileTab, setMobileTab] = useState<"app" | "prompt">("app");
     const [mobileControlsOpen, setMobileControlsOpen] = useState(false);
+    const [tabletControlsOpen, setTabletControlsOpen] = useState(false);
     const [desktopOnlyToast, setDesktopOnlyToast] = useState(false);
     const desktopOnlyToastTimerRef = useRef<number | null>(null);
+    const tabletControlsRef = useRef<HTMLDivElement | null>(null);
     const showDesktopOnlyToast = () => {
         setDesktopOnlyToast(true);
         if (desktopOnlyToastTimerRef.current) window.clearTimeout(desktopOnlyToastTimerRef.current);
@@ -1723,6 +1725,27 @@ export default function AppBuilderEditor({
     const pageDropdownRef = useRef<HTMLDivElement | null>(null);
     const previewEditorFlushRef = useRef<null | (() => Promise<boolean>)>(null);
     const lastVisualEditedHtmlPathRef = useRef<string | null>(null);
+
+    useEffect(() => {
+        if (!tabletControlsOpen) return;
+
+        const handlePointerDown = (event: PointerEvent) => {
+            if (tabletControlsRef.current?.contains(event.target as Node)) return;
+            setTabletControlsOpen(false);
+        };
+
+        const handleKeyDown = (event: KeyboardEvent) => {
+            if (event.key === "Escape") setTabletControlsOpen(false);
+        };
+
+        window.addEventListener("pointerdown", handlePointerDown);
+        window.addEventListener("keydown", handleKeyDown);
+
+        return () => {
+            window.removeEventListener("pointerdown", handlePointerDown);
+            window.removeEventListener("keydown", handleKeyDown);
+        };
+    }, [tabletControlsOpen]);
     const applyPreviewChangesNowRef = useRef<null | ((changes: Array<{ path: string; content: string }>, opts: { interactive: boolean; source?: string }) => Promise<void>)>(null);
     const isDev = process.env.NODE_ENV !== "production";
     const isVisualEditorMode = viewMode === "custom" || viewMode === "images";
@@ -2244,6 +2267,14 @@ export default function AppBuilderEditor({
     }, []);
 
     const uploadImageToUserBlob = useCallback(async (file: globalThis.File) => {
+        if (!isVercelConnected) {
+            void showAlert(
+                "Connect your Vercel account before uploading or replacing images.",
+                "Connect Vercel",
+            );
+            throw new Error("Vercel is not connected yet.");
+        }
+
         const csrf = await ensureSessionAndCsrf().catch(() => null);
         const safeName = sanitizeImageName(file.name || "upload.bin");
         const url = `/api/user-blob/upload-url?filename=${encodeURIComponent(safeName)}&renderId=${encodeURIComponent(appId)}`;
@@ -5576,6 +5607,56 @@ export default function AppBuilderEditor({
         }
     }, [appId, persistPendingVercelShareFlow]);
 
+    const startVercelOAuthForImageLibrary = useCallback(() => {
+        if (!VERCEL_INTEGRATION_SLUG) {
+            console.error("Missing NEXT_PUBLIC_VERCEL_INTEGRATION_SLUG");
+            setPreviewError(PREVIEW_RECOVERY_MESSAGE);
+            return;
+        }
+
+        try {
+            setVercelConnectOpening(true);
+            const bytes = new Uint8Array(16);
+            crypto.getRandomValues(bytes);
+            const state = Array.from(bytes)
+                .map((b) => b.toString(16).padStart(2, "0"))
+                .join("");
+
+            const returnTo = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+            localStorage.setItem(
+                APP_BUILDER_PENDING_AI_IMAGES_KEY,
+                JSON.stringify({
+                    appId,
+                    returnTo,
+                    startedAt: Date.now(),
+                }),
+            );
+
+            localStorage.setItem("kloner_vercel_latest_csrf", state);
+
+            document.cookie = [
+                `vercel_oauth_state=${state}`,
+                "Path=/",
+                "Max-Age=600",
+                "SameSite=Lax",
+            ].join("; ");
+
+            document.cookie = [
+                `vercel_oauth_return=${encodeURIComponent(returnTo)}`,
+                "Path=/",
+                "Max-Age=600",
+                "SameSite=Lax",
+            ].join("; ");
+
+            setVercelConnectFlow("images");
+            setVercelConnectOpen(true);
+        } catch (e) {
+            console.error("Failed to start Vercel OAuth for image library", e);
+            setPreviewError(PREVIEW_RECOVERY_MESSAGE);
+            setVercelConnectOpening(false);
+        }
+    }, [appId]);
+
     const tryEmbedExistingPreview = useCallback(() => {
         const url = (protectedPreviewUrl || "").trim();
         if (!url) return;
@@ -5630,6 +5711,31 @@ export default function AppBuilderEditor({
         }
 
         // No-op for embedded preview; deploy actions will work after connect.
+    }, [isVercelConnected, appId, app, filesHydrated, loading]);
+
+    useEffect(() => {
+        if (!isVercelConnected) return;
+        if (!appId) return;
+        if (!app || loading) return;
+        if (!filesHydrated) return;
+
+        let pendingImages: any = null;
+        try {
+            const raw = localStorage.getItem(APP_BUILDER_PENDING_AI_IMAGES_KEY);
+            if (raw) pendingImages = JSON.parse(raw);
+        } catch {
+            pendingImages = null;
+        }
+
+        if (!pendingImages || pendingImages.appId !== appId) return;
+
+        try {
+            localStorage.removeItem(APP_BUILDER_PENDING_AI_IMAGES_KEY);
+        } catch {
+            // ignore
+        }
+
+        setViewMode("images");
     }, [isVercelConnected, appId, app, filesHydrated, loading]);
 
     useEffect(() => {
@@ -5993,8 +6099,8 @@ export default function AppBuilderEditor({
             ) : null}
             <div className="h-full w-full bg-white flex flex-col">
                 {/* Header */}
-                <div className="relative flex items-center justify-between p-2.5 sm:p-4 border-b bg-gray-50">
-                    <div className="relative z-20 flex flex-1 min-w-0 items-center gap-2 sm:gap-3">
+                <div className="relative flex flex-nowrap items-center justify-between gap-2 overflow-x-auto border-b bg-gray-50 p-2.5 sm:p-4">
+                    <div className="relative z-20 flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
                         {isRenaming ? (
                             <div className="flex min-w-0 max-w-full items-center gap-1.5 sm:gap-2">
                                 <input
@@ -6044,8 +6150,85 @@ export default function AppBuilderEditor({
                             </div>
                         )}
 
-                        {/* Project controls (moved off top-right) */}
-                        <div className="ml-2 hidden md:flex items-center gap-2">
+                        {/* Tablet controls menu */}
+                        <div ref={tabletControlsRef} className="relative ml-0 md:flex lg:hidden">
+                            <button
+                                type="button"
+                                onClick={() => setTabletControlsOpen((open) => !open)}
+                                className="inline-flex shrink-0 items-center justify-center rounded-full border border-neutral-300 bg-white p-2 text-neutral-700 shadow-sm hover:bg-neutral-50"
+                                title="More controls"
+                                aria-label="More controls"
+                                aria-expanded={tabletControlsOpen}
+                            >
+                                <MoreVertical className="h-4 w-4" />
+                            </button>
+
+                            {tabletControlsOpen ? (
+                                <div className="absolute left-0 top-full z-30 mt-2 w-[min(88vw,19rem)] overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-2xl">
+                                    {lastDeployLiveUrl ? (
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setTabletControlsOpen(false);
+                                                window.open(lastDeployLiveUrl, "_blank", "noopener,noreferrer");
+                                            }}
+                                            className="flex w-full items-center gap-2 border-b border-neutral-100 px-4 py-3 text-left text-sm font-semibold text-neutral-800 hover:bg-neutral-50"
+                                        >
+                                            <Rocket className="h-4 w-4 text-neutral-500" />
+                                            View live
+                                        </button>
+                                    ) : null}
+
+                                    {isDev ? (
+                                        <div className="border-b border-neutral-100 px-4 py-3 text-sm">
+                                            <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-neutral-500">Current file</div>
+                                            <div className="mt-1 truncate font-medium text-neutral-800">{currentFile || "(none)"}</div>
+                                        </div>
+                                    ) : null}
+
+                                    <div className="px-4 py-3 text-sm">
+                                        <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-neutral-500">UI scale</div>
+                                        <div className="mt-2 inline-flex items-center gap-1 rounded-full border border-neutral-200 bg-neutral-50 px-2 py-1">
+                                            <button
+                                                type="button"
+                                                onClick={() => setCustomPreviewScale((s) => Math.max(0.5, +(s - 0.05).toFixed(2)))}
+                                                className="inline-flex h-7 w-7 items-center justify-center rounded-full text-neutral-700 hover:bg-neutral-100"
+                                                title="Zoom out"
+                                            >
+                                                −
+                                            </button>
+                                            <span className="w-12 text-center text-sm font-semibold text-neutral-700">
+                                                {Math.round(customPreviewScale * 100)}%
+                                            </span>
+                                            <button
+                                                type="button"
+                                                onClick={() => setCustomPreviewScale((s) => Math.min(1.25, +(s + 0.05).toFixed(2)))}
+                                                className="inline-flex h-7 w-7 items-center justify-center rounded-full text-neutral-700 hover:bg-neutral-100"
+                                                title="Zoom in"
+                                            >
+                                                +
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <div className="border-t border-neutral-100 px-4 py-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setTabletControlsOpen(false);
+                                                handleTakeBuilderTour();
+                                            }}
+                                            className="inline-flex items-center gap-2 text-sm font-semibold text-neutral-800 hover:text-[#f55f2a]"
+                                        >
+                                            Take tour
+                                        </button>
+                                    </div>
+                                </div>
+                            ) : null}
+                        </div>
+
+                        {/* Project controls (desktop) */}
+                        <div className="ml-0 hidden flex-nowrap items-center gap-1.5 lg:flex lg:gap-2">
                             {isDev && !isVisualEditorMode ? (
                                 <button
                                     onClick={() => void openDatabaseConnect()}
@@ -6104,11 +6287,12 @@ export default function AppBuilderEditor({
                             {lastDeployLiveUrl ? (
                                 <button
                                     onClick={() => window.open(lastDeployLiveUrl, "_blank", "noopener,noreferrer")}
-                                    className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full border border-neutral-300 bg-white px-3 py-2 text-xs font-semibold text-neutral-700 hover:bg-neutral-50"
+                                    className="inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-full border border-neutral-300 bg-white px-2.5 py-2 text-xs font-semibold text-neutral-700 hover:bg-neutral-50 lg:px-3"
                                     title="Open live deployment"
                                 >
                                     <Rocket className="h-4 w-4" />
-                                    <span>View live</span>
+                                    <span className="hidden md:inline lg:hidden">Live</span>
+                                    <span className="hidden lg:inline">View live</span>
                                 </button>
                             ) : null}
 
@@ -6116,7 +6300,7 @@ export default function AppBuilderEditor({
                                 <button
                                     type="button"
                                     onClick={handleTakeBuilderTour}
-                                    className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full border border-neutral-300 bg-white px-3 py-2 text-xs font-semibold text-neutral-700 hover:bg-neutral-50"
+                                    className="hidden shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-full border border-neutral-300 bg-white px-2.5 py-2 text-xs font-semibold text-neutral-700 hover:bg-neutral-50 lg:inline-flex lg:px-3"
                                     title="Show the app builder tour"
                                 >
                                     <span>Take tour</span>
@@ -6125,17 +6309,17 @@ export default function AppBuilderEditor({
 
                             {isDev ? (
                                 <div
-                                    className="inline-flex max-w-[320px] items-center gap-1.5 rounded-full border border-neutral-200 bg-neutral-50 px-3 py-1.5 text-xs font-medium text-neutral-700"
+                                    className="inline-flex shrink-0 max-w-[150px] items-center gap-1.5 rounded-full border border-neutral-200 bg-neutral-50 px-2.5 py-1.5 text-[11px] font-medium text-neutral-700 xl:max-w-[320px] xl:px-3 xl:text-xs"
                                     title={`Current open file: ${currentFile || "(none)"}`}
                                 >
                                     <DevOnlyIconBadge title="Development-only current file indicator" />
-                                    <span className="text-neutral-500">current file:</span>
+                                    <span className="hidden text-neutral-500 lg:inline">current file:</span>
                                     <span className="truncate">{currentFile || "(none)"}</span>
                                 </div>
                             ) : null}
 
                             {(
-                                <div data-tour-ui-scale className="inline-flex items-center gap-1 rounded-full border border-neutral-300 bg-white px-2 py-1 shadow-sm">
+                                <div data-tour-ui-scale className="inline-flex shrink-0 items-center gap-0.5 rounded-full border border-neutral-300 bg-white px-1.5 py-1 shadow-sm xl:gap-1 xl:px-2">
                                     <button
                                         type="button"
                                         onClick={() => setCustomPreviewScale((s) => Math.max(0.5, +(s - 0.05).toFixed(2)))}
@@ -6144,7 +6328,7 @@ export default function AppBuilderEditor({
                                     >
                                         −
                                     </button>
-                                    <span className="w-10 text-center text-xs font-semibold text-neutral-700">
+                                    <span className="w-9 text-center text-xs font-semibold text-neutral-700 xl:w-10">
                                         {Math.round(customPreviewScale * 100)}%
                                     </span>
                                     <button
@@ -6186,8 +6370,8 @@ export default function AppBuilderEditor({
                         ) : null}
 
                         {/* Top-right reserved for machine + deploy (PreviewEditorV2-style) */}
-                        <div className={`hidden md:inline-flex items-center gap-2 rounded-full border border-neutral-200 bg-white px-2 py-1 shadow-md ${isVisualEditorMode ? "invisible pointer-events-none" : ""}`}>
-                            <div className="px-2 text-[11px] font-semibold text-neutral-700 whitespace-nowrap">
+                        <div className={`hidden md:inline-flex items-center gap-1 rounded-full border border-neutral-200 bg-white px-1.5 py-1 shadow-md lg:gap-2 lg:px-2 ${isVisualEditorMode ? "invisible pointer-events-none" : ""}`}>
+                            <div className="px-1.5 text-[10px] font-semibold text-neutral-700 whitespace-nowrap lg:px-2 lg:text-[11px]">
                                 <span
                                     className={`mr-2 inline-block h-2 w-2 rounded-full ${
                                         isPreviewBuilding
@@ -6207,22 +6391,22 @@ export default function AppBuilderEditor({
                                 onClick={handleReconnect}
                                 disabled={isRefreshing || isPreviewBuilding}
                                 data-tour-refresh
-                                className="inline-flex h-7 items-center justify-center gap-1.5 rounded-full border border-neutral-300 bg-white px-2.5 text-[12px] font-semibold text-neutral-700 shadow-sm transition hover:bg-neutral-50 disabled:opacity-60"
+                                className="inline-flex h-7 items-center justify-center gap-1.5 rounded-full border border-neutral-300 bg-white px-2.5 text-[11px] font-semibold text-neutral-700 shadow-sm transition hover:bg-neutral-50 disabled:opacity-60 lg:px-2.5 lg:text-[12px]"
                                 title="Reconnect to the existing machine without restarting"
                             >
                                 <RotateCcw className="h-3.5 w-3.5" />
-                                <span>Refresh</span>
+                                <span className="hidden lg:inline">Refresh</span>
                             </button>
 
                             <button
                                 onClick={() => handleRefresh(true)}
                                 disabled={isPreviewBuilding || isRefreshing}
                                 data-tour-rebuild
-                                className="inline-flex h-7 items-center justify-center gap-1.5 rounded-full border border-neutral-300 bg-white px-2.5 text-[12px] font-semibold text-neutral-700 shadow-sm transition hover:bg-neutral-50 disabled:opacity-60"
+                                className="inline-flex h-7 items-center justify-center gap-1.5 rounded-full border border-neutral-300 bg-white px-2.5 text-[11px] font-semibold text-neutral-700 shadow-sm transition hover:bg-neutral-50 disabled:opacity-60 lg:px-2.5 lg:text-[12px]"
                                 title="Delete current machine and rebuild app (this will not delete your website)"
                             >
                                 <RefreshCw className="h-3.5 w-3.5" />
-                                <span>{isPreviewBuilding ? "Starting" : "Rebuild"}</span>
+                                <span className="hidden lg:inline">{isPreviewBuilding ? "Starting" : "Rebuild"}</span>
                             </button>
                         </div>
 
@@ -6269,12 +6453,12 @@ export default function AppBuilderEditor({
                                         onClick={() => void handleSharePreview()}
                                         disabled={isSharingPreview}
                                         data-tour-share
-                                        className="inline-flex h-8 items-center gap-1.5 rounded-full border border-neutral-300 bg-white px-3 py-1 text-[13px] font-semibold text-neutral-700 shadow-md transition hover:bg-neutral-50 disabled:opacity-60"
+                                        className="inline-flex h-8 items-center gap-1.5 rounded-full border border-neutral-300 bg-white px-2 py-1 text-[12px] font-semibold text-neutral-700 shadow-md transition hover:bg-neutral-50 disabled:opacity-60 xl:px-3 xl:text-[13px]"
                                         title={shareChoiceError || "Create a shareable preview link"}
                                         aria-label="Share preview"
                                     >
                                         <Share2 className="h-3.5 w-3.5" aria-hidden="true" />
-                                        <span>{isSharingPreview ? "Sharing…" : "Share"}</span>
+                                        <span className="hidden xl:inline">{isSharingPreview ? "Sharing…" : "Share"}</span>
                                         <DevOnlyIconBadge title="Development-only share control" />
                                     </button>
                                 ) : null}
@@ -6283,12 +6467,12 @@ export default function AppBuilderEditor({
                                     onClick={handleDeploy}
                                     disabled={isDeploying}
                                     data-tour-deploy
-                                    className="inline-flex h-8 items-center gap-1.5 rounded-full border border-[#f55f2a] bg-[#f55f2a] px-3 py-1 text-[13px] font-semibold text-white shadow-md transition hover:opacity-90 disabled:opacity-60"
+                                    className="inline-flex h-8 items-center gap-1.5 rounded-full border border-[#f55f2a] bg-[#f55f2a] px-2 py-1 text-[12px] font-semibold text-white shadow-md transition hover:opacity-90 disabled:opacity-60 xl:px-3 xl:text-[13px]"
                                     title="Deploy"
                                     aria-label="Deploy"
                                 >
                                     <Rocket className="h-3.5 w-3.5" aria-hidden="true" />
-                                    <span>{isDeploying ? "Deploying…" : "Deploy"}</span>
+                                    <span className="hidden xl:inline">{isDeploying ? "Deploying…" : "Deploy"}</span>
                                 </button>
                             </>
                         ) : null}
@@ -6701,6 +6885,11 @@ export default function AppBuilderEditor({
                                     sharedUiScale={customPreviewScale}
                                     onSharedUiScaleChange={setCustomPreviewScale}
                                     preferredSidePanelMode={viewMode === "images" ? "ai-library" : "style"}
+                                    isVercelConnected={isVercelConnected}
+                                    onConnectVercel={() => {
+                                        setVercelConnectFlow("images");
+                                        setVercelConnectOpen(true);
+                                    }}
                                     registerBeforeExitFlush={(fn) => {
                                         previewEditorFlushRef.current = fn;
                                     }}
@@ -6873,7 +7062,7 @@ export default function AppBuilderEditor({
                                                 <span className="kloner-dot" />
                                                 <span className="kloner-dot" />
                                             </div>
-                                            <div className="mt-6 w-full max-w-2xl px-6 text-left"><div className="text-sm text-black/60"><span>Hydrating files</span></div></div>
+                                            <div className="mt-6 w-full max-w-2xl px-6 text-left"><div className="text-sm text-black/60"><span>Hydrating</span></div></div>
                                         </div>
                                     </div>
                                 )
@@ -7427,7 +7616,13 @@ export default function AppBuilderEditor({
 
                                 <div className="mt-3 flex gap-2">
                                     <button
-                                        onClick={vercelConnectFlow === "share" ? startVercelOAuthForSharePreview : startVercelOAuthForPreview}
+                                        onClick={
+                                            vercelConnectFlow === "share"
+                                                ? startVercelOAuthForSharePreview
+                                                : vercelConnectFlow === "images"
+                                                    ? startVercelOAuthForImageLibrary
+                                                    : startVercelOAuthForPreview
+                                        }
                                         disabled={isVercelChecking || vercelConnectOpening}
                                         className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2 bg-[#F55F2A] text-xs font-semibold text-white rounded-full hover:opacity-90 disabled:opacity-50"
                                     >

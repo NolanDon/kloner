@@ -203,6 +203,7 @@ export function AppBuilderEditorTour({ startToken, enabled = true }: { startToke
 
         if (typeof window === "undefined") return;
         if (startToken <= 0) return;
+        if (hasSeenTour()) return;
 
         markTourSeen();
         setIndex(0);

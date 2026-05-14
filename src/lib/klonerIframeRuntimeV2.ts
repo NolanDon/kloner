@@ -1760,6 +1760,11 @@ export function installKlonerIframeApi(
         setBlockBackgroundImageFromLibrary(selected, src, storagePath);
     };
 
+    api.clearBackgroundImage = () => {
+        if (!selected) return;
+        clearBlockBackgroundImage(selected);
+    };
+
     api.replaceImage = () => {
         if (!selected) return;
         const img = getImageFromSelection(selected);
@@ -2345,6 +2350,30 @@ export function installKlonerIframeApi(
         saveHistory();
         notify();
         showHint("Background image applied from your library.", block);
+    }
+
+    function clearBlockBackgroundImage(block: HTMLElement) {
+        const oldPath = block.getAttribute("data-kloner-bg-path") || undefined;
+        if (oldPath) {
+            block.setAttribute("data-kloner-bg-old-path", oldPath);
+        }
+
+        block.style.removeProperty("background-image");
+        block.style.removeProperty("background-size");
+        block.style.removeProperty("background-position");
+        block.style.removeProperty("background-repeat");
+
+        if ((block.dataset as any).localImageId) {
+            delete (block.dataset as any).localImageId;
+        }
+        if ((block.dataset as any).localFilename) {
+            delete (block.dataset as any).localFilename;
+        }
+
+        block.removeAttribute("data-kloner-bg-path");
+        saveHistory();
+        notify();
+        showHint("Background image removed.", block);
     }
 
 

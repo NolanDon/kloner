@@ -6,6 +6,7 @@ import { useEffect, useMemo, useRef, useState, useCallback, ChangeEvent, type Co
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence, useDragControls } from "framer-motion";
 import Image from 'next/image'
+import { useModal } from "@/components/ui/ModalContext";
 
 export type Device = "desktop" | "tablet" | "mobile";
 export type ViewMode = "code" | "preview" | "screenshot";
@@ -92,6 +93,8 @@ type Props = {
     sourceFiles?: { [path: string]: { content: string; lastModified: number } };
         registerBeforeExitFlush?: (fn: (() => Promise<boolean>) | null) => void;
     onTakeBuilderTour?: () => void;
+    isVercelConnected?: boolean;
+    onConnectVercel?: () => void;
 };
 
 const ACCENT = "#f55f2a";
@@ -1218,6 +1221,8 @@ function AppPreviewEditorCore({
     sourceFiles,
     registerBeforeExitFlush,
     onTakeBuilderTour,
+    isVercelConnected = false,
+    onConnectVercel,
 }: Props) {
     const { user } = useAuth();
     const isDevCodeMode = process.env.NODE_ENV === "development";
@@ -1527,6 +1532,7 @@ function AppPreviewEditorCore({
     const [selectionMeta, setSelectionMeta] = useState<SelectionMeta>({ has: false });
     const [lastSelectedPath, setLastSelectedPath] = useState(null);
     const [archivedPageIds, setArchivedPageIds] = useState<string[]>([]);
+    const { showAlert } = useModal();
     const [showPageLayers, setShowPageLayers] = useState(false);
         const [isPageDropdownOpen, setIsPageDropdownOpen] = useState(false);
         const pageDropdownRef = useRef<HTMLDivElement | null>(null);
@@ -3537,6 +3543,14 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
         file: File,
         draftId: string
     ): Promise<UploadedAsset> {
+        if (!isVercelConnected) {
+            void showAlert(
+                "Connect your Vercel account before uploading or replacing images.",
+                "Connect Vercel"
+            );
+            throw new Error("Vercel is not connected yet.");
+        }
+
         if (process.env.NODE_ENV === "development") {
             console.log("[uploadFileToUserBlob] start", {
                 draftId,
@@ -4569,26 +4583,26 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                     };
                     const currentPageLabel = labelFromPath(currentHtmlPath || "");
                     return createPortal(
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-1.5 lg:gap-2">
                             {/* File switcher */}
                             {editableFiles.length > 0 ? (
-                                <div className="shrink-0 flex items-center gap-2">
+                                <div className="shrink-0 flex items-center gap-1.5 lg:gap-2">
                                     <div className="relative" ref={pageDropdownRef} id="kloner-page-switcher">
                                         {hasFileDropdown ? (
                                             <button
                                                 type="button"
                                                 onClick={() => setIsPageDropdownOpen((prev) => !prev)}
-                                                className="inline-flex items-center gap-1.5 rounded-full border border-neutral-200 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-800 shadow-sm transition hover:bg-neutral-50"
+                                                className="inline-flex items-center gap-1.5 rounded-full border border-neutral-200 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-neutral-800 shadow-sm transition hover:bg-neutral-50 lg:px-3 lg:text-xs"
                                                 title={`Current page: ${currentPageLabel}`}
                                                 aria-haspopup="menu"
                                                 aria-expanded={isPageDropdownOpen}
                                             >
-                                                <span className="max-w-[180px] truncate lowercase">{currentPageLabel}</span>
+                                                <span className="max-w-[120px] truncate lowercase sm:max-w-[160px] lg:max-w-[180px]">{currentPageLabel}</span>
                                                 <ChevronDown className={`h-3.5 w-3.5 shrink-0 transition-transform ${isPageDropdownOpen ? "rotate-180" : ""}`} />
                                             </button>
                                         ) : (
-                                            <div className="inline-flex items-center gap-1.5 rounded-full border border-neutral-200 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-800 shadow-sm" title={`Current page: ${currentPageLabel}`}>
-                                                <span className="max-w-[180px] truncate lowercase">{currentPageLabel}</span>
+                                            <div className="inline-flex items-center gap-1.5 rounded-full border border-neutral-200 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-neutral-800 shadow-sm lg:px-3 lg:text-xs" title={`Current page: ${currentPageLabel}`}>
+                                                <span className="max-w-[120px] truncate lowercase sm:max-w-[160px] lg:max-w-[180px]">{currentPageLabel}</span>
                                             </div>
                                         )}
 
@@ -4623,7 +4637,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                         <button
                                             type="button"
                                             onClick={handleTakePreviewTour}
-                                            className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full border border-neutral-300 bg-white px-3 py-2 text-xs font-semibold text-neutral-700 hover:bg-neutral-50"
+                                            className="hidden items-center justify-center gap-2 whitespace-nowrap rounded-full border border-neutral-300 bg-white px-2.5 py-2 text-xs font-semibold text-neutral-700 hover:bg-neutral-50 xl:inline-flex lg:px-3"
                                         >
                                             <span>Take tour</span>
                                         </button>
@@ -4632,12 +4646,12 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                             ) : null}
 
                             {/* Device switcher */}
-                            <div id="kloner-device-toggle" className="shrink-0 inline-flex items-center gap-1 rounded-full border border-neutral-200 bg-white px-2 py-1 shadow-md">
+                            <div id="kloner-device-toggle" className="shrink-0 inline-flex items-center gap-1 rounded-full border border-neutral-200 bg-white px-1.5 py-1 shadow-md lg:px-2">
                                 <button
                                     disabled={aiEditing}
                                     type="button"
                                     onClick={() => handleDeviceChange("desktop")}
-                                    className={`flex h-6 w-6 items-center justify-center rounded-full transition-colors ${
+                                    className={`flex h-5 w-5 items-center justify-center rounded-full transition-colors lg:h-6 lg:w-6 ${
                                         device === "desktop" ? "bg-[#f55f2a] text-white" : "bg-white text-neutral-600 hover:bg-neutral-100"
                                     }`}
                                     title="Desktop"
@@ -4648,7 +4662,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                     disabled={aiEditing}
                                     type="button"
                                     onClick={() => handleDeviceChange("tablet")}
-                                    className={`flex h-6 w-6 items-center justify-center rounded-full transition-colors ${
+                                    className={`flex h-5 w-5 items-center justify-center rounded-full transition-colors lg:h-6 lg:w-6 ${
                                         device === "tablet" ? "bg-[#f55f2a] text-white" : "bg-white text-neutral-600 hover:bg-neutral-100"
                                     }`}
                                     title="Tablet"
@@ -4659,7 +4673,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                     disabled={aiEditing}
                                     type="button"
                                     onClick={() => handleDeviceChange("mobile")}
-                                    className={`flex h-6 w-6 items-center justify-center rounded-full transition-colors ${
+                                    className={`flex h-5 w-5 items-center justify-center rounded-full transition-colors lg:h-6 lg:w-6 ${
                                         device === "mobile" ? "bg-[#f55f2a] text-white" : "bg-white text-neutral-600 hover:bg-neutral-100"
                                     }`}
                                     title="Mobile"
@@ -4677,12 +4691,6 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                 <div className={isCompactLayout ? "flex h-full flex-col" : "overflow-hidden h-full"}>
                 <div
                     className={`relative ${isCompactLayout ? "flex h-full flex-col bg-white pt-[58px]" : "flex flex-col rounded-xl bg-white/90 p-4 shadow-xl"}`}
-                    style={isCompactLayout ? undefined : {
-                        transform: `scale(${effectiveUiScale})`,
-                        transformOrigin: "top left",
-                        width: `${100 / effectiveUiScale}%`,
-                        height: `${100 / effectiveUiScale}%`,
-                    }}
                 >
 
                     {/* LEFT SIDEBAR (consistent styling) */}
@@ -4692,7 +4700,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                             className={`pointer-events-auto bg-white flex flex-col overflow-hidden ${
                                 isCompactLayout
                                     ? "relative z-20 h-full w-full bg-gray-50"
-                                    : "absolute bottom-0 left-0 top-0 z-40 rounded-r-2xl border-r border-neutral-200 shadow-xl"
+                                    : "absolute bottom-0 left-0 top-0 z-40 w-[360px] max-w-[92vw] rounded-r-2xl border-r border-neutral-200 shadow-xl"
                             }`}
                             initial={isCompactLayout ? { opacity: 0, y: 8 } : { x: -16, opacity: 0 }}
                             animate={{ x: 0, opacity: 1 }}
@@ -4701,34 +4709,34 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                         >
                             {/* Panel body */}
                             <div
-                                className={`min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-6 ${isCompactLayout ? "pb-36" : ""}`}
+                                className={`min-h-0 flex-1 overflow-y-auto py-5 px-2 ${isCompactLayout ? "pb-36" : "pb-44"}`}
                             >
                                 {/* STYLE MODE BODY */}
                                 {!controlsCollapsed && sidePanelMode === "style" && (
                                     <>
                                         {mode === "preview" && (
                                             <div
-                                                className="mt-1 border-t border-neutral-200 pt-3 text-[12px]"
+                                                className="mt-1 border-t border-neutral-200 pt-3 text-sm leading-6"
                                                 id="kloner-selection-style"
                                             >
                                                 <div className="mb-3 flex items-center justify-between">
-                                                    <div className="text-[18px] font-medium text-neutral-800">
+                                                    <div className="text-sm font-semibold text-neutral-800">
                                                         {selectionMeta.has
                                                             ? selectionMeta.tagName || "Element"
                                                             : "Select element to style"}
                                                     </div>
-                                                    <div className="text-[16px] text-neutral-500 font-medium">
+                                                    <div className="text-xs font-medium text-neutral-500">
                                                         {device.toUpperCase()}
                                                     </div>
                                                 </div>
 
-                                                <div className="space-y-4 text-[12px] max-h-64 overflow-y-auto pr-1 lg:max-h-none">
+                                                <div className="max-h-64 space-y-4 overflow-y-auto pr-1 text-sm leading-6 lg:max-h-none">
                                                     {(mergedThemeColors.length || theme.fontFamilies.length) > 0 && (
                                                         <div className="space-y-4">
                                                             {mergedThemeColors.length > 0 && (
                                                                 <div>
                                                                     <div className="mb-2 border-b border-neutral-200 pb-1">
-                                                                        <div className="inline-flex items-center gap-2 text-[18px] font-medium text-neutral-800">
+                                                                        <div className="inline-flex items-center gap-2 text-sm font-semibold text-neutral-800">
                                                                             <Palette className="h-4 w-4 text-neutral-500" />
                                                                             Text
                                                                         </div>
@@ -4781,7 +4789,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                             {mergedThemeColors.length > 0 && (
                                                                 <div>
                                                                     <div className="mb-2 border-b border-neutral-200 pb-1">
-                                                                        <div className="inline-flex items-center gap-2 text-[18px] font-medium text-neutral-800">
+                                                                        <div className="inline-flex items-center gap-2 text-sm font-semibold text-neutral-800">
                                                                             <Palette className="h-4 w-4 text-neutral-500" />
                                                                             Background
                                                                         </div>
@@ -4853,13 +4861,13 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                     {/* Font */}
                                                     <div>
                                                         <div className="mb-3 border-b border-neutral-200 pb-1">
-                                                            <div className="inline-flex items-center gap-2 text-[18px] font-medium text-neutral-800">
+                                                            <div className="inline-flex items-center gap-2 text-sm font-semibold text-neutral-800">
                                                                 <SlidersHorizontal className="h-4 w-4 text-neutral-500" />
                                                                 Font
                                                             </div>
                                                         </div>
                                                         <select
-                                                            className="w-full rounded border border-neutral-300 bg-white px-3 py-2 text-[12px] shadow-sm focus:outline-none focus:ring-1 focus:ring-neutral-400 disabled:opacity-50"
+                                                            className="w-full rounded border border-neutral-300 bg-white px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-neutral-400 disabled:opacity-50"
                                                             disabled={closing}
                                                             onChange={(e) => {
                                                                 const opt = FONT_OPTIONS.find(
@@ -4891,7 +4899,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                     {/* Size & headings */}
                                                     <div>
                                                         <div className="mb-3 border-b border-neutral-200 pb-1">
-                                                            <div className="inline-flex items-center gap-2 text-[18px] font-medium text-neutral-800">
+                                                            <div className="inline-flex items-center gap-2 text-sm font-semibold text-neutral-800">
                                                                 <SlidersHorizontal className="h-4 w-4 text-neutral-500" />
                                                                 Size
                                                             </div>
@@ -4901,7 +4909,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                                 <button
                                                                     key={s.id}
                                                                     type="button"
-                                                                    className="rounded border border-neutral-300 bg-white px-3 py-1.5 text-[12px] font-medium shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                                    className="rounded border border-neutral-300 bg-white px-3 py-1.5 text-sm font-medium shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
                                                                     disabled={closing}
                                                                     onClick={() =>
                                                                         sendStyleCommand({
@@ -4919,7 +4927,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                     {/* Text align */}
                                                     <div>
                                                         <div className="mb-3 border-b border-neutral-200 pb-1">
-                                                            <div className="inline-flex items-center gap-2 text-[18px] font-medium text-neutral-800">
+                                                            <div className="inline-flex items-center gap-2 text-sm font-semibold text-neutral-800">
                                                                 <SlidersHorizontal className="h-4 w-4 text-neutral-500" />
                                                                 Align
                                                             </div>
@@ -4933,7 +4941,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                                 <button
                                                                     key={a.id}
                                                                     type="button"
-                                                                    className="rounded border border-neutral-300 bg-white px-3 py-1.5 text-[12px] font-medium shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                                    className="rounded border border-neutral-300 bg-white px-3 py-1.5 text-sm font-medium shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
                                                                     disabled={closing}
                                                                     onClick={() =>
                                                                         sendStyleCommand({
@@ -4951,7 +4959,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                     {/* Weight & transform */}
                                                     <div>
                                                         <div className="mb-3 border-b border-neutral-200 pb-1">
-                                                            <div className="inline-flex items-center gap-2 text-[18px] font-medium text-neutral-800">
+                                                            <div className="inline-flex items-center gap-2 text-sm font-semibold text-neutral-800">
                                                                 <SlidersHorizontal className="h-4 w-4 text-neutral-500" />
                                                                 Weight
                                                             </div>
@@ -4960,7 +4968,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                         <div className="flex flex-wrap gap-2">
                                                             <button
                                                                 type="button"
-                                                                className="rounded border border-neutral-300 bg-white px-3 py-1.5 text-[12px] font-light shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                                className="rounded border border-neutral-300 bg-white px-3 py-1.5 text-sm font-light shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
                                                                 disabled={closing}
                                                                 onClick={() =>
                                                                     sendStyleCommand({
@@ -4973,7 +4981,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                             </button>
                                                             <button
                                                                 type="button"
-                                                                className="rounded border border-neutral-300 bg-white px-3 py-1.5 text-[12px] font-normal shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                                className="rounded border border-neutral-300 bg-white px-3 py-1.5 text-sm font-normal shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
                                                                 disabled={closing}
                                                                 onClick={() =>
                                                                     sendStyleCommand({
@@ -4986,7 +4994,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                             </button>
                                                             <button
                                                                 type="button"
-                                                                className="rounded border border-neutral-300 bg-white px-3 py-1.5 text-[12px] font-medium shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                                className="rounded border border-neutral-300 bg-white px-3 py-1.5 text-sm font-medium shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
                                                                 disabled={closing}
                                                                 onClick={() =>
                                                                     sendStyleCommand({
@@ -4999,7 +5007,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                             </button>
                                                             <button
                                                                 type="button"
-                                                                className="rounded border border-neutral-300 bg-white px-3 py-1.5 text-[12px] font-semibold shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                                className="rounded border border-neutral-300 bg-white px-3 py-1.5 text-sm font-semibold shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
                                                                 disabled={closing}
                                                                 onClick={() =>
                                                                     sendStyleCommand({
@@ -5012,7 +5020,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                             </button>
                                                             <button
                                                                 type="button"
-                                                                className="rounded border border-neutral-300 bg-white px-3 py-1.5 text-[12px] font-bold shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                                className="rounded border border-neutral-300 bg-white px-3 py-1.5 text-sm font-bold shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
                                                                 disabled={closing}
                                                                 onClick={() =>
                                                                     sendStyleCommand({
@@ -5029,7 +5037,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                     {/* Text transform */}
                                                     <div>
                                                         <div className="mb-3 border-b border-neutral-200 pb-1">
-                                                            <div className="inline-flex items-center gap-2 text-[18px] font-medium text-neutral-800">
+                                                            <div className="inline-flex items-center gap-2 text-sm font-semibold text-neutral-800">
                                                                 <SlidersHorizontal className="h-4 w-4 text-neutral-500" />
                                                                 Transform
                                                             </div>
@@ -5037,7 +5045,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                         <div className="flex gap-2">
                                                             <button
                                                                 type="button"
-                                                                className="rounded border border-neutral-300 bg-white px-3 py-1.5 text-[12px] font-medium shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                                className="rounded border border-neutral-300 bg-white px-3 py-1.5 text-sm font-medium shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
                                                                 disabled={closing}
                                                                 onClick={() =>
                                                                     sendStyleCommand({
@@ -5050,7 +5058,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                             </button>
                                                             <button
                                                                 type="button"
-                                                                className="rounded border border-neutral-300 bg-white px-3 py-1.5 text-[12px] font-medium shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                                className="rounded border border-neutral-300 bg-white px-3 py-1.5 text-sm font-medium shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
                                                                 disabled={closing}
                                                                 onClick={() =>
                                                                     sendStyleCommand({
@@ -5067,7 +5075,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                     {/* Spacing */}
                                                     <div>
                                                         <div className="mb-3 border-b border-neutral-200 pb-1">
-                                                            <div className="inline-flex items-center gap-2 text-[18px] font-medium text-neutral-800">
+                                                            <div className="inline-flex items-center gap-2 text-sm font-semibold text-neutral-800">
                                                                 <SlidersHorizontal className="h-4 w-4 text-neutral-500" />
                                                                 Spacing
                                                             </div>
@@ -5075,7 +5083,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                         <div className="flex gap-2">
                                                             <button
                                                                 type="button"
-                                                                className="rounded border border-neutral-300 bg-white px-3 py-1.5 text-[12px] font-medium shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                                className="rounded border border-neutral-300 bg-white px-3 py-1.5 text-sm font-medium shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
                                                                 disabled={closing}
                                                                 onClick={() =>
                                                                     sendStyleCommand({
@@ -5088,7 +5096,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                             </button>
                                                             <button
                                                                 type="button"
-                                                                className="rounded border border-neutral-300 bg-white px-3 py-1.5 text-[12px] font-medium shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                                className="rounded border border-neutral-300 bg-white px-3 py-1.5 text-sm font-medium shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
                                                                 disabled={closing}
                                                                 onClick={() =>
                                                                     sendStyleCommand({
@@ -5101,7 +5109,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                             </button>
                                                             <button
                                                                 type="button"
-                                                                className="rounded border border-neutral-300 bg-white px-3 py-1.5 text-[12px] font-medium shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                                className="rounded border border-neutral-300 bg-white px-3 py-1.5 text-sm font-medium shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
                                                                 disabled={closing}
                                                                 onClick={() =>
                                                                     sendStyleCommand({
@@ -5118,7 +5126,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                     {/* Layout */}
                                                     <div>
                                                         <div className="mb-3 border-b border-neutral-200 pb-1">
-                                                            <div className="inline-flex items-center gap-2 text-[18px] font-medium text-neutral-800">
+                                                            <div className="inline-flex items-center gap-2 text-sm font-semibold text-neutral-800">
                                                                 <SlidersHorizontal className="h-4 w-4 text-neutral-500" />
                                                                 Layout
                                                             </div>
@@ -5126,7 +5134,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                         <div className="flex gap-2">
                                                             <button
                                                                 type="button"
-                                                                className="rounded border border-neutral-300 bg-white px-3 py-1.5 text-[12px] font-medium shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                                className="rounded border border-neutral-300 bg-white px-3 py-1.5 text-sm font-medium shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
                                                                 disabled={closing}
                                                                 onClick={() =>
                                                                     sendStyleCommand({
@@ -5139,7 +5147,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                             </button>
                                                             <button
                                                                 type="button"
-                                                                className="rounded border border-neutral-300 bg-white px-3 py-1.5 text-[12px] font-medium shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                                className="rounded border border-neutral-300 bg-white px-3 py-1.5 text-sm font-medium shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
                                                                 disabled={closing}
                                                                 onClick={() =>
                                                                     sendStyleCommand({
@@ -5152,7 +5160,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                             </button>
                                                             <button
                                                                 type="button"
-                                                                className="rounded border border-neutral-300 bg-white px-3 py-1.5 text-[12px] font-medium shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                                className="rounded border border-neutral-300 bg-white px-3 py-1.5 text-sm font-medium shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
                                                                 disabled={closing}
                                                                 onClick={() =>
                                                                     sendStyleCommand({
@@ -5222,6 +5230,8 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                         iframeRef={iframeRef}
                                         user={user}
                                         renderId={draftId ?? null}
+                                        isVercelConnected={Boolean(isVercelConnected)}
+                                        onConnectVercel={onConnectVercel}
                                     />
                                 )}
 
@@ -5243,7 +5253,15 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
 
                     {/* Right / canvas */}
                     {showCanvasPanel && (
-                    <section className={`relative flex flex-col ${isCompactLayout ? "min-h-0 flex-1 pb-32" : "max-lg:order-1"}`}>
+                    <section
+                        className={`relative flex flex-col ${isCompactLayout ? "min-h-0 flex-1 pb-32" : "max-lg:order-1"}`}
+                        style={isCompactLayout ? undefined : {
+                            transform: `scale(${effectiveUiScale})`,
+                            transformOrigin: "top left",
+                            width: `${100 / effectiveUiScale}%`,
+                            height: `${100 / effectiveUiScale}%`,
+                        }}
+                    >
                         {mode === "preview" && draftId && (
                             <div
                                 className="border-t max-h-72 overflow-auto"
@@ -6268,37 +6286,37 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
 
                 <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
 
-                </div>{/* end scale wrapper */}
+                    {/* Apply changes footer - sits under the sidebar overlay */}
+                    {!isCompactLayout && (
+                    <div className="absolute inset-x-0 bottom-0 z-10 hidden lg:block px-5 py-3" id="kloner-apply-changes">
+                        <button
+                            onClick={() => {
+                                bumpSessionCounter("save")
+                                doSave({ persistToSource: true })
+                            }}
+                            disabled={closing || savingDraft || applyingPreview || exporting || !dirty}
+                            aria-busy={applyingPreview}
+                            className={`rounded-xl px-4 py-4 w-full text-xl font-semibold transition disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-green-500 active:scale-[.99] ${dirty
+                                ? "bg-green-600 text-white hover:bg-green-700 shadow-lg"
+                                : "bg-neutral-100 text-neutral-600 pointer-events-none"
+                                }`}
+                            title="Apply current draft to the live preview"
+                        >
+                            {applyingPreview || savingDraft ? (
+                                <div className="flex items-center justify-center gap-2">
+                                    <Loader2 className="h-5 w-5 animate-spin" />
+                                    Updating preview…
+                                </div>
+                            ) : dirty ? (
+                                "Apply changes"
+                            ) : (
+                                "Preview is up to date"
+                            )}
+                        </button>
+                    </div>
+                    )}
 
-                {/* Apply changes footer - auto row of grid, outside scaled container */}
-                {!isCompactLayout && (
-                <div className="hidden lg:block shrink-0 px-5 py-3" id="kloner-apply-changes">
-                    <button
-                        onClick={() => {
-                            bumpSessionCounter("save")
-                            doSave({ persistToSource: true })
-                        }}
-                        disabled={closing || savingDraft || applyingPreview || exporting || !dirty}
-                        aria-busy={applyingPreview}
-                        className={`rounded-xl px-4 py-4 w-full text-xl font-semibold transition disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-green-500 active:scale-[.99] ${dirty
-                            ? "bg-green-600 text-white hover:bg-green-700 shadow-lg"
-                            : "bg-neutral-100 text-neutral-600 pointer-events-none"
-                            }`}
-                        title="Apply current draft to the live preview"
-                    >
-                        {applyingPreview || savingDraft ? (
-                            <div className="flex items-center justify-center gap-2">
-                                <Loader2 className="h-5 w-5 animate-spin" />
-                                Updating preview…
-                            </div>
-                        ) : dirty ? (
-                            "Apply changes"
-                        ) : (
-                            "Preview is up to date"
-                        )}
-                    </button>
-                </div>
-                )}
+                </div>{/* end scale wrapper */}
             </div>
         </div>
     );
@@ -6338,6 +6356,8 @@ type AppSourcePreviewEditorProps = {
     sourceFiles?: { [path: string]: { content: string; lastModified: number } };
     registerBeforeExitFlush?: (fn: (() => Promise<boolean>) | null) => void;
     onTakeBuilderTour?: () => void;
+    isVercelConnected?: boolean;
+    onConnectVercel?: () => void;
 };
 
 function isHtmlPath(path: string): boolean {
@@ -6378,6 +6398,7 @@ export default function AppPreviewEditor({
     sourceFiles,
     registerBeforeExitFlush,
     onTakeBuilderTour,
+    onConnectVercel,
 }: AppSourcePreviewEditorProps) {
     const htmlPaths = useMemo(
         () => Object.keys(files || {}).filter(isHtmlPath).sort((a, b) => a.localeCompare(b)),
@@ -6530,6 +6551,7 @@ export default function AppPreviewEditor({
                     sourceFiles={sourceFiles || files}
                     registerBeforeExitFlush={registerBeforeExitFlush}
                     onTakeBuilderTour={onTakeBuilderTour}
+                    onConnectVercel={onConnectVercel}
                     appName={appName}
                     isRenaming={isRenaming}
                     tempName={tempName}

@@ -11538,6 +11538,21 @@ export default function PreviewPage(): JSX.Element {
                                     exit={{ opacity: 0, y: 16, scale: 0.96 }}
                                     transition={{ duration: 0.22, ease: [0.23, 0.82, 0.25, 1] }}
                                 >
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            if (deployWizardStep === 2) {
+                                                closeAppDeployWizard();
+                                            } else {
+                                                closeDeployWizard();
+                                            }
+                                        }}
+                                        className="absolute right-3 top-3 inline-flex h-7 w-7 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-500 shadow-sm transition hover:bg-neutral-50 hover:text-neutral-900"
+                                        aria-label="Close wizard"
+                                        title="Close"
+                                    >
+                                        <X className="h-3.5 w-3.5" />
+                                    </button>
                                     <div className="relative p-5 pt-6">
                                         <div className="mb-3 flex items-center justify-between gap-3">
                                             <div className="flex items-center gap-2">

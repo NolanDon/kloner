@@ -118,6 +118,7 @@ export function PreviewEditorTour({ startToken = 0, autoStart = true }: PreviewE
     useEffect(() => {
         if (typeof window === "undefined") return;
         if (startToken <= 0) return;
+        if (hasSeenTour()) return;
         markTourSeen();
         setIndex(0);
         setRunning(true);
