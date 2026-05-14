@@ -2646,7 +2646,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                                 </span>
                                             </div>
                                             <div className="pl-1 text-sm font-medium text-neutral-800">
-                                                Choose what you want to generate from your URL.
+                                                Choose what you want to generate.
                                             </div>
                                             <div className="pl-1 text-xs text-neutral-600">
                                                 Your URL is ready. Pick a website type below to continue.
@@ -10449,8 +10449,8 @@ export default function PreviewPage(): JSX.Element {
                 <section className="mt-10 rounded-3xl border border-neutral-200 bg-white/70 px-4 py-5 sm:px-5 sm:py-6 shadow-sm">
                     <div className="mb-3 flex items-center gap-3">
                         <div className="inline-flex items-center gap-2 rounded-full border border-neutral-200 bg-white/80 px-3 py-1.5 text-xs sm:text-sm text-neutral-700 shadow-sm">
-                            <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-accent text-[11px] font-semibold text-white shadow-sm">
-                                2
+                            <span className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-500 shadow-sm">
+                                <Hammer className="h-3.5 w-3.5" />
                             </span>
                             <div className="flex flex-col leading-tight">
                                 <span className="text-[10px] uppercase tracking-[0.18em] text-neutral-400">

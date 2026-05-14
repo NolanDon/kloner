@@ -1707,6 +1707,7 @@ export default function AppBuilderEditor({
         desktopOnlyToastTimerRef.current = window.setTimeout(() => setDesktopOnlyToast(false), 2800);
     };
     const [isRenaming, setIsRenaming] = useState(false);
+    const [isRenameSaving, setIsRenameSaving] = useState(false);
     const [tempName, setTempName] = useState("");
     const [isSaving, setIsSaving] = useState(false);
     const [isRefreshing, setIsRefreshing] = useState(false);
@@ -1751,7 +1752,7 @@ export default function AppBuilderEditor({
     const isVisualEditorMode = viewMode === "custom" || viewMode === "images";
     const filteredCodeFileTree = useMemo(() => filterFileTree(fileTree, codeFileSearch), [codeFileSearch, fileTree]);
     const codeFileSearchActive = Boolean(codeFileSearch.trim());
-    const activeTabGlowClass = "bg-[#fff7f0] border-[#F55F2A] shadow-[0_3px_10px_rgba(245,95,42,0.18)] ring-1 ring-[#F55F2A]/30";
+    const activeTabGlowClass = "border-[#F55F2A] ring-2 ring-[#F55F2A]/45 mx-1";
 
     useEffect(() => {
         if (typeof window === "undefined") return;
@@ -5814,23 +5815,58 @@ export default function AppBuilderEditor({
     }, [sourceUrlToRescan]);
 
     const handleRename = async () => {
-        if (!app || !tempName.trim()) return;
+        if (!app || !tempName.trim() || isRenameSaving) return;
 
-        try {
+        const nextName = tempName.trim();
+
+        setIsRenameSaving(true);
+
+        const doRename = async (): Promise<Response> => {
             const csrf = await ensureSessionAndCsrf().catch(() => null);
-            const res = await fetch(`/api/app-builder/${appId}/rename`, {
+            return fetch(`/api/app-builder/${appId}/rename`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
                     ...(typeof csrf === "string" && csrf ? { "x-csrf": csrf } : {}),
                 },
-                body: JSON.stringify({ name: tempName.trim() }),
+                body: JSON.stringify({ name: nextName }),
             });
-            if (!res.ok) throw new Error("Failed to rename");
-            setApp(prev => prev ? { ...prev, name: tempName.trim() } : null);
+        };
+
+        try {
+            let res = await doRename();
+            let data: any = await res.json().catch(() => ({} as any));
+            const code = String(data?.code || "").trim();
+            const isScopeProblem = code === "MISSING_APP_SCOPE" || code === "INVALID_APP_SCOPE";
+
+            if ((!res.ok || !data?.success) && isScopeProblem) {
+                const scopeOk = await bootstrapAppScope();
+                if (scopeOk) {
+                    res = await doRename();
+                    data = await res.json().catch(() => ({} as any));
+                }
+            }
+
+            if (!res.ok || !data?.success) {
+                let message = "Failed to rename.";
+                if (typeof data?.error === "string" && data.error.trim()) {
+                    message = data.error.trim();
+                }
+
+                if (res.status === 403 || isScopeProblem) {
+                    message = "Rename was blocked by permissions or a stale app session. Refresh the page and try again.";
+                }
+
+                throw Object.assign(new Error(message), { status: res.status });
+            }
+            setApp(prev => prev ? { ...prev, name: nextName } : null);
             setIsRenaming(false);
         } catch (err) {
+            const message = String((err as any)?.message || "Failed to rename.");
             console.error("Rename failed", err);
+            void showAlert(message, "Rename");
+        } finally {
+            setIsRenameSaving(false);
         }
     };
 
@@ -6108,22 +6144,26 @@ export default function AppBuilderEditor({
                                     value={tempName}
                                     onChange={(e) => setTempName(e.target.value)}
                                     onKeyPress={(e) => {
-                                        if (e.key === "Enter") handleRename();
+                                        if (isRenameSaving) return;
+                                        if (e.key === "Enter") void handleRename();
                                         if (e.key === "Escape") cancelRename();
                                     }}
+                                    disabled={isRenameSaving}
                                     className="min-w-0 w-[46vw] sm:w-auto px-2 py-1 border rounded text-sm sm:text-lg font-semibold focus:outline-none focus:ring-2 focus:ring-accent"
                                     autoFocus
                                 />
                                 <button
-                                    onClick={handleRename}
-                                    className="shrink-0 p-1 hover:bg-gray-200 rounded transition-colors"
+                                    onClick={() => void handleRename()}
+                                    disabled={isRenameSaving}
+                                    className="shrink-0 p-1 hover:bg-gray-200 rounded transition-colors disabled:opacity-60"
                                     title="Save name"
                                 >
                                     <Check className="w-4 h-4 text-green-600" />
                                 </button>
                                 <button
                                     onClick={cancelRename}
-                                    className="shrink-0 p-1 hover:bg-gray-200 rounded transition-colors"
+                                    disabled={isRenameSaving}
+                                    className="shrink-0 p-1 hover:bg-gray-200 rounded transition-colors disabled:opacity-60"
                                     title="Cancel"
                                 >
                                     <RotateCcw className="w-4 h-4 text-red-600" />
@@ -6533,7 +6573,7 @@ export default function AppBuilderEditor({
                                     data-tour-chat-tab
                                     className={`px-3 sm:px-4 py-2 text-xs font-semibold rounded-full flex items-center justify-center gap-1.5 transition-colors flex-shrink-0 ${
                                         viewMode === "ai"
-                                            ? `bg-neutral-100 text-neutral-900 border border-neutral-300 shadow-sm ${activeTabGlowClass}`
+                                            ? `text-neutral-900 border border-neutral-300 shadow-sm ${activeTabGlowClass}`
                                             : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50"
                                     } ${isModeSwitching ? "opacity-60 cursor-not-allowed" : ""}`}
                                     title="Chat"
@@ -7468,7 +7508,7 @@ export default function AppBuilderEditor({
                                                 </button>
                                             </div>
                                         ) : null}
-
+{/* 
                                         {!isVisualEditorMode ? (
                                             <button
                                                 type="button"
@@ -7481,7 +7521,7 @@ export default function AppBuilderEditor({
                                             >
                                                 <span>Take tour</span>
                                             </button>
-                                        ) : null}
+                                        ) : null} */}
                                     </div>
                                 ) : null}
                             </div>

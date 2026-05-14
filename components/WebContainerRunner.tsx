@@ -5938,7 +5938,7 @@ export default function NavBar() {
                       ? {
                         uiStage: 'building_app',
                         uiTitle: 'Building your app',
-                        uiMessage: 'Stitching',
+                        uiMessage: 'Stitching files',
                         updatedAt: Date.now(),
                       }
                       : pollingRetryCountRef.current < maxPollingRetries

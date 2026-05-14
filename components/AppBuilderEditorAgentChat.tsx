@@ -8230,9 +8230,9 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                             </div>
                         </details>
 
-                        <div className="min-w-0 text-[11px] text-neutral-500">
+                        {/* <div className="min-w-0 text-[11px] text-neutral-500 hidden sm:inline">
                             Overrides the page sent with each request.
-                        </div>
+                        </div> */}
                     </div>
                 ) : null}
 
