@@ -702,6 +702,7 @@ function pageFileToPreviewPath(path: string): string {
             .slice(7)
             .replace(/\/index\.html?$/i, "")
             .replace(/\.html?$/i, "");
+        if (!route || route.toLowerCase() === "index") return "/";
         return `/${route}`.replace(/\/+/g, "/") || "/";
     }
 
@@ -1720,13 +1721,14 @@ export default function AppBuilderEditor({
     const [previewNavigateToken, setPreviewNavigateToken] = useState(0);
     const [isPageDropdownOpen, setIsPageDropdownOpen] = useState(false);
     const pageDropdownRef = useRef<HTMLDivElement | null>(null);
-    const previewEditorFlushRef = useRef<null | (() => Promise<void>)>(null);
+    const previewEditorFlushRef = useRef<null | (() => Promise<boolean>)>(null);
     const lastVisualEditedHtmlPathRef = useRef<string | null>(null);
     const applyPreviewChangesNowRef = useRef<null | ((changes: Array<{ path: string; content: string }>, opts: { interactive: boolean; source?: string }) => Promise<void>)>(null);
     const isDev = process.env.NODE_ENV !== "production";
     const isVisualEditorMode = viewMode === "custom" || viewMode === "images";
     const filteredCodeFileTree = useMemo(() => filterFileTree(fileTree, codeFileSearch), [codeFileSearch, fileTree]);
     const codeFileSearchActive = Boolean(codeFileSearch.trim());
+    const activeTabGlowClass = "bg-[#fff7f0] border-[#F55F2A] shadow-[0_3px_10px_rgba(245,95,42,0.18)] ring-1 ring-[#F55F2A]/30";
 
     useEffect(() => {
         if (typeof window === "undefined") return;
@@ -1759,6 +1761,10 @@ export default function AppBuilderEditor({
             })
             .sort((left, right) => left.label.localeCompare(right.label) || left.route.localeCompare(right.route));
     }, [app?.files]);
+    const preferredPagePath = useMemo(
+        () => pageOptions.find((page) => page.route === "/")?.path ?? pageOptions[0]?.path ?? null,
+        [pageOptions],
+    );
             const hasPageDropdown = pageOptions.length > 1;
 
     useEffect(() => {
@@ -1770,9 +1776,9 @@ export default function AppBuilderEditor({
 
         setPreviewPagePath((prev) => {
             if (prev && pageOptions.some((page) => page.path === prev)) return prev;
-            return pageOptions[0]?.path ?? null;
+            return preferredPagePath;
         });
-    }, [currentFile, pageOptions, viewMode]);
+    }, [currentFile, pageOptions, preferredPagePath, viewMode]);
 
     useEffect(() => {
         if (hasPageDropdown) return;
@@ -1845,19 +1851,25 @@ export default function AppBuilderEditor({
         
         const leavingVisual = (viewMode === "custom" || viewMode === "images") && !(nextMode === "custom" || nextMode === "images");
         const enteringVisual = !(viewMode === "custom" || viewMode === "images") && (nextMode === "custom" || nextMode === "images");
+        const builderHasChanges = Boolean(getHasUnsavedChangesRef.current?.());
         
         setIsModeSwitching(true);
         
         try {
             if (leavingVisual) {
+                let previewHadChanges = false;
                 if (previewEditorFlushRef.current) {
                     try {
-                        await previewEditorFlushRef.current();
+                        previewHadChanges = await previewEditorFlushRef.current();
                     } catch (err) {
                         console.error("[app-builder] pre-switch preview flush failed", err);
                         await showAlert("Could not sync your latest visual edits. Please save again and retry.", "Sync failed");
                         return;
                     }
+                }
+
+                if (!previewHadChanges && !builderHasChanges) {
+                    return;
                 }
 
                 try {
@@ -1906,7 +1918,7 @@ export default function AppBuilderEditor({
             }
             
             // When entering visual mode, rehydrate BEFORE changing mode so preview gets latest files
-            if (enteringVisual) {
+            if (enteringVisual && builderHasChanges) {
                 try {
                     const synced = await fetchAndHydrateAppFiles({ forceRefreshToken: true });
                     if (synced?.files) {
@@ -6111,6 +6123,17 @@ export default function AppBuilderEditor({
                                 </button>
                             ) : null}
 
+                            {isDev ? (
+                                <div
+                                    className="inline-flex max-w-[320px] items-center gap-1.5 rounded-full border border-neutral-200 bg-neutral-50 px-3 py-1.5 text-xs font-medium text-neutral-700"
+                                    title={`Current open file: ${currentFile || "(none)"}`}
+                                >
+                                    <DevOnlyIconBadge title="Development-only current file indicator" />
+                                    <span className="text-neutral-500">current file:</span>
+                                    <span className="truncate">{currentFile || "(none)"}</span>
+                                </div>
+                            ) : null}
+
                             {(
                                 <div data-tour-ui-scale className="inline-flex items-center gap-1 rounded-full border border-neutral-300 bg-white px-2 py-1 shadow-sm">
                                     <button
@@ -6319,14 +6342,14 @@ export default function AppBuilderEditor({
                                     : ""
                             }`}
                         >
-                            <div className="flex gap-2 overflow-x-auto scrollbar-hide min-w-0">
+                            <div className="flex gap-2 overflow-x-auto overflow-y-visible scrollbar-hide min-w-0 py-1">
                                 <button
                                     onClick={() => { void requestViewModeChange("ai"); }}
                                     disabled={isModeSwitching}
                                     data-tour-chat-tab
                                     className={`px-3 sm:px-4 py-2 text-xs font-semibold rounded-full flex items-center justify-center gap-1.5 transition-colors flex-shrink-0 ${
                                         viewMode === "ai"
-                                            ? "bg-neutral-100 text-neutral-900 border border-neutral-300 shadow-sm"
+                                            ? `bg-neutral-100 text-neutral-900 border border-neutral-300 shadow-sm ${activeTabGlowClass}`
                                             : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50"
                                     } ${isModeSwitching ? "opacity-60 cursor-not-allowed" : ""}`}
                                     title="Chat"
@@ -6344,7 +6367,7 @@ export default function AppBuilderEditor({
                                         disabled={isModeSwitching}
                                         className={`px-3 sm:px-4 py-2 text-xs font-semibold rounded-full flex items-center justify-center gap-1.5 transition-colors flex-shrink-0 ${
                                             viewMode === "code"
-                                                ? "bg-neutral-100 text-neutral-900 border border-neutral-300 shadow-sm"
+                                                ? `bg-neutral-100 text-neutral-900 border border-neutral-300 shadow-sm ${activeTabGlowClass}`
                                                 : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50"
                                         } ${isModeSwitching ? "opacity-60 cursor-not-allowed" : ""}`}
                                         title="Code"
@@ -6365,7 +6388,7 @@ export default function AppBuilderEditor({
                                         data-tour-images-tab
                                         className={`px-3 sm:px-4 py-2 text-xs font-semibold rounded-full flex items-center justify-center gap-1.5 transition-colors flex-shrink-0 ${
                                             viewMode === "images"
-                                                ? "bg-neutral-100 text-neutral-900 border border-neutral-300 shadow-sm"
+                                                ? `bg-neutral-100 text-neutral-900 border border-neutral-300 shadow-sm ${activeTabGlowClass}`
                                                 : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50"
                                         } ${isModeSwitching ? "opacity-60 cursor-not-allowed" : ""}`}
                                         title="Images"
@@ -6385,9 +6408,9 @@ export default function AppBuilderEditor({
                                         data-tour-custom-tab
                                         className={`px-3 sm:px-4 py-2 text-xs font-semibold rounded-full flex items-center justify-center gap-1.5 transition-colors flex-shrink-0 ${
                                             viewMode === "custom"
-                                                ? "bg-neutral-100 text-neutral-900 border border-neutral-300 shadow-sm"
+                                                ? `bg-neutral-100 text-neutral-900 border border-neutral-300 shadow-sm ${activeTabGlowClass}`
                                                 : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50"
-                                        } ${isModeSwitching ? "opacity-60 cursor-not-allowed" : ""}`}
+                                            } ${isModeSwitching ? "opacity-60 cursor-not-allowed" : ""}`}
                                         title="Custom"
                                     >
                                         {isModeSwitching && viewMode !== "custom" ? (

@@ -90,7 +90,7 @@ type Props = {
     onSelectHtmlPath?: (path: string) => void;
     preferredSidePanelMode?: "style" | "ai-library";
     sourceFiles?: { [path: string]: { content: string; lastModified: number } };
-    registerBeforeExitFlush?: (fn: (() => Promise<void>) | null) => void;
+        registerBeforeExitFlush?: (fn: (() => Promise<boolean>) | null) => void;
     onTakeBuilderTour?: () => void;
 };
 
@@ -2562,13 +2562,18 @@ function AppPreviewEditorCore({
     }
 
     useEffect(() => {
-        // Don't register pre-exit flush. Only save when user clicks Apply Changes.
-        registerBeforeExitFlush?.(null);
+        const flushBeforeExit = async (): Promise<boolean> => {
+            if (!dirty || savingDraft || applyingPreview || exporting) return false;
+            await doSave({ persistToSource: true });
+            return true;
+        };
+
+        registerBeforeExitFlush?.(flushBeforeExit);
 
         return () => {
             registerBeforeExitFlush?.(null);
         };
-    }, [registerBeforeExitFlush]);
+    }, [applyingPreview, dirty, doSave, exporting, registerBeforeExitFlush, savingDraft]);
 
     const prevBuilderViewModeRef = useRef<"ai" | "code" | "images" | "custom">(viewMode);
     useEffect(() => {
@@ -4623,13 +4628,6 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                             <span>Take tour</span>
                                         </button>
                                     {/* ) : null} */}
-                                    <div
-                                        className="inline-flex max-w-[320px] items-center gap-1.5 rounded-full border border-neutral-200 bg-neutral-50 px-3 py-1.5 text-xs font-medium text-neutral-700"
-                                        title={`Current editable file: ${currentFileLabel}`}
-                                    >
-                                        <span className="text-neutral-500">current file:</span>
-                                        <span className="truncate">{currentFileLabel}</span>
-                                    </div>
                                 </div>
                             ) : null}
 
@@ -6338,7 +6336,7 @@ type AppSourcePreviewEditorProps = {
     onSelectHtmlPath?: (path: string) => void;
     preferredSidePanelMode?: "style" | "ai-library";
     sourceFiles?: { [path: string]: { content: string; lastModified: number } };
-    registerBeforeExitFlush?: (fn: (() => Promise<void>) | null) => void;
+    registerBeforeExitFlush?: (fn: (() => Promise<boolean>) | null) => void;
     onTakeBuilderTour?: () => void;
 };
 

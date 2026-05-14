@@ -2,7 +2,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo } from "react";
-import { Send, Bot, RotateCcw, Database, FileText, RefreshCw, X, AlertTriangle, ChevronDown, ChevronUp, ExternalLink, Copy, Check, Info, ThumbsUp, ThumbsDown } from "lucide-react";
+import { Send, Bot, RotateCcw, Database, FileText, RefreshCw, X, AlertTriangle, ChevronDown, ChevronUp, ExternalLink, Copy, Check, Info, ThumbsUp, ThumbsDown, Search } from "lucide-react";
 import { ensureSessionAndCsrf } from "@/lib/auth-client";
 import { useAuth } from "@/src/hooks/useAuth";
 import { db } from "@/lib/firebase";
@@ -146,6 +146,12 @@ type DatabaseConnection = {
     status: "connected" | "disconnected" | "connecting";
 };
 
+type ChatRequestPageOption = {
+    path: string;
+    route: string;
+    label: string;
+};
+
 type AppBuilderEditorAgentChatProps = {
     appId: string;
     files: { [path: string]: { content: string; lastModified: number } };
@@ -175,6 +181,66 @@ type AppBuilderEditorAgentChatProps = {
 function resolveFallbackCurrentFile(files: { [path: string]: { content: string; lastModified: number } }, currentFile?: string | null): string | null {
     const framework = detectProjectFramework(files);
     return chooseFrameworkCurrentFile(files, framework, currentFile);
+}
+
+function isChatRequestPageFile(path: string): boolean {
+    const value = String(path || "").trim();
+    if (!value) return false;
+    return (
+        /^(?:src\/)?app\/.+\/page\.(tsx|ts|jsx|js|mdx?)$/i.test(value) ||
+        /^(?:src\/)?app\/page\.(tsx|ts|jsx|js|mdx?)$/i.test(value) ||
+        /^(?:src\/)?pages\/(?:index|.+)\.(tsx|ts|jsx|js|mdx?)$/i.test(value) ||
+        /^public\/.+\/index\.html?$/i.test(value) ||
+        /^public\/index\.html?$/i.test(value) ||
+        /^public\/.+\.html?$/i.test(value)
+    );
+}
+
+function chatRequestPageToRoute(path: string): string {
+    const normalized = String(path || "").replace(/^src\//, "").trim();
+    if (!normalized) return "/";
+
+    if (/^app\/page\.[^.]+$/i.test(normalized) || /^pages\/index\.[^.]+$/i.test(normalized)) {
+        return "/";
+    }
+
+    if (normalized.toLowerCase().startsWith("app/")) {
+        const segments = normalized
+            .slice(4)
+            .replace(/\/page\.[^.]+$/i, "")
+            .split("/")
+            .filter(Boolean)
+            .filter((segment) => !/^\(.+\)$/.test(segment) && !segment.startsWith("@"));
+        return `/${segments.join("/")}`.replace(/\/+/g, "/") || "/";
+    }
+
+    if (normalized.toLowerCase().startsWith("pages/")) {
+        const route = normalized.slice(6).replace(/\.(tsx|ts|jsx|js|mdx?)$/i, "");
+        return `/${route.replace(/\/index$/i, "")}`.replace(/\/+/g, "/") || "/";
+    }
+
+    if (normalized.toLowerCase().startsWith("public/")) {
+        const route = normalized
+            .slice(7)
+            .replace(/\/index\.html?$/i, "")
+            .replace(/\.html?$/i, "");
+        if (!route || route.toLowerCase() === "index") return "/";
+        return `/${route}`.replace(/\/+/g, "/") || "/";
+    }
+
+    return "/";
+}
+
+function humanizeChatRequestPageLabel(path: string): string {
+    const normalized = String(path || "").replace(/^src\//, "");
+    const route = chatRequestPageToRoute(normalized);
+    if (!route || route === "/") return "home";
+    return route
+        .replace(/^\//, "")
+        .split("/")
+        .filter(Boolean)
+        .map((segment) => segment.replace(/[-_]+/g, " ").replace(/\b\w/g, (char) => char.toLowerCase()))
+        .join(" / ") || path;
 }
 
 function normalizeServerFilesMap(
@@ -953,6 +1019,8 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
     const [chatHasHistory, setChatHasHistory] = useState(false);
     const [introRequestedByTour, setIntroRequestedByTour] = useState(false);
     const [input, setInput] = useState("");
+    const [requestPageOverride, setRequestPageOverride] = useState<string | null>(null);
+    const [requestPageSearch, setRequestPageSearch] = useState("");
     const [freeCompileFixContext, setFreeCompileFixContext] = useState<CompileErrorQuickFixContext | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [isHydrated, setIsHydrated] = useState(false);
@@ -1011,6 +1079,68 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
     const applyPendingEditPlanInFlightRef = useRef(false);
     const keepUndoTimeoutRef = useRef<number | null>(null);
     const editPlanJobRequestMetaRef = useRef<Record<string, EditPlanRequestMeta>>({});
+
+    const requestPageOptions = useMemo<ChatRequestPageOption[]>(() => {
+        const seen = new Set<string>();
+        return Object.keys(files || {})
+            .filter((path) => isChatRequestPageFile(path))
+            .map((path) => ({
+                path,
+                route: chatRequestPageToRoute(path),
+                label: humanizeChatRequestPageLabel(path),
+            }))
+            .filter((page) => {
+                if (!page.route) return false;
+                if (seen.has(page.route)) return false;
+                seen.add(page.route);
+                return true;
+            })
+            .sort((left, right) => {
+                if (left.route === "/") return -1;
+                if (right.route === "/") return 1;
+                return left.label.localeCompare(right.label) || left.route.localeCompare(right.route);
+            });
+    }, [files]);
+
+    const autoRequestCurrentPath = useMemo(() => {
+        if (currentFile && requestPageOptions.some((page) => page.path === currentFile)) {
+            return currentFile;
+        }
+
+        return requestPageOptions.find((page) => page.route === "/")?.path ?? requestPageOptions[0]?.path ?? null;
+    }, [currentFile, requestPageOptions]);
+
+    const selectedRequestCurrentPath = useMemo(() => {
+        if (requestPageOverride && requestPageOptions.some((page) => page.path === requestPageOverride)) {
+            return requestPageOverride;
+        }
+        return autoRequestCurrentPath;
+    }, [autoRequestCurrentPath, requestPageOptions, requestPageOverride]);
+
+    const selectedRequestPage = useMemo(
+        () => requestPageOptions.find((page) => page.path === selectedRequestCurrentPath) || null,
+        [requestPageOptions, selectedRequestCurrentPath],
+    );
+
+    const filteredRequestPageOptions = useMemo(() => {
+        const query = requestPageSearch.trim().toLowerCase();
+        if (!query) return requestPageOptions;
+        return requestPageOptions.filter((page) => {
+            const haystack = `${page.label} ${page.route} ${page.path}`.toLowerCase();
+            return haystack.includes(query);
+        });
+    }, [requestPageOptions, requestPageSearch]);
+
+    const selectedRequestPageLabel = useMemo(() => {
+        if (!selectedRequestPage) return "Auto";
+        return requestPageOverride ? selectedRequestPage.label : `Auto: ${selectedRequestPage.label}`;
+    }, [requestPageOverride, selectedRequestPage]);
+
+    useEffect(() => {
+        if (!requestPageOverride) return;
+        if (requestPageOptions.some((page) => page.path === requestPageOverride)) return;
+        setRequestPageOverride(null);
+    }, [requestPageOptions, requestPageOverride]);
 
     const [stagedBundles, setStagedBundles] = useState<StagedBundle[]>([]);
 
@@ -1212,7 +1342,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
         editPlanFailureSurfaceKeyRef.current = dedupeKey;
 
         setEditPlanApplyLoaderMessage(null);
-        setEditPlanApplyStatusMessage("Could not apply changes");
+        // setEditPlanApplyStatusMessage("Could not apply changes");
         setEditPlanApplyError([
             body,
             requestId ? `Request ID: ${requestId}` : null,
@@ -1937,7 +2067,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                         setEditPlanApplyError(null);
                         setEditPlanApplyStatusMessage(
                             completedProposal.needsMoreContext || !Array.isArray(completedProposal.files) || completedProposal.files.length === 0
-                                ? "Hi, I need more context before I can continue. Try providing more details to help me complete your change request."
+                                ? "Hi, I need more context before I can continue. Ensure the necessary page is selected below. \nIf it's a small change, you can also try editing it from the 'Custom' tab button located above this chat."
                                 : completedProposal.autoApplyAllowed === false
                                     ? "Proposal ready for review."
                                     : "I’m uploading the changes now.",
@@ -3893,7 +4023,8 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
         && activeEditPlanStatus === "completed"
         && activeEditPlanProposal
         && hasMeaningfulFileChangeData,
-    );
+    )
+        && !isLoading;
     const showActiveEditPlanStatusBubble = Boolean(
         activeEditPlanJob
         && isActiveEditPlanJobStatus(activeEditPlanJob.status),
@@ -5259,17 +5390,17 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
             };
             const selectedCurrentFile = typeof opts?.forcedCurrentPath === "string"
                 ? (opts.forcedCurrentPath.trim() || null)
-                : resolveFallbackCurrentFile(files, currentFile);
+                : selectedRequestCurrentPath;
+            const visualCurrentFile = selectedCurrentFile;
             const currentPathDecision = deriveEmbeddingCurrentPath({
                 selectedFile: selectedCurrentFile,
                 query: messageInput,
                 files,
                 frameworkInfo: projectFramework,
             });
-            const effectiveCurrentFile = currentPathDecision.derivedCurrentPath;
             const currentPathDebug = {
-                selectedFile: currentPathDecision.selectedFile,
-                derivedCurrentPath: currentPathDecision.derivedCurrentPath,
+                selectedFile: visualCurrentFile,
+                derivedCurrentPath: visualCurrentFile,
                 intentClassification: currentPathDecision.intentClassification,
                 reason: currentPathDecision.reason,
             };
@@ -5281,7 +5412,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
             const inquiryRequestedAt = Date.now();
             latestInquiryMetaRef.current = {
                 query: messageInput,
-                currentPath: effectiveCurrentFile || null,
+                currentPath: visualCurrentFile || null,
                 requestedAt: inquiryRequestedAt,
                 search: bypassInitialSearch
                     ? {
@@ -5289,7 +5420,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                             skipped: true,
                             reason: "bypassInitialSearch",
                             query: messageInput,
-                            currentPath: effectiveCurrentFile || null,
+                            currentPath: visualCurrentFile || null,
                             debugCurrentPath: currentPathDebug,
                         },
                         response: {
@@ -5358,7 +5489,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                     appId,
                     query: messageInput,
                     requestText: frameworkPrompt,
-                    currentPath: effectiveCurrentFile,
+                    currentPath: visualCurrentFile,
                     debugCurrentPath: currentPathDebug,
                     maxChunks: 10,
                     framework: projectFramework.key,
@@ -5374,7 +5505,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                     userId: user?.uid || null,
                     requestId: searchRequestId,
                     bodySizeBytes: searchRequestBodyBytes,
-                    currentPath: effectiveCurrentFile,
+                    currentPath: visualCurrentFile,
                     selectedFile: currentPathDebug.selectedFile,
                     intentClassification: currentPathDebug.intentClassification,
                     currentPathReason: currentPathDebug.reason,
@@ -5472,7 +5603,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                 };
                 latestInquiryMetaRef.current = {
                     query: messageInput,
-                    currentPath: effectiveCurrentFile || null,
+                    currentPath: visualCurrentFile || null,
                     requestedAt: inquiryRequestedAt,
                     search: summarySearchContext,
                 };
@@ -5573,7 +5704,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                         appId,
                         query: messageInput,
                         requestText: frameworkPrompt,
-                        currentPath: effectiveCurrentFile,
+                        currentPath: visualCurrentFile,
                         debugCurrentPath: currentPathDebug,
                         maxChunks: 10,
                     },
@@ -5608,7 +5739,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                             retryPrompt: messageInput,
                             retryStatus: 429,
                             editPlanRetryPrompt: messageInput,
-                            editPlanRetryCurrentPath: effectiveCurrentFile || null,
+                            editPlanRetryCurrentPath: visualCurrentFile || null,
                         },
                     ]);
                     return;
@@ -5645,7 +5776,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                             retryPrompt: messageInput,
                             retryStatus: 503,
                             editPlanRetryPrompt: messageInput,
-                            editPlanRetryCurrentPath: effectiveCurrentFile || null,
+                            editPlanRetryCurrentPath: visualCurrentFile || null,
                         },
                     ]);
                     return;
@@ -5664,7 +5795,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                             retryPrompt: messageInput,
                             retryStatus: 503,
                             editPlanRetryPrompt: messageInput,
-                            editPlanRetryCurrentPath: effectiveCurrentFile || null,
+                            editPlanRetryCurrentPath: visualCurrentFile || null,
                         },
                     ]);
                     setIsLoading(false);
@@ -5678,7 +5809,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                 appId,
                                 query: messageInput,
                                 requestText: frameworkPrompt,
-                                currentPath: effectiveCurrentFile,
+                                currentPath: visualCurrentFile,
                                 debugCurrentPath: currentPathDebug,
                                 maxChunks: 10,
                             },
@@ -5717,7 +5848,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                 retryPrompt: messageInput,
                                 retryStatus: 503,
                                 editPlanRetryPrompt: messageInput,
-                                editPlanRetryCurrentPath: effectiveCurrentFile || null,
+                                editPlanRetryCurrentPath: visualCurrentFile || null,
                                 editPlanFailure: true,
                                 editPlanFailureCode: retryCode,
                                 editPlanFailureRequestId: retryRequestId || undefined,
@@ -5764,7 +5895,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                             retryPrompt: messageInput,
                             retryStatus: 503,
                             editPlanRetryPrompt: messageInput,
-                            editPlanRetryCurrentPath: effectiveCurrentFile || null,
+                            editPlanRetryCurrentPath: visualCurrentFile || null,
                             editPlanFailure: true,
                             editPlanFailureCode: editPlanErrorCode,
                             editPlanFailureRequestId: requestIdText,
@@ -5823,7 +5954,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                 setEditPlanFilesCardMessageId(null);
                 const preflightRestorePointId = await createRestorePointBeforeApply(
                     messageInput,
-                    effectiveCurrentFile ? [effectiveCurrentFile] : undefined,
+                    visualCurrentFile ? [visualCurrentFile] : undefined,
                 );
                 if (preflightRestorePointId) {
                     setLastRestorePointId(preflightRestorePointId);
@@ -5832,7 +5963,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                 const queuedJobId = queuedJob.jobId || rawPlan.jobId || null;
                 const requestMeta: EditPlanRequestMeta = {
                     query: messageInput,
-                    currentPath: effectiveCurrentFile || null,
+                    currentPath: visualCurrentFile || null,
                     requestedAt: inquiryRequestedAt,
                     preflightRestorePointId: preflightRestorePointId || null,
                     search: summarySearchContext || latestInquiryMetaRef.current?.search || null,
@@ -6362,16 +6493,6 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                     >
                         <FileText className="w-4 h-4" />
                     </button>
-                    {(lastRestorePointId || checkpoints.length > 1) && (
-                        <button
-                            onClick={undoLastChange}
-                            className="p-1 hover:bg-gray-200 rounded"
-                            title="Undo last change"
-                            disabled={isRestoreBusy}
-                        >
-                            <RotateCcw className="w-4 h-4" />
-                        </button>
-                    )}
                     {editHistory.redoQueue.length > 0 ? (
                         <button
                             type="button"
@@ -6534,27 +6655,28 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                 }`}
                         >
                             {!(message.role === "assistant" && message.id === editPlanStatusMessageId && activeEditPlanJob) ? (
-                                message.editPlanFailure ? (
-                                    <div className="space-y-2">
-                                        <div className="inline-flex items-center gap-2 text-sm font-semibold text-neutral-900">
-                                            <AlertTriangle className="h-4 w-4 text-amber-600" />
-                                            <span>Could not apply changes</span>
-                                        </div>
-                                        <div className="whitespace-pre-wrap break-words text-sm leading-relaxed text-neutral-900">{message.content}</div>
-                                        {showPreviewIssueDetails ? (
-                                            <details className="rounded-xl border border-neutral-200 bg-neutral-50/70 px-3 py-2">
-                                                <summary className="cursor-pointer list-none text-xs font-medium text-neutral-700">
-                                                    View technical details
-                                                </summary>
-                                                <div className="mt-2 space-y-1 text-xs text-neutral-600 break-all">
-                                                    {message.editPlanFailureCode ? <div>Code: {message.editPlanFailureCode}</div> : null}
-                                                    {message.editPlanFailureJobId ? <div>Job: {message.editPlanFailureJobId}</div> : null}
-                                                    {message.editPlanFailureRequestId ? <div>Request: {message.editPlanFailureRequestId}</div> : null}
-                                                    {typeof message.editPlanFailureHttpStatus === "number" ? <div>HTTP: {message.editPlanFailureHttpStatus}</div> : null}
-                                                </div>
-                                            </details>
-                                        ) : null}
-                                    </div>
+                                message.editPlanFailure ? ( 
+                                null
+                                    // <div className="space-y-2">
+                                    //     <div className="inline-flex items-center gap-2 text-sm font-semibold text-neutral-900">
+                                    //         <AlertTriangle className="h-4 w-4 text-amber-600" />
+                                    //         <span>Could not apply changes</span>
+                                    //     </div>
+                                    //     <div className="whitespace-pre-wrap break-words text-sm leading-relaxed text-neutral-900">{message.content}</div>
+                                    //     {showPreviewIssueDetails ? (
+                                    //         <details className="rounded-xl border border-neutral-200 bg-neutral-50/70 px-3 py-2">
+                                    //             <summary className="cursor-pointer list-none text-xs font-medium text-neutral-700">
+                                    //                 View technical details
+                                    //             </summary>
+                                    //             <div className="mt-2 space-y-1 text-xs text-neutral-600 break-all">
+                                    //                 {message.editPlanFailureCode ? <div>Code: {message.editPlanFailureCode}</div> : null}
+                                    //                 {message.editPlanFailureJobId ? <div>Job: {message.editPlanFailureJobId}</div> : null}
+                                    //                 {message.editPlanFailureRequestId ? <div>Request: {message.editPlanFailureRequestId}</div> : null}
+                                    //                 {typeof message.editPlanFailureHttpStatus === "number" ? <div>HTTP: {message.editPlanFailureHttpStatus}</div> : null}
+                                    //             </div>
+                                    //         </details>
+                                    //     ) : null}
+                                    // </div>
                                 ) : (
                                     <div className={`whitespace-pre-wrap break-words text-sm leading-relaxed ${message.role === "user" ? "text-white/95" : "text-neutral-900"}`}>
                                         {renderTextWithLinks(message.content)}
@@ -8029,6 +8151,87 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                     </details>
                                 </div>
                             </div>
+                        </div>
+                    </div>
+                ) : null}
+
+                {requestPageOptions.length > 0 ? (
+                    <div className="mb-2 flex items-center gap-2">
+                        <details className="group relative shrink-0">
+                            <summary className="flex h-8 cursor-pointer list-none items-center gap-1.5 rounded-full border border-neutral-200 bg-white px-3 text-[12px] font-semibold text-neutral-700 shadow-sm transition hover:bg-neutral-50">
+                                <Search className="h-3.5 w-3.5 text-neutral-500" aria-hidden="true" />
+                                <span className="max-w-[10rem] truncate">{selectedRequestPageLabel}</span>
+                                <ChevronDown className="h-3.5 w-3.5 text-neutral-400 transition group-open:rotate-180" aria-hidden="true" />
+                            </summary>
+
+                            <div className="absolute bottom-full left-0 z-20 mb-2 w-[min(22rem,calc(100vw-2rem))] rounded-2xl border border-neutral-200 bg-white p-2 shadow-[0_18px_48px_rgba(15,23,42,0.12)]">
+                                <div className="flex items-center gap-2 rounded-xl border border-neutral-200 bg-neutral-50 px-2.5 py-2">
+                                    <Search className="h-3.5 w-3.5 shrink-0 text-neutral-400" aria-hidden="true" />
+                                    <input
+                                        value={requestPageSearch}
+                                        onChange={(e) => setRequestPageSearch(e.target.value)}
+                                        placeholder="Search pages"
+                                        className="min-w-0 flex-1 bg-transparent text-sm text-neutral-900 placeholder:text-neutral-400 focus:outline-none"
+                                    />
+                                    {requestPageSearch ? (
+                                        <button
+                                            type="button"
+                                            onClick={() => setRequestPageSearch("")}
+                                            className="inline-flex h-5 w-5 items-center justify-center rounded-full text-neutral-400 transition hover:bg-neutral-200 hover:text-neutral-600"
+                                            aria-label="Clear page search"
+                                        >
+                                            <X className="h-3.5 w-3.5" aria-hidden="true" />
+                                        </button>
+                                    ) : null}
+                                </div>
+
+                                <div className="mt-2 max-h-56 overflow-auto pr-1">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setRequestPageOverride(null);
+                                            setRequestPageSearch("");
+                                        }}
+                                        className={`mb-1 flex w-full items-start justify-between gap-3 rounded-xl px-3 py-2 text-left text-sm transition ${!requestPageOverride ? "bg-orange-50 text-neutral-900" : "hover:bg-neutral-50"}`}
+                                    >
+                                        <div className="min-w-0">
+                                            <div className="font-semibold">Auto: current page</div>
+                                            <div className="mt-0.5 truncate text-[11px] text-neutral-500">
+                                                {selectedRequestPage?.path || currentFile || "Current visible page"}
+                                            </div>
+                                        </div>
+                                    </button>
+
+                                    {filteredRequestPageOptions.map((page) => {
+                                        const active = page.path === selectedRequestCurrentPath;
+                                        return (
+                                            <button
+                                                key={page.path}
+                                                type="button"
+                                                onClick={() => {
+                                                    setRequestPageOverride(page.path);
+                                                    setRequestPageSearch("");
+                                                }}
+                                                className={`flex w-full items-start justify-between gap-3 rounded-xl px-3 py-2 text-left text-sm transition ${active ? "bg-orange-50 text-neutral-900" : "hover:bg-neutral-50"}`}
+                                            >
+                                                <div className="min-w-0">
+                                                    <div className="font-semibold">{page.label}</div>
+                                                    <div className="mt-0.5 truncate text-[11px] text-neutral-500">{page.path}</div>
+                                                </div>
+                                                {active ? <Check className="mt-0.5 h-4 w-4 shrink-0 text-[#F55F2A]" aria-hidden="true" /> : null}
+                                            </button>
+                                        );
+                                    })}
+
+                                    {!filteredRequestPageOptions.length ? (
+                                        <div className="px-3 py-3 text-sm text-neutral-500">No matching pages.</div>
+                                    ) : null}
+                                </div>
+                            </div>
+                        </details>
+
+                        <div className="min-w-0 text-[11px] text-neutral-500">
+                            Overrides the page sent with each request.
                         </div>
                     </div>
                 ) : null}
