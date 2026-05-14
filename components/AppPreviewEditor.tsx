@@ -91,6 +91,7 @@ type Props = {
     preferredSidePanelMode?: "style" | "ai-library";
     sourceFiles?: { [path: string]: { content: string; lastModified: number } };
     registerBeforeExitFlush?: (fn: (() => Promise<void>) | null) => void;
+    onTakeBuilderTour?: () => void;
 };
 
 const ACCENT = "#f55f2a";
@@ -1216,6 +1217,7 @@ function AppPreviewEditorCore({
     preferredSidePanelMode,
     sourceFiles,
     registerBeforeExitFlush,
+    onTakeBuilderTour,
 }: Props) {
     const { user } = useAuth();
     const isDevCodeMode = process.env.NODE_ENV === "development";
@@ -1531,10 +1533,25 @@ function AppPreviewEditorCore({
 
     // inside your component body
     const [isPreviewFullscreen, setIsPreviewFullscreen] = useState(false);
+    const [previewTourStartToken, setPreviewTourStartToken] = useState(0);
 
     const togglePreviewFullscreen = () => {
         setIsPreviewFullscreen((prev) => !prev);
     };
+
+    const handleTakePreviewTour = useCallback(() => {
+        setPreviewTourStartToken((token) => token + 1);
+    }, []);
+
+    const previewTourSeededRef = useRef(false);
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+        if (previewTourSeededRef.current) return;
+        if (viewMode !== "custom" && viewMode !== "images") return;
+
+        previewTourSeededRef.current = true;
+        setPreviewTourStartToken((token) => token + 1);
+    }, [viewMode]);
 
         useEffect(() => {
             if (!isPageDropdownOpen) return;
@@ -4443,7 +4460,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
             tabIndex={-1}
             className="h-full w-full bg-white flex flex-col"
         >
-            {!isCompactLayout && (<PreviewEditorTour />)}
+            {!isCompactLayout && (<PreviewEditorTour startToken={previewTourStartToken} autoStart={false} />)}
 
             <div className={`h-full w-full overflow-hidden ${isCompactLayout ? "flex flex-col" : "grid grid-rows-[1fr_auto]"}`}>
 
@@ -4597,6 +4614,15 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                             </div>
                                         ) : null}
                                     </div>
+                                    {/* {viewMode === "custom" ? ( */}
+                                        <button
+                                            type="button"
+                                            onClick={handleTakePreviewTour}
+                                            className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full border border-neutral-300 bg-white px-3 py-2 text-xs font-semibold text-neutral-700 hover:bg-neutral-50"
+                                        >
+                                            <span>Take tour</span>
+                                        </button>
+                                    {/* ) : null} */}
                                     <div
                                         className="inline-flex max-w-[320px] items-center gap-1.5 rounded-full border border-neutral-200 bg-neutral-50 px-3 py-1.5 text-xs font-medium text-neutral-700"
                                         title={`Current editable file: ${currentFileLabel}`}
@@ -6313,6 +6339,7 @@ type AppSourcePreviewEditorProps = {
     preferredSidePanelMode?: "style" | "ai-library";
     sourceFiles?: { [path: string]: { content: string; lastModified: number } };
     registerBeforeExitFlush?: (fn: (() => Promise<void>) | null) => void;
+    onTakeBuilderTour?: () => void;
 };
 
 function isHtmlPath(path: string): boolean {
@@ -6352,6 +6379,7 @@ export default function AppPreviewEditor({
     preferredSidePanelMode,
     sourceFiles,
     registerBeforeExitFlush,
+    onTakeBuilderTour,
 }: AppSourcePreviewEditorProps) {
     const htmlPaths = useMemo(
         () => Object.keys(files || {}).filter(isHtmlPath).sort((a, b) => a.localeCompare(b)),
@@ -6503,6 +6531,7 @@ export default function AppPreviewEditor({
                     preferredSidePanelMode={preferredSidePanelMode}
                     sourceFiles={sourceFiles || files}
                     registerBeforeExitFlush={registerBeforeExitFlush}
+                    onTakeBuilderTour={onTakeBuilderTour}
                     appName={appName}
                     isRenaming={isRenaming}
                     tempName={tempName}

@@ -56,13 +56,35 @@ const steps = [
     },
 ];
 
-const LOCAL_KEY = "kloner_preview_tour_done";
+const TOUR_KEY = "kloner_preview_tour_done";
 
-const isLocalhost =
-    typeof window !== "undefined" &&
-    (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
+type PreviewEditorTourProps = {
+    startToken?: number;
+    autoStart?: boolean;
+};
 
-export function PreviewEditorTour() {
+function getTourStorage(): Storage | null {
+    if (typeof window === "undefined") return null;
+    try {
+        return process.env.NODE_ENV !== "production" ? window.sessionStorage : window.localStorage;
+    } catch {
+        return null;
+    }
+}
+
+function hasSeenTour(): boolean {
+    return getTourStorage()?.getItem(TOUR_KEY) === "1";
+}
+
+function markTourSeen(): void {
+    try {
+        getTourStorage()?.setItem(TOUR_KEY, "1");
+    } catch {
+        // ignore storage failures
+    }
+}
+
+export function PreviewEditorTour({ startToken = 0, autoStart = true }: PreviewEditorTourProps) {
     const [running, setRunning] = useState(false);
     const [index, setIndex] = useState(0);
     const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
@@ -85,22 +107,21 @@ export function PreviewEditorTour() {
     };
 
     useEffect(() => {
+        if (!autoStart) return;
         if (typeof window === "undefined") return;
 
-        if (!user) {
-            const seenLocal = window.localStorage.getItem(LOCAL_KEY) === "1";
-            if (!seenLocal) setRunning(true);
-            return;
-        }
+        if (hasSeenTour()) return;
+        markTourSeen();
+        setRunning(true);
+    }, [autoStart, user]);
 
-        if (isLocalhost) {
-            setRunning(true);
-            return;
-        }
-
-        const seenLocal = window.localStorage.getItem(LOCAL_KEY) === "1";
-        if (!seenLocal) setRunning(true);
-    }, [user]);
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+        if (startToken <= 0) return;
+        markTourSeen();
+        setIndex(0);
+        setRunning(true);
+    }, [startToken]);
 
     useEffect(() => {
         if (!running) return;
@@ -268,8 +289,12 @@ export function PreviewEditorTour() {
     }, []);
 
     const finish = async (persist = true) => {
-        if (typeof window !== "undefined") window.localStorage.setItem(LOCAL_KEY, "1");
-        if (persist && !isLocalhost && user?.uid) {
+        markTourSeen();
+        const onLocalhost =
+            typeof window !== "undefined" &&
+            (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
+
+        if (persist && !onLocalhost && user?.uid) {
             try {
                 await updateDoc(doc(db, "kloner_users", user.uid), { hasSeenPreviewTour: true });
             } catch {

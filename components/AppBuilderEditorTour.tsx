@@ -10,6 +10,27 @@ type TourStep = {
 
 const TOUR_KEY = "kloner_builder_tour_done";
 
+function getTourStorage(): Storage | null {
+    if (typeof window === "undefined") return null;
+    try {
+        return process.env.NODE_ENV !== "production" ? window.sessionStorage : window.localStorage;
+    } catch {
+        return null;
+    }
+}
+
+function hasSeenTour(): boolean {
+    return getTourStorage()?.getItem(TOUR_KEY) === "1";
+}
+
+function markTourSeen(): void {
+    try {
+        getTourStorage()?.setItem(TOUR_KEY, "1");
+    } catch {
+        // ignore storage failures
+    }
+}
+
 const desktopSteps: TourStep[] = [
     {
         target: "[data-tour-builder-preview]",
@@ -89,7 +110,7 @@ function isChatIntroTarget(target: string | undefined) {
     return target === "[data-tour-chat-panel]" || target === "[data-tour-mobile-prompt]";
 }
 
-export function AppBuilderEditorTour({ startToken }: { startToken: number }) {
+export function AppBuilderEditorTour({ startToken, enabled = true }: { startToken: number; enabled?: boolean }) {
     const [running, setRunning] = useState(false);
     const [index, setIndex] = useState(0);
     const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
@@ -161,13 +182,7 @@ export function AppBuilderEditorTour({ startToken }: { startToken: number }) {
         setRunning(false);
         setIndex(0);
         clearHighlight();
-        if (!isDev && typeof window !== "undefined") {
-            try {
-                window.localStorage.setItem(TOUR_KEY, "1");
-            } catch {
-                // ignore storage failures
-            }
-        }
+        markTourSeen();
     };
 
     useEffect(() => {
@@ -180,22 +195,19 @@ export function AppBuilderEditorTour({ startToken }: { startToken: number }) {
     }, []);
 
     useEffect(() => {
+        if (!enabled) {
+            setRunning(false);
+            setIndex(0);
+            return;
+        }
+
         if (typeof window === "undefined") return;
         if (startToken <= 0) return;
 
-        if (!isDev) {
-            try {
-                if (window.localStorage.getItem(TOUR_KEY) === "1") {
-                    return;
-                }
-            } catch {
-                // ignore
-            }
-        }
-
+        markTourSeen();
         setIndex(0);
         setRunning(true);
-    }, [isDev, startToken]);
+    }, [enabled, isDev, startToken]);
 
     useEffect(() => {
         if (!running) return;
@@ -218,9 +230,9 @@ export function AppBuilderEditorTour({ startToken }: { startToken: number }) {
     }, [index, running, steps]);
 
     useEffect(() => {
-        if (running) return;
+        if (running || !enabled) return;
         clearHighlight();
-    }, [running]);
+    }, [enabled, running]);
 
     if (!running || !steps[index]) return null;
 

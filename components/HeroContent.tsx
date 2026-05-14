@@ -119,7 +119,7 @@ export default function HeroContent({
               aria-label="Clone website from URL"
             >
               <span className="inline-flex items-center gap-2">
-                <ArrowRightSquare className="h-4 w-4 md:hidden " />
+                <ArrowRightSquare className="h-4 w-4 md:hidden" />
                 <span className="sr-only">Clone</span>
                 <span className="hidden md:inline">Clone</span>
               </span>

@@ -227,7 +227,7 @@ export function AiImageLibraryPanel({ iframeRef, user, renderId }: Props) {
 
             {!loading && !error && items.length === 0 && (
                 <div className="flex flex-1 flex-col items-center justify-center gap-4 text-center">
-                    <p className="text-sm text-neutral-600">Select an element on your canvas, then use these controls:</p>
+                    <p className="text-sm text-neutral-600">Select an element on your canvas, then find these buttons inside the controller</p>
                     <div className="flex items-center justify-center gap-2">
                         <button disabled className="flex items-center gap-1.5 px-3 py-1.5 rounded border border-neutral-200 bg-white text-sm text-neutral-700 cursor-not-allowed opacity-60">
                             <ImageIcon className="h-4 w-4" />

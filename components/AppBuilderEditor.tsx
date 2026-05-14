@@ -1738,6 +1738,10 @@ export default function AppBuilderEditor({
         setBuilderTourStartToken((token) => token + 1);
     }, [appId]);
 
+    const handleTakeBuilderTour = useCallback(() => {
+        setBuilderTourStartToken((token) => token + 1);
+    }, []);
+
     const pageOptions = useMemo(() => {
         const seen = new Set<string>();
         return Object.keys(app?.files || {})
@@ -6096,6 +6100,17 @@ export default function AppBuilderEditor({
                                 </button>
                             ) : null}
 
+                            {!isVisualEditorMode ? (
+                                <button
+                                    type="button"
+                                    onClick={handleTakeBuilderTour}
+                                    className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full border border-neutral-300 bg-white px-3 py-2 text-xs font-semibold text-neutral-700 hover:bg-neutral-50"
+                                    title="Show the app builder tour"
+                                >
+                                    <span>Take tour</span>
+                                </button>
+                            ) : null}
+
                             {(
                                 <div data-tour-ui-scale className="inline-flex items-center gap-1 rounded-full border border-neutral-300 bg-white px-2 py-1 shadow-sm">
                                     <button
@@ -6666,6 +6681,7 @@ export default function AppBuilderEditor({
                                     registerBeforeExitFlush={(fn) => {
                                         previewEditorFlushRef.current = fn;
                                     }}
+                                    onTakeBuilderTour={handleTakeBuilderTour}
                                 />
                             </div>
                         </div>
@@ -7239,6 +7255,20 @@ export default function AppBuilderEditor({
                                                     <span>Copy</span>
                                                 </button>
                                             </div>
+                                        ) : null}
+
+                                        {!isVisualEditorMode ? (
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setMobileControlsOpen(false);
+                                                    handleTakeBuilderTour();
+                                                }}
+                                                className="mt-2 w-full inline-flex items-center justify-center gap-2 rounded-full px-4 py-2 text-sm font-semibold border border-neutral-300 bg-white text-neutral-800"
+                                                title="Show the app builder tour"
+                                            >
+                                                <span>Take tour</span>
+                                            </button>
                                         ) : null}
                                     </div>
                                 ) : null}
