@@ -451,10 +451,7 @@ function extractUrlRescanWarning(source: any): UrlRescanWarningState | null {
     ];
 
     const message =
-        messageCandidates.map((value) => String(value || "").trim()).find(Boolean) ||
-        (needsRescan
-            ? "The scan is incomplete or stale. Rescan before generating to avoid bad output."
-            : "");
+        messageCandidates.map((value) => String(value || "").trim()).find(Boolean) || ""
 
     const details = detailsCandidates
         .map((value) => stringifyWarningDetails(value))
@@ -636,16 +633,16 @@ function AmberIssueBanner({ message, onDismiss, onRetry, retryDisabled = false, 
             initial={{ opacity: 0, y: -8, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             transition={{ type: "spring", stiffness: 700, damping: 28, mass: 0.55 }}
-            className="relative mt-3 overflow-hidden rounded-3xl border border-amber-300/80 bg-amber-50/95 px-3 py-3 text-xs text-amber-950 shadow-[0_14px_34px_rgba(180,108,17,0.10)] sm:px-4 sm:py-3 sm:pr-14"
+            className="relative mt-3 overflow-hidden rounded-3xl border border-amber-300/80 bg-amber-50/95 px-3 py-3 text-xs text-amber-950 shadow-[0_14px_34px_rgba(180,108,17,0.10)] sm:px-4 sm:py-2 sm:pr-14"
         >
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:gap-3">
-                <div className="flex min-w-0 flex-1 items-start gap-2 sm:pt-0.5">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+                <div className="flex min-w-0 flex-1 items-center gap-2">
                     <MessageCircleWarning className="h-4 w-4 shrink-0 text-amber-700" />
                     <span className="min-w-0 flex-1 whitespace-normal break-words font-semibold leading-5 text-amber-950 sm:whitespace-nowrap">
                         {message}
                     </span>
                 </div>
-                <div className="flex flex-wrap items-center gap-2 sm:ml-auto sm:flex-nowrap sm:justify-end sm:gap-3 sm:pt-0.5 sm:pr-8">
+                <div className="flex flex-wrap items-center gap-2 sm:ml-auto sm:flex-nowrap sm:justify-end sm:gap-3 sm:pr-8">
                     {onRetry ? (
                         <button
                             type="button"
@@ -662,7 +659,7 @@ function AmberIssueBanner({ message, onDismiss, onRetry, retryDisabled = false, 
                         <button
                             type="button"
                             onClick={() => setShowDetails((v) => !v)}
-                            className="inline-flex w-full shrink-0 items-center justify-center gap-1 rounded-full border border-amber-300/70 bg-white px-3 py-2 text-[11px] font-semibold text-amber-800/90 transition hover:border-amber-400 hover:text-amber-950 sm:w-auto sm:border-0 sm:bg-transparent sm:px-0 sm:py-1.5 sm:mr-2"
+                            className="inline-flex w-full shrink-0 items-center justify-center gap-1 rounded-full border border-amber-300/70 bg-white px-3 py-1 text-[11px] font-semibold text-amber-800/90 transition hover:border-amber-400 hover:text-amber-950 sm:w-auto sm:border-0 sm:bg-transparent sm:px-0 sm:py-1.5 sm:mr-2"
                             aria-expanded={showDetails}
                             aria-label={showDetails ? "Hide details" : "View details"}
                             title={showDetails ? "Hide details" : "View details"}
@@ -2667,8 +2664,13 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                     )}
 
                                     {sourceUrlCannotGenerate ? (
-                                        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                                            URL scan failed. Retry scan before continuing.
+                                        <div className="relative overflow-hidden rounded-3xl border border-amber-300/80 bg-amber-50/95  text-xs text-amber-950 shadow-[0_14px_34px_rgba(180,108,17,0.10)] sm:px-3 sm:py-2 sm:mt-2">
+                                            <div className="flex items-start gap-2 sm:gap-3">
+                                                <MessageCircleWarning className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
+                                                <span className="min-w-0 flex-1 whitespace-normal break-words font-semibold leading-5 text-amber-950">
+                                                    URL scan issue detected.
+                                                </span>
+                                            </div>
                                         </div>
                                     ) : null}
                                 </div>
@@ -2804,12 +2806,6 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                                         <div className="mt-1 text-[11px] leading-4 text-neutral-500">
                                                             Best for: user accounts, AI features, dashboards, web games, stores, or product-heavy content.
                                                         </div>
-
-                                                        {sourceUrlCannotGenerate ? (
-                                                            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                                                                The scan is incomplete or stale. Rescan before generating to avoid bad output.
-                                                            </div>
-                                                        ) : null}
                                                     </div>
                                                 </div>
                                                 <div className="mt-2 rounded-lg border border-neutral-200 bg-neutral-50 px-2.5 py-2">
