@@ -5748,6 +5748,14 @@ export default function AppBuilderEditor({
         }
     }, [isVercelConnected]);
 
+    useEffect(() => {
+        if (!isVercelConnected) return;
+        if (!vercelConnectOpen && !vercelConnectOpening) return;
+
+        setVercelConnectOpening(false);
+        setVercelConnectOpen(false);
+    }, [isVercelConnected, vercelConnectOpen, vercelConnectOpening]);
+
     // On editor open: automatically build and show the preview (with retries + automatic bypass).
     useEffect(() => {
         if (!appId) return;
