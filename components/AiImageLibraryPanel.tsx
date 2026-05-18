@@ -545,16 +545,16 @@ export function AiImageLibraryPanel({ iframeRef, user, renderId, isVercelConnect
     return (
         <div className="flex h-full flex-col gap-3 px-2 py-2 text-sm leading-6 text-neutral-700">
             <div className="flex items-start gap-3 px-1 pt-1">
-                    {/* <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-amber-200 bg-amber-50 text-amber-700">
+                {/* <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-amber-200 bg-amber-50 text-amber-700">
                         <MessageCircleWarning className="h-4 w-4" />
                     </div> */}
-                    <div className="min-w-0 flex-1">
-                        <div className="text-sm font-semibold text-neutral-900">Images on this page</div>
-                        <div className="mt-1 text-sm leading-relaxed text-neutral-600">
-                            Review your images below. Replace is gated until storage is configured.
-                        </div>
+                <div className="min-w-0 flex-1">
+                    <div className="text-sm font-semibold text-neutral-900">Images on this page</div>
+                    <div className="mt-1 text-sm leading-relaxed text-neutral-600">
+                        Review your images below. Replace is gated until storage is configured.
                     </div>
-                    {/* <button
+                </div>
+                {/* <button
                         type="button"
                         onClick={() => {
                             if (!user || !renderId) return;
@@ -570,18 +570,18 @@ export function AiImageLibraryPanel({ iframeRef, user, renderId, isVercelConnect
             </div>
 
             {!isVercelConnected ? (
-                <div className="relative mt-3 overflow-hidden rounded-3xl border border-amber-300/80 bg-amber-50/95 px-3 py-3 text-xs text-amber-950 shadow-[0_14px_34px_rgba(180,108,17,0.10)] sm:px-4 sm:py-2">
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                        <div className="flex items-start gap-2 sm:items-center">
-                        <MessageCircleWarning className="h-4 w-4 shrink-0 text-amber-700" />
-                        <span className="min-w-0 flex-1 whitespace-normal break-words font-semibold leading-5 text-amber-950">
-                            Storage connection required.
-                        </span>
+                <div className="relative mt-3 overflow-hidden rounded-3xl border border-amber-200 bg-gradient-to-br from-amber-50 to-white px-4 py-4 text-xs text-amber-950 shadow-[0_14px_34px_rgba(180,108,17,0.08)]">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+                        <div className="flex items-start gap-2 sm:max-w-[70%] sm:items-center">
+                            <MessageCircleWarning className="h-4 w-4 shrink-0 text-amber-700" />
+                            <span className="min-w-0 flex-1 text-sm font-medium leading-5 text-amber-950">
+                                Storage connection required.
+                            </span>
                         </div>
                         <button
                             type="button"
                             onClick={handleConnectVercel}
-                            className="inline-flex shrink-0 items-center justify-center whitespace-nowrap rounded-full border border-amber-300 bg-white px-3 py-1.5 text-[11px] font-semibold text-amber-950 transition hover:bg-amber-100"
+                            className="inline-flex h-10 shrink-0 items-center justify-center whitespace-nowrap rounded-full bg-neutral-900 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-neutral-800 focus:outline-none focus:ring-2 focus:ring-neutral-900/20"
                         >
                             Connect Vercel
                         </button>
@@ -591,8 +591,8 @@ export function AiImageLibraryPanel({ iframeRef, user, renderId, isVercelConnect
 
             {error ? (
                 <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-                        {error}
-                    </div>
+                    {error}
+                </div>
             ) : null}
 
             <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-auto pb-2">
