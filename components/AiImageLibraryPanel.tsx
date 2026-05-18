@@ -581,7 +581,7 @@ export function AiImageLibraryPanel({ iframeRef, user, renderId, isVercelConnect
                         <button
                             type="button"
                             onClick={handleConnectVercel}
-                            className="inline-flex shrink-0 items-center justify-center rounded-full border border-amber-300 bg-white px-3 py-1.5 text-[11px] font-semibold text-amber-950 transition hover:bg-amber-100"
+                            className="inline-flex shrink-0 items-center justify-center whitespace-nowrap rounded-full border border-amber-300 bg-white px-3 py-1.5 text-[11px] font-semibold text-amber-950 transition hover:bg-amber-100"
                         >
                             Connect Vercel
                         </button>

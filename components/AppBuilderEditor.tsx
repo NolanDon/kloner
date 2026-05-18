@@ -5623,7 +5623,7 @@ export default function AppBuilderEditor({
                 .map((b) => b.toString(16).padStart(2, "0"))
                 .join("");
 
-            const returnTo = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+            const returnTo = `/dashboard/view?vercel=connected&flow=images&appId=${encodeURIComponent(appId)}`;
             localStorage.setItem(
                 APP_BUILDER_PENDING_AI_IMAGES_KEY,
                 JSON.stringify({
@@ -5651,6 +5651,9 @@ export default function AppBuilderEditor({
 
             setVercelConnectFlow("images");
             setVercelConnectOpen(true);
+
+            const link = `https://vercel.com/integrations/${VERCEL_INTEGRATION_SLUG}/new?state=${state}`;
+            window.location.assign(link);
         } catch (e) {
             console.error("Failed to start Vercel OAuth for image library", e);
             setPreviewError(PREVIEW_RECOVERY_MESSAGE);
@@ -7664,7 +7667,7 @@ export default function AppBuilderEditor({
                                                     : startVercelOAuthForPreview
                                         }
                                         disabled={isVercelChecking || vercelConnectOpening}
-                                        className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2 bg-[#F55F2A] text-xs font-semibold text-white rounded-full hover:opacity-90 disabled:opacity-50"
+                                        className="flex-1 inline-flex items-center justify-center gap-2 whitespace-nowrap px-4 py-2 bg-[#F55F2A] text-xs font-semibold text-white rounded-full hover:opacity-90 disabled:opacity-50"
                                     >
                                         {(isVercelChecking || vercelConnectOpening) ? (
                                             <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white/50 border-t-white" />
@@ -7680,7 +7683,7 @@ export default function AppBuilderEditor({
                                             await refreshVercelStatus();
                                             setVercelConnectOpening(false);
                                         }}
-                                        className="px-4 py-2 rounded-full text-sm border border-neutral-200 hover:bg-neutral-50"
+                                        className="whitespace-nowrap px-4 py-2 rounded-full text-sm border border-neutral-200 hover:bg-neutral-50"
                                         title="Re-check connection"
                                     >
                                         I already connected

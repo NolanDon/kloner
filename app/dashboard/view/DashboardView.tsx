@@ -3675,7 +3675,30 @@ export default function PreviewPage(): JSX.Element {
         setShowAppExitOffer(false);
         setAppExitOfferReason(null);
         autoAppDeployTriggeredRef.current = false;
-    }, []);
+
+        try {
+            localStorage.removeItem("kloner_vercel_pending_app_deploy");
+        } catch {
+            // ignore
+        }
+
+        try {
+            const url = new URL(window.location.href);
+            const params = url.searchParams;
+
+            // Clear callback flags so the wizard doesn't immediately reopen.
+            params.delete("appVercel");
+            params.delete("flow");
+            params.delete("appId");
+            params.delete("vercel");
+
+            const qs = params.toString();
+            const next = qs ? `${url.pathname}?${qs}` : url.pathname;
+            router.replace(next, { scroll: false });
+        } catch (e) {
+            console.error("Failed to clear app deploy wizard query params on close", e);
+        }
+    }, [router]);
 
     const openAppDeployWizard = useCallback(
         (app: { id: string; name: string }) => {
@@ -8813,6 +8836,41 @@ export default function PreviewPage(): JSX.Element {
         void (async () => {
             await refreshVercelStatus();
 
+            const callbackFlow = searchParams.get("flow") || "";
+
+            if (callbackFlow === "images") {
+                try {
+                    const raw = localStorage.getItem("kloner_vercel_pending_ai_images");
+                    const parsed = raw ? JSON.parse(raw) : null;
+                    const appId = typeof parsed?.appId === "string" ? parsed.appId.trim() : "";
+                    if (appId) {
+                        localStorage.removeItem("kloner_vercel_pending_ai_images");
+                    }
+                } catch {
+                    // ignore
+                }
+
+                await showAlert(
+                    "Your Vercel account is connected. You can return to the Images tab to upload files.",
+                    "Vercel connected",
+                );
+
+                try {
+                    const url = new URL(window.location.href);
+                    const params = url.searchParams;
+                    params.delete("vercel");
+                    params.delete("flow");
+                    params.delete("appId");
+                    const qs = params.toString();
+                    const next = qs ? `${url.pathname}?${qs}` : url.pathname;
+                    router.replace(next, { scroll: false });
+                } catch {
+                    // ignore
+                }
+
+                return;
+            }
+
             // If the user was in the *App Deploy* wizard when they connected Vercel,
             // resume that flow even if the callback landed on the legacy `vercel=connected` param.
             // This protects against older return URLs and cross-flow connects.
@@ -8838,19 +8896,18 @@ export default function PreviewPage(): JSX.Element {
                 // ignore
             }
 
-            const flow = searchParams.get("flow") || "";
             const appIdFromQuery = searchParams.get("appId");
             const appDeployWizardHasId = !!appDeployWizardAppId;
             const isAppDeployFlow =
                 (appDeployWizardOpen && appDeployWizardHasId) ||
-                flow === "appDeploy" ||
+                callbackFlow === "appDeploy" ||
                 !!pendingAppDeploy?.appId;
 
             if (isAppDeployFlow) {
                 const nextAppId =
                     (typeof pendingAppDeploy?.appId === "string" && pendingAppDeploy.appId) ||
                     (appDeployWizardHasId ? appDeployWizardAppId : null) ||
-                    (flow === "appDeploy" && typeof appIdFromQuery === "string" ? appIdFromQuery : null) ||
+                    (callbackFlow === "appDeploy" && typeof appIdFromQuery === "string" ? appIdFromQuery : null) ||
                     null;
 
                 if (nextAppId) {
@@ -8973,7 +9030,7 @@ export default function PreviewPage(): JSX.Element {
         void (async () => {
             await refreshVercelStatus();
 
-            const flow = searchParams.get("flow") || "";
+            const appDeployFlow = searchParams.get("flow") || "";
 
             // If we connected Vercel from the app deploy wizard, resume that flow (auto-deploy).
             let pendingAppDeploy: { appId?: string | null; appName?: string | null; startedAt?: number | null } | null = null;
@@ -8998,12 +9055,12 @@ export default function PreviewPage(): JSX.Element {
                 // ignore
             }
 
-            const isAppDeployFlow = flow === "appDeploy" || !!pendingAppDeploy?.appId;
+            const isAppDeployFlow = appDeployFlow === "appDeploy" || !!pendingAppDeploy?.appId;
 
             if (isAppDeployFlow) {
                 const nextAppId =
                     (typeof pendingAppDeploy?.appId === "string" && pendingAppDeploy.appId) ||
-                    (flow === "appDeploy" && typeof appIdFromQuery === "string" ? appIdFromQuery : null) ||
+                    (appDeployFlow === "appDeploy" && typeof appIdFromQuery === "string" ? appIdFromQuery : null) ||
                     null;
                 const nextAppName =
                     (typeof pendingAppDeploy?.appName === "string" && pendingAppDeploy.appName) ||

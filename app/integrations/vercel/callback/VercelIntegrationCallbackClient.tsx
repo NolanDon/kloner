@@ -1,7 +1,7 @@
 // app/integrations/vercel/callback/VercelIntegrationCallbackClient.tsx
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 
@@ -98,6 +98,18 @@ function inferReturnPathFromLocalStorage(): string | null {
             return "/dashboard/view?vercel=connected";
         }
 
+        const pendingAiImages = window.localStorage.getItem("kloner_vercel_pending_ai_images");
+        if (pendingAiImages) {
+            try {
+                const parsed = JSON.parse(pendingAiImages) as any;
+                const returnTo = typeof parsed?.returnTo === "string" ? parsed.returnTo.trim() : "";
+                if (returnTo) return returnTo;
+            } catch {
+                return "/dashboard/view?vercel=connected&flow=images";
+            }
+            return "/dashboard/view?vercel=connected&flow=images";
+        }
+
         const pendingDeploy = window.localStorage.getItem("kloner_vercel_pending_deploy");
         if (pendingDeploy) {
             return "/dashboard/view?vercel=connected";
@@ -113,6 +125,7 @@ export function VercelIntegrationCallbackClient() {
     const searchParams = useSearchParams();
 
     const [returnTo, setReturnTo] = useState<string>("/dashboard/view");
+    const reportedErrorKeyRef = useRef<string>("");
 
     const statusParam = searchParams.get("status");
     const reasonParam = searchParams.get("reason");
@@ -120,6 +133,45 @@ export function VercelIntegrationCallbackClient() {
     const status = statusParam ?? "success";
     const reason = reasonParam;
     const isSuccess = status === "success";
+
+    useEffect(() => {
+        if (isSuccess) return;
+
+        const dedupeKey = `${status}:${reason || "unknown"}:${searchParams.toString()}`;
+        if (reportedErrorKeyRef.current === dedupeKey) return;
+        reportedErrorKeyRef.current = dedupeKey;
+
+        const severity = reason === "state" || reason === "auth" ? "error" : "critical";
+        const payload = {
+            source: "frontend" as const,
+            severity,
+            route: "/integrations/vercel/callback",
+            method: "GET",
+            action: "vercel.oauth.callback.error",
+            statusCode: reason === "state" || reason === "auth" ? 400 : 500,
+            message: "vercel_oauth_callback_failed",
+            errorName: "VercelOAuthCallbackFailed",
+            service: "vercel-oauth-callback",
+            extra: {
+                status,
+                reason: reason || null,
+                returnTo: getCookieValue("vercel_oauth_return") || null,
+                search: searchParams.toString(),
+            },
+        };
+
+        void fetch("/api/internal/observability/ingest", {
+            method: "POST",
+            headers: {
+                "content-type": "application/json",
+            },
+            body: JSON.stringify(payload),
+            keepalive: true,
+            credentials: "include",
+        }).catch(() => {
+            // best effort only
+        });
+    }, [isSuccess, reason, searchParams, status]);
 
     useEffect(() => {
         if (!isSuccess) return;
