@@ -56,6 +56,7 @@ function buildNeedsMoreContextSnapshot(params: {
     appId: string;
     query: string;
     currentPath: string | null;
+    selectedFiles: string[];
     maxChunks: number;
     framework: string | null;
     frameworkLabel: string | null;
@@ -120,6 +121,7 @@ function buildNeedsMoreContextSnapshot(params: {
         request: {
             query: params.query,
             currentPath: params.currentPath,
+            selectedFiles: params.selectedFiles,
             maxChunks: params.maxChunks,
             framework: params.framework,
             frameworkLabel: params.frameworkLabel,
@@ -162,6 +164,7 @@ async function emailNeedsMoreContextCase(params: {
     appId: string;
     query: string;
     currentPath: string | null;
+    selectedFiles: string[];
     maxChunks: number;
     framework: string | null;
     frameworkLabel: string | null;
