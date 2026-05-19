@@ -127,6 +127,8 @@ export function VercelIntegrationCallbackClient() {
     const [returnTo, setReturnTo] = useState<string>("/dashboard/view");
     const reportedErrorKeyRef = useRef<string>("");
 
+    const oauthCode = searchParams.get("code");
+    const oauthState = searchParams.get("state");
     const statusParam = searchParams.get("status");
     const reasonParam = searchParams.get("reason");
 
@@ -176,6 +178,12 @@ export function VercelIntegrationCallbackClient() {
     useEffect(() => {
         if (!isSuccess) return;
 
+        if (oauthCode && oauthState) {
+            const qs = searchParams.toString();
+            window.location.replace(`/api/vercel/oauth/callback?${qs}`);
+            return;
+        }
+
         try {
             window.localStorage.setItem("kloner_vercel_connected", "1");
         } catch {
@@ -205,7 +213,7 @@ export function VercelIntegrationCallbackClient() {
         }, 2400);
 
         return () => window.clearTimeout(t);
-    }, [isSuccess, router]);
+    }, [isSuccess, oauthCode, oauthState, searchParams, router]);
 
     if (isSuccess) {
         return (
