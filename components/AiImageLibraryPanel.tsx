@@ -161,13 +161,14 @@ function selectImageTarget(iframeRef: RefObject<HTMLIFrameElement>, selector: st
 
 export function AiImageLibraryPanel({ iframeRef, user, renderId, isVercelConnected = false, onConnectVercel }: Props) {
     const { showAlert } = useModal();
-    const { status: vercelStatus, refresh: refreshVercelStatus } = useVercelIntegration();
+    const { status: vercelStatus, checking, refresh: refreshVercelStatus } = useVercelIntegration();
     const [items, setItems] = useState<AiLibraryItem[]>([]);
     const [pageImages, setPageImages] = useState<PageImageItem[]>([]);
     const [imageAvailability, setImageAvailability] = useState<Record<string, "ok" | "error">>({});
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const refreshInFlightRef = useRef(false);
+    const isVercelConnectionPending = vercelStatus === "loading" || checking;
     const isVercelActuallyConnected = isVercelConnected || vercelStatus === "connected";
 
     useEffect(() => {
@@ -308,13 +309,8 @@ export function AiImageLibraryPanel({ iframeRef, user, renderId, isVercelConnect
     }, [showAlert]);
 
     const handleConnectVercel = useCallback(() => {
-        if (onConnectVercel) {
-            onConnectVercel();
-            return;
-        }
-
         startVercelOAuthForImages();
-    }, [onConnectVercel, startVercelOAuthForImages]);
+    }, [startVercelOAuthForImages]);
 
     const handleRefreshLibrary = useCallback(() => {
         if (!user || !renderId) return;
@@ -577,25 +573,36 @@ export function AiImageLibraryPanel({ iframeRef, user, renderId, isVercelConnect
                     </button> */}
             </div>
 
-            {!isVercelActuallyConnected ? (
-                <div className="relative mt-3 overflow-hidden rounded-3xl border border-amber-200 bg-gradient-to-br from-amber-50 to-white px-4 py-4 text-xs text-amber-950 shadow-[0_14px_34px_rgba(180,108,17,0.08)]">
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-                        <div className="flex items-start gap-2 sm:max-w-[70%] sm:items-center">
-                            <MessageCircleWarning className="h-4 w-4 shrink-0 text-amber-700" />
-                            <span className="min-w-0 flex-1 text-sm font-medium leading-5 text-amber-950">
+            {isVercelConnectionPending && !isVercelActuallyConnected ? (
+                <div className="relative mt-3 overflow-hidden rounded-3xl border border-neutral-200 bg-white px-4 py-4 shadow-[0_14px_34px_rgba(15,23,42,0.08)]">
+                    <div className="flex items-center gap-3">
+                        <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-neutral-200 bg-neutral-50 text-neutral-600">
+                            <span className="h-4 w-4 animate-spin rounded-full border-2 border-neutral-300 border-t-neutral-900" />
+                        </span>
+                        <div className="min-w-0">
+                            <div className="text-sm font-medium text-neutral-900">Checking Vercel connection…</div>
+                            <div className="mt-0.5 text-sm text-neutral-600">This should only take a moment.</div>
+                        </div>
+                    </div>
+                </div>
+            ) : !isVercelActuallyConnected ? (
+                <>
+                    <div className="relative mt-3 overflow-hidden rounded-3xl border border-amber-200 bg-gradient-to-br from-amber-50 to-white px-4 py-4 shadow-[0_14px_34px_rgba(180,108,17,0.08)]">
+                        <div className="flex items-start gap-2">
+                            <MessageCircleWarning className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
+                            <span className="min-w-0 flex-1 whitespace-nowrap text-sm font-medium leading-5 text-amber-950">
                                 Storage connection required.
                             </span>
                         </div>
-                        <button
-                            type="button"
-                            onClick={handleConnectVercel}
-                            className="inline-flex h-10 shrink-0 items-center justify-center whitespace-nowrap rounded-full px-4 text-sm font-semibold text-white shadow-sm transition hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-[#f55f2a]/20"
-                            style={{ backgroundColor: "#f55f2a" }}
-                        >
-                            Connect Vercel
-                        </button>
                     </div>
-                </div>
+                    <button
+                        type="button"
+                        onClick={handleConnectVercel}
+                        className="my-3 inline-flex h-9 shrink-0 items-center justify-center whitespace-nowrap rounded-full bg-black px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-neutral-800 focus:outline-none focus:ring-2 focus:ring-black/20"
+                    >
+                        Connect Storage
+                    </button>
+                </>
             ) : null}
 
             {error ? (
