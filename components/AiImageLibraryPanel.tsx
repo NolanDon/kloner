@@ -8,6 +8,7 @@ import { ArrowUpRight, Image as ImageIcon, MessageCircleWarning, RefreshCcw, Tra
 import { storage } from "@/lib/firebase";
 import type { User as FirebaseUser } from "firebase/auth";
 import { useModal } from "@/components/ui/ModalContext";
+import { useVercelIntegration } from "@/src/hooks/useVercelIntegration";
 
 type AiLibraryItem = {
     url: string;
@@ -160,12 +161,19 @@ function selectImageTarget(iframeRef: RefObject<HTMLIFrameElement>, selector: st
 
 export function AiImageLibraryPanel({ iframeRef, user, renderId, isVercelConnected = false, onConnectVercel }: Props) {
     const { showAlert } = useModal();
+    const { status: vercelStatus, refresh: refreshVercelStatus } = useVercelIntegration();
     const [items, setItems] = useState<AiLibraryItem[]>([]);
     const [pageImages, setPageImages] = useState<PageImageItem[]>([]);
     const [imageAvailability, setImageAvailability] = useState<Record<string, "ok" | "error">>({});
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const refreshInFlightRef = useRef(false);
+    const isVercelActuallyConnected = isVercelConnected || vercelStatus === "connected";
+
+    useEffect(() => {
+        if (isVercelActuallyConnected) return;
+        void refreshVercelStatus();
+    }, [isVercelActuallyConnected, refreshVercelStatus]);
 
     const loadImages = useCallback(async (uidFromProp?: string, renderIdFromProp?: string) => {
         const uid = uidFromProp ?? user?.uid;
@@ -476,7 +484,7 @@ export function AiImageLibraryPanel({ iframeRef, user, renderId, isVercelConnect
     }, [iframeRef]);
 
     const openReplaceDialog = useCallback(async (item: PageImageItem) => {
-        if (!isVercelConnected) {
+        if (!isVercelActuallyConnected) {
             await showAlert(
                 "Connect your Vercel account before replacing images. Current-page images can still be removed.",
                 "Connect Vercel",
@@ -504,7 +512,7 @@ export function AiImageLibraryPanel({ iframeRef, user, renderId, isVercelConnect
         } catch (err) {
             console.warn("[AiImageLibraryPanel] replace failed", err);
         }
-    }, [iframeRef, isVercelConnected, showAlert]);
+    }, [iframeRef, isVercelActuallyConnected, showAlert]);
 
     const removePageImage = useCallback((item: PageImageItem) => {
         const { api, element } = selectImageTarget(iframeRef, item.selector);
@@ -569,7 +577,7 @@ export function AiImageLibraryPanel({ iframeRef, user, renderId, isVercelConnect
                     </button> */}
             </div>
 
-            {!isVercelConnected ? (
+            {!isVercelActuallyConnected ? (
                 <div className="relative mt-3 overflow-hidden rounded-3xl border border-amber-200 bg-gradient-to-br from-amber-50 to-white px-4 py-4 text-xs text-amber-950 shadow-[0_14px_34px_rgba(180,108,17,0.08)]">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
                         <div className="flex items-start gap-2 sm:max-w-[70%] sm:items-center">
@@ -581,9 +589,10 @@ export function AiImageLibraryPanel({ iframeRef, user, renderId, isVercelConnect
                         <button
                             type="button"
                             onClick={handleConnectVercel}
-                            className="inline-flex h-10 shrink-0 items-center justify-center whitespace-nowrap rounded-full bg-neutral-900 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-neutral-800 focus:outline-none focus:ring-2 focus:ring-neutral-900/20"
+                            className="inline-flex h-10 shrink-0 items-center justify-center whitespace-nowrap rounded-full px-4 text-sm font-semibold text-white shadow-sm transition hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-[#f55f2a]/20"
+                            style={{ backgroundColor: "#f55f2a" }}
                         >
-                            Connect
+                            Connect Vercel
                         </button>
                     </div>
                 </div>
@@ -649,9 +658,9 @@ export function AiImageLibraryPanel({ iframeRef, user, renderId, isVercelConnect
                                             <button
                                                 type="button"
                                                 onClick={() => void openReplaceDialog(item)}
-                                                disabled={!isVercelConnected}
+                                                disabled={!isVercelActuallyConnected}
                                                 className="inline-flex w-full items-center justify-center gap-1.5 rounded-full border border-neutral-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-neutral-700 transition hover:border-[#f55f2a] hover:text-[#f55f2a] disabled:cursor-not-allowed disabled:opacity-45"
-                                                title={isVercelConnected ? "Replace this image" : "Connect Vercel to replace images"}
+                                                title={isVercelActuallyConnected ? "Replace this image" : "Connect Vercel to replace images"}
                                             >
                                                 <ArrowUpRight className="h-3.5 w-3.5" />
                                                 Replace
