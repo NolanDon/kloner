@@ -8839,6 +8839,16 @@ export default function PreviewPage(): JSX.Element {
             const callbackFlow = searchParams.get("flow") || "";
 
             if (callbackFlow === "images") {
+                const callbackKey = `kloner_vercel_images_connected_notice:${searchParams.toString()}`;
+                try {
+                    if (window.sessionStorage.getItem(callbackKey) === "1") {
+                        return;
+                    }
+                    window.sessionStorage.setItem(callbackKey, "1");
+                } catch {
+                    // ignore
+                }
+
                 try {
                     const raw = localStorage.getItem("kloner_vercel_pending_ai_images");
                     const parsed = raw ? JSON.parse(raw) : null;
