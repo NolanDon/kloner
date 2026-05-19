@@ -277,7 +277,7 @@ export function AiImageLibraryPanel({ iframeRef, user, renderId, isVercelConnect
                 .map((b) => b.toString(16).padStart(2, "0"))
                 .join("");
 
-            const returnTo = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+            const returnTo = "/dashboard/view?vercel=connected&flow=images";
             window.localStorage.setItem(
                 AI_IMAGE_RESUME_KEY,
                 JSON.stringify({
