@@ -620,6 +620,10 @@ function normalizeAssistantMessageText(value: string): string {
         .toLowerCase();
 }
 
+function hasRenderableChatMessageContent(message: Message): boolean {
+    return String(message.content || "").trim().length > 0;
+}
+
 function extractCompletedEditPlanResult(job: AppEmbeddingEditPlanJobStatus | null | undefined): Record<string, unknown> | null {
     if (!job || typeof job !== "object") return null;
     if (!isEditPlanJobTerminalStatus(job.status) || String(job.status || "").toLowerCase() !== "completed") return null;
@@ -2734,7 +2738,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                     const type = m.type === "text" || m.type === "code" || m.type === "file-edit" ? m.type : "text";
                     const ts = typeof m.timestampMs === "number" ? new Date(m.timestampMs) : (m.timestamp ? new Date(m.timestamp) : new Date());
                     if (!id || !role || content == null || Number.isNaN(ts.getTime())) return null;
-                    return {
+                    const message: Message = {
                         id,
                         role,
                         content,
@@ -2769,6 +2773,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                         restorePointsCard: m.restorePointsCard === true,
                         restorePointsCardReason: typeof m.restorePointsCardReason === "string" ? m.restorePointsCardReason : undefined,
                     };
+                    return hasRenderableChatMessageContent(message) ? message : null;
                 };
 
                 if (stored) {
@@ -2794,25 +2799,29 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                         timestamp: new Date(msg.timestamp),
                                     }))
                                     .filter((msg: any) => msg?.id && msg?.role && msg?.content !== undefined && msg?.timestamp instanceof Date)
-                                    .map((msg: any) => ({
-                                        id: String(msg.id),
-                                        role: msg.role === "user" || msg.role === "assistant" ? msg.role : "user",
-                                        content: String(msg.content ?? ""),
-                                        timestamp: msg.timestamp as Date,
-                                        type: msg.type === "code" || msg.type === "file-edit" ? msg.type : "text",
-                                        restorePointId: typeof msg.restorePointId === "string" ? msg.restorePointId : undefined,
-                                        restoreActionLabel: typeof msg.restoreActionLabel === "string" ? msg.restoreActionLabel : undefined,
-                                        editPlanRetryPrompt: typeof msg.editPlanRetryPrompt === "string" ? msg.editPlanRetryPrompt : undefined,
-                                        editPlanRetryCurrentPath: typeof msg.editPlanRetryCurrentPath === "string" ? msg.editPlanRetryCurrentPath : undefined,
-                                        editPlanRebuildPrompt: typeof msg.editPlanRebuildPrompt === "boolean" ? msg.editPlanRebuildPrompt : undefined,
-                                        editPlanFailure: msg.editPlanFailure === true,
-                                        editPlanFailureCode: typeof msg.editPlanFailureCode === "string" ? msg.editPlanFailureCode : undefined,
-                                        editPlanFailureJobId: typeof msg.editPlanFailureJobId === "string" ? msg.editPlanFailureJobId : undefined,
-                                        editPlanFailureRequestId: typeof msg.editPlanFailureRequestId === "string" ? msg.editPlanFailureRequestId : undefined,
-                                        editPlanFailureHttpStatus: typeof msg.editPlanFailureHttpStatus === "number" ? msg.editPlanFailureHttpStatus : undefined,
-                                        restorePointsCard: msg.restorePointsCard === true,
-                                        restorePointsCardReason: typeof msg.restorePointsCardReason === "string" ? msg.restorePointsCardReason : undefined,
-                                    })) as Message[];
+                                    .map((msg: any) => {
+                                        const message: Message = {
+                                            id: String(msg.id),
+                                            role: msg.role === "user" || msg.role === "assistant" ? msg.role : "user",
+                                            content: String(msg.content ?? ""),
+                                            timestamp: msg.timestamp as Date,
+                                            type: msg.type === "code" || msg.type === "file-edit" ? msg.type : "text",
+                                            restorePointId: typeof msg.restorePointId === "string" ? msg.restorePointId : undefined,
+                                            restoreActionLabel: typeof msg.restoreActionLabel === "string" ? msg.restoreActionLabel : undefined,
+                                            editPlanRetryPrompt: typeof msg.editPlanRetryPrompt === "string" ? msg.editPlanRetryPrompt : undefined,
+                                            editPlanRetryCurrentPath: typeof msg.editPlanRetryCurrentPath === "string" ? msg.editPlanRetryCurrentPath : undefined,
+                                            editPlanRebuildPrompt: typeof msg.editPlanRebuildPrompt === "boolean" ? msg.editPlanRebuildPrompt : undefined,
+                                            editPlanFailure: msg.editPlanFailure === true,
+                                            editPlanFailureCode: typeof msg.editPlanFailureCode === "string" ? msg.editPlanFailureCode : undefined,
+                                            editPlanFailureJobId: typeof msg.editPlanFailureJobId === "string" ? msg.editPlanFailureJobId : undefined,
+                                            editPlanFailureRequestId: typeof msg.editPlanFailureRequestId === "string" ? msg.editPlanFailureRequestId : undefined,
+                                            editPlanFailureHttpStatus: typeof msg.editPlanFailureHttpStatus === "number" ? msg.editPlanFailureHttpStatus : undefined,
+                                            restorePointsCard: msg.restorePointsCard === true,
+                                            restorePointsCardReason: typeof msg.restorePointsCardReason === "string" ? msg.restorePointsCardReason : undefined,
+                                        };
+                                        return hasRenderableChatMessageContent(message) ? message : null;
+                                    })
+                                    .filter(Boolean) as Message[];
 
                                 if (loaded.length) {
                                     if (!FORCE_INTRO_REPLAY_IN_DEV) {
@@ -4166,6 +4175,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
         const tailMax = 120;
         const base = input
             .filter(isPersistableChatMessage)
+            .filter(hasRenderableChatMessageContent)
             .slice(-tailMax)
             .map((m) => ({
                 id: m.id,
@@ -4354,6 +4364,14 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
             }
         };
     }, [appId, buildChatPayload, debugChatIo, fetchWithScopeRetry, isHydrated, messages, user?.uid, withCsrfHeaders]);
+
+    useEffect(() => {
+        if (!initialLoadCompletedRef.current) return;
+        setMessages((prev) => {
+            const next = prev.filter(hasRenderableChatMessageContent);
+            return next.length === prev.length ? prev : next;
+        });
+    }, [messages]);
 
     const createCheckpoint = useCallback((description: string) => {
         const checkpointId = `checkpoint_${Date.now()}`;

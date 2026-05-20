@@ -27,11 +27,12 @@ function normalizeMessages(input: unknown): StoredMessage[] {
 
         const id = typeof m.id === "string" ? m.id : "";
         const role = m.role === "user" || m.role === "assistant" ? m.role : null;
-        const content = typeof m.content === "string" ? m.content : null;
+        const content = typeof m.content === "string" ? m.content.trim() : null;
         const type = m.type === "text" || m.type === "code" || m.type === "file-edit" ? m.type : "text";
         const timestampMs = typeof m.timestampMs === "number" ? m.timestampMs : Date.now();
 
         if (!id || !role || content == null) continue;
+        if (!content) continue;
 
         out.push({
             id,
