@@ -7967,7 +7967,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                         </select>
 
                                         <div className="mt-2 text-[12px] text-neutral-700">
-                                            Credit carryover: Unused credits remain in your account and can be used for future edits. You won't lose any credits you purchase.
+                                            Credit carryover: Unused credits remain in your account and can be used for future edits. You won&apos;t lose any credits you purchase.
                                         </div>
                                     </div>
 
