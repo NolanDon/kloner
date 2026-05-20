@@ -19,6 +19,34 @@ function toMaxChunks(value: unknown): number {
     return Math.min(10, Math.max(1, Math.floor(parsed)));
 }
 
+function normalizeSelectedFiles(selectedFiles: unknown, legacySelectedFile?: unknown, currentPath?: unknown): string[] {
+    const source = Array.isArray(selectedFiles)
+        ? selectedFiles
+        : typeof legacySelectedFile === "string" || typeof legacySelectedFile === "number"
+            ? [legacySelectedFile]
+            : [];
+
+    const normalized: string[] = [];
+    const seen = new Set<string>();
+    const primaryPath = asString(currentPath, 500).toLowerCase();
+
+    for (const entry of source) {
+        const path = asString(entry, 500);
+        if (!path) continue;
+
+        const dedupeKey = path.toLowerCase();
+        if (primaryPath && dedupeKey === primaryPath) continue;
+        if (seen.has(dedupeKey)) continue;
+
+        seen.add(dedupeKey);
+        normalized.push(path);
+
+        if (normalized.length >= 3) break;
+    }
+
+    return normalized;
+}
+
 function parseRetryAfterSeconds(value: string | null): number | null {
     if (!value) return null;
     const parsed = Number(value);
@@ -42,9 +70,7 @@ export async function POST(req: NextRequest) {
             const appId = asString(body?.appId, 200);
             const query = asString(body?.query ?? body?.requestText, 10_000);
             const currentPath = asString(body?.currentPath, 500) || null;
-            const selectedFiles = Array.isArray(body?.selectedFiles)
-                ? body.selectedFiles.map((path: unknown) => asString(path, 500)).filter(Boolean).slice(0, 3)
-                : [];
+            const selectedFiles = normalizeSelectedFiles(body?.selectedFiles, body?.selectedFile, currentPath);
             const maxChunks = toMaxChunks(body?.maxChunks);
             const framework = asString(body?.framework, 80) || null;
             const frameworkLabel = asString(body?.frameworkLabel, 120) || null;
@@ -62,7 +88,7 @@ export async function POST(req: NextRequest) {
                 query,
                 requestText: query,
                 ...(currentPath ? { currentPath } : {}),
-                ...(selectedFiles.length ? { selectedFiles } : {}),
+                selectedFiles,
                 maxChunks,
                 ...(framework ? { framework } : {}),
                 ...(frameworkLabel ? { frameworkLabel } : {}),
@@ -90,7 +116,7 @@ export async function POST(req: NextRequest) {
                     query,
                     requestText: query,
                     ...(currentPath ? { currentPath } : {}),
-                    ...(selectedFiles.length ? { selectedFiles } : {}),
+                    selectedFiles,
                     maxChunks,
                     ...(framework ? { framework } : {}),
                     ...(frameworkLabel ? { frameworkLabel } : {}),

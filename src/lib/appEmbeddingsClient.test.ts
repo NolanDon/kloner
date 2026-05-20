@@ -262,6 +262,7 @@ describe("appEmbeddingsClient", () => {
             query: "fix the html",
             requestText: "fix the html",
             currentPath: "public/research/more-control-fidelity-and-expressibility/index.html",
+            selectedFiles: [],
             maxChunks: 10,
             search,
         }));
@@ -308,6 +309,7 @@ describe("appEmbeddingsClient", () => {
             query: "when i click close on the chrome extension popup hide it",
             requestText: "when i click close on the chrome extension popup hide it",
             currentPath: "public/index.html",
+            selectedFiles: [],
             debugCurrentPath: {
                 selectedFile: "server.js",
                 derivedCurrentPath: "public/index.html",
@@ -316,6 +318,149 @@ describe("appEmbeddingsClient", () => {
             },
             maxChunks: 10,
         }));
+    });
+
+    it("sends a single selected reference file as an array", async () => {
+        const fetchSpy = jest.spyOn(globalThis, "fetch" as any).mockResolvedValueOnce({
+            ok: true,
+            status: 200,
+            headers: { get: () => null },
+            json: async () => ({ chunks: [] }),
+        } as any);
+
+        await fetchEmbeddingSearch(
+            {
+                appId: "app-1",
+                query: "fix the header",
+                currentPath: "app/page.tsx",
+                selectedFiles: ["components/Header.tsx"],
+            },
+            {},
+        );
+
+        const [, init] = fetchSpy.mock.calls[0] as [RequestInfo | URL, RequestInit | undefined];
+        expect(JSON.parse(String(init?.body))).toEqual({
+            appId: "app-1",
+            query: "fix the header",
+            requestText: "fix the header",
+            currentPath: "app/page.tsx",
+            selectedFiles: ["components/Header.tsx"],
+            maxChunks: 10,
+        });
+    });
+
+    it("preserves multiple selected reference files in order", async () => {
+        const fetchSpy = jest.spyOn(globalThis, "fetch" as any).mockResolvedValueOnce({
+            ok: true,
+            status: 200,
+            headers: { get: () => null },
+            json: async () => ({ chunks: [] }),
+        } as any);
+
+        await fetchEmbeddingSearch(
+            {
+                appId: "app-1",
+                query: "update navigation and footer",
+                selectedFiles: ["components/NavBar.tsx", "components/Footer.tsx", "components/HeroContent.tsx"],
+            },
+            {},
+        );
+
+        const [, init] = fetchSpy.mock.calls[0] as [RequestInfo | URL, RequestInit | undefined];
+        expect(JSON.parse(String(init?.body)).selectedFiles).toEqual([
+            "components/NavBar.tsx",
+            "components/Footer.tsx",
+            "components/HeroContent.tsx",
+        ]);
+    });
+
+    it("sends selectedFiles as an empty array when none are provided", async () => {
+        const fetchSpy = jest.spyOn(globalThis, "fetch" as any).mockResolvedValueOnce({
+            ok: true,
+            status: 200,
+            headers: { get: () => null },
+            json: async () => ({ chunks: [] }),
+        } as any);
+
+        await fetchEmbeddingSearch(
+            {
+                appId: "app-1",
+                query: "what failed",
+                currentPath: "app/page.tsx",
+            },
+            {},
+        );
+
+        const [, init] = fetchSpy.mock.calls[0] as [RequestInfo | URL, RequestInit | undefined];
+        expect(JSON.parse(String(init?.body)).selectedFiles).toEqual([]);
+    });
+
+    it("dedupes and trims selected reference files while keeping currentPath separate", async () => {
+        const fetchSpy = jest.spyOn(globalThis, "fetch" as any).mockResolvedValueOnce({
+            ok: true,
+            status: 200,
+            headers: { get: () => null },
+            json: async () => ({ chunks: [] }),
+        } as any);
+
+        await fetchEmbeddingSearch(
+            {
+                appId: "app-1",
+                query: "update the layout",
+                currentPath: "src/app.tsx",
+                selectedFiles: [
+                    "src/app.tsx",
+                    "docs/guide.md",
+                    "DOCS/guide.md",
+                    "components/NavBar.tsx",
+                    "pages/index.tsx",
+                ],
+            },
+            {},
+        );
+
+        const [, init] = fetchSpy.mock.calls[0] as [RequestInfo | URL, RequestInit | undefined];
+        expect(JSON.parse(String(init?.body))).toEqual({
+            appId: "app-1",
+            query: "update the layout",
+            requestText: "update the layout",
+            currentPath: "src/app.tsx",
+            selectedFiles: [
+                "docs/guide.md",
+                "components/NavBar.tsx",
+                "pages/index.tsx",
+            ],
+            maxChunks: 10,
+        });
+    });
+
+    it("keeps currentPath separate from selectedFiles when both are present", async () => {
+        const fetchSpy = jest.spyOn(globalThis, "fetch" as any).mockResolvedValueOnce({
+            ok: true,
+            status: 200,
+            headers: { get: () => null },
+            json: async () => ({ chunks: [] }),
+        } as any);
+
+        await fetchEmbeddingSearch(
+            {
+                appId: "app-1",
+                query: "refactor the page",
+                currentPath: "app/page.tsx",
+                selectedFiles: ["app/page.tsx", "components/Header.tsx"],
+            },
+            {},
+        );
+
+        const [, init] = fetchSpy.mock.calls[0] as [RequestInfo | URL, RequestInit | undefined];
+        expect(JSON.parse(String(init?.body))).toEqual({
+            appId: "app-1",
+            query: "refactor the page",
+            requestText: "refactor the page",
+            currentPath: "app/page.tsx",
+            selectedFiles: ["components/Header.tsx"],
+            maxChunks: 10,
+        });
     });
 
     it("detects edit-plan backpressure and prefers the body retry-after countdown", async () => {

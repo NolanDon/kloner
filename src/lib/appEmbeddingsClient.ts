@@ -3,6 +3,7 @@ export type AppEmbeddingSearchRequest = {
     query: string;
     currentPath?: string | null;
     selectedFiles?: string[] | null;
+    selectedFile?: string | null;
     debugCurrentPath?: {
         selectedFile: string | null;
         derivedCurrentPath: string | null;
@@ -300,6 +301,34 @@ function asNumber(value: unknown, fallback = 0): number {
 
 function asBoolean(value: unknown): boolean {
     return value === true || value === "true";
+}
+
+function normalizeSelectedFiles(selectedFiles: unknown, legacySelectedFile?: unknown, currentPath?: string | null): string[] {
+    const source = Array.isArray(selectedFiles)
+        ? selectedFiles
+        : typeof legacySelectedFile === "string" || typeof legacySelectedFile === "number"
+            ? [legacySelectedFile]
+            : [];
+
+    const normalized: string[] = [];
+    const seen = new Set<string>();
+    const primaryPath = asString(currentPath, 500).toLowerCase();
+
+    for (const entry of source) {
+        const path = asString(entry, 500);
+        if (!path) continue;
+
+        const dedupeKey = path.toLowerCase();
+        if (primaryPath && dedupeKey === primaryPath) continue;
+        if (seen.has(dedupeKey)) continue;
+
+        seen.add(dedupeKey);
+        normalized.push(path);
+
+        if (normalized.length >= 3) break;
+    }
+
+    return normalized;
 }
 
 function normalizeLineRange(value: unknown): { start: number; end: number } {
@@ -1027,6 +1056,7 @@ export async function fetchEmbeddingSearch(
     headers: HeadersInit,
 ): Promise<AppEmbeddingRequestResult<AppEmbeddingSearchResponse>> {
     const maxChunks = Math.min(10, Math.max(1, Math.floor(Number(request.maxChunks ?? 10) || 10)));
+    const selectedFiles = normalizeSelectedFiles(request.selectedFiles, request.selectedFile, request.currentPath);
     return postJson<AppEmbeddingSearchResponse>(
         "/api/app-embeddings/search",
         {
@@ -1034,7 +1064,7 @@ export async function fetchEmbeddingSearch(
             query: request.query,
             requestText: request.requestText ?? request.query,
             currentPath: request.currentPath || null,
-            ...(Array.isArray(request.selectedFiles) ? { selectedFiles: request.selectedFiles.slice(0, 3) } : {}),
+            selectedFiles,
             ...(request.debugCurrentPath ? { debugCurrentPath: request.debugCurrentPath } : {}),
             maxChunks,
             ...(request.framework ? { framework: request.framework } : {}),
@@ -1052,6 +1082,7 @@ export async function fetchEmbeddingEditPlan(
 ): Promise<AppEmbeddingRequestResult<AppEmbeddingEditPlanResponse>> {
     const maxChunks = Math.min(10, Math.max(1, Math.floor(Number(request.maxChunks ?? 10) || 10)));
     const search = Array.isArray(request.search) ? request.search : undefined;
+    const selectedFiles = normalizeSelectedFiles(request.selectedFiles, request.selectedFile, request.currentPath);
     return postJson<AppEmbeddingEditPlanResponse>(
         "/api/app-embeddings/edit-plan",
         {
@@ -1059,7 +1090,7 @@ export async function fetchEmbeddingEditPlan(
             query: request.query,
             requestText: request.requestText ?? request.query,
             currentPath: request.currentPath || null,
-            ...(Array.isArray(request.selectedFiles) ? { selectedFiles: request.selectedFiles.slice(0, 3) } : {}),
+            selectedFiles,
             ...(request.debugCurrentPath ? { debugCurrentPath: request.debugCurrentPath } : {}),
             maxChunks,
             ...(search ? { search } : {}),

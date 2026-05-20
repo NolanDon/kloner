@@ -4877,9 +4877,9 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                                                 return currency === "usd" ? `$${amount}` : `${currency.toUpperCase()} ${amount}`;
                                             })()}
                                         </div>
-                                        <div className="mt-2 text-[11px] text-neutral-600">
+                                        {/* <div className="mt-2 text-[11px] text-neutral-600">
                                             Top-ups never expire. Applied after Stripe confirms payment.
-                                        </div>
+                                        </div> */}
                                     </div>
                                 </div>
 
