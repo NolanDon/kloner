@@ -18,3 +18,4 @@ certificates
 .github/prompts/backend-embedding-sanitization.prompt.md
 docs/backend-edit-plan-job-result-contract.md
 next-env.d.ts
+docs/image-upload-blob-flow.md

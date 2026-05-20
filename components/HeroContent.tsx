@@ -123,7 +123,7 @@ export default function HeroContent({
           </div>
 
           <div className="mt-3 sm:mt-4 text-xs sm:text-sm text-white font-medium">
-            {error ?? "Clone any public website • No credit card required to preview"}
+            {error ?? "Clone your public website • Instant preview • Customize and launch"}
           </div>
         </form>
 
