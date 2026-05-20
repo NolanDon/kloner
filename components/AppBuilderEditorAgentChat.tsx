@@ -6029,6 +6029,9 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                 }
 
                 const planMeta = rawPlan as any;
+                const planOps = Array.isArray(rawPlan?.ops)
+                    ? rawPlan.ops.filter((op): op is AppEmbeddingEditPlanOp => Boolean(op && typeof op.path === "string" && op.path.trim()))
+                    : [];
                 const chargeDecision = resolveEditPlanCreditCharge({
                     isFreeCompileFixMode,
                     requestId: rawPlan.requestId || editPlanResult.requestId || null,
