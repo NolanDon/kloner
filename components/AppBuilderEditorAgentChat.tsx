@@ -56,6 +56,7 @@ import {
     hasWriteProof,
     buildApplyStateMessage,
 } from "@/src/lib/editPlanApplyContract";
+import { resolveEditPlanCreditCharge } from "@/src/lib/editPlanCreditConsumption";
 import CoinLottieBadge from "@/components/tools/CoinLottieBadge";
 
 type SummarySearchFeedbackContext = {
@@ -6028,16 +6029,18 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                 }
 
                 const planMeta = rawPlan as any;
-                const planRequestId = typeof planMeta?.requestId === "string" ? planMeta.requestId.trim() : "";
-                const creditCost = typeof planMeta?.creditCost === "number" && Number.isFinite(planMeta.creditCost)
-                    ? Math.max(1, Math.floor(planMeta.creditCost))
-                    : 1;
-                const planOps = Array.isArray(rawPlan?.ops)
-                    ? rawPlan.ops.filter((op): op is AppEmbeddingEditPlanOp => Boolean(op && typeof op.path === "string" && op.path.trim()))
-                    : [];
-                const hasChargeableWork = planOps.length > 0 || (Array.isArray(rawPlan?.dbMigrations) && rawPlan.dbMigrations.length > 0);
+                const chargeDecision = resolveEditPlanCreditCharge({
+                    isFreeCompileFixMode,
+                    requestId: rawPlan.requestId || editPlanResult.requestId || null,
+                    creditCost: planMeta?.creditCost,
+                    ops: rawPlan?.ops,
+                    dbMigrations: rawPlan?.dbMigrations,
+                });
+                const planRequestId = chargeDecision.requestId;
+                const creditCost = chargeDecision.creditCost;
+                const hasChargeableWork = chargeDecision.hasChargeableWork;
 
-                if (!isFreeCompileFixMode && planRequestId && hasChargeableWork) {
+                if (chargeDecision.shouldConsume) {
                     const headers2 = await withCsrfHeaders();
                     const consumeRes = await fetch("/api/credits/ai-edits/consume", {
                         method: "POST",
@@ -6116,16 +6119,21 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
             }
 
             const planMeta = rawPlan as any;
-            const planRequestId = typeof planMeta?.requestId === "string" ? planMeta.requestId.trim() : "";
-            const creditCost = typeof planMeta?.creditCost === "number" && Number.isFinite(planMeta.creditCost)
-                ? Math.max(1, Math.floor(planMeta.creditCost))
-                : 1;
+            const chargeDecision = resolveEditPlanCreditCharge({
+                isFreeCompileFixMode,
+                requestId: rawPlan.requestId || editPlanResult.requestId || null,
+                creditCost: planMeta?.creditCost,
+                ops: rawPlan?.ops,
+                dbMigrations: rawPlan?.dbMigrations,
+            });
+            const planRequestId = chargeDecision.requestId;
+            const creditCost = chargeDecision.creditCost;
             const planOps = Array.isArray(rawPlan?.ops)
                 ? rawPlan.ops.filter((op): op is AppEmbeddingEditPlanOp => Boolean(op && typeof op.path === "string" && op.path.trim()))
                 : [];
-            const hasChargeableWork = planOps.length > 0 || (Array.isArray(rawPlan?.dbMigrations) && rawPlan.dbMigrations.length > 0);
+            const hasChargeableWork = chargeDecision.hasChargeableWork;
 
-            if (!isFreeCompileFixMode && planRequestId && hasChargeableWork) {
+            if (chargeDecision.shouldConsume) {
                 const headers2 = await withCsrfHeaders();
                 const consumeRes = await fetch("/api/credits/ai-edits/consume", {
                     method: "POST",
