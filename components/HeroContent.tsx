@@ -92,38 +92,34 @@ export default function HeroContent({
           and make it your own without starting from scratch.
         </p>
 
-        <form onSubmit={onSubmit} className="mt-[clamp(1rem,3.2vh,2.5rem)] w-full max-w-2xl mx-auto">
-          <div
-            className={
-              "relative flex items-center bg-white/95 backdrop-blur-md p-2 pl-4 sm:pl-6 shadow-[0_20px_50px_rgba(0,0,0,0.3)] ring-1 ring-white/20 transition-all duration-300 ease-out rounded-full h-[64px] sm:h-[72px]"
-            }
-          >
-            <span className="hidden sm:inline text-neutral-400 text-lg font-medium mr-1">
-              https://
-            </span>
+        <form onSubmit={onSubmit} className="mt-[clamp(1rem,3.2vh,2.5rem)] w-full max-w-2xl mx-auto space-y-3">
+          <div className="rounded-full bg-white/95 p-2 shadow-[0_20px_50px_rgba(0,0,0,0.3)] ring-1 ring-white/20 backdrop-blur-md">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-stretch">
+              <div className="flex min-h-[48px] flex-1 items-center rounded-full px-4 sm:px-6">
+                <span className="hidden sm:inline text-neutral-400 text-lg font-medium mr-1">
+                  https://
+                </span>
 
-            <input
-              ref={inputRef}
-              value={url}
-              onChange={handleChange}
-              onPaste={handlePaste}
-              placeholder="example.com"
-              className="flex-1 bg-transparent outline-none text-neutral-700 text-base sm:text-lg placeholder:text-neutral-400 font-medium"
-              autoComplete="off"
-            />
+                <input
+                  ref={inputRef}
+                  value={url}
+                  onChange={handleChange}
+                  onPaste={handlePaste}
+                  placeholder="example.com"
+                  className="w-full bg-transparent outline-none text-neutral-700 text-base sm:text-lg placeholder:text-neutral-400 font-medium"
+                  autoComplete="off"
+                />
+              </div>
 
-            <button
-              type="submit"
-              disabled={!url || !!error}
-              className="inline-flex h-11 shrink-0 items-center justify-center rounded-full bg-[#f26522] px-4 text-white transition-all active:scale-95 hover:bg-[#ff7a3d] disabled:cursor-not-allowed disabled:opacity-60 md:px-6"
-              aria-label="Clone website from URL"
-            >
-              <span className="inline-flex items-center gap-2">
-                <ArrowRightSquare className="h-4 w-4 md:hidden" />
-                <span className="sr-only">Clone</span>
-                <span className="hidden md:inline">Clone</span>
-              </span>
-            </button>
+              <button
+                type="submit"
+                disabled={!url || !!error}
+                className="inline-flex min-h-[48px] items-center justify-center rounded-full bg-[#f26522] px-5 text-white transition-all active:scale-95 hover:bg-[#ff7a3d] disabled:cursor-not-allowed disabled:opacity-60 sm:px-6"
+                aria-label="Clone website from URL"
+              >
+                <span className="text-sm font-semibold sm:text-base">Clone</span>
+              </button>
+            </div>
           </div>
 
           <div className="mt-3 sm:mt-4 text-xs sm:text-sm text-white font-medium">

@@ -3,7 +3,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import NavBar from "@/components/NavBar";
+import Link from "next/link";
 import { auth, db } from "@/lib/firebase";
 import {
     GoogleAuthProvider,
@@ -612,267 +612,320 @@ export default function LoginPage(): JSX.Element {
     };
 
     return (
-        <main className="min-h-[100dvh] bg-white text-black px-4 sm:px-6 pt-24 pb-12 sm:pt-28 sm:pb-16 flex items-start md:items-center justify-center">
-            <NavBar />
-            <div className="w-full max-w-md rounded-2xl border border-black/10 bg-white p-4 sm:p-6 md:p-8 shadow-md">
-                {/* TOP MODE TOGGLE */}
-                <div className="mb-4 flex justify-center">
-                    <div className="inline-flex items-center rounded-full border border-neutral-200 bg-neutral-50 p-1 text-xs">
-                        <button
-                            type="button"
-                            onClick={() => {
-                                setMode("signin");
-                                setErr("");
-                            }}
-                            className={`px-3 py-1.5 rounded-full font-medium transition ${mode === "signin"
-                                    ? "bg-accent text-white"
-                                    : "text-neutral-600 hover:text-black"
-                                }`}
-                        >
-                            Sign in
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => {
-                                setMode("signup");
-                                setErr("");
-                            }}
-                            className={`px-3 py-1.5 rounded-full font-medium transition ${mode === "signup"
-                                    ? "bg-accent text-white"
-                                    : "text-neutral-600 hover:text-black"
-                                }`}
-                        >
-                            Create account
-                        </button>
-                    </div>
-                </div>
+        <main className="min-h-[100dvh] overflow-hidden bg-[radial-gradient(circle_at_top_left,_rgba(245,95,42,0.12),_transparent_36%),radial-gradient(circle_at_bottom_right,_rgba(15,23,42,0.08),_transparent_30%),linear-gradient(180deg,_#fffaf6_0%,_#fff_58%,_#fff7f1_100%)] text-black">
+            <Link href="/" className="absolute left-4 top-4 z-20 inline-flex items-center justify-center transition hover:opacity-90 sm:left-6 sm:top-6">
+                <Image src="/images/orange_logo.png" alt="Kloner home" width={144} height={144} className="h-20 w-20 object-contain sm:h-20 sm:w-20 lg:h-24 lg:w-24" priority />
+            </Link>
 
-                <div className="text-center">
-                    <h1 className="text-2xl mb-4 font-semibold tracking-tight">
-                        {mode === "signin" ? "Sign in" : "Create account"}
-                    </h1>
-                    <p className="mt-1 mb-4 text-sm text-neutral-600">
-                        {mode === "signin"
-                            ? "Use Google or email to access your Kloner dashboard."
-                            : "Clone websites in minutes. Quick signup with email or Google, then one-click deploy."}
-                    </p>
-                </div>
-
-                {pendingPrompt ? (
-                    <div className="mb-3 flex items-start justify-between gap-2 rounded-lg bg-indigo-50 px-3 py-2.5 text-xs text-indigo-900 ring-1 ring-indigo-200">
-                        <div>
-                            We will start from this prompt after you{" "}
-                            {mode === "signin" ? "sign in" : "sign up"}:{" "}
-                            <span className="font-medium break-words">{pendingPrompt}</span>
+            <section className="grid min-h-[100dvh] w-full grid-cols-1 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,0.78fr)]">
+                <div className="relative order-1 flex items-center justify-center px-4 pb-8 pt-4 sm:px-6 lg:order-1 lg:px-10 lg:py-10">
+                    <div className="w-full max-w-xl rounded-[32px] border border-black/5 bg-white/90 p-5 shadow-[0_24px_80px_rgba(15,23,42,0.12)] backdrop-blur-xl sm:p-6 lg:rounded-none lg:border-0 lg:bg-transparent lg:p-0 lg:shadow-none">
+                        <div className="mb-4 flex justify-center lg:hidden">
+                            <div className="inline-flex items-center gap-2 rounded-full border border-black/10 bg-white px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-neutral-600 shadow-sm">
+                                <span className="h-2 w-2 rounded-full bg-[#f55f2a]" />
+                                Kloner
+                            </div>
                         </div>
-                        <button
-                            type="button"
-                            onClick={clearPendingPrompt}
-                            className="ml-2 inline-flex h-5 w-5 items-center justify-center rounded-full border border-indigo-500 text-[11px] leading-none text-indigo-800 hover:bg-indigo-600 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
-                            aria-label="Do not auto-add this prompt"
-                        >
-                            ×
-                        </button>
-                    </div>
-                ) : null}
 
-                {pendingUrl ? (
-                    <div className="mb-4 flex items-start justify-between gap-2 rounded-lg bg-emerald-50 px-3 py-2.5 text-xs text-emerald-800 ring-1 ring-emerald-200">
-                        <div>
-                            We will add this URL after you {" "}
-                            {mode === "signin" ? "sign in" : "sign up"}:{"\n "}
-                            <span className="font-medium break-all">{pendingUrl}</span>
+                        <div className="mb-5 flex justify-center">
+                            <div className="inline-flex items-center rounded-full border border-neutral-200 bg-neutral-50 p-1 text-xs shadow-sm">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setMode("signin");
+                                        setErr("");
+                                    }}
+                                    className={`px-3 py-1.5 rounded-full font-medium transition ${mode === "signin"
+                                            ? "bg-accent text-white"
+                                            : "text-neutral-600 hover:text-black"
+                                        }`}
+                                >
+                                    Sign in
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setMode("signup");
+                                        setErr("");
+                                    }}
+                                    className={`px-3 py-1.5 rounded-full font-medium transition ${mode === "signup"
+                                            ? "bg-accent text-white"
+                                            : "text-neutral-600 hover:text-black"
+                                        }`}
+                                >
+                                    Create account
+                                </button>
+                            </div>
                         </div>
-                        <button
-                            type="button"
-                            onClick={clearPendingUrl}
-                            className="ml-2 inline-flex h-5 w-5 items-center justify-center rounded-full border border-emerald-500 text-[11px] leading-none text-emerald-700 hover:bg-emerald-600 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
-                            aria-label="Do not auto-add this URL"
-                        >
-                            ×
-                        </button>
-                    </div>
-                ) : null}
 
-                <form onSubmit={submitEmail} className="space-y-3">
-                    <div className="space-y-1.5">
-                        <label className="block text-xs font-medium text-neutral-600">
-                            Email
-                        </label>
-                        <input
-                            type="email"
-                            autoComplete="email"
-                            value={email}
-                            onChange={(e) => setEmail(e.target.value)}
-                            className="w-full rounded-xl border border-neutral-200 bg-white px-3 py-3 text-sm outline-none focus:ring-2"
-                            placeholder="you@example.com"
-                        />
-                    </div>
+                        <div className="mb-5 text-center">
+                            <h1 className="text-3xl font-semibold tracking-tight text-neutral-950 sm:text-4xl">
+                                {mode === "signin" ? "Sign in" : "Create account"}
+                            </h1>
+                            <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-neutral-600 sm:text-base">
+                                {mode === "signin"
+                                    ? "Use Google or email to access your Kloner dashboard."
+                                    : "Clone websites in minutes. Quick signup with email or Google, then one-click deploy."}
+                            </p>
+                        </div>
 
-                    <div className="space-y-1.5">
-                        <label className="block text-xs font-medium text-neutral-600">
-                            Password
-                        </label>
-                        <div className="flex items-stretch gap-2">
-                            <input
-                                type={showPw ? "text" : "password"}
-                                autoComplete={
-                                    mode === "signin" ? "current-password" : "new-password"
-                                }
-                                value={pw}
-                                onChange={(e) => setPw(e.target.value)}
-                                className="w-full rounded-xl border border-neutral-200 bg-white px-3 py-3 text-sm outline-none focus:ring-2"
-                                placeholder={
-                                    mode === "signin"
-                                        ? "Your password"
-                                        : "Create a strong password"
-                                }
-                            />
+                        {pendingPrompt ? (
+                            <div className="mb-3 flex items-start justify-between gap-2 rounded-2xl border border-indigo-200 bg-indigo-50 px-3 py-2.5 text-xs text-indigo-900 shadow-sm">
+                                <div>
+                                    We will start from this prompt after you{" "}
+                                    {mode === "signin" ? "sign in" : "sign up"}: {" "}
+                                    <span className="font-medium break-words">{pendingPrompt}</span>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={clearPendingPrompt}
+                                    className="ml-2 inline-flex h-5 w-5 items-center justify-center rounded-full border border-indigo-500 text-[11px] leading-none text-indigo-800 hover:bg-indigo-600 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+                                    aria-label="Do not auto-add this prompt"
+                                >
+                                    ×
+                                </button>
+                            </div>
+                        ) : null}
+
+                        {pendingUrl ? (
+                            <div className="mb-4 flex items-start justify-between gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-xs text-emerald-800 shadow-sm">
+                                <div>
+                                    We will add this URL after you {" "}
+                                    {mode === "signin" ? "sign in" : "sign up"}:{"\n "}
+                                    <span className="font-medium break-all">{pendingUrl}</span>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={clearPendingUrl}
+                                    className="ml-2 inline-flex h-5 w-5 items-center justify-center rounded-full border border-emerald-500 text-[11px] leading-none text-emerald-700 hover:bg-emerald-600 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                                    aria-label="Do not auto-add this URL"
+                                >
+                                    ×
+                                </button>
+                            </div>
+                        ) : null}
+
+                        <div className="rounded-[28px] border border-black/5 bg-white p-4 shadow-[0_16px_50px_rgba(15,23,42,0.08)] sm:p-6">
+                            <form onSubmit={submitEmail} className="space-y-3">
+                                <div className="space-y-1.5">
+                                    <label className="block text-xs font-medium text-neutral-600">
+                                        Email
+                                    </label>
+                                    <input
+                                        type="email"
+                                        autoComplete="email"
+                                        value={email}
+                                        onChange={(e) => setEmail(e.target.value)}
+                                        className="w-full rounded-2xl border border-neutral-200 bg-white px-3 py-3 text-sm outline-none transition focus:border-[#f55f2a] focus:ring-2 focus:ring-[#f55f2a]/15"
+                                        placeholder="you@example.com"
+                                    />
+                                </div>
+
+                                <div className="space-y-1.5">
+                                    <label className="block text-xs font-medium text-neutral-600">
+                                        Password
+                                    </label>
+                                    <div className="flex items-stretch gap-2">
+                                        <input
+                                            type={showPw ? "text" : "password"}
+                                            autoComplete={
+                                                mode === "signin" ? "current-password" : "new-password"
+                                            }
+                                            value={pw}
+                                            onChange={(e) => setPw(e.target.value)}
+                                            className="w-full rounded-2xl border border-neutral-200 bg-white px-3 py-3 text-sm outline-none transition focus:border-[#f55f2a] focus:ring-2 focus:ring-[#f55f2a]/15"
+                                            placeholder={
+                                                mode === "signin"
+                                                    ? "Your password"
+                                                    : "Create a strong password"
+                                            }
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowPw((v) => !v)}
+                                            className="shrink-0 rounded-2xl border border-neutral-200 bg-white px-3 text-sm transition hover:bg-neutral-50"
+                                            aria-label="Toggle password visibility"
+                                        >
+                                            {showPw ? "Hide" : "Show"}
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {mode === "signup" && (
+                                    <div className="mt-2 rounded-2xl border border-neutral-200 bg-neutral-50 px-3 py-2.5">
+                                        <label className="flex items-start gap-2 text-xs text-neutral-700">
+                                            <input
+                                                type="checkbox"
+                                                checked={acceptedTerms}
+                                                onChange={(e) => setAcceptedTerms(e.target.checked)}
+                                                className="mt-0.5 h-3.5 w-3.5 rounded border-neutral-300"
+                                            />
+                                            <span>
+                                                I have read and agree to the{" "}
+                                                <a
+                                                    href="/terms"
+                                                    className="font-medium underline underline-offset-2"
+                                                    style={{ color: ACCENT }}
+                                                    target="_blank"
+                                                    rel="noreferrer"
+                                                >
+                                                    Terms and Conditions
+                                                </a>{" "}
+                                                and{" "}
+                                                <a
+                                                    href="/privacy"
+                                                    className="font-medium underline underline-offset-2"
+                                                    style={{ color: ACCENT }}
+                                                    target="_blank"
+                                                    rel="noreferrer"
+                                                >
+                                                    Privacy Policy
+                                                </a>
+                                                .
+                                            </span>
+                                        </label>
+                                    </div>
+                                )}
+
+                                <button
+                                    type="submit"
+                                    disabled={loading}
+                                    className="w-full inline-flex items-center justify-center rounded-2xl px-4 py-3 text-sm font-semibold text-white transition disabled:opacity-50"
+                                    style={{ backgroundColor: ACCENT }}
+                                >
+                                    {loading
+                                        ? mode === "signin"
+                                            ? "Signing in…"
+                                            : "Creating…"
+                                        : mode === "signin"
+                                            ? "Sign in"
+                                            : "Create account"}
+                                </button>
+                            </form>
+
+                            <div className="my-4 grid grid-cols-3 items-center gap-3">
+                                <div className="h-px bg-neutral-200" />
+                                <div className="text-center text-xs text-neutral-500">or</div>
+                                <div className="h-px bg-neutral-200" />
+                            </div>
+
                             <button
-                                type="button"
-                                onClick={() => setShowPw((v) => !v)}
-                                className="shrink-0 rounded-xl border border-neutral-200 bg-white px-3 text-sm hover:bg-neutral-50"
-                                aria-label="Toggle password visibility"
+                                onClick={signInWithGoogle}
+                                disabled={loading}
+                                className="w-full inline-flex items-center justify-center gap-3 rounded-2xl border border-neutral-200 bg-white text-black px-4 py-3 font-medium hover:bg-neutral-50 transition disabled:opacity-50 focus:outline-none text-sm"
                             >
-                                {showPw ? "Hide" : "Show"}
-                            </button>
-                        </div>
-                    </div>
-
-                    {mode === "signup" && (
-                        <div className="mt-2 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2.5">
-                            <label className="flex items-start gap-2 text-xs text-neutral-700">
-                                <input
-                                    type="checkbox"
-                                    checked={acceptedTerms}
-                                    onChange={(e) => setAcceptedTerms(e.target.checked)}
-                                    className="mt-0.5 h-3.5 w-3.5 rounded border-neutral-300"
+                                <Image
+                                    src="/images/g.webp"
+                                    alt="Google"
+                                    width={20}
+                                    height={20}
+                                    className="h-5 w-5"
+                                    priority
                                 />
-                                <span>
-                                    I have read and agree to the{" "}
-                                    <a
-                                        href="/terms"
-                                        className="font-medium underline underline-offset-2"
-                                        style={{ color: ACCENT }}
-                                        target="_blank"
-                                        rel="noreferrer"
-                                    >
-                                        Terms and Conditions
-                                    </a>{" "}
-                                    and{" "}
-                                    <a
-                                        href="/privacy"
-                                        className="font-medium underline underline-offset-2"
-                                        style={{ color: ACCENT }}
-                                        target="_blank"
-                                        rel="noreferrer"
-                                    >
-                                        Privacy Policy
-                                    </a>
-                                    .
-                                </span>
-                            </label>
+                                {loading ? "Please wait…" : "Continue with Google"}
+                            </button>
+
+                            {err ? (
+                                <p className="mt-4 rounded-2xl border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">
+                                    {err}
+                                </p>
+                            ) : resetSuccess ? (
+                                <p className="mt-4 rounded-2xl border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+                                    {resetSuccess}
+                                </p>
+                            ) : null}
+
+                            <div className="mt-4 flex items-center justify-between gap-3 text-sm">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setMode((m) => (m === "signin" ? "signup" : "signin"));
+                                        setErr("");
+                                    }}
+                                    className="font-medium"
+                                    style={{ color: ACCENT }}
+                                >
+                                    {mode === "signin"
+                                        ? "Create an account"
+                                        : "Have an account? Sign in"}
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => void doReset()}
+                                    className="text-neutral-500 hover:text-neutral-700"
+                                >
+                                    Reset password
+                                </button>
+                            </div>
                         </div>
-                    )}
 
-                    <button
-                        type="submit"
-                        disabled={loading}
-                        className="w-full inline-flex items-center justify-center rounded-xl px-4 py-3 text-sm font-semibold text-white transition disabled:opacity-50"
-                        style={{ backgroundColor: ACCENT }}
-                    >
-                        {loading
-                            ? mode === "signin"
-                                ? "Signing in…"
-                                : "Creating…"
-                            : mode === "signin"
-                                ? "Sign in"
-                                : "Create account"}
-                    </button>
-                </form>
-
-                <div className="my-4 grid grid-cols-3 items-center gap-3">
-                    <div className="h-px bg-neutral-200" />
-                    <div className="text-center text-xs text-neutral-500">or</div>
-                    <div className="h-px bg-neutral-200" />
-                </div>
-
-                <button
-                    onClick={signInWithGoogle}
-                    disabled={loading}
-                    className="w-full inline-flex items-center justify-center gap-3 rounded-xl border border-neutral-200 bg-white text-black px-4 py-3 font-medium hover:bg-neutral-50 transition disabled:opacity-50 focus:outline-none text-sm"
-                >
-                    <Image
-                        src="/images/g.webp"
-                        alt="Google"
-                        width={20}
-                        height={20}
-                        className="h-5 w-5"
-                        priority
-                    />
-                    {loading ? "Please wait…" : "Continue with Google"}
-                </button>
-
-                {err ? (
-                    <p className="mt-4 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">
-                        {err}
-                    </p>
-                ) : resetSuccess ? (
-                    <p className="mt-4 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
-                        {resetSuccess}
-                    </p>
-                ) : null}
-
-                <div className="mt-4 flex items-center justify-between text-sm">
-                    <button
-                        type="button"
-                        onClick={() => {
-                            setMode((m) => (m === "signin" ? "signup" : "signin"));
-                            setErr("");
-                        }}
-                        className="font-medium"
-                        style={{ color: ACCENT }}
-                    >
-                        {mode === "signin"
-                            ? "Create an account"
-                            : "Have an account? Sign in"}
-                    </button>
-                    <button
-                        type="button"
-                        onClick={() => void doReset()}
-                        className="text-neutral-500 hover:text-neutral-700"
-                    >
-                        Reset password
-                    </button>
-                </div>
-
-                <div className="mt-8">
-                    <hr className="h-px w-full bg-neutral-200" />
-                    <div className="mt-3 text-center text-xs text-neutral-500">
-                        By continuing you agree to the{" "}
-                        <a
-                            href="/terms"
-                            className="font-medium"
-                            style={{ color: ACCENT }}
-                            target="_blank"
-                            rel="noreferrer"
-                        >
-                            Terms and Conditions
-                        </a>{" "}
-                        and{" "}
-                        <a
-                            href="/privacy"
-                            className="font-medium"
-                            style={{ color: ACCENT }}
-                            target="_blank"
-                            rel="noreferrer"
-                        >
-                            Privacy Policy
-                        </a>
-                        .
+                        <div className="mt-4 text-center text-xs text-neutral-500">
+                            By continuing you agree to the{" "}
+                            <a
+                                href="/terms"
+                                className="font-medium"
+                                style={{ color: ACCENT }}
+                                target="_blank"
+                                rel="noreferrer"
+                            >
+                                Terms and Conditions
+                            </a>{" "}
+                            and{" "}
+                            <a
+                                href="/privacy"
+                                className="font-medium"
+                                style={{ color: ACCENT }}
+                                target="_blank"
+                                rel="noreferrer"
+                            >
+                                Privacy Policy
+                            </a>
+                            .
+                        </div>
                     </div>
                 </div>
-            </div>
+
+                <div className="relative order-2 min-h-[28rem] overflow-hidden border-b border-black/5 bg-neutral-950 text-white lg:min-h-[100dvh] lg:border-b-0 lg:border-l">
+                    <div className="absolute inset-0">
+                        <Image
+                            src="/images/hero_bg.jpg"
+                            alt="Abstract Kloner hero artwork"
+                            fill
+                            priority
+                            sizes="(max-width: 1024px) 100vw, 50vw"
+                            className="object-cover object-center"
+                        />
+                        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(255,255,255,0.14),_transparent_34%),linear-gradient(180deg,_rgba(10,10,10,0.18)_0%,_rgba(9,9,11,0.55)_100%)]" />
+                    </div>
+
+                    <div className="relative flex min-h-[28rem] flex-col justify-end px-6 py-8 sm:px-10 sm:py-10 lg:min-h-[100dvh] lg:px-12 lg:py-12">
+                        <div className="max-w-xl">
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.26em] text-white/65">Login / Signup</p>
+                            <h2 className="mt-4 text-4xl font-semibold tracking-tight sm:text-5xl lg:text-6xl">
+                                Build, edit, and launch from one account.
+                            </h2>
+                            <p className="mt-4 max-w-lg text-sm leading-6 text-white/80 sm:text-base">
+                                Sign in to keep your projects, previews, and credits in sync. New users can create an account in seconds and jump right into the dashboard.
+                            </p>
+
+                            <div className="mt-8 grid gap-3 sm:grid-cols-3">
+                                <div className="rounded-3xl border border-white/10 bg-white/10 px-4 py-4 backdrop-blur-md">
+                                    <div className="text-[11px] uppercase tracking-[0.18em] text-white/55">Secure</div>
+                                    <div className="mt-2 text-sm font-medium text-white">Google or email auth</div>
+                                </div>
+                                <div className="rounded-3xl border border-white/10 bg-white/10 px-4 py-4 backdrop-blur-md">
+                                    <div className="text-[11px] uppercase tracking-[0.18em] text-white/55">Fast</div>
+                                    <div className="mt-2 text-sm font-medium text-white">Resume pending prompts</div>
+                                </div>
+                                <div className="rounded-3xl border border-white/10 bg-white/10 px-4 py-4 backdrop-blur-md">
+                                    <div className="text-[11px] uppercase tracking-[0.18em] text-white/55">Ready</div>
+                                    <div className="mt-2 text-sm font-medium text-white">Pick up in your dashboard</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
         </main>
     );
 }

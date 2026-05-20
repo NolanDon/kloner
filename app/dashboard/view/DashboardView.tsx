@@ -13,6 +13,7 @@ import Image from 'next/image'
 import logo from "@/public/images/orange_logo.png";
 import { createPortal, flushSync } from "react-dom";
 import { toast } from "react-hot-toast";
+import CoinLottieBadge from "@/components/tools/CoinLottieBadge";
 
 import { useRouter, useSearchParams } from "next/navigation";
 import {
@@ -916,6 +917,9 @@ function MiniDashboardEntry({
                         </span>
 
                         <span className="inline-flex items-center rounded-full bg-neutral-100 px-2.5 py-1 text-neutral-700">
+                            <span className="mr-1 inline-flex items-center">
+                                <CoinLottieBadge className="h-8 w-8" />
+                            </span>
                             AI credits:&nbsp;
                             <span className="font-semibold text-neutral-900">
                                 {editRemaining === null
@@ -8860,11 +8864,6 @@ export default function PreviewPage(): JSX.Element {
                     // ignore
                 }
 
-                await showAlert(
-                    "Your Vercel account is connected. You can return to the Images tab to upload files.",
-                    "Vercel connected",
-                );
-
                 try {
                     const url = new URL(window.location.href);
                     const params = url.searchParams;
@@ -8877,6 +8876,11 @@ export default function PreviewPage(): JSX.Element {
                 } catch {
                     // ignore
                 }
+
+                await showAlert(
+                    "Your Vercel account is connected. You can return to the Images tab to upload files.",
+                    "Vercel connected",
+                );
 
                 return;
             }

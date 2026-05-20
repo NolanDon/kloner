@@ -2,6 +2,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo } from "react";
+import Image from "next/image";
 import { Send, Bot, RotateCcw, Database, FileText, RefreshCw, X, AlertTriangle, ChevronDown, ChevronUp, ExternalLink, Copy, Check, Info, ThumbsUp, ThumbsDown, Search } from "lucide-react";
 import { ensureSessionAndCsrf } from "@/lib/auth-client";
 import { useAuth } from "@/src/hooks/useAuth";
@@ -55,6 +56,7 @@ import {
     hasWriteProof,
     buildApplyStateMessage,
 } from "@/src/lib/editPlanApplyContract";
+import CoinLottieBadge from "@/components/tools/CoinLottieBadge";
 
 type SummarySearchFeedbackContext = {
     query: string;
@@ -771,12 +773,13 @@ function renderTextWithLinks(text: string): React.ReactNode {
             const isTopup = part === "/price#topup";
             const label = isTopup ? "Add credits" : "View pricing";
             const classes = isTopup
-                ? "inline-flex items-center justify-center rounded-full bg-[#F55F2A] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#e35625]"
+                ? "inline-flex items-center justify-center gap-1.5 rounded-full bg-[#F55F2A] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#e35625]"
                 : "inline-flex items-center justify-center rounded-full border border-black/10 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-900 hover:bg-neutral-50";
 
             return (
                 <span key={idx} className="block mt-2">
                     <a href={href} className={classes}>
+                        {isTopup ? <CoinLottieBadge className="h-8 w-8 shrink-0" /> : null}
                         {label}
                     </a>
                 </span>
@@ -6051,7 +6054,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                 : [];
             const hasChargeableWork = planOps.length > 0 || (Array.isArray(rawPlan?.dbMigrations) && rawPlan.dbMigrations.length > 0);
 
-            if (!isFreeCompileFixMode && planRequestId && hasChargeableWork) {
+            if (!isFreeCompileFixMode && planRequestId) {
                 const headers2 = await withCsrfHeaders();
                 const consumeRes = await fetch("/api/credits/ai-edits/consume", {
                     method: "POST",
@@ -7893,7 +7896,8 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                 ) : null} */}
 
                 <div className="mb-2 flex items-center justify-between">
-                    <div className="text-[12px] text-gray-700">
+                    <div className="inline-flex items-center gap-1.5 text-[12px] text-gray-700">
+                        <CoinLottieBadge className="h-8 w-8 shrink-0" />
                         {aiCreditsRemaining == null
                             ? "Credits remaining: —"
                             : `Credits remaining: ${aiCreditsRemaining}`}
@@ -7907,29 +7911,36 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                         }}
                         disabled={topupBusy}
                     >
-                        <span>{topupBusy ? "Opening checkout…" : "Add credits"}</span>
+                        <span className="inline-flex items-center gap-1.5">
+                            {!topupBusy ? <CoinLottieBadge className="h-8 w-8 shrink-0" /> : null}
+                            <span>{topupBusy ? "Opening checkout…" : "Add credits"}</span>
+                        </span>
                         <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
                     </button>
                 </div>
 
                 {topupModalOpen ? (
                     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-                        <div className="w-full max-w-lg rounded-2xl border border-black/10 bg-white shadow-xl">
-                            <div className="flex items-center justify-between gap-3 border-b px-6 py-4">
+                        <div className="relative w-full max-w-lg rounded-2xl border border-black/10 bg-white shadow-xl">
+                            <button
+                                type="button"
+                                onClick={() => setTopupModalOpen(false)}
+                                className="absolute right-4 top-4 inline-flex h-10 w-10 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-700 shadow-sm transition hover:bg-neutral-50 hover:text-neutral-900"
+                                aria-label="Close"
+                            >
+                                <X className="h-4 w-4" />
+                            </button>
+
+                            <div className="border-b px-6 py-5 pr-16">
                                 <div>
-                                    <div className="text-lg font-semibold text-neutral-900">Top up AI credits</div>
-                                    <div className="mt-0.5 text-xs text-neutral-600">
-                                        AI edit credits scale with request size.
+                                    <div className="flex items-center gap-2 text-lg font-semibold text-neutral-900">
+                                        <CoinLottieBadge className="h-10 w-10 shrink-0" />
+                                        <span>Top up AI credits</span>
+                                    </div>
+                                    <div className="mt-0.5 text-xs leading-5 text-neutral-600">
+                                        AI edit credits let you ask the editor to generate changes, apply code edits, fix issues, and update content inside your project. Bigger requests use more credits.
                                     </div>
                                 </div>
-                                <button
-                                    type="button"
-                                    onClick={() => setTopupModalOpen(false)}
-                                    className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-700 hover:bg-neutral-50"
-                                    aria-label="Close"
-                                >
-                                    <X className="h-4 w-4" />
-                                </button>
                             </div>
 
                             <div className="px-6 py-5">
@@ -7956,7 +7967,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                         </select>
 
                                         <div className="mt-2 text-[12px] text-neutral-700">
-                                            Credit use varies by request size.
+                                            Credit carryover: Unused credits remain in your account and can be used for future edits. You won't lose any credits you purchase.
                                         </div>
                                     </div>
 
@@ -7991,6 +8002,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                                 ? `Save roughly ${proSavingsPct}% on this purchase by upgrading your account to Pro instead.`
                                                 : "Pro can be better value than repeated top-ups as usage grows."}
                                         </div>
+
                                         <button
                                             type="button"
                                             onClick={() => {
@@ -8082,6 +8094,11 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                     >
                                         View pricing
                                     </button>
+                                </div>
+
+                                <div className="mt-5 flex items-center justify-center gap-3 text-xs font-medium tracking-wide text-neutral-700">
+                                    <span>powered by</span>
+                                    <Image src="/images/stripe.png" alt="Stripe" width={120} height={40} className="h-10 w-auto shrink-0 object-contain" />
                                 </div>
                             </div>
                         </div>

@@ -8,6 +8,7 @@ import { AnimatedCreditCard } from "@/components/AnimatedCreditCard";
 import { useModal } from "@/components/ui/ModalContext";
 import { useAuth } from "@/src/hooks/useAuth";
 import { Check, Loader2 } from "lucide-react";
+import SuccessConfetti from "@/components/tools/SuccessConfetti";
 
 const ACCENT = "#f55f2a";
 const AI_EDIT_CREDIT_COST = 3;
@@ -161,6 +162,7 @@ export default function PriceClient(): JSX.Element {
           }
         | null
     >(null);
+    const [topupSuccessCredits, setTopupSuccessCredits] = useState<number | null>(null);
     const { showAlert } = useModal();
     const { user, userTier, loading: authLoading } = useAuth();
 
@@ -206,10 +208,7 @@ export default function PriceClient(): JSX.Element {
 
                 if (res.ok) {
                     const credits = typeof data?.credits === "number" ? data.credits : null;
-                    await showAlert(
-                        credits ? `Added ${credits.toLocaleString()} AI credits to your account.` : "Top-up confirmed.",
-                        "Credits added",
-                    );
+                    setTopupSuccessCredits(credits);
                 } else {
                     console.warn("confirm-credit-topup failed", data);
                 }
@@ -226,7 +225,7 @@ export default function PriceClient(): JSX.Element {
         return () => {
             cancelled = true;
         };
-    }, [authLoading, showAlert]);
+    }, [authLoading]);
 
     useEffect(() => {
         let cancelled = false;
@@ -504,6 +503,15 @@ export default function PriceClient(): JSX.Element {
 
     return (
         <main className="min-h-screen bg-neutral-50 text-neutral-900">
+            <SuccessConfetti
+                open={topupSuccessCredits !== null}
+                title="Credits added"
+                message={topupSuccessCredits !== null
+                    ? `Added ${topupSuccessCredits.toLocaleString()} AI credits to your account.`
+                    : "Top-up confirmed."}
+                onDismiss={() => setTopupSuccessCredits(null)}
+            />
+
             {checkoutOverlayVisible ? (
                 <div className="fixed inset-0 z-[13000] flex items-center justify-center bg-black/55 px-4 backdrop-blur-sm">
                     <div className="flex flex-col items-center gap-3 rounded-3xl border border-white/10 bg-neutral-950/95 px-6 py-5 text-center text-white shadow-[0_20px_80px_rgba(0,0,0,0.45)]">
