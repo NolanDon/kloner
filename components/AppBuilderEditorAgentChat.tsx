@@ -6026,6 +6026,59 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                 if (queuedStatusUrl) {
                     editPlanJobRequestMetaRef.current[`status:${queuedStatusUrl}`] = requestMeta;
                 }
+
+                const planMeta = rawPlan as any;
+                const planRequestId = typeof planMeta?.requestId === "string" ? planMeta.requestId.trim() : "";
+                const creditCost = typeof planMeta?.creditCost === "number" && Number.isFinite(planMeta.creditCost)
+                    ? Math.max(1, Math.floor(planMeta.creditCost))
+                    : 1;
+                const planOps = Array.isArray(rawPlan?.ops)
+                    ? rawPlan.ops.filter((op): op is AppEmbeddingEditPlanOp => Boolean(op && typeof op.path === "string" && op.path.trim()))
+                    : [];
+                const hasChargeableWork = planOps.length > 0 || (Array.isArray(rawPlan?.dbMigrations) && rawPlan.dbMigrations.length > 0);
+
+                if (!isFreeCompileFixMode && planRequestId && hasChargeableWork) {
+                    const headers2 = await withCsrfHeaders();
+                    const consumeRes = await fetch("/api/credits/ai-edits/consume", {
+                        method: "POST",
+                        headers: headers2,
+                        body: JSON.stringify({ requestId: planRequestId, cost: creditCost }),
+                    });
+                    const consumeJson = await consumeRes.json().catch(() => ({} as any));
+                    if (!consumeRes.ok || consumeJson?.ok === false) {
+                        const topup = "/price#topup";
+                        const messageText = typeof consumeJson?.error === "string" && consumeJson.error.trim()
+                            ? consumeJson.error
+                            : "You have used all AI edit credits for this month.";
+                        setMessages((prev) => [
+                            ...prev,
+                            {
+                                id: `error_${Date.now()}`,
+                                role: "assistant",
+                                content: `${messageText}\nAdd credits: ${topup}`,
+                                timestamp: new Date(),
+                                type: "text",
+                            },
+                        ]);
+                        setIsLoading(false);
+                        return;
+                    }
+                    if (typeof consumeJson?.remaining === "number" && Number.isFinite(consumeJson.remaining)) {
+                        setAiCreditsRemaining(consumeJson.remaining);
+                    }
+                } else if (!isFreeCompileFixMode && planRequestId && !hasChargeableWork) {
+                    dispatchAiAgentEvent("response_noop", {
+                        appId,
+                        userId: user?.uid || null,
+                        requestId: planRequestId,
+                        reason: "no_chargeable_changes_returned",
+                        hasFileEdits: planOps.length > 0,
+                        fileEditsCount: planOps.length,
+                        hasDbMigrations: Array.isArray(rawPlan?.dbMigrations) && rawPlan.dbMigrations.length > 0,
+                        dbMigrationsCount: Array.isArray(rawPlan?.dbMigrations) ? rawPlan.dbMigrations.length : 0,
+                    });
+                }
+
                 setActiveEditPlanJob({
                     ...queuedJob,
                     statusUrl: queuedStatusUrl,
@@ -6063,7 +6116,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
             }
 
             const planMeta = rawPlan as any;
-            const planRequestId = typeof planMeta?.requestId === "string" ? planMeta.requestId : null;
+            const planRequestId = typeof planMeta?.requestId === "string" ? planMeta.requestId.trim() : "";
             const creditCost = typeof planMeta?.creditCost === "number" && Number.isFinite(planMeta.creditCost)
                 ? Math.max(1, Math.floor(planMeta.creditCost))
                 : 1;
@@ -6072,7 +6125,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                 : [];
             const hasChargeableWork = planOps.length > 0 || (Array.isArray(rawPlan?.dbMigrations) && rawPlan.dbMigrations.length > 0);
 
-            if (!isFreeCompileFixMode && planRequestId) {
+            if (!isFreeCompileFixMode && planRequestId && hasChargeableWork) {
                 const headers2 = await withCsrfHeaders();
                 const consumeRes = await fetch("/api/credits/ai-edits/consume", {
                     method: "POST",
