@@ -6741,10 +6741,14 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                 ) : null}
 
                 {renderedMessages.map((message) => {
+                    const isActiveStatusBubble = Boolean(
+                        activeEditPlanJob
+                        && isActiveEditPlanJobStatus(activeEditPlanJob.status)
+                    );
                     const isStatusPlaceholderBubble = Boolean(
                         message.role === "assistant"
                         && message.id === editPlanStatusMessageId
-                        && activeEditPlanJob,
+                        && isActiveStatusBubble,
                     );
                     const isFilesCardPlaceholderBubble = Boolean(
                         message.role === "assistant"
@@ -6767,7 +6771,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                 : "border border-[#F55F2A]/14 bg-[linear-gradient(180deg,rgba(255,251,248,0.98),rgba(255,255,255,0.95))] text-neutral-900"
                                 }`}
                         >
-                            {!(message.role === "assistant" && message.id === editPlanStatusMessageId && activeEditPlanJob) ? (
+                            {!(message.role === "assistant" && message.id === editPlanStatusMessageId && isActiveStatusBubble) ? (
                                 message.editPlanFailure ? ( 
                                 null
                                     // <div className="space-y-2">

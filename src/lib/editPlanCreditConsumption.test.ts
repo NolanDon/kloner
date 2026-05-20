@@ -1,7 +1,7 @@
 import { resolveEditPlanCreditCharge } from "./editPlanCreditConsumption";
 
 describe("resolveEditPlanCreditCharge", () => {
-    it("consumes credits for queued work with a request id", () => {
+    it("consumes credits for a successful response with a request id", () => {
         const result = resolveEditPlanCreditCharge({
             isFreeCompileFixMode: false,
             requestId: "req_123",
@@ -41,7 +41,7 @@ describe("resolveEditPlanCreditCharge", () => {
         expect(result.shouldConsume).toBe(false);
     });
 
-    it("does not consume when there is no chargeable work", () => {
+    it("still consumes when the response has no chargeable work but does have a request id", () => {
         const result = resolveEditPlanCreditCharge({
             isFreeCompileFixMode: false,
             requestId: "req_999",
@@ -51,7 +51,7 @@ describe("resolveEditPlanCreditCharge", () => {
         });
 
         expect(result.hasChargeableWork).toBe(false);
-        expect(result.shouldConsume).toBe(false);
+        expect(result.shouldConsume).toBe(true);
     });
 
     it("does not consume without a request id", () => {

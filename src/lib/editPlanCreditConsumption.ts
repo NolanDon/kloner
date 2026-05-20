@@ -41,6 +41,6 @@ export function resolveEditPlanCreditCharge(input: EditPlanCreditChargeInput): E
         requestId,
         creditCost,
         hasChargeableWork,
-        shouldConsume: !input.isFreeCompileFixMode && Boolean(requestId) && hasChargeableWork,
+        shouldConsume: !input.isFreeCompileFixMode && Boolean(requestId),
     };
 }
