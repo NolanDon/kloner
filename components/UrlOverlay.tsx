@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import { auth } from "@/lib/firebase";
+import { ArrowRightSquare } from "lucide-react";
 import { stripProtocol, validateAndNormalizePublicHttpUrl, getPublicHttpUrlRejectionReason } from "@/src/lib/publicHttpUrl";
 
 type UrlOverlayProps = {
@@ -103,14 +104,14 @@ export default function UrlOverlay({ open, onClose }: UrlOverlayProps) {
                         transition={{ duration: 0.25 }}
                         className="w-full max-w-lg mx-4 rounded-3xl bg-white/10 border border-white/15
                        backdrop-blur-2xl backdrop-saturate-150 shadow-[0_24px_80px_rgba(0,0,0,0.65)]
-                       p-6 md:p-8 text-white"
+                       p-4 sm:p-6 md:p-8 text-white"
                     >
-                        <div className="flex justify-between items-start gap-4 mb-5">
+                        <div className="flex justify-between items-start gap-4 mb-4 sm:mb-5">
                             <div>
-                                <h2 className="text-xl md:text-2xl font-semibold tracking-tight mb-1">
+                                <h2 className="text-lg sm:text-xl md:text-2xl font-semibold tracking-tight mb-1">
                                     Drop a link
                                 </h2>
-                                <p className="text-xs sm:text-sm text-white/70">
+                                <p className="text-xs sm:text-sm text-white/70 max-w-[28ch] sm:max-w-none">
                                     We’ll generate a ready-to-ship project you can customize and deploy.
                                 </p>
                             </div>
@@ -125,7 +126,7 @@ export default function UrlOverlay({ open, onClose }: UrlOverlayProps) {
 
                         <form onSubmit={handleSubmit} className="space-y-3">
                             <div className="rounded-full bg-white/95 p-2 shadow-[0_20px_50px_rgba(0,0,0,0.3)] ring-1 ring-white/20 backdrop-blur-md">
-                                <div className="flex flex-col gap-2 sm:flex-row sm:items-stretch">
+                                <div className="flex items-stretch gap-2">
                                     <div className="flex min-h-[48px] flex-1 items-center rounded-full px-4 sm:px-6">
                                         <span className="hidden sm:inline text-neutral-400 text-lg font-medium mr-1">
                                             https://
@@ -146,16 +147,17 @@ export default function UrlOverlay({ open, onClose }: UrlOverlayProps) {
                                     <button
                                         type="submit"
                                         disabled={!url || !!error}
-                                        className="inline-flex min-h-[48px] items-center justify-center rounded-full bg-[#f26522] px-5 text-white transition-all active:scale-95 hover:bg-[#ff7a3d] disabled:cursor-not-allowed disabled:opacity-60 sm:px-6"
+                                        className="inline-flex min-h-[48px] w-12 shrink-0 items-center justify-center rounded-full bg-[#f26522] text-white transition-all active:scale-95 hover:bg-[#ff7a3d] disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto sm:px-5"
                                         aria-label="Clone website from URL"
                                     >
-                                        <span className="text-sm font-semibold sm:text-base">Clone</span>
+                                        <ArrowRightSquare className="h-5 w-5 sm:hidden" aria-hidden />
+                                        <span className="hidden text-sm font-semibold sm:inline sm:text-base">Clone</span>
                                     </button>
                                 </div>
                             </div>
                         </form>
 
-                        <div className="mt-3 text-xs sm:text-sm text-white/80 min-h-[1.25rem]">
+                        <div className="mt-3 text-xs sm:text-sm text-white/80 min-h-[1.25rem] max-w-[28ch] sm:max-w-none">
                             {error ?? "Clone any public website • No credit card required to preview"}
                         </div>
                     </motion.div>

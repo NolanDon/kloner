@@ -4,6 +4,7 @@ import { requireSessionAndMaybeCsrf } from "../../../_lib/route-guard";
 import { assertAppBuilderScope } from "../../../_lib/appBuilderScope";
 import { upsertVercelProjectEnvVar } from "../../../_lib/vercel-env";
 import { decryptString, type EncryptedBlobV1 } from "../../../_lib/crypto";
+import { loadVercelIntegration } from "../../../_lib/vercel-integration";
 import { refreshTierFromStripeForUid } from "../../../_lib/billing";
 import { hydrateAppBuilderFiles } from "../../../_lib/htmlStorage";
 
@@ -160,8 +161,8 @@ export async function POST(req: NextRequest, { params }: any) {
                 .collection("integrations")
                 .doc("vercel");
 
-            const integrationSnap = await integrationRef.get();
-            if (!integrationSnap.exists) {
+            const integration = await loadVercelIntegration(integrationRef as any);
+            if (!integration.exists) {
                 return NextResponse.json(
                     {
                         ok: false,
@@ -171,10 +172,18 @@ export async function POST(req: NextRequest, { params }: any) {
                 );
             }
 
-            const { accessToken, vercelTeamId } = integrationSnap.data() as {
-                accessToken: string;
-                vercelTeamId?: string;
-            };
+            const accessToken = integration.accessToken;
+            const vercelTeamId = typeof integration.data?.vercelTeamId === "string" ? integration.data.vercelTeamId : undefined;
+
+            if (!accessToken) {
+                return NextResponse.json(
+                    {
+                        ok: false,
+                        error: "Missing Vercel access token for this account.",
+                    },
+                    { status: 400 }
+                );
+            }
 
             const rawNameCandidate = appName;
             let projectBaseName = rawNameCandidate

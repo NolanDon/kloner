@@ -240,6 +240,10 @@ export default function SettingsPage(): JSX.Element {
     const [deleteDeploymentError, setDeleteDeploymentError] = useState<string | null>(null);
     const [deleteDeploymentSuccess, setDeleteDeploymentSuccess] = useState<string | null>(null);
 
+    const [accountActionBusy, setAccountActionBusy] = useState(false);
+    const [accountActionError, setAccountActionError] = useState<string | null>(null);
+    const [accountActionSuccess, setAccountActionSuccess] = useState<string | null>(null);
+
     type DeploymentFilter = "all" | "live-only" | "live-projects";
     const [deploymentFilter, setDeploymentFilter] = useState<DeploymentFilter>("all");
 
@@ -794,6 +798,85 @@ export default function SettingsPage(): JSX.Element {
             setDeleteDeploymentError(err?.message || "Delete failed.");
         } finally {
             setDeleteDeploymentBusy(false);
+        }
+    }
+
+    async function handleExportAccountData() {
+        setAccountActionError(null);
+        setAccountActionSuccess(null);
+
+        setAccountActionBusy(true);
+        try {
+            const csrf = await ensureSessionAndCsrf();
+            const res = await fetch("/api/me", {
+                method: "GET",
+                credentials: "include",
+                headers: {
+                    ...(csrf ? { "x-csrf": csrf } : {}),
+                },
+            });
+
+            if (!res.ok) {
+                const data = await res.json().catch(() => ({}));
+                throw new Error(data?.error || `Export failed (HTTP ${res.status})`);
+            }
+
+            const blob = await res.blob();
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `kloner-export-${user?.uid || "account"}.json`;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            URL.revokeObjectURL(url);
+
+            setAccountActionSuccess("Your data export is downloading.");
+        } catch (err: any) {
+            setAccountActionError(err?.message || "Export failed.");
+        } finally {
+            setAccountActionBusy(false);
+        }
+    }
+
+    async function handleDeleteAccount() {
+        const confirmed = await showConfirm(
+            "Delete your Kloner account, all associated app data, uploaded files, integrations, and local session data? This cannot be undone.",
+            "Delete Account",
+        );
+        if (!confirmed) return;
+
+        setAccountActionBusy(true);
+        setAccountActionError(null);
+        setAccountActionSuccess(null);
+
+        try {
+            const csrf = await ensureSessionAndCsrf();
+            const res = await fetch("/api/me", {
+                method: "DELETE",
+                credentials: "include",
+                headers: {
+                    "content-type": "application/json",
+                    ...(csrf ? { "x-csrf": csrf } : {}),
+                },
+                body: JSON.stringify({ confirm: "DELETE_MY_ACCOUNT" }),
+            });
+
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok || !data?.ok) {
+                throw new Error(data?.error || `Delete failed (HTTP ${res.status})`);
+            }
+
+            await fetch("/api/auth/session", {
+                method: "DELETE",
+                credentials: "include",
+            }).catch(() => undefined);
+            await auth.signOut().catch(() => undefined);
+            router.replace("/");
+        } catch (err: any) {
+            setAccountActionError(err?.message || "Delete failed.");
+        } finally {
+            setAccountActionBusy(false);
         }
     }
 
@@ -1448,18 +1531,42 @@ export default function SettingsPage(): JSX.Element {
                             </div>
 
                             <p className="mt-2 text-xs text-neutral-600">
-                                If you want to close your Kloner account or request data deletion, contact our team. We&apos;ll help export
-                                your data, review any active deployments, and process deletion safely.
+                                You can export your data or delete your account directly. If something fails, contact support and we&apos;ll
+                                help finish the request.
                             </p>
 
-                            <div className="mt-3 flex flex-wrap font-normal items-center gap-2">
-                                <a
-                                    href="mailto:support@kloner.app?subject=Kloner%20account%20closure%20or%20data%20deletion%20request"
-                                    className={btnClass({ kind: "primary", disabled: false })}
-                                >
-                                    Email Support
-                                </a>
-                                <span className="text-[11px] text-neutral-500">support@kloner.app</span>
+                            <div className="mt-3 space-y-3">
+                                <div className="flex flex-wrap items-center gap-2 font-normal">
+                                    <button
+                                        type="button"
+                                        onClick={() => void handleExportAccountData()}
+                                        disabled={accountActionBusy}
+                                        className={btnClass({ kind: "soft", disabled: accountActionBusy })}
+                                    >
+                                        Export my data
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => void handleDeleteAccount()}
+                                        disabled={accountActionBusy}
+                                        className={btnClass({ kind: "danger", disabled: accountActionBusy })}
+                                    >
+                                        Delete account
+                                    </button>
+                                </div>
+
+                                <div className="flex flex-wrap font-normal items-center gap-2">
+                                    <a
+                                        href="mailto:support@kloner.app?subject=Kloner%20account%20closure%20or%20data%20deletion%20request"
+                                        className={btnClass({ kind: "primary", disabled: false })}
+                                    >
+                                        Email Support
+                                    </a>
+                                    <span className="text-[11px] text-neutral-500">support@kloner.app</span>
+                                </div>
+
+                                {accountActionError && <p className="text-[11px] text-red-600">{accountActionError}</p>}
+                                {accountActionSuccess && <p className="text-[11px] text-emerald-600">{accountActionSuccess}</p>}
                             </div>
                         </section>
 

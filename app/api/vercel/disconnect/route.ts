@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import admin from "firebase-admin";
 import { requireSessionAndMaybeCsrf } from "../../_lib/route-guard";
+import { loadVercelIntegration } from "../../_lib/vercel-integration";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -49,8 +50,8 @@ export async function POST(req: NextRequest) {
                 .collection("integrations")
                 .doc("vercel");
 
-            const snap = await integRef.get();
-            if (!snap.exists) {
+            const result = await loadVercelIntegration(integRef as any);
+            if (!result.exists) {
                 // Already disconnected locally
                 return NextResponse.json(
                     { ok: true, disconnected: true },
@@ -58,8 +59,8 @@ export async function POST(req: NextRequest) {
                 );
             }
 
-            const data = snap.data() as VercelIntegrationDoc;
-            const accessToken = data?.accessToken;
+            const data = result.data as VercelIntegrationDoc | null;
+            const accessToken = result.accessToken;
             const installationId = data?.installationId || null;
 
             // Best-effort revoke on Vercel side

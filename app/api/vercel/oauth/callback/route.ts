@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { verifySession, getAdminDb } from "../../../_lib/auth";
 import { FieldValue } from "firebase-admin/firestore";
 import { captureCriticalEvent, captureException } from "@/lib/observability";
+import { encryptString } from "../../../_lib/crypto";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -158,6 +159,13 @@ export async function GET(req: NextRequest) {
 
         const db = getAdminDb();
         const now = FieldValue.serverTimestamp();
+        const accessToken = typeof json.access_token === "string" ? json.access_token.trim() : "";
+
+        if (!accessToken) {
+            console.error("[vercel-oauth] token exchange response missing access_token", json);
+            await reportOauthIssue(502, "token", "Token exchange returned no access token");
+            return redirectWithStatus("error", "token");
+        }
 
         try {
             const userRef = db.collection("kloner_users").doc(uid);
@@ -165,7 +173,7 @@ export async function GET(req: NextRequest) {
 
             await vercelRef.set(
                 {
-                    accessToken: json.access_token,
+                    accessToken: encryptString(accessToken),
                     tokenType: json.token_type,
                     vercelUserId: json.user_id ?? null,
                     vercelTeamId: teamId ?? json.team_id ?? null,

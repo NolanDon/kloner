@@ -3,6 +3,7 @@ import admin from "firebase-admin";
 import type { Bucket } from "@google-cloud/storage";
 import { getAdminDb } from "../../_lib/auth";
 import { requireSessionAndMaybeCsrf } from "@/app/api/_lib/route-guard";
+import { loadVercelIntegration } from "@/app/api/_lib/vercel-integration";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -132,11 +133,10 @@ export async function POST(req: NextRequest) {
                     .doc(uid)
                     .collection("integrations")
                     .doc("vercel");
-                const integSnap = await integRef.get();
-                const integ =
-                    (integSnap.exists ? (integSnap.data() as IntegDoc) : null) || {};
+                const integ = await loadVercelIntegration(integRef as any);
+                const integData = (integ.data || {}) as IntegDoc;
                 const accessToken = integ.accessToken || null;
-                const teamId = integ.vercelTeamId || null;
+                const teamId = integData.vercelTeamId || null;
 
                 // ------------------------------------------------------
                 // 1) Pre-scan deployment docs to know which Vercel

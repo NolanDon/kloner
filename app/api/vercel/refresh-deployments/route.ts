@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAdminDb } from "../../_lib/auth";
 import { requireSessionAndMaybeCsrf } from "@/app/api/_lib/route-guard";
+import { loadVercelIntegration } from "@/app/api/_lib/vercel-integration";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -42,8 +43,8 @@ export async function POST(req: NextRequest) {
             const db = getAdminDb();
 
             const integrationRef = db.doc(`kloner_users/${uid}/integrations/vercel`);
-            const integrationSnap = await integrationRef.get();
-            if (!integrationSnap.exists) {
+            const integration = await loadVercelIntegration(integrationRef as any);
+            if (!integration.exists) {
                 return NextResponse.json(
                     {
                         ok: false,
@@ -53,10 +54,18 @@ export async function POST(req: NextRequest) {
                 );
             }
 
-            const { accessToken, vercelTeamId } = integrationSnap.data() as {
-                accessToken: string;
-                vercelTeamId?: string;
-            };
+            const accessToken = integration.accessToken;
+            const vercelTeamId = typeof integration.data?.vercelTeamId === "string" ? integration.data.vercelTeamId : undefined;
+
+            if (!accessToken) {
+                return NextResponse.json(
+                    {
+                        ok: false,
+                        error: "Missing Vercel access token for this account.",
+                    },
+                    { status: 400 }
+                );
+            }
 
             const now = new Date();
 

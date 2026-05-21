@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Resend } from "resend";
-import crypto from "node:crypto";
 import { getAdminAuth, getAdminDb } from "../../_lib/auth";
 import { requireSessionAndMaybeCsrf } from "../../_lib/route-guard";
 import { validateAndNormalizePublicHttpUrl } from "@/src/lib/publicHttpUrl";
+import { makeSignedToken, makeUnsubUrl } from "../email-links";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -73,23 +73,6 @@ async function reportBlockedUrlAttempt(args: { uid: string; url: string; reason:
     }
 }
 
-function getEmailLinkSecret(): string {
-    const s = (process.env.EMAIL_LINK_SECRET || "").trim();
-    if (!s) throw new Error("EMAIL_LINK_SECRET env not set");
-    return s;
-}
-
-function hmacBase64Url(secret: string, msg: string): string {
-    return crypto.createHmac("sha256", secret).update(msg).digest("base64url");
-}
-
-function makeSignedToken(payload: Record<string, any>): string {
-    const secret = getEmailLinkSecret();
-    const body = Buffer.from(JSON.stringify(payload), "utf8").toString("base64url");
-    const sig = hmacBase64Url(secret, body);
-    return `${body}.${sig}`;
-}
-
 function makeClickUrl(params: { uid: string; campaign: string; destUrl: string; step?: string | null }) {
     try {
         const u = new URL(`${baseUrl()}/api/email/click`);
@@ -104,17 +87,6 @@ function makeClickUrl(params: { uid: string; campaign: string; destUrl: string; 
         return u.toString();
     } catch {
         return params.destUrl;
-    }
-}
-
-function makeUnsubUrl(params: { uid: string; kind: "journey" | "product" | "all" }) {
-    try {
-        const u = new URL(`${baseUrl()}/api/email/unsubscribe`);
-        const token = makeSignedToken({ uid: params.uid, k: params.kind, ts: Date.now() });
-        u.searchParams.set("t", token);
-        return u.toString();
-    } catch {
-        return `${baseUrl()}/dashboard/settings`;
     }
 }
 

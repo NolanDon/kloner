@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import admin from "firebase-admin";
 import { getAdminDb } from "../../_lib/auth";
 import { requireSessionAndMaybeCsrf } from "@/app/api/_lib/route-guard";
+import { loadVercelIntegration } from "@/app/api/_lib/vercel-integration";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -53,19 +54,13 @@ export async function POST(req: NextRequest) {
                     .collection("integrations")
                     .doc("vercel");
 
-                const integSnap = await integRef.get();
-                if (!integSnap.exists) {
+                const integ = await loadVercelIntegration(integRef as any);
+                if (!integ.exists) {
                     return NextResponse.json(
                         { ok: false, error: "Vercel not connected for this user" },
                         { status: 400 }
                     );
                 }
-
-                const integ = integSnap.data() as {
-                    accessToken?: string;
-                    vercelTeamId?: string | null;
-                    vercelUserId?: string | null;
-                };
 
                 if (!integ.accessToken) {
                     return NextResponse.json(
@@ -77,9 +72,11 @@ export async function POST(req: NextRequest) {
                     );
                 }
 
+                const vercelTeamId = typeof integ.data?.vercelTeamId === "string" ? integ.data.vercelTeamId : null;
+
                 const params = new URLSearchParams();
-                if (integ.vercelTeamId) {
-                    params.set("teamId", integ.vercelTeamId);
+                if (vercelTeamId) {
+                    params.set("teamId", vercelTeamId);
                 }
 
                 const url = `https://api.vercel.com/v13/deployments/${vercelDeploymentId}/rebuild${params.toString() ? `?${params.toString()}` : ""

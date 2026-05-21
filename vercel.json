@@ -9,7 +9,6 @@
     }
   },
   "env": {
-    "BACKEND_URL": "https://tracksite-hub.fly.dev",
-    "INTERNAL_API_KEY": "8a9616dd9c80394217fe0ead52f220087c211c74c6c31cda1d77d3a20ca30603977f4126a489833c2f77e8c3ef64d27923494f70cf441fca0dc9d621db6451cf"
+    "BACKEND_URL": "https://tracksite-hub.fly.dev"
   }
 }

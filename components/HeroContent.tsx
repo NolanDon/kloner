@@ -94,7 +94,7 @@ export default function HeroContent({
 
         <form onSubmit={onSubmit} className="mt-[clamp(1rem,3.2vh,2.5rem)] w-full max-w-2xl mx-auto space-y-3">
           <div className="rounded-full bg-white/95 p-2 shadow-[0_20px_50px_rgba(0,0,0,0.3)] ring-1 ring-white/20 backdrop-blur-md">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-stretch">
+            <div className="flex items-stretch gap-2">
               <div className="flex min-h-[48px] flex-1 items-center rounded-full px-4 sm:px-6">
                 <span className="hidden sm:inline text-neutral-400 text-lg font-medium mr-1">
                   https://
@@ -114,10 +114,11 @@ export default function HeroContent({
               <button
                 type="submit"
                 disabled={!url || !!error}
-                className="inline-flex min-h-[48px] items-center justify-center rounded-full bg-[#f26522] px-5 text-white transition-all active:scale-95 hover:bg-[#ff7a3d] disabled:cursor-not-allowed disabled:opacity-60 sm:px-6"
+                className="inline-flex min-h-[48px] w-12 shrink-0 items-center justify-center rounded-full bg-[#f26522] text-white transition-all active:scale-95 hover:bg-[#ff7a3d] disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto sm:px-5"
                 aria-label="Clone website from URL"
               >
-                <span className="text-sm font-semibold sm:text-base">Clone</span>
+                <ArrowRightSquare className="h-5 w-5 sm:hidden" aria-hidden />
+                <span className="hidden text-sm font-semibold sm:inline sm:text-base">Clone</span>
               </button>
             </div>
           </div>

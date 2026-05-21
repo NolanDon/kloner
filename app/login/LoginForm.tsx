@@ -37,8 +37,10 @@ import {
 } from "firebase/firestore";
 import Image from "next/image";
 import { validateAndNormalizePublicHttpUrl } from "@/src/lib/publicHttpUrl";
+import { ArrowLeft } from "lucide-react";
 
 const ACCENT = "#f55f2a";
+const POLICY_ACCEPTANCE_VERSION = "2026-05-20";
 
 // Backwards-compatible export: many parts of the app import this helper.
 // Keep it here, but the implementation lives in a shared client module.
@@ -237,6 +239,30 @@ async function attachAffiliateToUserDoc(u: User): Promise<void> {
         await setDoc(userRef, updates, { merge: true });
     } catch (e) {
         console.error("Failed to attach affiliate attribution", e);
+    }
+}
+
+async function recordSignupConsent(u: User, method: "google" | "email" | "apple"): Promise<void> {
+    const userRef = doc(db, "kloner_users", u.uid);
+
+    try {
+        await setDoc(
+            userRef,
+            {
+                consent: {
+                    termsAcceptedAt: serverTimestamp(),
+                    privacyAcceptedAt: serverTimestamp(),
+                    termsVersion: POLICY_ACCEPTANCE_VERSION,
+                    privacyVersion: POLICY_ACCEPTANCE_VERSION,
+                    source: "login_form_signup",
+                    method,
+                },
+                consentUpdatedAt: serverTimestamp(),
+            },
+            { merge: true },
+        );
+    } catch (e) {
+        console.error("Failed to record signup consent", e);
     }
 }
 
@@ -508,7 +534,7 @@ export default function LoginPage(): JSX.Element {
         setResetSuccess("");
 
         if (mode === "signup" && !acceptedTerms) {
-            setErr("You must accept the Terms and Conditions to create an account.");
+            setErr("You must accept the Terms and Privacy Policy to create an account.");
             return;
         }
 
@@ -541,6 +567,7 @@ export default function LoginPage(): JSX.Element {
             if (isNew) {
                 await ensureUserCreatedAt(cred.user);
                 await attachAffiliateToUserDoc(cred.user);
+                await recordSignupConsent(cred.user, "google");
                 await notifyKlonerSignup(cred.user, "google");
             }
         } catch (e) {
@@ -555,7 +582,7 @@ export default function LoginPage(): JSX.Element {
         setResetSuccess("");
 
         if (mode === "signup" && !acceptedTerms) {
-            setErr("You must accept the Terms and Conditions to create an account.");
+            setErr("You must accept the Terms and Privacy Policy to create an account.");
             return;
         }
 
@@ -588,6 +615,7 @@ export default function LoginPage(): JSX.Element {
                 await setSessionCookie();
                 await ensureUserCreatedAt(cred.user);
                 await attachAffiliateToUserDoc(cred.user);
+                await recordSignupConsent(cred.user, "email");
                 await notifyKlonerSignup(cred.user, "email");
             }
         } catch (e2) {
@@ -613,18 +641,22 @@ export default function LoginPage(): JSX.Element {
 
     return (
         <main className="min-h-[100dvh] overflow-hidden bg-[radial-gradient(circle_at_top_left,_rgba(245,95,42,0.12),_transparent_36%),radial-gradient(circle_at_bottom_right,_rgba(15,23,42,0.08),_transparent_30%),linear-gradient(180deg,_#fffaf6_0%,_#fff_58%,_#fff7f1_100%)] text-black">
-            <Link href="/" className="absolute left-4 top-4 z-20 inline-flex items-center justify-center transition hover:opacity-90 sm:left-6 sm:top-6">
+            <Link href="/" className="absolute left-4 top-4 z-20 hidden items-center justify-center transition hover:opacity-90 sm:inline-flex sm:left-6 sm:top-6">
                 <Image src="/images/orange_logo.png" alt="Kloner home" width={144} height={144} className="h-20 w-20 object-contain sm:h-20 sm:w-20 lg:h-24 lg:w-24" priority />
             </Link>
 
             <section className="grid min-h-[100dvh] w-full grid-cols-1 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,0.78fr)]">
                 <div className="relative order-1 flex items-center justify-center px-4 pb-8 pt-4 sm:px-6 lg:order-1 lg:px-10 lg:py-10">
                     <div className="w-full max-w-xl rounded-[32px] border border-black/5 bg-white/90 p-5 shadow-[0_24px_80px_rgba(15,23,42,0.12)] backdrop-blur-xl sm:p-6 lg:rounded-none lg:border-0 lg:bg-transparent lg:p-0 lg:shadow-none">
-                        <div className="mb-4 flex justify-center lg:hidden">
-                            <div className="inline-flex items-center gap-2 rounded-full border border-black/10 bg-white px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-neutral-600 shadow-sm">
-                                <span className="h-2 w-2 rounded-full bg-[#f55f2a]" />
-                                Kloner
-                            </div>
+                        <div className="mb-4 flex items-center justify-start lg:hidden">
+                            <button
+                                type="button"
+                                onClick={() => router.back()}
+                                className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-black/10 bg-white text-neutral-700 shadow-sm transition hover:bg-neutral-50"
+                                aria-label="Go back"
+                            >
+                                <ArrowLeft className="h-5 w-5" aria-hidden />
+                            </button>
                         </div>
 
                         <div className="mb-5 flex justify-center">

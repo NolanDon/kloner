@@ -29,6 +29,7 @@ const FOOTER_SECTIONS: Array<{ title: string; items: LinkItem[]; note?: { atInde
     items: [
       { label: "Contact", href: "/contact" },
       { label: "Partners", href: "/partners" },
+      { label: "Privacy Policy", href: "/privacy" },
       { label: "Terms", href: "/terms" },
       { label: "Kloner Vercel EULA", href: "/legal/kloner-vercel-eula" },
     ],
@@ -175,6 +176,11 @@ export default function Footer() {
             <li>
               <Link href="/terms" className="text-neutral-700 hover:text-neutral-900">
                 Terms
+              </Link>
+            </li>
+            <li>
+              <Link href="/privacy" className="text-neutral-700 hover:text-neutral-900">
+                Privacy
               </Link>
             </li>
             <li>

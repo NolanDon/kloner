@@ -2,8 +2,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Resend } from "resend";
 import { getAdminAuth, getAdminDb } from "../../_lib/auth";
-import crypto from "crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { captureCriticalEvent, captureException } from "@/lib/observability";
+import { makeSignedToken, makeUnsubUrl } from "../email-links";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -39,23 +40,6 @@ function dayKeyUtc(ms = Date.now()): string {
     return `${y}-${m}-${day}`;
 }
 
-function getEmailLinkSecret(): string {
-    const s = (process.env.EMAIL_LINK_SECRET || "").trim();
-    if (!s) throw new Error("EMAIL_LINK_SECRET env not set");
-    return s;
-}
-
-function hmacBase64Url(secret: string, msg: string): string {
-    return crypto.createHmac("sha256", secret).update(msg).digest("base64url");
-}
-
-function makeSignedToken(payload: Record<string, any>): string {
-    const secret = getEmailLinkSecret();
-    const body = Buffer.from(JSON.stringify(payload), "utf8").toString("base64url");
-    const sig = hmacBase64Url(secret, body);
-    return `${body}.${sig}`;
-}
-
 function makeClickUrl(params: { uid: string; campaign: string; destUrl: string; step?: string | null }) {
     const u = new URL(`${baseUrl()}/api/email/click`);
     const token = makeSignedToken({
@@ -65,13 +49,6 @@ function makeClickUrl(params: { uid: string; campaign: string; destUrl: string; 
         s: params.step || null,
         ts: Date.now(),
     });
-    u.searchParams.set("t", token);
-    return u.toString();
-}
-
-function makeUnsubUrl(params: { uid: string; kind: "journey" | "product" | "all" }) {
-    const u = new URL(`${baseUrl()}/api/email/unsubscribe`);
-    const token = makeSignedToken({ uid: params.uid, k: params.kind, ts: Date.now() });
     u.searchParams.set("t", token);
     return u.toString();
 }
@@ -317,7 +294,7 @@ function isCooldownElapsed(lastSentAt: number | null) {
 function ensureUnsubToken(existing?: string | null) {
     const s = (existing || "").trim();
     if (s.length >= 24) return s;
-    return crypto.randomBytes(18).toString("base64url");
+    return randomBytes(18).toString("base64url");
 }
 
 function sleep(ms: number) {
@@ -352,7 +329,7 @@ function pickJourneySubject(args: { uid: string; step: string }) {
     const candidates = subjectsByStep[step] || subjectsByStep.start;
 
     // Deterministic rotation per user per day per step (avoids feeling like the same blast).
-    const h = crypto.createHash("sha256").update(`${args.uid}:${dayKeyUtc()}:${step}`).digest();
+    const h = createHash("sha256").update(`${args.uid}:${dayKeyUtc()}:${step}`).digest();
     const idx = h[0] % candidates.length;
     return candidates[idx];
 }
@@ -385,8 +362,7 @@ function pickJourneyBody(args: { uid: string; step: string; tier: 1 | 2 | 3 | 4 
     const candidates = bodiesByStep[step] || bodiesByStep.start;
 
     // Deterministic rotation per user per day per step.
-    const h = crypto
-        .createHash("sha256")
+    const h = createHash("sha256")
         .update(`${args.uid}:${dayKeyUtc()}:${step}:body:t${args.tier}`)
         .digest();
     const idx = h[0] % candidates.length;
