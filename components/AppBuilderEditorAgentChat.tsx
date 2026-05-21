@@ -57,6 +57,7 @@ import {
     buildApplyStateMessage,
 } from "@/src/lib/editPlanApplyContract";
 import { resolveEditPlanCreditCharge } from "@/src/lib/editPlanCreditConsumption";
+import { resolveAppBuilderChatRoute, type AppBuilderChatMode, type AppBuilderChatRoute } from "@/src/lib/appBuilderChatIntent";
 import CoinLottieBadge from "@/components/tools/CoinLottieBadge";
 
 type SummarySearchFeedbackContext = {
@@ -1029,6 +1030,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
     const [input, setInput] = useState("");
     const [requestPageOverrides, setRequestPageOverrides] = useState<string[]>([]);
     const [requestPageSearch, setRequestPageSearch] = useState("");
+    const [chatMode, setChatMode] = useState<AppBuilderChatMode>("auto");
     const [freeCompileFixContext, setFreeCompileFixContext] = useState<CompileErrorQuickFixContext | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [isHydrated, setIsHydrated] = useState(false);
@@ -1165,6 +1167,12 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
             "If multiple files are provided, read them together and do not assume a single-file contract.",
         ].join("\n");
     }, [selectedRequestPaths]);
+
+    const chatModeLabel = useMemo(() => {
+        if (chatMode === "ask") return "Ask";
+        if (chatMode === "task") return "Task";
+        return "Auto";
+    }, [chatMode]);
 
     useEffect(() => {
         if (!requestPageOverrides.length) return;
@@ -5259,6 +5267,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
         const allowWhenChatDisabled = opts?.allowWhenChatDisabled === true;
         const hideUserMessage = opts?.hideUserMessage === true;
         const bypassInitialSearch = opts?.bypassInitialSearch === true;
+        const explicitRoute: AppBuilderChatRoute | null = chatMode === "ask" ? "ask" : chatMode === "task" ? "task" : null;
         const shouldRestoreInput = typeof opts?.forcedInput !== "string";
 
         if (chatDisabled && !allowWhenChatDisabled) return;
@@ -5451,6 +5460,16 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                 intentClassification: currentPathDecision.intentClassification,
                 reason: currentPathDecision.reason,
             };
+            const conversationTail = messages
+                .slice(-8)
+                .map((entry) => `${entry.role}: ${String(entry.content || "").trim()}`)
+                .filter(Boolean)
+                .join("\n");
+            const routeDecision = resolveAppBuilderChatRoute({
+                mode: chatMode,
+                message: messageInput,
+                conversation: conversationTail,
+            });
             console.info("[AppBuilderEditorAgentChat] embedding currentPath decision", {
                 appId,
                 queryPreview: messageInput.slice(0, 200),
@@ -5517,7 +5536,60 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                 messagePreview: messageInput.slice(0, 280),
                 historyCount: Math.min(messages.length + 1, 11),
                 freeCompileFixMode: isFreeCompileFixMode,
+                route: routeDecision.route,
+                chatMode,
+                routeReason: routeDecision.reason,
             });
+
+            if (routeDecision.route === "ask") {
+                dispatchAiAgentEvent("quick_question_routed", {
+                    appId,
+                    userId: user?.uid || null,
+                    reason: routeDecision.reason,
+                    queryLen: messageInput.length,
+                    mode: chatMode,
+                });
+
+                const headers = await withCsrfHeaders();
+                const quickResponse = await fetch(`/api/app-builder/${appId}/ask`, {
+                    method: "POST",
+                    headers,
+                    body: JSON.stringify({
+                        appId,
+                        question: messageInput,
+                        currentFile: selectedCurrentFile || null,
+                        currentFileContent: selectedCurrentFile ? files[selectedCurrentFile]?.content || null : null,
+                        recentConversation: conversationTail,
+                        conversationHistory: messages.slice(-12).map((entry) => ({
+                            role: entry.role,
+                            content: entry.content,
+                        })),
+                    }),
+                });
+
+                const quickJson = await quickResponse.json().catch(() => ({} as any));
+                if (!quickResponse.ok) {
+                    throw Object.assign(new Error(quickJson?.error || quickJson?.message || getEmbeddingSearchErrorMessage(quickResponse.status, quickJson?.code || null, quickJson?.error || quickJson?.message || null)), {
+                        status: quickResponse.status,
+                        code: quickJson?.code || "AI_QUICK_QUESTION_FAILED",
+                        retryPrompt: messageInput,
+                    });
+                }
+
+                const quickContent = sanitizeAssistantContent(quickJson?.response || quickJson?.message || "I can help with that, but I need a bit more detail.");
+                setMessages((prev) => [
+                    ...prev,
+                    {
+                        id: `quick_answer_${Date.now()}`,
+                        role: "assistant",
+                        content: quickContent,
+                        timestamp: new Date(),
+                        type: "text",
+                    },
+                ]);
+                setIsLoading(false);
+                return;
+            }
 
             if (isFreeCompileFixMode && activeCompileFixContext) {
                 dispatchAiAgentEvent("compile_error_fix_sent", {
@@ -6570,6 +6642,24 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                             <Info className="h-3 w-3" />
                         </span>
                     ) : null}
+                    <div className="ml-2 inline-flex rounded-full border border-neutral-200 bg-neutral-100 p-0.5 text-[11px] font-medium text-neutral-600">
+                        {(["auto", "ask", "task"] as AppBuilderChatMode[]).map((mode) => {
+                            const active = chatMode === mode;
+                            const label = mode === "auto" ? "Auto" : mode === "ask" ? "Ask" : "Task";
+                            return (
+                                <button
+                                    key={mode}
+                                    type="button"
+                                    onClick={() => setChatMode(mode)}
+                                    aria-pressed={active}
+                                    className={`rounded-full px-2.5 py-1 transition ${active ? "bg-white text-neutral-900 shadow-sm" : "text-neutral-500 hover:text-neutral-700"}`}
+                                    title={mode === "auto" ? "Let the app decide" : mode === "ask" ? "Answer using RAG docs" : "Make an edit request"}
+                                >
+                                    {label}
+                                </button>
+                            );
+                        })}
+                    </div>
                     {creditError ? (
                         <div className="ml-2 text-[11px] text-red-600 max-w-[220px] truncate" title={creditError}>
                             {creditError}

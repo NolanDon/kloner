@@ -9,15 +9,16 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY 
 const geminiClient = GEMINI_API_KEY ? new GoogleGenerativeAI(GEMINI_API_KEY) : null;
 
 // Using flash model for cost efficiency while maintaining good performance
-const GEMINI_CHAT_MODEL = process.env.GEMINI_CHAT_MODEL || "gemini-1.5-flash";
+const GEMINI_CHAT_MODEL = process.env.GEMINI_CHAT_MODEL?.trim() || "";
+const PRIMARY_CHAT_MODEL = GEMINI_CHAT_MODEL && GEMINI_CHAT_MODEL !== "gemini-1.5-flash" ? GEMINI_CHAT_MODEL : "gemini-2.5-flash";
 const GEMINI_EMBEDDING_MODEL = "models/embedding-001";
 const MODEL_DISCOVERY_URL = "https://generativelanguage.googleapis.com/v1beta/models";
 const MODEL_CACHE_TTL_MS = 10 * 60 * 1000;
 const CHAT_MODEL_PREFERENCES = [
-    GEMINI_CHAT_MODEL,
+    PRIMARY_CHAT_MODEL,
+    "gemini-2.5-flash",
     "gemini-2.0-flash",
     "gemini-2.0-flash-lite",
-    "gemini-1.5-flash",
     "gemini-1.5-pro",
     "gemini-pro",
 ];
@@ -135,8 +136,9 @@ async function resolveChatModels(forceRefresh = false): Promise<string[]> {
 
     cachedResolvedChatModels = uniqueModels(
         [
-            GEMINI_CHAT_MODEL,
-            "gemini-1.5-flash",
+            PRIMARY_CHAT_MODEL,
+            "gemini-2.5-flash",
+            "gemini-2.0-flash",
             "gemini-1.5-pro",
             "gemini-pro",
         ].filter((name) => !isExcludedModel(name)),

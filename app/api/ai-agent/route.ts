@@ -7,6 +7,7 @@ import { assertAppBuilderScope } from "../_lib/appBuilderScope";
 import { hydrateAppBuilderFiles, hydrateAppBuilderFilesByPaths } from "../_lib/htmlStorage";
 import { shouldRefreshAfterAiEdits } from "../_lib/aiFileSelection";
 import { buildUserFacingNoOpMessage, formatRetrievedChunksSection, sanitizeUserFacingAiMessage } from "./messageHelpers";
+import { classifyAppBuilderChatIntent } from "@/src/lib/appBuilderChatIntent";
 import type { RetrievedChunk } from "./messageHelpers";
 import crypto from "node:crypto";
 import { captureAuditEvent, captureCriticalEvent } from "@/lib/observability";
@@ -525,6 +526,28 @@ function buildRecentConversationContext(history: unknown[]): string {
     }
 
     return parts.join("\n");
+}
+
+function buildQuickQuestionPrompt(params: {
+    message: string;
+    currentFile: string | null;
+    currentFileContent: string | null;
+    recentConversation: string;
+}): string {
+    const { message, currentFile, currentFileContent, recentConversation } = params;
+
+    return [
+        "You are Kloner's quick-answer assistant for app-building questions.",
+        "Answer the user's question directly and briefly.",
+        "Do not mention embedding search, file search, edit plans, or internal routing.",
+        "Do not propose code edits unless the user explicitly asks for a change.",
+        "If the question is ambiguous, ask one concise follow-up question.",
+        currentFile ? `Current file: ${currentFile}` : "Current file: (none)",
+        currentFileContent ? `Current file content:\n${safeString(currentFileContent, 12_000)}` : "Current file content: (not provided)",
+        recentConversation ? `Recent conversation:\n${recentConversation}` : "Recent conversation: (none)",
+        `User question: ${message}`,
+        "Return plain text only.",
+    ].join("\n\n");
 }
 
 function normalizeStoredMessages(input: unknown): StoredMessage[] {
@@ -1346,12 +1369,14 @@ export async function POST(req: NextRequest) {
             const conversationHistory = Array.isArray(body?.conversationHistory)
                 ? (body.conversationHistory as any[])
                 : [];
+            const conversationTail = buildRecentConversationContext(conversationHistory);
             const databaseConnections = Array.isArray(body?.databaseConnections)
                 ? (body.databaseConnections as any[])
                 : [];
             const retrievedChunks = Array.isArray(body?.retrievedChunks)
                 ? (body.retrievedChunks as RetrievedChunk[])
                 : [];
+            const requestMode = body?.requestMode === "quick_question" ? "quick_question" : "edit";
             const autoFix = body?.autoFix !== false;
             const maxIterations = typeof body?.maxIterations === "number" ? Math.min(3, Math.max(1, body.maxIterations)) : 2;
 
@@ -1377,6 +1402,81 @@ export async function POST(req: NextRequest) {
                 (userDeclinedDb || messageExplicitlyDeclinesDatabase(message)) &&
                 (messageExplicitlyAllowsBasicNoDatabase(message) ||
                     userAllowedBasicNoDatabaseInRecentHistory(conversationHistory));
+            const chatIntent = classifyAppBuilderChatIntent(message, conversationTail);
+
+            if (requestMode === "quick_question" || chatIntent.kind === "quick-question") {
+                const model = genAI.getGenerativeModel({
+                    model: process.env.GEMINI_MODEL || "gemini-3-pro-preview",
+                    safetySettings: [
+                        { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
+                        { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
+                        { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
+                        { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
+                    ],
+                    generationConfig: {
+                        maxOutputTokens: AI_AGENT_OUTPUT_TOKEN_CAP,
+                        temperature: 0.3,
+                    },
+                });
+
+                const quickPrompt = buildQuickQuestionPrompt({
+                    message,
+                    currentFile,
+                    currentFileContent,
+                    recentConversation: conversationTail,
+                });
+
+                aiSlackPrompt = quickPrompt;
+                aiSlackConversationTail = trimConversationForMode(conversationTail, "copy");
+                aiSlackRequestDigest = requestId;
+                aiSlackSelectedFilesPreview = [];
+                aiSlackFileContextPreview = "";
+                aiSlackFinalPromptPreview = buildPromptPreview(quickPrompt);
+
+                const result = await model.generateContent(quickPrompt);
+                const geminiResponse = result.response as any;
+                const raw = safeString(geminiResponse?.text?.() || "", 20_000).trim();
+                const usage = summarizeAiUsage(geminiResponse?.usageMetadata || null, estimateTokens(quickPrompt), estimateTokens(raw));
+                aiRequestUsage.inputTokens += usage.actualInputTokens ?? usage.estimatedInputTokens;
+                aiRequestUsage.outputTokens += usage.actualOutputTokens ?? usage.estimatedOutputTokens;
+                aiRequestUsage.totalTokens += usage.totalTokens ?? (usage.actualInputTokens ?? usage.estimatedInputTokens) + (usage.actualOutputTokens ?? usage.estimatedOutputTokens);
+                if (usage.estimatedCostUsd !== null) {
+                    aiRequestUsage.estimatedCostUsd = Number(((aiRequestUsage.estimatedCostUsd ?? 0) + usage.estimatedCostUsd).toFixed(6));
+                }
+                aiRequestUsage.attempts += 1;
+
+                const response = sanitizeUserFacingAiMessage({
+                    text: raw,
+                    fallback: "I can help with that, but I need a bit more detail.",
+                });
+
+                if (persistChat) {
+                    try {
+                        await persistLegacyAiChat({
+                            db,
+                            uid,
+                            appId,
+                            userMessage: message,
+                            assistantMessage: response,
+                            conversationId: conversationId || undefined,
+                        });
+                    } catch (err) {
+                        console.warn("[ai-agent] chat persistence failed", err);
+                    }
+                }
+
+                return NextResponse.json({
+                    response,
+                    refreshServer: false,
+                    fileEdits: [],
+                    setupDatabase: false,
+                    dbMigrations: [],
+                    clarifyingQuestions: [],
+                    requestId,
+                    creditCost: 0,
+                    mode: "quick_question",
+                });
+            }
 
             // Security-first guard: if a request likely needs persistence/auth and no DB is connected,
             // do not implement fake/local auth. Instead, push the user to connect Supabase.
