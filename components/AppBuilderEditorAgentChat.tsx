@@ -6867,6 +6867,25 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                         return null;
                     }
 
+                    const messageText = String(message.content || "").trim();
+                    const hasStructuredBody = Boolean(
+                        message.debugDetails ||
+                        message.migrationProposalId ||
+                        message.migrationSql ||
+                        message.stagedBundleId ||
+                        message.supabaseContinuationPrompt ||
+                        message.dbSetupPrompt ||
+                        message.restorePointsCard ||
+                        message.summaryFeedbackContext ||
+                        message.editPlanFailure ||
+                        message.editPlanRetryPrompt ||
+                        message.editPlanRebuildPrompt
+                    );
+
+                    if (!messageText && !hasStructuredBody) {
+                        return null;
+                    }
+
                     return (
                     <div
                         key={message.id}
@@ -6881,30 +6900,31 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                         >
                             {!(message.role === "assistant" && message.id === editPlanStatusMessageId && isActiveStatusBubble) ? (
                                 message.editPlanFailure ? ( 
-                                null
-                                    // <div className="space-y-2">
-                                    //     <div className="inline-flex items-center gap-2 text-sm font-semibold text-neutral-900">
-                                    //         <AlertTriangle className="h-4 w-4 text-amber-600" />
-                                    //         <span>Could not apply changes</span>
-                                    //     </div>
-                                    //     <div className="whitespace-pre-wrap break-words text-sm leading-relaxed text-neutral-900">{message.content}</div>
-                                    //     {showPreviewIssueDetails ? (
-                                    //         <details className="rounded-xl border border-neutral-200 bg-neutral-50/70 px-3 py-2">
-                                    //             <summary className="cursor-pointer list-none text-xs font-medium text-neutral-700">
-                                    //                 View technical details
-                                    //             </summary>
-                                    //             <div className="mt-2 space-y-1 text-xs text-neutral-600 break-all">
-                                    //                 {message.editPlanFailureCode ? <div>Code: {message.editPlanFailureCode}</div> : null}
-                                    //                 {message.editPlanFailureJobId ? <div>Job: {message.editPlanFailureJobId}</div> : null}
-                                    //                 {message.editPlanFailureRequestId ? <div>Request: {message.editPlanFailureRequestId}</div> : null}
-                                    //                 {typeof message.editPlanFailureHttpStatus === "number" ? <div>HTTP: {message.editPlanFailureHttpStatus}</div> : null}
-                                    //             </div>
-                                    //         </details>
-                                    //     ) : null}
-                                    // </div>
+                                    <div className="space-y-2">
+                                        <div className="inline-flex items-center gap-2 text-sm font-semibold text-neutral-900">
+                                            <AlertTriangle className="h-4 w-4 text-amber-600" />
+                                            <span>Could not apply changes</span>
+                                        </div>
+                                        <div className="whitespace-pre-wrap break-words text-sm leading-relaxed text-neutral-900">
+                                            {messageText || "This step could not be completed."}
+                                        </div>
+                                        {showPreviewIssueDetails && (message.editPlanFailureCode || message.editPlanFailureJobId || message.editPlanFailureRequestId || typeof message.editPlanFailureHttpStatus === "number") ? (
+                                            <details className="rounded-xl border border-neutral-200 bg-neutral-50/70 px-3 py-2">
+                                                <summary className="cursor-pointer list-none text-xs font-medium text-neutral-700">
+                                                    View technical details
+                                                </summary>
+                                                <div className="mt-2 space-y-1 text-xs text-neutral-600 break-all">
+                                                    {message.editPlanFailureCode ? <div>Code: {message.editPlanFailureCode}</div> : null}
+                                                    {message.editPlanFailureJobId ? <div>Job: {message.editPlanFailureJobId}</div> : null}
+                                                    {message.editPlanFailureRequestId ? <div>Request: {message.editPlanFailureRequestId}</div> : null}
+                                                    {typeof message.editPlanFailureHttpStatus === "number" ? <div>HTTP: {message.editPlanFailureHttpStatus}</div> : null}
+                                                </div>
+                                            </details>
+                                        ) : null}
+                                    </div>
                                 ) : (
                                     <div className={`whitespace-pre-wrap break-words text-sm leading-relaxed ${message.role === "user" ? "text-white/95" : "text-neutral-900"}`}>
-                                        {renderTextWithLinks(message.content)}
+                                        {renderTextWithLinks(messageText)}
                                     </div>
                                 )
                             ) : null}
