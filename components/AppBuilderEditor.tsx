@@ -190,6 +190,18 @@ function buildDeployIssueFromApp(appData: Partial<AppData> | null | undefined): 
     const state = String(appData.lastDeploymentState || "").toLowerCase();
     const errorCode = String(appData.lastDeploymentErrorCode || "").trim();
     const errorMessage = String(appData.lastDeploymentErrorMessage || "").trim();
+    const errorStamp = (() => {
+        const raw = appData.lastDeploymentErrorAt;
+        if (!raw) return "current";
+        if (typeof raw === "string") return raw.trim() || "current";
+        if (typeof raw === "number") return Number.isFinite(raw) ? String(raw) : "current";
+        try {
+            const serialized = JSON.stringify(raw);
+            return serialized && serialized !== "{}" ? serialized : "current";
+        } catch {
+            return "current";
+        }
+    })();
 
     if (state !== "error" && !errorMessage) return null;
 
@@ -198,7 +210,7 @@ function buildDeployIssueFromApp(appData: Partial<AppData> | null | undefined): 
         return {
             title: "Vercel not connected",
             detail: "Connect Vercel before deploying from this editor.",
-            fingerprint: `deploy:${deploymentId || "unknown"}:vercel-not-connected`,
+            fingerprint: `deploy:${deploymentId || "unknown"}:${errorStamp}:vercel-not-connected`,
             fixAction: "connect_vercel",
         };
     }
@@ -206,7 +218,7 @@ function buildDeployIssueFromApp(appData: Partial<AppData> | null | undefined): 
     return {
         title: "Deployment failed",
         detail,
-        fingerprint: `deploy:${deploymentId || "unknown"}:${errorCode || "error"}:${detail.slice(0, 160)}`,
+        fingerprint: `deploy:${deploymentId || "unknown"}:${errorStamp}:${errorCode || "error"}:${detail.slice(0, 160)}`,
         fixAction: errorCode === "VERCEL_DEPLOY_BODY_TOO_LARGE" ? "reduce_deploy_payload" : "deploy_issue_fix",
     };
 }
@@ -5769,14 +5781,6 @@ export default function AppBuilderEditor({
             pendingShareResumeRef.current = false;
         }
     }, [isVercelConnected]);
-
-    useEffect(() => {
-        if (!isVercelConnected) return;
-        if (!vercelConnectOpen && !vercelConnectOpening) return;
-
-        setVercelConnectOpening(false);
-        setVercelConnectOpen(false);
-    }, [isVercelConnected, vercelConnectOpen, vercelConnectOpening]);
 
     // On editor open: automatically build and show the preview (with retries + automatic bypass).
     useEffect(() => {
