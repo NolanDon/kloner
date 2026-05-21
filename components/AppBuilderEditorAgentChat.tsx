@@ -6550,6 +6550,10 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
         }
     };
 
+    const showInitialChatLoader =
+        !chatHistoryResolved || (!chatHasHistory && !showIntroTyping && messages.length === 0 && !isLoading);
+    const showChatEmptyState = chatHistoryResolved && chatHasHistory && messages.length === 0 && !isLoading;
+
     return (
         <div className="flex flex-col h-full min-h-0 bg-gray-50 overflow-hidden">
             {/* Header */}
@@ -6734,7 +6738,21 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
 
             {/* Messages */}
             <div className="flex-1 min-h-0 overflow-y-auto px-4 py-5 space-y-4 bg-[radial-gradient(circle_at_top,_rgba(245,95,42,0.10),_transparent_36%),linear-gradient(180deg,rgba(255,250,247,0.96),rgba(255,255,255,1))]">
-                {messages.length === 0 && !isLoading ? (
+                {showInitialChatLoader ? (
+                    <div className="flex min-h-[220px] items-center justify-center px-4 py-10">
+                        <div className="w-full max-w-sm rounded-3xl border border-[#F55F2A]/15 bg-white/90 px-5 py-5 text-left shadow-[0_16px_40px_rgba(15,23,42,0.08)] backdrop-blur-sm">
+                            <div className="flex items-center gap-3">
+                                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,rgba(245,95,42,0.12),rgba(245,95,42,0.04))] text-[#f55f2a]">
+                                    <div className="h-5 w-5 animate-spin rounded-full border-2 border-[#f55f2a]/20 border-t-[#f55f2a]" />
+                                </div>
+                                <div className="min-w-0">
+                                    <div className="text-sm font-semibold text-neutral-900">Loading chat</div>
+                                    <div className="text-xs leading-5 text-neutral-500">Preparing your conversation…</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                ) : showChatEmptyState ? (
                     <div className="rounded-2xl border border-dashed border-[#F55F2A]/20 bg-white/80 px-4 py-10 text-center text-sm text-neutral-500 shadow-[0_10px_24px_rgba(15,23,42,0.05)]">
                         No messages yet. Start by typing what you want to change.
                     </div>
