@@ -94,8 +94,17 @@ function inferReturnPathFromLocalStorage(): string | null {
 
         const pendingAppPreview = window.localStorage.getItem("kloner_vercel_pending_app_preview");
         if (pendingAppPreview) {
-            // App Builder preview restore is already handled by the legacy `vercel=connected` listener.
-            return "/dashboard/view?vercel=connected";
+            try {
+                const parsed = JSON.parse(pendingAppPreview) as any;
+                const appId = typeof parsed?.appId === "string" ? parsed.appId.trim() : "";
+                if (appId) {
+                    return `/dashboard/view?appVercel=connected&flow=appDeploy&appId=${encodeURIComponent(appId)}`;
+                }
+            } catch {
+                // fall through to the generic deploy resume path
+            }
+
+            return "/dashboard/view?appVercel=connected&flow=appDeploy";
         }
 
         const pendingAiImages = window.localStorage.getItem("kloner_vercel_pending_ai_images");
