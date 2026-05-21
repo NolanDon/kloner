@@ -194,6 +194,15 @@ function buildDeployIssueFromApp(appData: Partial<AppData> | null | undefined): 
     if (state !== "error" && !errorMessage) return null;
 
     const detail = errorMessage || "Vercel reported a deployment failure.";
+    if (/Vercel is not connected yet|Vercel is not connected|not connected for this user/i.test(detail)) {
+        return {
+            title: "Vercel not connected",
+            detail: "Connect Vercel before deploying from this editor.",
+            fingerprint: `deploy:${deploymentId || "unknown"}:vercel-not-connected`,
+            fixAction: "connect_vercel",
+        };
+    }
+
     return {
         title: "Deployment failed",
         detail,
@@ -2137,6 +2146,12 @@ export default function AppBuilderEditor({
 
     const handleDeployBannerFixRequest = useCallback(() => {
         if (!effectiveDeployBanner || effectiveDeployBanner.kind !== "error") return;
+
+        if (effectiveDeployBanner.fixAction === "connect_vercel") {
+            setVercelConnectFlow("preview");
+            setVercelConnectOpen(true);
+            return;
+        }
 
         handleCompileErrorFixRequest({
             appId,
@@ -5503,12 +5518,19 @@ export default function AppBuilderEditor({
             return;
         } catch (err: any) {
             const errorMessage = err?.message || "Deploy failed.";
+            const isVercelConnectIssue = /Vercel is not connected yet|Vercel is not connected|not connected for this user/i.test(errorMessage);
             setDeployBannerFromRoute({
                 kind: "error",
-                title: "Deployment failed",
-                detail: errorMessage,
-                fingerprint: `deploy-route:${appId}:${errorMessage.slice(0, 160)}`,
-                fixAction: /413|body too large|request entity too large/i.test(errorMessage)
+                title: isVercelConnectIssue ? "Vercel not connected" : "Deployment failed",
+                detail: isVercelConnectIssue
+                    ? "Connect Vercel before deploying from this editor."
+                    : errorMessage,
+                fingerprint: isVercelConnectIssue
+                    ? `deploy-route:${appId}:vercel-not-connected`
+                    : `deploy-route:${appId}:${errorMessage.slice(0, 160)}`,
+                fixAction: isVercelConnectIssue
+                    ? "connect_vercel"
+                    : /413|body too large|request entity too large/i.test(errorMessage)
                     ? "reduce_deploy_payload"
                     : "deploy_issue_fix",
             });
@@ -6987,13 +7009,13 @@ export default function AppBuilderEditor({
                                         </div>
                                     </div>
                                     <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
-                                        {effectiveDeployBanner?.kind === "error" ? (
+                                        {effectiveDeployBanner?.kind === "error" && effectiveDeployBanner.fixAction ? (
                                             <button
                                                 type="button"
                                                 onClick={handleDeployBannerFixRequest}
                                                 className="inline-flex w-full items-center justify-center gap-1.5 rounded-full bg-[#f55f2a] px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-[#e14f1c] sm:w-auto"
                                             >
-                                                Fix with AI
+                                                {effectiveDeployBanner.fixAction === "connect_vercel" ? "Connect Vercel" : "Fix with AI"}
                                             </button>
                                         ) : null}
                                         {effectiveDeployBanner?.liveUrl ? (

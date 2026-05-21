@@ -2098,7 +2098,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                         setEditPlanApplyError(null);
                         setEditPlanApplyStatusMessage(
                             completedProposal.needsMoreContext || !Array.isArray(completedProposal.files) || completedProposal.files.length === 0
-                                ? "Hi, I need more context before I can continue. Ensure the necessary page is selected below. \nIf it's a small change, you can also try editing it from the 'Custom' tab button located above this chat."
+                                ? "I need more context before I can continue. Ensure the necessary page is selected below. \nIf it's a small change, you can also try editing it from the 'Custom' tab button located above this chat."
                                 : completedProposal.autoApplyAllowed === false
                                     ? "Proposal ready for review."
                                     : "I’m uploading the changes now.",

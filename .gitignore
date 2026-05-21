@@ -1,21 +1,18 @@
 node_modules
 .next
 .env.local
+*.md
 app/.DS_Store
 serviceAccount.json
 public/images/transparent_logo.png
 scripts/setSupportAgent.js
 scripts/setRoleClaims.js
 .js
-kloner_journey_emails.md
 app/(app-shell)/affiliate-maintenance.yml
 public/hero copy.webm
-app-builder-architecture.md
 
 certificates
 .github/prompts/backend-embedding-workflow.prompt.md
 .gitignore
 .github/prompts/backend-embedding-sanitization.prompt.md
-docs/backend-edit-plan-job-result-contract.md
 next-env.d.ts
-docs/image-upload-blob-flow.md

@@ -3228,6 +3228,7 @@ export default function PreviewPage(): JSX.Element {
         fixAction?: string;
     } | null>(null);
     const deploySuccessConfettiShownRef = useRef(false);
+    const appDeployWizardRestoreTokenRef = useRef(0);
     const appDeployWizardErrorText = appDeployWizardError || "";
     const appDeployWizardPermissionError = /don't have permission to create the project/i.test(appDeployWizardErrorText);
     const appDeployWizardResolvedErrorText = useMemo(() => {
@@ -3670,6 +3671,7 @@ export default function PreviewPage(): JSX.Element {
     }, [search, user, router, showWebsiteExitOfferPaywall, stripeStatus, userTier]);
 
     const closeAppDeployWizard = useCallback(() => {
+        appDeployWizardRestoreTokenRef.current += 1;
         setAppDeployWizardOpen(false);
         setAppDeployWizardBusy(false);
         setAppDeployWizardError(null);
@@ -3843,6 +3845,21 @@ export default function PreviewPage(): JSX.Element {
             window.clearTimeout(timer);
             setShowAppDeployWizardStep2CloseButton(false);
         };
+    }, [appDeployWizardOpen, appDeployWizardStep, vercelStatus]);
+
+    useEffect(() => {
+        if (!appDeployWizardOpen) return;
+        if (appDeployWizardStep !== 2) return;
+        if (vercelStatus !== "connected") return;
+
+        const token = appDeployWizardRestoreTokenRef.current;
+        const timer = window.setTimeout(() => {
+            if (appDeployWizardRestoreTokenRef.current !== token) return;
+            setAppDeployWizardStep(3);
+            autoAppDeployTriggeredRef.current = true;
+        }, 900);
+
+        return () => window.clearTimeout(timer);
     }, [appDeployWizardOpen, appDeployWizardStep, vercelStatus]);
 
     // Auto-advance: once Vercel is connected, move straight to deploy.
@@ -8837,8 +8854,10 @@ export default function PreviewPage(): JSX.Element {
         if (v !== "connected") return;
 
         // ensure latest status from backend
+        const token = ++appDeployWizardRestoreTokenRef.current;
         void (async () => {
             await refreshVercelStatus();
+            if (appDeployWizardRestoreTokenRef.current !== token) return;
 
             const callbackFlow = searchParams.get("flow") || "";
 
@@ -8930,6 +8949,8 @@ export default function PreviewPage(): JSX.Element {
                         appDeployWizardAppName ||
                         "";
 
+                    if (appDeployWizardRestoreTokenRef.current !== token) return;
+
                     setAppWizardOpen(false);
                     setAppWizardError(null);
                     setAppWizardBusy(false);
@@ -8941,22 +8962,23 @@ export default function PreviewPage(): JSX.Element {
                     setAppDeployWizardLiveUrl(null);
                     setAppDeployWizardOpen(true);
 
+                    if (appDeployWizardRestoreTokenRef.current !== token) return;
+
                     try {
                         localStorage.removeItem("kloner_vercel_pending_app_deploy");
                     } catch {
                         // ignore
                     }
 
-                    const tierNow = await refreshUserTierNow();
-                    if (tierNow === "free") {
-                        setAppDeployWizardStep(2);
-                    } else {
-                        setAppDeployWizardStep(3);
-                        autoAppDeployTriggeredRef.current = true;
-                    }
+                    await refreshUserTierNow();
+                    if (appDeployWizardRestoreTokenRef.current !== token) return;
+
+                    setAppDeployWizardStep(3);
+                    autoAppDeployTriggeredRef.current = true;
 
                     // Clean up callback params so refresh/back doesn't re-run.
                     try {
+                        if (appDeployWizardRestoreTokenRef.current !== token) return;
                         const url = new URL(window.location.href);
                         const params = url.searchParams;
                         params.delete("vercel");
@@ -8983,6 +9005,7 @@ export default function PreviewPage(): JSX.Element {
             }
 
             if (pendingApp?.appId) {
+                if (appDeployWizardRestoreTokenRef.current !== token) return;
                 openAppBuilderWithCookieGate(pendingApp.appId);
                 return;
             }
@@ -9041,8 +9064,10 @@ export default function PreviewPage(): JSX.Element {
         const v = searchParams.get("appVercel");
         if (v !== "connected") return;
 
+        const token = ++appDeployWizardRestoreTokenRef.current;
         void (async () => {
             await refreshVercelStatus();
+            if (appDeployWizardRestoreTokenRef.current !== token) return;
 
             const appDeployFlow = searchParams.get("flow") || "";
 
@@ -9091,22 +9116,23 @@ export default function PreviewPage(): JSX.Element {
                 setAppDeployWizardLiveUrl(null);
                 setAppDeployWizardOpen(true);
 
+                if (appDeployWizardRestoreTokenRef.current !== token) return;
+
                 try {
                     localStorage.removeItem("kloner_vercel_pending_app_deploy");
                 } catch {
                     // ignore
                 }
 
-                const tierNow = await refreshUserTierNow();
-                if (tierNow === "free") {
-                    setAppDeployWizardStep(2);
-                } else {
-                    setAppDeployWizardStep(3);
-                    autoAppDeployTriggeredRef.current = true;
-                }
+                await refreshUserTierNow();
+                if (appDeployWizardRestoreTokenRef.current !== token) return;
+
+                setAppDeployWizardStep(3);
+                autoAppDeployTriggeredRef.current = true;
 
                 // Clean up callback params so refresh/back doesn't reopen flows.
                 try {
+                    if (appDeployWizardRestoreTokenRef.current !== token) return;
                     const url = new URL(window.location.href);
                     const params = url.searchParams;
                     params.delete("appVercel");
