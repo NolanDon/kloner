@@ -8995,21 +8995,6 @@ export default function PreviewPage(): JSX.Element {
                 }
             }
 
-            // If we were connecting Vercel from App Builder preview, restore that overlay.
-            let pendingApp: { appId?: string } | null = null;
-            try {
-                const raw = localStorage.getItem("kloner_vercel_pending_app_preview");
-                if (raw) pendingApp = JSON.parse(raw);
-            } catch {
-                pendingApp = null;
-            }
-
-            if (pendingApp?.appId) {
-                if (appDeployWizardRestoreTokenRef.current !== token) return;
-                openAppBuilderWithCookieGate(pendingApp.appId);
-                return;
-            }
-
             let pending: { renderId?: string; projectName?: string } | null = null;
             try {
                 const raw = localStorage.getItem("kloner_vercel_pending_deploy");
@@ -9021,6 +9006,24 @@ export default function PreviewPage(): JSX.Element {
             if (pending?.renderId) {
                 setDeployWizardRenderId(pending.renderId);
                 setDeployWizardProjectName(pending.projectName || "");
+            }
+
+            // If we were connecting Vercel from App Builder preview, restore that overlay only
+            // when there is no pending deploy resume to process.
+            if (!pending?.renderId) {
+                let pendingApp: { appId?: string } | null = null;
+                try {
+                    const raw = localStorage.getItem("kloner_vercel_pending_app_preview");
+                    if (raw) pendingApp = JSON.parse(raw);
+                } catch {
+                    pendingApp = null;
+                }
+
+                if (pendingApp?.appId) {
+                    if (appDeployWizardRestoreTokenRef.current !== token) return;
+                    openAppBuilderWithCookieGate(pendingApp.appId);
+                    return;
+                }
             }
 
             autoDeployTriggeredRef.current = false;
@@ -11639,7 +11642,7 @@ export default function PreviewPage(): JSX.Element {
                                         type="button"
                                         onClick={() => {
                                             if (deployWizardStep === 2) {
-                                                closeAppDeployWizard();
+                                                closeDeployWizard();
                                             } else {
                                                 closeDeployWizard();
                                             }
