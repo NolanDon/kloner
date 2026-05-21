@@ -121,7 +121,7 @@ function inferReturnPathFromLocalStorage(): string | null {
 
         const pendingDeploy = window.localStorage.getItem("kloner_vercel_pending_deploy");
         if (pendingDeploy) {
-            return "/dashboard/view?vercel=connected";
+            return "/dashboard/view?appVercel=connected&flow=appDeploy";
         }
     } catch {
         // ignore

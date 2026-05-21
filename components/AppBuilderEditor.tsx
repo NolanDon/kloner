@@ -5570,7 +5570,7 @@ export default function AppBuilderEditor({
                 "SameSite=Lax",
             ].join("; ");
 
-            const returnTo = `/dashboard/view?vercel=connected`;
+            const returnTo = buildCurrentVercelOAuthReturnPath();
             document.cookie = [
                 `vercel_oauth_return=${encodeURIComponent(returnTo)}`,
                 "Path=/",
@@ -5585,7 +5585,7 @@ export default function AppBuilderEditor({
             setPreviewError(PREVIEW_RECOVERY_MESSAGE);
             setVercelConnectOpening(false);
         }
-    }, [appId]);
+    }, [appId, buildCurrentVercelOAuthReturnPath]);
 
     const startVercelOAuthForSharePreview = useCallback(() => {
         if (!VERCEL_INTEGRATION_SLUG) {
@@ -7690,7 +7690,7 @@ export default function AppBuilderEditor({
                                                 : "Not connected yet."}
                                 </div>
 
-                                <div className="mt-4 flex flex-col gap-3 sm:flex-row">
+                                <div className="mt-4 flex flex-col gap-2">
                                     <button
                                         type="button"
                                         onClick={
@@ -7701,7 +7701,7 @@ export default function AppBuilderEditor({
                                                     : startVercelOAuthForPreview
                                         }
                                         disabled={isVercelChecking || vercelConnectOpening}
-                                        className="inline-flex h-12 flex-1 items-center justify-center gap-2 whitespace-nowrap rounded-full bg-[#F55F2A] px-5 text-sm font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                                        className="inline-flex h-12 w-full items-center justify-center gap-2 whitespace-nowrap rounded-full bg-[#F55F2A] px-5 text-sm font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
                                     >
                                         {(isVercelChecking || vercelConnectOpening) ? (
                                             <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white/50 border-t-white" />
@@ -7721,7 +7721,7 @@ export default function AppBuilderEditor({
                                             await refreshVercelStatus();
                                             setVercelConnectOpening(false);
                                         }}
-                                        className="inline-flex h-12 flex-1 items-center justify-center whitespace-nowrap rounded-full border border-neutral-200 px-5 text-sm font-semibold text-neutral-800 transition hover:bg-neutral-50"
+                                        className="inline-flex h-auto w-full items-center justify-center whitespace-nowrap rounded-none border-0 bg-transparent px-0 py-1 text-xs font-medium text-neutral-500 transition hover:bg-transparent hover:text-neutral-700"
                                         title="Re-check connection"
                                     >
                                         I already connected

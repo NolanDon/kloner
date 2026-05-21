@@ -11820,39 +11820,41 @@ export default function PreviewPage(): JSX.Element {
                                                         </>
                                                     )}
 
-                                                    {vercelStatus === "connected" && showAppDeployWizardStep2CloseButton ? (
-                                                        <div className="flex items-center justify-end pt-1">
-                                                            <button
-                                                                type="button"
-                                                                onClick={closeAppDeployWizard}
-                                                                className="rounded-full border border-neutral-200 px-3 py-1.5 text-xs font-semibold text-neutral-600 hover:bg-neutral-50"
-                                                            >
-                                                                Close
-                                                            </button>
-                                                        </div>
-                                                    ) : null}
+                                                    <div className="mt-4 flex flex-col gap-2">
+                                                        <button
+                                                            type="button"
+                                                            onClick={handleConnectVercelFromWizard}
+                                                            disabled={deployWizardBusy}
+                                                            className="inline-flex h-12 w-full items-center justify-center rounded-full px-3 py-1.5 text-sm text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                                                            style={{ backgroundColor: ACCENT }}
+                                                        >
+                                                            Connect Vercel
+                                                        </button>
 
-                                                    {vercelStatus !== "connected" && (
-                                                        <div className="mt-4 flex items-center justify-between gap-2">
-                                                            <button
-                                                                type="button"
-                                                                onClick={closeDeployWizard}
-                                                                disabled={deployWizardBusy}
-                                                                className="rounded-full border border-neutral-200 px-3 py-1.5 text-sm text-neutral-600 hover:bg-neutral-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                                                            >
-                                                                Close
-                                                            </button>
-                                                            <button
-                                                                type="button"
-                                                                onClick={handleConnectVercelFromWizard}
-                                                                disabled={deployWizardBusy}
-                                                                className="rounded-full px-3 py-1.5 text-sm text-white disabled:opacity-50 disabled:cursor-not-allowed"
-                                                                style={{ backgroundColor: ACCENT }}
-                                                            >
-                                                                Connect Vercel
-                                                            </button>
-                                                        </div>
-                                                    )}
+                                                        <button
+                                                            type="button"
+                                                            onClick={async () => {
+                                                                await refreshVercelStatus();
+                                                                setShowAppDeployWizardStep2CloseButton(false);
+                                                            }}
+                                                            disabled={deployWizardBusy}
+                                                            className="inline-flex h-auto w-full items-center justify-center rounded-none border-0 bg-transparent px-0 py-1 text-xs font-medium text-neutral-500 transition hover:bg-transparent hover:text-neutral-700 disabled:cursor-not-allowed disabled:opacity-50"
+                                                        >
+                                                            I already connected
+                                                        </button>
+
+                                                        {vercelStatus === "connected" && showAppDeployWizardStep2CloseButton ? (
+                                                            <div className="flex items-center justify-center pt-1">
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={closeAppDeployWizard}
+                                                                    className="text-[11px] font-medium text-neutral-500 transition hover:text-neutral-700"
+                                                                >
+                                                                    Close
+                                                                </button>
+                                                            </div>
+                                                        ) : null}
+                                                    </div>
                                                 </motion.div>
                                             )}
 
