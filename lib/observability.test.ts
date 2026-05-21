@@ -145,4 +145,44 @@ describe("observability Slack formatting", () => {
         expect(body.text).toContain("Unable to reach target URL");
         expect(body.text).toContain("422");
     });
+
+    it("keeps Slack payloads compact by default", async () => {
+        const { captureCriticalEvent } = await import("./observability");
+
+        await captureCriticalEvent({
+            source: "internal",
+            severity: "critical",
+            statusCode: 500,
+            route: "/api/test/compact",
+            requestId: "req_compact",
+            message: "Compact payload check",
+            action: "compact_payload_check",
+            url: "https://example.com/test",
+            stack: "Error: line 1\n at fn1\n at fn2",
+            extra: {
+                callerType: "api",
+                ip: "127.0.0.1",
+                browser: "Chrome",
+                userAgent: "Mozilla/5.0",
+                origin: "https://example.com",
+                referer: "https://example.com/page",
+                hasSession: true,
+                jobId: "job_123",
+                machineId: "machine_456",
+                nested: { too: "much" },
+            },
+        });
+
+        expect(global.fetch).toHaveBeenCalledTimes(1);
+        const fetchArgs = (global.fetch as jest.Mock).mock.calls[0];
+        const body = JSON.parse(String(fetchArgs[1].body));
+
+        const bodyText = JSON.stringify(body);
+        expect(bodyText).not.toContain("*Stack:*");
+        expect(bodyText).not.toContain("*Debug:*");
+        expect(bodyText).toContain("*Message:*");
+        expect(bodyText).toContain("*Source:*");
+        expect(bodyText).toContain("*Route/Page:*");
+        expect(bodyText).toContain("*Action:*");
+    });
 });

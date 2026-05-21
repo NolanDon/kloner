@@ -334,7 +334,7 @@ function getUrlArtifactCount(doc?: Partial<UrlDoc> | null): number {
     const screenshotMetaCount = Array.isArray(doc.screenshots)
         ? doc.screenshots.length
         : 0;
-        const archiveCount = isArchiveBackedUrlDoc(doc) ? (typeof doc.zipPageCount === "number" && Number.isFinite(doc.zipPageCount) && doc.zipPageCount > 0 ? doc.zipPageCount : 1) : 0;
+    const archiveCount = isArchiveBackedUrlDoc(doc) ? (typeof doc.zipPageCount === "number" && Number.isFinite(doc.zipPageCount) && doc.zipPageCount > 0 ? doc.zipPageCount : 1) : 0;
 
     return Math.max(screenshotPathCount + screenshotMetaCount, archiveCount);
 }
@@ -548,6 +548,45 @@ function buildUrlRescanBackfillPatch(source: any, warning: UrlRescanWarningState
         details: nextDetails,
         updatedAt: serverTimestamp(),
     };
+}
+
+function buildUrlScanCertaintyAuditPrompt(input: {
+    url: string;
+    docId: string | null;
+    status: string | null;
+    warning: UrlRescanWarningState | null;
+}): string {
+    return [
+        "Backend contract audit request:",
+        "A URL was captured successfully, but the scan also returned a blocking rescan warning. The frontend must not show capture success as proceedable until the scan certainty contract is explicit.",
+        JSON.stringify({
+            url: input.url,
+            docId: input.docId,
+            status: input.status,
+            warning: input.warning,
+            requiredBackendFields: {
+                archiveHealth: {
+                    needsRescan: "boolean",
+                    warningCode: "string | null",
+                    warningMessage: "string | null",
+                    warningAction: "string | null",
+                    errorCode: "string | null",
+                    errorReason: "string | null",
+                    userMessage: "string | null",
+                    retryable: "boolean | null",
+                    details: "unknown",
+                },
+                warning: {
+                    code: "string | null",
+                    message: "string | null",
+                    warningAction: "string | null",
+                    details: "unknown",
+                },
+                status: "ready | processing | queued | stale | error",
+                certainty: "must be explicit before UI shows proceedable success",
+            },
+        }, null, 2),
+    ].join("\n");
 }
 
 function getUrlRetryBackoffDelayMs(attempt: number): number {
@@ -2641,7 +2680,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                         >
                             <div className="flex shrink-0 items-start justify-between gap-4 border-b border-neutral-200 px-5 py-4">
                                 <div className="space-y-2">
-                                    {autoOpenSuccessMessage ? (
+                                    {autoOpenSuccessMessage && !sourceUrlCannotGenerate ? (
                                         <>
                                             <div className="inline-flex items-start gap-2 rounded-2xl border border-emerald-300 bg-gradient-to-br from-emerald-50 to-white px-4 py-3 shadow-sm">
                                                 <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" />
@@ -3364,6 +3403,7 @@ export default function PreviewPage(): JSX.Element {
     const [viewerOpen, setViewerOpen] = useState(false);
     const [viewerIdx, setViewerIdx] = useState(0);
     const sessionExpiredRedirectingRef = useRef(false);
+    const urlScanCertaintyAuditKeyRef = useRef<string>("");
 
     const handleSessionExpired = useCallback(async (source?: string) => {
         if (sessionExpiredRedirectingRef.current) return;
@@ -6549,6 +6589,30 @@ export default function PreviewPage(): JSX.Element {
     }, [showActiveUrlIssueWarning, activeUrlDoc?.url, activeUrlIssueHref, activeUrlRescanWarning]);
 
     useEffect(() => {
+        if (!activeUrlRescanWarning?.blocking) return;
+        if (!activeUrlDoc?.url) return;
+        if (hasPersistedUrlRescanFields(activeUrlDoc)) return;
+
+        const auditKey = `${activeUrlDoc.id || activeUrlDoc.url || activeUrlIssueHref}:${String(activeUrlRescanWarning.code || "")}:${String(activeUrlRescanWarning.message || "")}`;
+        if (urlScanCertaintyAuditKeyRef.current === auditKey) return;
+        urlScanCertaintyAuditKeyRef.current = auditKey;
+
+        const auditPrompt = buildUrlScanCertaintyAuditPrompt({
+            url: String(activeUrlDoc.url || targetUrl || "").trim(),
+            docId: activeUrlDoc.id || null,
+            status: String(activeUrlDoc.status || null),
+            warning: activeUrlRescanWarning,
+        });
+
+        console.warn("[dashboard] blocking URL scan returned without a persisted certainty contract", {
+            url: activeUrlDoc.url,
+            docId: activeUrlDoc.id || null,
+            warning: activeUrlRescanWarning,
+            prompt: auditPrompt,
+        });
+    }, [activeUrlDoc, activeUrlIssueHref, activeUrlRescanWarning, targetUrl]);
+
+    useEffect(() => {
         writeUrlRetryBackoffMap(retryBackoffByUrl);
     }, [retryBackoffByUrl]);
 
@@ -9471,6 +9535,14 @@ export default function PreviewPage(): JSX.Element {
         /failed to process|unable to process|couldn't finish capturing this URL|failed to queue URL capture/i.test(err)
     );
 
+    const activeUrlProceedableCertainty = Boolean(activeUrlDoc && !activeUrlCannotGenerate && !isUrlProcessingError);
+
+    useEffect(() => {
+        if (!autoOpenGenerateSuccessMessage) return;
+        if (activeUrlProceedableCertainty) return;
+        setAutoOpenGenerateSuccessMessage("");
+    }, [activeUrlProceedableCertainty, autoOpenGenerateSuccessMessage]);
+
     /* ───────── collections grouping ───────── */
 
     const groupedShots = useMemo(() => {
@@ -10452,7 +10524,7 @@ export default function PreviewPage(): JSX.Element {
                     </div>
                 ) : null}
 
-                {isArchiveBackedUrlDoc(docData) ? (
+                {isArchiveBackedUrlDoc(docData) && activeUrlProceedableCertainty ? (
                     <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-3 sm:px-4 text-emerald-900">
                         <div className="flex items-start gap-2">
                             <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />

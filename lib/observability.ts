@@ -36,6 +36,7 @@ const MAX_STACK_CHARS = 12000;
 const MAX_MESSAGE_CHARS = 1000;
 const MAX_TEXT_CHARS = 2800;
 const MAX_STACK_BLOCK_CHARS = 2400;
+const MAX_SLACK_CONTEXT_FIELDS = 4;
 const FRONTEND_LABEL = "[FRONTEND]";
 
 function withFrontendLabel(event: Pick<ObservabilityEvent, "source">, text: string): string {
@@ -239,6 +240,20 @@ function cleanContextValue(value: unknown, max = 200): string {
     return trimmed.length > max ? `${trimmed.slice(0, max - 1)}…` : trimmed;
 }
 
+function shouldIncludeVerboseSlackDetails(): boolean {
+    const raw = (process.env.OBS_SLACK_VERBOSE_DETAILS || "").trim().toLowerCase();
+    return raw === "1" || raw === "true" || raw === "yes";
+}
+
+function compactExtraSummary(extra: ExtraData): Array<[string, string]> {
+    return [
+        ["Caller", cleanContextValue((extra as any).callerType || (extra as any).caller || (extra as any).requestContext?.callerType, 80)],
+        ["Job", cleanContextValue((extra as any).jobId || (extra as any).job || (extra as any).requestContext?.jobId, 120)],
+        ["Machine", cleanContextValue((extra as any).machineId || (extra as any).backend?.debug?.machine?.id || (extra as any).backend?.machineId, 120)],
+        ["URL", cleanContextValue((extra as any).url || (extra as any).requestContext?.url, 220)],
+    ].filter(([, value]) => Boolean(value)) as Array<[string, string]>;
+}
+
 function toSlackBlocks(event: StoredEvent, eventId: string) {
     const route = event.route || event.page || "n/a";
     const user = event.userId || "anonymous";
@@ -263,17 +278,20 @@ function toSlackBlocks(event: StoredEvent, eventId: string) {
     ].join("\n");
 
     const extra = (event.extra && typeof event.extra === "object") ? event.extra : {};
-    const contextFields = [
-        ["Caller", cleanContextValue((extra as any).callerType || (extra as any).caller || (extra as any).requestContext?.callerType, 80)],
-        ["IP", cleanContextValue((extra as any).ip || (extra as any).clientIp || (extra as any).requestContext?.ip, 80)],
-        ["Browser", cleanContextValue((extra as any).browser || (extra as any).requestContext?.browser, 80)],
-        ["UA", cleanContextValue((extra as any).userAgent || (extra as any).ua || (extra as any).requestContext?.userAgent, 220)],
-        ["Origin", cleanContextValue((extra as any).origin || (extra as any).requestContext?.origin, 220)],
-        ["Referer", cleanContextValue((extra as any).referer || (extra as any).requestContext?.referer, 220)],
-        ["Has session", typeof (extra as any).hasSession === "boolean" ? String((extra as any).hasSession) : typeof (extra as any).hasSessionSignals === "boolean" ? String((extra as any).hasSessionSignals) : ""],
-        ["Job", cleanContextValue((extra as any).jobId || (extra as any).job || (extra as any).requestContext?.jobId, 120)],
-        ["Machine", cleanContextValue((extra as any).machineId || (extra as any).backend?.debug?.machine?.id || (extra as any).backend?.machineId, 120)],
-    ].filter(([, value]) => Boolean(value)) as Array<[string, string]>;
+    const verboseSlackDetails = shouldIncludeVerboseSlackDetails();
+    const contextFields = verboseSlackDetails
+        ? [
+            ["Caller", cleanContextValue((extra as any).callerType || (extra as any).caller || (extra as any).requestContext?.callerType, 80)],
+            ["IP", cleanContextValue((extra as any).ip || (extra as any).clientIp || (extra as any).requestContext?.ip, 80)],
+            ["Browser", cleanContextValue((extra as any).browser || (extra as any).requestContext?.browser, 80)],
+            ["UA", cleanContextValue((extra as any).userAgent || (extra as any).ua || (extra as any).requestContext?.userAgent, 220)],
+            ["Origin", cleanContextValue((extra as any).origin || (extra as any).requestContext?.origin, 220)],
+            ["Referer", cleanContextValue((extra as any).referer || (extra as any).requestContext?.referer, 220)],
+            ["Has session", typeof (extra as any).hasSession === "boolean" ? String((extra as any).hasSession) : typeof (extra as any).hasSessionSignals === "boolean" ? String((extra as any).hasSessionSignals) : ""],
+            ["Job", cleanContextValue((extra as any).jobId || (extra as any).job || (extra as any).requestContext?.jobId, 120)],
+            ["Machine", cleanContextValue((extra as any).machineId || (extra as any).backend?.debug?.machine?.id || (extra as any).backend?.machineId, 120)],
+        ].filter(([, value]) => Boolean(value)) as Array<[string, string]>
+        : compactExtraSummary(extra).slice(0, MAX_SLACK_CONTEXT_FIELDS);
 
     const contextBlock = contextFields.length
         ? [
@@ -321,7 +339,7 @@ function toSlackBlocks(event: StoredEvent, eventId: string) {
         });
     }
 
-    if (event.url) {
+    if (event.url && verboseSlackDetails) {
         blocks.push({
             type: "section",
             text: {
@@ -331,7 +349,7 @@ function toSlackBlocks(event: StoredEvent, eventId: string) {
         });
     }
 
-    if (stack) {
+    if (stack && verboseSlackDetails) {
         const stackChunks = chunkString(stack, MAX_STACK_BLOCK_CHARS);
         stackChunks.forEach((part, index) => {
             const label = stackChunks.length > 1 ? `*Stack (${index + 1}/${stackChunks.length}):*` : "*Stack:*";
@@ -345,7 +363,7 @@ function toSlackBlocks(event: StoredEvent, eventId: string) {
         });
     }
 
-    if (event.extra && Object.keys(event.extra).length > 0) {
+    if (event.extra && Object.keys(event.extra).length > 0 && verboseSlackDetails) {
         let debugJson = "";
         try {
             debugJson = JSON.stringify(event.extra, null, 2);
