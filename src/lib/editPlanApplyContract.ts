@@ -76,7 +76,8 @@ export type ApplyState =
  *
  * Rule order mirrors Section 3-A of the Frontend Agent Instruction.
  */
-export function hasWriteProof(apply: Partial<EmbeddingApplyResult> | Record<string, unknown>): boolean {
+export function hasWriteProof(apply: Partial<EmbeddingApplyResult> | Record<string, unknown> | null | undefined): boolean {
+    if (!apply || typeof apply !== "object") return false;
     if (apply.saved === true) return true;
 
     // machine.wrote / machine.deleted (canonical nested form)
@@ -163,6 +164,28 @@ export function resolveApplyState(applyRaw: unknown): ApplyState {
     if (restartConfirmed) return "restart_confirmed";
     if (restartPending) return "restart_pending";
     return "confirmed_success";
+}
+
+/**
+ * Returns the safest UI state for a completed edit-plan job when the backend
+ * returned a partial/legacy apply payload.
+ *
+ * If the completed job clearly wrote files, a missing or falsey apply payload
+ * should not be surfaced as a hard failure in the UI.
+ */
+export function resolveCompletedApplyStateWithWriteFallback(
+    applyRaw: unknown,
+    completedWriteProof: boolean,
+): ApplyState {
+    const state = resolveApplyState(applyRaw);
+    if (!completedWriteProof) return state;
+
+    const writeProofFromApply = hasWriteProof(applyRaw as Partial<EmbeddingApplyResult> | Record<string, unknown> | null | undefined);
+    if (!writeProofFromApply && (state === "failed" || state === "uncertain")) {
+        return "confirmed_success";
+    }
+
+    return state;
 }
 
 // ---------------------------------------------------------------------------

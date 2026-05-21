@@ -1,4 +1,4 @@
-import { resolveApplyState, hasWriteProof, buildApplyStateMessage, type ApplyState } from "./editPlanApplyContract";
+import { resolveApplyState, hasWriteProof, buildApplyStateMessage, resolveCompletedApplyStateWithWriteFallback, type ApplyState } from "./editPlanApplyContract";
 
 // ---------------------------------------------------------------------------
 // hasWriteProof
@@ -231,5 +231,27 @@ describe("buildApplyStateMessage", () => {
         const msg = buildApplyStateMessage("failed", { reason: "Disk full", code: "MACHINE_WRITE_ERROR" });
         expect(msg).toContain("Disk full");
         expect(msg).toContain("MACHINE_WRITE_ERROR");
+    });
+});
+
+// ---------------------------------------------------------------------------
+// resolveCompletedApplyStateWithWriteFallback
+// ---------------------------------------------------------------------------
+
+describe("resolveCompletedApplyStateWithWriteFallback", () => {
+    it("keeps confirmed_success when backend apply is missing but the job clearly wrote files", () => {
+        expect(resolveCompletedApplyStateWithWriteFallback(null, true)).toBe("confirmed_success");
+    });
+
+    it("upgrades a failed legacy apply payload to confirmed_success when completed write proof exists", () => {
+        expect(resolveCompletedApplyStateWithWriteFallback({ ok: false, saved: null }, true)).toBe("confirmed_success");
+    });
+
+    it("does not override a successful backend apply result", () => {
+        expect(resolveCompletedApplyStateWithWriteFallback({ ok: true, saved: true }, true)).toBe("confirmed_success");
+    });
+
+    it("preserves failed when there is no completed write proof", () => {
+        expect(resolveCompletedApplyStateWithWriteFallback({ ok: false, saved: false }, false)).toBe("failed");
     });
 });

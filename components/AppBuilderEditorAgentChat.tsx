@@ -55,6 +55,7 @@ import {
     resolveApplyState,
     hasWriteProof,
     buildApplyStateMessage,
+    resolveCompletedApplyStateWithWriteFallback,
 } from "@/src/lib/editPlanApplyContract";
 import { resolveEditPlanCreditCharge } from "@/src/lib/editPlanCreditConsumption";
 import { resolveAppBuilderChatRoute, type AppBuilderChatMode, type AppBuilderChatRoute } from "@/src/lib/appBuilderChatIntent";
@@ -659,10 +660,18 @@ function buildMissingApplyContractFulfillmentPrompt(input: {
         proposalPaths: compactPaths,
         requirement: {
             field: "result.apply",
-            reason: "frontend apply-state + restore-point UX requires backend apply contract",
+            reason: "frontend apply-state + restore-point UX needs a canonical apply contract so completed writes are never surfaced as false failures",
             requiredShape: {
                 outcome: "confirmed_success | restart_pending | restart_confirmed | uncertain | failed",
+                ok: "boolean",
+                saved: "boolean | null",
+                savedToSource: "boolean | null",
                 patchedFileCount: "number",
+                machine: {
+                    wrote: "number | null",
+                    deleted: "number | null",
+                    replayed: "boolean",
+                },
                 restorePoint: {
                     restorePointId: "string",
                     restorable: "boolean",
@@ -672,9 +681,14 @@ function buildMissingApplyContractFulfillmentPrompt(input: {
                 userMessage: "string",
                 requestId: "string",
                 code: "string",
+                reason: "string",
+                applyRetryState: "string",
+                applyAttempts: "number",
+                applyMaxAttempts: "number",
                 retryable: "boolean",
                 retryAfterSeconds: "number",
                 recommendedAction: "string",
+                idempotentProof: "string",
             },
         },
     };
@@ -3743,6 +3757,43 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
             || (activeEditPlanJob.requestId ? editPlanJobRequestMetaRef.current[`req:${activeEditPlanJob.requestId}`] : undefined)
             || null;
 
+        const completedProposal = completedResult && typeof completedResult === "object"
+            ? (((completedResult as any).proposal && typeof (completedResult as any).proposal === "object")
+                ? (completedResult as any).proposal
+                : null)
+            : null;
+        const completedProposalFiles = Array.isArray(completedProposal?.files) ? completedProposal.files : [];
+        const completedProposalFileCount =
+            typeof completedProposal?.fileCount === "number" && Number.isFinite(completedProposal.fileCount)
+                ? completedProposal.fileCount
+                : completedProposalFiles.length;
+        const completedLinesAdded =
+            typeof completedProposal?.totalEstimatedLinesAdded === "number" && Number.isFinite(completedProposal.totalEstimatedLinesAdded)
+                ? completedProposal.totalEstimatedLinesAdded
+                : null;
+        const completedLinesRemoved =
+            typeof completedProposal?.totalEstimatedLinesRemoved === "number" && Number.isFinite(completedProposal.totalEstimatedLinesRemoved)
+                ? completedProposal.totalEstimatedLinesRemoved
+                : null;
+        const hasMeaningfulCompletedWrite = Boolean(
+            completedProposal
+            && (
+                completedProposalFileCount > 0
+                || (typeof completedLinesAdded === "number" && completedLinesAdded > 0)
+                || (typeof completedLinesRemoved === "number" && completedLinesRemoved > 0)
+                || (() => {
+                    for (const file of completedProposalFiles as Array<Record<string, unknown>>) {
+                        const added = typeof file?.estimatedLinesAdded === "number" ? file.estimatedLinesAdded : 0;
+                        const removed = typeof file?.estimatedLinesRemoved === "number" ? file.estimatedLinesRemoved : 0;
+                        if (added > 0 || removed > 0 || Boolean(String(file?.beforePreview || "").trim()) || Boolean(String(file?.afterPreview || "").trim())) {
+                            return true;
+                        }
+                    }
+                    return false;
+                })()
+            ),
+        );
+
         if (backendApplyResult && typeof backendApplyResult === "object") {
             // Backend applied as part of the job — surface the result using the apply contract.
             setEditPlanApplyLoaderMessage(null);
@@ -3778,7 +3829,8 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
             }
 
             // Determine apply state using the backend contract.
-            const applyState = resolveApplyState(backendApplyResult);
+            const backendApplyState = resolveApplyState(backendApplyResult);
+            const applyState = resolveCompletedApplyStateWithWriteFallback(backendApplyResult, hasMeaningfulCompletedWrite);
             const applyRetryState = String((backendApplyResult as any)?.applyRetryState || "").trim().toLowerCase();
             const applyAttempts = Number((backendApplyResult as any)?.applyAttempts);
             const applyMaxAttempts = Number((backendApplyResult as any)?.applyMaxAttempts);
@@ -3795,6 +3847,36 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                         : null),
             };
             const applyMsg = buildApplyStateMessage(applyState, applyResultForMsg);
+
+            if (backendApplyState !== applyState && applyState === "confirmed_success") {
+                const contractPrompt = buildMissingApplyContractFulfillmentPrompt({
+                    jobId: activeEditPlanJob.jobId || null,
+                    requestId: activeEditPlanJob.requestId || null,
+                    statusUrl: activeEditPlanJob.statusUrl || null,
+                    summary: typeof (completedResult as any)?.summary === "string" ? (completedResult as any).summary : null,
+                    diagnosis: typeof (completedResult as any)?.diagnosis === "string" ? (completedResult as any).diagnosis : null,
+                    proposalFileCount: completedProposalFileCount,
+                    proposalPaths: completedProposalFiles.map((file: any) => String(file?.path || "").trim()).filter(Boolean),
+                });
+
+                dispatchAiAgentEvent("edit_plan_apply_contract_missing", {
+                    appId,
+                    userId: user?.uid || null,
+                    jobId: activeEditPlanJob.jobId || null,
+                    requestId: activeEditPlanJob.requestId || null,
+                    statusUrl: activeEditPlanJob.statusUrl || null,
+                    proposalFileCount: completedProposalFileCount,
+                });
+
+                console.warn("[edit-plan] backend result.apply missing or legacy-shaped for completed write", {
+                    jobId: activeEditPlanJob.jobId || null,
+                    requestId: activeEditPlanJob.requestId || null,
+                    statusUrl: activeEditPlanJob.statusUrl || null,
+                    proposalFileCount: completedProposalFileCount,
+                    proposalPaths: completedProposalFiles.map((file: any) => String(file?.path || "").trim()).filter(Boolean),
+                    prompt: contractPrompt,
+                });
+            }
 
             switch (applyState) {
                 case "confirmed_success": {
@@ -3918,43 +4000,6 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
             return;
         }
 
-        const completedProposal = completedResult && typeof completedResult === "object"
-            ? (((completedResult as any).proposal && typeof (completedResult as any).proposal === "object")
-                ? (completedResult as any).proposal
-                : null)
-            : null;
-        const completedProposalFiles = Array.isArray(completedProposal?.files) ? completedProposal.files : [];
-        const completedProposalFileCount =
-            typeof completedProposal?.fileCount === "number" && Number.isFinite(completedProposal.fileCount)
-                ? completedProposal.fileCount
-                : completedProposalFiles.length;
-        const completedLinesAdded =
-            typeof completedProposal?.totalEstimatedLinesAdded === "number" && Number.isFinite(completedProposal.totalEstimatedLinesAdded)
-                ? completedProposal.totalEstimatedLinesAdded
-                : null;
-        const completedLinesRemoved =
-            typeof completedProposal?.totalEstimatedLinesRemoved === "number" && Number.isFinite(completedProposal.totalEstimatedLinesRemoved)
-                ? completedProposal.totalEstimatedLinesRemoved
-                : null;
-        const hasMeaningfulCompletedWrite = Boolean(
-            completedProposal
-            && (
-                completedProposalFileCount > 0
-                || (typeof completedLinesAdded === "number" && completedLinesAdded > 0)
-                || (typeof completedLinesRemoved === "number" && completedLinesRemoved > 0)
-                || (() => {
-                    for (const file of completedProposalFiles as Array<Record<string, unknown>>) {
-                        const added = typeof file?.estimatedLinesAdded === "number" ? file.estimatedLinesAdded : 0;
-                        const removed = typeof file?.estimatedLinesRemoved === "number" ? file.estimatedLinesRemoved : 0;
-                        if (added > 0 || removed > 0 || Boolean(String(file?.beforePreview || "").trim()) || Boolean(String(file?.afterPreview || "").trim())) {
-                            return true;
-                        }
-                    }
-                    return false;
-                })()
-            ),
-        );
-
         if (hasMeaningfulCompletedWrite) {
             setEditPlanApplyLoaderMessage(null);
             void syncFilesFromServer({ applyToState: true }).catch(() => null);
@@ -3991,17 +4036,22 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                 prompt: contractPrompt,
             });
 
-            surfaceEditPlanFailure({
-                body: "We could not verify the apply result from the worker. Please retry.",
-                code: "EDIT_PLAN_APPLY_FAILURE_LEGACY_SHAPE_MISMATCH",
-                jobStatus: "failed",
-                httpStatus: 409,
-                jobId: activeEditPlanJob.jobId || null,
-                requestId: activeEditPlanJob.requestId || null,
-                retryable: true,
-                retryPrompt: requestMeta?.query || lastEditPlanPromptRef.current || null,
-                retryCurrentPath: requestMeta?.currentPath || null,
-            });
+            const recoveredSuccessContent = pendingEditPlan?.summary?.trim()
+                || (completedResult as any)?.summary?.trim?.()
+                || "Changes applied successfully.";
+            setEditPlanApplyError(null);
+            setEditPlanApplyStatusMessage(recoveredSuccessContent);
+            setMessages((prev) => [
+                ...prev,
+                {
+                    id: `edit_plan_apply_success_missing_contract_${Date.now()}`,
+                    role: "assistant" as const,
+                    content: recoveredSuccessContent,
+                    timestamp: new Date(),
+                    type: "text" as const,
+                    restorePointId: requestMeta?.preflightRestorePointId || undefined,
+                },
+            ]);
             void showRestorePointsCard("after_apply_missing_contract");
             return;
         }
