@@ -9068,6 +9068,21 @@ export default function PreviewPage(): JSX.Element {
         if (v !== "connected") return;
 
         const token = ++appDeployWizardRestoreTokenRef.current;
+
+        // Consume the callback URL immediately so a refresh cannot replay the modal.
+        try {
+            const url = new URL(window.location.href);
+            const params = url.searchParams;
+            params.delete("appVercel");
+            params.delete("flow");
+            params.delete("appId");
+            const qs = params.toString();
+            const next = qs ? `${url.pathname}?${qs}` : url.pathname;
+            router.replace(next, { scroll: false });
+        } catch {
+            // ignore
+        }
+
         void (async () => {
             await refreshVercelStatus();
             if (appDeployWizardRestoreTokenRef.current !== token) return;
@@ -9132,21 +9147,6 @@ export default function PreviewPage(): JSX.Element {
 
                 setAppDeployWizardStep(3);
                 autoAppDeployTriggeredRef.current = true;
-
-                // Clean up callback params so refresh/back doesn't reopen flows.
-                try {
-                    if (appDeployWizardRestoreTokenRef.current !== token) return;
-                    const url = new URL(window.location.href);
-                    const params = url.searchParams;
-                    params.delete("appVercel");
-                    params.delete("flow");
-                    params.delete("appId");
-                    const qs = params.toString();
-                    const next = qs ? `${url.pathname}?${qs}` : url.pathname;
-                    router.replace(next, { scroll: false });
-                } catch {
-                    // ignore
-                }
 
                 return;
             }
