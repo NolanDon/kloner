@@ -5570,7 +5570,7 @@ export default function AppBuilderEditor({
                 "SameSite=Lax",
             ].join("; ");
 
-            const returnTo = buildCurrentVercelOAuthReturnPath();
+            const returnTo = `/dashboard/view?appVercel=connected&flow=appDeploy&appId=${encodeURIComponent(appId)}`;
             document.cookie = [
                 `vercel_oauth_return=${encodeURIComponent(returnTo)}`,
                 "Path=/",
@@ -5585,7 +5585,7 @@ export default function AppBuilderEditor({
             setPreviewError(PREVIEW_RECOVERY_MESSAGE);
             setVercelConnectOpening(false);
         }
-    }, [appId, buildCurrentVercelOAuthReturnPath]);
+    }, [appId]);
 
     const startVercelOAuthForSharePreview = useCallback(() => {
         if (!VERCEL_INTEGRATION_SLUG) {
