@@ -26,7 +26,7 @@ const GROUPS: Group[] = [
             },
             {
                 q: 'What do I get after cloning?',
-                a: 'A clean Next.js project with structured routes, components, and a preview you can keep editing.'
+                a: 'A clean project with structured routes, components, and a preview you can keep editing.'
             },
             {
                 q: 'Can I attach my own domain?',
@@ -34,7 +34,7 @@ const GROUPS: Group[] = [
             },
             {
                 q: 'Will forms and internal links still work?',
-                a: 'Yes. Kloner rewrites links to local routes and supports functional Next.js app flows.'
+                a: 'Yes. Kloner rewrites links to local routes and supports functional app flows.'
             },
         ],
     },
