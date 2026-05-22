@@ -5634,6 +5634,7 @@ export default function PreviewPage(): JSX.Element {
     const targetUrlRef = useRef<string>("");
     const captureStallReportedForUrlRef = useRef<string>("");
     const captureStaleReportedForUrlRef = useRef<string>("");
+    const captureBlockedFailureForUrlRef = useRef<string>("");
     const [captureTerminalFailureUrl, setCaptureTerminalFailureUrl] = useState<string>("");
     const [captureIssueDetails, setCaptureIssueDetails] = useState<string>("");
 
@@ -5890,6 +5891,7 @@ export default function PreviewPage(): JSX.Element {
                     }
 
                     startRequestedEnqueueAttemptRef.current = startRequestKey;
+                    captureBlockedFailureForUrlRef.current = "";
                     const res = await fetch("/api/private/generate", {
                         method: "POST",
                         headers: { "content-type": "application/json" },
@@ -5936,6 +5938,7 @@ export default function PreviewPage(): JSX.Element {
                                     : "Sorry, we were not able to process this URL. Please ensure it is accessible before trying again.";
                         clearUrlScanQueuedState(target, uiError);
                         if (looksBlocked) {
+                            captureBlockedFailureForUrlRef.current = normUrl(target);
                             setUrlGenerationHealthWarning({
                                 url: target,
                                 generationFormat: "nextjs",
@@ -6340,6 +6343,7 @@ export default function PreviewPage(): JSX.Element {
         if (startRequested && !err) return;
 
         const normalizedUrl = normUrl(targetUrl);
+        if (captureBlockedFailureForUrlRef.current === normalizedUrl) return;
         if (captureStaleReportedForUrlRef.current === normalizedUrl) return;
         if (hasCaptureStaleAlertBeenSent(normalizedUrl)) return;
         captureStaleReportedForUrlRef.current = normalizedUrl;
@@ -9630,6 +9634,8 @@ export default function PreviewPage(): JSX.Element {
         /failed to process|unable to process|couldn't finish capturing this URL|failed to queue URL capture/i.test(err)
     );
 
+    const shouldSuppressCaptureIssueNotice = Boolean(err) || showActiveUrlIssueWarning || isUrlProcessingError;
+
     const activeUrlProceedableCertainty = Boolean(activeUrlDoc && !activeUrlCannotGenerate && !isUrlProcessingError);
 
     useEffect(() => {
@@ -10380,7 +10386,7 @@ export default function PreviewPage(): JSX.Element {
                         size={dashboardCompactLayout ? "compact" : "full"}
                         disabled={captureLocked || retryRescanPending}
                         captureStatus={captureStatus}
-                        captureIssueNotice={showActiveUrlIssueWarning || isUrlProcessingError ? "" : captureIssueNotice}
+                        captureIssueNotice={shouldSuppressCaptureIssueNotice ? "" : captureIssueNotice}
                         hideCaptureQueueStatus={hideCaptureQueueStatus}
                     />
                 </section>
