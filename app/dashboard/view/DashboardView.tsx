@@ -9608,15 +9608,6 @@ export default function PreviewPage(): JSX.Element {
                         ? "Agency plan"
                         : "Enterprise plan";
 
-    const showDevUrlScreenshots = process.env.NODE_ENV === "development";
-    const DEV_URL_SCREENSHOT_PREVIEW_LIMIT = 12;
-    const devUrlScreenshotPreviews = shots.slice(0, DEV_URL_SCREENSHOT_PREVIEW_LIMIT);
-    const devZipDownloadHref = useMemo(() => {
-        if (!showDevUrlScreenshots) return "";
-        if (!isArchiveBackedUrlDoc(docData)) return "";
-        return String(docData?.zipUrl || docData?.zipPath || "").trim();
-    }, [docData, showDevUrlScreenshots]);
-
     const showUrlAccessInError = useMemo(() => {
         if (!err) return false;
         return /not able to process this url|url failed to process/i.test(err);
@@ -10687,87 +10678,6 @@ export default function PreviewPage(): JSX.Element {
                             </div>
                         </div>
                     </div>
-                ) : null}
-
-                {showDevUrlScreenshots && targetUrl ? (
-                    <section className="mt-4 rounded-xl border border-dashed border-neutral-300 bg-neutral-50 px-3 py-3 sm:px-4">
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                            <div>
-                                <p className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500">
-                                    Dev Only
-                                </p>
-                                <p className="text-sm font-medium text-neutral-800">
-                                    URL screenshots for {targetUrl}
-                                </p>
-                            </div>
-                            <span className="rounded-full border border-neutral-300 bg-white px-2.5 py-1 text-xs text-neutral-700">
-                                {shots.length} screenshot{shots.length === 1 ? "" : "s"}
-                            </span>
-                        </div>
-
-                        {devZipDownloadHref ? (
-                            <div className="mt-3 rounded-lg border border-neutral-200 bg-white px-3 py-3 shadow-sm">
-                                <div className="flex flex-wrap items-center justify-between gap-3">
-                                    <div className="min-w-0">
-                                        <p className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500">
-                                            ZIP archive
-                                        </p>
-                                        <p className="mt-1 break-all text-sm text-neutral-800">
-                                            {devZipDownloadHref}
-                                        </p>
-                                    </div>
-                                    <a
-                                        href={devZipDownloadHref}
-                                        target="_blank"
-                                        rel="noreferrer"
-                                        className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-[#f55f2a]/25 bg-[#f55f2a] px-3 py-1.5 text-xs font-semibold text-white shadow-[0_10px_24px_rgba(245,95,42,0.18)] transition hover:bg-[#ef4f19] hover:shadow-[0_12px_28px_rgba(245,95,42,0.24)]"
-                                    >
-                                        <span>Download ZIP</span>
-                                        <ArrowUpRight className="h-3.5 w-3.5" />
-                                    </a>
-                                </div>
-                            </div>
-                        ) : null}
-
-                        {devUrlScreenshotPreviews.length > 0 ? (
-                            <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
-                                {devUrlScreenshotPreviews.map((shot, index) => (
-                                    <button
-                                        key={shot.path}
-                                        type="button"
-                                        onClick={() => openViewer(index)}
-                                        className="group overflow-hidden rounded-lg border border-neutral-200 bg-white text-left shadow-sm transition hover:border-neutral-300 hover:shadow"
-                                        title={shot.fileName}
-                                    >
-                                        <div className="relative aspect-[4/3] w-full overflow-hidden bg-neutral-100">
-                                            <Image
-                                                src={shot.url}
-                                                alt={shot.fileName}
-                                                fill
-                                                sizes="(min-width: 1280px) 180px, (min-width: 768px) 25vw, 50vw"
-                                                className="object-cover transition duration-200 group-hover:scale-[1.02]"
-                                            />
-                                        </div>
-                                        <div className="truncate px-2 py-1.5 text-[11px] text-neutral-700">
-                                            {shot.fileName}
-                                        </div>
-                                    </button>
-                                ))}
-                            </div>
-                        ) : (
-                            <p className="mt-3 text-xs text-neutral-600">
-                                {!err && (loading || captureStatus === "queued" || captureStatus === "processing")
-                                    ? "Waiting for screenshots to be captured for this URL..."
-                                    : "No screenshots found yet for this URL."}
-                            </p>
-                        )}
-
-                        {shots.length > DEV_URL_SCREENSHOT_PREVIEW_LIMIT ? (
-                            <p className="mt-2 text-[11px] text-neutral-500">
-                                Showing first {DEV_URL_SCREENSHOT_PREVIEW_LIMIT} screenshots. Use the viewer arrows to browse more.
-                            </p>
-                        ) : null}
-                    </section>
                 ) : null}
 
                 <section className="mt-10 rounded-3xl border border-neutral-200 bg-white/70 px-4 py-5 sm:px-5 sm:py-6 shadow-sm">
