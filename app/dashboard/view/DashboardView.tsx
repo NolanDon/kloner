@@ -673,22 +673,22 @@ function AmberIssueBanner({ message, onDismiss, onRetry, retryDisabled = false, 
             initial={{ opacity: 0, y: -8, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             transition={{ type: "spring", stiffness: 700, damping: 28, mass: 0.55 }}
-            className="relative mt-3 overflow-hidden rounded-3xl border border-amber-300/80 bg-amber-50/95 px-3 py-3 text-xs text-amber-950 shadow-[0_14px_34px_rgba(180,108,17,0.10)] sm:px-4 sm:py-2 sm:pr-14"
+            className="relative mt-3 overflow-hidden rounded-3xl border border-amber-300/80 bg-amber-50/95 px-4 py-3 text-xs text-amber-950 shadow-[0_14px_34px_rgba(180,108,17,0.10)] sm:pr-14"
         >
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
-                <div className="flex min-w-0 flex-1 items-center gap-2">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:gap-3">
+                <div className="flex min-w-0 flex-1 items-start gap-2 text-left sm:pt-0.5">
                     <MessageCircleWarning className="h-4 w-4 shrink-0 text-amber-700" />
                     <span className="min-w-0 flex-1 whitespace-normal break-words font-semibold leading-5 text-amber-950 sm:whitespace-nowrap">
                         {message}
                     </span>
                 </div>
-                <div className="flex flex-wrap items-center gap-2 sm:ml-auto sm:flex-nowrap sm:justify-end sm:gap-3 sm:pr-8">
+                <div className="flex flex-wrap items-center gap-2 sm:ml-auto sm:flex-nowrap sm:justify-end sm:gap-3 sm:pt-0.5 sm:pr-8">
                     {onRetry ? (
                         <button
                             type="button"
                             onClick={onRetry}
                             disabled={retryDisabled}
-                            className="inline-flex w-full shrink-0 items-center justify-center gap-1 rounded-full border border-amber-300/80 bg-amber-100/80 px-2.5 py-1.5 text-center text-[11px] font-semibold text-amber-900 shadow-sm transition hover:border-amber-400 hover:bg-amber-100 hover:text-amber-950 disabled:cursor-not-allowed disabled:opacity-55 sm:w-auto sm:px-2.5 sm:py-1"
+                            className="inline-flex w-full shrink-0 items-center justify-center gap-1 rounded-full border border-amber-300/80 bg-amber-100/80 px-2.5 py-1.5 text-[11px] font-semibold text-amber-900 shadow-sm transition hover:border-amber-400 hover:bg-amber-100 hover:text-amber-950 disabled:cursor-not-allowed disabled:opacity-55 sm:w-auto sm:py-1"
                             title="Retry this URL"
                         >
                             <RotateCcw className="h-3 w-3 text-amber-800" />
@@ -743,10 +743,10 @@ function RedIssueBanner({ message, onDismiss, details }: RedIssueBannerProps) {
             initial={{ opacity: 0, y: -8, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             transition={{ type: "spring", stiffness: 700, damping: 28, mass: 0.55 }}
-            className="relative mt-3 overflow-hidden rounded-3xl border border-red-300/80 bg-red-50/95 px-3 py-3 text-xs text-red-950 shadow-[0_14px_34px_rgba(185,28,28,0.10)] sm:px-4 sm:py-3 sm:pr-14"
+            className="relative mt-3 overflow-hidden rounded-3xl border border-red-300/80 bg-red-50/95 px-4 py-3 text-xs text-red-950 shadow-[0_14px_34px_rgba(185,28,28,0.10)] sm:pr-14"
         >
             <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:gap-3">
-                <div className="flex min-w-0 flex-1 items-start gap-2 sm:pt-0.5">
+                <div className="flex min-w-0 flex-1 items-start gap-2 text-left sm:pt-0.5">
                     <AlertTriangle className="h-4 w-4 shrink-0 text-red-600" />
                     <span className="min-w-0 flex-1 whitespace-normal break-words font-semibold leading-5 text-red-950 sm:whitespace-nowrap">
                         {message}
@@ -757,7 +757,7 @@ function RedIssueBanner({ message, onDismiss, details }: RedIssueBannerProps) {
                         <button
                             type="button"
                             onClick={() => setShowDetails((v) => !v)}
-                            className="inline-flex w-full shrink-0 items-center justify-center gap-1 rounded-full border border-red-300/70 bg-white px-3 py-2 text-[11px] font-semibold text-red-800/90 transition hover:border-red-400 hover:text-red-950 sm:w-auto sm:border-0 sm:bg-transparent sm:px-0 sm:py-1.5 sm:mr-2"
+                            className="inline-flex w-full shrink-0 items-center justify-center gap-1 rounded-full border border-red-300/70 bg-white px-3 py-1 text-[11px] font-semibold text-red-800/90 transition hover:border-red-400 hover:text-red-950 sm:w-auto sm:border-0 sm:bg-transparent sm:px-0 sm:py-1.5 sm:mr-2"
                             aria-expanded={showDetails}
                             aria-label={showDetails ? "Hide details" : "View details"}
                             title={showDetails ? "Hide details" : "View details"}
@@ -847,12 +847,12 @@ function MiniDashboardEntry({
         : "text-[9px] font-semibold uppercase tracking-wide text-accent";
     const showQueuedScanStatus =
         !hideCaptureQueueStatus &&
-        disabled &&
-        (captureStatus === "queued" || captureStatus === "processing");
+        (busy || captureStatus === "queued" || captureStatus === "processing");
+    const isSubmissionDisabled = disabled || busy || showQueuedScanStatus;
 
     async function handleSubmit(e: React.FormEvent) {
         e.preventDefault();
-        if (busy || disabled) return;
+        if (busy || isSubmissionDisabled) return;
 
         setError(null);
         setBusy(true);
@@ -867,7 +867,7 @@ function MiniDashboardEntry({
                 setError("Please enter a valid public http(s) URL.");
                 return;
             }
-            onSubmitUrl(normalized);
+            await Promise.resolve(onSubmitUrl(normalized));
         } finally {
             setBusy(false);
         }
@@ -1005,7 +1005,7 @@ function MiniDashboardEntry({
                             setError(cleaned ? getPublicHttpUrlRejectionReason(cleaned) : null);
                         }}
                         placeholder="example.com"
-                        disabled={disabled}
+                        disabled={isSubmissionDisabled}
                         className={
                             "flex-1 bg-transparent outline-none text-neutral-700 placeholder:text-neutral-400 font-medium " +
                             (isCompact ? "text-[13px] sm:text-sm" : "text-[15px] sm:text-base")
@@ -1015,7 +1015,7 @@ function MiniDashboardEntry({
 
                     <button
                         type="submit"
-                        disabled={disabled || busy || !url.trim()}
+                        disabled={isSubmissionDisabled || !url.trim()}
                         className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-white transition-all active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed px-0 md:h-full md:w-auto md:px-10"
                         style={{ backgroundColor: ACCENT }}
                         aria-label="Preview from URL"
@@ -2488,6 +2488,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
     sourceUrl,
     lockedSinceMs,
     sourceUrlCannotGenerate = false,
+    sourceUrlIsBlocked = false,
     highlight,
     autoOpenNonce,
     autoOpenSuccessMessage,
@@ -2505,6 +2506,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
     sourceUrl?: string | null;
     lockedSinceMs?: number | null;
     sourceUrlCannotGenerate?: boolean;
+    sourceUrlIsBlocked?: boolean;
     highlight?: boolean;
     autoOpenNonce?: number;
     autoOpenSuccessMessage?: string;
@@ -2707,14 +2709,25 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                     )}
 
                                     {sourceUrlCannotGenerate ? (
-                                        <div className="relative overflow-hidden rounded-3xl border border-amber-300/80 bg-amber-50/95  text-xs text-amber-950 shadow-[0_14px_34px_rgba(180,108,17,0.10)] sm:px-3 sm:py-2 sm:mt-2">
-                                            <div className="flex items-start gap-2 sm:gap-3">
-                                                <MessageCircleWarning className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
-                                                <span className="min-w-0 flex-1 whitespace-normal break-words font-semibold leading-5 text-amber-950">
-                                                    URL scan issue detected.
-                                                </span>
+                                        sourceUrlIsBlocked ? (
+                                            <div className="relative overflow-hidden rounded-3xl border border-red-300/80 bg-red-50/95 text-xs text-red-950 shadow-[0_14px_34px_rgba(185,28,28,0.10)] sm:px-3 sm:py-2 sm:mt-2">
+                                                <div className="flex items-start gap-2 sm:gap-3">
+                                                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-600" />
+                                                    <span className="min-w-0 flex-1 whitespace-normal break-words font-semibold leading-5 text-red-950">
+                                                        Domain blocked for site cloning.
+                                                    </span>
+                                                </div>
                                             </div>
-                                        </div>
+                                        ) : (
+                                            <div className="relative overflow-hidden rounded-3xl border border-amber-300/80 bg-amber-50/95 text-xs text-amber-950 shadow-[0_14px_34px_rgba(180,108,17,0.10)] sm:px-3 sm:py-2 sm:mt-2">
+                                                <div className="flex items-start gap-2 sm:gap-3">
+                                                    <MessageCircleWarning className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
+                                                    <span className="min-w-0 flex-1 whitespace-normal break-words font-semibold leading-5 text-amber-950">
+                                                        URL scan issue detected.
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        )
                                     ) : null}
                                 </div>
                                 <button
@@ -2981,6 +2994,7 @@ export default function PreviewPage(): JSX.Element {
     const [showTrialSuccessCelebration, setShowTrialSuccessCelebration] = useState(false);
     const [showDeploySuccessConfetti, setShowDeploySuccessConfetti] = useState(false);
     const [showDevQuickMenu, setShowDevQuickMenu] = useState(false);
+    const [showDevQuickMenuLauncher, setShowDevQuickMenuLauncher] = useState(true);
     const [previewDebugScenario, setPreviewDebugScenario] = useState<{ mode: 'terminal-error' | 'terminal-error-auto-fix'; nonce: number } | null>(null);
     const isDev = process.env.NODE_ENV !== "production";
 
@@ -4101,6 +4115,25 @@ export default function PreviewPage(): JSX.Element {
 
     type UrlGenerationResponse = UrlGenerationAcceptedResponse | UrlGenerationTerminalResponse;
 
+    function isBlockedUrlScanSignal(...parts: Array<unknown>): boolean {
+        const text = parts
+            .map((part) => String(part || "").trim())
+            .filter(Boolean)
+            .join(" ")
+            .toLowerCase();
+
+        return Boolean(
+            text && (
+                text.includes("domain blocked") ||
+                text.includes("blocked for site cloning") ||
+                text.includes("blocked the snapshot request") ||
+                text.includes("blacklist") ||
+                text.includes("site blocked") ||
+                text.includes("not allowed")
+            )
+        );
+    }
+
     function parseUrlGenerationResponse(res: Response, data: any): UrlGenerationResponse {
         const requestId = typeof data?.requestId === "string" && data.requestId.trim() ? data.requestId.trim() : null;
         const urlValue = typeof data?.url === "string" && data.url.trim() ? data.url.trim() : null;
@@ -4419,6 +4452,36 @@ export default function PreviewPage(): JSX.Element {
                             setCurrentAppId(null);
                             setErr("");
                             setShowCreditsPaywall("preview");
+                            return null;
+                        }
+
+                        const blockedDomainSignal = isBlockedUrlScanSignal(parsed.message, parsed.debugDetails, parsed.errorReason, parsed.code, responseWarning?.message, responseWarning?.details, responseWarning?.code);
+
+                        if (parsed.status === 403 && blockedDomainSignal) {
+                            pendingUrlGenerationAppIdRef.current = null;
+                            setPendingCreatedApp(null);
+                            setAppBuilderOpen(false);
+                            setCurrentAppId(null);
+                            setUrlGenerationErrorDetails("");
+                            setUrlGenerationHealthWarning({
+                                url: parsed.url || url,
+                                generationFormat: generationType,
+                                blocking: true,
+                                code: parsed.code || responseWarning?.code || "BLOCKED_URL",
+                                message: parsed.message || responseWarning?.message || "This domain is blocked for site cloning.",
+                                details: parsed.debugDetails || responseWarning?.details || parsed.errorReason || null,
+                                action: responseWarning?.action && !String(responseWarning.action).toLowerCase().includes("rescan") ? responseWarning.action : null,
+                                retryable: false,
+                                warnings: [
+                                    {
+                                        code: parsed.code || responseWarning?.code || "BLOCKED_URL",
+                                        message: parsed.message || responseWarning?.message || "This domain is blocked for site cloning.",
+                                        severity: "error",
+                                        rescanRecommended: false,
+                                    },
+                                ],
+                            });
+                            setErr(parsed.message || responseWarning?.message || "This domain is blocked for site cloning.");
                             return null;
                         }
 
@@ -5851,6 +5914,7 @@ export default function PreviewPage(): JSX.Element {
                             (typeof payload?.error === "string" && payload.error.trim())
                                 ? payload.error.trim()
                                 : "";
+                        const backendReason = String(payload?.reason || payload?.code || payload?.warningMessage || payload?.warningAction || "").trim();
                         setCaptureIssueDetails(
                             [
                                 `Backend returned HTTP ${res.status}${serverError ? `: ${serverError}` : ""}.`,
@@ -5859,7 +5923,7 @@ export default function PreviewPage(): JSX.Element {
                             ].join(" "),
                         );
                         const backendCode = String(payload?.code || payload?.backendCode || "").toUpperCase();
-                        const looksBlocked = /blocked the snapshot request|site blocked|blocked/i.test(serverError);
+                        const looksBlocked = isBlockedUrlScanSignal(serverError, backendReason, payload?.message, payload?.details) || /blocked the snapshot request|site blocked|blocked/i.test(serverError);
                         const looksCrossDomainRedirect =
                             res.status === 422 ||
                             backendCode === "CROSS_DOMAIN_REDIRECT" ||
@@ -5871,6 +5935,24 @@ export default function PreviewPage(): JSX.Element {
                                     ? "This URL failed to process. Please try again."
                                     : "Sorry, we were not able to process this URL. Please ensure it is accessible before trying again.";
                         clearUrlScanQueuedState(target, uiError);
+                        if (looksBlocked) {
+                            setUrlGenerationHealthWarning({
+                                url: target,
+                                generationFormat: "nextjs",
+                                blocking: true,
+                                code: backendCode || String(payload?.code || "BLOCKED_URL").toUpperCase(),
+                                message: serverError || backendReason || "This domain is blocked for site cloning.",
+                                details: payload?.details || backendReason || serverError || null,
+                                action: null,
+                                retryable: false,
+                                warnings: [{
+                                    code: backendCode || String(payload?.code || "BLOCKED_URL").toUpperCase(),
+                                    message: serverError || backendReason || "This domain is blocked for site cloning.",
+                                    severity: "error",
+                                    rescanRecommended: false,
+                                }],
+                            });
+                        }
                         captureLockMinUntilRef.current = 0;
                         setCaptureLockUrl(null);
                         captureLockStartedAtRef.current = 0;
@@ -5881,10 +5963,13 @@ export default function PreviewPage(): JSX.Element {
                                 : looksCrossDomainRedirect
                                     ? "This URL redirected to a different domain and was stopped for safety. Please use the final destination URL directly."
                                     : looksBlocked
-                                        ? "This site blocked the snapshot request. Try a different URL or a less protected page."
+                                        ? (serverError || backendReason || "This domain is blocked for site cloning.")
                                         : (serverError || uiError);
                         if (nextUiError !== uiError) {
                             setErr(nextUiError);
+                        }
+                        if (looksBlocked) {
+                            setCaptureIssueNotice("URL scan issue detected.");
                         }
                         if (creditLimitResponse) {
                             setShowCreditsPaywall("screenshot");
@@ -6513,6 +6598,15 @@ export default function PreviewPage(): JSX.Element {
     }, [targetUrl, urlGenerationHealthWarning]);
 
     const activeUrlRescanWarning = activeUrlBackendWarning || localUrlGenerationBlockingWarning;
+    const activeUrlIssueIsBlocked = Boolean(
+        activeUrlRescanWarning?.blocking &&
+        isBlockedUrlScanSignal(
+            activeUrlRescanWarning.code,
+            activeUrlRescanWarning.message,
+            activeUrlRescanWarning.action,
+            activeUrlRescanWarning.details,
+        ) || /blocked|blacklist|forbidden/i.test(activeUrlRescanWarning?.code || "")
+    );
 
     const retryCooldownUntil = activeUrlIssueHref ? (retryBackoffByUrl[activeUrlIssueHref]?.until ?? 0) : 0;
 
@@ -6542,6 +6636,16 @@ export default function PreviewPage(): JSX.Element {
         const activeUrlDisplay = activeUrlDoc?.url || activeUrlIssueHref;
 
         if (activeUrlRescanWarning?.blocking) {
+            if (activeUrlIssueIsBlocked) {
+                return (
+                    <div className="space-y-3">
+                        <p className="font-semibold text-red-950">
+                            Domain blocked for site cloning
+                        </p>
+                    </div>
+                );
+            }
+
             return (
                 <div className="space-y-3">
                     <p className="font-semibold text-amber-950">
@@ -10055,27 +10159,43 @@ export default function PreviewPage(): JSX.Element {
         <main className="min-h-screen bg-white notranslate" translate="no">
             {isDev ? (
                 <>
-                    <button
-                        type="button"
-                        onClick={() => setShowDevQuickMenu((v) => !v)}
-                        className="fixed bottom-4 right-4 z-[25000] rounded-full border border-neutral-200 bg-white px-3 py-3 text-left shadow-[0_16px_45px_rgba(15,23,42,0.14)] transition hover:bg-neutral-50 sm:bottom-auto sm:right-3 sm:top-1/2 sm:-translate-y-1/2 sm:rounded-l-2xl sm:rounded-r-none sm:border-r-0"
-                        aria-label="Open dev quick menu"
-                        title="Dev quick menu"
-                    >
-                        <div className="flex items-center gap-2">
-                            <span className="grid h-8 w-8 place-items-center rounded-full bg-[#f55f2a]/10 text-[#f55f2a]">
-                                <Sparkles className="h-4 w-4" />
-                            </span>
-                            <div className="hidden sm:block">
-                                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-500">
-                                    Dev
+                    {showDevQuickMenuLauncher ? (
+                        <div className="fixed bottom-4 right-4 z-[25000] sm:bottom-auto sm:right-3 sm:top-1/2 sm:-translate-y-1/2">
+                            <button
+                                type="button"
+                                onClick={() => setShowDevQuickMenu((v) => !v)}
+                                className="rounded-full border border-neutral-200 bg-white px-3 py-3 text-left shadow-[0_16px_45px_rgba(15,23,42,0.14)] transition hover:bg-neutral-50 sm:rounded-l-2xl sm:rounded-r-none sm:border-r-0"
+                                aria-label="Open dev quick menu"
+                                title="Dev quick menu"
+                            >
+                                <div className="flex items-center gap-2">
+                                    <span className="grid h-8 w-8 place-items-center rounded-full bg-[#f55f2a]/10 text-[#f55f2a]">
+                                        <Sparkles className="h-4 w-4" />
+                                    </span>
+                                    <div className="hidden sm:block">
+                                        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-500">
+                                            Dev
+                                        </div>
+                                        <div className="text-sm font-semibold text-neutral-800">
+                                            Quick Tests
+                                        </div>
+                                    </div>
                                 </div>
-                                <div className="text-sm font-semibold text-neutral-800">
-                                    Quick Tests
-                                </div>
-                            </div>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setShowDevQuickMenu(false);
+                                    setShowDevQuickMenuLauncher(false);
+                                }}
+                                className="absolute -right-2 -top-2 inline-flex h-6 w-6 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-500 shadow-sm transition hover:bg-neutral-50 hover:text-neutral-800"
+                                aria-label="Dismiss dev quick tests launcher"
+                                title="Dismiss"
+                            >
+                                <X className="h-3.5 w-3.5" />
+                            </button>
                         </div>
-                    </button>
+                    ) : null}
 
                     <AnimatePresence>
                         {showDevQuickMenu ? (
@@ -10319,6 +10439,21 @@ export default function PreviewPage(): JSX.Element {
                                             }
                                             : u;
                                         const rowBackendWarning = extractUrlRescanWarning(rowStatusSource);
+                                        const rowBlockedSignal = isBlockedUrlScanSignal(
+                                            rowBackendWarning?.code,
+                                            rowBackendWarning?.message,
+                                            rowBackendWarning?.action,
+                                            rowBackendWarning?.details,
+                                            rowStatusSource?.lastError,
+                                            rowStatusSource?.errorReason,
+                                            rowStatusSource?.errorMessage,
+                                            rowStatusSource?.message,
+                                            rowStatusSource?.warningMessage,
+                                        );
+                                        const rowBackendWarningIsBlocked = Boolean(
+                                            rowBlockedSignal ||
+                                            (isSelectedTargetRow && activeUrlIssueIsBlocked)
+                                        );
                                         const statusUi = normalizeUrlStatus(
                                             rowStatusSource?.status,
                                             getUrlArtifactCount(rowStatusSource),
@@ -10367,6 +10502,15 @@ export default function PreviewPage(): JSX.Element {
                                                         {!isValid ? (
                                                             <span className="ml-2 shrink-0 rounded-full border border-red-200 bg-red-50 px-2 py-0.5 text-[11px] font-medium text-red-700">
                                                                 Invalid
+                                                            </span>
+                                                        ) : rowBackendWarningIsBlocked ? (
+                                                            <span
+                                                                className="ml-2 inline-flex shrink-0 items-center gap-1.5 rounded-full border border-red-300 bg-red-100 px-2.5 py-1 text-[11px] font-semibold text-red-900 shadow-sm"
+                                                                title="This domain is blocked for site cloning"
+                                                                aria-label={`Blocked domain ${u.url}`}
+                                                            >
+                                                                <AlertTriangle className="h-3 w-3" />
+                                                                <span>Blocked</span>
                                                             </span>
                                                         ) : rowBackendWarning?.blocking ? (
                                                             <button
@@ -10430,14 +10574,22 @@ export default function PreviewPage(): JSX.Element {
                 </section>
 
                 {showActiveUrlIssueWarning && activeUrlDoc?.url ? (
-                    <AmberIssueBanner
-                        message="URL scan issue detected"
-                        onDismiss={() => setDismissedUrlIssueCanonical(activeUrlIssueHref || "")}
-                        onRetry={() => retryTrackedUrl(activeUrlDoc?.url || "")}
-                        retryDisabled={retryCooldownActive}
-                        retryLabel={retryLabel}
-                        details={activeUrlIssueDetails}
-                    />
+                    activeUrlIssueIsBlocked ? (
+                        <RedIssueBanner
+                            message={activeUrlRescanWarning?.message || "This domain is blocked for site cloning."}
+                            onDismiss={() => setDismissedUrlIssueCanonical(activeUrlIssueHref || "")}
+                            details={activeUrlIssueDetails}
+                        />
+                    ) : (
+                        <AmberIssueBanner
+                            message="URL scan issue detected"
+                            onDismiss={() => setDismissedUrlIssueCanonical(activeUrlIssueHref || "")}
+                            onRetry={() => retryTrackedUrl(activeUrlDoc?.url || "")}
+                            retryDisabled={retryCooldownActive}
+                            retryLabel={retryLabel}
+                            details={activeUrlIssueDetails}
+                        />
+                    )
                 ) : null}
 
                 {err && isUrlProcessingError && !showActiveUrlIssueWarning ? (
@@ -10672,6 +10824,7 @@ export default function PreviewPage(): JSX.Element {
                                 )}
                                 sourceUrl={targetUrl}
                                 sourceUrlCannotGenerate={activeUrlCannotGenerate || isUrlProcessingError}
+                                sourceUrlIsBlocked={activeUrlIssueIsBlocked}
                                 highlight={shouldHighlightCreateWebsiteCta}
                                 autoOpenNonce={autoOpenGenerateModalNonce}
                                 autoOpenSuccessMessage={autoOpenGenerateSuccessMessage}
