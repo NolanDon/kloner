@@ -5972,7 +5972,7 @@ export default function PreviewPage(): JSX.Element {
                             setErr(nextUiError);
                         }
                         if (looksBlocked) {
-                            setCaptureIssueNotice("URL scan issue detected.");
+                            setCaptureIssueNotice(`Domain blocked for site cloning: ${target}`);
                         }
                         if (creditLimitResponse) {
                             setShowCreditsPaywall("screenshot");
@@ -6006,7 +6006,7 @@ export default function PreviewPage(): JSX.Element {
                                         service: "dashboard-view",
                                         statusCode: res.status,
                                         status: "enqueue_failed",
-                                        message: `Failed to queue URL capture (HTTP ${res.status}).`,
+                                        message: `Failed to queue URL capture for ${target} (HTTP ${res.status}).`,
                                         previewUrl: target,
                                         tags: ["url-capture", "enqueue", "frontend", "error"],
                                     }),
@@ -6374,7 +6374,7 @@ export default function PreviewPage(): JSX.Element {
                         service: "dashboard-view",
                         statusCode: 504,
                         status: "stale",
-                        message: "URL capture entered stale state before completion.",
+                            message: `URL capture for ${targetUrl} entered stale state before completion.`,
                         previewUrl: targetUrl,
                         tags: ["url-capture", "stale", "frontend"],
                     }),
