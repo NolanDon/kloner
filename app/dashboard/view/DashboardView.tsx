@@ -6646,6 +6646,10 @@ export default function PreviewPage(): JSX.Element {
                         <p className="font-semibold text-red-950">
                             Domain blocked for site cloning
                         </p>
+                        <p>
+                            Our system blocks some domains for legal, safety, or policy reasons. This is a hard block,
+                            so there is no retry or rescan available for this URL.
+                        </p>
                     </div>
                 );
             }

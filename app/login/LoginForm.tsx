@@ -398,6 +398,9 @@ export default function LoginPage(): JSX.Element {
     const [pendingUrl, setPendingUrl] = useState<string>("");
     const [pendingPrompt, setPendingPrompt] = useState<string>("");
 
+    const termsAcceptanceError =
+        mode === "signup" && err === "You must accept the Terms and Privacy Policy to create an account.";
+
     useEffect(() => {
         const reason = (search.get("reason") || "").trim().toLowerCase();
         if (reason !== "session_expired") return;
@@ -784,20 +787,20 @@ export default function LoginPage(): JSX.Element {
                                 </div>
 
                                 {mode === "signup" && (
-                                    <div className="mt-2 rounded-2xl border border-neutral-200 bg-neutral-50 px-3 py-2.5">
+                                    <div className={`mt-2 rounded-2xl border px-3 py-2.5 ${termsAcceptanceError ? "border-red-300 bg-red-50/70" : "border-neutral-200 bg-neutral-50"}`}>
                                         <label className="flex items-start gap-2 text-xs text-neutral-700">
                                             <input
                                                 type="checkbox"
                                                 checked={acceptedTerms}
                                                 onChange={(e) => setAcceptedTerms(e.target.checked)}
-                                                className="mt-0.5 h-3.5 w-3.5 rounded border-neutral-300"
+                                                className={`mt-0.5 h-3.5 w-3.5 rounded ${termsAcceptanceError ? "border-red-400 text-[#f55f2a] focus:ring-red-300" : "border-neutral-300"}`}
                                             />
-                                            <span>
+                                            <span className={termsAcceptanceError ? "text-red-800" : ""}>
                                                 I have read and agree to the{" "}
                                                 <a
                                                     href="/terms"
-                                                    className="font-medium underline underline-offset-2"
-                                                    style={{ color: ACCENT }}
+                                                    className={`font-medium underline underline-offset-2 ${termsAcceptanceError ? "text-red-700" : ""}`}
+                                                    style={{ color: termsAcceptanceError ? undefined : ACCENT }}
                                                     target="_blank"
                                                     rel="noreferrer"
                                                 >
@@ -806,8 +809,8 @@ export default function LoginPage(): JSX.Element {
                                                 and{" "}
                                                 <a
                                                     href="/privacy"
-                                                    className="font-medium underline underline-offset-2"
-                                                    style={{ color: ACCENT }}
+                                                    className={`font-medium underline underline-offset-2 ${termsAcceptanceError ? "text-red-700" : ""}`}
+                                                    style={{ color: termsAcceptanceError ? undefined : ACCENT }}
                                                     target="_blank"
                                                     rel="noreferrer"
                                                 >
@@ -816,6 +819,11 @@ export default function LoginPage(): JSX.Element {
                                                 .
                                             </span>
                                         </label>
+                                        {termsAcceptanceError ? (
+                                            <p className="mt-2 text-[11px] font-medium text-red-700">
+                                                Accept the terms to continue.
+                                            </p>
+                                        ) : null}
                                     </div>
                                 )}
 
@@ -857,7 +865,7 @@ export default function LoginPage(): JSX.Element {
                                 {loading ? "Please wait…" : "Continue with Google"}
                             </button>
 
-                            {err ? (
+                            {err && !termsAcceptanceError ? (
                                 <p className="mt-4 rounded-2xl border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">
                                     {err}
                                 </p>
@@ -937,7 +945,7 @@ export default function LoginPage(): JSX.Element {
                                 Build, edit, and launch from one account.
                             </h2>
                             <p className="mt-4 max-w-lg text-sm leading-6 text-white/80 sm:text-base">
-                                Sign in to keep your projects, previews, and credits in sync. New users can create an account in seconds and jump right into the dashboard.
+                                Sign in to keep your projects, previews, and credits in sync. 
                             </p>
 
                             <div className="mt-8 grid gap-3 sm:grid-cols-3">
@@ -947,7 +955,7 @@ export default function LoginPage(): JSX.Element {
                                 </div>
                                 <div className="rounded-3xl border border-white/10 bg-white/10 px-4 py-4 backdrop-blur-md">
                                     <div className="text-[11px] uppercase tracking-[0.18em] text-white/55">Fast</div>
-                                    <div className="mt-2 text-sm font-medium text-white">Resume pending prompts</div>
+                                    <div className="mt-2 text-sm font-medium text-white">Quick renderings</div>
                                 </div>
                                 <div className="rounded-3xl border border-white/10 bg-white/10 px-4 py-4 backdrop-blur-md">
                                     <div className="text-[11px] uppercase tracking-[0.18em] text-white/55">Ready</div>
