@@ -132,6 +132,14 @@ service cloud.firestore {
         }
       }
 
+      match /kloner_draft/{draftId} {
+        allow read, write: if isOwnerOrAdmin(userId);
+      }
+
+      match /kloner_drafts/{draftId} {
+        allow read, write: if isOwnerOrAdmin(userId);
+      }
+
       match /deployments/{deploymentId} {
         allow read: if isSignedIn()
                     && (request.auth.uid == userId || isAdmin());

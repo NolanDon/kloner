@@ -9,7 +9,7 @@ import React, {
     useRef,
     memo,
 } from "react";
-import Image from 'next/image'
+import Image from "next/image";
 import logo from "@/public/images/orange_logo.png";
 import { createPortal, flushSync } from "react-dom";
 import { toast } from "react-hot-toast";
@@ -105,6 +105,8 @@ import { archiveApp } from "@/src/lib/apps";
 import { AnimatePresence, motion } from "framer-motion";
 import TrialSuccessCelebration from "../../../components/TrialSuccessCelebration";
 import SuccessConfetti from "../../../components/tools/SuccessConfetti";
+import KlonerLoader from "@/components/KlonerLoader";
+import { normalizeDashboardDraftRecords, submitDashboardUrlDraft } from "./draftFlow";
 import { extractArchivedPageIdsFromRender, fetchRenderForDeployment, getArchivedRoutesForRender, persistArchivedPageIds, scrubArchivedRoutes, secureHtmlForPreviewIframe, withArchivedPageIds } from "@/components/helpers";
 import { useModal } from "@/components/ui/ModalContext";
 import AppBuilderEditor from "@/components/AppBuilderEditor";
@@ -124,7 +126,7 @@ const CAPTURE_STALE_ALERT_STORAGE_KEY = "dashboardViewCaptureStaleAlertsV1";
 const CAPTURE_STALLED_ALERT_STORAGE_KEY = "dashboardViewCaptureStalledAlertsV1";
 const URL_SCAN_RETRY_BACKOFF_STORAGE_KEY = "dashboardViewUrlRetryBackoffV1";
 const URL_SCAN_RETRY_BACKOFF_SEQUENCE_MS = [10_000, 20_000, 40_000, 90_000, 180_000, 360_000, 720_000];
-const URL_ADD_SUCCESS_MESSAGE = "Successfully added your URL.";
+const URL_ADD_SUCCESS_MESSAGE = "Your URL has been successfully added!";
 const APP_WIZARD_PROMPT_MAX_CHARS = 2000;
 const FIRST_GEN_TRIAL_OBSERVE_MS = 15 * 1000;
 const FIRST_GEN_TRIAL_SESSION_INTERVAL = 3;
@@ -143,6 +145,7 @@ function getCookieValueSafe(name: string): string | null {
     const match = document.cookie.match(new RegExp(`(?:^|; )${escaped}=([^;]*)`));
     return match ? decodeURIComponent(match[1] || "") : null;
 }
+
 
 function hasAcceptedAppBuilderNecessaryCookies(): boolean {
     if (typeof window === "undefined") return false;
@@ -196,8 +199,6 @@ function isScreenshotCreditLimitResponse(status: number, payload: any): boolean 
 
 function markBillingSuccessShown(): void {
     if (typeof window === "undefined" || typeof document === "undefined") return;
-    const secure = window.location.protocol === "https:" ? "; Secure" : "";
-    document.cookie = `${BILLING_SUCCESS_COOKIE}=${Date.now()}; Path=/; Max-Age=${BILLING_SUCCESS_COOKIE_MAX_AGE_SEC}; SameSite=Lax${secure}`;
 }
 
 function shouldShowTrialPromptForSession(storageKey: string, everyNthSession: number): boolean {
@@ -475,7 +476,132 @@ function extractUrlRescanWarning(source: any): UrlRescanWarningState | null {
         message,
         details,
         action,
-        retryable: retryableValue,
+        retryable: retryableValue === true ? true : needsRescan ? true : null,
+    };
+}
+
+type AppCardIssueState = {
+    code: string | null;
+    message: string;
+    details: string | null;
+    action: string | null;
+    retryable: boolean;
+    blocked: boolean;
+};
+
+function extractAppCardIssueState(source: any): AppCardIssueState | null {
+    if (!source || typeof source !== "object") return null;
+
+    const warnings = (Array.isArray(source.warnings) ? (source.warnings as Array<Record<string, any>>) : [])
+        .filter((item) => !!item && typeof item === "object");
+    const primaryWarning = warnings[0] || null;
+    const archiveHealth = source.archiveHealth && typeof source.archiveHealth === "object" ? source.archiveHealth : null;
+    const warning = extractUrlRescanWarning({
+        ...source,
+        warning: source.warning && typeof source.warning === "object" ? source.warning : primaryWarning,
+        archiveHealth,
+    });
+
+    const codeCandidates = [
+        warning?.code,
+        source.warningCode,
+        source.errorCode,
+        source.errorReason,
+        source.code,
+        primaryWarning?.code,
+        primaryWarning?.warningCode,
+        archiveHealth?.warningCode,
+        archiveHealth?.errorCode,
+        archiveHealth?.errorReason,
+    ];
+    const rawCode = codeCandidates.map((value) => String(value || "").trim()).find(Boolean) || null;
+
+    const messageCandidates = [
+        warning?.message,
+        source.warningMessage,
+        source.userMessage,
+        source.message,
+        source.errorMessage,
+        source.errorReason,
+        primaryWarning?.message,
+        primaryWarning?.warningMessage,
+        archiveHealth?.warningMessage,
+        archiveHealth?.userMessage,
+        archiveHealth?.errorReason,
+    ];
+    const rawMessage = messageCandidates.map((value) => String(value || "").trim()).find(Boolean) || "";
+
+    const detailsCandidates = [
+        warning?.details,
+        source.details,
+        primaryWarning?.details,
+        archiveHealth?.details,
+    ];
+    const rawDetails = detailsCandidates.map((value) => stringifyWarningDetails(value)).find(Boolean) || null;
+
+    const actionCandidates = [
+        warning?.action,
+        source.warningAction,
+        source.warning_action,
+        primaryWarning?.warningAction,
+        archiveHealth?.warningAction,
+    ];
+    const rawAction = actionCandidates.map((value) => String(value || "").trim()).find(Boolean) || null;
+
+    const blockedText = [
+        rawCode,
+        rawMessage,
+        rawDetails,
+        rawAction,
+        source.warningAction,
+        source.errorCode,
+        source.errorReason,
+        source.userMessage,
+        primaryWarning?.severity,
+        primaryWarning?.message,
+        primaryWarning?.code,
+    ]
+        .map((part) => String(part || "").trim())
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+    const blocked = Boolean(
+        blockedText && (
+            blockedText.includes("domain blocked") ||
+            blockedText.includes("blocked for site cloning") ||
+            blockedText.includes("blocked the snapshot request") ||
+            blockedText.includes("blacklist") ||
+            blockedText.includes("site blocked") ||
+            blockedText.includes("not allowed") ||
+            String(primaryWarning?.severity || "").toLowerCase() === "error"
+        )
+    );
+
+    const retryable = !blocked && Boolean(
+        warning?.retryable === true ||
+        source.retryable === true ||
+        source.rescanRecommended === true ||
+        source.needsRescan === true ||
+        source.generation?.retryable === true ||
+        source.generation?.needsRescan === true ||
+        archiveHealth?.retryable === true ||
+        primaryWarning?.retryable === true ||
+        primaryWarning?.rescanRecommended === true ||
+        String(rawAction || "").toLowerCase().includes("rescan") ||
+        String(rawCode || "").toLowerCase().includes("rescan")
+    );
+
+    if (!warning && !blocked && !retryable && !rawMessage && !rawDetails) {
+        return null;
+    }
+
+    return {
+        code: rawCode,
+        message: rawMessage,
+        details: rawDetails,
+        action: rawAction,
+        retryable,
+        blocked,
     };
 }
 
@@ -655,6 +781,20 @@ function truncateMiddle(value: string, maxLen = 72): string {
     return `${text.slice(0, head)}...${text.slice(text.length - tail)}`;
 }
 
+function formatUrlOriginLabel(rawUrl: string): string {
+    const raw = String(rawUrl || "").trim();
+    if (!raw) return "";
+
+    try {
+        const parsed = new URL(raw);
+        return truncateMiddle(parsed.origin.replace(/\/$/, ""), 44);
+    } catch {
+        const stripped = raw.replace(/^https?:\/\//i, "").replace(/\/$/, "");
+        const originOnly = stripped.split(/[/?#]/, 1)[0] || stripped;
+        return truncateMiddle(originOnly, 44);
+    }
+}
+
 type AmberIssueBannerProps = {
     message: string;
     onDismiss: () => void;
@@ -662,11 +802,23 @@ type AmberIssueBannerProps = {
     retryDisabled?: boolean;
     retryLabel?: string;
     details?: React.ReactNode;
+    linkHref?: string | null;
+    linkLabel?: string | null;
 };
 
-function AmberIssueBanner({ message, onDismiss, onRetry, retryDisabled = false, retryLabel = "Retry", details }: AmberIssueBannerProps) {
+function AmberIssueBanner({
+    message,
+    onDismiss,
+    onRetry,
+    retryDisabled = false,
+    retryLabel = "Retry",
+    details,
+    linkHref,
+    linkLabel,
+}: AmberIssueBannerProps) {
     const [showDetails, setShowDetails] = useState(false);
     const hasDetails = details != null && !(typeof details === "string" && details.trim().length === 0);
+    const hasLink = Boolean(linkHref && linkLabel);
 
     return (
         <motion.div
@@ -675,14 +827,26 @@ function AmberIssueBanner({ message, onDismiss, onRetry, retryDisabled = false, 
             transition={{ type: "spring", stiffness: 700, damping: 28, mass: 0.55 }}
             className="relative mt-3 overflow-hidden rounded-3xl border border-amber-300/80 bg-amber-50/95 px-4 py-3 text-xs text-amber-950 shadow-[0_14px_34px_rgba(180,108,17,0.10)] sm:pr-14"
         >
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:gap-3">
-                <div className="flex min-w-0 flex-1 items-start gap-2 text-left sm:pt-0.5">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+                <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2 text-left">
                     <MessageCircleWarning className="h-4 w-4 shrink-0 text-amber-700" />
-                    <span className="min-w-0 flex-1 whitespace-normal break-words font-semibold leading-5 text-amber-950 sm:whitespace-nowrap">
+                    <span className="min-w-0 whitespace-normal break-words font-semibold leading-5 text-amber-950 sm:whitespace-nowrap sm:leading-6">
                         {message}
                     </span>
+                    {hasLink ? (
+                        <a
+                            href={linkHref || "#"}
+                            target="_blank"
+                            rel="noopener noreferrer nofollow"
+                            className="inline-flex max-w-full items-center gap-1 font-semibold text-amber-900 underline decoration-amber-400 decoration-1 underline-offset-2 transition hover:text-amber-950"
+                            title={linkLabel || linkHref || "Open URL"}
+                        >
+                            <span className="max-w-full truncate">{linkLabel}</span>
+                            <ExternalLink className="h-3 w-3 shrink-0" />
+                        </a>
+                    ) : null}
                 </div>
-                <div className="flex flex-wrap items-center gap-2 sm:ml-auto sm:flex-nowrap sm:justify-end sm:gap-3 sm:pt-0.5 sm:pr-8">
+                <div className="flex flex-wrap items-center gap-2 sm:ml-auto sm:flex-nowrap sm:justify-end sm:gap-3 sm:pr-8">
                     {onRetry ? (
                         <button
                             type="button"
@@ -711,7 +875,7 @@ function AmberIssueBanner({ message, onDismiss, onRetry, retryDisabled = false, 
                 </div>
             </div>
             {showDetails && hasDetails ? (
-                <div className="mt-3 rounded-2xl border border-amber-200 bg-white/90 px-3 py-3 text-[11px] leading-6 text-amber-900 shadow-sm sm:text-xs">
+                <div className="mt-3 rounded-2xl border border-amber-200/80 bg-amber-100/60 px-3 py-3 text-[11px] leading-6 text-amber-950 shadow-sm sm:text-xs">
                     {details}
                 </div>
             ) : null}
@@ -745,15 +909,15 @@ function RedIssueBanner({ message, onDismiss, details }: RedIssueBannerProps) {
             transition={{ type: "spring", stiffness: 700, damping: 28, mass: 0.55 }}
             className="relative mt-3 overflow-hidden rounded-3xl border border-red-300/80 bg-red-50/95 px-4 py-3 text-xs text-red-950 shadow-[0_14px_34px_rgba(185,28,28,0.10)] sm:pr-14"
         >
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:gap-3">
-                <div className="flex min-w-0 flex-1 items-start gap-2 text-left sm:pt-0.5">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+                <div className="flex min-w-0 flex-1 items-center gap-2 text-left">
                     <AlertTriangle className="h-4 w-4 shrink-0 text-red-600" />
-                    <span className="min-w-0 flex-1 whitespace-normal break-words font-semibold leading-5 text-red-950 sm:whitespace-nowrap">
+                    <span className="min-w-0 flex-1 whitespace-normal break-words font-semibold leading-5 text-red-950 sm:whitespace-nowrap sm:leading-6">
                         {message}
                     </span>
                 </div>
                 {hasDetails ? (
-                    <div className="flex flex-wrap items-center gap-2 sm:ml-auto sm:flex-nowrap sm:justify-end sm:gap-3 sm:pt-0.5 sm:pr-8">
+                    <div className="flex flex-wrap items-center gap-2 sm:ml-auto sm:flex-nowrap sm:justify-end sm:gap-3 sm:pr-8">
                         <button
                             type="button"
                             onClick={() => setShowDetails((v) => !v)}
@@ -769,7 +933,7 @@ function RedIssueBanner({ message, onDismiss, details }: RedIssueBannerProps) {
                 ) : null}
             </div>
             {showDetails && hasDetails ? (
-                <div className="mt-3 rounded-2xl border border-red-200 bg-white/90 px-3 py-3 text-[11px] leading-6 text-red-900 shadow-sm sm:text-xs">
+                <div className="mt-3 rounded-2xl border border-red-200/80 bg-red-100/60 px-3 py-3 text-[11px] leading-6 text-red-950 shadow-sm sm:text-xs">
                     {details}
                 </div>
             ) : null}
@@ -804,6 +968,8 @@ type MiniDashboardEntryProps = {
     captureStatus?: UrlStatusUi | null;
     captureIssueNotice?: string | null;
     hideCaptureQueueStatus?: boolean;
+    creationBusy?: boolean;
+    queueActive?: boolean;
 };
 
 function MiniDashboardEntry({
@@ -824,13 +990,26 @@ function MiniDashboardEntry({
     captureStatus = null,
     captureIssueNotice = null,
     hideCaptureQueueStatus = false,
+    creationBusy = false,
+    queueActive = false,
 }: MiniDashboardEntryProps) {
     const isCompact = size === "compact";
     const [url, setUrl] = useState("");
     const [busy, setBusy] = useState(false);
+    const [pressingSubmit, setPressingSubmit] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [dismissedCaptureIssueNotice, setDismissedCaptureIssueNotice] = useState(false);
     const inputRef = useRef<HTMLInputElement | null>(null);
+    const submitHoldTimeoutRef = useRef<number | null>(null);
+
+    useEffect(() => {
+        return () => {
+            if (submitHoldTimeoutRef.current) {
+                window.clearTimeout(submitHoldTimeoutRef.current);
+                submitHoldTimeoutRef.current = null;
+            }
+        };
+    }, []);
 
     const isActiveTrial = stripeStatus === "trialing" && !stripeCancelAtPeriodEnd;
     const badgeLabel = isActiveTrial ? "trialing" : planLabel;
@@ -847,15 +1026,18 @@ function MiniDashboardEntry({
         : "text-[9px] font-semibold uppercase tracking-wide text-accent";
     const showQueuedScanStatus =
         !hideCaptureQueueStatus &&
-        (busy || captureStatus === "queued" || captureStatus === "processing");
-    const isSubmissionDisabled = disabled || busy || showQueuedScanStatus;
+        (busy || pressingSubmit || creationBusy || queueActive);
+    const isSubmissionDisabled = disabled || busy || creationBusy || queueActive;
+    const isSubmissionVisuallyLocked = disabled || busy || pressingSubmit || creationBusy || queueActive;
 
     async function handleSubmit(e: React.FormEvent) {
         e.preventDefault();
-        if (busy || isSubmissionDisabled) return;
+        if (busy || disabled) return;
 
         setError(null);
         setBusy(true);
+        setPressingSubmit(true);
+        const startedAt = Date.now();
         try {
             const v = (url || "").trim();
             if (!v) {
@@ -869,9 +1051,32 @@ function MiniDashboardEntry({
             }
             await Promise.resolve(onSubmitUrl(normalized));
         } finally {
-            setBusy(false);
+            const minBusyMs = 2400;
+            const elapsed = Date.now() - startedAt;
+            const finish = () => {
+                setBusy(false);
+                setPressingSubmit(false);
+                submitHoldTimeoutRef.current = null;
+            };
+
+            if (elapsed < minBusyMs) {
+                if (submitHoldTimeoutRef.current) {
+                    window.clearTimeout(submitHoldTimeoutRef.current);
+                }
+                submitHoldTimeoutRef.current = window.setTimeout(finish, minBusyMs - elapsed);
+            } else {
+                finish();
+            }
         }
     }
+
+    const handleSubmitPointerDown = useCallback(() => {
+        if (disabled || busy || pressingSubmit) return;
+        const v = (url || "").trim();
+        if (!v) return;
+        setError(null);
+        setPressingSubmit(true);
+    }, [busy, disabled, pressingSubmit, url]);
 
     return (
         <div
@@ -1016,7 +1221,13 @@ function MiniDashboardEntry({
                     <button
                         type="submit"
                         disabled={isSubmissionDisabled || !url.trim()}
-                        className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-white transition-all active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed px-0 md:h-full md:w-auto md:px-10"
+                        onMouseDown={handleSubmitPointerDown}
+                        className={
+                            "grid h-8 w-8 shrink-0 place-items-center rounded-full text-white transition-all active:scale-95 px-0 md:h-full md:w-auto md:px-10 " +
+                            (isSubmissionVisuallyLocked || !url.trim()
+                                ? "opacity-60 cursor-not-allowed"
+                                : "")
+                        }
                         style={{ backgroundColor: ACCENT }}
                         aria-label="Preview from URL"
                     >
@@ -1024,14 +1235,14 @@ function MiniDashboardEntry({
                             <>
                                 <Loader2 className="h-4 w-4 animate-spin" />
                                 <span className="sr-only">
-                                    {captureStatus === "queued" ? "Queued" : "Processing"}
+                                    {creationBusy || pressingSubmit ? "Cloning" : queueActive && captureStatus === "queued" ? "Queued" : "Processing"}
                                 </span>
                             </>
                         ) : (
                             <>
                                 <ArrowRightSquare className="h-4 w-4 md:hidden" />
-                                <span className="hidden md:inline">Add URL</span>
-                                <span className="sr-only">Add URL</span>
+                                <span className="hidden md:inline">Clone</span>
+                                <span className="sr-only">Clone</span>
                             </>
                         )}
                     </button>
@@ -1490,7 +1701,6 @@ function RenderCardInner({
         const finalName = raw;
 
         setShareBusy(true);
-        setShareError(null);
 
         try {
             const res = await fetch("/api/gallery/share", {
@@ -2200,6 +2410,11 @@ function AppCard({
     isDeleting,
     isArchiving,
     isPendingCreation,
+    pendingRetryable = false,
+    pendingStale = false,
+    onRetryPendingCreation,
+    onRetryAppIssue,
+    onClearPendingCreation,
     disableActions,
     accessLocked,
     onCustomize,
@@ -2207,11 +2422,18 @@ function AppCard({
     onRename,
     onDeploy,
     onDelete,
+    onDeleteDraft,
+    onPromoteDraft,
 }: {
-    app: { id: string; name: string; createdAt: any; updatedAt: any; isDeployed?: boolean; productionUrl?: string | null; lastDeployUrl?: string | null };
+    app: { id: string; name: string; createdAt: any; updatedAt: any; isDeployed?: boolean; productionUrl?: string | null; lastDeployUrl?: string | null; pendingCompleted?: boolean };
     isDeleting: boolean;
     isArchiving: boolean;
     isPendingCreation: boolean;
+    pendingRetryable?: boolean;
+    pendingStale?: boolean;
+    onRetryPendingCreation?: () => void;
+    onRetryAppIssue?: (app: { id: string; url?: string | null; sourceUrl?: string | null }) => void;
+    onClearPendingCreation?: () => void;
     disableActions: boolean;
     accessLocked: boolean;
     onCustomize: (appId: string) => void;
@@ -2219,11 +2441,45 @@ function AppCard({
     onRename: (appId: string, name: string) => Promise<void>;
     onDeploy: (app: { id: string; name: string }) => void;
     onDelete: (appId: string) => void;
+    onDeleteDraft?: (draft: { draftId: string; id: string }) => void;
+    onPromoteDraft?: (draft: { draftId: string; id: string; name: string; createdAt: any; sourceUrl?: string | null }) => void;
 }) {
     const router = useRouter();
     const showVersionBadge = process.env.NODE_ENV !== "production";
 
     const isDeployedFlag = Boolean((app as any)?.isDeployed) || Boolean((app as any)?.productionUrl) || Boolean((app as any)?.lastDeployUrl);
+    const isPendingCompleted = Boolean((app as any)?.pendingCompleted);
+    const isDraftCard = Boolean((app as any)?.draftId);
+    const appIssue = useMemo(() => extractAppCardIssueState(app as any), [app]);
+    const appIssueIsBlocked = Boolean(appIssue?.blocked);
+    const appIssueIsRetryable = Boolean(appIssue && !appIssueIsBlocked && appIssue.retryable);
+    const pendingIssue = isPendingCreation ? appIssue : null;
+    const draftIssue = isDraftCard ? appIssue : null;
+    const draftIssueIsBlocked = Boolean(draftIssue?.blocked);
+    const draftIssueIsRetryable = Boolean(draftIssue && !draftIssueIsBlocked && draftIssue.retryable);
+    const pendingIssueIsBlocked = Boolean(pendingIssue?.blocked);
+    const pendingIssueIsRetryable = Boolean(pendingIssue && !pendingIssueIsBlocked && pendingIssue.retryable);
+    const draftId = String((app as any)?.draftId || "").trim();
+    const isDraftRetryLoading = isDraftCard && isPendingCreation;
+    const isDraftFreshLoading = isDraftCard && isPendingCreation && !draftIssue;
+    const isBrokenDraftCard = isDraftCard && Boolean(draftIssue || draftIssueIsRetryable);
+    const draftIssueDetails = draftIssue
+        ? (() => {
+            const raw = String(
+                draftIssue.message ||
+                draftIssue.details ||
+                (draftIssueIsBlocked ? "Site blocked" : "Scan issue")
+            ).trim();
+            if (!raw) return draftIssueIsBlocked ? "Site blocked" : "Draft needs attention";
+
+            const looksGenericProgress = /generation started|check back later|processing your url|creating site/i.test(raw);
+            if (!looksGenericProgress) return raw;
+
+            if (draftIssueIsBlocked) return "Site blocked";
+            if (draftIssueIsRetryable) return "This draft needs a retry.";
+            return "This draft has an issue.";
+        })()
+        : "";
     const rawAppDisplayName = String(app.name || app.id.slice(0, 10)).trim();
     const appDisplayName = rawAppDisplayName.replace(/^Clone of\s+/i, "").trim() || rawAppDisplayName;
     const appBadgeLabel = useMemo(() => {
@@ -2263,16 +2519,193 @@ function AppCard({
         <div className="group relative mx-auto w-full max-w-[240px] px-2 pt-2 pb-4 sm:pb-5">
             <div className="flex flex-col items-center gap-4 text-center">
                 <div className="flex w-full items-center justify-center pt-8">
-                    <div
-                        className={isPendingCreation
-                            ? "grid h-36 w-36 place-items-center rounded-[2.6rem] border border-dashed border-neutral-300 bg-neutral-100 text-neutral-400 shadow-[0_10px_20px_rgba(15,23,42,0.06)] transition-all duration-300 ease-out"
-                            : "grid h-36 w-36 place-items-center rounded-[2.6rem] bg-gradient-to-br from-[#f55f2a] via-[#ff6f3d] to-[#ff986e] text-[48px] font-black text-white shadow-[0_10px_20px_rgba(245,95,42,0.10)] transition-all duration-300 ease-out group-hover:scale-[1.14] group-hover:shadow-[0_14px_26px_rgba(245,95,42,0.12)]"
-                        }
-                        style={{ fontFamily: "ui-rounded, 'SF Pro Rounded', 'Avenir Next Rounded', 'Trebuchet MS', sans-serif" }}
-                        title={appDisplayName || "App"}
-                    >
-                        {isPendingCreation ? <LayoutGrid className="h-12 w-12" /> : appBadgeLabel}
-                    </div>
+                    {isDraftRetryLoading ? (
+                        <div className="relative">
+                            <div
+                                className="grid h-36 w-36 place-items-center rounded-[2.6rem] border border-dashed border-neutral-200 bg-neutral-100 text-neutral-400 shadow-[0_10px_20px_rgba(15,23,42,0.06)] transition-all duration-300 ease-out"
+                                style={{ fontFamily: "ui-rounded, 'SF Pro Rounded', 'Avenir Next Rounded', 'Trebuchet MS', sans-serif" }}
+                                title={appDisplayName || "Draft"}
+                            >
+                                <KlonerLoader icon />
+                            </div>
+                        </div>
+                    ) : isDraftCard ? (
+                        <div className="relative">
+                            <div
+                                className="group/draft-icon relative grid h-36 w-36 place-items-center rounded-[2.6rem] border border-neutral-200 bg-neutral-100 text-neutral-500 shadow-[0_10px_20px_rgba(15,23,42,0.06)] transition-all duration-300 ease-out hover:scale-[1.14] hover:shadow-[0_14px_26px_rgba(15,23,42,0.08)]"
+                                style={{ fontFamily: "ui-rounded, 'SF Pro Rounded', 'Avenir Next Rounded', 'Trebuchet MS', sans-serif" }}
+                                title={appDisplayName || "Draft"}
+                            >
+                                <span className="transition-opacity duration-150 group-hover/draft-icon:opacity-0 group-focus-visible/draft-icon:opacity-0">
+                                    <LayoutGrid className="h-14 w-14" />
+                                </span>
+                                {draftIssueIsRetryable && onRetryPendingCreation ? (
+                                    <button
+                                        type="button"
+                                        onClick={onRetryPendingCreation}
+                                        className="absolute inset-0 grid place-items-center rounded-[2.6rem] border border-neutral-200 bg-transparent text-neutral-800 opacity-0 backdrop-blur-[1px] transition-all duration-200 hover:bg-transparent group-hover/draft-icon:opacity-100 group-focus-visible/draft-icon:opacity-100 group-hover/draft-icon:scale-[1.015] group-focus-visible/draft-icon:scale-[1.015]"
+                                        aria-label="Retry draft"
+                                        title="Retry draft"
+                                    >
+                                        <div className="inline-flex items-center gap-2 rounded-full bg-transparent px-3 py-1.5 text-sm font-semibold text-neutral-800 shadow-none transition-all duration-200 group-hover/draft-icon:scale-[1.08] group-focus-visible/draft-icon:scale-[1.08] hover:bg-transparent">
+                                            <RotateCcw className="h-4 w-4 transition-transform duration-200 group-hover/draft-icon:rotate-[-10deg] group-focus-visible/draft-icon:rotate-[-10deg]" />
+                                            <span>Retry</span>
+                                        </div>
+                                    </button>
+                                ) : !draftIssue ? (
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            if (disableActions || isPendingCreation || isBrokenDraftCard) return;
+                                            onPromoteDraft?.({
+                                                draftId,
+                                                id: app.id,
+                                                name: app.name,
+                                                createdAt: app.createdAt,
+                                                sourceUrl: (app as any)?.sourceUrl || null,
+                                            });
+                                        }}
+                                        disabled={isDeleting || accessLocked || disableActions || isPendingCreation || isBrokenDraftCard || !onPromoteDraft}
+                                        className="absolute inset-0 grid place-items-center rounded-[2.6rem] border border-neutral-200 bg-transparent text-neutral-800 opacity-0 backdrop-blur-[1px] transition-all duration-200 hover:bg-transparent group-hover/draft-icon:opacity-100 group-focus-visible/draft-icon:opacity-100 group-hover/draft-icon:scale-[1.015] group-focus-visible/draft-icon:scale-[1.015]"
+                                        aria-label="Edit draft"
+                                        title="Edit draft"
+                                    >
+                                        <div className="inline-flex items-center gap-2 rounded-full bg-transparent px-3 py-1.5 text-sm font-semibold text-neutral-800 shadow-none transition-all duration-200 group-hover/draft-icon:scale-[1.08] group-focus-visible/draft-icon:scale-[1.08] hover:bg-transparent">
+                                            <BrushIcon className="h-4 w-4 transition-transform duration-200 group-hover/draft-icon:rotate-[-10deg] group-focus-visible/draft-icon:rotate-[-10deg]" />
+                                            <span>Edit</span>
+                                        </div>
+                                    </button>
+                                ) : null}
+                            </div>
+                            {draftIssue ? (
+                                <span className="group/issue absolute -right-2 -top-2">
+                                    <span
+                                        className={`inline-flex h-9 w-9 items-center justify-center rounded-full border bg-white shadow-sm ${draftIssueIsBlocked ? "border-red-200 text-red-600" : "border-amber-200 text-amber-700"}`}
+                                        title={draftIssueDetails || (draftIssueIsBlocked ? "Site blocked" : "Scan issue")}
+                                    >
+                                        <AlertTriangle className="h-5 w-5" />
+                                    </span>
+                                    {draftIssueDetails ? (
+                                        <span className="pointer-events-none absolute left-1/2 top-full z-10 mt-2 w-max max-w-[14rem] -translate-x-1/2 rounded-lg border border-neutral-200 bg-white px-3 py-2 text-left text-[11px] font-semibold leading-tight text-neutral-800 opacity-0 shadow-lg transition-opacity duration-150 group-hover/issue:opacity-100 group-focus-within/issue:opacity-100">
+                                            {draftIssueDetails}
+                                        </span>
+                                    ) : null}
+                                </span>
+                            ) : null}
+                        </div>
+                    ) : isPendingCreation && !isPendingCompleted ? (
+                        <div className="relative">
+                            <div
+                                className={`grid h-36 w-36 place-items-center rounded-[2.6rem] border border-dashed bg-neutral-100 text-neutral-400 shadow-[0_10px_20px_rgba(15,23,42,0.06)] transition-all duration-300 ease-out ${pendingIssueIsBlocked ? "border-red-300" : pendingIssue ? "border-amber-300" : "border-neutral-300"}`}
+                                style={{ fontFamily: "ui-rounded, 'SF Pro Rounded', 'Avenir Next Rounded', 'Trebuchet MS', sans-serif" }}
+                                title={appDisplayName || "App"}
+                            >
+                                <LayoutGrid className="h-12 w-12" />
+                            </div>
+                            {pendingIssue ? (
+                                <span
+                                    className={`absolute -right-1 -top-1 inline-flex h-8 w-8 items-center justify-center rounded-full border bg-white shadow-sm ${pendingIssueIsBlocked ? "border-red-200 text-red-600" : "border-amber-200 text-amber-700"}`}
+                                    title={pendingIssue.message || (pendingIssueIsBlocked ? "Site blocked" : "Scan issue")}
+                                >
+                                    {pendingIssueIsBlocked ? (
+                                        <AlertTriangle className="h-4 w-4" />
+                                    ) : (
+                                        <MessageCircleWarning className="h-4 w-4" />
+                                    )}
+                                </span>
+                            ) : null}
+                            {pendingIssueIsRetryable && onRetryPendingCreation && !isBrokenDraftCard ? (
+                                <button
+                                    type="button"
+                                    onClick={onRetryPendingCreation}
+                                    className="group absolute inset-0 grid place-items-center rounded-[2.6rem] border border-[rgba(245,95,42,0.30)] bg-[rgba(245,95,42,0.10)] text-neutral-900 shadow-[0_0_0_1px_rgba(245,95,42,0.08)] transition-all duration-200 hover:-translate-y-0.5 hover:border-[rgba(245,95,42,0.58)] hover:bg-[rgba(245,95,42,0.22)] hover:shadow-[0_18px_34px_rgba(245,95,42,0.22)] focus-visible:-translate-y-0.5 focus-visible:border-[rgba(245,95,42,0.58)] focus-visible:bg-[rgba(245,95,42,0.22)] focus-visible:shadow-[0_18px_34px_rgba(245,95,42,0.22)] focus-visible:outline-none"
+                                    aria-label="Retry scan"
+                                    title="Retry scan"
+                                >
+                                    <div className="flex flex-col items-center gap-2 text-center transition-transform duration-200 group-hover:scale-[1.05] group-focus-visible:scale-[1.05]">
+                                        <div className="grid h-14 w-14 place-items-center rounded-full border border-[rgba(245,95,42,0.25)] bg-white text-[#f55f2a] shadow-sm transition-all duration-200 group-hover:border-[rgba(245,95,42,0.52)] group-hover:bg-[rgba(255,246,242,0.96)] group-hover:shadow-lg group-focus-visible:border-[rgba(245,95,42,0.52)] group-focus-visible:bg-[rgba(255,246,242,0.96)] group-focus-visible:shadow-lg">
+                                            <RotateCcw className="h-6 w-6 transition-transform duration-200 group-hover:rotate-[-12deg] group-focus-visible:rotate-[-12deg]" />
+                                        </div>
+                                        <div className="text-sm font-semibold text-neutral-900 transition-colors duration-200 group-hover:text-[#a9441e] group-focus-visible:text-[#a9441e]">
+                                            Retry scan
+                                        </div>
+                                    </div>
+                                </button>
+                            ) : pendingIssue ? (
+                                <div className="pointer-events-none absolute inset-x-0 -bottom-8 flex justify-center px-4">
+                                    <div className="max-w-[14rem] rounded-full border border-amber-200 bg-white px-3 py-1.5 text-[11px] font-semibold leading-tight text-amber-800 shadow-sm">
+                                        {pendingIssue.message || "Scan issue detected"}
+                                    </div>
+                                </div>
+                            ) : null}
+                        </div>
+                    ) : (
+                        <>
+                        <div className="relative">
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    if (disableActions || isBrokenDraftCard) return;
+                                    onCustomize(app.id);
+                                }}
+                                disabled={isDeleting || accessLocked || disableActions || isBrokenDraftCard}
+                                className={`group/icon relative grid h-36 w-36 place-items-center rounded-[2.6rem] bg-gradient-to-br from-[#f55f2a] via-[#ff6f3d] to-[#ff986e] text-[48px] font-black text-white shadow-[0_10px_20px_rgba(245,95,42,0.10)] transition-all duration-300 ease-out hover:scale-[1.14] hover:shadow-[0_14px_26px_rgba(245,95,42,0.12)] disabled:cursor-not-allowed disabled:opacity-60 ${appIssueIsBlocked ? "ring-2 ring-red-300" : appIssue ? "ring-2 ring-amber-300" : ""}`}
+                                style={{ fontFamily: "ui-rounded, 'SF Pro Rounded', 'Avenir Next Rounded', 'Trebuchet MS', sans-serif" }}
+                                title={accessLocked ? "Trial access was cancelled, so this app is locked in the dashboard" : appIssue?.message || "Open app editor"}
+                                aria-label={appIssue?.message || "Open app editor"}
+                            >
+                                <span className="transition-opacity duration-150 group-hover/icon:opacity-0 group-focus-visible/icon:opacity-0">
+                                    {appBadgeLabel}
+                                </span>
+                                {!isBrokenDraftCard ? (
+                                    <span className="pointer-events-none absolute inset-0 flex items-center justify-center gap-2 rounded-[2.6rem] bg-transparent text-[18px] font-semibold tracking-normal opacity-0 transition-opacity duration-150 group-hover/icon:opacity-100 group-focus-visible/icon:opacity-100 text-white">
+                                        <BrushIcon className="h-5 w-5 shrink-0 transition-transform duration-200 group-hover/icon:rotate-[-10deg] group-focus-visible/icon:rotate-[-10deg]" />
+                                        <span className="text-white">Edit</span>
+                                    </span>
+                                ) : null}
+                            </button>
+
+                            {appIssue ? (
+                                appIssueIsRetryable && onRetryAppIssue && !isBrokenDraftCard ? (
+                                    <button
+                                        type="button"
+                                        onClick={() => onRetryAppIssue({ id: app.id, url: (app as any)?.url || null, sourceUrl: (app as any)?.sourceUrl || null })}
+                                        className="absolute -right-2 -top-2 inline-flex items-center gap-1 rounded-full border border-[rgba(245,95,42,0.16)] bg-transparent px-2 py-0.75 text-[10px] font-semibold text-[#a9441e] shadow-none transition-all duration-200 ease-out hover:-translate-y-0.5 hover:border-[rgba(245,95,42,0.34)] hover:bg-transparent hover:text-[#8d3414] hover:shadow-[0_10px_22px_rgba(245,95,42,0.08)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f55f2a]/30"
+                                        title={appIssue.message || "Retry scan"}
+                                        aria-label={appIssue.message || "Retry scan"}
+                                    >
+                                        <RotateCcw className="h-3.5 w-3.5" />
+                                        <span>Retry</span>
+                                    </button>
+                                ) : (
+                                    <span
+                                        className={`absolute -right-1 -top-1 inline-flex h-8 w-8 items-center justify-center rounded-full border bg-white shadow-sm ${appIssueIsBlocked ? "border-red-200 text-red-600" : "border-amber-200 text-amber-700"}`}
+                                        title={appIssue.message || (appIssueIsBlocked ? "Site blocked" : "Scan issue")}
+                                    >
+                                        {appIssueIsBlocked ? (
+                                            <AlertTriangle className="h-4 w-4" />
+                                        ) : (
+                                            <MessageCircleWarning className="h-4 w-4" />
+                                        )}
+                                    </span>
+                                )
+                            ) : null}
+                        </div>
+                        {isPendingCompleted && pendingRetryable ? (
+                            <button
+                                type="button"
+                                onClick={onRetryPendingCreation}
+                                disabled={!onRetryPendingCreation}
+                                className="mt-3 inline-flex items-center gap-1 rounded-full border border-[rgba(245,95,42,0.16)] bg-transparent px-2.5 py-0.5 text-[10px] font-semibold text-[#a9441e] shadow-none transition-all duration-200 ease-out hover:-translate-y-0.5 hover:border-[rgba(245,95,42,0.34)] hover:bg-transparent hover:text-[#8d3414] hover:shadow-[0_10px_22px_rgba(245,95,42,0.08)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f55f2a]/30 disabled:cursor-not-allowed disabled:opacity-60"
+                                title="Retry scan"
+                                aria-label="Retry scan"
+                            >
+                                <RotateCcw className="h-3.5 w-3.5" />
+                                Retry scan
+                            </button>
+                        ) : null}
+                        </>
+                    )}
                 </div>
 
                 <div className="mt-1 flex w-full items-center justify-center gap-2 px-1">
@@ -2322,155 +2755,243 @@ function AppCard({
                             </button>
                         </div>
                     ) : (
-                        <>
-                            <div className="group/rename relative flex w-full items-center justify-center px-8 text-center">
-                                <div className="w-full truncate text-[15px] font-medium leading-tight text-neutral-900" title={appDisplayName || "App"}>
-                                    {appDisplayName || "App"}
-                                </div>
-                                {isPendingCreation ? (
-                                    <div className="absolute right-0 inline-flex h-7 w-7 items-center justify-center rounded-full border border-neutral-200 bg-neutral-100 text-neutral-500 shadow-sm">
-                                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                    </div>
-                                ) : (
-                                    <button
-                                        type="button"
-                                        onClick={() => setIsEditingName(true)}
-                                        className="absolute right-0 inline-flex h-7 w-7 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-600 shadow-sm transition-all duration-150 hover:bg-neutral-50 md:opacity-0 md:group-hover/rename:opacity-100 md:group-focus-within/rename:opacity-100"
-                                        aria-label="Edit app name"
-                                        title="Edit"
-                                    >
-                                        <Edit2 className="h-3 w-3" />
-                                    </button>
-                                )}
+                        <div className="group/rename relative flex w-full items-center justify-center px-0 text-center">
+                            <div
+                                className="min-w-0 w-full max-w-none px-10 text-[15px] font-medium leading-tight text-neutral-900"
+                                style={{
+                                    display: "-webkit-box",
+                                    WebkitBoxOrient: "vertical",
+                                    WebkitLineClamp: 2,
+                                    overflow: "hidden",
+                                    whiteSpace: "normal",
+                                    wordBreak: "break-word",
+                                }}
+                                title={appDisplayName || "App"}
+                            >
+                                {appDisplayName || "App"}
                             </div>
-                        </>
+                            <button
+                                type="button"
+                                onClick={() => setIsEditingName(true)}
+                                disabled={disableActions || isPendingCreation}
+                                className="absolute right-0 inline-flex h-7 w-7 items-center justify-center rounded-full border border-neutral-200 bg-white/80 text-neutral-700 opacity-0 shadow-sm backdrop-blur-md transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-white hover:text-neutral-900 hover:shadow-[0_10px_24px_rgba(15,23,42,0.12)] group-hover/rename:opacity-100 group-hover/rename:pointer-events-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f55f2a]/30 disabled:cursor-not-allowed disabled:opacity-50"
+                                aria-label="Edit website name"
+                                title="Edit name"
+                            >
+                                <Edit2 className="h-3.5 w-3.5" />
+                            </button>
+                        </div>
                     )}
                 </div>
 
                 {isPendingCreation ? (
-                    <div className="inline-flex items-center gap-1.5 rounded-full border border-neutral-200 bg-neutral-100 px-3 py-1 text-[11px] font-semibold text-neutral-600">
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        Creating app…
-                    </div>
+                    !isPendingCompleted ? (
+                        pendingRetryable ? (
+                            <div className="inline-flex items-center gap-1.5 rounded-2xl border border-[rgba(245,95,42,0.18)] bg-[rgba(245,95,42,0.08)] px-3.5 py-2 text-[11px] font-semibold text-[#a9441e]">
+                                <AlertTriangle className="h-3.5 w-3.5" />
+                                Retry scan
+                            </div>
+                        ) : pendingStale ? (
+                            <div className="inline-flex items-center gap-1.5 rounded-2xl border border-red-200 bg-red-50 px-3.5 py-2 text-[11px] font-semibold text-red-700">
+                                <AlertTriangle className="h-3.5 w-3.5" />
+                                Stale scan - retry needed
+                            </div>
+                        ) : null
+                    ) : null
                 ) : null}
 
-                <div className="mt-2 grid w-full grid-cols-4 gap-1.5 sm:mt-3 sm:gap-2">
-                    <div
-                        className="relative flex justify-center transition-all duration-500 ease-out md:translate-y-3 md:scale-90 md:opacity-0 md:pointer-events-none md:blur-[1px] md:group-hover:translate-y-0 md:group-hover:scale-100 md:group-hover:opacity-100 md:group-hover:pointer-events-auto md:group-hover:blur-0"
-                        style={{ transitionDelay: "0ms" }}
-                    >
-                        <span className="pointer-events-none absolute -bottom-6 left-1/2 -translate-x-1/2 whitespace-nowrap text-[10px] font-medium text-neutral-800 opacity-100 transition-opacity duration-150 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
-                            {isDeployedFlag ? "Deploy" : "Deploy"}
-                        </span>
-                        <button
-                            type="button"
-                            onClick={() => {
-                                if (disableActions || isPendingCreation) return;
-                                if (isDeployedFlag) {
-                                    router.push("/dashboard/deployments");
-                                    return;
-                                }
-                                onDeploy({ id: app.id, name: app.name });
-                            }}
-                            disabled={isDeleting || isArchiving || accessLocked || disableActions || isPendingCreation}
-                            className={`inline-flex h-8 w-8 items-center justify-center rounded-2xl border text-neutral-800 shadow-sm transition-all duration-300 ease-out disabled:opacity-60 ${isDeployedFlag
-                                ? "border-emerald-200 bg-emerald-500 text-white hover:bg-green-700"
-                                : "border-transparent bg-accent text-white hover:bg-accent/90"
-                                }`}
-                            title={
-                                isPendingCreation
-                                    ? "This app is still being created"
-                                    : accessLocked
-                                    ? "Trial access was cancelled, so this app is locked in the dashboard"
-                                    : isDeployedFlag
-                                        ? "View and manage deployments"
-                                        : "Deploy this app to Vercel"
-                            }
-                            aria-label={isDeployedFlag ? "View deployments" : "Deploy app"}
-                        >
-                            {isDeployedFlag ? (
-                                <ExternalLink className="h-3.5 w-3.5 shrink-0" />
-                            ) : (
-                                <Rocket className="h-3.5 w-3.5 shrink-0 transform transition-transform duration-150 group-hover:-translate-y-0.5" />
-                            )}
-                        </button>
-                    </div>
+                <div className={`mt-2 grid w-full gap-1 sm:mt-3 sm:gap-1.5 ${isDraftCard ? "grid-cols-3" : "grid-cols-4"}`}>
+                    {isDraftCard ? (
+                        <>
+                            <div className="relative flex justify-center transition-all duration-500 ease-out">
+                                <span className="pointer-events-none absolute -bottom-6 left-1/2 -translate-x-1/2 whitespace-nowrap text-[10px] font-medium text-neutral-800 opacity-100 transition-opacity duration-150 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
+                                    Edit
+                                </span>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        if (disableActions || isPendingCreation || isBrokenDraftCard) return;
+                                        onPromoteDraft?.({
+                                            draftId,
+                                            id: app.id,
+                                            name: app.name,
+                                            createdAt: app.createdAt,
+                                            sourceUrl: (app as any)?.sourceUrl || null,
+                                        });
+                                    }}
+                                    disabled={isDeleting || accessLocked || disableActions || isPendingCreation || isBrokenDraftCard || !onPromoteDraft}
+                                    aria-label="Edit draft"
+                                    title={
+                                        isPendingCreation
+                                            ? "This draft is still being created"
+                                            : accessLocked
+                                                ? "Trial access was cancelled, so this draft is locked in the dashboard"
+                                                : "Open draft in editor"
+                                    }
+                                    className="inline-flex h-7 w-7 items-center justify-center rounded-2xl border border-neutral-300 bg-transparent text-neutral-800 shadow-none transition-all duration-300 ease-out hover:-translate-y-0.5 hover:border-neutral-400 hover:bg-transparent hover:shadow-[0_10px_24px_rgba(15,23,42,0.08)] active:translate-y-0 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f55f2a]/30 disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                    <BrushIcon className="h-3 w-3 shrink-0 transform transition-transform duration-150 group-hover:-translate-y-0.5 group-active:translate-y-0" />
+                                </button>
+                            </div>
 
-                    <div
-                        className="relative flex justify-center transition-all duration-500 ease-out md:translate-y-3 md:scale-90 md:opacity-0 md:pointer-events-none md:blur-[1px] md:group-hover:translate-y-0 md:group-hover:scale-100 md:group-hover:opacity-100 md:group-hover:pointer-events-auto md:group-hover:blur-0"
-                        style={{ transitionDelay: "120ms" }}
-                    >
-                        <span className="pointer-events-none absolute -bottom-6 left-1/2 -translate-x-1/2 whitespace-nowrap text-[10px] font-medium text-neutral-800 opacity-100 transition-opacity duration-150 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
-                            Edit
-                        </span>
-                        <button
-                            type="button"
-                            onClick={() => {
-                                if (disableActions || isPendingCreation) return;
-                                onCustomize(app.id);
-                            }}
-                            disabled={isDeleting || accessLocked || disableActions || isPendingCreation}
-                            className="inline-flex h-8 w-8 items-center justify-center rounded-2xl border border-neutral-300 bg-white text-neutral-800 shadow-sm transition-all duration-300 ease-out hover:border-neutral-400 disabled:opacity-60"
-                            title={
-                                isPendingCreation
-                                    ? "This app is still being created"
-                                    : accessLocked
-                                    ? "Trial access was cancelled, so this app is locked in the dashboard"
-                                    : "Open app in editor"
-                            }
-                            aria-label="Open app editor"
-                        >
-                            <BrushIcon className="h-3.5 w-3.5 shrink-0 transform transition-transform duration-150 group-hover:-translate-y-0.5" />
-                        </button>
-                    </div>
+                            <div className="relative flex justify-center transition-all duration-500 ease-out">
+                                <span className="pointer-events-none absolute -bottom-6 left-1/2 -translate-x-1/2 whitespace-nowrap text-[10px] font-medium text-neutral-800 opacity-100 transition-opacity duration-150 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
+                                    Archive
+                                </span>
+                                <button
+                                    type="button"
+                                    disabled
+                                    aria-label="Archive draft"
+                                    title="Archive is unavailable for drafts"
+                                    className="inline-flex h-8 w-8 cursor-not-allowed items-center justify-center rounded-2xl border border-neutral-200 bg-white text-neutral-400 shadow-sm opacity-60"
+                                >
+                                    <Archive className="h-3.5 w-3.5" />
+                                </button>
+                            </div>
 
-                    <div
-                        className="relative flex justify-center transition-all duration-500 ease-out md:translate-y-3 md:scale-90 md:opacity-0 md:pointer-events-none md:blur-[1px] md:group-hover:translate-y-0 md:group-hover:scale-100 md:group-hover:opacity-100 md:group-hover:pointer-events-auto md:group-hover:blur-0"
-                        style={{ transitionDelay: "240ms" }}
-                    >
-                        <span className="pointer-events-none absolute -bottom-6 left-1/2 -translate-x-1/2 whitespace-nowrap text-[10px] font-medium text-neutral-800 opacity-100 transition-opacity duration-150 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
-                            Archive
-                        </span>
-                        <button
-                            type="button"
-                            onClick={() => {
-                                if (disableActions || isPendingCreation) return;
-                                onArchive(app.id);
-                            }}
-                            disabled={isDeleting || isArchiving || disableActions || isPendingCreation}
-                            className="inline-flex h-8 w-8 items-center justify-center rounded-2xl border border-neutral-300 bg-white text-neutral-700 shadow-sm transition-all duration-300 ease-out hover:border-neutral-400 disabled:cursor-not-allowed disabled:opacity-50"
-                            title="Move this app into your archive"
-                            aria-label={isArchiving ? "Archiving app" : "Archive app"}
-                        >
-                            {isArchiving ? (
-                                <span className="text-[10px] font-semibold">…</span>
-                            ) : (
-                                <Archive className="h-3.5 w-3.5" />
-                            )}
-                        </button>
-                    </div>
+                            <div className="relative flex justify-center transition-all duration-500 ease-out">
+                                <span className="pointer-events-none absolute -bottom-6 left-1/2 -translate-x-1/2 whitespace-nowrap text-[10px] font-medium text-neutral-800 opacity-100 transition-opacity duration-150 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
+                                    Delete
+                                </span>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        if (isDeleting) return;
+                                        if (onDeleteDraft && draftId) {
+                                            onDeleteDraft({ draftId, id: app.id });
+                                            return;
+                                        }
+                                        onDelete(app.id);
+                                    }}
+                                    disabled={isDeleting}
+                                    aria-label="Delete draft"
+                                    title="Delete draft"
+                                    className="inline-flex h-8 w-8 items-center justify-center rounded-2xl border border-neutral-300 bg-white text-neutral-700 shadow-sm transition-all duration-300 ease-out hover:border-red-500 hover:bg-red-600 hover:text-white disabled:pointer-events-none disabled:opacity-60"
+                                >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                            </div>
+                        </>
+                    ) : (
+                        <>
+                            <div
+                                className="relative flex justify-center transition-all duration-500 ease-out md:translate-y-3 md:scale-90 md:opacity-0 md:pointer-events-none md:blur-[1px] md:group-hover:translate-y-0 md:group-hover:scale-100 md:group-hover:opacity-100 md:group-hover:pointer-events-auto md:group-hover:blur-0"
+                                style={{ transitionDelay: "0ms" }}
+                            >
+                                <span className="pointer-events-none absolute -bottom-6 left-1/2 -translate-x-1/2 whitespace-nowrap text-[10px] font-medium text-neutral-800 opacity-100 transition-opacity duration-150 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
+                                    {isDeployedFlag ? "Deploy" : "Deploy"}
+                                </span>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        if (disableActions || isPendingCreation) return;
+                                        if (isDeployedFlag) {
+                                            router.push("/dashboard/deployments");
+                                            return;
+                                        }
+                                        onDeploy({ id: app.id, name: app.name });
+                                    }}
+                                    disabled={isDeleting || isArchiving || accessLocked || disableActions || isPendingCreation}
+                                    className={`inline-flex h-8 w-8 items-center justify-center rounded-2xl border text-neutral-800 shadow-sm transition-all duration-300 ease-out disabled:opacity-60 ${isDeployedFlag
+                                        ? "border-emerald-200 bg-emerald-500 text-white hover:bg-green-700"
+                                        : "border-transparent bg-accent text-white hover:bg-accent/90"
+                                        }`}
+                                    title={
+                                        isPendingCreation
+                                            ? "This app is still being created"
+                                            : accessLocked
+                                                ? "Trial access was cancelled, so this app is locked in the dashboard"
+                                                : isDeployedFlag
+                                                    ? "View and manage deployments"
+                                                    : "Deploy this app to Vercel"
+                                    }
+                                    aria-label={isDeployedFlag ? "View deployments" : "Deploy app"}
+                                >
+                                    {isDeployedFlag ? (
+                                        <ExternalLink className="h-3.5 w-3.5 shrink-0" />
+                                    ) : (
+                                        <Rocket className="h-3.5 w-3.5 shrink-0 transform transition-transform duration-150 group-hover:-translate-y-0.5" />
+                                    )}
+                                </button>
+                            </div>
 
-                    <div
-                        className="relative flex justify-center transition-all duration-500 ease-out md:translate-y-3 md:scale-90 md:opacity-0 md:pointer-events-none md:blur-[1px] md:group-hover:translate-y-0 md:group-hover:scale-100 md:group-hover:opacity-100 md:group-hover:pointer-events-auto md:group-hover:blur-0"
-                        style={{ transitionDelay: "360ms" }}
-                    >
-                        <span className="pointer-events-none absolute -bottom-6 left-1/2 -translate-x-1/2 whitespace-nowrap text-[10px] font-medium text-neutral-800 opacity-100 transition-opacity duration-150 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
-                            Delete
-                        </span>
-                        <button
-                            type="button"
-                            onClick={() => {
-                                if (disableActions || isPendingCreation) return;
-                                onDelete(app.id);
-                            }}
-                            disabled={isDeleting || disableActions || isPendingCreation}
-                            aria-label="Delete app"
-                            title="Delete"
-                            className="inline-flex h-8 w-8 items-center justify-center rounded-2xl border border-neutral-300 bg-white text-neutral-700 shadow-sm transition-all duration-300 ease-out hover:border-red-500 hover:bg-red-600 hover:text-white disabled:pointer-events-none disabled:opacity-60"
-                        >
-                            <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                    </div>
+                            <div
+                                className="relative flex justify-center transition-all duration-500 ease-out md:translate-y-3 md:scale-90 md:opacity-0 md:pointer-events-none md:blur-[1px] md:group-hover:translate-y-0 md:group-hover:scale-100 md:group-hover:opacity-100 md:group-hover:pointer-events-auto md:group-hover:blur-0"
+                                style={{ transitionDelay: "120ms" }}
+                            >
+                                <span className="pointer-events-none absolute -bottom-6 left-1/2 -translate-x-1/2 whitespace-nowrap text-[10px] font-medium text-neutral-800 opacity-100 transition-opacity duration-150 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
+                                    Edit
+                                </span>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        if (disableActions || isPendingCreation) return;
+                                        onCustomize(app.id);
+                                    }}
+                                    disabled={isDeleting || accessLocked || disableActions || isPendingCreation}
+                                    className="inline-flex h-8 w-8 items-center justify-center rounded-2xl border border-neutral-300 bg-white text-neutral-800 shadow-sm transition-all duration-300 ease-out hover:border-neutral-400 disabled:opacity-60"
+                                    title={
+                                        isPendingCreation
+                                            ? "This app is still being created"
+                                            : accessLocked
+                                                ? "Trial access was cancelled, so this app is locked in the dashboard"
+                                                : "Open app in editor"
+                                    }
+                                    aria-label="Open app editor"
+                                >
+                                    <BrushIcon className="h-3.5 w-3.5 shrink-0 transform transition-transform duration-150 group-hover:-translate-y-0.5" />
+                                </button>
+                            </div>
+
+                            <div
+                                className="relative flex justify-center transition-all duration-500 ease-out md:translate-y-3 md:scale-90 md:opacity-0 md:pointer-events-none md:blur-[1px] md:group-hover:translate-y-0 md:group-hover:scale-100 md:group-hover:opacity-100 md:group-hover:pointer-events-auto md:group-hover:blur-0"
+                                style={{ transitionDelay: "240ms" }}
+                            >
+                                <span className="pointer-events-none absolute -bottom-6 left-1/2 -translate-x-1/2 whitespace-nowrap text-[10px] font-medium text-neutral-800 opacity-100 transition-opacity duration-150 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
+                                    Archive
+                                </span>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        if (disableActions || isPendingCreation) return;
+                                        onArchive(app.id);
+                                    }}
+                                    disabled={isDeleting || isArchiving || disableActions || isPendingCreation}
+                                    className="inline-flex h-8 w-8 items-center justify-center rounded-2xl border border-neutral-300 bg-white text-neutral-700 shadow-sm transition-all duration-300 ease-out hover:border-neutral-400 disabled:cursor-not-allowed disabled:opacity-50"
+                                    title="Move this app into your archive"
+                                    aria-label={isArchiving ? "Archiving app" : "Archive app"}
+                                >
+                                    {isArchiving ? (
+                                        <span className="text-[10px] font-semibold">…</span>
+                                    ) : (
+                                        <Archive className="h-3.5 w-3.5" />
+                                    )}
+                                </button>
+                            </div>
+
+                            <div
+                                className="relative flex justify-center transition-all duration-500 ease-out md:translate-y-3 md:scale-90 md:opacity-0 md:pointer-events-none md:blur-[1px] md:group-hover:translate-y-0 md:group-hover:scale-100 md:group-hover:opacity-100 md:group-hover:pointer-events-auto md:group-hover:blur-0"
+                                style={{ transitionDelay: "360ms" }}
+                            >
+                                <span className="pointer-events-none absolute -bottom-6 left-1/2 -translate-x-1/2 whitespace-nowrap text-[10px] font-medium text-neutral-800 opacity-100 transition-opacity duration-150 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
+                                    Delete
+                                </span>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        if (disableActions || isPendingCreation) return;
+                                        onDelete(app.id);
+                                    }}
+                                    disabled={isDeleting || disableActions || isPendingCreation}
+                                    aria-label="Delete app"
+                                    title="Delete"
+                                    className="inline-flex h-8 w-8 items-center justify-center rounded-2xl border border-neutral-300 bg-white text-neutral-700 shadow-sm transition-all duration-300 ease-out hover:border-red-500 hover:bg-red-600 hover:text-white disabled:pointer-events-none disabled:opacity-60"
+                                >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                            </div>
+                        </>
+                    )}
                 </div>
 
                 {isDeleting && <CenterSpinner />}
@@ -2534,6 +3055,11 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
             return raw.replace(/^https?:\/\//i, "");
         }
     }, [sourceUrl]);
+    const sourceUrlLink = typeof sourceUrl === "string" ? sourceUrl.trim() : "";
+    const sourceUrlLinkLabel = useMemo(
+        () => formatUrlOriginLabel(sourceUrlDisplay || sourceUrlLink),
+        [sourceUrlDisplay, sourceUrlLink],
+    );
 
     const canGenerateHtmlFromUrl = useMemo(() => {
         const raw = (sourceUrl || "").trim();
@@ -2714,7 +3240,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                                 <div className="flex items-start gap-2 sm:gap-3">
                                                     <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-600" />
                                                     <span className="min-w-0 flex-1 whitespace-normal break-words font-semibold leading-5 text-red-950">
-                                                        Domain blocked for site cloning.
+                                                        Domain blocked for site cloning. Please use a different URL.
                                                     </span>
                                                 </div>
                                             </div>
@@ -2722,9 +3248,19 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                             <div className="relative overflow-hidden rounded-3xl border border-amber-300/80 bg-amber-50/95 text-xs text-amber-950 shadow-[0_14px_34px_rgba(180,108,17,0.10)] sm:px-3 sm:py-2 sm:mt-2">
                                                 <div className="flex items-start gap-2 sm:gap-3">
                                                     <MessageCircleWarning className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
-                                                    <span className="min-w-0 flex-1 whitespace-normal break-words font-semibold leading-5 text-amber-950">
-                                                        URL scan issue detected.
-                                                    </span>
+                                                    <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1 whitespace-normal break-words font-semibold leading-5 text-amber-950">
+                                                        <span>Scan issue detected on</span>{" "}
+                                                        <a
+                                                            href={sourceUrlLink || undefined}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer nofollow"
+                                                            className="inline-flex max-w-full items-center gap-1 font-semibold text-amber-900 underline decoration-amber-400 decoration-1 underline-offset-2 transition hover:text-amber-950"
+                                                            title={sourceUrlDisplay || sourceUrlLink || undefined}
+                                                        >
+                                                            <span className="max-w-full truncate">{sourceUrlLinkLabel}</span>
+                                                            <ExternalLink className="h-3 w-3 shrink-0" />
+                                                        </a>
+                                                    </div>
                                                 </div>
                                             </div>
                                         )
@@ -3060,6 +3596,50 @@ export default function PreviewPage(): JSX.Element {
         }
     }
 
+    async function handleDeleteDraft(draft: { draftId: string; id: string }) {
+        if (!user) return;
+
+        const draftKey = String(draft.draftId || draft.id || "").trim();
+        if (!draftKey) return;
+
+        const ok = await showConfirm(
+            "Delete this draft? This action cannot be undone.",
+            "Delete Draft"
+        );
+        if (!ok) return;
+
+        setDeletingDraftApp((prev) => ({ ...prev, [draftKey]: true }));
+        try {
+            const csrf = await ensureSessionAndCsrf().catch(() => null);
+            const res = await fetch("/api/private/kloner-draft", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    ...(csrf ? { "x-csrf": csrf } : {}),
+                },
+                body: JSON.stringify({
+                    action: "delete",
+                    draftId: draftKey,
+                }),
+                credentials: "include",
+            });
+            if (!res.ok) throw new Error("Failed to delete draft");
+
+            setDraftApps((prev) => prev.filter((item) => item.draftId !== draftKey && item.id !== draft.id));
+            setPendingCreatedApp((prev) => (prev && (prev.id === draft.id || prev.id === draftKey) ? null : prev));
+            push("Draft deleted successfully", "ok");
+        } catch (error) {
+            console.error("Failed to delete draft:", error);
+            push("Failed to delete draft. Please try again.", "err");
+        } finally {
+            setDeletingDraftApp((prev) => {
+                const next = { ...prev };
+                delete next[draftKey];
+                return next;
+            });
+        }
+    }
+
     async function handleArchiveApp(appId: string) {
         if (!user) return;
 
@@ -3146,7 +3726,35 @@ export default function PreviewPage(): JSX.Element {
         id: string;
         name: string;
         createdAt: number;
+        sourceUrl?: string | null;
+        retryable?: boolean;
+        completed?: boolean;
     } | null>(null);
+    const [websiteSubmissionPendingUrl, setWebsiteSubmissionPendingUrl] = useState<string | null>(null);
+    const [draftAppsLoading, setDraftAppsLoading] = useState(true);
+    const [pendingDraftApps, setPendingDraftApps] = useState<Record<string, boolean>>({});
+    const [retryingDraftApps, setRetryingDraftApps] = useState<Record<string, boolean>>({});
+    const [draftApps, setDraftApps] = useState<Array<{
+        draftId: string;
+        id: string;
+        name: string;
+        createdAt: any;
+        updatedAt: any;
+        sourceUrl?: string | null;
+        retryable?: boolean;
+        completed?: boolean;
+        pendingCompleted?: boolean;
+        warningCode?: string | null;
+        warningMessage?: string | null;
+        warningAction?: string | null;
+        errorCode?: string | null;
+        errorMessage?: string | null;
+        errorReason?: string | null;
+        userMessage?: string | null;
+        details?: unknown;
+        warnings?: unknown[];
+        blocked?: boolean;
+    }>>([]);
     const pendingCreatedAppLaunchRequestedRef = useRef<string | null>(null);
     const pendingUrlGenerationAppIdRef = useRef<string | null>(null);
     const appBuilderCookiePromptResolverRef = useRef<((accepted: boolean) => void) | null>(null);
@@ -3301,7 +3909,7 @@ export default function PreviewPage(): JSX.Element {
         return deployWizardError;
     }, [deployWizardError, deployWizardPermissionError]);
 
-    const refreshUserTierNow = useCallback(async (): Promise<UserTier> => {
+    const refreshUserTierNow = useCallback(async (): Promise<{ tier: UserTier; stripeStatus: string | null }> => {
         // Deploy gating should never rely on a stale cached tier.
         // Stripe webhooks + custom claims can lag; force-refresh the backend view of tier.
         try {
@@ -3321,7 +3929,7 @@ export default function PreviewPage(): JSX.Element {
                 const normalized: UserTier =
                     t === "pro" || t === "agency" || t === "enterprise" ? (t as UserTier) : "free";
                 setUserTier(normalized);
-                return normalized;
+                return { tier: normalized, stripeStatus: nextStripeStatus };
             }
         } catch {
             // ignore; fall back below
@@ -3330,12 +3938,15 @@ export default function PreviewPage(): JSX.Element {
         // Fall back to existing state.
         // IMPORTANT: if the cached tier is `free` but refresh failed, treat as `unknown`
         // so we don't show a false-positive paywall to paid users.
-        return userTier === "free" ? "unknown" : userTier;
-    }, [userTier]);
+        return {
+            tier: userTier === "free" ? "unknown" : userTier,
+            stripeStatus,
+        };
+    }, [userTier, stripeStatus]);
 
     const canProceedWithAppWizardGeneration = useCallback(async (): Promise<boolean> => {
         const tierNow = await refreshUserTierNow();
-        if (tierNow === "pro" || tierNow === "agency") {
+        if (tierNow.tier === "pro" || tierNow.tier === "agency") {
             return true;
         }
 
@@ -3401,9 +4012,9 @@ export default function PreviewPage(): JSX.Element {
     const [hasAnyRenderDoc, setHasAnyRenderDoc] = useState(false);
     const [hasAnyAppDoc, setHasAnyAppDoc] = useState(false);
     const [autoOpenGenerateModalNonce, setAutoOpenGenerateModalNonce] = useState<number>(0);
-    const [autoOpenGenerateSuccessMessage, setAutoOpenGenerateSuccessMessage] = useState("");
     const [loadingRenders, setLoadingRenders] = useState(false);
     const [deletingApp, setDeletingApp] = useState<Record<string, boolean>>({});
+    const [deletingDraftApp, setDeletingDraftApp] = useState<Record<string, boolean>>({});
     const [lockUntilByKey, setLockUntilByKey] = useState<
         Record<string, number>
     >({});
@@ -3418,6 +4029,8 @@ export default function PreviewPage(): JSX.Element {
     const [viewerIdx, setViewerIdx] = useState(0);
     const sessionExpiredRedirectingRef = useRef(false);
     const urlScanCertaintyAuditKeyRef = useRef<string>("");
+    const createWebsitesSectionRef = useRef<HTMLDivElement | null>(null);
+    const createWebsitesSectionAutoScrollIdRef = useRef<string | null>(null);
 
     const handleSessionExpired = useCallback(async (source?: string) => {
         if (sessionExpiredRedirectingRef.current) return;
@@ -3456,9 +4069,7 @@ export default function PreviewPage(): JSX.Element {
                     ...(doc.data() as any),
                 }));
                 setHasAnyAppDoc(appList.length > 0);
-                // Keep archived apps off the main dashboard unless the user explicitly asks to see them.
-                // IMPORTANT: only treat boolean true as archived.
-                setApps(showArchivedApps ? appList : appList.filter((a: any) => a?.archived !== true));
+                setApps(appList);
             },
             (err) => {
                 console.warn("[firestore] apps snapshot failed", err);
@@ -3482,6 +4093,59 @@ export default function PreviewPage(): JSX.Element {
             }
         };
     }, [user, push, showArchivedApps]);
+
+    const loadDraftApps = useCallback(async () => {
+        if (!user) {
+            setDraftAppsLoading(false);
+            setDraftApps([]);
+            setPendingCreatedApp(null);
+            return;
+        }
+
+        setDraftAppsLoading(true);
+        try {
+            const res = await fetch("/api/private/kloner-drafts", {
+                method: "GET",
+                credentials: "include",
+                cache: "no-store",
+            });
+            if (!res.ok) {
+                throw new Error(`Failed to load drafts (HTTP ${res.status})`);
+            }
+
+            const payload = await res.json().catch(() => ({} as any));
+            const drafts = Array.isArray(payload?.drafts) ? payload.drafts : [];
+            setDraftApps(normalizeDashboardDraftRecords(drafts));
+        } catch (err) {
+            console.warn("[drafts] load failed", err);
+            setDraftApps([]);
+        } finally {
+            setDraftAppsLoading(false);
+        }
+    }, [user]);
+
+    useEffect(() => {
+        if (!Object.keys(pendingDraftApps).length) return;
+
+        setPendingDraftApps((prev) => {
+            let changed = false;
+            const next = { ...prev };
+
+            for (const draftId of Object.keys(prev)) {
+                const draft = draftApps.find((item) => item.draftId === draftId || item.id === draftId);
+                if (!draft || Boolean(draft.pendingCompleted) || Boolean(draft.completed)) {
+                    delete next[draftId];
+                    changed = true;
+                }
+            }
+
+            return changed ? next : prev;
+        });
+    }, [draftApps, pendingDraftApps]);
+
+    useEffect(() => {
+        void loadDraftApps();
+    }, [loadDraftApps]);
 
     useEffect(() => {
         if (!user) {
@@ -3926,7 +4590,7 @@ export default function PreviewPage(): JSX.Element {
         const t = window.setTimeout(() => {
             void (async () => {
                 const tierNow = await refreshUserTierNow();
-                if (tierNow === "free") {
+                if (tierNow.tier === "free") {
                     setAppDeployWizardStep(2);
                     return;
                 }
@@ -4135,24 +4799,25 @@ export default function PreviewPage(): JSX.Element {
     }
 
     function parseUrlGenerationResponse(res: Response, data: any): UrlGenerationResponse {
-        const requestId = typeof data?.requestId === "string" && data.requestId.trim() ? data.requestId.trim() : null;
-        const urlValue = typeof data?.url === "string" && data.url.trim() ? data.url.trim() : null;
-        const code = typeof data?.code === "string" && data.code.trim() ? data.code.trim() : null;
-        const scope = typeof data?.scope === "string" && data.scope.trim() ? data.scope.trim() : null;
-        const path = typeof data?.path === "string" && data.path.trim() ? data.path.trim() : null;
+        const responseData: any = data || {};
+        const requestId = typeof responseData.requestId === "string" && responseData.requestId.trim() ? responseData.requestId.trim() : null;
+        const urlValue = typeof responseData.url === "string" && responseData.url.trim() ? responseData.url.trim() : null;
+        const code = typeof responseData.code === "string" && responseData.code.trim() ? responseData.code.trim() : null;
+        const scope = typeof responseData.scope === "string" && responseData.scope.trim() ? responseData.scope.trim() : null;
+        const path = typeof responseData.path === "string" && responseData.path.trim() ? responseData.path.trim() : null;
         const hardFailureCode = code === "ARCHIVE_ZIP_MISSING" || code === "gemini_input_too_large";
-        const details = typeof data?.details === "object" && data.details ? data.details : null;
-        const warning = typeof data?.warning === "object" && data.warning ? data.warning : null;
-        const warningCode = typeof data?.warningCode === "string" && data.warningCode.trim() ? data.warningCode.trim() : null;
-        const warningMessage = typeof data?.warningMessage === "string" && data.warningMessage.trim() ? data.warningMessage.trim() : null;
-        const warningAction = typeof data?.warningAction === "string" && data.warningAction.trim() ? data.warningAction.trim() : null;
-        const errorReason = typeof data?.errorReason === "string" && data.errorReason.trim() ? data.errorReason.trim() : null;
-        const userMessage = typeof data?.userMessage === "string" && data.userMessage.trim() ? data.userMessage.trim() : null;
-        const retryable = typeof data?.retryable === "boolean" ? data.retryable : null;
+        const details = typeof responseData.details === "object" && responseData.details ? responseData.details : null;
+        const warning = typeof responseData.warning === "object" && responseData.warning ? responseData.warning : null;
+        const warningCode = typeof responseData.warningCode === "string" && responseData.warningCode.trim() ? responseData.warningCode.trim() : null;
+        const warningMessage = typeof responseData.warningMessage === "string" && responseData.warningMessage.trim() ? responseData.warningMessage.trim() : null;
+        const warningAction = typeof responseData.warningAction === "string" && responseData.warningAction.trim() ? responseData.warningAction.trim() : null;
+        const errorReason = typeof responseData.errorReason === "string" && responseData.errorReason.trim() ? responseData.errorReason.trim() : null;
+        const userMessage = typeof responseData.userMessage === "string" && responseData.userMessage.trim() ? responseData.userMessage.trim() : null;
+        const retryable = typeof responseData.retryable === "boolean" ? responseData.retryable : null;
         const rescanRequired = Boolean(
-            data?.archiveHealth?.needsRescan === true ||
-            data?.needsRescan === true ||
-            data?.rescanRequired === true ||
+            responseData.archiveHealth?.needsRescan === true ||
+            responseData.needsRescan === true ||
+            responseData.rescanRequired === true ||
             (typeof warningAction === "string" && warningAction.toLowerCase().includes("rescan")) ||
             (typeof warningCode === "string" && /rescan/.test(warningCode.toLowerCase())) ||
             code === "ARCHIVE_RESCAN_REQUIRED" ||
@@ -4170,15 +4835,15 @@ export default function PreviewPage(): JSX.Element {
         };
 
         const buildValidationMessage = () => {
-            if (typeof data?.error === "string" && data.error.trim()) return data.error.trim();
-            if (code === "BLOCKED_URL") return "Please enter a valid public http(s) URL.";
+            if (typeof responseData.error === "string" && responseData.error.trim()) return responseData.error.trim();
+            if (code === "BLOCKED_URL") return "This URL is blocked for site cloning. Please use a different URL.";
             if (code === "PREVIEW_CREDITS_EXHAUSTED") return "Monthly preview limit reached for your plan.";
             return "Please check the URL and try again.";
         };
 
         const buildServerMessage = () => {
-            if (typeof data?.error === "string" && data.error.trim()) return data.error.trim();
-            if (typeof data?.message === "string" && data.message.trim()) return data.message.trim();
+            if (typeof responseData.error === "string" && responseData.error.trim()) return responseData.error.trim();
+            if (typeof responseData.message === "string" && responseData.message.trim()) return responseData.message.trim();
             return "Something went wrong while generating this URL. Please retry.";
         };
 
@@ -4205,10 +4870,22 @@ export default function PreviewPage(): JSX.Element {
                         : buildServerMessage();
         const failureDebugDetails = isRouteMismatch ? buildRouteMismatchDetails() : null;
 
-        if (res.status === 202 && res.ok) {
-            const appId = typeof data?.appId === "string" ? data.appId.trim() : "";
-            const jobId = typeof data?.jobId === "string" ? data.jobId.trim() : "";
-            if (hardFailureCode || !appId || !jobId) {
+        const isAcceptedSuccess = res.ok && (
+            res.status === 202 ||
+            res.status === 200 ||
+            res.status === 201
+        ) && (
+            !hardFailureCode && (
+                typeof responseData.ok === "boolean" ? responseData.ok : true
+            )
+        );
+
+        if (isAcceptedSuccess) {
+            const jobId = typeof responseData.jobId === "string" ? responseData.jobId.trim() : "";
+            const requestIdFallback = typeof responseData.requestId === "string" ? responseData.requestId.trim() : null;
+            const appId = typeof responseData.appId === "string" ? responseData.appId.trim() : jobId || requestIdFallback || urlValue || "";
+            const resolvedJobId = jobId || requestIdFallback || appId;
+            if (!appId || !resolvedJobId) {
                 return {
                     kind: "terminal_failure",
                     message: rescanRequired
@@ -4237,18 +4914,18 @@ export default function PreviewPage(): JSX.Element {
             return {
                 kind: "accepted",
                 appId,
-                jobId,
+                jobId: resolvedJobId,
                 requestId,
-                warnings: Array.isArray(data?.warnings) ? data.warnings : [],
-                rescanRecommended: data?.rescanRecommended === true,
-                archiveZipPath: typeof data?.archiveZipPath === "string" ? data.archiveZipPath : null,
-                generationFormat: data?.generationFormat === "html" ? "html" : "nextjs",
+                warnings: Array.isArray(responseData.warnings) ? responseData.warnings : [],
+                rescanRecommended: responseData.rescanRecommended === true,
+                archiveZipPath: typeof responseData.archiveZipPath === "string" ? responseData.archiveZipPath : null,
+                generationFormat: responseData.generationFormat === "html" ? "html" : "nextjs",
                 details,
                 warning,
                 warningCode,
                 warningMessage,
                 warningAction,
-                errorCode: typeof data?.errorCode === "string" ? data.errorCode : null,
+                errorCode: typeof responseData.errorCode === "string" ? responseData.errorCode : null,
                 errorReason,
                 userMessage,
                 retryable,
@@ -4308,7 +4985,7 @@ export default function PreviewPage(): JSX.Element {
         mode: "clone" | "url",
         renderId?: string,
         url?: string,
-        opts?: { screenshotKeys?: string[]; zipUrl?: string; zipPath?: string; onError?: (message: string) => void; skipCookieConsent?: boolean; openAppBuilderImmediately?: boolean; generationFormat?: "nextjs" | "html" },
+        opts?: { screenshotKeys?: string[]; zipUrl?: string; zipPath?: string; onError?: (message: string) => void; skipCookieConsent?: boolean; skipGenerationTierCheck?: boolean; openAppBuilderImmediately?: boolean; generationFormat?: "nextjs" | "html"; draftDocId?: string; draftAppId?: string; draftCreatedAt?: number },
     ) => {
         if (!user) return;
 
@@ -4318,8 +4995,13 @@ export default function PreviewPage(): JSX.Element {
             : null;
 
         if (shouldOpenAppBuilderImmediately) {
-            const tierNow = await refreshUserTierNow();
-            if (tierNow !== "pro" && tierNow !== "agency") {
+            const tierRefresh = await refreshUserTierNow();
+            const canOpenAppBuilder =
+                tierRefresh.tier === "pro" ||
+                tierRefresh.tier === "agency" ||
+                tierRefresh.stripeStatus === "trialing";
+
+            if (!canOpenAppBuilder) {
                 if (optimisticAppBuilderId) {
                     setAppBuilderOpen(false);
                     setCurrentAppId(null);
@@ -4329,7 +5011,7 @@ export default function PreviewPage(): JSX.Element {
                 showWebsiteExitOfferPaywall();
                 return null;
             }
-        } else if (!(await canProceedWithAppWizardGeneration())) {
+        } else if (!opts?.skipGenerationTierCheck && !(await canProceedWithAppWizardGeneration())) {
             if (optimisticAppBuilderId) {
                 setAppBuilderOpen(false);
                 setCurrentAppId(null);
@@ -4341,6 +5023,13 @@ export default function PreviewPage(): JSX.Element {
             const consentAccepted = await requestAppBuilderCookieConsent();
             if (!consentAccepted) {
                 return null;
+            }
+        }
+
+        if (shouldOpenAppBuilderImmediately) {
+            const immediateAppId = opts?.draftAppId || optimisticAppBuilderId;
+            if (immediateAppId) {
+                openAppBuilderDirectly(immediateAppId);
             }
         }
 
@@ -4357,6 +5046,61 @@ export default function PreviewPage(): JSX.Element {
 
             let appName = "My New App";
             let finalRenderId = renderId;
+            const createPermanentAppId = () => `app_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
+            const draftCreatedAt = opts?.draftCreatedAt ?? Date.now();
+            const draftDocId = opts?.draftDocId || (mode === "url" && url
+                ? `draft_${draftCreatedAt}_${Math.random().toString(36).slice(2, 11)}`
+                : "");
+
+            const saveUrlDraft = async (patch: {
+                retryable?: boolean;
+                completed?: boolean;
+                warningCode?: string | null;
+                warningMessage?: string | null;
+                warningAction?: string | null;
+                errorCode?: string | null;
+                errorMessage?: string | null;
+                errorReason?: string | null;
+                userMessage?: string | null;
+                details?: unknown;
+                warnings?: unknown[];
+                blocked?: boolean;
+                clearIssue?: boolean;
+                sourceUrl?: string | null;
+            } = {}) => {
+                if (!draftDocId || !url) return;
+                const draftIdForDoc = draftAppId || draftDocId;
+                await fetch("/api/private/kloner-draft", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                    credentials: "include",
+                    body: JSON.stringify({
+                        action: "upsert",
+                        draftId: draftDocId,
+                        clearIssue: Boolean(patch.clearIssue),
+                        draft: {
+                            id: draftIdForDoc,
+                            name: appName,
+                            createdAt: draftCreatedAt,
+                            sourceUrl: typeof patch.sourceUrl === "string" ? patch.sourceUrl : url,
+                            retryable: Boolean(patch.retryable),
+                            completed: Boolean(patch.completed),
+                            warningCode: patch.warningCode ?? null,
+                            warningMessage: patch.warningMessage ?? null,
+                            warningAction: patch.warningAction ?? null,
+                            errorCode: patch.errorCode ?? null,
+                            errorMessage: patch.errorMessage ?? null,
+                            errorReason: patch.errorReason ?? null,
+                            userMessage: patch.userMessage ?? null,
+                            details: patch.details ?? null,
+                            warnings: Array.isArray(patch.warnings) ? patch.warnings : [],
+                            blocked: Boolean(patch.blocked),
+                        },
+                    }),
+                });
+            };
 
             if (mode === "clone") {
                 appName = "Starter Template";
@@ -4367,15 +5111,19 @@ export default function PreviewPage(): JSX.Element {
             }
 
             const shouldShowPendingAppUi = mode !== "url" || !opts?.openAppBuilderImmediately;
-            const pendingCreatedAppId = shouldShowPendingAppUi && mode !== "url"
-                ? `pending-app-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+            const pendingCreatedAppId = shouldShowPendingAppUi
+                ? createPermanentAppId()
                 : "";
+            const draftAppId = opts?.draftAppId || (shouldShowPendingAppUi ? createPermanentAppId() : "");
 
-            if (shouldShowPendingAppUi && mode !== "url") {
+            if (shouldShowPendingAppUi) {
                 setPendingCreatedApp({
                     id: pendingCreatedAppId,
                     name: appName,
                     createdAt: Date.now(),
+                    sourceUrl: mode === "url" ? url : null,
+                    retryable: false,
+                    completed: false,
                 });
             }
 
@@ -4394,6 +5142,7 @@ export default function PreviewPage(): JSX.Element {
                     body: JSON.stringify({
                         url,
                         name: appName,
+                        appId: opts?.draftAppId || pendingCreatedAppId || undefined,
                         createPreview: true,
                         generationType,
                         generationFormat: generationType,
@@ -4401,38 +5150,82 @@ export default function PreviewPage(): JSX.Element {
                     credentials: "include",
                 });
 
-                const data = await res.json().catch(() => ({} as any));
-                const parsed = parseUrlGenerationResponse(res, data);
+                const rawData: any = await res.json().catch(() => ({}));
+                const data: any = rawData;
+                const parsed: any = parseUrlGenerationResponse(res, data);
                 const responseWarning = extractUrlRescanWarning(data);
+                const isArchiveCompletion = Boolean(
+                    data?.archiveHealth ||
+                    data?.archiveZipPath ||
+                    data?.zipPath ||
+                    data?.zipUrl ||
+                    /archived/i.test(String(data?.message || ""))
+                );
+                const fallbackJobId = typeof data?.jobId === "string" ? data.jobId.trim() : "";
+                const fallbackRequestId = typeof data?.requestId === "string" ? data.requestId.trim() : "";
+                const shouldTreatAsSuccess = parsed.kind === "accepted" || (
+                    res.ok &&
+                    Boolean(data?.ok) &&
+                    isArchiveCompletion
+                );
 
-                if (parsed.kind === "accepted") {
+                if (shouldTreatAsSuccess) {
                     setUrlGenerationErrorDetails("");
-                    pendingUrlGenerationAppIdRef.current = parsed.appId;
-                    if (parsed.rescanRecommended || responseWarning) {
-                        const warnings = Array.isArray(parsed.warnings) ? parsed.warnings : [];
+                    const acceptedAny = parsed as any;
+                    const archiveGenerationFormat = typeof data?.generationFormat === "string" && data.generationFormat === "html" ? "html" : "nextjs";
+                    const archiveWarnings = Array.isArray(data?.warnings) ? data.warnings : [];
+                    const resolvedAppId = acceptedAny?.kind === "accepted" && acceptedAny?.appId
+                        ? acceptedAny.appId
+                        : pendingCreatedAppId || fallbackJobId || fallbackRequestId || "";
+                    void saveUrlDraft({
+                        retryable: Boolean(responseWarning),
+                        completed: true,
+                        warningCode: responseWarning?.code || null,
+                        warningMessage: responseWarning?.message || null,
+                        warningAction: responseWarning?.action || null,
+                        details: responseWarning?.details || null,
+                        warnings: archiveWarnings,
+                        blocked: Boolean(responseWarning?.blocking),
+                        sourceUrl: url,
+                    });
+                    pendingUrlGenerationAppIdRef.current = resolvedAppId || null;
+                    if ((acceptedAny?.rescanRecommended === true) || responseWarning) {
                         setUrlGenerationHealthWarning({
                             url: url,
-                            generationFormat: parsed.generationFormat,
+                            generationFormat: acceptedAny?.generationFormat || archiveGenerationFormat,
                             blocking: Boolean(responseWarning?.blocking),
                             code: responseWarning?.code || null,
                             message: responseWarning?.message || null,
                             details: responseWarning?.details || null,
                             action: responseWarning?.action || null,
                             retryable: responseWarning?.retryable ?? null,
-                            warnings,
+                            warnings: archiveWarnings,
                         });
                     } else {
                         setUrlGenerationHealthWarning(null);
                     }
-                    if (shouldShowPendingAppUi) {
+                    if (isArchiveCompletion) {
+                        setPendingCreatedApp((prev) => {
+                            if (!prev) return prev;
+                            return {
+                                ...prev,
+                                sourceUrl: url,
+                                retryable: Boolean(responseWarning),
+                                completed: true,
+                            };
+                        });
+                    } else if (shouldShowPendingAppUi) {
                         setPendingCreatedApp({
-                            id: parsed.appId,
+                            id: resolvedAppId || pendingCreatedAppId,
                             name: appName,
                             createdAt: Date.now(),
+                            sourceUrl: url,
+                            retryable: Boolean(responseWarning),
+                            completed: isArchiveCompletion,
                         });
                     }
 
-                    appId = parsed.appId;
+                    appId = resolvedAppId || pendingCreatedAppId || fallbackJobId || fallbackRequestId || appName;
                     if (optimisticAppBuilderId) {
                         setCurrentAppId(appId);
                     }
@@ -4445,6 +5238,7 @@ export default function PreviewPage(): JSX.Element {
                     }
                     if (mode === "url") {
                         if (parsed.status === 429 || parsed.code === "PREVIEW_CREDITS_EXHAUSTED") {
+                            void saveUrlDraft({ clearIssue: true, retryable: false, completed: false, sourceUrl: url });
                             setUrlGenerationErrorDetails("");
                             pendingUrlGenerationAppIdRef.current = null;
                             setPendingCreatedApp(null);
@@ -4458,6 +5252,28 @@ export default function PreviewPage(): JSX.Element {
                         const blockedDomainSignal = isBlockedUrlScanSignal(parsed.message, parsed.debugDetails, parsed.errorReason, parsed.code, responseWarning?.message, responseWarning?.details, responseWarning?.code);
 
                         if (parsed.status === 403 && blockedDomainSignal) {
+                            void saveUrlDraft({
+                                retryable: false,
+                                completed: false,
+                                warningCode: parsed.code || responseWarning?.code || "BLOCKED_URL",
+                                warningMessage: parsed.message || responseWarning?.message || "This domain is blocked for site cloning. Please use a different URL.",
+                                warningAction: responseWarning?.action && !String(responseWarning.action).toLowerCase().includes("rescan") ? responseWarning.action : null,
+                                errorCode: parsed.code || responseWarning?.code || "BLOCKED_URL",
+                                errorMessage: parsed.message || responseWarning?.message || "This domain is blocked for site cloning. Please use a different URL.",
+                                errorReason: parsed.errorReason || responseWarning?.details || null,
+                                userMessage: parsed.message || responseWarning?.message || "This domain is blocked for site cloning. Please use a different URL.",
+                                details: parsed.debugDetails || responseWarning?.details || parsed.errorReason || null,
+                                warnings: [
+                                    {
+                                        code: parsed.code || responseWarning?.code || "BLOCKED_URL",
+                                        message: parsed.message || responseWarning?.message || "This domain is blocked for site cloning. Please use a different URL.",
+                                        severity: "error",
+                                        rescanRecommended: false,
+                                    },
+                                ],
+                                blocked: true,
+                                sourceUrl: url,
+                            });
                             pendingUrlGenerationAppIdRef.current = null;
                             setPendingCreatedApp(null);
                             setAppBuilderOpen(false);
@@ -4468,20 +5284,20 @@ export default function PreviewPage(): JSX.Element {
                                 generationFormat: generationType,
                                 blocking: true,
                                 code: parsed.code || responseWarning?.code || "BLOCKED_URL",
-                                message: parsed.message || responseWarning?.message || "This domain is blocked for site cloning.",
+                                message: parsed.message || responseWarning?.message || "This domain is blocked for site cloning. Please use a different URL.",
                                 details: parsed.debugDetails || responseWarning?.details || parsed.errorReason || null,
                                 action: responseWarning?.action && !String(responseWarning.action).toLowerCase().includes("rescan") ? responseWarning.action : null,
                                 retryable: false,
                                 warnings: [
                                     {
                                         code: parsed.code || responseWarning?.code || "BLOCKED_URL",
-                                        message: parsed.message || responseWarning?.message || "This domain is blocked for site cloning.",
+                                        message: parsed.message || responseWarning?.message || "This domain is blocked for site cloning. Please use a different URL.",
                                         severity: "error",
                                         rescanRecommended: false,
                                     },
                                 ],
                             });
-                            setErr(parsed.message || responseWarning?.message || "This domain is blocked for site cloning.");
+                            setErr(parsed.message || responseWarning?.message || "This domain is blocked for site cloning. Please use a different URL.");
                             return null;
                         }
 
@@ -4493,6 +5309,18 @@ export default function PreviewPage(): JSX.Element {
                         }
 
                         if (parsed.failureKind === "validation_error") {
+                            void saveUrlDraft({
+                                retryable: false,
+                                completed: false,
+                                errorCode: parsed.code || "VALIDATION_ERROR",
+                                errorMessage: parsed.message || "Please check the URL and try again.",
+                                errorReason: parsed.debugDetails || parsed.errorReason || null,
+                                userMessage: parsed.message || "Please check the URL and try again.",
+                                details: parsed.debugDetails || null,
+                                warnings: [],
+                                blocked: false,
+                                sourceUrl: url,
+                            });
                             pendingUrlGenerationAppIdRef.current = null;
                             setPendingCreatedApp(null);
                             setAppBuilderOpen(false);
@@ -4504,6 +5332,18 @@ export default function PreviewPage(): JSX.Element {
                         }
 
                         if (parsed.failureKind === "server_error") {
+                            void saveUrlDraft({
+                                retryable: true,
+                                completed: false,
+                                errorCode: parsed.code || "SERVER_ERROR",
+                                errorMessage: parsed.message || "Something went wrong while generating this URL. Please retry.",
+                                errorReason: parsed.debugDetails || parsed.errorReason || null,
+                                userMessage: parsed.message || "Something went wrong while generating this URL. Please retry.",
+                                details: parsed.debugDetails || null,
+                                warnings: [],
+                                blocked: false,
+                                sourceUrl: url,
+                            });
                             pendingUrlGenerationAppIdRef.current = null;
                             setPendingCreatedApp(null);
                             setAppBuilderOpen(false);
@@ -4519,6 +5359,22 @@ export default function PreviewPage(): JSX.Element {
                         setAppBuilderOpen(false);
                         setCurrentAppId(null);
                         setUrlGenerationErrorDetails("");
+                        void saveUrlDraft({
+                            retryable: Boolean(responseWarning?.retryable),
+                            completed: false,
+                            warningCode: responseWarning?.code || null,
+                            warningMessage: responseWarning?.message || null,
+                            warningAction: responseWarning?.action || null,
+                            details: responseWarning?.details || null,
+                            warnings: responseWarning ? [{
+                                code: responseWarning.code || parsed.code || "RESCAN_REQUIRED",
+                                message: responseWarning.message,
+                                severity: "warning",
+                                rescanRecommended: true,
+                            }] : [],
+                            blocked: Boolean(responseWarning?.blocking),
+                            sourceUrl: url,
+                        });
                         const rescanMessage =
                             responseWarning?.blocking && responseWarning.message
                                 ? responseWarning.message
@@ -4620,6 +5476,34 @@ export default function PreviewPage(): JSX.Element {
                 });
             }
 
+            if (mode === "url" && opts?.draftDocId) {
+                const draftDocIdToDelete = String(opts.draftDocId || "").trim();
+                if (draftDocIdToDelete) {
+                    try {
+                        await fetch("/api/private/kloner-draft", {
+                            method: "POST",
+                            headers: {
+                                "Content-Type": "application/json",
+                            },
+                            credentials: "include",
+                            body: JSON.stringify({
+                                action: "delete",
+                                draftId: draftDocIdToDelete,
+                            }),
+                        });
+                    } catch (draftCleanupError) {
+                        console.warn("[drafts] failed to delete promoted draft", draftCleanupError);
+                    }
+
+                    setDraftApps((prev) => prev.filter((item) => item.draftId !== draftDocIdToDelete && item.id !== appId));
+                    setPendingDraftApps((prev) => {
+                        const next = { ...prev };
+                        delete next[draftDocIdToDelete];
+                        return next;
+                    });
+                }
+            }
+
                 if (mode === "url" && opts?.openAppBuilderImmediately) {
                     openAppBuilderDirectly(appId);
                 }
@@ -4682,7 +5566,7 @@ export default function PreviewPage(): JSX.Element {
             push(message, "err");
             return null;
         }
-    }, [user, router, push, activeRenderId, openAppBuilderWithCookieGate, openAppBuilderDirectly, requestAppBuilderCookieConsent, appWizardOpen]);
+    }, [user, router, push, activeRenderId, openAppBuilderWithCookieGate, openAppBuilderDirectly, requestAppBuilderCookieConsent, appWizardOpen, stripeStatus, setDraftApps, setPendingDraftApps]);
 
     useEffect(() => {
         if (!pendingCreatedApp) {
@@ -4730,25 +5614,71 @@ export default function PreviewPage(): JSX.Element {
         blockedUrlGenerationAppId,
     ]);
 
-    const visibleApps = useMemo(() => {
-        if (!pendingCreatedApp) return apps;
-        if (apps.some((app) => app.id === pendingCreatedApp.id)) return apps;
+    useEffect(() => {
+        if (!pendingCreatedApp) return;
+        if (createWebsitesSectionAutoScrollIdRef.current === pendingCreatedApp.id) return;
+        createWebsitesSectionAutoScrollIdRef.current = pendingCreatedApp.id;
+        createWebsitesSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, [pendingCreatedApp?.id]);
 
-        return [
-            {
+    const pendingCreatedAppCompleted = Boolean(pendingCreatedApp?.completed);
+    const [pendingCreatedAppAgeTick, setPendingCreatedAppAgeTick] = useState(Date.now());
+
+    useEffect(() => {
+        if (!pendingCreatedApp || pendingCreatedAppCompleted || pendingCreatedApp.retryable) return;
+        const intervalId = window.setInterval(() => {
+            setPendingCreatedAppAgeTick(Date.now());
+        }, 5000);
+        return () => window.clearInterval(intervalId);
+    }, [pendingCreatedApp, pendingCreatedAppCompleted]);
+
+    const pendingCreatedAppIsStale = Boolean(
+        pendingCreatedApp &&
+        !pendingCreatedAppCompleted &&
+        !pendingCreatedApp.retryable &&
+        pendingCreatedAppAgeTick - pendingCreatedApp.createdAt > 2 * 60 * 1000
+    );
+
+    const clearPendingCreatedApp = useCallback(() => {
+        pendingCreatedAppLaunchRequestedRef.current = null;
+        setPendingCreatedApp((prev) => {
+            if (!prev) return prev;
+            if (prev.completed) return prev;
+            return {
+                ...prev,
+                retryable: false,
+                completed: true,
+            };
+        });
+    }, []);
+
+    const visibleApps = useMemo(() => {
+        const merged = [...draftApps, ...apps];
+        const hasDraftForPending = Boolean(
+            pendingCreatedApp && draftApps.some((draft) => draft.id === pendingCreatedApp.id),
+        );
+
+        if (pendingCreatedApp && !hasDraftForPending && !merged.some((app) => app.id === pendingCreatedApp.id)) {
+            merged.push({
                 id: pendingCreatedApp.id,
                 name: pendingCreatedApp.name,
                 createdAt: pendingCreatedApp.createdAt,
                 updatedAt: pendingCreatedApp.createdAt,
-                isPendingCreation: true,
-            } as any,
-            ...apps,
-        ];
-    }, [apps, pendingCreatedApp]);
+                sourceUrl: pendingCreatedApp.sourceUrl ?? null,
+                retryable: Boolean(pendingCreatedApp.retryable),
+                completed: Boolean(pendingCreatedApp.completed),
+            } as any);
+        }
 
-    const isAppCreationPending = Boolean(pendingCreatedApp);
+        return merged;
+    }, [apps, draftApps, pendingCreatedApp, pendingCreatedAppCompleted]);
+
+    const pendingCreatedAppActive = Boolean(pendingCreatedApp?.id);
+    const isAppCreationPending = Boolean(pendingCreatedAppActive && !pendingCreatedAppCompleted);
+    const pendingCreatedAppRetryable = Boolean(pendingCreatedApp?.retryable);
     const pendingCreatedAppId = pendingCreatedApp?.id ?? null;
     const createWebsitePlusBusy = Boolean(nextJsGenerationPendingUrl || htmlGenerationPendingUrl);
+    const websiteSubmitBusy = Boolean(websiteSubmissionPendingUrl);
 
     const startWebAppWizard = useCallback(
         (opts?: { seedRenderId?: string | null; url?: string | null }) => {
@@ -4770,52 +5700,30 @@ export default function PreviewPage(): JSX.Element {
     const submitAppWizardWebsite = useCallback(async () => {
         if (appWizardBusy) return;
 
-        if (!(await canProceedWithAppWizardGeneration())) {
-            return;
-        }
-
         setAppWizardBusy(true);
         setAppWizardError(null);
 
         try {
+            if (!(await canProceedWithAppWizardGeneration())) {
+                return;
+            }
+
             const url = (appWizardUrl || "").trim();
             if (!url) {
                 setAppWizardError("Select a successfully scanned URL to continue.");
                 return;
             }
 
-            const successfulUrlSet = new Set(
-                urls
-                    .map((entry) => {
-                        const normalized = validateAndNormalizePublicHttpUrl(String(entry?.url || ""));
-                        if (!normalized) return "";
-                        const statusUi = normalizeUrlStatus(
-                            entry?.status,
-                            getUrlArtifactCount(entry),
-                            entry?.updatedAt,
-                        );
-                        return statusUi === "ready" ? normUrl(normalized) : "";
-                    })
-                    .filter(Boolean),
-            );
-
             const normalizedSelected = validateAndNormalizePublicHttpUrl(url);
             const canonicalSelected = normalizedSelected ? normUrl(normalizedSelected) : "";
-            const normalizedShotsUrl = validateAndNormalizePublicHttpUrl(appWizardShotsUrl || "");
-            const canonicalShotsUrl = normalizedShotsUrl ? normUrl(normalizedShotsUrl) : "";
-            const hasActiveShotContext = Array.isArray(shots) && shots.length > 0;
-            const canTrustCurrentSelectionFromShotContext =
-                !!canonicalSelected &&
-                !!canonicalShotsUrl &&
-                canonicalSelected === canonicalShotsUrl &&
-                hasActiveShotContext;
-
-            if (!canonicalSelected || (!successfulUrlSet.has(canonicalSelected) && !canTrustCurrentSelectionFromShotContext)) {
-                setAppWizardError("Please choose a URL from the scanned dropdown.");
+            if (!canonicalSelected) {
+                setAppWizardError("Enter a public URL to continue.");
                 return;
             }
 
-            const canAttachShots = !!(appWizardShotsUrl && normUrl(appWizardShotsUrl) === normUrl(url));
+            const normalizedShotsUrl = validateAndNormalizePublicHttpUrl(appWizardShotsUrl || "");
+            const canonicalShotsUrl = normalizedShotsUrl ? normUrl(normalizedShotsUrl) : "";
+            const canAttachShots = !!(canonicalShotsUrl && canonicalShotsUrl === normUrl(url));
             const screenshotKeys = user && canAttachShots
                 ? shots
                     .map((s) => s.path)
@@ -4833,7 +5741,7 @@ export default function PreviewPage(): JSX.Element {
         } finally {
             setAppWizardBusy(false);
         }
-    }, [appWizardBusy, appWizardUrl, appWizardShotsUrl, user, shots, handleCreateApp, urls, canProceedWithAppWizardGeneration]);
+    }, [appWizardBusy, appWizardUrl, appWizardShotsUrl, user, shots, handleCreateApp, canProceedWithAppWizardGeneration]);
 
     // New: create an app from the starter template (free)
     const handleCreateTemplateApp = useCallback(async () => {
@@ -4973,9 +5881,10 @@ export default function PreviewPage(): JSX.Element {
             );
 
             try {
-                await updateDoc(
+                await setDoc(
                     doc(db, "kloner_users", user.uid, "kloner_apps", appId),
                     { name: trimmed, updatedAt: serverTimestamp() },
+                    { merge: true },
                 );
                 push("App name updated", "ok");
             } catch (err) {
@@ -5586,31 +6495,67 @@ export default function PreviewPage(): JSX.Element {
     }, [urlParam, targetUrl, router]);
 
     const submitMiniUrl = useCallback(
-        async (raw: string) => {
-            const normalized = validateAndNormalizePublicHttpUrl(raw);
-            if (!normalized) {
-                setErr("Please enter a valid public http(s) URL.");
-                setInfo("");
-                return;
-            }
-            if (!canUseScreenshotCredit()) {
-                setErr("You have used all monthly screenshot credits. Upgrade to capture more pages and monitor more sites.");
-                setInfo("");
-                push("You have used all available screenshot credits for this month.", "warn");
-                setShowCreditsPaywall("screenshot");
-                return;
-            }
-
-            const canonical = normUrl(normalized);
-            const queued = await enqueueUrlScanRef.current?.(normalized, { clearStartParam: false });
-            if (!queued) return;
-
-            setErr("");
-            setInfo("");
-            router.push(`/dashboard/view?u=${encodeURIComponent(normalized)}`, { scroll: false });
-        },
-        [canUseScreenshotCredit, push, router]
+        async (raw: string) => submitDashboardUrlDraft({
+            rawUrl: raw,
+            canUseScreenshotCredit,
+            fetchImpl: fetch,
+            push,
+            setErr,
+            setInfo,
+            setShowCreditsPaywall,
+            setWebsiteSubmissionPendingUrl,
+            setDraftApps,
+            setPendingDraftApps,
+        }),
+        [canUseScreenshotCredit, fetch, push, setErr, setInfo, setPendingDraftApps, setDraftApps, setShowCreditsPaywall, setWebsiteSubmissionPendingUrl]
     );
+
+    const promoteDraftToApp = useCallback(async (draft: {
+        draftId: string;
+        id: string;
+        name: string;
+        createdAt: any;
+        sourceUrl?: string | null;
+    }) => {
+        const rawUrl = draft.sourceUrl || targetUrl || "";
+        const normalized = validateAndNormalizePublicHttpUrl(rawUrl);
+        if (!normalized) {
+            setErr("That saved URL looks invalid. Delete it from the list to continue.");
+            return;
+        }
+
+        flushSync(() => {
+            setPendingDraftApps((prev) => ({ ...prev, [draft.draftId]: true }));
+        });
+        openAppBuilderDirectly(draft.id);
+
+        try {
+            const created = await handleCreateApp("url", undefined, normalized, {
+                skipCookieConsent: true,
+                skipGenerationTierCheck: true,
+                openAppBuilderImmediately: true,
+                generationFormat: "nextjs",
+                draftDocId: draft.draftId,
+                draftAppId: draft.id,
+                draftCreatedAt: typeof draft.createdAt === "number" ? draft.createdAt : Date.now(),
+            });
+
+            if (!created) {
+                setPendingDraftApps((prev) => {
+                    const next = { ...prev };
+                    delete next[draft.draftId];
+                    return next;
+                });
+            }
+        } catch (error) {
+            setPendingDraftApps((prev) => {
+                const next = { ...prev };
+                delete next[draft.draftId];
+                return next;
+            });
+            throw error;
+        }
+    }, [handleCreateApp, targetUrl]);
 
     const [urlMenuOpen, setUrlMenuOpen] = useState(false);
     const urlMenuRef = useRef<HTMLDivElement | null>(null);
@@ -5665,7 +6610,6 @@ export default function PreviewPage(): JSX.Element {
         try {
             const url = new URL(window.location.href);
             url.searchParams.delete("start");
-            url.searchParams.delete("retry");
             const qs = url.searchParams.toString();
             const next = qs ? `${url.pathname}?${qs}` : url.pathname;
             router.replace(next, { scroll: false });
@@ -5674,43 +6618,34 @@ export default function PreviewPage(): JSX.Element {
         }
     }, [router]);
 
-    const clearUrlScanQueuedState = useCallback(
-        (rawUrl: string, message: string) => {
-            const normalized = normUrl(rawUrl);
-            generateAbortedRef.current = `${user?.uid || ""}:${rawUrl}`;
-            captureStallReportedForUrlRef.current = normalized;
-            captureStaleReportedForUrlRef.current = normalized;
-            captureLockMinUntilRef.current = 0;
-            captureLockStartedAtRef.current = 0;
-            setCaptureTerminalFailureUrl(normalized);
-            setCaptureIssueDetails(message);
-            setCaptureLockUrl(null);
-            setHideCaptureQueueStatus(true);
-            setCaptureIssueNotice("Issue detected while scanning this URL.");
-            setInfo("");
-            setErr(message);
-            try {
-                const url = new URL(window.location.href);
-                url.searchParams.delete("start");
-                const qs = url.searchParams.toString();
-                const next = qs ? `${url.pathname}?${qs}` : url.pathname;
-                router.replace(next, { scroll: false });
-            } catch {
-                // ignore
-            }
-        },
-        [router, user?.uid],
-    );
+    const clearUrlScanQueuedState = useCallback((rawUrl: string, message: string) => {
+        const normalized = normUrl(rawUrl);
+        generateAbortedRef.current = `${user?.uid || ""}:${rawUrl}`;
+        captureStallReportedForUrlRef.current = normalized;
+        captureStaleReportedForUrlRef.current = normalized;
+        captureLockMinUntilRef.current = 0;
+        captureLockStartedAtRef.current = 0;
+        setCaptureTerminalFailureUrl(normalized);
+        setCaptureLockUrl(null);
+        setCaptureIssueNotice("");
+        setErr(message);
+        try {
+            const url = new URL(window.location.href);
+            url.searchParams.delete("start");
+            url.searchParams.delete("retry");
+            const qs = url.searchParams.toString();
+            const next = qs ? `${url.pathname}?${qs}` : url.pathname;
+            router.replace(next, { scroll: false });
+        } catch {
+            // ignore
+        }
+    }, [router, user?.uid]);
 
     const shouldSendFrontendTimeoutAlert = useCallback((action: string, rawUrl: string) => {
         try {
-            if (typeof window === "undefined") return true;
             const normalizedUrl = normUrl(rawUrl);
             if (!normalizedUrl) return true;
 
-            // Some URL-capture failures can transition through multiple terminal labels
-            // (e.g. queued timeout -> stale) within the same incident. Collapse them into
-            // one dedupe family so Slack gets a single alert per URL incident.
             const dedupeAction = (() => {
                 const a = String(action || "").trim().toLowerCase();
                 if (a === "url_capture_stalled" || a === "url_capture_stale") {
@@ -5721,9 +6656,8 @@ export default function PreviewPage(): JSX.Element {
 
             const now = Date.now();
             const cacheRaw = window.sessionStorage.getItem(FRONTEND_TIMEOUT_DEDUPE_STORAGE_KEY);
-            const cache = cacheRaw ? JSON.parse(cacheRaw) as Record<string, number> : {};
+            const cache = cacheRaw ? JSON.parse(cacheRaw) : {};
             const next: Record<string, number> = {};
-
             for (const [key, at] of Object.entries(cache)) {
                 if (typeof at === "number" && now - at < FRONTEND_TIMEOUT_DEDUPE_TTL_MS) {
                     next[key] = at;
@@ -5794,11 +6728,28 @@ export default function PreviewPage(): JSX.Element {
             startRequestedEnqueueAttemptRef.current = startRequestKey;
 
             setCaptureLockUrl(target);
+            const pendingCreationId = `pending-url-${hash64(target)}`;
+            setPendingCreatedApp({
+                id: pendingCreationId,
+                name: (() => {
+                    try {
+                        return new URL(target).host || "Website";
+                    } catch {
+                        return target.replace(/^https?:\/\//i, "").split("/")[0] || "Website";
+                    }
+                })(),
+                createdAt: Date.now(),
+                sourceUrl: target,
+                retryable: false,
+                completed: false,
+            });
             captureLockStartedAtRef.current = Date.now();
             captureLockMinUntilRef.current = Date.now() + 60_000;
             captureStallReportedForUrlRef.current = "";
             captureStaleReportedForUrlRef.current = "";
             setCaptureTerminalFailureUrl("");
+            setUrlGenerationHealthWarning(null);
+            setErr("");
             clearCaptureStalledAlertSent(normUrl(target));
             if (shouldClearStartParam) clearStartQueryParam();
 
@@ -5858,34 +6809,10 @@ export default function PreviewPage(): JSX.Element {
                             existingStatusUi === "processing";
 
                         if (hasExistingScanContext && !forceRetry) {
-                            const ok = await showConfirm(
-                                "This URL has already been scanned. Delete the existing Kloner URL, remove its uploaded files, and rescan from scratch?",
-                                "Delete and Rescan"
-                            );
-                            if (!ok) {
-                                shouldMarkHandled = true;
-                                return;
-                            }
-
-                            await purgeTrackedUrlData(user.uid, target);
-                            if (cancelled) return;
-
-                            const urlHash = hash64(target);
-                            await addDoc(colRef, {
-                                url: target,
-                                urlHash,
-                                createdAt: serverTimestamp(),
-                                updatedAt: serverTimestamp(),
-                                status: "queued",
-                                screenshotsPrefix: `kloner-screenshots/${user.uid}/${urlHash}`,
-                                screenshotPaths: [],
-                            } as UrlDoc);
-
-                            setUrlDocReloadNonce((n) => n + 1);
-
+                            // Allow duplicate scans to proceed without deleting the existing URL data.
                             setUrls((prev) => {
                                 if (prev.some((u) => normUrl(u.url) === normUrl(target))) return prev;
-                                return [{ id: `local_${hash64(target)}`, url: target, urlHash: hash64(target) } as any, ...prev].slice(0, 50);
+                                return [{ id: existingDoc.id, ...(existingData as any) }, ...prev].slice(0, 50);
                             });
                         }
                     }
@@ -5902,6 +6829,18 @@ export default function PreviewPage(): JSX.Element {
                     if (res.ok) {
                         generateSucceededRef.current = startRequestKey;
                         setCaptureTerminalFailureUrl("");
+                        setHideCaptureQueueStatus(true);
+                        captureLockMinUntilRef.current = 0;
+                        setCaptureLockUrl(null);
+                        captureLockStartedAtRef.current = 0;
+                        setPendingCreatedApp((prev) => {
+                            if (!prev) return prev;
+                            return {
+                                ...prev,
+                                retryable: false,
+                                completed: true,
+                            };
+                        });
                     }
 
                     if (cancelled) return;
@@ -5944,13 +6883,13 @@ export default function PreviewPage(): JSX.Element {
                                 generationFormat: "nextjs",
                                 blocking: true,
                                 code: backendCode || String(payload?.code || "BLOCKED_URL").toUpperCase(),
-                                message: serverError || backendReason || "This domain is blocked for site cloning.",
+                                message: serverError || backendReason || "This domain is blocked for site cloning. Please use a different URL.",
                                 details: payload?.details || backendReason || serverError || null,
                                 action: null,
                                 retryable: false,
                                 warnings: [{
                                     code: backendCode || String(payload?.code || "BLOCKED_URL").toUpperCase(),
-                                    message: serverError || backendReason || "This domain is blocked for site cloning.",
+                                    message: serverError || backendReason || "This domain is blocked for site cloning. Please use a different URL.",
                                     severity: "error",
                                     rescanRecommended: false,
                                 }],
@@ -5966,13 +6905,13 @@ export default function PreviewPage(): JSX.Element {
                                 : looksCrossDomainRedirect
                                     ? "This URL redirected to a different domain and was stopped for safety. Please use the final destination URL directly."
                                     : looksBlocked
-                                        ? (serverError || backendReason || "This domain is blocked for site cloning.")
+                                        ? (serverError || backendReason || "This domain is blocked for site cloning. Please use a different URL.")
                                         : (serverError || uiError);
                         if (nextUiError !== uiError) {
                             setErr(nextUiError);
                         }
                         if (looksBlocked) {
-                            setCaptureIssueNotice(`Domain blocked for site cloning: ${target}`);
+                            setCaptureIssueNotice(`Domain blocked for site cloning: ${target}. Please use a different URL.`);
                         }
                         if (creditLimitResponse) {
                             setShowCreditsPaywall("screenshot");
@@ -6180,6 +7119,17 @@ export default function PreviewPage(): JSX.Element {
             captureStatus === "processing" ||
             (startRequested && forceRetryRequested));
     const retryRescanPending = !!targetUrl && startRequested && forceRetryRequested;
+
+    useEffect(() => {
+        if (!websiteSubmissionPendingUrl) return;
+        if (isAppCreationPending) {
+            setWebsiteSubmissionPendingUrl(null);
+            return;
+        }
+        if (captureLocked || startRequested || captureStatus === "queued" || captureStatus === "processing") {
+            setWebsiteSubmissionPendingUrl(null);
+        }
+    }, [websiteSubmissionPendingUrl, isAppCreationPending, captureLocked, startRequested, captureStatus]);
 
     useEffect(() => {
         if (!err) return;
@@ -6418,6 +7368,11 @@ export default function PreviewPage(): JSX.Element {
 
     const triggerFirstUrlNextStepsEmail = useCallback(
         async (url: string) => {
+            if (typeof window !== "undefined") {
+                const host = window.location.hostname.toLowerCase();
+                if (host === "localhost" || host === "127.0.0.1" || host === "::1") return;
+            }
+
             const normalized = validateAndNormalizePublicHttpUrl(url || "");
             const canonical = normalized ? normUrl(normalized) : "";
             if (!canonical) return;
@@ -6442,48 +7397,6 @@ export default function PreviewPage(): JSX.Element {
         },
         [],
     );
-
-    useEffect(() => {
-        const urlKey = targetUrl ? normUrl(targetUrl) : "";
-        const prev = capturePrevStatusRef.current;
-        capturePrevStatusRef.current = captureStatus;
-
-        // Clear on URL change / navigation.
-        if (!urlKey) {
-            setSuccess("");
-            captureSuccessShownForUrlRef.current = "";
-            return;
-        }
-
-        // If a new capture starts, clear any prior success.
-        if (captureStatus === "queued" || captureStatus === "processing") {
-            setSuccess("");
-            return;
-        }
-
-        // If the active URL is now ready, clear stale failure/loading UI from a prior attempt.
-        if (captureStatus === "ready") {
-            setErr("");
-            setInfo("");
-            setCaptureIssueNotice("");
-            setHideCaptureQueueStatus(false);
-            setCaptureTerminalFailureUrl("");
-        }
-
-        if (err) return;
-        if (!lockMatches) return;
-
-        const wasInFlight = prev === "queued" || prev === "processing";
-        const isNowReady = captureStatus === "ready";
-        if (!wasInFlight || !isNowReady) return;
-
-        if (captureSuccessShownForUrlRef.current === urlKey) return;
-        captureSuccessShownForUrlRef.current = urlKey;
-
-        setAutoOpenGenerateSuccessMessage(URL_ADD_SUCCESS_MESSAGE);
-        setAutoOpenGenerateModalNonce((n) => n + 1);
-        void triggerFirstUrlNextStepsEmail(urlKey);
-    }, [captureStatus, targetUrl, lockMatches, err, info, triggerFirstUrlNextStepsEmail]);
 
     useEffect(() => {
         function onDocClick(e: MouseEvent) {
@@ -6602,14 +7515,50 @@ export default function PreviewPage(): JSX.Element {
     }, [targetUrl, urlGenerationHealthWarning]);
 
     const activeUrlRescanWarning = activeUrlBackendWarning || localUrlGenerationBlockingWarning;
+    useEffect(() => {
+        if (!pendingCreatedApp || pendingCreatedApp.completed) return;
+        if (!activeUrlDoc?.url || !pendingCreatedApp.sourceUrl) return;
+        const activeUrlNormalized = validateAndNormalizePublicHttpUrl(String(activeUrlDoc.url || ""));
+        const sourceUrlNormalized = validateAndNormalizePublicHttpUrl(String(pendingCreatedApp.sourceUrl || ""));
+        if (!activeUrlNormalized || !sourceUrlNormalized) return;
+        if (normUrl(activeUrlNormalized) !== normUrl(sourceUrlNormalized)) return;
+        if (!isArchiveBackedUrlDoc(activeUrlDoc)) return;
+
+        setPendingCreatedApp((prev) => {
+            if (!prev || prev.completed) return prev;
+            return {
+                ...prev,
+                completed: true,
+            };
+        });
+    }, [activeUrlDoc?.url, pendingCreatedApp, pendingCreatedApp?.sourceUrl, pendingCreatedApp?.completed]);
+
     const activeUrlIssueIsBlocked = Boolean(
-        activeUrlRescanWarning?.blocking &&
-        isBlockedUrlScanSignal(
-            activeUrlRescanWarning.code,
-            activeUrlRescanWarning.message,
-            activeUrlRescanWarning.action,
-            activeUrlRescanWarning.details,
-        ) || /blocked|blacklist|forbidden/i.test(activeUrlRescanWarning?.code || "")
+        (() => {
+            const blockedText = [
+                activeUrlRescanWarning?.blocking ? "blocking" : "",
+                activeUrlRescanWarning?.code,
+                activeUrlRescanWarning?.message,
+                activeUrlRescanWarning?.action,
+                activeUrlRescanWarning?.details,
+            ]
+                .map((part) => String(part || "").trim())
+                .filter(Boolean)
+                .join(" ")
+                .toLowerCase();
+
+            return Boolean(
+                blockedText && (
+                    blockedText.includes("domain blocked") ||
+                    blockedText.includes("blocked for site cloning") ||
+                    blockedText.includes("blocked the snapshot request") ||
+                    blockedText.includes("blacklist") ||
+                    blockedText.includes("site blocked") ||
+                    blockedText.includes("not allowed") ||
+                    /blocked|blacklist|forbidden/i.test(activeUrlRescanWarning?.code || "")
+                )
+            );
+        })()
     );
 
     const retryCooldownUntil = activeUrlIssueHref ? (retryBackoffByUrl[activeUrlIssueHref]?.until ?? 0) : 0;
@@ -6625,77 +7574,46 @@ export default function PreviewPage(): JSX.Element {
     const showActiveUrlIssueWarning =
         activeUrlCannotGenerate &&
         !!activeUrlIssueHref &&
+        !startRequested &&
+        captureLockUrl !== targetUrl &&
         (Boolean(activeUrlRescanWarning?.blocking) || captureTerminalFailureUrl === activeUrlIssueHref) &&
         dismissedUrlIssueCanonical !== activeUrlIssueHref;
     const retryCooldownActive = retryCooldownUntil > Date.now();
     const retryCooldownRemainingMs = retryCooldownActive ? Math.max(0, retryCooldownUntil - retryCooldownTick) : 0;
     const retryLabel = retryCooldownActive
         ? `Retry in ${formatRetryDelayLabel(retryCooldownRemainingMs)}`
-        : activeUrlBackendWarning?.blocking
-            ? "Rescan URL"
-            : "Retry";
-
+        : "Retry";
     const activeUrlIssueDetails = useMemo(() => {
         if (!showActiveUrlIssueWarning) return null;
-        const activeUrlDisplay = activeUrlDoc?.url || activeUrlIssueHref;
 
         if (activeUrlRescanWarning?.blocking) {
             if (activeUrlIssueIsBlocked) {
                 return (
-                    <div className="space-y-3">
-                        <p className="font-semibold text-red-950">
-                            Domain blocked for site cloning
-                        </p>
-                        <p>
-                            Our system blocks some domains for legal, safety, or policy reasons. This is a hard block,
-                            so there is no retry or rescan available for this URL.
+                    <div className="space-y-2">
+                        <p className="font-semibold text-red-950">This URL is blocked for site cloning.</p>
+                        <p className="text-red-900/90">
+                            Use a different URL, or try another page from the same site that allows access.
                         </p>
                     </div>
                 );
             }
 
             return (
-                <div className="space-y-3">
-                    <p className="font-semibold text-amber-950">
-                        {activeUrlRescanWarning.message || "The scan is incomplete or stale. Rescan before generating to avoid bad output."}
+                <div className="space-y-2">
+                    <p className="font-semibold text-amber-950">Rescan this URL to continue.</p>
+                    <p className="text-amber-900/90">
+                        The scan stopped short of a clean result, so retrying is the safest next step.
                     </p>
-                    <p>
-                        Rescan this URL before generating. The current scan can&apos;t be trusted yet.
-                    </p>
-                    {activeUrlRescanWarning.details ? (
-                        <div className="rounded-lg border border-amber-200 bg-white px-3 py-2 text-[11px] leading-5 text-amber-950/90">
-                            <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-amber-800">
-                                Details
-                            </div>
-                            <pre className="whitespace-pre-wrap break-words font-mono text-[11px] leading-5 text-amber-950/90">
-                                {activeUrlRescanWarning.details}
-                            </pre>
-                        </div>
-                    ) : null}
                 </div>
             );
         }
 
         return (
-            <div className="space-y-3">
-                <p className="font-semibold text-amber-950">
-                    Test the URL in a private or incognito browser tab and make sure it loads without login, captcha, geo-blocking, or a redirect.
+            <div className="space-y-2">
+                <p className="font-semibold text-amber-950">Try rescanning the URL.</p>
+                <p className="text-amber-900/90">
+                    If the problem keeps happening, the site may need a different URL.
                 </p>
-                <p>If the page works in a browser but not here, the site is probably blocking automated capture.</p>
-                <div className="pt-2 border-t border-amber-200/80">
-                    <div className="text-[11px] font-semibold uppercase tracking-wide text-amber-800/80">
-                        URL
-                    </div>
-                    <a
-                        href={activeUrlIssueHref || "#"}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="mt-1 inline-flex max-w-full items-center gap-1.5 break-all font-semibold text-amber-900 underline decoration-amber-500 underline-offset-2 hover:text-amber-950"
-                    >
-                        <span>{activeUrlDisplay}</span>
-                        <ExternalLink className="h-3.5 w-3.5 shrink-0" />
-                    </a>
-                </div>
             </div>
         );
     }, [showActiveUrlIssueWarning, activeUrlDoc?.url, activeUrlIssueHref, activeUrlRescanWarning]);
@@ -6773,20 +7691,6 @@ export default function PreviewPage(): JSX.Element {
 
         return out;
     }, [urls, targetUrl, docData]);
-
-    useEffect(() => {
-        if (!appWizardOpen || appWizardSource !== "website") return;
-        if (!successfulScannedUrls.length) return;
-
-        const normalizedCurrent = validateAndNormalizePublicHttpUrl(appWizardUrl || "");
-        const currentCanonical = normalizedCurrent ? normUrl(normalizedCurrent) : "";
-        const hasCurrent = currentCanonical
-            ? successfulScannedUrls.some((u) => normUrl(u) === currentCanonical)
-            : false;
-        if (hasCurrent) return;
-
-        setAppWizardUrl(successfulScannedUrls[0]);
-    }, [appWizardOpen, appWizardSource, appWizardUrl, successfulScannedUrls]);
 
     const countRendersForUrl = useCallback(
         async (uid: string, url: string, urlHash: string) => {
@@ -6881,6 +7785,7 @@ export default function PreviewPage(): JSX.Element {
             if (!u) {
                 setStripeStatus(null);
                 setStripeCancelAtPeriodEnd(false);
+                setUser(null);
                 const next = encodeURIComponent(
                     `/dashboard/view?u=${encodeURIComponent(targetUrl || "")}`
                 );
@@ -7708,6 +8613,102 @@ export default function PreviewPage(): JSX.Element {
         },
         [canUseScreenshotCredit, db, push, retryBackoffByUrl, router, user]
     );
+
+    const retryDraftCreation = useCallback(async (draft: {
+        draftId: string;
+        id: string;
+        name: string;
+        createdAt: any;
+        sourceUrl?: string | null;
+    }) => {
+        setRetryingDraftApps((prev) => ({ ...prev, [draft.draftId]: true }));
+
+        const rawUrl = draft.sourceUrl || targetUrl || activeUrlDoc?.url || "";
+        const normalized = validateAndNormalizePublicHttpUrl(rawUrl);
+        if (!normalized) {
+            setErr("That saved URL looks invalid. Delete it from the list to continue.");
+            setRetryingDraftApps((prev) => {
+                const next = { ...prev };
+                delete next[draft.draftId];
+                return next;
+            });
+            return;
+        }
+
+        setDraftApps((prev) => prev.map((item) => {
+            if (item.draftId !== draft.draftId) return item;
+            return {
+                ...item,
+                retryable: false,
+                warningCode: null,
+                warningMessage: null,
+                warningAction: null,
+                errorCode: null,
+                errorMessage: null,
+                errorReason: null,
+                userMessage: null,
+                details: null,
+                warnings: [],
+                blocked: false,
+                updatedAt: Date.now(),
+            };
+        }));
+
+        try {
+            await fetch("/api/private/kloner-draft", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                credentials: "include",
+                body: JSON.stringify({
+                    action: "upsert",
+                    draftId: draft.draftId,
+                    clearIssue: true,
+                    draft: {
+                        id: draft.id,
+                        name: draft.name,
+                        createdAt: typeof draft.createdAt === "number" ? draft.createdAt : Date.now(),
+                        sourceUrl: normalized,
+                        retryable: false,
+                        completed: false,
+                    },
+                }),
+            });
+        } catch (err) {
+            console.warn("[firestore] draft retry clear failed", err);
+        }
+
+        await retryTrackedUrl(normalized);
+    }, [activeUrlDoc?.url, retryTrackedUrl, targetUrl]);
+
+    useEffect(() => {
+        const activeRetryIds = Object.keys(retryingDraftApps);
+        if (!activeRetryIds.length) return;
+
+        const intervalId = window.setInterval(() => {
+            void loadDraftApps();
+        }, 2500);
+
+        return () => window.clearInterval(intervalId);
+    }, [loadDraftApps, retryingDraftApps]);
+
+    useEffect(() => {
+        if (!Object.keys(retryingDraftApps).length) return;
+
+        setRetryingDraftApps((prev) => {
+            let changed = false;
+            const next = { ...prev };
+
+            for (const draftId of Object.keys(prev)) {
+                const draft = draftApps.find((item) => item.draftId === draftId || item.id === draftId);
+                if (!draft || Boolean(draft.pendingCompleted) || Boolean(draft.completed)) {
+                    delete next[draftId];
+                    changed = true;
+                }
+            }
+
+            return changed ? next : prev;
+        });
+    }, [draftApps, retryingDraftApps]);
 
     useEffect(() => {
         if (!activeUrlIssueHref) return;
@@ -9643,10 +10644,52 @@ export default function PreviewPage(): JSX.Element {
     const activeUrlProceedableCertainty = Boolean(activeUrlDoc && !activeUrlCannotGenerate && !isUrlProcessingError);
 
     useEffect(() => {
-        if (!autoOpenGenerateSuccessMessage) return;
-        if (activeUrlProceedableCertainty) return;
-        setAutoOpenGenerateSuccessMessage("");
-    }, [activeUrlProceedableCertainty, autoOpenGenerateSuccessMessage]);
+        const urlKey = targetUrl ? normUrl(targetUrl) : "";
+        const prev = capturePrevStatusRef.current;
+        capturePrevStatusRef.current = captureStatus;
+
+        // Clear on URL change / navigation.
+        if (!urlKey) {
+            setSuccess("");
+            captureSuccessShownForUrlRef.current = "";
+            return;
+        }
+
+        if (captureStatus === "queued" || captureStatus === "processing") {
+            setSuccess("");
+            return;
+        }
+
+        if (
+            captureStatus !== "ready" ||
+            err ||
+            info ||
+            captureIssueNotice ||
+            showActiveUrlIssueWarning ||
+            isUrlProcessingError ||
+            activeUrlCannotGenerate
+        ) {
+            return;
+        }
+
+        const wasInFlight = prev === "queued" || prev === "processing";
+        if (!wasInFlight) return;
+
+        if (captureSuccessShownForUrlRef.current === urlKey) return;
+        captureSuccessShownForUrlRef.current = urlKey;
+
+        void triggerFirstUrlNextStepsEmail(urlKey);
+    }, [
+        captureStatus,
+        targetUrl,
+        err,
+        info,
+        captureIssueNotice,
+        showActiveUrlIssueWarning,
+        isUrlProcessingError,
+        activeUrlCannotGenerate,
+        triggerFirstUrlNextStepsEmail,
+    ]);
 
     /* ───────── collections grouping ───────── */
 
@@ -10392,203 +11435,29 @@ export default function PreviewPage(): JSX.Element {
                         captureStatus={captureStatus}
                         captureIssueNotice={shouldSuppressCaptureIssueNotice ? "" : captureIssueNotice}
                         hideCaptureQueueStatus={hideCaptureQueueStatus}
+                        creationBusy={isAppCreationPending || websiteSubmitBusy}
+                        queueActive={captureLocked || retryRescanPending}
                     />
                 </section>
 
                 {/* Step 1: URL selection */}
-                <section className="mb-8 rounded-3xl border border-neutral-200 bg-gradient-to-br from-white via-neutral-50 to-neutral-100 shadow-sm px-4 py-4 sm:px-5 sm:py-5 shadow-sm">
-                    <div ref={urlMenuRef} className="relative">
-                        <button
-                            type="button"
-                            onClick={() => setUrlMenuOpen((v) => !v)}
-                            className="flex w-full min-w-0 sm:inline-flex sm:w-auto sm:max-w-[540px] items-center gap-2 rounded-md border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-800 hover:bg-neutral-50"
-                            title={activeUrlDoc?.url}
-                            aria-haspopup="listbox"
-                            aria-expanded={urlMenuOpen}
-                        >
-                            <span className="flex-1 min-w-0 truncate">
-                                {activeUrlDoc?.url || "Select a URL"}
-                            </span>
-                            <ChevronDown className="h-4 w-4 shrink-0 text-neutral-500" />
-                        </button>
-
-                        {urlMenuOpen && (
-                            <div
-                                role="listbox"
-                                aria-activedescendant={activeUrlDoc?.id ? String(activeUrlDoc.id) : undefined}
-                                className="absolute left-0 z-[300] mt-2 w-[min(640px,calc(100vw-2rem))] max-w-full overflow-hidden rounded-md border border-neutral-200 bg-white shadow-lg"
-                            >
-                                <ul className="max-h-[280px] overflow-auto py-1">
-                                    {orderedUrls.map((u) => {
-                                        const isActive = activeUrlDoc?.id === u.id;
-                                        const normalized = validateAndNormalizePublicHttpUrl(u.url);
-                                        const isValid = !!normalized;
-                                        const rowCanonical = normalized ? normUrl(normalized) : "";
-                                        const targetCanonical = targetUrl ? normUrl(targetUrl) : "";
-                                        const isSelectedTargetRow = !!rowCanonical && !!targetCanonical && rowCanonical === targetCanonical;
-                                        const rowStatusSource: any = isSelectedTargetRow && docData
-                                            ? {
-                                                status: docData.status,
-                                                screenshotPaths: docData.screenshotPaths,
-                                                screenshots: docData.screenshots,
-                                                archiveMode: docData.archiveMode,
-                                                zipPath: docData.zipPath,
-                                                zipUrl: docData.zipUrl,
-                                                zipPageCount: docData.zipPageCount,
-                                                updatedAt: docData.updatedAt,
-                                                lastError: (docData as any)?.lastError,
-                                            }
-                                            : u;
-                                        const rowBackendWarning = extractUrlRescanWarning(rowStatusSource);
-                                        const rowBlockedSignal = isBlockedUrlScanSignal(
-                                            rowBackendWarning?.code,
-                                            rowBackendWarning?.message,
-                                            rowBackendWarning?.action,
-                                            rowBackendWarning?.details,
-                                            rowStatusSource?.lastError,
-                                            rowStatusSource?.errorReason,
-                                            rowStatusSource?.errorMessage,
-                                            rowStatusSource?.message,
-                                            rowStatusSource?.warningMessage,
-                                        );
-                                        const rowBackendWarningIsBlocked = Boolean(
-                                            rowBlockedSignal ||
-                                            (isSelectedTargetRow && activeUrlIssueIsBlocked)
-                                        );
-                                        const statusUi = normalizeUrlStatus(
-                                            rowStatusSource?.status,
-                                            getUrlArtifactCount(rowStatusSource),
-                                            rowStatusSource?.updatedAt,
-                                            rowStatusSource?.lastError,
-                                        );
-                                        const isFailedUrl = statusUi === "error" || statusUi === "stale" || Boolean(rowBackendWarning?.blocking);
-                                        const failedUrlLabel = statusUi === "stale" ? "Stale" : "Failed";
-
-                                        return (
-                                            <li key={u.id}>
-                                                <div
-                                                    className={`flex w-full items-center gap-2 px-3 py-2 text-sm ${isActive
-                                                        ? "bg-neutral-100 text-neutral-700"
-                                                        : "text-neutral-800 hover:bg-neutral-50"
-                                                        }`}
-                                                >
-                                                    <button
-                                                        type="button"
-                                                        role="option"
-                                                        aria-selected={isActive}
-                                                        onClick={() => {
-                                                            if (!normalized) {
-                                                                setUrlMenuOpen(false);
-                                                                setErr(
-                                                                    "That saved URL looks invalid. Delete it from the list to continue."
-                                                                );
-                                                                return;
-                                                            }
-                                                            setErr("");
-                                                            setUrlMenuOpen(false);
-                                                            selectUrl(normalized);
-                                                        }}
-                                                        title={u.url}
-                                                        className="flex min-w-0 flex-1 items-center gap-2 text-left"
-                                                    >
-                                                        <span
-                                                            className={`inline-block h-2.5 w-2.5 rounded-full ${isActive
-                                                                ? "bg-neutral-800"
-                                                                : "bg-neutral-300"
-                                                                }`}
-                                                        />
-                                                        <span className="min-w-0 truncate">
-                                                            {u.url}
-                                                        </span>
-                                                        {!isValid ? (
-                                                            <span className="ml-2 shrink-0 rounded-full border border-red-200 bg-red-50 px-2 py-0.5 text-[11px] font-medium text-red-700">
-                                                                Invalid
-                                                            </span>
-                                                        ) : rowBackendWarningIsBlocked ? (
-                                                            <span
-                                                                className="ml-2 inline-flex shrink-0 items-center gap-1.5 rounded-full border border-red-300 bg-red-100 px-2.5 py-1 text-[11px] font-semibold text-red-900 shadow-sm"
-                                                                title="This domain is blocked for site cloning"
-                                                                aria-label={`Blocked domain ${u.url}`}
-                                                            >
-                                                                <AlertTriangle className="h-3 w-3" />
-                                                                <span>Blocked</span>
-                                                            </span>
-                                                        ) : rowBackendWarning?.blocking ? (
-                                                            <button
-                                                                type="button"
-                                                                onClick={(e) => {
-                                                                    e.preventDefault();
-                                                                    e.stopPropagation();
-                                                                    retryTrackedUrl(u.url);
-                                                                }}
-                                                                disabled={retryCooldownActive}
-                                                                className="ml-2 inline-flex shrink-0 items-center gap-1.5 rounded-full border border-amber-300 bg-amber-100 px-2.5 py-1 text-[11px] font-semibold text-amber-900 shadow-sm transition hover:bg-amber-200 disabled:cursor-not-allowed disabled:opacity-50"
-                                                                title="Rescan before generating"
-                                                                aria-label={`Rescan ${u.url}`}
-                                                            >
-                                                                <AlertTriangle className="h-3 w-3" />
-                                                                <span>Rescan required</span>
-                                                            </button>
-                                                        ) : isFailedUrl ? (
-                                                            <button
-                                                                type="button"
-                                                                onClick={(e) => {
-                                                                    e.preventDefault();
-                                                                    e.stopPropagation();
-                                                                    retryTrackedUrl(u.url);
-                                                                }}
-                                                                disabled={retryCooldownActive}
-                                                                className="ml-2 inline-flex shrink-0 items-center gap-1.5 rounded-full border border-amber-300 bg-amber-100 px-2.5 py-1 text-[11px] font-semibold text-amber-900 shadow-sm transition hover:bg-amber-200 disabled:cursor-not-allowed disabled:opacity-50"
-                                                                title="Retry scanning URL"
-                                                                aria-label={`Retry scanning ${u.url}`}
-                                                            >
-                                                                <MessageCircleWarning className="h-3 w-3" />
-                                                                <span>{failedUrlLabel}</span>
-                                                                <span className="mx-0.5 h-3 w-px bg-amber-300/80" />
-                                                                <RotateCcw className="h-3 w-3" />
-                                                                <span>{retryLabel}</span>
-                                                            </button>
-                                                        ) : null}
-                                                    </button>
-
-                                                    <button
-                                                        type="button"
-                                                        onClick={(e) => {
-                                                            e.preventDefault();
-                                                            e.stopPropagation();
-                                                            deleteTrackedUrl(u);
-                                                        }}
-                                                        className="inline-flex h-8 w-8 items-center justify-center rounded-md text-red-500/80 transition hover:bg-red-50 hover:text-red-700 focus-visible:bg-red-50 focus-visible:text-red-700"
-                                                        title="Delete tracked URL"
-                                                        aria-label={`Delete ${u.url}`}
-                                                    >
-                                                        <Trash2 className="h-4 w-4" />
-                                                    </button>
-                                                </div>
-                                            </li>
-                                        );
-                                    })}
-                                </ul>
-                            </div>
-                        )}
-                    </div>
-                </section>
-
                 {showActiveUrlIssueWarning && activeUrlDoc?.url ? (
                     activeUrlIssueIsBlocked ? (
                         <RedIssueBanner
-                            message={activeUrlRescanWarning?.message || "This domain is blocked for site cloning."}
+                            message={activeUrlRescanWarning?.message || "This domain is blocked for site cloning. Please use a different URL."}
                             onDismiss={() => setDismissedUrlIssueCanonical(activeUrlIssueHref || "")}
                             details={activeUrlIssueDetails}
                         />
                     ) : (
                         <AmberIssueBanner
-                            message="URL scan issue detected"
+                            message="Scan issue detected on"
                             onDismiss={() => setDismissedUrlIssueCanonical(activeUrlIssueHref || "")}
                             onRetry={() => retryTrackedUrl(activeUrlDoc?.url || "")}
                             retryDisabled={retryCooldownActive}
                             retryLabel={retryLabel}
                             details={activeUrlIssueDetails}
+                            linkHref={activeUrlDoc?.url || activeUrlIssueHref || null}
+                            linkLabel={formatUrlOriginLabel(activeUrlDoc?.url || activeUrlIssueHref || "")}
                         />
                     )
                 ) : null}
@@ -10677,20 +11546,7 @@ export default function PreviewPage(): JSX.Element {
                     </div>
                 ) : null}
 
-                {isArchiveBackedUrlDoc(docData) && activeUrlProceedableCertainty ? (
-                    <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-3 sm:px-4 text-emerald-900">
-                        <div className="flex items-start gap-2">
-                            <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
-                            <div>
-                                 <p className="text-[13px] font-semibold tracking-wide text-emerald-700">
-                                    URL captured successfully. Start generating below.
-                                </p>
-                            </div>
-                        </div>
-                    </div>
-                ) : null}
-
-                <section className="mt-10 rounded-3xl border border-neutral-200 bg-white/70 px-4 py-5 sm:px-5 sm:py-6 shadow-sm">
+                <section ref={createWebsitesSectionRef} className="mt-10 rounded-3xl border border-neutral-200 bg-white/70 px-4 py-5 sm:px-5 sm:py-6 shadow-sm">
                     <div className="mb-3 flex items-center gap-3">
                         <div className="inline-flex items-center gap-2 rounded-full border border-neutral-200 bg-white/80 px-3 py-1.5 text-xs sm:text-sm text-neutral-700 shadow-sm">
                             <span className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-500 shadow-sm">
@@ -10706,23 +11562,6 @@ export default function PreviewPage(): JSX.Element {
                             </div>
                         </div>
 
-                        <button
-                            type="button"
-                            onClick={() => {
-                                setAutoOpenGenerateModalNonce((n: number) => n + 1);
-                            }}
-                            disabled={createWebsitePlusBusy}
-                            aria-busy={createWebsitePlusBusy}
-                            className={`relative inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-[rgba(245,95,42,0.18)] bg-accent text-white shadow-sm transition hover:bg-accent2 disabled:cursor-not-allowed disabled:opacity-60 ${shouldPulseCreateWebsitePlus && !createWebsitePlusBusy ? "dashboard-create-plus-pulse border-[rgba(245,95,42,0.42)] ring-4 ring-[rgba(245,95,42,0.14)] shadow-[0_0_0_0_rgba(245,95,42,0.14),0_14px_36px_rgba(245,95,42,0.28)]" : ""}`}
-                            aria-label="Generate new website"
-                            title="Generate new website"
-                        >
-                            {createWebsitePlusBusy ? (
-                                <Loader2 className="h-7 w-7 animate-spin" strokeWidth={2.75} />
-                            ) : (
-                                <Plus className="h-7 w-7" strokeWidth={2.75} />
-                            )}
-                        </button>
                     </div>
 
                     {/* <p className="mt-1 mb-2 text-sm text-neutral-500">
@@ -10747,8 +11586,6 @@ export default function PreviewPage(): JSX.Element {
                                 sourceUrlIsBlocked={activeUrlIssueIsBlocked}
                                 highlight={shouldHighlightCreateWebsiteCta}
                                 autoOpenNonce={autoOpenGenerateModalNonce}
-                                autoOpenSuccessMessage={autoOpenGenerateSuccessMessage}
-                                onAutoOpenMessageDismiss={() => setAutoOpenGenerateSuccessMessage("")}
                                 isAdmin={isAdmin}
                                 user={user}
                                 onAppClick={(generationType) => {
@@ -10768,31 +11605,69 @@ export default function PreviewPage(): JSX.Element {
                         </div>
                     </div>
 
-                    {(renders.length === 0 || hasGhostPending) ? (
+                    {draftAppsLoading ? (
+                        <KlonerLoader
+                            inline
+                        />
+                    ) : visibleApps.length === 0 && renders.length === 0 ? (
+                        <div className="mt-4 rounded-3xl border border-dashed border-neutral-300 bg-white/80 px-5 py-6 text-center shadow-sm">
+                            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full border border-neutral-200 bg-neutral-50 text-neutral-400 shadow-sm">
+                                <Hammer className="h-5 w-5" />
+                            </div>
+                            <div className="mt-3 text-sm font-semibold text-neutral-900">
+                                No websites yet
+                            </div>
+                            <div className="mt-1 text-xs leading-5 text-neutral-500">
+                                Your first website will show up here after you add one above.
+                            </div>
+                        </div>
+                    ) : null}
+
+                    {visibleApps.length > 0 ? (
                         <div
                             className="mt-4 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4"
-                            aria-label="Editable previews list"
+                            aria-label="Draft websites list"
                         >
                             {visibleApps.map((app) => (
+                                (() => {
+                                    const draftKey = String((app as any).draftId || app.id || "").trim();
+                                    const draftPending = Boolean(draftKey && pendingDraftApps[draftKey]);
+                                    const draftRetrying = Boolean(draftKey && retryingDraftApps[draftKey]);
+                                    return (
                                 <AppCard
-                                    key={app.id}
+                                    key={(app as any).draftId || app.id}
                                     app={app}
-                                    isDeleting={!!deletingApp[app.id]}
+                                    isDeleting={!!deletingDraftApp[(app as any).draftId || app.id]}
                                     isArchiving={!!archivingApp[app.id]}
-                                    isPendingCreation={app.id === pendingCreatedAppId}
-                                    disableActions={isTrialAccessRevoked || isAppCreationPending}
+                                    isPendingCreation={draftPending || draftRetrying}
+                                    pendingRetryable={false}
+                                    pendingStale={false}
+                                    onRetryPendingCreation={() => void retryDraftCreation(app as any)}
+                                    onRetryAppIssue={(issueApp) => retryTrackedUrl(String(issueApp?.url || issueApp?.sourceUrl || ""))}
+                                    onClearPendingCreation={undefined}
+                                    disableActions={isTrialAccessRevoked || websiteSubmitBusy}
                                     accessLocked={isTrialAccessRevoked}
                                     onCustomize={(appId) => {
+                                        if (isFreeTierNotTrialing) {
+                                            setShowWebsitePrePaywall(true);
+                                            return;
+                                        }
                                         openAppBuilderWithCookieGate(appId);
                                     }}
                                     onArchive={handleArchiveApp}
                                     onRename={handleRenameAppCard}
                                     onDeploy={(app) => openAppDeployWizard(app)}
                                     onDelete={handleDeleteApp}
+                                    onDeleteDraft={handleDeleteDraft}
+                                    onPromoteDraft={promoteDraftToApp}
                                 />
+                                    );
+                                })()
                             ))}
                         </div>
-                    ) : (
+                    ) : null}
+
+                    {renders.length > 0 ? (
                         <div
                             className="mt-4 grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4"
                             aria-label="Editable previews list"
@@ -10823,28 +11698,8 @@ export default function PreviewPage(): JSX.Element {
                                 />
 
                             ))}
-
-                            {visibleApps.map((app) => (
-                                <AppCard
-                                    key={app.id}
-                                    app={app}
-                                    isDeleting={!!deletingApp[app.id]}
-                                    isArchiving={!!archivingApp[app.id]}
-                                    isPendingCreation={app.id === pendingCreatedAppId}
-                                    disableActions={isTrialAccessRevoked || isAppCreationPending}
-                                    accessLocked={isTrialAccessRevoked}
-                                    onCustomize={(appId) => {
-                                        openAppBuilderWithCookieGate(appId);
-                                    }}
-                                    onArchive={handleArchiveApp}
-                                    onRename={handleRenameAppCard}
-                                    onDeploy={(app) => openAppDeployWizard(app)}
-                                    onDelete={handleDeleteApp}
-                                />
-                            ))}
-
                         </div>
-                    )}
+                    ) : null}
                 </section>
 
                 {editorOpen && (
@@ -11086,29 +11941,19 @@ export default function PreviewPage(): JSX.Element {
                                                         <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-neutral-500">
                                                             URL
                                                         </label>
-                                                        <select
+                                                        <input
                                                             value={appWizardUrl || ""}
                                                             onChange={(e) => {
-                                                                setAppWizardUrl(e.target.value);
+                                                                const nextValue = e.target.value;
+                                                                setAppWizardUrl(nextValue);
+                                                                setAppWizardShotsUrl(nextValue);
                                                                 setAppWizardError(null);
                                                             }}
-                                                            onClick={(e) => e.stopPropagation()}
-                                                            disabled={!successfulScannedUrls.length}
+                                                            placeholder="https://example.com"
                                                             className="w-full rounded-lg border border-neutral-200 bg-white px-2.5 py-2 text-xs text-neutral-800 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-[#f55f2a]/20"
-                                                        >
-                                                            <option value="" disabled>
-                                                                {successfulScannedUrls.length
-                                                                    ? "Select a scanned URL"
-                                                                    : "No successfully scanned URLs yet"}
-                                                            </option>
-                                                            {successfulScannedUrls.map((u) => (
-                                                                <option key={u} value={u}>
-                                                                    {u}
-                                                                </option>
-                                                            ))}
-                                                        </select>
+                                                        />
                                                         <div className="mt-1 text-[11px] leading-4 text-neutral-500">
-                                                            Only URLs with completed scans are listed.
+                                                            Paste any public URL. If we already scanned it, the existing screenshots will be attached automatically.
                                                         </div>
                                                     </div>
 
@@ -11235,7 +12080,7 @@ export default function PreviewPage(): JSX.Element {
                                             style={{ backgroundColor: ACCENT }}
                                         >
                                             <RotateCcw className="h-4 w-4" />
-                                            Rescan URL
+                                            Retry
                                         </button>
                                     </div>
                                 </motion.div>

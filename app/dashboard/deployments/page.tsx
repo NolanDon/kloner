@@ -46,7 +46,7 @@ import {
     secureHtmlForPreviewIframe,
     withArchivedPageIds,
 } from "@/components/helpers";
-import { RenderDoc } from "../view/DashboardView";
+import type { RenderDoc } from "../view/DashboardView";
 
 const ACCENT = "#f55f2a";
 

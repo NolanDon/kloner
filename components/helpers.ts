@@ -10,7 +10,7 @@ import {
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { SeoMeta } from "./editor/PreviewEditor";
-import { DeploymentDoc } from "@/app/dashboard/deployments/page";
+import type { DeploymentDoc } from "@/app/dashboard/deployments/page";
 
 export function sanitizeName(raw: string): string {
     if (!raw) return "";

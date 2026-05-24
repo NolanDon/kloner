@@ -732,7 +732,7 @@ import { doc, getDocFromServer, serverTimestamp, updateDoc } from "firebase/fire
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { db, storage } from "@/lib/firebase"; // or wherever your db is
 import type { User as FirebaseUser } from "firebase/auth";
-import { RenderDoc } from "@/app/dashboard/view/DashboardView";
+import type { RenderDoc } from "@/app/dashboard/view/DashboardView";
 import { useAuth } from "@/src/hooks/useAuth";
 import { Camera, Check, ChevronDown, Code2, Eye, EyeOff, FileText, Images, Loader2, Maximize2, MessageSquare, Minimize2, Monitor, Palette, Pencil, Pipette, Redo2, Rocket, RotateCcw, RotateCw, SlidersHorizontal, Smartphone, Tablet, Trash2Icon, Undo2, X } from "lucide-react";
 import { compressImageForUpload } from "@/src/lib/clientImageCompression";

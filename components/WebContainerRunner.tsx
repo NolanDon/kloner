@@ -341,6 +341,7 @@ interface WebContainerRunnerProps {
     failure?: PreviewFailureContract | null;
     recommendedActionLabel?: string | null;
   } | null) => void;
+  previewIssue?: string | null;
   onBackendReady?: (args: { appId: string; code: string; url: string }) => void;
   onRequestRebuild?: () => void | Promise<void>;
   reloadToken?: number;
@@ -382,7 +383,7 @@ type PollTelemetryEntry = {
   rateLimitCount: number;
 };
 
-export default function WebContainerRunner({ appId, files, filesReady = true, onFileChange, onPreviewReadyChange, onPreviewIssueChange, onBackendReady, onRequestRebuild, onCompileErrorFixRequest, debugPreviewScenario, reloadToken, applyToken, restartToken, reconnectToken, forceFreshStart, pollingConfig, navigatePath, navigatePathToken, onNavigatePathChange }: WebContainerRunnerProps) {
+export default function WebContainerRunner({ appId, files, filesReady = true, onFileChange, onPreviewReadyChange, onPreviewIssueChange, onBackendReady, onRequestRebuild, onCompileErrorFixRequest, debugPreviewScenario, reloadToken, applyToken, restartToken, reconnectToken, forceFreshStart, pollingConfig, navigatePath, navigatePathToken, onNavigatePathChange, previewIssue }: WebContainerRunnerProps) {
 
   type DebugEvent = {
     ts: number;
@@ -5032,12 +5033,13 @@ export default function NavBar() {
   const previewInteractiveByStatus = previewPresentation.shouldShowLivePreview;
   const previewUrlAgeMs = previewUrlFirstSeenAtRef.current > 0 ? Date.now() - previewUrlFirstSeenAtRef.current : 0;
   const loadingLower = String(loadingStatus || '').toLowerCase();
+  const previewIssueText = String(previewIssue || '').trim();
 
   const canRenderEmbeddedFrame =
     backendReadyRef.current ||
     hmrWsStatus === 'ok' ||
     previewInteractiveByStatus;
-  const showPreviewSurface = Boolean(previewUrl) && !error && !compileErrorState && !terminalPreviewStatus && (externalPreviewMode || canRenderEmbeddedFrame);
+  const showPreviewSurface = Boolean(previewUrl) && !error && !compileErrorState && !terminalPreviewStatus && !previewIssueText && (externalPreviewMode || canRenderEmbeddedFrame);
   const currentPreviewCode = derivePreviewCodeFromUrl(previewUrl || '');
   const persistedPathSeen = normalizeStartupPath(navigatePath);
 
@@ -5098,7 +5100,7 @@ export default function NavBar() {
   const activePreviewUrl = buildPreviewStartupUrl(previewUrl || '', startupDecision.initialPath);
   const showApplyRefreshingOverlay = showPreviewSurface && isApplyRefreshing;
   const terminalPreviewStatusData = terminalPreviewStatus ? (currentStatusData || lastBackendStatusRef.current || null) : null;
-  const showTerminalPreviewErrorCard = Boolean(error) || terminalPreviewStatus;
+  const showTerminalPreviewErrorCard = Boolean(error) || terminalPreviewStatus || Boolean(previewIssueText);
   const buildPreviewFixIssueMessage = useCallback((baseMessage: string, rawStatusData: any) => {
     const failure = normalizePreviewFailureDetails(rawStatusData || null);
 
@@ -5133,7 +5135,16 @@ export default function NavBar() {
 
   const previewIssueContextData = error
     ? (currentStatusData || lastBackendStatusRef.current || null)
-    : terminalPreviewStatusData;
+    : terminalPreviewStatus
+      ? terminalPreviewStatusData
+      : previewIssueText
+        ? {
+            uiStage: 'preview_issue',
+            uiTitle: 'Preview hit an error',
+            uiMessage: previewIssueText,
+            status: 'error',
+          }
+        : null;
   const previewFailureContract = normalizePreviewFailureContract(previewIssueContextData);
   const canFixPreviewFailureWithAi = canShowPreviewFixWithAi(previewFailureContract);
   const terminalPreviewErrorMessage = buildPreviewFixIssueMessage(

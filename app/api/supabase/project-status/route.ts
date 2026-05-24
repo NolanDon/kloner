@@ -24,6 +24,48 @@ type SupabasePollError = {
   at: string;
 };
 
+function isTransientProjectStatusError(error: unknown): boolean {
+  const code = typeof (error as any)?.code === "string" ? String((error as any).code).toLowerCase() : "";
+  const message = String((error as any)?.message || error || "").toLowerCase();
+
+  return Boolean(
+    code === "econnreset" ||
+    code === "etimedout" ||
+    code === "eai_again" ||
+    code === "unavailable" ||
+    code === "deadline-exceeded" ||
+    message.includes("socket hang up") ||
+    message.includes("econnreset") ||
+    message.includes("etimedout") ||
+    message.includes("request aborted") ||
+    message.includes("temporarily unavailable")
+  );
+}
+
+function buildTransientProjectStatusResponse(params: {
+  appIdHint?: string;
+  error: unknown;
+}): NextResponse {
+  const message = typeof (params.error as any)?.message === "string"
+    ? String((params.error as any).message)
+    : "Temporary datastore issue while checking project status";
+
+  return NextResponse.json({
+    completed: false,
+    ok: true,
+    inProgress: true,
+    retryable: true,
+    status: "IN_PROGRESS",
+    step: "WAIT_ACTIVE",
+    appId: params.appIdHint || null,
+    lastSupabasePollError: {
+      httpStatus: 503,
+      body: message.slice(0, 1200),
+      at: new Date().toISOString(),
+    },
+  });
+}
+
 function normalizeProjectName(uid: string): string {
   const compactUid = (uid || "")
     .toLowerCase()
@@ -796,6 +838,17 @@ export async function GET(request: NextRequest) {
 
       return NextResponse.json({ completed: false });
     } catch (error) {
+      if (isTransientProjectStatusError(error)) {
+        console.warn("[supabase/project-status] transient datastore error", {
+          appIdHint: appIdHint || null,
+          message: error instanceof Error ? error.message : String(error),
+        });
+        return buildTransientProjectStatusResponse({
+          appIdHint: appIdHint || undefined,
+          error,
+        });
+      }
+
       console.error('Error checking project status:', error);
       return NextResponse.json({
         completed: true,

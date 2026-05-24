@@ -1,7 +1,7 @@
 // app/dashboard/view/page.helpers.ts
 import { useCallback, useEffect, useState } from "react";
 import type { Timestamp } from "firebase/firestore";
-import { RenderDoc } from "./DashboardView";
+import type { RenderDoc } from "./DashboardView";
 import { validateAndNormalizePublicHttpUrl } from "@/src/lib/publicHttpUrl";
 
 export function isHttpUrl(s?: string): s is string {

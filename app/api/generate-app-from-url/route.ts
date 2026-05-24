@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireSessionAndMaybeCsrf } from "../_lib/route-guard";
 import { callBackend } from "@/src/lib/callBackend";
 import { getAuthoritativeUserTier } from "../_lib/userTier";
-import { verifySession } from "../_lib/auth";
+import { getAdminDb, verifySession } from "../_lib/auth";
 import type { UserTier } from "@/src/lib/credits";
 import { peekUserCredit, consumeUserCredit } from "../_lib/credits-server";
 import { validateAndNormalizePublicHttpUrl, getPublicHttpUrlRejectionReason } from "@/src/lib/publicHttpUrl";
@@ -123,6 +123,7 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json();
     const { url, name } = body;
+    const requestedAppId = typeof body?.appId === "string" && body.appId.trim() ? body.appId.trim() : "";
     const generationType =
       body?.generationType === "html" || body?.generationFormat === "html"
         ? "html"
@@ -241,6 +242,7 @@ export async function POST(req: NextRequest) {
         body: {
           url: normalizedUrl,
           name,
+            appId: requestedAppId || undefined,
           createPreview: true,
           generationType,
           generationFormat: generationType,
@@ -292,7 +294,7 @@ export async function POST(req: NextRequest) {
       // Treat any 2xx as a successful "job accepted".
       if (appResponse.status >= 200 && appResponse.status < 300) {
         const appData = (appResponse.json || {}) as any;
-        const acceptedAppId = typeof appData.appId === "string" ? appData.appId.trim() : "";
+        const acceptedAppId = typeof appData.appId === "string" ? appData.appId.trim() : requestedAppId;
         const acceptedJobId = typeof appData.jobId === "string" ? appData.jobId.trim() : "";
         const isTerminalFailure =
           appData?.accepted === false ||
@@ -346,6 +348,70 @@ export async function POST(req: NextRequest) {
               err: err?.message || String(err),
             });
           }
+        }
+
+        try {
+          const db = getAdminDb();
+          const appRef = db.collection("kloner_users").doc(decoded.uid).collection("kloner_apps").doc(acceptedAppId);
+          const existingApp = await appRef.get();
+          const now = new Date();
+          const existingData = existingApp.exists ? (existingApp.data() || {}) as any : null;
+
+          await appRef.set({
+            id: acceptedAppId,
+            userId: decoded.uid,
+            name,
+            url: normalizedUrl,
+            sourceUrl: normalizedUrl,
+            createdAt: existingData?.createdAt || now,
+            updatedAt: now,
+            status: "processing",
+            generationStatus: "processing",
+            generation: {
+              status: "processing",
+              stage: "queued",
+              progress: 0,
+              title: "Generating website",
+              jobId: acceptedJobId,
+              requestId: appResponse.reqId || null,
+              archiveZipPath: typeof appData.archiveZipPath === "string" ? appData.archiveZipPath : null,
+              archiveZipUrl: typeof appData.archiveZipUrl === "string" ? appData.archiveZipUrl : null,
+              errorCode: null,
+              details: null,
+              retryable: Boolean(appData.rescanRecommended),
+              needsRescan: appData.rescanRecommended === true,
+              nextAction: appData.rescanRecommended ? "rescan_url" : null,
+            },
+            warnings: Array.isArray(appData.warnings) ? appData.warnings : [],
+            rescanRecommended: appData.rescanRecommended === true,
+            archiveZipPath: typeof appData.archiveZipPath === "string" ? appData.archiveZipPath : null,
+            generationFormat: appData.generationFormat === "html" ? "html" : "nextjs",
+            files: existingData?.files || {},
+            pendingCompleted: false,
+          }, { merge: true });
+        } catch (err: any) {
+          await reportZipGenerationFailure({
+            req,
+            uid: decoded.uid,
+            url: normalizedUrl,
+            name,
+            reason: "app_doc_write_failed",
+            statusCode: 502,
+            reqId: appResponse.reqId,
+            backendMessage: err?.message || String(err) || "Failed to write app document",
+            appId: acceptedAppId,
+          }).catch(() => null);
+
+          return NextResponse.json(
+            {
+              error: "We accepted the generation job, but failed to save the website record.",
+              code: "APP_DOC_WRITE_FAILED",
+              reqId: appResponse.reqId,
+              appId: acceptedAppId,
+              jobId: acceptedJobId,
+            },
+            { status: 502 },
+          );
         }
 
         return NextResponse.json(

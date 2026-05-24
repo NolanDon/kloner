@@ -1677,8 +1677,7 @@ export default function AppBuilderEditor({
 
             if (!res.ok) {
                 if (res.status === 404) {
-                    console.error("App not found, closing editor");
-                    onCloseRef.current?.();
+                    console.error("App not found while loading editor", { appId });
                     return null;
                 }
                 throw new Error(`Failed to load app: ${res.status} ${res.statusText}`);
@@ -4156,6 +4155,8 @@ export default function AppBuilderEditor({
 
         let didCancel = false;
         const controller = new AbortController();
+        const isDraftPromotionAppId = String(appId || "").startsWith("draftapp_");
+        let retryTimer: ReturnType<typeof setTimeout> | ReturnType<typeof window.setTimeout> | null = null;
 
         const loadApp = async () => {
             try {
@@ -4197,6 +4198,15 @@ export default function AppBuilderEditor({
 
                 if (!res.ok) {
                     if (res.status === 404) {
+                        if (isDraftPromotionAppId) {
+                            retryTimer = setTimeout(() => {
+                                retryTimer = null;
+                                if (!didCancel) {
+                                    void loadApp();
+                                }
+                            }, 400);
+                            return;
+                        }
                         console.error("App not found, closing editor");
                         onCloseRef.current?.();
                         return;
@@ -4243,7 +4253,7 @@ export default function AppBuilderEditor({
                 setError(err instanceof Error ? err.message : "Failed to load app");
                 setFilesHydrated(true);
             } finally {
-                if (!didCancel) setLoading(false);
+                if (!didCancel && retryTimer === null) setLoading(false);
             }
         };
 
@@ -4251,8 +4261,9 @@ export default function AppBuilderEditor({
         return () => {
             didCancel = true;
             controller.abort();
+            if (retryTimer) window.clearTimeout(retryTimer);
         };
-    }, [authLoading]);
+    }, [appId, authLoading, handleSessionExpired, user]);
 
     // Firebase real-time listener for instant UI updates when files change
     useEffect(() => {
@@ -7105,6 +7116,7 @@ export default function AppBuilderEditor({
                                             filesReady={filesHydrated}
                                             onFileChange={handleFileChangeFromContainer}
                                             onPreviewReadyChange={setIsWebPreviewReady}
+                                            previewIssue={previewIssue}
                                             onPreviewIssueChange={(payload) => {
                                                 setPreviewIssue(payload?.issue || null);
                                                 setPreviewIssueDiagnostics(payload?.diagnostics || null);

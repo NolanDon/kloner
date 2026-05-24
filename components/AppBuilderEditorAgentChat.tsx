@@ -1216,7 +1216,6 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
     const editPlanStatusMessageTextRef = useRef<string | null>(null);
     const editPlanApplyStatusBubbleTextRef = useRef<string | null>(null);
     const editPlanFailureSurfaceKeyRef = useRef<string | null>(null);
-    const lastPreviewIssueChatFingerprintRef = useRef<string | null>(null);
     const chatRestorePointsCardKeyRef = useRef<string | null>(null);
     const chatRestorePointsStableSignalRef = useRef<string | null>(null);
     /** Tracks the jobId for which we have already emitted a restart_pending bubble,
@@ -1237,33 +1236,6 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
     const hasPreviewIssueFixRequest = typeof onPreviewIssueFixRequest === "function";
 
     const didSyncSupabasePreviewEnvRef = useRef(false);
-
-    useEffect(() => {
-        if (!previewIssueText) {
-            lastPreviewIssueChatFingerprintRef.current = null;
-            return;
-        }
-
-        const normalized = previewIssueText.toLowerCase();
-        const isPhaseFailure = normalized.includes("timed out") || normalized.includes("restart") || normalized.includes("failed");
-        if (!isPhaseFailure) return;
-
-        const fingerprint = `${appId}:${normalized.slice(0, 240)}`;
-        if (lastPreviewIssueChatFingerprintRef.current === fingerprint) return;
-        lastPreviewIssueChatFingerprintRef.current = fingerprint;
-
-        setMessages((prev) => [
-            ...prev,
-            {
-                id: `preview_issue_${Date.now()}`,
-                role: "assistant",
-                content: "Your changes may not have saved. If your changes are not showing, rebuild first.",
-                timestamp: new Date(),
-                type: "text",
-                editPlanRetryPrompt: lastEditPlanPromptRef.current?.trim() || "Retry apply",
-            },
-        ]);
-    }, [appId, previewIssueText]);
 
     useEffect(() => {
         previewReadyRef.current = Boolean(previewReady);

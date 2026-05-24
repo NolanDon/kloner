@@ -474,10 +474,6 @@ export default function LoginPage(): JSX.Element {
             try {
                 await setSessionCookie();
 
-                // Ensure createdAt exists (and keep updatedAt fresh) for any signed-in user.
-                // This fixes the "createdAt didn't seem to work" issue when other flows created the doc first.
-                await ensureUserCreatedAt(u);
-
                 const pendingP = pendingPrompt?.trim();
                 if (pendingP) {
                     try {
@@ -525,6 +521,13 @@ export default function LoginPage(): JSX.Element {
 
                 const next = search.get("next") || "/dashboard/view";
                 router.replace(next);
+
+                void Promise.allSettled([
+                    ensureUserCreatedAt(u),
+                    attachAffiliateToUserDoc(u),
+                ]).catch((e) => {
+                    console.error("failed to finish post-login user setup", e);
+                });
             } catch {
                 router.replace("/dashboard/view");
             }
@@ -568,10 +571,14 @@ export default function LoginPage(): JSX.Element {
             await setSessionCookie();
 
             if (isNew) {
-                await ensureUserCreatedAt(cred.user);
-                await attachAffiliateToUserDoc(cred.user);
-                await recordSignupConsent(cred.user, "google");
-                await notifyKlonerSignup(cred.user, "google");
+                void Promise.allSettled([
+                    ensureUserCreatedAt(cred.user),
+                    attachAffiliateToUserDoc(cred.user),
+                    recordSignupConsent(cred.user, "google"),
+                    notifyKlonerSignup(cred.user, "google"),
+                ]).catch((e) => {
+                    console.error("failed to finish google signup setup", e);
+                });
             }
         } catch (e) {
             setErr(normalizeError(e));
@@ -616,10 +623,14 @@ export default function LoginPage(): JSX.Element {
                 }
 
                 await setSessionCookie();
-                await ensureUserCreatedAt(cred.user);
-                await attachAffiliateToUserDoc(cred.user);
-                await recordSignupConsent(cred.user, "email");
-                await notifyKlonerSignup(cred.user, "email");
+                void Promise.allSettled([
+                    ensureUserCreatedAt(cred.user),
+                    attachAffiliateToUserDoc(cred.user),
+                    recordSignupConsent(cred.user, "email"),
+                    notifyKlonerSignup(cred.user, "email"),
+                ]).catch((e) => {
+                    console.error("failed to finish email signup setup", e);
+                });
             }
         } catch (e2) {
             setErr(normalizeError(e2));
