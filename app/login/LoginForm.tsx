@@ -52,6 +52,23 @@ function isFirebaseError(e: unknown): e is FirebaseError {
     return typeof e === "object" && e !== null && "code" in e;
 }
 
+function isPermissionDeniedError(e: unknown): boolean {
+    return isFirebaseError(e) && String(e.code || "").toLowerCase().includes("permission-denied");
+}
+
+async function retryOwnerWriteAfterTokenRefresh<T>(u: User, op: () => Promise<T>): Promise<T> {
+    try {
+        return await op();
+    } catch (e) {
+        if (!isPermissionDeniedError(e)) throw e;
+
+        // Fresh signups can briefly race before Firestore reads the latest auth token.
+        await getIdToken(u, true).catch(() => null);
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        return await op();
+    }
+}
+
 function normalizeError(e: unknown): string {
     if (isFirebaseError(e)) {
         // Ensure `code` is a string so we can safely call `includes` on it.
@@ -193,7 +210,7 @@ async function ensureUserCreatedAt(u: User): Promise<void> {
             updates.createdAt = serverTimestamp();
         }
 
-        await setDoc(userRef, updates, { merge: true });
+        await retryOwnerWriteAfterTokenRefresh(u, () => setDoc(userRef, updates, { merge: true }));
     } catch (e) {
         console.error("Failed to ensure createdAt on user doc", e);
     }
@@ -236,7 +253,7 @@ async function attachAffiliateToUserDoc(u: User): Promise<void> {
 
         if (!hasAny) return;
 
-        await setDoc(userRef, updates, { merge: true });
+        await retryOwnerWriteAfterTokenRefresh(u, () => setDoc(userRef, updates, { merge: true }));
     } catch (e) {
         console.error("Failed to attach affiliate attribution", e);
     }
@@ -246,20 +263,22 @@ async function recordSignupConsent(u: User, method: "google" | "email" | "apple"
     const userRef = doc(db, "kloner_users", u.uid);
 
     try {
-        await setDoc(
-            userRef,
-            {
-                consent: {
-                    termsAcceptedAt: serverTimestamp(),
-                    privacyAcceptedAt: serverTimestamp(),
-                    termsVersion: POLICY_ACCEPTANCE_VERSION,
-                    privacyVersion: POLICY_ACCEPTANCE_VERSION,
-                    source: "login_form_signup",
-                    method,
+        await retryOwnerWriteAfterTokenRefresh(u, () =>
+            setDoc(
+                userRef,
+                {
+                    consent: {
+                        termsAcceptedAt: serverTimestamp(),
+                        privacyAcceptedAt: serverTimestamp(),
+                        termsVersion: POLICY_ACCEPTANCE_VERSION,
+                        privacyVersion: POLICY_ACCEPTANCE_VERSION,
+                        source: "login_form_signup",
+                        method,
+                    },
+                    consentUpdatedAt: serverTimestamp(),
                 },
-                consentUpdatedAt: serverTimestamp(),
-            },
-            { merge: true },
+                { merge: true },
+            )
         );
     } catch (e) {
         console.error("Failed to record signup consent", e);
@@ -501,11 +520,11 @@ export default function LoginPage(): JSX.Element {
                         }
 
                         // Send the user to the consolidated dashboard view and let it
-                        // own the url-doc creation + capture queueing (start=1).
+                        // own the same clone flow as manual dashboard submissions.
                         const cleaned = validateAndNormalizePublicHttpUrl(pending);
                         if (cleaned) {
                             router.replace(
-                                `/dashboard/view?u=${encodeURIComponent(cleaned)}&start=1`,
+                                `/dashboard/view?u=${encodeURIComponent(cleaned)}&aq=1`,
                             );
                             return;
                         }

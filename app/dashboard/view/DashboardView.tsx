@@ -126,6 +126,9 @@ const CAPTURE_STALE_ALERT_STORAGE_KEY = "dashboardViewCaptureStaleAlertsV1";
 const CAPTURE_STALLED_ALERT_STORAGE_KEY = "dashboardViewCaptureStalledAlertsV1";
 const URL_SCAN_RETRY_BACKOFF_STORAGE_KEY = "dashboardViewUrlRetryBackoffV1";
 const URL_SCAN_RETRY_BACKOFF_SEQUENCE_MS = [10_000, 20_000, 40_000, 90_000, 180_000, 360_000, 720_000];
+const AUTOQUEUE_DEDUPE_STORAGE_KEY = "dashboardViewAutoQueueDedupeV1";
+const AUTOQUEUE_DEDUPE_TTL_MS = 2 * 60 * 1000;
+const DRAFT_PENDING_MISSING_TTL_MS = 20_000;
 const URL_ADD_SUCCESS_MESSAGE = "Your URL has been successfully added!";
 const APP_WIZARD_PROMPT_MAX_CHARS = 2000;
 const FIRST_GEN_TRIAL_OBSERVE_MS = 15 * 1000;
@@ -3826,6 +3829,7 @@ export default function PreviewPage(): JSX.Element {
     } | null>(null);
     const [websiteSubmissionPendingUrl, setWebsiteSubmissionPendingUrl] = useState<string | null>(null);
     const [draftAppsLoading, setDraftAppsLoading] = useState(true);
+    const [draftAppsInitialLoadComplete, setDraftAppsInitialLoadComplete] = useState(false);
     const [pendingDraftApps, setPendingDraftApps] = useState<Record<string, boolean>>({});
     const [retryingDraftApps, setRetryingDraftApps] = useState<Record<string, boolean>>({});
     const [suppressedPromotedDrafts, setSuppressedPromotedDrafts] = useState<Record<string, boolean>>({});
@@ -3852,6 +3856,12 @@ export default function PreviewPage(): JSX.Element {
     }>>([]);
     const pendingCreatedAppLaunchRequestedRef = useRef<string | null>(null);
     const draftPromotionInFlightRef = useRef<Record<string, true>>({});
+    const draftsSnapshotDisabledRef = useRef(false);
+    const pendingDraftMissingSinceRef = useRef<Record<string, number>>({});
+    const pendingDraftAppsRef = useRef<Record<string, boolean>>({});
+    const suppressedPromotedDraftsRef = useRef<Record<string, boolean>>({});
+    const serverDraftKeysRef = useRef<Set<string>>(new Set());
+    const draftsApiLoadInFlightRef = useRef(false);
     const appBuilderLaunchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const pendingUrlGenerationAppIdRef = useRef<string | null>(null);
     const appBuilderCookiePromptResolverRef = useRef<((accepted: boolean) => void) | null>(null);
@@ -4154,12 +4164,40 @@ export default function PreviewPage(): JSX.Element {
     const [viewerOpen, setViewerOpen] = useState(false);
     const [viewerIdx, setViewerIdx] = useState(0);
     const sessionExpiredRedirectingRef = useRef(false);
+    const authBootstrapGraceUntilRef = useRef(0);
+    const [snapshotRetryNonce, setSnapshotRetryNonce] = useState(0);
     const urlScanCertaintyAuditKeyRef = useRef<string>("");
     const createWebsitesSectionRef = useRef<HTMLDivElement | null>(null);
     const createWebsitesSectionAutoScrollIdRef = useRef<string | null>(null);
 
+    const recoverFromTransientAuthRace = useCallback(async (source?: string): Promise<boolean> => {
+        const src = String(source || "");
+        if (!src.includes("permission_denied")) return false;
+        if (Date.now() > authBootstrapGraceUntilRef.current) return false;
+        if (!auth.currentUser) return false;
+
+        console.warn("[auth] suppressing transient permission-denied during auth bootstrap", src);
+
+        try {
+            await getIdTokenResult(auth.currentUser, true);
+        } catch {
+            // ignore token refresh failures; we'll still allow normal fallback behavior.
+        }
+
+        window.setTimeout(() => {
+            setSnapshotRetryNonce((n) => n + 1);
+        }, 300);
+
+        return true;
+    }, []);
+
     const handleSessionExpired = useCallback(async (source?: string) => {
         if (sessionExpiredRedirectingRef.current) return;
+
+        if (await recoverFromTransientAuthRace(source)) {
+            return;
+        }
+
         sessionExpiredRedirectingRef.current = true;
 
         try {
@@ -4174,7 +4212,7 @@ export default function PreviewPage(): JSX.Element {
                     : "/dashboard/view";
             router.replace(`/login?reason=session_expired&next=${encodeURIComponent(nextPath)}`);
         }
-    }, [push, router]);
+    }, [push, recoverFromTransientAuthRace, router]);
 
     // Fetch apps from Firestore
     useEffect(() => {
@@ -4218,73 +4256,256 @@ export default function PreviewPage(): JSX.Element {
                 console.warn("[firestore] apps onSnapshot unsubscribe failed", err);
             }
         };
-    }, [user, push, showArchivedApps]);
+    }, [handleSessionExpired, showArchivedApps, snapshotRetryNonce, user]);
 
-    // Keep draft loading on a Firestore snapshot, same as apps, to avoid API cold-start delay.
+    useEffect(() => {
+        draftsSnapshotDisabledRef.current = false;
+    }, [user?.uid]);
+
+    useEffect(() => {
+        setDraftAppsInitialLoadComplete(false);
+    }, [user?.uid]);
+
+    useEffect(() => {
+        if (!draftAppsLoading) {
+            setDraftAppsInitialLoadComplete(true);
+        }
+    }, [draftAppsLoading]);
+
+    useEffect(() => {
+        pendingDraftAppsRef.current = pendingDraftApps;
+    }, [pendingDraftApps]);
+
+    useEffect(() => {
+        suppressedPromotedDraftsRef.current = suppressedPromotedDrafts;
+    }, [suppressedPromotedDrafts]);
+
+    const loadDraftAppsFromApi = useCallback(async () => {
+        if (!user) {
+            setDraftAppsLoading(false);
+            setDraftApps([]);
+            serverDraftKeysRef.current = new Set();
+            return;
+        }
+
+        if (draftsApiLoadInFlightRef.current) return;
+        draftsApiLoadInFlightRef.current = true;
+
+        setDraftAppsLoading(true);
+        try {
+            const res = await fetch("/api/private/kloner-drafts", {
+                method: "GET",
+                credentials: "include",
+                cache: "no-store",
+            });
+
+            if (!res.ok) {
+                throw new Error(`Failed to load drafts (HTTP ${res.status})`);
+            }
+
+            const payload = await res.json().catch(() => ({} as any));
+            const drafts = Array.isArray(payload?.drafts) ? payload.drafts : [];
+            const normalizedServerDrafts = normalizeDashboardDraftRecords(drafts).filter((item) => {
+                const keyA = String(item.draftId || "").trim();
+                const keyB = String(item.id || "").trim();
+                const suppressed = suppressedPromotedDraftsRef.current;
+                return !suppressed[keyA] && !suppressed[keyB];
+            });
+
+            setDraftApps((prev) => {
+                const serverKeys = new Set<string>();
+                for (const item of normalizedServerDrafts) {
+                    const keyA = String(item.draftId || "").trim();
+                    const keyB = String(item.id || "").trim();
+                    if (keyA) serverKeys.add(keyA);
+                    if (keyB) serverKeys.add(keyB);
+                }
+                serverDraftKeysRef.current = serverKeys;
+
+                const optimisticPending = prev.filter((item) => {
+                    const keyA = String(item.draftId || "").trim();
+                    const keyB = String(item.id || "").trim();
+                    const pending = pendingDraftAppsRef.current;
+                    if (!keyA || !pending[keyA]) return false;
+                    return !serverKeys.has(keyA) && (!keyB || !serverKeys.has(keyB));
+                });
+
+                if (!optimisticPending.length) return normalizedServerDrafts;
+                return [...optimisticPending, ...normalizedServerDrafts];
+            });
+        } catch (err) {
+            console.warn("[drafts] API load failed", err);
+            serverDraftKeysRef.current = new Set();
+            setDraftApps([]);
+        } finally {
+            draftsApiLoadInFlightRef.current = false;
+            setDraftAppsLoading(false);
+        }
+    }, [user]);
+
+    // Draft reads should come directly from Firestore; wait for a fresh token first to
+    // avoid boot-time permission races, then do bounded retries before session-expired.
     useEffect(() => {
         if (!user) {
             setDraftAppsLoading(false);
             setDraftApps([]);
             setPendingCreatedApp(null);
+            serverDraftKeysRef.current = new Set();
+            pendingDraftMissingSinceRef.current = {};
+            return;
+        }
+
+        const host = typeof window !== "undefined" ? window.location.hostname : "";
+        const useApiForDrafts = host === "localhost" || host === "127.0.0.1";
+        if (useApiForDrafts) {
+            void loadDraftAppsFromApi();
+            return;
+        }
+
+        if (draftsSnapshotDisabledRef.current) {
+            setDraftAppsLoading(false);
             return;
         }
 
         setDraftAppsLoading(true);
 
-        const draftsRef = collection(db, "kloner_users", user.uid, "kloner_drafts");
-        const draftsQuery = query(draftsRef, orderBy("createdAt", "desc"), limit(100));
+        let cancelled = false;
+        let unsub: Unsubscribe | null = null;
 
-        const unsub = onSnapshot(
-            draftsQuery,
-            (snap) => {
-                const drafts = snap.docs.map((docSnap) => ({
-                    draftId: docSnap.id,
-                    ...(docSnap.data() as any),
-                }));
+        const startSnapshot = async () => {
+            try {
+                await getIdTokenResult(user, true);
+            } catch {
+                // Best effort token refresh before opening Firestore listeners.
+            }
 
-                setDraftApps(
-                    normalizeDashboardDraftRecords(drafts).filter((item) => {
+            if (cancelled) return;
+
+            const draftsRef = collection(db, "kloner_users", user.uid, "kloner_drafts");
+            const draftsQuery = query(draftsRef, orderBy("createdAt", "desc"), limit(100));
+
+            unsub = onSnapshot(
+                draftsQuery,
+                (snap) => {
+                    draftsSnapshotDisabledRef.current = false;
+                    const drafts = snap.docs.map((docSnap) => ({
+                        draftId: docSnap.id,
+                        ...(docSnap.data() as any),
+                    }));
+
+                    const normalizedServerDrafts = normalizeDashboardDraftRecords(drafts).filter((item) => {
                         const keyA = String(item.draftId || "").trim();
                         const keyB = String(item.id || "").trim();
-                        return !suppressedPromotedDrafts[keyA] && !suppressedPromotedDrafts[keyB];
-                    })
-                );
-                setDraftAppsLoading(false);
-            },
-            (err) => {
-                console.warn("[firestore] drafts snapshot failed", err);
-                const code = String((err as any)?.code || "").toLowerCase();
-                if (code.includes("permission-denied")) {
-                    void handleSessionExpired("drafts_snapshot_permission_denied");
-                }
-                setDraftApps([]);
-                setDraftAppsLoading(false);
-            },
-        );
+                        const suppressed = suppressedPromotedDraftsRef.current;
+                        return !suppressed[keyA] && !suppressed[keyB];
+                    });
+
+                    setDraftApps((prev) => {
+                        const serverKeys = new Set<string>();
+                        for (const item of normalizedServerDrafts) {
+                            const keyA = String(item.draftId || "").trim();
+                            const keyB = String(item.id || "").trim();
+                            if (keyA) serverKeys.add(keyA);
+                            if (keyB) serverKeys.add(keyB);
+                        }
+                        serverDraftKeysRef.current = serverKeys;
+
+                        const optimisticPending = prev.filter((item) => {
+                            const keyA = String(item.draftId || "").trim();
+                            const keyB = String(item.id || "").trim();
+                            const pending = pendingDraftAppsRef.current;
+                            if (!keyA || !pending[keyA]) return false;
+                            return !serverKeys.has(keyA) && (!keyB || !serverKeys.has(keyB));
+                        });
+
+                        if (!optimisticPending.length) return normalizedServerDrafts;
+                        return [...optimisticPending, ...normalizedServerDrafts];
+                    });
+                    setDraftAppsLoading(false);
+                },
+                (err) => {
+                    console.warn("[firestore] drafts snapshot failed", err);
+                    const code = String((err as any)?.code || "").toLowerCase();
+                    if (code.includes("permission-denied")) {
+                        // Never escalate drafts read failures into session-expired logout.
+                        draftsSnapshotDisabledRef.current = true;
+                        setDraftAppsLoading(false);
+                        setPendingDraftApps({});
+                        setRetryingDraftApps({});
+                        serverDraftKeysRef.current = new Set();
+                        return;
+                    }
+
+                    serverDraftKeysRef.current = new Set();
+                    setDraftApps([]);
+                    setDraftAppsLoading(false);
+                },
+            );
+        };
+
+        void startSnapshot();
 
         let didCleanup = false;
         return () => {
             if (didCleanup) return;
             didCleanup = true;
+            cancelled = true;
             try {
-                unsub();
+                unsub?.();
             } catch (err) {
                 console.warn("[firestore] drafts onSnapshot unsubscribe failed", err);
             }
         };
-    }, [handleSessionExpired, suppressedPromotedDrafts, user]);
+    }, [user, loadDraftAppsFromApi]);
 
     useEffect(() => {
-        if (!Object.keys(pendingDraftApps).length) return;
+        if (!user) return;
+        const host = typeof window !== "undefined" ? window.location.hostname : "";
+        const useApiForDrafts = host === "localhost" || host === "127.0.0.1";
+        if (!useApiForDrafts) return;
+
+        const shouldPoll = Object.keys(pendingDraftApps).length > 0;
+        if (!shouldPoll) return;
+
+        const intervalId = window.setInterval(() => {
+            void loadDraftAppsFromApi();
+        }, 2500);
+
+        return () => window.clearInterval(intervalId);
+    }, [loadDraftAppsFromApi, pendingDraftApps, user]);
+
+    useEffect(() => {
+        if (!Object.keys(pendingDraftApps).length) {
+            pendingDraftMissingSinceRef.current = {};
+            return;
+        }
 
         setPendingDraftApps((prev) => {
             let changed = false;
             const next = { ...prev };
+            const now = Date.now();
 
             for (const draftId of Object.keys(prev)) {
                 const draft = draftApps.find((item) => item.draftId === draftId || item.id === draftId);
-                if (!draft || Boolean(draft.pendingCompleted) || Boolean(draft.completed)) {
+                const seenOnServer = serverDraftKeysRef.current.has(draftId);
+                if (!draft || !seenOnServer) {
+                    const missingSince = pendingDraftMissingSinceRef.current[draftId] || now;
+                    pendingDraftMissingSinceRef.current[draftId] = missingSince;
+                    if (now - missingSince >= DRAFT_PENDING_MISSING_TTL_MS) {
+                        delete next[draftId];
+                        delete pendingDraftMissingSinceRef.current[draftId];
+                        changed = true;
+                    }
+                    continue;
+                }
+
+                if (pendingDraftMissingSinceRef.current[draftId]) {
+                    delete pendingDraftMissingSinceRef.current[draftId];
+                }
+
+                if (Boolean(draft.pendingCompleted) || Boolean(draft.completed)) {
                     delete next[draftId];
+                    delete pendingDraftMissingSinceRef.current[draftId];
                     changed = true;
                 }
             }
@@ -4327,7 +4548,7 @@ export default function PreviewPage(): JSX.Element {
                 console.warn("[firestore] hasAnyRenderDoc unsubscribe failed", err);
             }
         };
-    }, [user, handleSessionExpired]);
+    }, [handleSessionExpired, snapshotRetryNonce, user]);
 
     useEffect(() => {
         const billingParam = search.get("billing");
@@ -5809,8 +6030,14 @@ export default function PreviewPage(): JSX.Element {
         const hasDraftForPending = Boolean(
             pendingCreatedApp && draftApps.some((draft) => draft.id === pendingCreatedApp.id),
         );
+        const aqFromQuery = (search.get("aq") || "").toLowerCase();
+        const startFromQuery = (search.get("start") || "").toLowerCase();
+        const retryFromQuery = (search.get("retry") || "").toLowerCase();
+        const suppressPendingCreatedAppCard =
+            ((aqFromQuery === "1" || aqFromQuery === "true") || (startFromQuery === "1" || startFromQuery === "true")) &&
+            !(retryFromQuery === "1" || retryFromQuery === "true");
 
-        if (pendingCreatedApp && !hasDraftForPending && !merged.some((app) => app.id === pendingCreatedApp.id)) {
+        if (!suppressPendingCreatedAppCard && pendingCreatedApp && !hasDraftForPending && !merged.some((app) => app.id === pendingCreatedApp.id)) {
             merged.push({
                 id: pendingCreatedApp.id,
                 name: pendingCreatedApp.name,
@@ -5823,7 +6050,7 @@ export default function PreviewPage(): JSX.Element {
         }
 
         return merged;
-    }, [apps, draftApps, pendingCreatedApp, pendingCreatedAppCompleted]);
+    }, [apps, draftApps, pendingCreatedApp, pendingCreatedAppCompleted, search]);
 
     const pendingCreatedAppActive = Boolean(pendingCreatedApp?.id);
     const isAppCreationPending = Boolean(pendingCreatedAppActive && !pendingCreatedAppCompleted);
@@ -6299,6 +6526,7 @@ export default function PreviewPage(): JSX.Element {
         tierLimits.editMonthly,
         db,
         handleSessionExpired,
+        snapshotRetryNonce,
     ]);
 
     // Simple accessors for UI
@@ -6560,8 +6788,10 @@ export default function PreviewPage(): JSX.Element {
     /* ───────── url + tier ───────── */
 
     const urlParam = search.get("u") || "";
+    const autoQueueParam = (search.get("aq") || "").toLowerCase();
     const startParam = (search.get("start") || "").toLowerCase();
     const retryParam = (search.get("retry") || "").toLowerCase();
+    const autoQueueRequested = autoQueueParam === "1" || autoQueueParam === "true";
     const startRequested = startParam === "1" || startParam === "true";
     const forceRetryRequested = retryParam === "1" || retryParam === "true";
 
@@ -6847,6 +7077,63 @@ export default function PreviewPage(): JSX.Element {
         }
     }, [router]);
 
+    const clearAutoQueuedUrlQueryParams = useCallback(() => {
+        try {
+            const url = new URL(window.location.href);
+            url.searchParams.delete("u");
+            url.searchParams.delete("aq");
+            url.searchParams.delete("start");
+            url.searchParams.delete("retry");
+            const qs = url.searchParams.toString();
+            const next = qs ? `${url.pathname}?${qs}` : url.pathname;
+            router.replace(next, { scroll: false });
+        } catch {
+            // ignore
+        }
+    }, [router]);
+
+    const hasRecentAutoQueuedRun = useCallback((runKey: string): boolean => {
+        if (typeof window === "undefined") return false;
+        try {
+            const now = Date.now();
+            const raw = window.sessionStorage.getItem(AUTOQUEUE_DEDUPE_STORAGE_KEY);
+            const parsed = raw ? JSON.parse(raw) : {};
+            const next: Record<string, number> = {};
+
+            for (const [key, at] of Object.entries(parsed || {})) {
+                if (typeof at === "number" && now - at < AUTOQUEUE_DEDUPE_TTL_MS) {
+                    next[key] = at;
+                }
+            }
+
+            window.sessionStorage.setItem(AUTOQUEUE_DEDUPE_STORAGE_KEY, JSON.stringify(next));
+            return typeof next[runKey] === "number";
+        } catch {
+            return false;
+        }
+    }, []);
+
+    const markRecentAutoQueuedRun = useCallback((runKey: string): void => {
+        if (typeof window === "undefined") return;
+        try {
+            const now = Date.now();
+            const raw = window.sessionStorage.getItem(AUTOQUEUE_DEDUPE_STORAGE_KEY);
+            const parsed = raw ? JSON.parse(raw) : {};
+            const next: Record<string, number> = {};
+
+            for (const [key, at] of Object.entries(parsed || {})) {
+                if (typeof at === "number" && now - at < AUTOQUEUE_DEDUPE_TTL_MS) {
+                    next[key] = at;
+                }
+            }
+
+            next[runKey] = now;
+            window.sessionStorage.setItem(AUTOQUEUE_DEDUPE_STORAGE_KEY, JSON.stringify(next));
+        } catch {
+            // ignore storage failures
+        }
+    }, []);
+
     const clearUrlScanQueuedState = useCallback((rawUrl: string, message: string) => {
         const normalized = normUrl(rawUrl);
         generateAbortedRef.current = `${user?.uid || ""}:${rawUrl}`;
@@ -6957,21 +7244,6 @@ export default function PreviewPage(): JSX.Element {
             startRequestedEnqueueAttemptRef.current = startRequestKey;
 
             setCaptureLockUrl(target);
-            const pendingCreationId = `pending-url-${hash64(target)}`;
-            setPendingCreatedApp({
-                id: pendingCreationId,
-                name: (() => {
-                    try {
-                        return new URL(target).host || "Website";
-                    } catch {
-                        return target.replace(/^https?:\/\//i, "").split("/")[0] || "Website";
-                    }
-                })(),
-                createdAt: Date.now(),
-                sourceUrl: target,
-                retryable: false,
-                completed: false,
-            });
             captureLockStartedAtRef.current = Date.now();
             captureLockMinUntilRef.current = Date.now() + 60_000;
             captureStallReportedForUrlRef.current = "";
@@ -7062,14 +7334,6 @@ export default function PreviewPage(): JSX.Element {
                         captureLockMinUntilRef.current = 0;
                         setCaptureLockUrl(null);
                         captureLockStartedAtRef.current = 0;
-                        setPendingCreatedApp((prev) => {
-                            if (!prev) return prev;
-                            return {
-                                ...prev,
-                                retryable: false,
-                                completed: true,
-                            };
-                        });
                     }
 
                     if (cancelled) return;
@@ -7232,16 +7496,66 @@ export default function PreviewPage(): JSX.Element {
         enqueueUrlScanRef.current = enqueueUrlScan;
     }, [enqueueUrlScan]);
 
+    const autoQueuedDraftRunRef = useRef<string>("");
+
     // When a URL is entered from the mini-dashboard entry panel (or deep-linked with start=1),
     // ensure the UrlDoc exists and queue the screenshot capture job. The existing loader stages
     // in this page will then take over (docData + shots + groupedShots + preview generation).
     useEffect(() => {
-        if (!startRequested || !targetUrl) return;
+        const nonRetryAutoQueue = (autoQueueRequested || startRequested) && !forceRetryRequested;
+        if (!targetUrl) return;
+        if (!nonRetryAutoQueue && !(startRequested && forceRetryRequested)) return;
+
+        // Run only after initial URL/doc loading settles so this path mirrors user-driven dashboard clone.
+        if (nonRetryAutoQueue && (loading || draftAppsLoading)) return;
+
+        // Non-retry deep links should behave exactly like clicking the dashboard Queue button:
+        // create the draft via submitMiniUrl, then clear query params so refresh won't re-run.
+        if (nonRetryAutoQueue) {
+            if (!user?.uid) return;
+            const runKey = `${user.uid}:${targetUrl}`;
+            if (autoQueuedDraftRunRef.current === runKey) return;
+            if (hasRecentAutoQueuedRun(runKey)) {
+                clearAutoQueuedUrlQueryParams();
+                return;
+            }
+            autoQueuedDraftRunRef.current = runKey;
+            markRecentAutoQueuedRun(runKey);
+
+            // Defensive cleanup for any legacy synthetic pending URL card state.
+            setPendingCreatedApp((prev) => {
+                if (!prev) return prev;
+                return String(prev.id || "").startsWith("pending-url-") ? null : prev;
+            });
+
+            void (async () => {
+                try {
+                    await submitMiniUrl(targetUrl);
+                } finally {
+                    clearAutoQueuedUrlQueryParams();
+                }
+            })();
+            return;
+        }
+
         void enqueueUrlScan(targetUrl, {
             forceRetry: forceRetryRequested,
             clearStartParam: true,
         });
-    }, [enqueueUrlScan, forceRetryRequested, startRequested, targetUrl]);
+    }, [
+        autoQueueRequested,
+        clearAutoQueuedUrlQueryParams,
+        draftAppsLoading,
+        enqueueUrlScan,
+        forceRetryRequested,
+        hasRecentAutoQueuedRun,
+        loading,
+        markRecentAutoQueuedRun,
+        startRequested,
+        submitMiniUrl,
+        targetUrl,
+        user?.uid,
+    ]);
 
     const startLockRequested = !!startRequested && !!targetUrl && !err;
 
@@ -8012,6 +8326,7 @@ export default function PreviewPage(): JSX.Element {
     useEffect(() => {
         const unsub = onAuthStateChanged(auth, async (u) => {
             if (!u) {
+                authBootstrapGraceUntilRef.current = 0;
                 setStripeStatus(null);
                 setStripeCancelAtPeriodEnd(false);
                 setUser(null);
@@ -8022,6 +8337,7 @@ export default function PreviewPage(): JSX.Element {
                 return;
             }
 
+            authBootstrapGraceUntilRef.current = Date.now() + 15_000;
             setUser(u);
 
             let effectiveTier: UserTier = "free";
@@ -8305,7 +8621,7 @@ export default function PreviewPage(): JSX.Element {
         return () => {
             unsubUrlDoc?.();
         };
-    }, [user, targetUrl, urlDocReloadNonce, handleSessionExpired]);
+    }, [user, targetUrl, urlDocReloadNonce, handleSessionExpired, snapshotRetryNonce]);
 
     /* ───────── renders (editable previews) ───────── */
 
@@ -8740,6 +9056,7 @@ export default function PreviewPage(): JSX.Element {
         optimisticByKey,
         lockUntilByKey,
         handleSessionExpired,
+        snapshotRetryNonce,
     ]);
 
     useEffect(() => {
@@ -8918,7 +9235,8 @@ export default function PreviewPage(): JSX.Element {
 
             for (const draftId of Object.keys(prev)) {
                 const draft = draftApps.find((item) => item.draftId === draftId || item.id === draftId);
-                if (!draft || Boolean(draft.pendingCompleted) || Boolean(draft.completed)) {
+                const seenOnServer = serverDraftKeysRef.current.has(draftId);
+                if (!draft || !seenOnServer || Boolean(draft.pendingCompleted) || Boolean(draft.completed)) {
                     delete next[draftId];
                     changed = true;
                 }
@@ -11761,7 +12079,7 @@ export default function PreviewPage(): JSX.Element {
                         </div>
                     </div>
 
-                    {draftAppsLoading ? (
+                    {draftAppsLoading && !draftAppsInitialLoadComplete ? (
                         <KlonerLoader
                             inline
                         />
