@@ -4220,7 +4220,8 @@ export default function PreviewPage(): JSX.Element {
         };
     }, [user, push, showArchivedApps]);
 
-    const loadDraftApps = useCallback(async () => {
+    // Keep draft loading on a Firestore snapshot, same as apps, to avoid API cold-start delay.
+    useEffect(() => {
         if (!user) {
             setDraftAppsLoading(false);
             setDraftApps([]);
@@ -4229,32 +4230,49 @@ export default function PreviewPage(): JSX.Element {
         }
 
         setDraftAppsLoading(true);
-        try {
-            const res = await fetch("/api/private/kloner-drafts", {
-                method: "GET",
-                credentials: "include",
-                cache: "no-store",
-            });
-            if (!res.ok) {
-                throw new Error(`Failed to load drafts (HTTP ${res.status})`);
-            }
 
-            const payload = await res.json().catch(() => ({} as any));
-            const drafts = Array.isArray(payload?.drafts) ? payload.drafts : [];
-            setDraftApps(
-                normalizeDashboardDraftRecords(drafts).filter((item) => {
-                    const keyA = String(item.draftId || "").trim();
-                    const keyB = String(item.id || "").trim();
-                    return !suppressedPromotedDrafts[keyA] && !suppressedPromotedDrafts[keyB];
-                })
-            );
-        } catch (err) {
-            console.warn("[drafts] load failed", err);
-            setDraftApps([]);
-        } finally {
-            setDraftAppsLoading(false);
-        }
-    }, [suppressedPromotedDrafts, user]);
+        const draftsRef = collection(db, "kloner_users", user.uid, "kloner_drafts");
+        const draftsQuery = query(draftsRef, orderBy("createdAt", "desc"), limit(100));
+
+        const unsub = onSnapshot(
+            draftsQuery,
+            (snap) => {
+                const drafts = snap.docs.map((docSnap) => ({
+                    draftId: docSnap.id,
+                    ...(docSnap.data() as any),
+                }));
+
+                setDraftApps(
+                    normalizeDashboardDraftRecords(drafts).filter((item) => {
+                        const keyA = String(item.draftId || "").trim();
+                        const keyB = String(item.id || "").trim();
+                        return !suppressedPromotedDrafts[keyA] && !suppressedPromotedDrafts[keyB];
+                    })
+                );
+                setDraftAppsLoading(false);
+            },
+            (err) => {
+                console.warn("[firestore] drafts snapshot failed", err);
+                const code = String((err as any)?.code || "").toLowerCase();
+                if (code.includes("permission-denied")) {
+                    void handleSessionExpired("drafts_snapshot_permission_denied");
+                }
+                setDraftApps([]);
+                setDraftAppsLoading(false);
+            },
+        );
+
+        let didCleanup = false;
+        return () => {
+            if (didCleanup) return;
+            didCleanup = true;
+            try {
+                unsub();
+            } catch (err) {
+                console.warn("[firestore] drafts onSnapshot unsubscribe failed", err);
+            }
+        };
+    }, [handleSessionExpired, suppressedPromotedDrafts, user]);
 
     useEffect(() => {
         if (!Object.keys(pendingDraftApps).length) return;
@@ -4274,10 +4292,6 @@ export default function PreviewPage(): JSX.Element {
             return changed ? next : prev;
         });
     }, [draftApps, pendingDraftApps]);
-
-    useEffect(() => {
-        void loadDraftApps();
-    }, [loadDraftApps]);
 
     useEffect(() => {
         if (!user) {
@@ -6664,33 +6678,33 @@ export default function PreviewPage(): JSX.Element {
             setPendingDraftApps((prev) => ({ ...prev, [draftKey]: true }));
         });
 
-        const tierRefresh = await refreshUserTierNow();
-        const canOpenDraftInBuilder =
-            tierRefresh.tier === "pro" ||
-            tierRefresh.tier === "agency" ||
-            tierRefresh.stripeStatus === "trialing";
-
-        if (!canOpenDraftInBuilder) {
-            showWebsiteExitOfferPaywall();
-            return;
-        }
-
-        const rawUrl = draft.sourceUrl || targetUrl || "";
-        const normalized = validateAndNormalizePublicHttpUrl(rawUrl);
-        if (!normalized) {
-            setErr("That saved URL looks invalid. Delete it from the list to continue.");
-            return;
-        }
-
-        const inferredName = (() => {
-            try {
-                return new URL(normalized).hostname.replace(/^www\./, "") || draft.name || "Website";
-            } catch {
-                return draft.name || "Website";
-            }
-        })();
-
         try {
+            const tierRefresh = await refreshUserTierNow();
+            const canOpenDraftInBuilder =
+                tierRefresh.tier === "pro" ||
+                tierRefresh.tier === "agency" ||
+                tierRefresh.stripeStatus === "trialing";
+
+            if (!canOpenDraftInBuilder) {
+                showWebsiteExitOfferPaywall();
+                return;
+            }
+
+            const rawUrl = draft.sourceUrl || targetUrl || "";
+            const normalized = validateAndNormalizePublicHttpUrl(rawUrl);
+            if (!normalized) {
+                setErr("That saved URL looks invalid. Delete it from the list to continue.");
+                return;
+            }
+
+            const inferredName = (() => {
+                try {
+                    return new URL(normalized).hostname.replace(/^www\./, "") || draft.name || "Website";
+                } catch {
+                    return draft.name || "Website";
+                }
+            })();
+
             const csrf = await ensureSessionAndCsrf().catch(() => null);
             const res = await fetch("/api/generate-app-from-url", {
                 method: "POST",
@@ -8894,17 +8908,6 @@ export default function PreviewPage(): JSX.Element {
 
         await retryTrackedUrl(normalized);
     }, [activeUrlDoc?.url, retryTrackedUrl, targetUrl]);
-
-    useEffect(() => {
-        const activeRetryIds = Object.keys(retryingDraftApps);
-        if (!activeRetryIds.length) return;
-
-        const intervalId = window.setInterval(() => {
-            void loadDraftApps();
-        }, 2500);
-
-        return () => window.clearInterval(intervalId);
-    }, [loadDraftApps, retryingDraftApps]);
 
     useEffect(() => {
         if (!Object.keys(retryingDraftApps).length) return;

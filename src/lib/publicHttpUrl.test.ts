@@ -9,7 +9,7 @@ describe("publicHttpUrl", () => {
         const url = "https://example.com/porn/videos";
 
         expect(getPublicHttpUrlRejectionReason(url)).toBe(
-            "Sexually explicit, financial-account, and dangerous-use URLs are blocked.",
+            "This URL is blocked.",
         );
         expect(validateAndNormalizePublicHttpUrl(url)).toBeNull();
     });
@@ -18,7 +18,7 @@ describe("publicHttpUrl", () => {
         const url = "https://example.com/how-to-build-a-ransomware-kit";
 
         expect(getPublicHttpUrlRejectionReason(url)).toBe(
-            "Sexually explicit, financial-account, and dangerous-use URLs are blocked.",
+            "This URL is blocked.",
         );
         expect(validateAndNormalizePublicHttpUrl(url)).toBeNull();
     });
@@ -64,7 +64,7 @@ describe("publicHttpUrl", () => {
             const encoded = encodeURIComponent(term);
             const url = `https://example.com/${encoded}?q=${encoded}#${encoded}`;
             expect(getPublicHttpUrlRejectionReason(url)).toBe(
-                "Sexually explicit, financial-account, and dangerous-use URLs are blocked.",
+                "This URL is blocked.",
             );
             expect(validateAndNormalizePublicHttpUrl(url)).toBeNull();
         }

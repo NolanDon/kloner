@@ -75,7 +75,7 @@ describe("POST /api/private/generate", () => {
         const body = await res.json();
 
         expect(res.status).toBe(400);
-        expect(body.error).toBe("Sexually explicit, financial-account, and dangerous-use URLs are blocked.");
+        expect(body.error).toBe("This URL is blocked.");
         expect(callBackend).not.toHaveBeenCalled();
         expect(peekUserCredit).not.toHaveBeenCalled();
     });
@@ -90,7 +90,7 @@ describe("POST /api/private/generate", () => {
         const body = await res.json();
 
         expect(res.status).toBe(400);
-        expect(body.error).toBe("Sexually explicit, financial-account, and dangerous-use URLs are blocked.");
+        expect(body.error).toBe("This URL is blocked.");
         expect(callBackend).not.toHaveBeenCalled();
     });
 

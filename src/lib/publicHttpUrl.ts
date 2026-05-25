@@ -353,7 +353,7 @@ function getSensitiveUrlTermRejectionReason(parsed: URL): string | null {
   if (!text) return null;
 
   if (BLOCKED_URL_TERM_RE.test(text)) {
-    return "Sexually explicit, financial-account, and dangerous-use URLs are blocked.";
+    return "This URL is blocked.";
   }
 
   return null;
