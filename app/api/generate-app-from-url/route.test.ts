@@ -55,7 +55,7 @@ jest.mock("../_lib/auth", () => {
     return {
         __esModule: true,
         verifySession: async () => ({ uid: "uid_1", email: "user@example.com" }),
-        getAdminDb: (...args: any[]) => getAdminDb(...args),
+        getAdminDb: () => getAdminDb(),
     };
 });
 
