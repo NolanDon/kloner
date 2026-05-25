@@ -12,6 +12,24 @@ export type PreviewFailureErrorClass =
 
 export type PreviewFailureUserAction = "refresh" | "rebuild" | "reconnect" | "wait_and_retry" | "contact_support";
 
+export type PreviewGenerationStatus = "processing" | "ready" | "warning" | "error";
+export type PreviewGenerationRecommendedAction = "wait" | "retry_scan" | "open_builder" | "contact_support" | (string & {});
+
+export type PreviewGenerationContract = {
+  status: PreviewGenerationStatus;
+  userMessage: string | null;
+  message: string | null;
+  details: string | null;
+  warningCode: string | null;
+  errorCode: string | null;
+  retryable: boolean;
+  retryAction: string | null;
+  recommendedAction: PreviewGenerationRecommendedAction | null;
+  warnings: unknown[];
+  warning: Record<string, any> | null;
+  error: Record<string, any> | null;
+};
+
 export type PreviewFailureContract = {
   errorClass: PreviewFailureErrorClass;
   aiFixEligible: boolean;
@@ -55,6 +73,106 @@ const AI_FIXABLE_FAILURE_CLASSES = new Set<PreviewFailureErrorClass>([
 
 function asRecord(value: unknown): Record<string, any> | null {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, any>) : null;
+}
+
+function asString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed || null;
+}
+
+function asStringArray(value: unknown): unknown[] {
+  return Array.isArray(value) ? value.slice() : [];
+}
+
+function getPreviewGenerationStatus(raw: Record<string, any>): PreviewGenerationStatus {
+  const status = String(raw.status || raw.state || raw.phase || raw.stage || "").trim().toLowerCase();
+  if (status === "processing" || status === "ready" || status === "warning" || status === "error") {
+    return status;
+  }
+
+  if (raw.errorCode || raw.error || raw.errorMessage) return "error";
+  if (raw.warningCode || raw.warning || raw.warningMessage) return "warning";
+  return "processing";
+}
+
+export function normalizePreviewGenerationContract(rawInput: unknown): PreviewGenerationContract | null {
+  const rawObject = asRecord(rawInput);
+  if (!rawObject) return null;
+
+  const warning = asRecord(rawObject.warning);
+  const error = asRecord(rawObject.error);
+  const warnings = asStringArray(rawObject.warnings);
+
+  const status = getPreviewGenerationStatus(rawObject);
+  const userMessage =
+    asString(rawObject.userMessage) ||
+    asString(rawObject.message) ||
+    asString(warning?.userMessage) ||
+    asString(warning?.message) ||
+    asString(error?.userMessage) ||
+    asString(error?.message) ||
+    null;
+
+  const details =
+    asString(rawObject.details) ||
+    asString(warning?.details) ||
+    asString(error?.details) ||
+    null;
+
+  const warningCode =
+    asString(rawObject.warningCode) ||
+    asString(warning?.code) ||
+    asString(warning?.warningCode) ||
+    null;
+
+  const errorCode =
+    asString(rawObject.errorCode) ||
+    asString(error?.code) ||
+    asString(error?.errorCode) ||
+    null;
+
+  const retryable = rawObject.retryable === true || warning?.retryable === true || error?.retryable === true;
+  const retryAction =
+    asString(rawObject.retryAction) ||
+    asString(warning?.retryAction) ||
+    asString(error?.retryAction) ||
+    null;
+  const recommendedAction =
+    asString(rawObject.recommendedAction) ||
+    asString(warning?.recommendedAction) ||
+    asString(error?.recommendedAction) ||
+    (retryAction === "retry_scan" ? "retry_scan" : null);
+
+  return {
+    status,
+    userMessage,
+    message: userMessage || asString(rawObject.message) || null,
+    details,
+    warningCode,
+    errorCode,
+    retryable: status === "processing" ? false : retryable,
+    retryAction: status === "processing" ? null : retryAction,
+    recommendedAction: status === "processing" ? "wait" : recommendedAction,
+    warnings,
+    warning,
+    error,
+  };
+}
+
+export function mapPreviewRecommendedActionLabel(recommendedAction: PreviewGenerationRecommendedAction | null | undefined): string {
+  switch (String(recommendedAction || "").trim().toLowerCase()) {
+    case "retry_scan":
+      return "Retry";
+    case "open_builder":
+      return "Open builder";
+    case "contact_support":
+      return "Contact support";
+    case "wait":
+      return "Wait";
+    default:
+      return "Refresh";
+  }
 }
 
 export function normalizePreviewFailureContract(rawInput: unknown): PreviewFailureContract | null {

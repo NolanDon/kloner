@@ -163,6 +163,17 @@ function assertValidDiscountId(promo?: string | null, coupon?: string | null) {
     }
 }
 
+function isMissingStripeCustomerError(err: any): boolean {
+    const code = typeof err?.code === "string" ? err.code : "";
+    const param = typeof err?.param === "string" ? err.param : "";
+    const message = typeof err?.message === "string" ? err.message : "";
+    return (
+        (code === "resource_missing" && (param === "customer" || /no such customer/i.test(message))) ||
+        /similar object exists in live mode.*test mode key/i.test(message) ||
+        /similar object exists in test mode.*live mode key/i.test(message)
+    );
+}
+
 async function handler({ req, uid }: { req: NextRequest; uid: string }) {
     const body = await req.json().catch(() => ({}));
 
@@ -216,7 +227,7 @@ async function handler({ req, uid }: { req: NextRequest; uid: string }) {
 
     let customerId: string | undefined = userData.stripeCustomerId;
 
-    if (!customerId) {
+    const createAndPersistCustomer = async (): Promise<string> => {
         const authUser = await admin.auth().getUser(uid);
         const email = authUser.email ?? undefined;
 
@@ -240,10 +251,14 @@ async function handler({ req, uid }: { req: NextRequest; uid: string }) {
             throw err;
         }
 
-        customerId = customer.id;
+        const nextCustomerId = customer.id;
+        await userRef.set({ stripeCustomerId: nextCustomerId }, { merge: true });
+        await linkCustomerToUid(nextCustomerId, uid);
+        return nextCustomerId;
+    };
 
-        await userRef.set({ stripeCustomerId: customerId }, { merge: true });
-        await linkCustomerToUid(customerId, uid);
+    if (!customerId) {
+        customerId = await createAndPersistCustomer();
     } else {
         if (affiliateRef || affiliateSource) {
             try {
@@ -254,7 +269,10 @@ async function handler({ req, uid }: { req: NextRequest; uid: string }) {
                         ...(affiliateSource ? { affiliateSource } : {}),
                     },
                 });
-            } catch {
+            } catch (err: any) {
+                if (isMissingStripeCustomerError(err)) {
+                    customerId = await createAndPersistCustomer();
+                }
                 // ignore
             }
         }
@@ -268,13 +286,22 @@ async function handler({ req, uid }: { req: NextRequest; uid: string }) {
             limit: 100,
         });
     } catch (err: any) {
-        await notifyStripeSubscriptionError({
-            action: "billing.createCheckoutSession.listSubscriptions",
-            uid,
-            error: err,
-            extra: { plan, customerId },
-        });
-        throw err;
+        if (customerId && isMissingStripeCustomerError(err)) {
+            customerId = await createAndPersistCustomer();
+            existingSubs = await stripe.subscriptions.list({
+                customer: customerId,
+                status: "all",
+                limit: 100,
+            });
+        } else {
+            await notifyStripeSubscriptionError({
+                action: "billing.createCheckoutSession.listSubscriptions",
+                uid,
+                error: err,
+                extra: { plan, customerId },
+            });
+            throw err;
+        }
     }
 
     const activeOrTrialing = existingSubs.data.filter((sub) => {
@@ -384,11 +411,10 @@ async function handler({ req, uid }: { req: NextRequest; uid: string }) {
     }
 
     // Stripe constraint: cannot send allow_promotion_codes with discounts.
-    let session;
-    try {
-        session = await stripe.checkout.sessions.create({
+    const createSession = (resolvedCustomerId: string) =>
+        stripe.checkout.sessions.create({
             mode: "subscription",
-            customer: customerId,
+            customer: resolvedCustomerId,
             client_reference_id: uid,
             line_items: [{ price: priceId, quantity: 1 }],
             success_url: successUrl,
@@ -407,14 +433,23 @@ async function handler({ req, uid }: { req: NextRequest; uid: string }) {
                 metadata: baseMeta,
             },
         });
+
+    let session;
+    try {
+        session = await createSession(customerId);
     } catch (err: any) {
-        await notifyStripeSubscriptionError({
-            action: "billing.createCheckoutSession.createSession",
-            uid,
-            error: err,
-            extra: { plan, customerId, priceId, includeTrial, hasDiscounts: Boolean(discounts?.length) },
-        });
-        throw err;
+        if (customerId && isMissingStripeCustomerError(err)) {
+            customerId = await createAndPersistCustomer();
+            session = await createSession(customerId);
+        } else {
+            await notifyStripeSubscriptionError({
+                action: "billing.createCheckoutSession.createSession",
+                uid,
+                error: err,
+                extra: { plan, customerId, priceId, includeTrial, hasDiscounts: Boolean(discounts?.length) },
+            });
+            throw err;
+        }
     }
 
     return NextResponse.json({ url: session.url }, { status: 200 });

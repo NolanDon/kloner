@@ -492,6 +492,9 @@ type AppCardIssueState = {
 function extractAppCardIssueState(source: any): AppCardIssueState | null {
     if (!source || typeof source !== "object") return null;
 
+    const normalizedStatus = String(source.status || "").trim().toLowerCase();
+    const normalizedRecommendedAction = String(source.recommendedAction || "").trim().toLowerCase();
+
     const warnings = (Array.isArray(source.warnings) ? (source.warnings as Array<Record<string, any>>) : [])
         .filter((item) => !!item && typeof item === "object");
     const primaryWarning = warnings[0] || null;
@@ -547,6 +550,17 @@ function extractAppCardIssueState(source: any): AppCardIssueState | null {
         archiveHealth?.warningAction,
     ];
     const rawAction = actionCandidates.map((value) => String(value || "").trim()).find(Boolean) || null;
+
+    const isPureProcessingState =
+        normalizedStatus === "processing" &&
+        (normalizedRecommendedAction === "wait" || !normalizedRecommendedAction) &&
+        !source.warningCode &&
+        !source.errorCode &&
+        !source.errorReason &&
+        source.retryable !== true;
+    if (isPureProcessingState) {
+        return null;
+    }
 
     const blockedText = [
         rawCode,
@@ -2459,10 +2473,47 @@ function AppCard({
     const draftIssueIsRetryable = Boolean(draftIssue && !draftIssueIsBlocked && draftIssue.retryable);
     const pendingIssueIsBlocked = Boolean(pendingIssue?.blocked);
     const pendingIssueIsRetryable = Boolean(pendingIssue && !pendingIssueIsBlocked && pendingIssue.retryable);
+    const issueLooksLikePromotionProgress = Boolean(
+        appIssue && /draft app promotion started|wait a moment before opening the builder|promotion\s+(started|in progress)/i.test(
+            `${String(appIssue.message || "")} ${String(appIssue.details || "")}`,
+        ),
+    );
+    const suppressLivePromotionIssue = Boolean(
+        !isDraftCard &&
+        issueLooksLikePromotionProgress &&
+        !appIssueIsBlocked &&
+        !appIssueIsRetryable,
+    );
+    const draftIssueIsPromotionProgress = Boolean(
+        draftIssue && /draft app promotion started|wait a moment before opening the builder|promotion\s+(started|in progress)/i.test(
+            `${String(draftIssue.message || "")} ${String(draftIssue.details || "")}`,
+        ),
+    );
+    const draftLifecycleStatus = isDraftCard ? String((app as any)?.status || "").trim().toLowerCase() : "";
+    const draftRecommendedAction = isDraftCard ? String((app as any)?.recommendedAction || "").trim().toLowerCase() : "";
+    const draftArchiveZipRaw = isDraftCard
+        ? String((app as any)?.archiveZipPath || (app as any)?.archiveZipUrl || "").trim()
+        : "";
+    const draftArchiveZipLabel = useMemo(() => {
+        if (!draftArchiveZipRaw) return "";
+        const normalized = draftArchiveZipRaw.replace(/\\/g, "/");
+        const parts = normalized.split("/").filter(Boolean);
+        const leaf = parts.length ? parts[parts.length - 1] : normalized;
+        if (leaf.length <= 26) return leaf;
+        return `${leaf.slice(0, 23)}...`;
+    }, [draftArchiveZipRaw]);
     const draftId = String((app as any)?.draftId || "").trim();
+    const shouldShowDraftArchivePendingBadge = Boolean(
+        showVersionBadge &&
+        isDraftCard &&
+        !draftArchiveZipRaw &&
+        draftLifecycleStatus === "processing" &&
+        (draftRecommendedAction === "wait" || !draftRecommendedAction),
+    );
     const isDraftRetryLoading = isDraftCard && isPendingCreation;
     const isDraftFreshLoading = isDraftCard && isPendingCreation && !draftIssue;
     const isBrokenDraftCard = isDraftCard && Boolean(draftIssue || draftIssueIsRetryable);
+    const blockedDraftDescription = "Domain blocked for site cloning";
     const draftIssueDetails = draftIssue
         ? (() => {
             const raw = String(
@@ -2470,18 +2521,25 @@ function AppCard({
                 draftIssue.details ||
                 (draftIssueIsBlocked ? "Site blocked" : "Scan issue")
             ).trim();
-            if (!raw) return draftIssueIsBlocked ? "Site blocked" : "Draft needs attention";
+            if (!raw) return draftIssueIsBlocked ? blockedDraftDescription : "Draft needs attention";
+
+            if (draftIssueIsBlocked) return blockedDraftDescription;
+
+            if (draftIssueIsPromotionProgress) {
+                return "Opening the builder shortly. Please wait a moment.";
+            }
 
             const looksGenericProgress = /generation started|check back later|processing your url|creating site/i.test(raw);
             if (!looksGenericProgress) return raw;
 
-            if (draftIssueIsBlocked) return "Site blocked";
             if (draftIssueIsRetryable) return "This draft needs a retry.";
             return "This draft has an issue.";
         })()
         : "";
     const rawAppDisplayName = String(app.name || app.id.slice(0, 10)).trim();
-    const appDisplayName = rawAppDisplayName.replace(/^Clone of\s+/i, "").trim() || rawAppDisplayName;
+    const appDisplayName = isDraftCard
+        ? (rawAppDisplayName.replace(/^Draft:\s*/i, "").trim() || "Draft")
+        : rawAppDisplayName.replace(/^Clone of\s+/i, "").trim() || rawAppDisplayName;
     const appBadgeLabel = useMemo(() => {
         const cleanedName = appDisplayName.replace(/^Clone of\s+/i, "").trim();
         const parts = cleanedName.split(/[^a-zA-Z0-9]+/).filter(Boolean);
@@ -2493,6 +2551,7 @@ function AppCard({
     }, [appDisplayName]);
     const [isEditingName, setIsEditingName] = useState(false);
     const [nameDraft, setNameDraft] = useState(appDisplayName);
+    const canEditName = !isDraftCard;
 
     useEffect(() => {
         if (!isEditingName) {
@@ -2500,7 +2559,14 @@ function AppCard({
         }
     }, [appDisplayName, isEditingName]);
 
+    useEffect(() => {
+        if (isDraftCard && isEditingName) {
+            setIsEditingName(false);
+        }
+    }, [isDraftCard, isEditingName]);
+
     const submitAppRename = useCallback(async () => {
+        if (!canEditName) return;
         const trimmed = nameDraft.trim();
         if (!trimmed) {
             setNameDraft(appDisplayName);
@@ -2513,7 +2579,7 @@ function AppCard({
         }
         await onRename(app.id, trimmed);
         setIsEditingName(false);
-    }, [app.id, appDisplayName, nameDraft, onRename]);
+    }, [app.id, appDisplayName, canEditName, nameDraft, onRename]);
 
     return (
         <div className="group relative mx-auto w-full max-w-[240px] px-2 pt-2 pb-4 sm:pb-5">
@@ -2531,8 +2597,36 @@ function AppCard({
                         </div>
                     ) : isDraftCard ? (
                         <div className="relative">
+                            <span className="absolute left-1/2 top-0 z-10 -translate-x-1/2 -translate-y-1/2">
+                                <span className="inline-flex items-center rounded-full border border-neutral-200 bg-white px-3 py-1 shadow-sm">
+                                    <span className="text-[11px] font-medium uppercase tracking-[0.18em] text-neutral-400">
+                                        Draft
+                                    </span>
+                                </span>
+                            </span>
+                            {showVersionBadge && draftArchiveZipRaw ? (
+                                <span className="group/draft-zip absolute -left-2 -top-2 z-10">
+                                    <span
+                                        className="inline-flex max-w-[11rem] items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 shadow-sm"
+                                        title={draftArchiveZipRaw}
+                                    >
+                                        <Archive className="h-3 w-3 shrink-0" />
+                                        <span className="truncate">{draftArchiveZipLabel || "archive.zip"}</span>
+                                    </span>
+                                </span>
+                            ) : shouldShowDraftArchivePendingBadge ? (
+                                <span className="group/draft-zip absolute -left-2 -top-2 z-10">
+                                    <span
+                                        className="inline-flex max-w-[11rem] items-center gap-1 rounded-full border border-neutral-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-neutral-600 shadow-sm"
+                                        title="Archive pending: initial scan artifacts are still being prepared."
+                                    >
+                                        <Archive className="h-3 w-3 shrink-0" />
+                                        <span className="truncate">archive pending</span>
+                                    </span>
+                                </span>
+                            ) : null}
                             <div
-                                className="group/draft-icon relative grid h-36 w-36 place-items-center rounded-[2.6rem] border border-neutral-200 bg-neutral-100 text-neutral-500 shadow-[0_10px_20px_rgba(15,23,42,0.06)] transition-all duration-300 ease-out hover:scale-[1.14] hover:shadow-[0_14px_26px_rgba(15,23,42,0.08)]"
+                                className={`group/draft-icon relative grid h-36 w-36 place-items-center rounded-[2.6rem] border border-neutral-200 bg-neutral-100 text-neutral-500 shadow-[0_10px_20px_rgba(15,23,42,0.06)] transition-all duration-300 ease-out ${draftIssueIsBlocked ? "cursor-not-allowed opacity-70" : "hover:scale-[1.14] hover:shadow-[0_14px_26px_rgba(15,23,42,0.08)]"}`}
                                 style={{ fontFamily: "ui-rounded, 'SF Pro Rounded', 'Avenir Next Rounded', 'Trebuchet MS', sans-serif" }}
                                 title={appDisplayName || "Draft"}
                             >
@@ -2548,7 +2642,7 @@ function AppCard({
                                         title="Retry draft"
                                     >
                                         <div className="inline-flex items-center gap-2 rounded-full bg-transparent px-3 py-1.5 text-sm font-semibold text-neutral-800 shadow-none transition-all duration-200 group-hover/draft-icon:scale-[1.08] group-focus-visible/draft-icon:scale-[1.08] hover:bg-transparent">
-                                            <RotateCcw className="h-4 w-4 transition-transform duration-200 group-hover/draft-icon:rotate-[-10deg] group-focus-visible/draft-icon:rotate-[-10deg]" />
+                                            <AlertTriangle className="h-4 w-4 transition-transform duration-200 group-hover/draft-icon:scale-[1.04] group-focus-visible/draft-icon:scale-[1.04]" />
                                             <span>Retry</span>
                                         </div>
                                     </button>
@@ -2565,10 +2659,10 @@ function AppCard({
                                                 sourceUrl: (app as any)?.sourceUrl || null,
                                             });
                                         }}
-                                        disabled={isDeleting || accessLocked || disableActions || isPendingCreation || isBrokenDraftCard || !onPromoteDraft}
+                                        disabled={isDeleting || accessLocked || disableActions || isPendingCreation || isBrokenDraftCard || draftIssueIsBlocked || !onPromoteDraft}
                                         className="absolute inset-0 grid place-items-center rounded-[2.6rem] border border-neutral-200 bg-transparent text-neutral-800 opacity-0 backdrop-blur-[1px] transition-all duration-200 hover:bg-transparent group-hover/draft-icon:opacity-100 group-focus-visible/draft-icon:opacity-100 group-hover/draft-icon:scale-[1.015] group-focus-visible/draft-icon:scale-[1.015]"
                                         aria-label="Edit draft"
-                                        title="Edit draft"
+                                        title={draftIssueIsBlocked ? blockedDraftDescription : "Edit draft"}
                                     >
                                         <div className="inline-flex items-center gap-2 rounded-full bg-transparent px-3 py-1.5 text-sm font-semibold text-neutral-800 shadow-none transition-all duration-200 group-hover/draft-icon:scale-[1.08] group-focus-visible/draft-icon:scale-[1.08] hover:bg-transparent">
                                             <BrushIcon className="h-4 w-4 transition-transform duration-200 group-hover/draft-icon:rotate-[-10deg] group-focus-visible/draft-icon:rotate-[-10deg]" />
@@ -2580,8 +2674,8 @@ function AppCard({
                             {draftIssue ? (
                                 <span className="group/issue absolute -right-2 -top-2">
                                     <span
-                                        className={`inline-flex h-9 w-9 items-center justify-center rounded-full border bg-white shadow-sm ${draftIssueIsBlocked ? "border-red-200 text-red-600" : "border-amber-200 text-amber-700"}`}
-                                        title={draftIssueDetails || (draftIssueIsBlocked ? "Site blocked" : "Scan issue")}
+                                        className={`inline-flex h-9 w-9 items-center justify-center rounded-full border shadow-sm ${draftIssueIsBlocked ? "border-red-600 bg-red-600 text-white" : draftIssueIsPromotionProgress ? "border-neutral-200 bg-white text-neutral-500" : "border-amber-200 bg-white text-amber-700"}`}
+                                        title={draftIssueDetails || (draftIssueIsBlocked ? blockedDraftDescription : draftIssueIsPromotionProgress ? "Builder opening shortly" : "Scan issue")}
                                     >
                                         <AlertTriangle className="h-5 w-5" />
                                     </span>
@@ -2618,16 +2712,16 @@ function AppCard({
                                 <button
                                     type="button"
                                     onClick={onRetryPendingCreation}
-                                    className="group absolute inset-0 grid place-items-center rounded-[2.6rem] border border-[rgba(245,95,42,0.30)] bg-[rgba(245,95,42,0.10)] text-neutral-900 shadow-[0_0_0_1px_rgba(245,95,42,0.08)] transition-all duration-200 hover:-translate-y-0.5 hover:border-[rgba(245,95,42,0.58)] hover:bg-[rgba(245,95,42,0.22)] hover:shadow-[0_18px_34px_rgba(245,95,42,0.22)] focus-visible:-translate-y-0.5 focus-visible:border-[rgba(245,95,42,0.58)] focus-visible:bg-[rgba(245,95,42,0.22)] focus-visible:shadow-[0_18px_34px_rgba(245,95,42,0.22)] focus-visible:outline-none"
+                                    className="group absolute inset-0 grid place-items-center rounded-[2.6rem] border border-[rgba(217,119,6,0.28)] bg-[rgba(255,251,235,0.84)] text-neutral-900 transition-all duration-200 hover:-translate-y-0.5 hover:border-[rgba(217,119,6,0.46)] hover:bg-[rgba(255,247,237,0.96)] focus-visible:-translate-y-0.5 focus-visible:border-[rgba(217,119,6,0.46)] focus-visible:bg-[rgba(255,247,237,0.96)] focus-visible:outline-none"
                                     aria-label="Retry scan"
                                     title="Retry scan"
                                 >
                                     <div className="flex flex-col items-center gap-2 text-center transition-transform duration-200 group-hover:scale-[1.05] group-focus-visible:scale-[1.05]">
-                                        <div className="grid h-14 w-14 place-items-center rounded-full border border-[rgba(245,95,42,0.25)] bg-white text-[#f55f2a] shadow-sm transition-all duration-200 group-hover:border-[rgba(245,95,42,0.52)] group-hover:bg-[rgba(255,246,242,0.96)] group-hover:shadow-lg group-focus-visible:border-[rgba(245,95,42,0.52)] group-focus-visible:bg-[rgba(255,246,242,0.96)] group-focus-visible:shadow-lg">
-                                            <RotateCcw className="h-6 w-6 transition-transform duration-200 group-hover:rotate-[-12deg] group-focus-visible:rotate-[-12deg]" />
+                                        <div className="grid h-14 w-14 place-items-center rounded-full border border-amber-200 bg-white text-amber-700 transition-all duration-200 group-hover:border-amber-300 group-hover:bg-amber-50 group-focus-visible:border-amber-300 group-focus-visible:bg-amber-50">
+                                            <AlertTriangle className="h-6 w-6 transition-transform duration-200 group-hover:scale-[1.04] group-focus-visible:scale-[1.04]" />
                                         </div>
-                                        <div className="text-sm font-semibold text-neutral-900 transition-colors duration-200 group-hover:text-[#a9441e] group-focus-visible:text-[#a9441e]">
-                                            Retry scan
+                                        <div className="text-sm font-semibold text-neutral-900 transition-colors duration-200 group-hover:text-neutral-950 group-focus-visible:text-neutral-950">
+                                            Retry
                                         </div>
                                     </div>
                                 </button>
@@ -2649,10 +2743,10 @@ function AppCard({
                                     onCustomize(app.id);
                                 }}
                                 disabled={isDeleting || accessLocked || disableActions || isBrokenDraftCard}
-                                className={`group/icon relative grid h-36 w-36 place-items-center rounded-[2.6rem] bg-gradient-to-br from-[#f55f2a] via-[#ff6f3d] to-[#ff986e] text-[48px] font-black text-white shadow-[0_10px_20px_rgba(245,95,42,0.10)] transition-all duration-300 ease-out hover:scale-[1.14] hover:shadow-[0_14px_26px_rgba(245,95,42,0.12)] disabled:cursor-not-allowed disabled:opacity-60 ${appIssueIsBlocked ? "ring-2 ring-red-300" : appIssue ? "ring-2 ring-amber-300" : ""}`}
+                                className={`group/icon relative grid h-36 w-36 place-items-center rounded-[2.6rem] bg-gradient-to-br from-[#f55f2a] via-[#ff6f3d] to-[#ff986e] text-[48px] font-black text-white shadow-[0_10px_20px_rgba(245,95,42,0.10)] transition-all duration-300 ease-out hover:scale-[1.14] disabled:cursor-not-allowed disabled:opacity-60 ${appIssueIsBlocked ? "ring-2 ring-red-300" : ""}`}
                                 style={{ fontFamily: "ui-rounded, 'SF Pro Rounded', 'Avenir Next Rounded', 'Trebuchet MS', sans-serif" }}
-                                title={accessLocked ? "Trial access was cancelled, so this app is locked in the dashboard" : appIssue?.message || "Open app editor"}
-                                aria-label={appIssue?.message || "Open app editor"}
+                                title={accessLocked ? "Trial access was cancelled, so this app is locked in the dashboard" : suppressLivePromotionIssue ? "Open app editor" : appIssue?.message || "Open app editor"}
+                                aria-label={suppressLivePromotionIssue ? "Open app editor" : appIssue?.message || "Open app editor"}
                             >
                                 <span className="transition-opacity duration-150 group-hover/icon:opacity-0 group-focus-visible/icon:opacity-0">
                                     {appBadgeLabel}
@@ -2665,30 +2759,17 @@ function AppCard({
                                 ) : null}
                             </button>
 
-                            {appIssue ? (
-                                appIssueIsRetryable && onRetryAppIssue && !isBrokenDraftCard ? (
-                                    <button
-                                        type="button"
-                                        onClick={() => onRetryAppIssue({ id: app.id, url: (app as any)?.url || null, sourceUrl: (app as any)?.sourceUrl || null })}
-                                        className="absolute -right-2 -top-2 inline-flex items-center gap-1 rounded-full border border-[rgba(245,95,42,0.16)] bg-transparent px-2 py-0.75 text-[10px] font-semibold text-[#a9441e] shadow-none transition-all duration-200 ease-out hover:-translate-y-0.5 hover:border-[rgba(245,95,42,0.34)] hover:bg-transparent hover:text-[#8d3414] hover:shadow-[0_10px_22px_rgba(245,95,42,0.08)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f55f2a]/30"
-                                        title={appIssue.message || "Retry scan"}
-                                        aria-label={appIssue.message || "Retry scan"}
-                                    >
-                                        <RotateCcw className="h-3.5 w-3.5" />
-                                        <span>Retry</span>
-                                    </button>
-                                ) : (
-                                    <span
-                                        className={`absolute -right-1 -top-1 inline-flex h-8 w-8 items-center justify-center rounded-full border bg-white shadow-sm ${appIssueIsBlocked ? "border-red-200 text-red-600" : "border-amber-200 text-amber-700"}`}
-                                        title={appIssue.message || (appIssueIsBlocked ? "Site blocked" : "Scan issue")}
-                                    >
-                                        {appIssueIsBlocked ? (
-                                            <AlertTriangle className="h-4 w-4" />
-                                        ) : (
-                                            <MessageCircleWarning className="h-4 w-4" />
-                                        )}
-                                    </span>
-                                )
+                            {appIssue && !suppressLivePromotionIssue ? (
+                                <span
+                                    className={`absolute -right-1 -top-1 inline-flex h-8 w-8 items-center justify-center rounded-full border bg-white shadow-sm ${appIssueIsBlocked ? "border-red-200 text-red-600" : "border-amber-200 text-amber-700"}`}
+                                    title={appIssue.message || (appIssueIsBlocked ? "Site blocked" : "Scan issue")}
+                                >
+                                    {appIssueIsBlocked ? (
+                                        <AlertTriangle className="h-4 w-4" />
+                                    ) : (
+                                        <MessageCircleWarning className="h-4 w-4" />
+                                    )}
+                                </span>
                             ) : null}
                         </div>
                         {isPendingCompleted && pendingRetryable ? (
@@ -2696,12 +2777,12 @@ function AppCard({
                                 type="button"
                                 onClick={onRetryPendingCreation}
                                 disabled={!onRetryPendingCreation}
-                                className="mt-3 inline-flex items-center gap-1 rounded-full border border-[rgba(245,95,42,0.16)] bg-transparent px-2.5 py-0.5 text-[10px] font-semibold text-[#a9441e] shadow-none transition-all duration-200 ease-out hover:-translate-y-0.5 hover:border-[rgba(245,95,42,0.34)] hover:bg-transparent hover:text-[#8d3414] hover:shadow-[0_10px_22px_rgba(245,95,42,0.08)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f55f2a]/30 disabled:cursor-not-allowed disabled:opacity-60"
+                                className="mt-3 inline-flex items-center gap-1 rounded-full border border-amber-200 bg-white px-2.5 py-0.5 text-[10px] font-semibold text-amber-700 shadow-sm transition-colors duration-200 hover:bg-amber-50 hover:text-amber-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/60 disabled:cursor-not-allowed disabled:opacity-60"
                                 title="Retry scan"
                                 aria-label="Retry scan"
                             >
-                                <RotateCcw className="h-3.5 w-3.5" />
-                                Retry scan
+                                <AlertTriangle className="h-3.5 w-3.5" />
+                                Retry
                             </button>
                         ) : null}
                         </>
@@ -2766,20 +2847,22 @@ function AppCard({
                                     whiteSpace: "normal",
                                     wordBreak: "break-word",
                                 }}
-                                title={appDisplayName || "App"}
+                                title={isDraftCard ? `Draft: ${appDisplayName || "Draft"}` : appDisplayName || "App"}
                             >
                                 {appDisplayName || "App"}
                             </div>
-                            <button
-                                type="button"
-                                onClick={() => setIsEditingName(true)}
-                                disabled={disableActions || isPendingCreation}
-                                className="absolute right-0 inline-flex h-7 w-7 items-center justify-center rounded-full border border-neutral-200 bg-white/80 text-neutral-700 opacity-0 shadow-sm backdrop-blur-md transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-white hover:text-neutral-900 hover:shadow-[0_10px_24px_rgba(15,23,42,0.12)] group-hover/rename:opacity-100 group-hover/rename:pointer-events-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f55f2a]/30 disabled:cursor-not-allowed disabled:opacity-50"
-                                aria-label="Edit website name"
-                                title="Edit name"
-                            >
-                                <Edit2 className="h-3.5 w-3.5" />
-                            </button>
+                            {canEditName ? (
+                                <button
+                                    type="button"
+                                    onClick={() => setIsEditingName(true)}
+                                    disabled={disableActions || isPendingCreation}
+                                    className="absolute right-0 inline-flex h-7 w-7 items-center justify-center rounded-full border border-neutral-200 bg-white/80 text-neutral-700 opacity-0 shadow-sm backdrop-blur-md transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-white hover:text-neutral-900 hover:shadow-[0_10px_24px_rgba(15,23,42,0.12)] group-hover/rename:opacity-100 group-hover/rename:pointer-events-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f55f2a]/30 disabled:cursor-not-allowed disabled:opacity-50"
+                                    aria-label="Edit website name"
+                                    title="Edit name"
+                                >
+                                    <Edit2 className="h-3.5 w-3.5" />
+                                </button>
+                            ) : null}
                         </div>
                     )}
                 </div>
@@ -2803,14 +2886,17 @@ function AppCard({
                 <div className={`mt-2 grid w-full gap-1 sm:mt-3 sm:gap-1.5 ${isDraftCard ? "grid-cols-3" : "grid-cols-4"}`}>
                     {isDraftCard ? (
                         <>
-                            <div className="relative flex justify-center transition-all duration-500 ease-out">
+                            <div
+                                className="relative flex justify-center transition-all duration-500 ease-out md:translate-y-3 md:scale-90 md:opacity-0 md:pointer-events-none md:blur-[1px] md:group-hover:translate-y-0 md:group-hover:scale-100 md:group-hover:opacity-100 md:group-hover:pointer-events-auto md:group-hover:blur-0"
+                                style={{ transitionDelay: "0ms" }}
+                            >
                                 <span className="pointer-events-none absolute -bottom-6 left-1/2 -translate-x-1/2 whitespace-nowrap text-[10px] font-medium text-neutral-800 opacity-100 transition-opacity duration-150 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
                                     Edit
                                 </span>
                                 <button
                                     type="button"
                                     onClick={() => {
-                                        if (disableActions || isPendingCreation || isBrokenDraftCard) return;
+                                        if (disableActions || isPendingCreation || isBrokenDraftCard || draftIssueIsBlocked) return;
                                         onPromoteDraft?.({
                                             draftId,
                                             id: app.id,
@@ -2819,10 +2905,12 @@ function AppCard({
                                             sourceUrl: (app as any)?.sourceUrl || null,
                                         });
                                     }}
-                                    disabled={isDeleting || accessLocked || disableActions || isPendingCreation || isBrokenDraftCard || !onPromoteDraft}
+                                    disabled={isDeleting || accessLocked || disableActions || isPendingCreation || isBrokenDraftCard || draftIssueIsBlocked || !onPromoteDraft}
                                     aria-label="Edit draft"
                                     title={
-                                        isPendingCreation
+                                        draftIssueIsBlocked
+                                            ? blockedDraftDescription
+                                            : isPendingCreation
                                             ? "This draft is still being created"
                                             : accessLocked
                                                 ? "Trial access was cancelled, so this draft is locked in the dashboard"
@@ -2834,7 +2922,10 @@ function AppCard({
                                 </button>
                             </div>
 
-                            <div className="relative flex justify-center transition-all duration-500 ease-out">
+                            <div
+                                className="relative flex justify-center transition-all duration-500 ease-out md:translate-y-3 md:scale-90 md:opacity-0 md:pointer-events-none md:blur-[1px] md:group-hover:translate-y-0 md:group-hover:scale-100 md:group-hover:opacity-100 md:group-hover:pointer-events-auto md:group-hover:blur-0"
+                                style={{ transitionDelay: "120ms" }}
+                            >
                                 <span className="pointer-events-none absolute -bottom-6 left-1/2 -translate-x-1/2 whitespace-nowrap text-[10px] font-medium text-neutral-800 opacity-100 transition-opacity duration-150 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
                                     Archive
                                 </span>
@@ -2849,7 +2940,10 @@ function AppCard({
                                 </button>
                             </div>
 
-                            <div className="relative flex justify-center transition-all duration-500 ease-out">
+                            <div
+                                className="relative flex justify-center transition-all duration-500 ease-out md:translate-y-3 md:scale-90 md:opacity-0 md:pointer-events-none md:blur-[1px] md:group-hover:translate-y-0 md:group-hover:scale-100 md:group-hover:opacity-100 md:group-hover:pointer-events-auto md:group-hover:blur-0"
+                                style={{ transitionDelay: "240ms" }}
+                            >
                                 <span className="pointer-events-none absolute -bottom-6 left-1/2 -translate-x-1/2 whitespace-nowrap text-[10px] font-medium text-neutral-800 opacity-100 transition-opacity duration-150 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
                                     Delete
                                 </span>
@@ -3521,7 +3615,6 @@ export default function PreviewPage(): JSX.Element {
         null | "screenshot" | "preview" | "deploy"
     >(null);
     const [showProPaywall, setShowProPaywall] = useState(false);
-    const [showFirstGenerationTrialPopup, setShowFirstGenerationTrialPopup] = useState(false);
     const [firstGenerationTrialPromptShown, setFirstGenerationTrialPromptShown] = useState(false);
     const [renderTrialSessionEligible, setRenderTrialSessionEligible] = useState(false);
     const [appBuilderTrialSessionEligible, setAppBuilderTrialSessionEligible] = useState(false);
@@ -3717,6 +3810,7 @@ export default function PreviewPage(): JSX.Element {
 
     const [appBuilderOpen, setAppBuilderOpen] = useState(false);
     const [currentAppId, setCurrentAppId] = useState<string | null>(null);
+    const [appBuilderLaunchLoading, setAppBuilderLaunchLoading] = useState(false);
     const [appBuilderCookiePromptOpen, setAppBuilderCookiePromptOpen] = useState(false);
     const [pendingAppBuilderAppId, setPendingAppBuilderAppId] = useState<string | null>(null);
     const [nextJsGenerationPendingUrl, setNextJsGenerationPendingUrl] = useState<string | null>(null);
@@ -3734,6 +3828,7 @@ export default function PreviewPage(): JSX.Element {
     const [draftAppsLoading, setDraftAppsLoading] = useState(true);
     const [pendingDraftApps, setPendingDraftApps] = useState<Record<string, boolean>>({});
     const [retryingDraftApps, setRetryingDraftApps] = useState<Record<string, boolean>>({});
+    const [suppressedPromotedDrafts, setSuppressedPromotedDrafts] = useState<Record<string, boolean>>({});
     const [draftApps, setDraftApps] = useState<Array<{
         draftId: string;
         id: string;
@@ -3756,6 +3851,8 @@ export default function PreviewPage(): JSX.Element {
         blocked?: boolean;
     }>>([]);
     const pendingCreatedAppLaunchRequestedRef = useRef<string | null>(null);
+    const draftPromotionInFlightRef = useRef<Record<string, true>>({});
+    const appBuilderLaunchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const pendingUrlGenerationAppIdRef = useRef<string | null>(null);
     const appBuilderCookiePromptResolverRef = useRef<((accepted: boolean) => void) | null>(null);
     const buildFromCollectionRef = useRef<((storageKeys: string[]) => Promise<void>) | null>(null);
@@ -3856,6 +3953,35 @@ export default function PreviewPage(): JSX.Element {
         setAppBuilderCookiePromptOpen(false);
         setAppBuilderOpen(true);
     }, [blockedUrlGenerationAppId, isTrialAccessRevoked, showAlert]);
+
+    const openAppBuilderWithLaunchLoader = useCallback((appId: string | null) => {
+        const nextId = typeof appId === "string" ? appId.trim() : "";
+        if (!nextId) return;
+
+        if (appBuilderLaunchTimeoutRef.current) {
+            clearTimeout(appBuilderLaunchTimeoutRef.current);
+            appBuilderLaunchTimeoutRef.current = null;
+        }
+
+        setAppBuilderOpen(false);
+        setCurrentAppId(null);
+        setAppBuilderLaunchLoading(true);
+
+        appBuilderLaunchTimeoutRef.current = setTimeout(() => {
+            appBuilderLaunchTimeoutRef.current = null;
+            setAppBuilderLaunchLoading(false);
+            openAppBuilderDirectly(nextId);
+        }, 500);
+    }, [openAppBuilderDirectly]);
+
+    useEffect(() => {
+        return () => {
+            if (appBuilderLaunchTimeoutRef.current) {
+                clearTimeout(appBuilderLaunchTimeoutRef.current);
+                appBuilderLaunchTimeoutRef.current = null;
+            }
+        };
+    }, []);
 
     const acceptCookiesAndOpenAppBuilder = useCallback(() => {
         persistAppBuilderNecessaryCookiesConsent();
@@ -4115,14 +4241,20 @@ export default function PreviewPage(): JSX.Element {
 
             const payload = await res.json().catch(() => ({} as any));
             const drafts = Array.isArray(payload?.drafts) ? payload.drafts : [];
-            setDraftApps(normalizeDashboardDraftRecords(drafts));
+            setDraftApps(
+                normalizeDashboardDraftRecords(drafts).filter((item) => {
+                    const keyA = String(item.draftId || "").trim();
+                    const keyB = String(item.id || "").trim();
+                    return !suppressedPromotedDrafts[keyA] && !suppressedPromotedDrafts[keyB];
+                })
+            );
         } catch (err) {
             console.warn("[drafts] load failed", err);
             setDraftApps([]);
         } finally {
             setDraftAppsLoading(false);
         }
-    }, [user]);
+    }, [suppressedPromotedDrafts, user]);
 
     useEffect(() => {
         if (!Object.keys(pendingDraftApps).length) return;
@@ -5026,7 +5158,13 @@ export default function PreviewPage(): JSX.Element {
             }
         }
 
-        if (shouldOpenAppBuilderImmediately) {
+        const shouldDeferImmediateOpenForDraftPromotion = Boolean(
+            shouldOpenAppBuilderImmediately &&
+            typeof opts?.draftAppId === "string" &&
+            /^draftapp_/i.test(opts.draftAppId.trim()),
+        );
+
+        if (shouldOpenAppBuilderImmediately && !shouldDeferImmediateOpenForDraftPromotion) {
             const immediateAppId = opts?.draftAppId || optimisticAppBuilderId;
             if (immediateAppId) {
                 openAppBuilderDirectly(immediateAppId);
@@ -6517,6 +6655,26 @@ export default function PreviewPage(): JSX.Element {
         createdAt: any;
         sourceUrl?: string | null;
     }) => {
+        const draftKey = String(draft.draftId || draft.id || "").trim();
+        if (!draftKey) return;
+        if (draftPromotionInFlightRef.current[draftKey]) return;
+
+        draftPromotionInFlightRef.current[draftKey] = true;
+        flushSync(() => {
+            setPendingDraftApps((prev) => ({ ...prev, [draftKey]: true }));
+        });
+
+        const tierRefresh = await refreshUserTierNow();
+        const canOpenDraftInBuilder =
+            tierRefresh.tier === "pro" ||
+            tierRefresh.tier === "agency" ||
+            tierRefresh.stripeStatus === "trialing";
+
+        if (!canOpenDraftInBuilder) {
+            showWebsiteExitOfferPaywall();
+            return;
+        }
+
         const rawUrl = draft.sourceUrl || targetUrl || "";
         const normalized = validateAndNormalizePublicHttpUrl(rawUrl);
         if (!normalized) {
@@ -6524,38 +6682,95 @@ export default function PreviewPage(): JSX.Element {
             return;
         }
 
-        flushSync(() => {
-            setPendingDraftApps((prev) => ({ ...prev, [draft.draftId]: true }));
-        });
-        openAppBuilderDirectly(draft.id);
+        const inferredName = (() => {
+            try {
+                return new URL(normalized).hostname.replace(/^www\./, "") || draft.name || "Website";
+            } catch {
+                return draft.name || "Website";
+            }
+        })();
 
         try {
-            const created = await handleCreateApp("url", undefined, normalized, {
-                skipCookieConsent: true,
-                skipGenerationTierCheck: true,
-                openAppBuilderImmediately: true,
-                generationFormat: "nextjs",
-                draftDocId: draft.draftId,
-                draftAppId: draft.id,
-                draftCreatedAt: typeof draft.createdAt === "number" ? draft.createdAt : Date.now(),
+            const csrf = await ensureSessionAndCsrf().catch(() => null);
+            const res = await fetch("/api/generate-app-from-url", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    ...(csrf ? { "x-csrf": csrf } : {}),
+                },
+                credentials: "include",
+                body: JSON.stringify({
+                    url: normalized,
+                    name: inferredName,
+                    draftId: draftKey,
+                    createPreview: true,
+                    generationType: "html",
+                    generationFormat: "html",
+                }),
             });
+            const payload: any = await res.json().catch(() => ({}));
 
-            if (!created) {
-                setPendingDraftApps((prev) => {
-                    const next = { ...prev };
-                    delete next[draft.draftId];
-                    return next;
-                });
+            if (!res.ok) {
+                const message =
+                    String(payload?.userMessage || payload?.message || payload?.error || "").trim() ||
+                    `Failed to queue app generation (HTTP ${res.status})`;
+                throw new Error(message);
             }
+
+            const nextAppId = String(payload?.appId || payload?.canonicalAppId || "").trim();
+            if (!nextAppId) {
+                throw new Error("Generation queued but no app ID was returned.");
+            }
+
+            // Optimistically hide the promoted draft immediately so users never see
+            // the new app card appear beside its source draft.
+            setSuppressedPromotedDrafts((prev) => ({ ...prev, [draftKey]: true }));
+            setDraftApps((prev) =>
+                prev.filter((item) => {
+                    const itemDraftId = String(item.draftId || "").trim();
+                    const itemId = String(item.id || "").trim();
+                    return itemDraftId !== draftKey && itemId !== draftKey && itemId !== String(draft.id || "").trim();
+                })
+            );
+            setPendingCreatedApp((prev) => (prev && (prev.id === draft.id || prev.id === draftKey) ? null : prev));
+
+            openAppBuilderWithLaunchLoader(nextAppId);
+
+            void (async () => {
+                try {
+                    await fetch("/api/private/kloner-draft", {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                            ...(csrf ? { "x-csrf": csrf } : {}),
+                        },
+                        credentials: "include",
+                        body: JSON.stringify({
+                            action: "delete",
+                            draftId: draftKey,
+                        }),
+                    });
+                } catch (err) {
+                    console.warn("[drafts] failed to delete promoted draft", err);
+                }
+            })();
+
         } catch (error) {
+            const message =
+                error instanceof Error && error.message
+                    ? error.message
+                    : "Failed to create app. Please try again.";
+            setErr(message);
+            push(message, "err");
+        } finally {
+            delete draftPromotionInFlightRef.current[draftKey];
             setPendingDraftApps((prev) => {
                 const next = { ...prev };
-                delete next[draft.draftId];
+                delete next[draftKey];
                 return next;
             });
-            throw error;
         }
-    }, [handleCreateApp, targetUrl]);
+    }, [openAppBuilderWithLaunchLoader, push, refreshUserTierNow, showWebsiteExitOfferPaywall, targetUrl]);
 
     const [urlMenuOpen, setUrlMenuOpen] = useState(false);
     const urlMenuRef = useRef<HTMLDivElement | null>(null);
@@ -10558,54 +10773,6 @@ export default function PreviewPage(): JSX.Element {
         [user, forceTrialPromptInDev],
     );
 
-    const firstGenerationTrialCandidate = useMemo<"kloner_render" | null>(() => {
-        if (!user) return null;
-        if (!isFreeTierNotTrialing) return null;
-        if (!forceTrialPromptInDev && !renderTrialSessionEligible) return null;
-
-        const activeReadyRenders = renders.filter((r) => !r.archived && r.status === "ready");
-
-        const renderEligible =
-            editorOpen &&
-            editorMode === "website" &&
-            !deployWizardOpen &&
-            activeReadyRenders.length === 1;
-        if (renderEligible) return "kloner_render";
-
-        return null;
-    }, [
-        user,
-        isFreeTierNotTrialing,
-        forceTrialPromptInDev,
-        renderTrialSessionEligible,
-        editorOpen,
-        editorMode,
-        deployWizardOpen,
-        renders,
-    ]);
-
-    useEffect(() => {
-        if (!firstGenerationTrialCandidate) return;
-        if (showFirstGenerationTrialPopup) return;
-
-        const openPrompt = () => {
-            setShowFirstGenerationTrialPopup(true);
-            setFirstGenerationTrialPromptShown(true);
-            void markFirstGenerationTrialPromptAsShown(firstGenerationTrialCandidate);
-        };
-
-        // Require a dwell window so the trial prompt does not feel instant/spammy.
-        const dwellTimer = window.setTimeout(openPrompt, FIRST_GEN_TRIAL_OBSERVE_MS);
-
-        return () => {
-            window.clearTimeout(dwellTimer);
-        };
-    }, [
-        firstGenerationTrialCandidate,
-        showFirstGenerationTrialPopup,
-        markFirstGenerationTrialPromptAsShown,
-    ]);
-
     const planLabel =
         userTier === "unknown"
             ? "Detecting plan…"
@@ -11001,10 +11168,10 @@ export default function PreviewPage(): JSX.Element {
             setShowExitOffer(false);
             setExitOfferReason(null);
             setAppExitOfferReason(null);
-            setShowWebsitePrePaywall(false);
             setAppWizardOpen(false);
             setAppWizardBusy(false);
             setAppWizardError(null);
+            setShowWebsitePrePaywall(true);
             return;
         }
 
@@ -11350,18 +11517,6 @@ export default function PreviewPage(): JSX.Element {
                                         type="button"
                                         onClick={() => {
                                             setShowDevQuickMenu(false);
-                                            setShowFirstGenerationTrialPopup(true);
-                                        }}
-                                        className="flex w-full items-center justify-between rounded-2xl border border-neutral-200 bg-white px-3 py-2.5 text-left text-sm font-medium text-neutral-800 transition hover:bg-neutral-50"
-                                    >
-                                        <span>Open first-trial popup</span>
-                                        <Sparkles className="h-4 w-4 text-sky-500" />
-                                    </button>
-
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            setShowDevQuickMenu(false);
                                             setPreviewDebugScenario((prev) => ({
                                                 mode: 'terminal-error',
                                                 nonce: (prev?.nonce || 0) + 1,
@@ -11396,17 +11551,15 @@ export default function PreviewPage(): JSX.Element {
             {checkoutBusy ? (
                 <div className="fixed inset-0 z-[13000] flex items-center justify-center bg-white/70 px-4 backdrop-blur-md">
                     <div className="w-full max-w-sm rounded-[28px] border border-neutral-200 bg-white px-6 py-6 text-center text-neutral-900 shadow-[0_24px_80px_rgba(15,23,42,0.16)]">
-                        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-neutral-200 bg-neutral-50">
-                            <Image src="/images/stripe.png" alt="Stripe" width={36} height={36} className="h-9 w-9 object-contain" />
-                        </div>
                         <div className="mt-4 flex items-center justify-center gap-2 text-[#f55f2a]">
                             <Loader2 className="h-4 w-4 animate-spin" />
                             <p className="text-sm font-semibold">Opening secure Stripe checkout...</p>
                         </div>
                         <p className="mt-2 text-xs leading-5 text-neutral-500">Please wait while we prepare your session.</p>
                         <div className="mt-4 flex justify-center">
-                            <span className="inline-flex items-center rounded-full border border-neutral-200 bg-neutral-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-600">
-                                Secure payment
+                            <span className="inline-flex items-center gap-2 text-xs font-medium text-neutral-500">
+                                <span>powered by</span>
+                                <Image src="/images/stripe.png" alt="Stripe" width={160} height={52} className="h-9 w-auto object-contain" />
                             </span>
                         </div>
                     </div>
@@ -11610,7 +11763,7 @@ export default function PreviewPage(): JSX.Element {
                             inline
                         />
                     ) : visibleApps.length === 0 && renders.length === 0 ? (
-                        <div className="mt-4 rounded-3xl border border-dashed border-neutral-300 bg-white/80 px-5 py-6 text-center shadow-sm">
+                        <div className="mt-4 rounded-3xl bg-white/80 px-5 py-6 text-center shadow-sm">
                             <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full border border-neutral-200 bg-neutral-50 text-neutral-400 shadow-sm">
                                 <Hammer className="h-5 w-5" />
                             </div>
@@ -11775,6 +11928,11 @@ export default function PreviewPage(): JSX.Element {
                 {appBuilderOpen && currentAppId && (
                     <AppBuilderEditor
                         appId={currentAppId}
+                        onCanonicalAppIdResolved={(canonicalAppId) => {
+                            const next = String(canonicalAppId || "").trim();
+                            if (!next || next === currentAppId) return;
+                            setCurrentAppId(next);
+                        }}
                         onClose={() => {
                             setAppBuilderOpen(false);
                             setCurrentAppId(null);
@@ -11795,6 +11953,8 @@ export default function PreviewPage(): JSX.Element {
                         deployIssue={appBuilderDeployIssue}
                     />
                 )}
+
+                {appBuilderLaunchLoading ? <KlonerLoader /> : null}
 
                 <AnimatePresence>
                     {appBuilderCookiePromptOpen && (
@@ -13375,104 +13535,6 @@ export default function PreviewPage(): JSX.Element {
                             </div>
                         </div>
                     )
-                }
-
-                {
-                    showFirstGenerationTrialPopup && typeof document !== "undefined"
-                        ? createPortal(
-                            <motion.div
-                                className="fixed inset-0 z-[25000]"
-                                style={{ zIndex: 2147483647 }}
-                                initial={{ opacity: 0 }}
-                                animate={{ opacity: 1 }}
-                                transition={{ duration: 0.2, ease: "easeOut" }}
-                            >
-                                <motion.div
-                                    className="absolute inset-0 bg-black/65"
-                                    initial={{ opacity: 0 }}
-                                    animate={{ opacity: 1 }}
-                                    transition={{ duration: 0.2, ease: "easeOut" }}
-                                />
-                                <div className="absolute inset-0 flex items-center justify-center p-4">
-                                    <motion.div
-                                        className="w-full max-w-md rounded-2xl border border-neutral-200 bg-white p-6 text-sm text-neutral-800 shadow-xl"
-                                        initial={{ opacity: 0, y: 18, scale: 0.98 }}
-                                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                                        transition={{ duration: 0.24, ease: "easeOut" }}
-                                    >
-                                        <div className="mb-2 flex items-center justify-between gap-2">
-                                            <div className="inline-flex items-center rounded-full border border-neutral-200 bg-neutral-50 px-2.5 py-1 text-[11px] font-semibold text-neutral-700">
-                                                7-day free trial
-                                            </div>
-                                            <button
-                                                type="button"
-                                                onClick={() => {
-                                                    setShowFirstGenerationTrialPopup(false);
-                                                }}
-                                                disabled={checkoutBusy}
-                                                className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-60"
-                                                aria-label="Close"
-                                            >
-                                                ×
-                                            </button>
-                                        </div>
-
-                                        <h3 className="text-xl font-semibold text-neutral-900">
-                                            Like what you built? Publish it live next.
-                                        </h3>
-                                        <p className="mt-2 text-sm text-neutral-600">
-                                            Unlock Next.js 16 app deploys, HTML website deploys, and higher generation credits.
-                                        </p>
-
-                                        <ul className="mt-4 list-disc list-inside space-y-1 text-sm text-neutral-700">
-                                            <li>7 days free, cancel anytime</li>
-                                            <li>One-click deploy to live URL</li>
-                                            <li>Higher monthly generation limits</li>
-                                        </ul>
-
-                                        <div className="mt-5 space-y-2">
-                                            <button
-                                                type="button"
-                                                onClick={() => {
-                                                    void startProCheckout();
-                                                }}
-                                                disabled={checkoutBusy}
-                                                className="w-full rounded-xl px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-80"
-                                                style={{ backgroundColor: ACCENT }}
-                                            >
-                                                {checkoutBusy ? (
-                                                    <span className="inline-flex items-center justify-center gap-2">
-                                                        <Loader2 className="h-4 w-4 animate-spin" />
-                                                        Redirecting to Stripe...
-                                                    </span>
-                                                ) : (
-                                                    "Start free trial & publish →"
-                                                )}
-                                            </button>
-
-                                            <button
-                                                type="button"
-                                                onClick={() => {
-                                                    setShowFirstGenerationTrialPopup(false);
-                                                }}
-                                                disabled={checkoutBusy}
-                                                className="w-full rounded-xl border border-neutral-200 bg-white px-4 py-2 text-sm font-semibold text-neutral-700 hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-60"
-                                            >
-                                                Keep building for now
-                                            </button>
-
-                                            {checkoutBusy ? (
-                                                <p className="text-center text-xs text-neutral-500">
-                                                    Opening secure Stripe checkout...
-                                                </p>
-                                            ) : null}
-                                        </div>
-                                    </motion.div>
-                                </div>
-                            </motion.div>,
-                            document.body,
-                        )
-                        : null
                 }
 
                 {/* generic paywall */}

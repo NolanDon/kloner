@@ -18,18 +18,13 @@ import {
 } from './previewAlertPolicy';
 import {
   canShowPreviewFixWithAi,
+  mapPreviewRecommendedActionLabel,
+  normalizePreviewGenerationContract,
   mapPreviewUserActionLabel,
   normalizePreviewFailureContract,
   type PreviewFailureContract,
   type PreviewFailureUserAction,
 } from './previewFailureContract';
-import {
-  buildPreviewStartupUrl,
-  decidePreviewStartupPath,
-  normalizeStartupPath,
-  type PreviewStartupPathDecision,
-  shouldSendExplicitStartupNavigate,
-} from './previewStartupPath';
 
 const getStoredContainerCode = async (appId: string, user: any): Promise<string | null> => {
   try {
@@ -341,7 +336,6 @@ interface WebContainerRunnerProps {
     failure?: PreviewFailureContract | null;
     recommendedActionLabel?: string | null;
   } | null) => void;
-  previewIssue?: string | null;
   onBackendReady?: (args: { appId: string; code: string; url: string }) => void;
   onRequestRebuild?: () => void | Promise<void>;
   reloadToken?: number;
@@ -373,17 +367,7 @@ interface WebContainerRunnerProps {
   onNavigatePathChange?: (path: string | null) => void;
 }
 
-type PollTelemetryEntry = {
-  startedAt: number;
-  requestCount: number;
-  lastRequestAt: number;
-  lastDelayMs: number;
-  lastReason: string;
-  lastHttpStatus: number | null;
-  rateLimitCount: number;
-};
-
-export default function WebContainerRunner({ appId, files, filesReady = true, onFileChange, onPreviewReadyChange, onPreviewIssueChange, onBackendReady, onRequestRebuild, onCompileErrorFixRequest, debugPreviewScenario, reloadToken, applyToken, restartToken, reconnectToken, forceFreshStart, pollingConfig, navigatePath, navigatePathToken, onNavigatePathChange, previewIssue }: WebContainerRunnerProps) {
+export default function WebContainerRunner({ appId, files, filesReady = true, onFileChange, onPreviewReadyChange, onPreviewIssueChange, onBackendReady, onRequestRebuild, onCompileErrorFixRequest, debugPreviewScenario, reloadToken, applyToken, restartToken, reconnectToken, forceFreshStart, pollingConfig, navigatePath, navigatePathToken, onNavigatePathChange }: WebContainerRunnerProps) {
 
   type DebugEvent = {
     ts: number;
@@ -598,10 +582,10 @@ export default function WebContainerRunner({ appId, files, filesReady = true, on
   const iframePostLoadRecoveryCountRef = useRef<number>(0);
   const noMachineBootSinceRef = useRef<number | null>(null);
   const pollFetchFailureCountRef = useRef(0);
+  const pollRateLimitCountRef = useRef(0);
   const lastPollFailureSignatureRef = useRef('');
   const repeatedPollFailureCountRef = useRef(0);
   const lastPollIssueReportKeyRef = useRef<string>('');
-  const pollTelemetryByCodeRef = useRef<Record<string, PollTelemetryEntry>>({});
   const lastAppServerKindRef = useRef<'fallback' | 'next-dev' | 'next-prod' | ''>('');
   const stickyProgressByCodeRef = useRef<Record<string, number>>({});
   const lastTimeoutReportKeyRef = useRef<string>('');
@@ -628,16 +612,27 @@ export default function WebContainerRunner({ appId, files, filesReady = true, on
   // Default status polling interval while the preview is booting/compiling.
   // We keep this relatively infrequent; readiness is primarily driven by the
   // preview URL/iframe once available.
-  // The backend limiter allows 60 requests per 900 seconds. A single 10s
-  // poller can exceed that by itself, so keep the steady-state interval above
-  // the 15s floor with some headroom for reconnects and retries.
-  const POLL_INTERVAL_MS = 15_000;
+  const POLL_INTERVAL_MS = 10_000;
 
   // Throttle: regardless of code path, never issue status checks more frequently
   // than this (prevents duplicate loops and tight retry paths from spamming).
   const MIN_STATUS_FETCH_INTERVAL_MS = 2_000;
   const lastStatusFetchAtRef = useRef<number>(0);
   const HARD_POLL_TIMEOUT_MS = 12 * 60 * 1000;
+
+  const parseRetryAfterMs = (value: string | null): number | null => {
+    const raw = String(value || '').trim();
+    if (!raw) return null;
+
+    const numericSeconds = Number(raw);
+    if (Number.isFinite(numericSeconds) && numericSeconds >= 0) {
+      return Math.max(0, Math.round(numericSeconds * 1000));
+    }
+
+    const untilMs = Date.parse(raw);
+    if (!Number.isFinite(untilMs)) return null;
+    return Math.max(0, untilMs - Date.now());
+  };
 
   const DEFAULT_HUB_HOST = 'tracksite-hub.fly.dev';
   const CUSTOM_PREVIEW_HOST = String(process.env.NEXT_PUBLIC_PREVIEW_HOST || 'preview.kloner.app').trim().toLowerCase();
@@ -908,24 +903,6 @@ export default function WebContainerRunner({ appId, files, filesReady = true, on
   };
 
   const stopAllTimers = () => {
-    const code = activePollCodeRef.current || pollingCodeRef.current;
-    if (code) {
-      const telemetry = pollTelemetryByCodeRef.current[code];
-      if (telemetry) {
-        console.info('[WebContainerRunner] poll stop', {
-          appId,
-          code,
-          requestCount: telemetry.requestCount,
-          rateLimitCount: telemetry.rateLimitCount,
-          elapsedMs: Date.now() - telemetry.startedAt,
-          lastDelayMs: telemetry.lastDelayMs,
-          lastReason: telemetry.lastReason,
-          lastHttpStatus: telemetry.lastHttpStatus,
-        });
-        delete pollTelemetryByCodeRef.current[code];
-      }
-    }
-
     if (retryTimeoutRef.current) {
       clearTimeout(retryTimeoutRef.current);
       retryTimeoutRef.current = null;
@@ -950,80 +927,6 @@ export default function WebContainerRunner({ appId, files, filesReady = true, on
       clearTimeout(iframePostLoadTimeoutRef.current);
       iframePostLoadTimeoutRef.current = null;
     }
-  };
-
-  const ensurePollTelemetry = (code: string): PollTelemetryEntry => {
-    const existing = pollTelemetryByCodeRef.current[code];
-    if (existing) return existing;
-
-    const created: PollTelemetryEntry = {
-      startedAt: Date.now(),
-      requestCount: 0,
-      lastRequestAt: 0,
-      lastDelayMs: POLL_INTERVAL_MS,
-      lastReason: 'poll_start',
-      lastHttpStatus: null,
-      rateLimitCount: 0,
-    };
-
-    pollTelemetryByCodeRef.current[code] = created;
-    console.info('[WebContainerRunner] poll start', { appId, code });
-    return created;
-  };
-
-  const notePollDispatch = (code: string) => {
-    const telemetry = ensurePollTelemetry(code);
-    telemetry.requestCount += 1;
-    telemetry.lastRequestAt = Date.now();
-
-    if (
-      telemetry.requestCount === 1 ||
-      telemetry.requestCount === 5 ||
-      telemetry.requestCount % 10 === 0
-    ) {
-      console.info('[WebContainerRunner] poll request', {
-        appId,
-        code,
-        requestCount: telemetry.requestCount,
-      });
-    }
-  };
-
-  const notePollResponse = (code: string, status: number) => {
-    const telemetry = ensurePollTelemetry(code);
-    telemetry.lastHttpStatus = status;
-  };
-
-  const schedulePoll = (
-    code: string,
-    pollStatus: () => Promise<void>,
-    delayMs: number,
-    reason: string,
-    meta?: Record<string, unknown>
-  ) => {
-    const telemetry = ensurePollTelemetry(code);
-    telemetry.lastDelayMs = delayMs;
-    telemetry.lastReason = reason;
-    if (reason === 'http_429_rate_limited') {
-      telemetry.rateLimitCount += 1;
-    }
-
-    if (statusPollTimeoutRef.current) {
-      clearTimeout(statusPollTimeoutRef.current);
-      statusPollTimeoutRef.current = null;
-    }
-
-    console.info('[WebContainerRunner] poll schedule', {
-      appId,
-      code,
-      delayMs,
-      reason,
-      requestCount: telemetry.requestCount,
-      rateLimitCount: telemetry.rateLimitCount,
-      ...(meta || {}),
-    });
-
-    statusPollTimeoutRef.current = setTimeout(pollStatus, delayMs);
   };
   
   useEffect(() => {
@@ -1690,13 +1593,6 @@ export default function WebContainerRunner({ appId, files, filesReady = true, on
   const lastRestartTokenRef = useRef<number | null>(null);
   const lastReconnectTokenRef = useRef<number | null>(null);
   const lastNavigatePathTokenRef = useRef<number | null>(null);
-  const pendingExplicitStartupRef = useRef<{
-    appId: string;
-    path: string;
-    token: number;
-  } | null>(null);
-  const startupDecisionByPreviewCodeRef = useRef<Record<string, PreviewStartupPathDecision>>({});
-  const explicitStartupNavigateSentByCodeRef = useRef<Record<string, boolean>>({});
   const lastPreviewUrlForLoadRef = useRef<string | null>(null);
   const lastExternalPreviewOpenedUrlRef = useRef<string | null>(null);
   const lastCookieBlockReportKeyRef = useRef<string>('');
@@ -1715,12 +1611,6 @@ export default function WebContainerRunner({ appId, files, filesReady = true, on
   const EMBED_POLICY_SPAM_WINDOW_MS = 12_000;
   const EMBED_POLICY_SPAM_THRESHOLD = 4;
   const EMBED_POLICY_SPAM_MUTED_MS = 2 * 60 * 1000;
-
-  useEffect(() => {
-    pendingExplicitStartupRef.current = null;
-    startupDecisionByPreviewCodeRef.current = {};
-    explicitStartupNavigateSentByCodeRef.current = {};
-  }, [appId]);
 
   const registerEmbedPolicySignal = (): { triggered: boolean; count: number } => {
     const now = Date.now();
@@ -2455,6 +2345,27 @@ export default function NavBar() {
     }
   };
 
+  const withPreviewPath = (url: string, path: string) => {
+    const raw = String(path || '').trim();
+    if (!raw) return url;
+    // Strip any accidental query/hash.
+    const cleaned = raw.split('?')[0].split('#')[0];
+    const normalized = ('/' + cleaned).replace(/\/+/g, '/').replace(/\s+/g, '');
+
+    try {
+      const u = new URL(url);
+      const segs = u.pathname.split('/').filter(Boolean);
+      if (segs.length >= 2 && segs[0] === 'preview') {
+        const base = `/${segs[0]}/${segs[1]}`;
+        u.pathname = normalized === '/' ? base : `${base}${normalized}`;
+        return u.toString();
+      }
+      return url;
+    } catch {
+      return url;
+    }
+  };
+
   const toPreviewRootUrl = (url: string) => {
     try {
       const u = new URL(url, typeof window !== 'undefined' ? window.location.origin : undefined);
@@ -2543,16 +2454,10 @@ export default function NavBar() {
     if (navigatePathToken <= 0) return;
     if (lastNavigatePathTokenRef.current === navigatePathToken) return;
 
-    const normalizedPath = normalizeStartupPath(navigatePath);
-    pendingExplicitStartupRef.current = {
-      appId,
-      path: normalizedPath,
-      token: navigatePathToken,
-    };
-
-    sendPreviewNavigateCommand(normalizedPath);
+    if (!navigatePath) return;
+    sendPreviewNavigateCommand(navigatePath);
     lastNavigatePathTokenRef.current = navigatePathToken;
-  }, [appId, navigatePath, navigatePathToken, sendPreviewNavigateCommand]);
+  }, [navigatePath, navigatePathToken, sendPreviewNavigateCommand]);
 
   // If the parent requests a restart, we must actually tear down our local
   // "already started" guard and avoid reconnecting to a stale machine.
@@ -2732,21 +2637,8 @@ export default function NavBar() {
 
         const startKey = `${appId}|${startAttempt}|${manualStartNonce}|${restartToken ?? 0}|${reconnectToken ?? 0}|${forceFreshStart ?? 0}`;
         if (lastStartKeyRef.current === startKey) {
-          const hasActivePreview = Boolean(previewUrlRef.current);
-          const hasScheduledPoll = Boolean(statusPollTimeoutRef.current);
-          const hasPollingCode = Boolean(pollingCodeRef.current || activePollCodeRef.current);
-
-          if (hasActivePreview || hasScheduledPoll || hasPollingCode) {
-            console.log('Already started, skipping duplicate startApp call');
-            return;
-          }
-
-          // Recovery path: a prior render cycle may have cleared timers, so allow startup to continue.
-          console.warn('[WebContainerRunner] start key matched but no active preview/poll detected; recovering startup loop', {
-            appId,
-            startKey,
-          });
-          lastStartKeyRef.current = null;
+          console.log('Already started, skipping duplicate startApp call');
+          return;
         }
         lastStartKeyRef.current = startKey;
 
@@ -3037,62 +2929,6 @@ export default function NavBar() {
                   `⚠️ Status service error for container ${existingCode}: ${statusResponse.status} ${statusResponse.statusText}. Retrying briefly before fresh-machine fallback.`
                 );
 
-                const canonicalRecoveryUrl = buildBrowserPreviewUrl(
-                  `https://${CUSTOM_PREVIEW_HOST || DEFAULT_HUB_HOST}/preview/${encodeURIComponent(existingCode)}`
-                );
-
-                const tryDirectPreviewRecovery = async (reason: string): Promise<boolean> => {
-                  const candidates = Array.from(new Set([
-                    lastReadyUrlRef.current,
-                    previewUrlRef.current,
-                    canonicalRecoveryUrl,
-                  ].filter((value): value is string => Boolean(String(value || '').trim()))));
-
-                  for (const candidateUrl of candidates) {
-                    if (startRunIdRef.current !== runId) return false;
-
-                    const probe = await probePreviewUrl(appId, candidateUrl);
-                    if (startRunIdRef.current !== runId) return false;
-
-                    if (!probe.reachable) {
-                      if (probe.status === 404 || probe.status === 410) {
-                        console.log(`🗑️ Direct preview probe returned ${probe.status} for container ${existingCode}; clearing stored code.`);
-                        await clearStoredContainerCodeEverywhere(appId, user);
-                        return false;
-                      }
-                      continue;
-                    }
-
-                    console.log('[WebContainerRunner] Recovered saved machine from direct preview probe', {
-                      appId,
-                      code: existingCode,
-                      reason,
-                      candidateUrl,
-                    });
-
-                    pollingCodeRef.current = existingCode;
-                    const browserUrl = buildBrowserPreviewUrl(candidateUrl);
-                    iframeLoadedSuccessfullyRef.current = false;
-                    setPreviewUrl(browserUrl);
-                    setConnectingToExisting(false);
-                    setIsPolling(false);
-                    setIsLoading(false);
-                    setError(null);
-                    setCanRetry(false);
-                    setLoadingStatus('Connected to existing machine.');
-                    backendReadyRef.current = true;
-                    lastReadyUrlRef.current = candidateUrl;
-                    appLoadedSuccessfullyRef.current = true;
-                    return true;
-                  }
-
-                  return false;
-                };
-
-                if (await tryDirectPreviewRecovery('status_service_5xx_initial')) {
-                  return;
-                }
-
                 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
                 let recovered = false;
 
@@ -3118,11 +2954,6 @@ export default function NavBar() {
                     }
 
                     if (!res.ok) continue;
-
-                    if (await tryDirectPreviewRecovery(`status_service_5xx_retry_${attempt}`)) {
-                      recovered = true;
-                      return;
-                    }
 
                     const statusData = await res.json().catch(() => ({} as any));
                     const status = String((statusData as any)?.status || '').toLowerCase();
@@ -3163,10 +2994,6 @@ export default function NavBar() {
 
                 if (startRunIdRef.current !== runId) return;
                 if (!recovered) {
-                  if (await tryDirectPreviewRecovery('status_service_5xx_final')) {
-                    return;
-                  }
-
                   console.log(`🧹 Saved machine ${existingCode} did not recover after status 5xx retries; clearing and starting fresh machine.`);
                   await clearStoredContainerCodeEverywhere(appId, user);
                   setConnectingToExisting(false);
@@ -3238,7 +3065,7 @@ export default function NavBar() {
         // Ensure all file entries have the correct structure
         const validatedFiles: { [path: string]: any } = {};
         for (const [path, file] of Object.entries(filesRef.current)) {
-          if (!file || typeof file !== 'object' || typeof file.content !== 'string') {
+          if (!file || typeof file !== 'object' || !file.content || typeof file.content !== 'string') {
             console.error('Invalid file entry:', path, file);
             throw new Error(`Invalid file structure for ${path}`);
           }
@@ -3315,14 +3142,14 @@ export default function NavBar() {
             errorMsg.toLowerCase().includes('app scope');
 
           // CSRF can drift (cookie/header mismatch). Refresh token and retry once.
-          if (!response.ok && response.status === 403 && errorMsg.toLowerCase().includes('csrf')) {
+          if (response.status === 403 && errorMsg.toLowerCase().includes('csrf')) {
             console.warn('Webcontainer start hit CSRF 403; retrying once with fresh CSRF token');
             response = await postWebcontainer(1);
-          } else if (!response.ok && response.status === 403 && isScopeProblem) {
+          } else if (response.status === 403 && isScopeProblem) {
             console.warn('Webcontainer start hit app-scope 403; refreshing scope cookie and retrying once');
             await ensureAppScopeCookie();
             response = await postWebcontainer(1);
-          } else if (!response.ok) {
+          } else {
             throw new Error(errorMsg);
           }
         }
@@ -3343,8 +3170,7 @@ export default function NavBar() {
         console.log('App creation started, tracking code:', code);
         pollingCodeRef.current = code;
         activePollCodeRef.current = code;
-        previewRegistrationGraceUntilRef.current = Date.now() + (isForceFreshStart ? 75_000 : 45_000);
-        ensurePollTelemetry(code);
+        previewRegistrationGraceUntilRef.current = Date.now() + (isForceFreshStart ? 4 * 60_000 : 2 * 60_000);
 
         // Store the container code for future connections
         await storeContainerCode(appId, code, user);
@@ -3378,52 +3204,6 @@ export default function NavBar() {
             const suspectedInterference = pollFetchFailureCountRef.current >= 3 && online !== false;
             const timeoutReportKey = `hard-timeout:${appId}:${code}`;
             const timeoutContext = extractTimeoutBackendContext(currentStatusData || lastBackendStatusRef.current || null);
-            const previewAlreadyVisible = Boolean(previewUrlRef.current) && (iframeLoadedSuccessfullyRef.current || appLoadedSuccessfullyRef.current);
-
-            if (previewAlreadyVisible) {
-              console.warn('[WebContainerRunner] Hard poll timeout reached after preview became visible; stopping background polling without surfacing an error', {
-                appId,
-                code,
-                previewUrl: previewUrlRef.current,
-                iframeLoaded: iframeLoadedSuccessfullyRef.current,
-                appLoaded: appLoadedSuccessfullyRef.current,
-              });
-
-              if (lastTimeoutReportKeyRef.current !== timeoutReportKey) {
-                lastTimeoutReportKeyRef.current = timeoutReportKey;
-                void reportPreviewTimeout({
-                  appId,
-                  code,
-                  status: 'poll_timeout_after_preview_visible',
-                  reason: suspectedInterference
-                    ? 'poll_timeout_after_preview_visible_network_interference_suspected'
-                    : 'poll_timeout_after_preview_visible',
-                  severity: 'warning',
-                  message: suspectedInterference
-                    ? `Preview became visible, but backend readiness polling exceeded 12 minutes after repeated fetch failures while connected to machine ${timeoutContext.machineId || 'unknown'}.`
-                    : `Preview became visible, but backend readiness polling exceeded 12 minutes${timeoutContext.machineId ? ` while connected to machine ${timeoutContext.machineId}` : ''}.`,
-                  ageMs: timedOutAgeMs,
-                  previewUrl: previewUrlRef.current,
-                  browser: detectBrowserLabel(),
-                  userAgent: typeof navigator !== 'undefined' ? String(navigator.userAgent || '') : 'unknown',
-                  requestId: timeoutContext.requestId || undefined,
-                  jobId: timeoutContext.jobId || undefined,
-                  backend: timeoutContext.backend,
-                });
-              }
-
-              stopAllTimers();
-              setIsPolling(false);
-              setIsLoading(false);
-              setConnectingToExisting(false);
-              setLoadingStatus('');
-              setCurrentStatusData(null);
-              setError(null);
-              setCanRetry(false);
-              try { onPreviewReadyChange?.(true); } catch { }
-              return;
-            }
-
             if (lastTimeoutReportKeyRef.current !== timeoutReportKey) {
               lastTimeoutReportKeyRef.current = timeoutReportKey;
               void reportPreviewTimeout({
@@ -3451,7 +3231,7 @@ export default function NavBar() {
             setConnectingToExisting(false);
             setLoadingStatus('');
             setCurrentStatusData(null);
-            setError('Preview startup timed out. Click Refresh to try again.');
+            setError(`Preview is taking longer than expected${timeoutContext.machineId ? ` while connecting to machine ${timeoutContext.machineId}` : ''} (12 minute timeout). Try Refresh first, if it still fails, please contact support.`);
             setCanRetry(true);
             return;
           }
@@ -3471,87 +3251,86 @@ export default function NavBar() {
             // Keep all browser polling on the same-origin backend route boundary.
             hubStatusUrlRef.current = null;
             const headers = await getAuthenticatedHeaders();
-            notePollDispatch(code);
             statusResponse = await fetch(`/api/webcontainer-status?code=${code}&appId=${appId}`, {
               headers,
               credentials: "include",
               cache: 'no-store',
             });
-            notePollResponse(code, statusResponse.status);
 
             if (!statusResponse.ok) {
               if (statusResponse.status === 429) {
-                const rateLimitData = await statusResponse.json().catch(() => ({} as any));
-                const retryAfterSeconds = asRetryAfterSeconds(
-                  (rateLimitData as any)?.retryAfterSeconds ??
-                  (rateLimitData as any)?.retry_after_seconds ??
-                  statusResponse.headers.get('retry-after')
+                pollRateLimitCountRef.current += 1;
+                const rateData = await statusResponse.clone().json().catch(() => ({} as any));
+                const retryAfterMs = parseRetryAfterMs(statusResponse.headers.get('retry-after'));
+                const retryAfterFromBodyMs = (() => {
+                  const n = Number((rateData as any)?.retryAfterSeconds);
+                  if (!Number.isFinite(n) || n <= 0) return 0;
+                  return Math.round(n * 1000);
+                })();
+                const elapsedMs = pollStartedAtRef.current ? Date.now() - pollStartedAtRef.current : undefined;
+                const nextDelay = Math.max(
+                  30_000,
+                  Math.min(15 * 60_000, Math.max(retryAfterMs || 0, retryAfterFromBodyMs || 0)),
+                  getPollBackoffMs(pollRateLimitCountRef.current + 4),
                 );
-                const requestId = pickFirstString(
-                  (rateLimitData as any)?.reqId,
-                  (rateLimitData as any)?.requestId,
-                  (rateLimitData as any)?.debug?.reqId,
-                  (rateLimitData as any)?.debug?.requestId,
-                );
-                const delayMs = Math.max(POLL_INTERVAL_MS, retryAfterSeconds !== null ? retryAfterSeconds * 1000 : 60_000);
 
-                console.warn('[WebContainerRunner] status poll rate limited', {
+                reportPollIssueOnce(`poll-rate-limited:${appId}:${String((rateData as any)?.scope || 'global')}`, {
                   appId,
                   code,
-                  retryAfterSeconds,
-                  requestId,
-                  body: rateLimitData,
-                });
-
-                setError(null);
-                setCanRetry(false);
-                setIsLoading(true);
-                setConnectingToExisting(false);
-                setIsPolling(true);
-                setLoadingStatus(
-                  retryAfterSeconds !== null
-                    ? `Preview is still starting. Rate limited, retrying in ${retryAfterSeconds}s…`
-                    : 'Preview is still starting. Rate limited, retrying automatically…'
-                );
-                setCurrentStatusData((current: any) =>
-                  normalizeStatusDataForUi(code, {
-                    ...(current && typeof current === 'object' ? current : {}),
-                    ...(rateLimitData && typeof rateLimitData === 'object' ? rateLimitData : {}),
-                    status: 'starting',
-                    uiStage: 'status_rate_limited',
-                    uiTitle: 'Preview status delayed',
-                    uiMessage:
-                      retryAfterSeconds !== null
-                        ? `The status service asked the browser to wait ${retryAfterSeconds}s before polling again.`
-                        : 'The status service asked the browser to slow down before polling again.',
-                    retryAfterSeconds: retryAfterSeconds ?? undefined,
-                    updatedAt: Date.now(),
-                    __httpStatus: 429,
-                    httpStatus: 429,
-                  })
-                );
-
-                reportPollIssueOnce(`status-rate-limited:${appId}:${code}:${requestId || 'unknown'}`, {
-                  appId,
-                  code,
-                  action: 'preview_status_rate_limited',
-                  severity: 'warning',
+                  action: 'preview_backend_rate_limited',
+                  severity: 'critical',
                   statusCode: 429,
-                  status: 'status_rate_limited',
-                  reason: 'backend_rate_limit',
-                  message:
-                    retryAfterSeconds !== null
-                      ? `Status polling hit backend rate limiting and will retry in ${retryAfterSeconds}s.`
-                      : 'Status polling hit backend rate limiting and will retry with backoff.',
+                  status: 'rate_limited',
+                  reason: String((rateData as any)?.reason || (rateData as any)?.code || 'rate_limited').toLowerCase(),
+                  message: 'Preview backend responded with rate limit while polling status.',
+                  elapsedMs,
                   previewUrl: previewUrlRef.current,
-                  requestId: requestId || undefined,
-                  backendStatusData: rateLimitData,
+                  requestId: String((rateData as any)?.requestId || '').trim() || undefined,
+                  jobId: String((rateData as any)?.jobId || '').trim() || undefined,
+                  alertKeyOverride: `rate_limited:${user?.uid || 'anonymous'}:${appId}:${String((rateData as any)?.scope || 'global').toLowerCase()}`,
+                  dedupeTtlMs: 15 * 60 * 1000,
+                  backendStatusData: {
+                    status: 'rate_limited',
+                    uiStage: String((rateData as any)?.scope || 'global').trim().toLowerCase(),
+                    debug: {
+                      timeoutReason: String((rateData as any)?.reason || (rateData as any)?.code || 'rate_limited').trim().toLowerCase(),
+                      machine: {
+                        state: (rateData as any)?.scope ?? null,
+                        restartCount: null,
+                      },
+                      compile: {
+                        summary: null,
+                      },
+                      storage: {
+                        rootfsIoCorruption: null,
+                      },
+                    },
+                  },
                 });
 
-                schedulePoll(code, pollStatus, delayMs, 'http_429_rate_limited', {
-                  retryAfterSeconds,
-                  requestId,
-                });
+                setLoadingStatus('Preview is still starting...');
+                setCurrentStatusData((prev: any) =>
+                  prev && typeof prev === 'object'
+                    ? {
+                        ...prev,
+                        updatedAt: Date.now(),
+                        uiMessage: 'Preview polling paused. Please refresh',
+                      }
+                    : {
+                        status: 'rate_limited',
+                        uiStage: 'rate_limited',
+                        uiTitle: 'Rate limited',
+                        uiMessage: 'Preview polling paused. Please refresh',
+                        uiProgress: 0,
+                        updatedAt: Date.now(),
+                      }
+                );
+                stopAllTimers();
+                setIsPolling(false);
+                setIsLoading(false);
+                setConnectingToExisting(false);
+                setError(`Preview polling was rate-limited (429). Please wait about ${Math.max(30, Math.round(nextDelay / 1000))}s and click Refresh.`);
+                setCanRetry(true);
                 return;
               }
 
@@ -3624,10 +3403,10 @@ export default function NavBar() {
                 const now = Date.now();
                 const inRegistrationGrace = previewRegistrationGraceUntilRef.current > now;
                 const baseMaxNotFoundAttempts = isForceFreshStart
-                  ? Math.max(maxContainerNotFound, 4)
-                  : Math.max(maxContainerNotFound, 3);
+                  ? Math.max(maxContainerNotFound, 15)
+                  : Math.max(maxContainerNotFound, 15);
                 const maxNotFoundAttempts = inRegistrationGrace
-                  ? Math.max(baseMaxNotFoundAttempts, 4)
+                  ? Math.max(baseMaxNotFoundAttempts, 15)
                   : baseMaxNotFoundAttempts;
                 console.log(`Container not found (404) - attempt ${containerNotFoundCountRef.current}/${maxNotFoundAttempts}`);
 
@@ -3659,9 +3438,8 @@ export default function NavBar() {
                   return;
                 }
 
-                // For 404s, retry quickly during startup, but do not stretch a missing preview into a long hang.
-                const retryDelayMs = Math.min(POLL_INTERVAL_MS, 10_000);
-                schedulePoll(code, pollStatus, retryDelayMs, 'http_404_registration_wait');
+                // For 404s, retry more frequently since the container might not be registered yet
+                statusPollTimeoutRef.current = setTimeout(pollStatus, POLL_INTERVAL_MS);
                 return;
               }
               throw new Error(`Status check failed: ${statusResponse.status}`);
@@ -3713,6 +3491,7 @@ export default function NavBar() {
             // Reset 404 counter on successful response
             containerNotFoundCountRef.current = 0;
             pollFetchFailureCountRef.current = 0;
+            pollRateLimitCountRef.current = 0;
             lastPollFailureSignatureRef.current = '';
             repeatedPollFailureCountRef.current = 0;
             setPollNetworkWarning(null);
@@ -3935,7 +3714,7 @@ export default function NavBar() {
                     updatedAt: Date.now(),
                   }),
               );
-              schedulePoll(code, pollStatus, delayMs, 'apply_or_restart_pending', { retryAfterSeconds });
+              statusPollTimeoutRef.current = setTimeout(pollStatus, delayMs);
               return;
             }
 
@@ -3995,7 +3774,7 @@ export default function NavBar() {
                       updatedAt: Date.now(),
                     }),
               );
-              schedulePoll(code, pollStatus, delayMs, 'transitional_attach_state', { retryAfterSeconds });
+              statusPollTimeoutRef.current = setTimeout(pollStatus, delayMs);
               return;
             }
 
@@ -4022,7 +3801,7 @@ export default function NavBar() {
                 });
               }
 
-              schedulePoll(code, pollStatus, POLL_INTERVAL_MS, 'compile_error_poll_continue');
+              statusPollTimeoutRef.current = setTimeout(pollStatus, POLL_INTERVAL_MS);
               return;
             }
 
@@ -4048,7 +3827,7 @@ export default function NavBar() {
                   deploymentUrl,
                 });
                 hubStatusUrlRef.current = null;
-                schedulePoll(code, pollStatus, POLL_INTERVAL_MS, 'stale_deployment_url_code_mismatch');
+                statusPollTimeoutRef.current = setTimeout(pollStatus, POLL_INTERVAL_MS);
                 return;
               }
 
@@ -4110,7 +3889,7 @@ export default function NavBar() {
               setCanRetry(false);
               setIsPolling(true);
               setIsLoading(false);
-              schedulePoll(code, pollStatus, POLL_INTERVAL_MS, 'ui_stage_restarting');
+              statusPollTimeoutRef.current = setTimeout(pollStatus, POLL_INTERVAL_MS);
               return;
             }
 
@@ -4167,7 +3946,7 @@ export default function NavBar() {
                 if (!iframeLoadedSuccessfullyRef.current) {
                   setIsPolling(true);
                   setIsLoading(false);
-                  schedulePoll(code, pollStatus, POLL_INTERVAL_MS, 'ready_waiting_for_iframe_with_callback');
+                  statusPollTimeoutRef.current = setTimeout(pollStatus, POLL_INTERVAL_MS);
                   return;
                 }
 
@@ -4190,7 +3969,7 @@ export default function NavBar() {
               if (!iframeLoadedSuccessfullyRef.current) {
                 setIsPolling(true);
                 setIsLoading(false);
-                schedulePoll(code, pollStatus, POLL_INTERVAL_MS, 'ready_waiting_for_iframe');
+                statusPollTimeoutRef.current = setTimeout(pollStatus, POLL_INTERVAL_MS);
                 return;
               }
 
@@ -4231,7 +4010,7 @@ export default function NavBar() {
                     setCanRetry(false);
                     appLoadedSuccessfullyRef.current = true;
                     pollingRetryCountRef.current = 0;
-                      schedulePoll(code, pollStatus, POLL_INTERVAL_MS, 'error_handoff_direct_probe');
+                    statusPollTimeoutRef.current = setTimeout(pollStatus, POLL_INTERVAL_MS);
                     return;
                   }
                   if (probe.status === 404 || probe.status === 410) {
@@ -4261,7 +4040,7 @@ export default function NavBar() {
                     setCanRetry(false);
                     appLoadedSuccessfullyRef.current = true;
                     pollingRetryCountRef.current = 0;
-                    schedulePoll(code, pollStatus, POLL_INTERVAL_MS, 'error_handoff_probe_reachable');
+                    statusPollTimeoutRef.current = setTimeout(pollStatus, POLL_INTERVAL_MS);
                     return;
                   }
 
@@ -4304,7 +4083,7 @@ export default function NavBar() {
                 setLoadingStatus('Preview is still starting (this can take a few minutes)…');
 
                 // Continue polling a bit faster during grace.
-                schedulePoll(code, pollStatus, POLL_INTERVAL_MS, 'fresh_error_grace_window');
+                statusPollTimeoutRef.current = setTimeout(pollStatus, POLL_INTERVAL_MS);
                 return;
               }
 
@@ -4330,7 +4109,7 @@ export default function NavBar() {
                   })
                 );
 
-                schedulePoll(code, pollStatus, retryDelayMs, 'backend_recoverable_error', { retryDelayMs });
+                statusPollTimeoutRef.current = setTimeout(pollStatus, retryDelayMs);
                 return;
               }
 
@@ -4363,7 +4142,7 @@ export default function NavBar() {
             } else if (status === 'ready' && !readyFlag) {
               // Some backend flows emit status='ready' before flipping the authoritative ready=true flag.
               // This is expected; keep polling, and avoid showing an 'unknown status' warning.
-              schedulePoll(code, pollStatus, POLL_INTERVAL_MS, 'status_ready_without_ready_flag');
+              statusPollTimeoutRef.current = setTimeout(pollStatus, POLL_INTERVAL_MS);
               return;
 
             } else if (status === 'pending' || status === 'archiving' ||
@@ -4381,19 +4160,13 @@ export default function NavBar() {
               } else {
                 setLoadingStatus('Building app... (this may take several minutes)');
               }
-              schedulePoll(
-                code,
-                pollStatus,
-                retryAfterSeconds !== null ? Math.max(1_000, retryAfterSeconds * 1000) : POLL_INTERVAL_MS,
-                'status_transitional',
-                { retryAfterSeconds, status, uiStage }
-              );
+              statusPollTimeoutRef.current = setTimeout(pollStatus, retryAfterSeconds !== null ? Math.max(1_000, retryAfterSeconds * 1000) : POLL_INTERVAL_MS);
 
             } else {
               // Unknown status - log it and treat as still building for now
               console.warn('Unknown status received from backend:', statusData.status, statusData);
               setLoadingStatus(`Building app... (status: ${status})`);
-              schedulePoll(code, pollStatus, POLL_INTERVAL_MS, 'status_unknown', { status, uiStage });
+              statusPollTimeoutRef.current = setTimeout(pollStatus, POLL_INTERVAL_MS);
             }
 
           } catch (err) {
@@ -4477,7 +4250,7 @@ export default function NavBar() {
               errorMessage.includes('FieldValue.serverTimestamp() cannot be used inside of an array')) {
               console.error('Backend Firestore error detected - this is a server-side issue that should be fixed');
               // Don't count this as a polling retry, just try again
-              schedulePoll(code, pollStatus, POLL_INTERVAL_MS, 'poll_firestore_backend_bug');
+              statusPollTimeoutRef.current = setTimeout(pollStatus, POLL_INTERVAL_MS);
               return;
             } else if (errorMessage.includes('files is not iterable')) {
               console.error('Backend validation error - this appears to be a server-side bug');
@@ -4526,7 +4299,7 @@ export default function NavBar() {
               setConnectingToExisting(false);
               setCurrentStatusData(null); // Clear status data
               setLoadingStatus(''); // Clear loading status on timeout
-              setError('Build is still starting. Click Refresh to retry.');
+              setError(`Build is taking longer than expected${timeoutContext.machineId ? ` while connecting to machine ${timeoutContext.machineId}` : ''}. The app may still be starting up. Try Refresh first, if it still fails, please contact support.`);
               setCanRetry(true);
               setPreviewUrl(null);
               stopAllTimers();
@@ -4536,17 +4309,14 @@ export default function NavBar() {
               console.log(`Polling retry ${pollingRetryCountRef.current}/${maxPollingRetries}`);
               setLoadingStatus(`Retrying status check... (${pollingRetryCountRef.current}/${maxPollingRetries})`);
               const nextDelay = Math.max(POLL_INTERVAL_MS, getPollBackoffMs(pollFetchFailureCountRef.current));
-              schedulePoll(code, pollStatus, nextDelay, 'poll_retry_after_error', {
-                retryCount: pollingRetryCountRef.current,
-                pollFetchFailureCount: pollFetchFailureCountRef.current,
-              });
+              statusPollTimeoutRef.current = setTimeout(pollStatus, nextDelay);
             }
           }
         };
 
         pollStartedAtRef.current = Date.now();
         // Start polling quickly; the iframe URL will appear as soon as the backend issues it.
-        schedulePoll(code, pollStatus, POLL_INTERVAL_MS, 'initial_poll_start');
+        statusPollTimeoutRef.current = setTimeout(pollStatus, POLL_INTERVAL_MS);
 
       } catch (err) {
         console.error('Error starting app:', err);
@@ -4685,9 +4455,6 @@ export default function NavBar() {
     return () => {
       clearTimeout(startTimer);
 
-      // Abort any in-flight start/poll loop for this effect instance.
-      startRunIdRef.current = runId + 1;
-
       // Clear any pending retry timeout
       if (retryTimeoutRef.current) {
         clearTimeout(retryTimeoutRef.current);
@@ -4711,6 +4478,9 @@ export default function NavBar() {
         clearTimeout(iframeLoadTimeoutRef.current);
         iframeLoadTimeoutRef.current = null;
       }
+      // Abort any in-flight start/poll loop.
+      startRunIdRef.current = runId + 1;
+      startRunIdRef.current = runId + 1;
 
       // Only cleanup if there's no active preview URL (app not successfully loaded)
       // This prevents killing apps that are actively being viewed
@@ -5033,76 +4803,37 @@ export default function NavBar() {
   const previewInteractiveByStatus = previewPresentation.shouldShowLivePreview;
   const previewUrlAgeMs = previewUrlFirstSeenAtRef.current > 0 ? Date.now() - previewUrlFirstSeenAtRef.current : 0;
   const loadingLower = String(loadingStatus || '').toLowerCase();
-  const previewIssueText = String(previewIssue || '').trim();
 
   const canRenderEmbeddedFrame =
     backendReadyRef.current ||
     hmrWsStatus === 'ok' ||
     previewInteractiveByStatus;
-  const showPreviewSurface = Boolean(previewUrl) && !error && !compileErrorState && !terminalPreviewStatus && !previewIssueText && (externalPreviewMode || canRenderEmbeddedFrame);
-  const currentPreviewCode = derivePreviewCodeFromUrl(previewUrl || '');
-  const persistedPathSeen = normalizeStartupPath(navigatePath);
-
-  let startupDecision: PreviewStartupPathDecision = {
-    initialPath: '/',
-    source: 'default_root',
-    explicitInputPath: null,
-    persistedPathSeen,
-  };
-
-  if (currentPreviewCode) {
-    const existingDecision = startupDecisionByPreviewCodeRef.current[currentPreviewCode];
-    if (!existingDecision) {
-      const pendingExplicit = pendingExplicitStartupRef.current;
-      const explicitContext = pendingExplicit && pendingExplicit.appId === appId
-        ? {
-            appId,
-            previewCode: currentPreviewCode,
-            path: pendingExplicit.path,
-          }
-        : null;
-
-      const nextDecision = decidePreviewStartupPath({
-        appId,
-        previewCode: currentPreviewCode,
-        explicitContext,
-        persistedPathSeen,
-      });
-
-      startupDecisionByPreviewCodeRef.current[currentPreviewCode] = nextDecision;
-      startupDecision = nextDecision;
-      if (pendingExplicit && pendingExplicit.appId === appId) {
-        pendingExplicitStartupRef.current = null;
-      }
-
-      if (nextDecision.source === 'stale_state_blocked') {
-        console.info('[WebContainerRunner] Ignoring stale persisted startup path', {
-          appId,
-          previewCode: currentPreviewCode,
-          persistedPathSeen: nextDecision.persistedPathSeen,
-          explicitInputPath: nextDecision.explicitInputPath,
-        });
-      }
-
-      console.info('[WebContainerRunner] Preview startup path selected', {
-        appId,
-        previewCode: currentPreviewCode,
-        selectedInitialPath: nextDecision.initialPath,
-        source: nextDecision.source,
-        explicitInputPath: nextDecision.explicitInputPath,
-        persistedPathSeen: nextDecision.persistedPathSeen,
-      });
-    } else {
-      startupDecision = existingDecision;
-    }
-  }
-
-  const activePreviewUrl = buildPreviewStartupUrl(previewUrl || '', startupDecision.initialPath);
+  const showPreviewSurface = Boolean(previewUrl) && !error && !compileErrorState && !terminalPreviewStatus && (externalPreviewMode || canRenderEmbeddedFrame);
+  const activePreviewUrl = withPreviewPath(previewUrl || '', navigatePath || '');
   const showApplyRefreshingOverlay = showPreviewSurface && isApplyRefreshing;
   const terminalPreviewStatusData = terminalPreviewStatus ? (currentStatusData || lastBackendStatusRef.current || null) : null;
-  const showTerminalPreviewErrorCard = Boolean(error) || terminalPreviewStatus || Boolean(previewIssueText);
+  const showTerminalPreviewErrorCard = Boolean(error) || terminalPreviewStatus;
   const buildPreviewFixIssueMessage = useCallback((baseMessage: string, rawStatusData: any) => {
+    const backendContext = extractTimeoutBackendContext(rawStatusData || null);
     const failure = normalizePreviewFailureDetails(rawStatusData || null);
+    const backend = backendContext.backend || null;
+    const debug = (backend?.debug && typeof backend.debug === 'object' ? backend.debug : {}) as Record<string, any>;
+    const details: string[] = [];
+
+    if (backendContext.machineId) details.push(`machineId=${backendContext.machineId}`);
+    if (backendContext.machineState) details.push(`machineState=${backendContext.machineState}`);
+    if (typeof backendContext.restartCount === 'number') details.push(`restartCount=${backendContext.restartCount}`);
+    if (backendContext.requestId) details.push(`requestId=${backendContext.requestId}`);
+    if (backendContext.jobId) details.push(`jobId=${backendContext.jobId}`);
+    if (backend?.status) details.push(`backendStatus=${backend.status}`);
+    if (backend?.uiStage) details.push(`uiStage=${backend.uiStage}`);
+    if (debug?.timeoutReason) details.push(`timeoutReason=${debug.timeoutReason}`);
+    if (debug?.compile?.summary) details.push(`compileSummary=${debug.compile.summary}`);
+    if (debug?.storage?.rootfsIoCorruption != null) {
+      details.push(`rootfsIoCorruption=${String(debug.storage.rootfsIoCorruption)}`);
+    }
+    if (failure.suggestedFix) details.push(`suggestedFix=${failure.suggestedFix}`);
+    if (failure.correlationId) details.push(`correlationId=${failure.correlationId}`);
 
     const structuredSections: string[] = [];
     if (failure.suggestedFix) {
@@ -5129,22 +4860,15 @@ export default function NavBar() {
 
     return [
       baseMessage,
+      details.length ? `Backend context: ${details.join('; ')}` : '',
       ...structuredSections,
     ].filter(Boolean).join('\n\n');
   }, []);
 
+  const previewGenerationContextData = currentStatusData || lastBackendStatusRef.current || null;
   const previewIssueContextData = error
-    ? (currentStatusData || lastBackendStatusRef.current || null)
-    : terminalPreviewStatus
-      ? terminalPreviewStatusData
-      : previewIssueText
-        ? {
-            uiStage: 'preview_issue',
-            uiTitle: 'Preview hit an error',
-            uiMessage: previewIssueText,
-            status: 'error',
-          }
-        : null;
+    ? previewGenerationContextData
+    : terminalPreviewStatusData;
   const previewFailureContract = normalizePreviewFailureContract(previewIssueContextData);
   const canFixPreviewFailureWithAi = canShowPreviewFixWithAi(previewFailureContract);
   const terminalPreviewErrorMessage = buildPreviewFixIssueMessage(
@@ -5174,28 +4898,33 @@ export default function NavBar() {
     : null;
   const previewFailureUi = previewIssueContextData ? normalizePreviewFailureDetails(previewIssueContextData) : null;
   const previewFailureTitle = previewFailureUi?.uiTitle || (previewFailureUi?.stalePreviewCode ? 'Preview replaced or deleted' : 'Something went wrong');
-  const previewFailureMessage = previewFailureUi?.uiMessage || (previewFailureContract
-    ? (() => {
-        switch (previewFailureContract.errorClass) {
-          case 'machine_timeout':
-            return 'Preview is taking longer than expected.';
-          case 'proxy_unreachable':
-            return 'Preview server is unreachable.';
-          case 'runtime_crash':
-            return 'Preview server crashed.';
-          case 'preview_replaced_or_deleted':
-            return 'This preview has ended.';
-          case 'app_unreachable':
-            return 'Preview app is unreachable.';
-          case 'unknown':
-            return 'Preview could not start.';
-          default:
-            return 'Check chat for details.';
-        }
-      })()
-    : (previewFailureUi?.stalePreviewCode
-      ? 'This preview code is no longer valid. Refresh to reopen the latest preview or reopen the latest preview from the app shell.'
-      : 'Check chat for details.'));
+  const previewGenerationUi = previewGenerationContextData ? normalizePreviewGenerationContract(previewGenerationContextData) : null;
+  const previewFailureMessage = previewGenerationUi?.userMessage
+    || previewGenerationUi?.message
+    || previewGenerationUi?.details
+    || previewFailureUi?.uiMessage
+    || (previewFailureContract
+      ? (() => {
+          switch (previewFailureContract.errorClass) {
+            case 'machine_timeout':
+              return 'Preview is taking longer than expected.';
+            case 'proxy_unreachable':
+              return 'Preview server is unreachable.';
+            case 'runtime_crash':
+              return 'Preview server crashed.';
+            case 'preview_replaced_or_deleted':
+              return 'This preview has ended.';
+            case 'app_unreachable':
+              return 'Preview app is unreachable.';
+            case 'unknown':
+              return 'Preview could not start.';
+            default:
+              return 'Check chat for details.';
+          }
+        })()
+      : (previewFailureUi?.stalePreviewCode
+        ? 'This preview code is no longer valid. Refresh to reopen the latest preview or reopen the latest preview from the app shell.'
+        : 'Check chat for details.'));
   const isFixWithAiCoolingDown = fixWithAiCooldownUntil > Date.now();
   const startFixWithAiCooldown = useCallback(() => {
     const cooldownMs = 5_000;
@@ -5231,28 +4960,44 @@ export default function NavBar() {
   }, [appId, buildPreviewFixIssueMessage, canFixPreviewFailureWithAi, onCompileErrorFixRequest, previewFailureMessage, previewFailureTitle, previewFailureUi?.correlationId, previewFailureUi?.requestId, previewIssueContextData, startFixWithAiCooldown]);
 
   useEffect(() => {
-    const nextPayload = showTerminalPreviewErrorCard
+    const previewGenerationStatus = previewGenerationUi?.status || null;
+    const isProcessingPreview = previewGenerationStatus === 'processing';
+    const isReadyPreview = previewGenerationStatus === 'ready';
+    const issueText = previewGenerationUi?.userMessage || previewGenerationUi?.message || previewGenerationUi?.details || terminalPreviewErrorMessage;
+    const shouldSurfacePreviewIssue = (showTerminalPreviewErrorCard || previewGenerationUi?.status === 'warning' || previewGenerationUi?.status === 'error') && !isProcessingPreview && !isReadyPreview;
+    const nextPayload = shouldSurfacePreviewIssue
       ? {
-          issue: terminalPreviewErrorMessage,
+          status: previewGenerationStatus || 'error',
+          issue: issueText,
+          userMessage: previewGenerationUi?.userMessage || null,
+          message: previewGenerationUi?.message || null,
+          details: previewGenerationUi?.details || null,
+          warningCode: previewGenerationUi?.warningCode || null,
+          errorCode: previewGenerationUi?.errorCode || null,
+          retryable: previewGenerationUi?.retryable === true,
+          retryAction: previewGenerationUi?.retryAction || null,
+          recommendedAction: previewGenerationUi?.recommendedAction || null,
           diagnostics: previewIssueDiagnostics,
           failure: previewFailureContract,
-          recommendedActionLabel: mapPreviewUserActionLabel(previewFailureContract?.userAction),
+          recommendedActionLabel: mapPreviewRecommendedActionLabel(previewGenerationUi?.recommendedAction),
         }
       : null;
 
     const nextSignature = nextPayload
       ? [
           'active',
+          nextPayload.status,
           nextPayload.issue,
           String(previewFailureUi?.requestId || ''),
           String(previewFailureUi?.correlationId || ''),
           String(previewFailureUi?.backendStatus || ''),
           String(previewFailureUi?.machineState || ''),
           String(previewFailureUi?.uiStage || ''),
-          String(previewFailureContract?.errorClass || ''),
-          String(previewFailureContract?.aiFixEligible || ''),
-          String(previewFailureContract?.fixActionType || ''),
-          String(previewFailureContract?.userAction || ''),
+          String(previewGenerationUi?.warningCode || ''),
+          String(previewGenerationUi?.errorCode || ''),
+          String(previewGenerationUi?.retryable || ''),
+          String(previewGenerationUi?.retryAction || ''),
+          String(previewGenerationUi?.recommendedAction || ''),
         ].join('|')
       : 'inactive';
 
@@ -5266,7 +5011,7 @@ export default function NavBar() {
     } catch {
       // ignore
     }
-  }, [onPreviewIssueChange, previewFailureContract, previewFailureUi?.backendStatus, previewFailureUi?.correlationId, previewFailureUi?.machineState, previewFailureUi?.requestId, previewFailureUi?.uiStage, previewIssueDiagnostics, showTerminalPreviewErrorCard, terminalPreviewErrorMessage]);
+  }, [onPreviewIssueChange, previewFailureContract, previewFailureUi?.backendStatus, previewFailureUi?.correlationId, previewFailureUi?.machineState, previewFailureUi?.requestId, previewFailureUi?.uiStage, previewGenerationUi?.details, previewGenerationUi?.errorCode, previewGenerationUi?.message, previewGenerationUi?.recommendedAction, previewGenerationUi?.retryAction, previewGenerationUi?.retryable, previewGenerationUi?.status, previewGenerationUi?.userMessage, previewGenerationUi?.warningCode, previewIssueDiagnostics, showTerminalPreviewErrorCard, terminalPreviewErrorMessage]);
 
   useEffect(() => {
     if (!debugPreviewScenario) return;
@@ -5599,12 +5344,8 @@ export default function NavBar() {
                 // ignore
               }
 
-              if (currentPreviewCode && shouldSendExplicitStartupNavigate(startupDecision)) {
-                const alreadySent = explicitStartupNavigateSentByCodeRef.current[currentPreviewCode] === true;
-                if (!alreadySent) {
-                  sendPreviewNavigateCommand(startupDecision.initialPath);
-                  explicitStartupNavigateSentByCodeRef.current[currentPreviewCode] = true;
-                }
+              if (navigatePath) {
+                sendPreviewNavigateCommand(navigatePath);
               }
 
               if (iframeCriticalTimeoutRef.current) {
@@ -5878,58 +5619,23 @@ export default function NavBar() {
             const isPositiveStatus = /\bready\b|\bready to\b|\brunning\b|\bcompleted\b|\bfinished\b|\bsuccess\b|\bok\b|\brestart preview\b/.test(statusCopy);
 
             return (
-          <div className={`w-full max-w-lg rounded-[1.5rem] border px-4 py-4 shadow-[0_12px_32px_rgba(244,63,94,0.10)] ${isPositiveStatus ? "border-emerald-200 bg-[linear-gradient(180deg,rgba(236,253,245,0.98),rgba(255,255,255,1))]" : "border-rose-200 bg-[linear-gradient(180deg,rgba(255,241,242,0.98),rgba(255,255,255,1))]"}`}>
+          <div className="w-full max-w-lg rounded-[1.5rem] border border-neutral-300 bg-[linear-gradient(180deg,rgba(245,245,245,0.98),rgba(255,255,255,1))] px-4 py-4 shadow-[0_10px_24px_rgba(15,23,42,0.08)]">
             <div className="flex items-start gap-3">
-              <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ring-1 ${isPositiveStatus ? "bg-emerald-100 text-emerald-700 ring-emerald-200" : "bg-rose-100 text-rose-700 ring-rose-200"}`}>
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-neutral-200 text-neutral-700 ring-1 ring-neutral-300">
                 {isPositiveStatus ? <CheckCircle2 className="h-5 w-5" /> : <AlertTriangle className="h-5 w-5" />}
               </div>
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
-                  <p className={`text-sm font-semibold ${isPositiveStatus ? "text-emerald-950" : "text-rose-950"}`}>{previewFailureTitle}</p>
+                  <p className="text-sm font-semibold text-neutral-900">{previewFailureTitle}</p>
                 </div>
                 <p className="mt-1 text-sm leading-relaxed text-neutral-700">{previewFailureMessage}</p>
-
-                <div className="mt-3 flex flex-wrap items-center gap-2">
-                  {canFixPreviewFailureWithAi ? (
-                    <button
-                      type="button"
-                      onClick={handlePreviewFailureFixRequest}
-                      disabled={isFixWithAiCoolingDown}
-                      className="inline-flex items-center justify-center rounded-full bg-accent px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-[#e54f1a] disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      Fix with AI
-                    </button>
-                  ) : null}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const action = previewFailureContract?.userAction || 'refresh';
-                      if (action === 'rebuild') {
-                        void rebuildPreview();
-                        return;
-                      }
-                      if (action === 'reconnect') {
-                        reconnectOnlyRef.current = true;
-                        retryApp();
-                        return;
-                      }
-                      if (action === 'contact_support') {
-                        try {
-                          if (typeof window !== 'undefined') {
-                            window.open('mailto:support@kloner.com', '_blank', 'noopener,noreferrer');
-                          }
-                        } catch {
-                          // ignore
-                        }
-                        return;
-                      }
-                      retryApp();
-                    }}
-                    className="inline-flex items-center justify-center rounded-full border border-neutral-200 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-900 transition-colors hover:bg-neutral-50"
-                  >
-                    {mapPreviewUserActionLabel(previewFailureContract?.userAction)}
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  onClick={retryApp}
+                  className="mt-3 inline-flex items-center rounded-full border border-neutral-700 bg-neutral-800 px-3 py-1.5 text-xs font-semibold text-neutral-100 transition hover:bg-neutral-700"
+                >
+                  Refresh webcontainer
+                </button>
               </div>
             </div>
           </div>
@@ -5950,7 +5656,7 @@ export default function NavBar() {
                       ? {
                         uiStage: 'building_app',
                         uiTitle: 'Building your app',
-                        uiMessage: 'Stitching files',
+                        uiMessage: 'This can take a minute or two',
                         updatedAt: Date.now(),
                       }
                       : pollingRetryCountRef.current < maxPollingRetries
@@ -5981,7 +5687,7 @@ export default function NavBar() {
                 {renderLiveStatusLine({
                   uiStage: connectingToExisting ? 'reconnecting' : 'starting_app',
                   uiTitle: connectingToExisting ? 'Connecting to existing machine' : 'Starting your app',
-                  uiMessage: connectingToExisting ? 'Reconnecting' : 'Booting',
+                  uiMessage: connectingToExisting ? 'Reconnecting to your saved session' : 'Setting up your environment',
                   updatedAt: Date.now(),
                 })}
               </>

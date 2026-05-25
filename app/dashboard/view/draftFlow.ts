@@ -7,6 +7,8 @@ export type DashboardDraftCard = {
     name: string;
     createdAt: any;
     updatedAt: any;
+    status?: string | null;
+    canonicalAppId?: string | null;
     sourceUrl?: string | null;
     retryable?: boolean;
     completed?: boolean;
@@ -21,6 +23,12 @@ export type DashboardDraftCard = {
     details?: unknown;
     warnings?: unknown[];
     blocked?: boolean;
+    archiveZipPath?: string | null;
+    archiveZipUrl?: string | null;
+    archiveZipBytes?: number | null;
+    archiveZipGeneratedAt?: string | null;
+    archiveZipSource?: "draft" | "promoted_app" | null;
+    recommendedAction?: string | null;
 };
 
 type Setter<T> = (next: T | ((prev: T) => T)) => void;
@@ -32,6 +40,10 @@ export function normalizeDashboardDraftRecord(draft: any): DashboardDraftCard | 
     if (!draftId) return null;
 
     const sourceUrl = typeof draft.sourceUrl === "string" ? draft.sourceUrl : null;
+    const status = typeof draft.status === "string" && draft.status.trim() ? draft.status.trim().toLowerCase() : null;
+    const canonicalAppId = typeof draft.canonicalAppId === "string" && draft.canonicalAppId.trim()
+        ? draft.canonicalAppId.trim()
+        : null;
     const displayName = typeof draft.name === "string" && draft.name.trim()
         ? draft.name.trim()
         : (sourceUrl
@@ -43,10 +55,13 @@ export function normalizeDashboardDraftRecord(draft: any): DashboardDraftCard | 
                 }
             })()
             : draftId);
+    const prefixedDisplayName = /^draft:\s*/i.test(displayName) ? displayName : `Draft: ${displayName}`;
 
     const hasIssuePayload = Boolean(
         draft.retryable ||
         draft.blocked ||
+        status === "warning" ||
+        status === "error" ||
         draft.warningCode ||
         draft.warningMessage ||
         draft.warningAction ||
@@ -56,14 +71,65 @@ export function normalizeDashboardDraftRecord(draft: any): DashboardDraftCard | 
         draft.userMessage ||
         (Array.isArray(draft.warnings) && draft.warnings.length > 0)
     );
-    const completed = Boolean(draft.completed) || (!hasIssuePayload && Boolean(sourceUrl));
+    const completed =
+        status === "ready"
+            ? true
+            : status === "processing"
+                ? false
+                : Boolean(draft.completed) || (!hasIssuePayload && Boolean(sourceUrl));
+
+    const details = draft?.details && typeof draft.details === "object" ? draft.details : null;
+    const archiveZipPath = [
+        draft?.archiveZipPath,
+        draft?.archiveZip?.path,
+        draft?.zipPath,
+        draft?.archive?.zipPath,
+        details?.archiveZipPath,
+        details?.archiveZip?.path,
+        details?.zipPath,
+        details?.generation?.archiveZipPath,
+    ].find((value) => typeof value === "string" && value.trim()) as string | undefined;
+    const archiveZipUrl = [
+        draft?.archiveZipUrl,
+        draft?.archiveZip?.url,
+        draft?.zipUrl,
+        draft?.archive?.zipUrl,
+        details?.archiveZipUrl,
+        details?.archiveZip?.url,
+        details?.zipUrl,
+        details?.generation?.archiveZipUrl,
+    ].find((value) => typeof value === "string" && value.trim()) as string | undefined;
+    const archiveZipBytes = [
+        draft?.archiveZipBytes,
+        draft?.archiveZip?.bytes,
+        details?.archiveZipBytes,
+        details?.archiveZip?.bytes,
+    ].find((value) => typeof value === "number" && Number.isFinite(value)) as number | undefined;
+    const archiveZipGeneratedAt = [
+        draft?.archiveZipGeneratedAt,
+        draft?.archiveZip?.generatedAt,
+        details?.archiveZipGeneratedAt,
+        details?.archiveZip?.generatedAt,
+    ].find((value) => typeof value === "string" && value.trim()) as string | undefined;
+    const archiveZipSource = [
+        draft?.archiveZipSource,
+        draft?.archiveZip?.source,
+        details?.archiveZipSource,
+        details?.archiveZip?.source,
+    ].find((value) => value === "draft" || value === "promoted_app") as "draft" | "promoted_app" | undefined;
+    const recommendedAction = [
+        draft?.recommendedAction,
+        details?.recommendedAction,
+    ].find((value) => typeof value === "string" && value.trim()) as string | undefined;
 
     return {
         draftId,
         id: String(draft.id || draftId).trim() || draftId,
-        name: displayName,
+        name: prefixedDisplayName,
         createdAt: draft.createdAt ?? Date.now(),
         updatedAt: draft.updatedAt ?? draft.createdAt ?? Date.now(),
+        status,
+        canonicalAppId,
         sourceUrl,
         retryable: typeof draft.retryable === "boolean" ? draft.retryable : false,
         completed,
@@ -78,6 +144,12 @@ export function normalizeDashboardDraftRecord(draft: any): DashboardDraftCard | 
         details: draft.details ?? null,
         warnings: Array.isArray(draft.warnings) ? draft.warnings : [],
         blocked: typeof draft.blocked === "boolean" ? draft.blocked : false,
+        archiveZipPath: archiveZipPath?.trim() || null,
+        archiveZipUrl: archiveZipUrl?.trim() || null,
+        archiveZipBytes: typeof archiveZipBytes === "number" ? archiveZipBytes : null,
+        archiveZipGeneratedAt: archiveZipGeneratedAt?.trim() || null,
+        archiveZipSource: archiveZipSource || null,
+        recommendedAction: recommendedAction?.trim() || null,
     };
 }
 
@@ -115,6 +187,10 @@ export async function submitDashboardUrlDraft({
     setDraftApps: Setter<DashboardDraftCard[]>;
     setPendingDraftApps: Setter<Record<string, boolean>>;
 }): Promise<boolean> {
+    // Clear any previous error/info as soon as a new submission begins
+    setErr("");
+    setInfo("");
+
     const normalized = validateAndNormalizePublicHttpUrl(rawUrl);
     if (!normalized) {
         setErr("Please enter a valid public http(s) URL.");
@@ -176,6 +252,46 @@ export async function submitDashboardUrlDraft({
         });
 
         if (!res.ok) {
+            // Try to read the error body so we can surface a blocked-domain state
+            let errorBody: Record<string, any> = {};
+            try { errorBody = await res.json(); } catch { /* ignore */ }
+
+            const errorText = String(errorBody?.error || errorBody?.message || "").toLowerCase();
+            const isDomainBlocked =
+                errorText.includes("domain blocked") ||
+                errorText.includes("blocked for site cloning") ||
+                res.status === 403;
+
+            if (isDomainBlocked) {
+                const blockedMessage = errorBody?.error || "Domain blocked for site cloning";
+                // Update the optimistic draft in-place to show the blocked state
+                setDraftApps((prev) =>
+                    prev.map((item) =>
+                        item.draftId === draftDocId
+                            ? {
+                                  ...item,
+                                  blocked: true,
+                                  retryable: false,
+                                  completed: false,
+                                  pendingCompleted: false,
+                                  errorCode: "BLOCKED_URL",
+                                  errorMessage: blockedMessage,
+                                  userMessage: blockedMessage,
+                                  warningCode: "BLOCKED_URL",
+                                  warningMessage: blockedMessage,
+                                  warnings: [{ code: "BLOCKED_URL", message: blockedMessage, severity: "error" }],
+                              }
+                            : item,
+                    ),
+                );
+                setErr(blockedMessage);
+            } else {
+                // Any other error — remove the optimistic draft entirely
+                setDraftApps((prev) => prev.filter((item) => item.draftId !== draftDocId));
+                const fallbackMsg = errorBody?.error || errorBody?.message || "Failed to scan this URL. Please try again.";
+                setErr(String(fallbackMsg));
+            }
+
             setPendingDraftApps((prev) => {
                 const next = { ...prev };
                 delete next[draftDocId];

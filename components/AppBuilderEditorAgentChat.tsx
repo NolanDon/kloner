@@ -739,6 +739,7 @@ const FIRST_VISIT_INTRO_LINES = [
     "I'm here to help with anything you need",
     "I can change styles, help you connect a database, or make small copywriting tweaks. Just send me your request below and i'll try my best to make that change for you",
 ];
+const CHAT_HISTORY_LOAD_TIMEOUT_MS = 12_000;
 
 function stripMarkdownBold(text: string): string {
     // Chat renders content as plain text (not markdown), so remove bold markers.
@@ -1039,6 +1040,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
     const [messages, setMessages] = useState<Message[]>([]);
     const [showIntroTyping, setShowIntroTyping] = useState(false);
     const [chatHistoryResolved, setChatHistoryResolved] = useState(false);
+    const [chatHistoryLoadTimedOut, setChatHistoryLoadTimedOut] = useState(false);
     const [chatHasHistory, setChatHasHistory] = useState(false);
     const [introRequestedByTour, setIntroRequestedByTour] = useState(false);
     const [input, setInput] = useState("");
@@ -2657,11 +2659,27 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
         initialLoadCompletedRef.current = false;
         introCompletionNotifiedRef.current = null;
         setChatHistoryResolved(false);
+        setChatHistoryLoadTimedOut(false);
         setChatHasHistory(false);
         setIntroRequestedByTour(false);
         setShowIntroTyping(false);
         setMessages([]);
     }, [appId]);
+
+    useEffect(() => {
+        if (chatHistoryResolved) {
+            if (chatHistoryLoadTimedOut) setChatHistoryLoadTimedOut(false);
+            return;
+        }
+
+        const timer = window.setTimeout(() => {
+            setChatHistoryLoadTimedOut(true);
+        }, CHAT_HISTORY_LOAD_TIMEOUT_MS);
+
+        return () => {
+            window.clearTimeout(timer);
+        };
+    }, [chatHistoryLoadTimedOut, chatHistoryResolved]);
 
     useEffect(() => {
         onIntroCompleteRef.current = onIntroSequenceComplete;
@@ -6644,9 +6662,8 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
         }
     };
 
-    const showInitialChatLoader =
-        !chatHistoryResolved || (!chatHasHistory && !showIntroTyping && messages.length === 0 && !isLoading);
-    const showChatEmptyState = chatHistoryResolved && chatHasHistory && messages.length === 0 && !isLoading;
+    const showInitialChatLoader = !chatHistoryResolved && !chatHistoryLoadTimedOut;
+    const showChatEmptyState = (chatHistoryResolved || chatHistoryLoadTimedOut) && !showIntroTyping && messages.length === 0 && !isLoading;
 
     return (
         <div className="flex flex-col h-full min-h-0 bg-gray-50 overflow-hidden">
@@ -6664,24 +6681,6 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                             <Info className="h-3 w-3" />
                         </span>
                     ) : null}
-                    <div className="ml-2 inline-flex rounded-full border border-neutral-200 bg-neutral-100 p-0.5 text-[11px] font-medium text-neutral-600">
-                        {(["auto", "ask", "task"] as AppBuilderChatMode[]).map((mode) => {
-                            const active = chatMode === mode;
-                            const label = mode === "auto" ? "Auto" : mode === "ask" ? "Ask" : "Task";
-                            return (
-                                <button
-                                    key={mode}
-                                    type="button"
-                                    onClick={() => setChatMode(mode)}
-                                    aria-pressed={active}
-                                    className={`rounded-full px-2.5 py-1 transition ${active ? "bg-white text-neutral-900 shadow-sm" : "text-neutral-500 hover:text-neutral-700"}`}
-                                    title={mode === "auto" ? "Let the app decide" : mode === "ask" ? "Answer using RAG docs" : "Make an edit request"}
-                                >
-                                    {label}
-                                </button>
-                            );
-                        })}
-                    </div>
                     {creditError ? (
                         <div className="ml-2 text-[11px] text-red-600 max-w-[220px] truncate" title={creditError}>
                             {creditError}
@@ -6705,14 +6704,6 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                             </span>
                         ) : null}
                         <ChevronDown className={`h-3.5 w-3.5 transition-transform ${showRestorePointsPanel ? "rotate-180" : ""}`} />
-                    </button>
-                    <button
-                        onClick={fetchRestorePoints}
-                        className="p-1 hover:bg-gray-200 rounded"
-                        title="Refresh restore points"
-                        disabled={isRestoreBusy}
-                    >
-                        <RefreshCw className="w-4 h-4" />
                     </button>
                     <button
                         onClick={createManualRestorePoint}
@@ -8369,9 +8360,6 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                             <div className="min-w-0 flex-1">
                                 <div className="flex flex-wrap items-center gap-2">
                                     <p className="text-sm font-semibold text-neutral-900">Preview not ready yet</p>
-                                    <span className="inline-flex items-center rounded-full border border-amber-200 bg-white px-2 py-0.5 text-[11px] font-medium text-amber-700">
-                                        Waiting
-                                    </span>
                                 </div>
                                 <p className="mt-1 text-sm leading-relaxed text-neutral-700">
                                     Preview is still loading. Chat will unlock once the preview renders.
@@ -8396,6 +8384,13 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                     Something went wrong building website.
                                 </p>
                                 <div className="mt-3 flex items-center gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => onPreviewIssueAction?.()}
+                                        className="inline-flex shrink-0 items-center rounded-full border border-rose-600 bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-rose-700"
+                                    >
+                                        Rebuild
+                                    </button>
                                     {hasPreviewIssueFixRequest ? (
                                         <button
                                             type="button"
@@ -8406,15 +8401,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                         >
                                             Fix with AI
                                         </button>
-                                    ) : (
-                                        <button
-                                            type="button"
-                                            onClick={() => onPreviewIssueAction?.()}
-                                            className="inline-flex shrink-0 items-center rounded-full border border-neutral-300 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-900 transition hover:bg-neutral-100"
-                                        >
-                                            {String(previewIssueActionLabel || "Refresh").trim() || "Refresh"}
-                                        </button>
-                                    )}
+                                    ) : null}
                                     <details className="relative ml-auto shrink-0">
                                         <summary className="inline-flex cursor-pointer list-none items-center justify-center rounded-full border border-rose-200 bg-white p-2 text-rose-600 transition hover:bg-rose-50">
                                             <ChevronDown className="h-4 w-4" aria-hidden="true" />
@@ -8526,6 +8513,46 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                         {/* <div className="min-w-0 text-[11px] text-neutral-500 hidden sm:inline">
                             Overrides the page sent with each request.
                         </div> */}
+
+                        <div className="ml-auto inline-flex rounded-full border border-neutral-200 bg-neutral-100 p-0.5 text-[11px] font-medium text-neutral-600">
+                            {(["auto", "ask", "task"] as AppBuilderChatMode[]).map((mode) => {
+                                const active = chatMode === mode;
+                                const label = mode === "auto" ? "Auto" : mode === "ask" ? "Ask" : "Task";
+                                return (
+                                    <button
+                                        key={mode}
+                                        type="button"
+                                        onClick={() => setChatMode(mode)}
+                                        aria-pressed={active}
+                                        className={`rounded-full px-2.5 py-1 transition ${active ? "bg-white text-neutral-900 shadow-sm" : "text-neutral-500 hover:text-neutral-700"}`}
+                                        title={mode === "auto" ? "Let the app decide" : mode === "ask" ? "Answer using RAG docs" : "Make an edit request"}
+                                    >
+                                        {label}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </div>
+                ) : null}
+
+                {requestPageOptions.length === 0 ? (
+                    <div className="mb-3 inline-flex rounded-full border border-neutral-200 bg-neutral-100 p-0.5 text-[11px] font-medium text-neutral-600">
+                        {(["auto", "ask", "task"] as AppBuilderChatMode[]).map((mode) => {
+                            const active = chatMode === mode;
+                            const label = mode === "auto" ? "Auto" : mode === "ask" ? "Ask" : "Task";
+                            return (
+                                <button
+                                    key={mode}
+                                    type="button"
+                                    onClick={() => setChatMode(mode)}
+                                    aria-pressed={active}
+                                    className={`rounded-full px-2.5 py-1 transition ${active ? "bg-white text-neutral-900 shadow-sm" : "text-neutral-500 hover:text-neutral-700"}`}
+                                    title={mode === "auto" ? "Let the app decide" : mode === "ask" ? "Answer using RAG docs" : "Make an edit request"}
+                                >
+                                    {label}
+                                </button>
+                            );
+                        })}
                     </div>
                 ) : null}
 

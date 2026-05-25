@@ -4,10 +4,8 @@
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import Editor from "@monaco-editor/react";
 import Image from "next/image";
-import { Folder, File, Upload, X, RefreshCw, MessageSquare, Code, Check, RotateCcw, Database, Rocket, Monitor, SlidersHorizontal, Images, Send, Pencil, Loader2, Share2, ExternalLink, Copy, ChevronDown, ChevronRight, AlertTriangle, Search, Paintbrush, MoreVertical } from "lucide-react";
+import { Folder, File, Upload, X, RefreshCw, MessageSquare, Code, Check, RotateCcw, Database, Rocket, Monitor, SlidersHorizontal, Images, Send, Pencil, Loader2, Share2, ExternalLink, Copy, ChevronDown, ChevronRight, AlertTriangle, Search } from "lucide-react";
 import AppBuilderEditorAgentChat from "./AppBuilderEditorAgentChat";
-import { AppBuilderEditorTour } from "./AppBuilderEditorTour";
-import AppPreviewEditor from "./AppPreviewEditor";
 import KlonerLoader from "./KlonerLoader";
 import WebContainerRunner from "./WebContainerRunner";
 import { bootstrapServerSession, ensureSessionAndCsrf, resetAuthClientCaches } from "@/lib/auth-client";
@@ -29,12 +27,10 @@ import {
     normalizePreviewFailureContract,
     type PreviewFailureContract,
 } from "./previewFailureContract";
-import { postPreviewApply } from "./previewMachineApply";
 
 const VERCEL_INTEGRATION_SLUG =
     process.env.NEXT_PUBLIC_VERCEL_INTEGRATION_SLUG || "kloner";
 const APP_BUILDER_PENDING_SHARE_KEY = "kloner_vercel_pending_app_share";
-const APP_BUILDER_PENDING_AI_IMAGES_KEY = "kloner_vercel_pending_ai_images";
 
 type PreviewIssueFixDecision = {
     eligible: boolean;
@@ -116,6 +112,7 @@ type AppData = {
         status?: string | null;
         stage?: string | null;
         progress?: number | null;
+        message?: string | null;
         title?: string | null;
         jobId?: string | null;
         requestId?: string | null;
@@ -163,7 +160,7 @@ type AutoPreviewPhase =
     | "enabling-bypass"
     | "error";
 
-type LeftViewMode = "ai" | "code" | "images" | "custom";
+type LeftViewMode = "ai" | "code" | "images";
 
 type PreviewMode = "webcontainer" | "vercel";
 
@@ -190,35 +187,14 @@ function buildDeployIssueFromApp(appData: Partial<AppData> | null | undefined): 
     const state = String(appData.lastDeploymentState || "").toLowerCase();
     const errorCode = String(appData.lastDeploymentErrorCode || "").trim();
     const errorMessage = String(appData.lastDeploymentErrorMessage || "").trim();
-    const errorStamp = (() => {
-        const raw = appData.lastDeploymentErrorAt;
-        if (!raw) return "current";
-        if (typeof raw === "string") return raw.trim() || "current";
-        if (typeof raw === "number") return Number.isFinite(raw) ? String(raw) : "current";
-        try {
-            const serialized = JSON.stringify(raw);
-            return serialized && serialized !== "{}" ? serialized : "current";
-        } catch {
-            return "current";
-        }
-    })();
 
     if (state !== "error" && !errorMessage) return null;
 
     const detail = errorMessage || "Vercel reported a deployment failure.";
-    if (/Vercel is not connected yet|Vercel is not connected|not connected for this user/i.test(detail)) {
-        return {
-            title: "Vercel not connected",
-            detail: "Connect Vercel before deploying from this editor.",
-            fingerprint: `deploy:${deploymentId || "unknown"}:${errorStamp}:vercel-not-connected`,
-            fixAction: "connect_vercel",
-        };
-    }
-
     return {
         title: "Deployment failed",
         detail,
-        fingerprint: `deploy:${deploymentId || "unknown"}:${errorStamp}:${errorCode || "error"}:${detail.slice(0, 160)}`,
+        fingerprint: `deploy:${deploymentId || "unknown"}:${errorCode || "error"}:${detail.slice(0, 160)}`,
         fixAction: errorCode === "VERCEL_DEPLOY_BODY_TOO_LARGE" ? "reduce_deploy_payload" : "deploy_issue_fix",
     };
 }
@@ -252,7 +228,7 @@ function buildDeploySuccessBanner(params: {
     };
 }
 
-type VercelOAuthFlow = "preview" | "share" | "images";
+type VercelOAuthFlow = "preview" | "share";
 
 type CodedError = Error & {
     code?: string;
@@ -408,49 +384,11 @@ function mergeFilesPreferNewest(
         const localTs = typeof local?.lastModified === "number" ? local.lastModified : 0;
         const remoteTs = typeof remote?.lastModified === "number" ? remote.lastModified : 0;
 
-        // Prefer the newest edit. On ties with differing content, prefer remote
-        // so backend-hydrated files are not masked by stale local state.
-        if (remoteTs > localTs) {
-            merged[key] = remote;
-        } else if (localTs > remoteTs) {
-            merged[key] = local;
-        } else {
-            const localContent = typeof local?.content === "string" ? local.content : "";
-            const remoteContent = typeof remote?.content === "string" ? remote.content : "";
-            merged[key] = remoteContent !== localContent ? remote : local;
-        }
+        // Prefer the newest edit; if tied, prefer local to avoid "undo" flicker
+        // while a client write is still in-flight.
+        merged[key] = remoteTs > localTs ? remote : local;
     }
     return merged;
-}
-
-function normalizeIncomingFilesMap(input: unknown): AppData["files"] {
-    const source = input && typeof input === "object" ? (input as Record<string, unknown>) : {};
-    const normalized: AppData["files"] = {};
-
-    for (const [path, raw] of Object.entries(source)) {
-        const cleanPath = String(path || "").trim();
-        if (!cleanPath) continue;
-
-        if (typeof raw === "string") {
-            normalized[cleanPath] = { content: raw, lastModified: Date.now() };
-            continue;
-        }
-
-        if (!raw || typeof raw !== "object") {
-            normalized[cleanPath] = { content: "", lastModified: Date.now() };
-            continue;
-        }
-
-        const file = raw as Record<string, unknown>;
-        const content = typeof file.content === "string" ? file.content : "";
-        const lastModified = typeof file.lastModified === "number" && Number.isFinite(file.lastModified)
-            ? file.lastModified
-            : Date.now();
-
-        normalized[cleanPath] = { content, lastModified };
-    }
-
-    return normalized;
 }
 
 function ensureCompilerOptionsObject(jsonText: string): { ok: true; normalized: string } | { ok: false } {
@@ -505,6 +443,60 @@ function asFiniteNumber(value: unknown): number | null {
 function asBoolean(value: unknown): boolean | null {
     if (typeof value !== "boolean") return null;
     return value;
+}
+
+type AppBuilderReadinessContract = {
+    status: string | null;
+    canonicalAppId: string | null;
+    userMessage: string | null;
+    message: string | null;
+    details: unknown;
+    warningCode: string | null;
+    errorCode: string | null;
+    retryable: boolean | null;
+    retryAction: string | null;
+    recommendedAction: string | null;
+    hasPromotionPoll: boolean;
+    isProcessing: boolean;
+    isTrueNotFound: boolean;
+};
+
+function normalizeAppBuilderReadinessContract(payload: any, httpStatus: number): AppBuilderReadinessContract {
+    const status = asTrimmedString(payload?.status)?.toLowerCase() || null;
+    const promotionPoll = payload?.promotion?.poll && typeof payload.promotion.poll === "object"
+        ? payload.promotion.poll
+        : null;
+    const hasPromotionPoll = Boolean(
+        asTrimmedString(promotionPoll?.filesUrl) ||
+        asTrimmedString(promotionPoll?.scopeUrl),
+    );
+    const isProcessing = status === "processing" || httpStatus === 202;
+    const canonicalAppId = asTrimmedString(payload?.canonicalAppId);
+    const errorCode = asTrimmedString(payload?.errorCode);
+    const looksLikeNotFoundCode = Boolean(errorCode && /not[_-]?found/i.test(errorCode));
+    const isTrueNotFound = Boolean(
+        httpStatus === 404 &&
+        !isProcessing &&
+        !hasPromotionPoll &&
+        !canonicalAppId &&
+        (looksLikeNotFoundCode || !status || status === "error"),
+    );
+
+    return {
+        status,
+        canonicalAppId,
+        userMessage: asTrimmedString(payload?.userMessage),
+        message: asTrimmedString(payload?.message),
+        details: payload?.details ?? null,
+        warningCode: asTrimmedString(payload?.warningCode),
+        errorCode,
+        retryable: asBoolean(payload?.retryable),
+        retryAction: asTrimmedString(payload?.retryAction),
+        recommendedAction: asTrimmedString(payload?.recommendedAction),
+        hasPromotionPoll,
+        isProcessing,
+        isTrueNotFound,
+    };
 }
 
 function normalizeGenerationState(data: any): NormalizedGenerationState {
@@ -723,7 +715,6 @@ function pageFileToPreviewPath(path: string): string {
             .slice(7)
             .replace(/\/index\.html?$/i, "")
             .replace(/\.html?$/i, "");
-        if (!route || route.toLowerCase() === "index") return "/";
         return `/${route}`.replace(/\/+/g, "/") || "/";
     }
 
@@ -1209,6 +1200,7 @@ function getEditorLanguageForPath(path: string | null): string {
 export default function AppBuilderEditor({
     appId,
     onClose,
+    onCanonicalAppIdResolved,
     onDeploy,
     agentWelcomeContext,
     trialPromptEnabled = false,
@@ -1221,6 +1213,7 @@ export default function AppBuilderEditor({
 }: {
     appId: string;
     onClose: () => void;
+    onCanonicalAppIdResolved?: (canonicalAppId: string) => void;
     onDeploy?: (app: { id: string; name: string }) => void;
     agentWelcomeContext?: {
         source?: "prompt" | "url" | "quickstart" | "template" | "sample" | "unknown";
@@ -1625,6 +1618,19 @@ export default function AppBuilderEditor({
         onCloseRef.current = onClose;
     }, [onClose]);
 
+    const onCanonicalAppIdResolvedRef = useRef(onCanonicalAppIdResolved);
+    useEffect(() => {
+        onCanonicalAppIdResolvedRef.current = onCanonicalAppIdResolved;
+    }, [onCanonicalAppIdResolved]);
+
+    const rebaseToCanonicalAppId = useCallback((maybeCanonicalAppId: string | null | undefined): boolean => {
+        const next = String(maybeCanonicalAppId || "").trim();
+        if (!next) return false;
+        if (next === appId) return false;
+        onCanonicalAppIdResolvedRef.current?.(next);
+        return true;
+    }, [appId]);
+
     const sessionExpiredRedirectingRef = useRef(false);
     const handleSessionExpired = useCallback(async (source?: string) => {
         if (sessionExpiredRedirectingRef.current) return;
@@ -1677,7 +1683,8 @@ export default function AppBuilderEditor({
 
             if (!res.ok) {
                 if (res.status === 404) {
-                    console.error("App not found while loading editor", { appId });
+                    console.error("App not found, closing editor");
+                    onCloseRef.current?.();
                     return null;
                 }
                 throw new Error(`Failed to load app: ${res.status} ${res.statusText}`);
@@ -1702,13 +1709,11 @@ export default function AppBuilderEditor({
     const [isWebPreviewReady, setIsWebPreviewReady] = useState(false);
     const [dismissedGenerationError, setDismissedGenerationError] = useState(false);
     const [agentCreditError, setAgentCreditError] = useState<string | null>(null);
-    const [builderTourStartToken, setBuilderTourStartToken] = useState(0);
     const lastConsumedAiCreditRequestIdRef = useRef<string | null>(null);
     const [forceFreshStart, setForceFreshStart] = useState(false);
     const forceFreshStartRef = useRef(false);
     const forceFreshStartKey = useRef(0);
     const [viewMode, setViewMode] = useState<LeftViewMode>("ai"); // Default to AI chat
-    const [isModeSwitching, setIsModeSwitching] = useState(false);
     const [stagedImages, setStagedImages] = useState<StagedImage[]>([]);
     const stagedImagesRef = useRef<StagedImage[]>([]);
     const [autoCompressImages, setAutoCompressImages] = useState(true);
@@ -1717,76 +1722,21 @@ export default function AppBuilderEditor({
     const [isMobile, setIsMobile] = useState(false);
     const [mobileTab, setMobileTab] = useState<"app" | "prompt">("app");
     const [mobileControlsOpen, setMobileControlsOpen] = useState(false);
-    const [tabletControlsOpen, setTabletControlsOpen] = useState(false);
-    const [desktopOnlyToast, setDesktopOnlyToast] = useState(false);
-    const desktopOnlyToastTimerRef = useRef<number | null>(null);
-    const tabletControlsRef = useRef<HTMLDivElement | null>(null);
-    const showDesktopOnlyToast = () => {
-        setDesktopOnlyToast(true);
-        if (desktopOnlyToastTimerRef.current) window.clearTimeout(desktopOnlyToastTimerRef.current);
-        desktopOnlyToastTimerRef.current = window.setTimeout(() => setDesktopOnlyToast(false), 2800);
-    };
     const [isRenaming, setIsRenaming] = useState(false);
-    const [isRenameSaving, setIsRenameSaving] = useState(false);
     const [tempName, setTempName] = useState("");
     const [isSaving, setIsSaving] = useState(false);
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [isDeploying, setIsDeploying] = useState(false);
     const [isSharingPreview, setIsSharingPreview] = useState(false);
     const [isPreviewBuilding, setIsPreviewBuilding] = useState(false);
-    const [isCustomSidebarOpen, setIsCustomSidebarOpen] = useState(true);
-    const [customPreviewScale, setCustomPreviewScale] = useState<number>(() => {
-        if (typeof window === "undefined") return isMobile ? 1.05 : 0.7;
-        const v = Number(localStorage.getItem("kloner:uiScale"));
-        return Number.isFinite(v) && v >= 0.5 && v <= 1.25 ? v : (isMobile ? 1.05 : 0.7);
-    });
     const [previewPagePath, setPreviewPagePath] = useState<string | null>(null);
     const [previewNavigateToken, setPreviewNavigateToken] = useState(0);
     const [isPageDropdownOpen, setIsPageDropdownOpen] = useState(false);
     const pageDropdownRef = useRef<HTMLDivElement | null>(null);
-    const previewEditorFlushRef = useRef<null | (() => Promise<boolean>)>(null);
-    const lastVisualEditedHtmlPathRef = useRef<string | null>(null);
-
-    useEffect(() => {
-        if (!tabletControlsOpen) return;
-
-        const handlePointerDown = (event: PointerEvent) => {
-            if (tabletControlsRef.current?.contains(event.target as Node)) return;
-            setTabletControlsOpen(false);
-        };
-
-        const handleKeyDown = (event: KeyboardEvent) => {
-            if (event.key === "Escape") setTabletControlsOpen(false);
-        };
-
-        window.addEventListener("pointerdown", handlePointerDown);
-        window.addEventListener("keydown", handleKeyDown);
-
-        return () => {
-            window.removeEventListener("pointerdown", handlePointerDown);
-            window.removeEventListener("keydown", handleKeyDown);
-        };
-    }, [tabletControlsOpen]);
-    const applyPreviewChangesNowRef = useRef<null | ((changes: Array<{ path: string; content: string }>, opts: { interactive: boolean; source?: string }) => Promise<void>)>(null);
     const isDev = process.env.NODE_ENV !== "production";
-    const isVisualEditorMode = viewMode === "custom" || viewMode === "images";
     const filteredCodeFileTree = useMemo(() => filterFileTree(fileTree, codeFileSearch), [codeFileSearch, fileTree]);
     const codeFileSearchActive = Boolean(codeFileSearch.trim());
-    const activeTabGlowClass = "border-[#F55F2A] ring-2 ring-[#F55F2A]/45 mx-1";
-
-    useEffect(() => {
-        if (typeof window === "undefined") return;
-        localStorage.setItem("kloner:uiScale", String(customPreviewScale));
-    }, [customPreviewScale]);
-
-    useEffect(() => {
-        if (!appId) return;
-        setBuilderTourStartToken((token) => token + 1);
-    }, [appId]);
-
-    const handleTakeBuilderTour = useCallback(() => {
-        setBuilderTourStartToken((token) => token + 1);
-    }, []);
+    const currentAiPromptFile = currentFile || "(no file selected)";
 
     const pageOptions = useMemo(() => {
         const seen = new Set<string>();
@@ -1805,10 +1755,6 @@ export default function AppBuilderEditor({
             })
             .sort((left, right) => left.label.localeCompare(right.label) || left.route.localeCompare(right.route));
     }, [app?.files]);
-    const preferredPagePath = useMemo(
-        () => pageOptions.find((page) => page.route === "/")?.path ?? pageOptions[0]?.path ?? null,
-        [pageOptions],
-    );
             const hasPageDropdown = pageOptions.length > 1;
 
     useEffect(() => {
@@ -1820,9 +1766,9 @@ export default function AppBuilderEditor({
 
         setPreviewPagePath((prev) => {
             if (prev && pageOptions.some((page) => page.path === prev)) return prev;
-            return preferredPagePath;
+            return pageOptions[0]?.path ?? null;
         });
-    }, [currentFile, pageOptions, preferredPagePath, viewMode]);
+    }, [currentFile, pageOptions, viewMode]);
 
     useEffect(() => {
         if (hasPageDropdown) return;
@@ -1844,8 +1790,7 @@ export default function AppBuilderEditor({
         () => pageOptions.find((page) => page.path === previewPagePath) || null,
         [pageOptions, previewPagePath],
     );
-    const aiCurrentFile = selectedPreviewPage?.path || null;
-    const aiSearchCurrentFileLabel = aiCurrentFile || "(none)";
+    const aiCurrentFile = currentFile || selectedPreviewPage?.path || null;
     const previewNavigatePath = selectedPreviewPage?.route || null;
     const selectedPageLabel = useMemo(() => {
         const route = String(selectedPreviewPage?.route || "").trim();
@@ -1889,101 +1834,6 @@ export default function AppBuilderEditor({
         }
     }, [viewMode]);
 
-    const requestViewModeChange = useCallback(async (nextMode: LeftViewMode) => {
-        // Prevent multiple simultaneous mode switches
-        if (isModeSwitching) return;
-        
-        const leavingVisual = (viewMode === "custom" || viewMode === "images") && !(nextMode === "custom" || nextMode === "images");
-        const enteringVisual = !(viewMode === "custom" || viewMode === "images") && (nextMode === "custom" || nextMode === "images");
-        const builderHasChanges = Boolean(getHasUnsavedChangesRef.current?.());
-        
-        setIsModeSwitching(true);
-        
-        try {
-            if (leavingVisual) {
-                let previewHadChanges = false;
-                if (previewEditorFlushRef.current) {
-                    try {
-                        previewHadChanges = await previewEditorFlushRef.current();
-                    } catch (err) {
-                        console.error("[app-builder] pre-switch preview flush failed", err);
-                        await showAlert("Could not sync your latest visual edits. Please save again and retry.", "Sync failed");
-                        return;
-                    }
-                }
-
-                if (!previewHadChanges && !builderHasChanges) {
-                    return;
-                }
-
-                try {
-                    const synced = await fetchAndHydrateAppFiles({ forceRefreshToken: true });
-                    if (synced?.files) {
-                        setApp(synced);
-                        buildFileTree(synced.files);
-
-                        const preferredEditedPath = String(lastVisualEditedHtmlPathRef.current || "").trim();
-                        const resolvedEditedPath = preferredEditedPath
-                            ? canonicalizeEditPath(preferredEditedPath, synced.files as any)
-                            : "";
-                        const targetPath =
-                            resolvedEditedPath && (synced.files as any)?.[resolvedEditedPath]
-                                ? resolvedEditedPath
-                                : (currentFileRef.current && (synced.files as any)?.[currentFileRef.current]
-                                    ? currentFileRef.current
-                                    : "");
-
-                        if (targetPath) {
-                            setPreviewPagePath(targetPath);
-                            if (currentFileRef.current !== targetPath) setCurrentFile(targetPath);
-                            const nextContent = (synced.files as any)?.[targetPath]?.content;
-                            if (typeof nextContent === "string") {
-                                setCode(nextContent);
-
-                                // Force a real file write to the running machine and wait for it
-                                // before reconnecting, so refresh happens after apply completes.
-                                await applyPreviewChangesNowRef.current?.([{ path: targetPath, content: nextContent }], {
-                                    interactive: false,
-                                });
-                            }
-                        }
-
-                        // Ensure Builder preview reflects visual edits immediately
-                        // after switching out of visual mode.
-                        setPreviewMode("webcontainer");
-                        setReconnectKey((k) => k + 1);
-                        setRefreshKey((k) => k + 1);
-                    }
-                } catch (rehydrateErr) {
-                    console.error("[app-builder] post-flush rehydrate failed", rehydrateErr);
-                    await showAlert("Your latest edits were saved, but reload from source failed. Please retry.", "Sync warning");
-                    return;
-                }
-            }
-            
-            // When entering visual mode, rehydrate BEFORE changing mode so preview gets latest files
-            if (enteringVisual && builderHasChanges) {
-                try {
-                    const synced = await fetchAndHydrateAppFiles({ forceRefreshToken: true });
-                    if (synced?.files) {
-                        setApp(synced);
-                        buildFileTree(synced.files);
-                        // Trigger preview refresh to reflect any changes made in builder while in preview
-                        // This ensures the machine/iframe preview reflects the latest file content
-                        setReconnectKey((k) => k + 1);
-                    }
-                } catch (err) {
-                    console.warn("[app-builder] pre-visual-enter rehydrate failed", err);
-                    // Don't block mode switch on this, just warn
-                }
-            }
-        } finally {
-            // Change mode AFTER rehydration completes
-            setViewMode(nextMode);
-            setIsModeSwitching(false);
-        }
-    }, [fetchAndHydrateAppFiles, showAlert, viewMode, isModeSwitching]);
-
     const [previewError, setPreviewError] = useState<string | null>(null);
     const [protectedPreviewUrl, setProtectedPreviewUrl] = useState<string | null>(null);
     const [vercelSecuritySettingsUrl, setVercelSecuritySettingsUrl] = useState<string | null>(null);
@@ -2020,11 +1870,22 @@ export default function AppBuilderEditor({
         rebuildAt: 0,
         saveAt: 0,
     });
+    const suppressNextPreviewNavigateTokenRef = useRef(false);
     const previewIssueFixDecision = useMemo(
         () => getPreviewIssueFixDecision(previewIssue || autoPreviewError || previewError, previewIssueDiagnostics, previewIssueFailure),
         [autoPreviewError, previewError, previewIssue, previewIssueDiagnostics, previewIssueFailure],
     );
     const canFixPreviewIssueWithAi = previewIssueFixDecision.eligible;
+
+    useEffect(() => {
+        if (previewMode !== "webcontainer") return;
+        if (!previewNavigatePath) return;
+        if (suppressNextPreviewNavigateTokenRef.current) {
+            suppressNextPreviewNavigateTokenRef.current = false;
+            return;
+        }
+        setPreviewNavigateToken((token) => token + 1);
+    }, [previewMode, previewNavigatePath]);
 
     const handlePreviewRouteChange = useCallback((nextPath: string | null) => {
         const raw = String(nextPath || "").trim();
@@ -2035,6 +1896,7 @@ export default function AppBuilderEditor({
 
         setPreviewPagePath((current) => {
             if (current === matched.path) return current;
+            suppressNextPreviewNavigateTokenRef.current = true;
             return matched.path;
         });
     }, [pageOptions]);
@@ -2157,12 +2019,6 @@ export default function AppBuilderEditor({
 
     const handleDeployBannerFixRequest = useCallback(() => {
         if (!effectiveDeployBanner || effectiveDeployBanner.kind !== "error") return;
-
-        if (effectiveDeployBanner.fixAction === "connect_vercel") {
-            setVercelConnectFlow("preview");
-            setVercelConnectOpen(true);
-            return;
-        }
 
         handleCompileErrorFixRequest({
             appId,
@@ -2294,14 +2150,6 @@ export default function AppBuilderEditor({
     }, []);
 
     const uploadImageToUserBlob = useCallback(async (file: globalThis.File) => {
-        if (!isVercelConnected) {
-            void showAlert(
-                "Connect your Vercel account before uploading or replacing images.",
-                "Connect Vercel",
-            );
-            throw new Error("Vercel is not connected yet.");
-        }
-
         const csrf = await ensureSessionAndCsrf().catch(() => null);
         const safeName = sanitizeImageName(file.name || "upload.bin");
         const url = `/api/user-blob/upload-url?filename=${encodeURIComponent(safeName)}&renderId=${encodeURIComponent(appId)}`;
@@ -3035,17 +2883,29 @@ export default function AppBuilderEditor({
 
     const bootstrapAppScope = useCallback(async (): Promise<boolean> => {
         if (!appId) return false;
+        if (/^(draftapp_|pending-)/i.test(String(appId).trim())) {
+            // Draft/pending IDs do not have app-builder scope until promotion creates a real app.
+            return true;
+        }
         try {
             const res = await fetch(`/api/app-builder/${encodeURIComponent(appId)}/scope`, {
                 method: "GET",
                 credentials: "include",
                 cache: "no-store",
             });
+            const payload = await res.json().catch(() => null);
+            const readiness = normalizeAppBuilderReadinessContract(payload, res.status);
+            if (rebaseToCanonicalAppId(readiness.canonicalAppId)) {
+                return true;
+            }
+            if (readiness.isProcessing) {
+                return true;
+            }
             return res.ok;
         } catch {
             return false;
         }
-    }, [appId]);
+    }, [appId, rebaseToCanonicalAppId]);
 
     // Proactively issue scope cookie once per app open to reduce first-write 403s.
     useEffect(() => {
@@ -3511,16 +3371,25 @@ export default function AppBuilderEditor({
                     setApplyCompleteKey((k) => k + 1);
                 }
 
-                if (restartPending || requiresRestart) {
+                if (restartPending) {
                     const now = Date.now();
                     if (interactive || now - lastApplyAlertAtRef.current > 15000) {
                         lastApplyAlertAtRef.current = now;
                         void showAlert(
-                            "Your changes were saved. This update needs a preview restart/rebuild before it appears live. We are restarting now, and you can continue editing while it boots.",
-                            "Live update",
+                            restartMessage ||
+                                "Your files were saved, but the preview restart may still be in progress. If the change does not appear, click Rebuild app.",
+                            "Restart pending",
                         );
                     }
-                    void restartLocalPreview(false);
+                } else if (requiresRestart) {
+                    const now = Date.now();
+                    if (interactive || now - lastApplyAlertAtRef.current > 15000) {
+                        lastApplyAlertAtRef.current = now;
+                        void showAlert(
+                            "This change can’t be hot-updated. Your files are saved, but you may need to restart the preview to see it.",
+                            "Restart needed",
+                        );
+                    }
                 } else if (apply.outcome === "saved") {
                     const now = Date.now();
                     if (interactive || now - lastApplyAlertAtRef.current > 15000) {
@@ -3773,7 +3642,14 @@ export default function AppBuilderEditor({
                 overallNeedsRebuild = overallNeedsRebuild || needsRebuild;
 
                 if (restartPending) {
-                    void restartLocalPreview(false);
+                    const now = Date.now();
+                    if (interactive || now - lastApplyAlertAtRef.current > 15000) {
+                        lastApplyAlertAtRef.current = now;
+                        void showAlert(
+                            String(apply.restartMessage || "Your files were saved, but the preview restart may still be in progress. If the change does not appear, click Rebuild app."),
+                            "Restart pending",
+                        );
+                    }
                 }
             }
 
@@ -3791,7 +3667,7 @@ export default function AppBuilderEditor({
                 const rdata = await rres.json().catch(() => ({} as any));
                 if (!rres.ok || !(rdata as any)?.ok) {
                     const msg = String((rdata as any)?.error || `Restart failed (HTTP ${rres.status})`);
-                    if (interactive) void restartLocalPreview(false);
+                    if (interactive) void showAlert(msg, "Restart needed");
                 }
             }
 
@@ -3811,7 +3687,14 @@ export default function AppBuilderEditor({
                 const p = String(c?.path || "").trim();
                 if (!p) continue;
                 if (changeIsNotHotUpdatable(p)) {
-                    void restartLocalPreview(false);
+                    const now = Date.now();
+                    if (interactive || now - lastApplyAlertAtRef.current > 15000) {
+                        lastApplyAlertAtRef.current = now;
+                        void showAlert(
+                            "This change needs a restart to take effect. Your change is saved. Click Rebuild preview to apply it.",
+                            "Restart needed",
+                        );
+                    }
                     continue;
                 }
 
@@ -3836,103 +3719,6 @@ export default function AppBuilderEditor({
         },
         [appId, changeIsNotHotUpdatable, flushPreviewApply, showAlert]
     );
-
-    const applyPreviewChangesNow = useCallback(
-        async (
-            changes: Array<{ path: string; content: string }>,
-            { interactive, source }: { interactive: boolean; source?: string }
-        ) => {
-            if (!appId) return;
-            if (!changes?.length) return;
-
-            const files: Array<{ path: string; content: string }> = [];
-            for (const c of changes) {
-                const p = String(c?.path || "").trim();
-                if (!p) continue;
-                if (changeIsNotHotUpdatable(p)) {
-                    await restartLocalPreview(false);
-                    return;
-                }
-
-                const nextContent = String(c?.content ?? "");
-                delete lastAppliedContentRef.current[p];
-                files.push({ path: p, content: nextContent });
-            }
-
-            if (files.length === 0) return;
-
-            const csrf = await fetchFreshCsrf();
-            const activeCode = getStoredPreviewCode();
-            let nextCode = "";
-            try {
-                const result = await postPreviewApply({
-                    appId,
-                    files,
-                    csrf,
-                    code: activeCode,
-                    idempotencyKey: getApplyIdempotencyKey(),
-                    source,
-                });
-                nextCode = result.nextCode;
-
-                const restartRequired = Boolean(
-                    result.restartPending ||
-                    result.requiresRestart ||
-                    result.requiresRebuild ||
-                    result.needsRebuild ||
-                    result.touchesPublicAssets ||
-                    result.hmrLikely === false
-                );
-
-                console.info("[preview-apply] backend apply result", {
-                    source: source || "unknown",
-                    outcome: result.outcome,
-                    restartPending: result.restartPending,
-                    requiresRestart: result.requiresRestart,
-                    requiresRebuild: result.requiresRebuild,
-                    needsRebuild: result.needsRebuild,
-                    touchesPublicAssets: result.touchesPublicAssets,
-                    hmrLikely: result.hmrLikely,
-                    retryable: result.retryable,
-                    retryAfterSeconds: result.retryAfterSeconds,
-                });
-
-                if (restartRequired) {
-                    console.warn("[preview-apply] apply wrote files but restart is required; restarting preview", {
-                        source: source || "unknown",
-                        outcome: result.outcome,
-                    });
-                    await restartLocalPreview(false);
-                }
-            } catch (err) {
-                if (interactive) {
-                    const message = err instanceof Error ? err.message : String(err || "Preview apply failed");
-                    void showAlert(message, "Live update");
-                }
-                throw err;
-            }
-
-            if (nextCode) {
-                try {
-                    localStorage.setItem(
-                        `webcontainer_${appId}`,
-                        JSON.stringify({ code: nextCode, timestamp: Date.now() }),
-                    );
-                } catch {
-                    // ignore
-                }
-            }
-
-            for (const file of files) {
-                lastAppliedContentRef.current[file.path] = file.content;
-            }
-        },
-        [appId, changeIsNotHotUpdatable, fetchFreshCsrf, getApplyIdempotencyKey, getStoredPreviewCode, restartLocalPreview, showAlert]
-    );
-
-    useEffect(() => {
-        applyPreviewChangesNowRef.current = applyPreviewChangesNow;
-    }, [applyPreviewChangesNow]);
 
     useEffect(() => {
         // Keep the draft in sync when app data loads.
@@ -4155,8 +3941,6 @@ export default function AppBuilderEditor({
 
         let didCancel = false;
         const controller = new AbortController();
-        const isDraftPromotionAppId = String(appId || "").startsWith("draftapp_");
-        let retryTimer: ReturnType<typeof setTimeout> | ReturnType<typeof window.setTimeout> | null = null;
 
         const loadApp = async () => {
             try {
@@ -4186,6 +3970,9 @@ export default function AppBuilderEditor({
                     });
                 };
 
+                const maxProcessingPolls = 75;
+                const processingPollDelayMs = 1200;
+
                 let res = await fetchFiles(false);
                 if (res.status === 401) {
                     res = await fetchFiles(true);
@@ -4196,24 +3983,77 @@ export default function AppBuilderEditor({
                     return;
                 }
 
+                let data = await res.json().catch(() => null);
+                let readiness = normalizeAppBuilderReadinessContract(data, res.status);
+
+                for (let attempt = 0; attempt < maxProcessingPolls; attempt += 1) {
+                    if (didCancel) return;
+
+                    if (rebaseToCanonicalAppId(readiness.canonicalAppId)) {
+                        setError("Finalizing your app setup...");
+                        return;
+                    }
+
+                    if (!readiness.isProcessing) {
+                        break;
+                    }
+
+                    const processingMessage =
+                        readiness.userMessage ||
+                        readiness.message ||
+                        "Preparing your app. This can take a few moments...";
+                    setError(processingMessage);
+                    if (!didCancel) setLoading(false);
+                    await sleep(processingPollDelayMs);
+                    if (didCancel) return;
+
+                    res = await fetchFiles(false);
+                    if (res.status === 401) {
+                        res = await fetchFiles(true);
+                    }
+
+                    if (res.status === 401 || res.status === 403) {
+                        await handleSessionExpired("app_builder_load_unauthorized");
+                        return;
+                    }
+
+                    data = await res.json().catch(() => null);
+                    readiness = normalizeAppBuilderReadinessContract(data, res.status);
+                }
+
+                if (readiness.isProcessing) {
+                    setError("Still preparing your app. Please keep this window open.");
+                    return;
+                }
+
                 if (!res.ok) {
                     if (res.status === 404) {
-                        if (isDraftPromotionAppId) {
-                            retryTimer = setTimeout(() => {
-                                retryTimer = null;
-                                if (!didCancel) {
-                                    void loadApp();
-                                }
-                            }, 400);
+                        const isTransientDraftLikeId = /^(draftapp_|pending-)/i.test(String(appId || "").trim());
+                        if (isTransientDraftLikeId || !readiness.isTrueNotFound) {
+                            const waitingMessage =
+                                readiness.userMessage ||
+                                readiness.message ||
+                                "Preparing your app. This can take a few moments...";
+                            setError(waitingMessage);
                             return;
                         }
                         console.error("App not found, closing editor");
                         onCloseRef.current?.();
                         return;
                     }
-                    throw new Error(`Failed to load app: ${res.status} ${res.statusText}`);
+
+                    const failureMessage =
+                        readiness.userMessage ||
+                        readiness.message ||
+                        `Failed to load app: ${res.status} ${res.statusText}`;
+                    throw new Error(failureMessage);
                 }
-                const data = await res.json();
+
+                if (!data || typeof data !== "object") {
+                    throw new Error("Failed to load app: invalid response payload");
+                }
+
+                setError(null);
                 if (didCancel) return;
                 const rawApp = data as AppData;
                 setFilesHydrated(false);
@@ -4253,7 +4093,7 @@ export default function AppBuilderEditor({
                 setError(err instanceof Error ? err.message : "Failed to load app");
                 setFilesHydrated(true);
             } finally {
-                if (!didCancel && retryTimer === null) setLoading(false);
+                if (!didCancel) setLoading(false);
             }
         };
 
@@ -4261,9 +4101,8 @@ export default function AppBuilderEditor({
         return () => {
             didCancel = true;
             controller.abort();
-            if (retryTimer) window.clearTimeout(retryTimer);
         };
-    }, [appId, authLoading, handleSessionExpired, user]);
+    }, [authLoading]);
 
     // Firebase real-time listener for instant UI updates when files change
     useEffect(() => {
@@ -4616,14 +4455,12 @@ export default function AppBuilderEditor({
 
     const handleFilesReplaceFromServer = useCallback(
         (nextFiles: { [path: string]: { content: string; lastModified: number } }) => {
-            const normalizedNextFiles = normalizeIncomingFilesMap(nextFiles);
-
             if (suppressNextFilesReplaceApplyRef.current) {
                 suppressNextFilesReplaceApplyRef.current = false;
-                setApp((prev) => (prev ? { ...prev, files: normalizedNextFiles } : null));
-                buildFileTree(normalizedNextFiles as any);
+                setApp((prev) => (prev ? { ...prev, files: nextFiles } : null));
+                buildFileTree(nextFiles as any);
                 if (currentFile) {
-                    const next = normalizedNextFiles[currentFile]?.content;
+                    const next = nextFiles[currentFile]?.content;
                     if (typeof next === "string") setCode(next);
                     else setCode("");
                 }
@@ -4635,8 +4472,8 @@ export default function AppBuilderEditor({
             try {
                 const prevFiles = appRef.current?.files || ({} as any);
                 const changes: Array<{ path: string; content: string }> = [];
-                for (const p of Object.keys(normalizedNextFiles || {})) {
-                    const nextContent = (normalizedNextFiles as any)?.[p]?.content;
+                for (const p of Object.keys(nextFiles || {})) {
+                    const nextContent = (nextFiles as any)?.[p]?.content;
                     if (typeof nextContent !== "string") continue;
                     const prevContent = (prevFiles as any)?.[p]?.content;
                     if (typeof prevContent === "string" && prevContent === nextContent) continue;
@@ -4649,13 +4486,13 @@ export default function AppBuilderEditor({
                 // ignore
             }
 
-            setApp((prev) => (prev ? { ...prev, files: normalizedNextFiles } : null));
+            setApp((prev) => (prev ? { ...prev, files: nextFiles } : null));
 
             // Keep file tree in sync (e.g. newly created files).
-            buildFileTree(normalizedNextFiles as any);
+            buildFileTree(nextFiles as any);
 
             if (currentFile) {
-                const next = normalizedNextFiles[currentFile]?.content;
+                const next = nextFiles[currentFile]?.content;
                 if (typeof next === "string") setCode(next);
                 else setCode("");
             }
@@ -4793,19 +4630,6 @@ export default function AppBuilderEditor({
         } else if (p.startsWith("src/pages/") && hasAnyPrefix("pages/")) {
             const mapped = p.replace(/^src\//, "");
             if ((files as any)?.[mapped]) return mapped;
-        }
-
-        // Keep HTML route paths canonical between source writes and live apply.
-        // Example: app/page.html -> app/page/index.html (and src/app/* equivalent)
-        const appHtmlMatch = p.match(/^(src\/app|app)\/(.+)\.html$/i);
-        if (appHtmlMatch) {
-            const root = appHtmlMatch[1];
-            const routePart = appHtmlMatch[2];
-            if (routePart && routePart !== "index" && !/\/index$/i.test(routePart)) {
-                const normalizedHtmlPath = `${root}/${routePart}/index.html`;
-                if ((files as any)?.[normalizedHtmlPath]) return normalizedHtmlPath;
-                p = normalizedHtmlPath;
-            }
         }
 
         // If the agent targets a common entrypoint but uses the "wrong" extension,
@@ -5302,91 +5126,6 @@ export default function AppBuilderEditor({
         }
     };
 
-    const handleApplyCustomHtml = useCallback(
-        async (path: string, html: string, skipMachineApply?: boolean) => {
-            const activeFiles = appRef.current?.files || app?.files;
-            const canonicalPath = canonicalizeEditPath(path, activeFiles as any);
-            if (!canonicalPath) {
-                throw new Error("Invalid HTML file path.");
-            }
-            lastVisualEditedHtmlPathRef.current = canonicalPath;
-
-            const wasCurrentFile = currentFile === canonicalPath;
-
-            const ok = await saveFileToServer(canonicalPath, html, { afterSave: "none", interactive: true });
-            if (!ok) {
-                console.error("[preview-apply] source save failed; skipping machine apply", {
-                    path: canonicalPath,
-                    source: "preview-apply",
-                });
-                throw new Error("Failed to save custom HTML changes.");
-            }
-
-            console.info("[preview-apply] source save complete", {
-                path: canonicalPath,
-                source: "preview-apply",
-            });
-
-            setApp((prev) => {
-                if (!prev) return prev;
-                const nextFiles = {
-                    ...prev.files,
-                    [canonicalPath]: { content: html, lastModified: Date.now() },
-                };
-                return {
-                    ...prev,
-                    files: nextFiles,
-                };
-            });
-
-            buildFileTree({
-                ...(appRef.current?.files || app?.files || {}),
-                [canonicalPath]: { content: html, lastModified: Date.now() },
-            } as any);
-
-            if (currentFile === canonicalPath) {
-                setCode(html);
-            }
-
-            if (skipMachineApply) {
-                console.warn("[preview-apply] machine apply skipped by caller", {
-                    path: canonicalPath,
-                    source: "preview-apply",
-                });
-            } else {
-                console.info("[preview-apply] triggering machine apply", {
-                    path: canonicalPath,
-                    source: "preview-apply",
-                });
-                try {
-                    await applyPreviewChangesNow([{ path: canonicalPath, content: html }], {
-                        interactive: true,
-                        source: "preview-apply",
-                    });
-                    console.info("[preview-apply] machine apply completed", {
-                        path: canonicalPath,
-                        source: "preview-apply",
-                    });
-
-                    // Trigger background rebuild so preview is ready when user switches back
-                    console.info("[preview-apply] triggering background rebuild", {
-                        path: canonicalPath,
-                        source: "preview-apply",
-                    });
-                    void restartLocalPreview(true);
-                } catch (err) {
-                    console.error("[preview-apply] machine apply failed", {
-                        path: canonicalPath,
-                        source: "preview-apply",
-                        error: err,
-                    });
-                    throw err;
-                }
-            }
-        },
-        [app?.files, applyPreviewChangesNow, currentFile, saveFileToServer, restartLocalPreview],
-    );
-
     const handleDeploy = async () => {
         if (!app || isDeploying) return;
 
@@ -5541,19 +5280,12 @@ export default function AppBuilderEditor({
             return;
         } catch (err: any) {
             const errorMessage = err?.message || "Deploy failed.";
-            const isVercelConnectIssue = /Vercel is not connected yet|Vercel is not connected|not connected for this user/i.test(errorMessage);
             setDeployBannerFromRoute({
                 kind: "error",
-                title: isVercelConnectIssue ? "Vercel not connected" : "Deployment failed",
-                detail: isVercelConnectIssue
-                    ? "Connect Vercel before deploying from this editor."
-                    : errorMessage,
-                fingerprint: isVercelConnectIssue
-                    ? `deploy-route:${appId}:vercel-not-connected`
-                    : `deploy-route:${appId}:${errorMessage.slice(0, 160)}`,
-                fixAction: isVercelConnectIssue
-                    ? "connect_vercel"
-                    : /413|body too large|request entity too large/i.test(errorMessage)
+                title: "Deployment failed",
+                detail: errorMessage,
+                fingerprint: `deploy-route:${appId}:${errorMessage.slice(0, 160)}`,
+                fixAction: /413|body too large|request entity too large/i.test(errorMessage)
                     ? "reduce_deploy_payload"
                     : "deploy_issue_fix",
             });
@@ -5593,7 +5325,7 @@ export default function AppBuilderEditor({
                 "SameSite=Lax",
             ].join("; ");
 
-            const returnTo = `/dashboard/view?appVercel=connected&flow=appDeploy&appId=${encodeURIComponent(appId)}`;
+            const returnTo = `/dashboard/view?vercel=connected`;
             document.cookie = [
                 `vercel_oauth_return=${encodeURIComponent(returnTo)}`,
                 "Path=/",
@@ -5653,59 +5385,6 @@ export default function AppBuilderEditor({
         }
     }, [appId, persistPendingVercelShareFlow]);
 
-    const startVercelOAuthForImageLibrary = useCallback(() => {
-        if (!VERCEL_INTEGRATION_SLUG) {
-            console.error("Missing NEXT_PUBLIC_VERCEL_INTEGRATION_SLUG");
-            setPreviewError(PREVIEW_RECOVERY_MESSAGE);
-            return;
-        }
-
-        try {
-            setVercelConnectOpening(true);
-            const bytes = new Uint8Array(16);
-            crypto.getRandomValues(bytes);
-            const state = Array.from(bytes)
-                .map((b) => b.toString(16).padStart(2, "0"))
-                .join("");
-
-            const returnTo = `/dashboard/view?vercel=connected&flow=images&appId=${encodeURIComponent(appId)}`;
-            localStorage.setItem(
-                APP_BUILDER_PENDING_AI_IMAGES_KEY,
-                JSON.stringify({
-                    appId,
-                    returnTo,
-                    startedAt: Date.now(),
-                }),
-            );
-
-            localStorage.setItem("kloner_vercel_latest_csrf", state);
-
-            document.cookie = [
-                `vercel_oauth_state=${state}`,
-                "Path=/",
-                "Max-Age=600",
-                "SameSite=Lax",
-            ].join("; ");
-
-            document.cookie = [
-                `vercel_oauth_return=${encodeURIComponent(returnTo)}`,
-                "Path=/",
-                "Max-Age=600",
-                "SameSite=Lax",
-            ].join("; ");
-
-            setVercelConnectFlow("images");
-            setVercelConnectOpen(true);
-
-            const link = `https://vercel.com/integrations/${VERCEL_INTEGRATION_SLUG}/new?state=${state}`;
-            window.location.assign(link);
-        } catch (e) {
-            console.error("Failed to start Vercel OAuth for image library", e);
-            setPreviewError(PREVIEW_RECOVERY_MESSAGE);
-            setVercelConnectOpening(false);
-        }
-    }, [appId]);
-
     const tryEmbedExistingPreview = useCallback(() => {
         const url = (protectedPreviewUrl || "").trim();
         if (!url) return;
@@ -5760,31 +5439,6 @@ export default function AppBuilderEditor({
         }
 
         // No-op for embedded preview; deploy actions will work after connect.
-    }, [isVercelConnected, appId, app, filesHydrated, loading]);
-
-    useEffect(() => {
-        if (!isVercelConnected) return;
-        if (!appId) return;
-        if (!app || loading) return;
-        if (!filesHydrated) return;
-
-        let pendingImages: any = null;
-        try {
-            const raw = localStorage.getItem(APP_BUILDER_PENDING_AI_IMAGES_KEY);
-            if (raw) pendingImages = JSON.parse(raw);
-        } catch {
-            pendingImages = null;
-        }
-
-        if (!pendingImages || pendingImages.appId !== appId) return;
-
-        try {
-            localStorage.removeItem(APP_BUILDER_PENDING_AI_IMAGES_KEY);
-        } catch {
-            // ignore
-        }
-
-        setViewMode("images");
     }, [isVercelConnected, appId, app, filesHydrated, loading]);
 
     useEffect(() => {
@@ -5863,58 +5517,23 @@ export default function AppBuilderEditor({
     }, [sourceUrlToRescan]);
 
     const handleRename = async () => {
-        if (!app || !tempName.trim() || isRenameSaving) return;
+        if (!app || !tempName.trim()) return;
 
-        const nextName = tempName.trim();
-
-        setIsRenameSaving(true);
-
-        const doRename = async (): Promise<Response> => {
+        try {
             const csrf = await ensureSessionAndCsrf().catch(() => null);
-            return fetch(`/api/app-builder/${appId}/rename`, {
+            const res = await fetch(`/api/app-builder/${appId}/rename`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
                     ...(typeof csrf === "string" && csrf ? { "x-csrf": csrf } : {}),
                 },
-                body: JSON.stringify({ name: nextName }),
+                body: JSON.stringify({ name: tempName.trim() }),
             });
-        };
-
-        try {
-            let res = await doRename();
-            let data: any = await res.json().catch(() => ({} as any));
-            const code = String(data?.code || "").trim();
-            const isScopeProblem = code === "MISSING_APP_SCOPE" || code === "INVALID_APP_SCOPE";
-
-            if ((!res.ok || !data?.success) && isScopeProblem) {
-                const scopeOk = await bootstrapAppScope();
-                if (scopeOk) {
-                    res = await doRename();
-                    data = await res.json().catch(() => ({} as any));
-                }
-            }
-
-            if (!res.ok || !data?.success) {
-                let message = "Failed to rename.";
-                if (typeof data?.error === "string" && data.error.trim()) {
-                    message = data.error.trim();
-                }
-
-                if (res.status === 403 || isScopeProblem) {
-                    message = "Rename was blocked by permissions or a stale app session. Refresh the page and try again.";
-                }
-
-                throw Object.assign(new Error(message), { status: res.status });
-            }
-            setApp(prev => prev ? { ...prev, name: nextName } : null);
+            if (!res.ok) throw new Error("Failed to rename");
+            setApp(prev => prev ? { ...prev, name: tempName.trim() } : null);
             setIsRenaming(false);
         } catch (err) {
-            const message = String((err as any)?.message || "Failed to rename.");
             console.error("Rename failed", err);
-            void showAlert(message, "Rename");
-        } finally {
-            setIsRenameSaving(false);
         }
     };
 
@@ -6183,8 +5802,8 @@ export default function AppBuilderEditor({
             ) : null}
             <div className="h-full w-full bg-white flex flex-col">
                 {/* Header */}
-                <div className="relative flex flex-nowrap items-center justify-between gap-2 overflow-x-auto border-b bg-gray-50 p-2.5 sm:p-4">
-                    <div className="relative z-20 flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
+                <div className="relative flex items-center justify-between p-2.5 sm:p-4 border-b bg-gray-50">
+                    <div className="relative z-20 flex flex-1 min-w-0 items-center gap-2 sm:gap-3">
                         {isRenaming ? (
                             <div className="flex min-w-0 max-w-full items-center gap-1.5 sm:gap-2">
                                 <input
@@ -6192,26 +5811,22 @@ export default function AppBuilderEditor({
                                     value={tempName}
                                     onChange={(e) => setTempName(e.target.value)}
                                     onKeyPress={(e) => {
-                                        if (isRenameSaving) return;
-                                        if (e.key === "Enter") void handleRename();
+                                        if (e.key === "Enter") handleRename();
                                         if (e.key === "Escape") cancelRename();
                                     }}
-                                    disabled={isRenameSaving}
                                     className="min-w-0 w-[46vw] sm:w-auto px-2 py-1 border rounded text-sm sm:text-lg font-semibold focus:outline-none focus:ring-2 focus:ring-accent"
                                     autoFocus
                                 />
                                 <button
-                                    onClick={() => void handleRename()}
-                                    disabled={isRenameSaving}
-                                    className="shrink-0 p-1 hover:bg-gray-200 rounded transition-colors disabled:opacity-60"
+                                    onClick={handleRename}
+                                    className="shrink-0 p-1 hover:bg-gray-200 rounded transition-colors"
                                     title="Save name"
                                 >
                                     <Check className="w-4 h-4 text-green-600" />
                                 </button>
                                 <button
                                     onClick={cancelRename}
-                                    disabled={isRenameSaving}
-                                    className="shrink-0 p-1 hover:bg-gray-200 rounded transition-colors disabled:opacity-60"
+                                    className="shrink-0 p-1 hover:bg-gray-200 rounded transition-colors"
                                     title="Cancel"
                                 >
                                     <RotateCcw className="w-4 h-4 text-red-600" />
@@ -6238,199 +5853,72 @@ export default function AppBuilderEditor({
                             </div>
                         )}
 
-                        {/* Tablet controls menu */}
-                        <div ref={tabletControlsRef} className="relative ml-0 md:flex lg:hidden">
+                        {/* Project controls (moved off top-right) */}
+                        <div className="ml-2 hidden md:flex items-center gap-2">
                             <button
-                                type="button"
-                                onClick={() => setTabletControlsOpen((open) => !open)}
-                                className="inline-flex shrink-0 items-center justify-center rounded-full border border-neutral-300 bg-white p-2 text-neutral-700 shadow-sm hover:bg-neutral-50"
-                                title="More controls"
-                                aria-label="More controls"
-                                aria-expanded={tabletControlsOpen}
+                                onClick={() => void openDatabaseConnect()}
+                                className={`min-w-[170px] px-4 py-2 text-xs font-semibold rounded-full flex items-center justify-center gap-2 transition-colors whitespace-nowrap ${
+                                    supabaseConnected === null
+                                        ? "bg-white text-gray-500 border border-gray-200"
+                                        : supabaseConnected
+                                          ? supabaseDbReachable === false
+                                              ? (supabaseDbReason === "project_paused" || supabaseDbReason === "timeout_or_network")
+                                                  ? "bg-amber-100 text-amber-900 hover:bg-amber-200"
+                                                  : "bg-red-100 text-red-900 hover:bg-red-200"
+                                              : supabaseDbReachable === true
+                                                ? "bg-green-100 text-green-900 hover:bg-green-200"
+                                                : "bg-white text-green-900 border border-green-200 hover:bg-green-50"
+                                          : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-100"
+                                }`}
+                                title={
+                                    supabaseConnected
+                                        ? `${supabaseDbReachable === false ? "Database unreachable" : "Database connected"}${supabaseProjectName ? `: ${supabaseProjectName}` : ""}${supabaseDbStatusText ? `\n\n${supabaseDbStatusText}` : ""}`
+                                        : "Connect your database"
+                                }
                             >
-                                <MoreVertical className="h-4 w-4" />
-                            </button>
-
-                            {tabletControlsOpen ? (
-                                <div className="absolute left-0 top-full z-30 mt-2 w-[min(88vw,19rem)] overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-2xl">
-                                    {lastDeployLiveUrl ? (
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                setTabletControlsOpen(false);
-                                                window.open(lastDeployLiveUrl, "_blank", "noopener,noreferrer");
-                                            }}
-                                            className="flex w-full items-center gap-2 border-b border-neutral-100 px-4 py-3 text-left text-sm font-semibold text-neutral-800 hover:bg-neutral-50"
-                                        >
-                                            <Rocket className="h-4 w-4 text-neutral-500" />
-                                            View live
-                                        </button>
-                                    ) : null}
-
-                                    {isDev ? (
-                                        <div className="border-b border-neutral-100 px-4 py-3 text-sm">
-                                            <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-neutral-500">Current file</div>
-                                            <div className="mt-1 truncate font-medium text-neutral-800">{currentFile || "(none)"}</div>
-                                        </div>
-                                    ) : null}
-
-                                    <div className="px-4 py-3 text-sm">
-                                        <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-neutral-500">UI scale</div>
-                                        <div className="mt-2 inline-flex items-center gap-1 rounded-full border border-neutral-200 bg-neutral-50 px-2 py-1">
-                                            <button
-                                                type="button"
-                                                onClick={() => setCustomPreviewScale((s) => Math.max(0.5, +(s - 0.05).toFixed(2)))}
-                                                className="inline-flex h-7 w-7 items-center justify-center rounded-full text-neutral-700 hover:bg-neutral-100"
-                                                title="Zoom out"
-                                            >
-                                                −
-                                            </button>
-                                            <span className="w-12 text-center text-sm font-semibold text-neutral-700">
-                                                {Math.round(customPreviewScale * 100)}%
-                                            </span>
-                                            <button
-                                                type="button"
-                                                onClick={() => setCustomPreviewScale((s) => Math.min(1.25, +(s + 0.05).toFixed(2)))}
-                                                className="inline-flex h-7 w-7 items-center justify-center rounded-full text-neutral-700 hover:bg-neutral-100"
-                                                title="Zoom in"
-                                            >
-                                                +
-                                            </button>
-                                        </div>
-                                    </div>
-
-                                    <div className="border-t border-neutral-100 px-4 py-2">
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                setTabletControlsOpen(false);
-                                                handleTakeBuilderTour();
-                                            }}
-                                            className="inline-flex items-center gap-2 text-sm font-semibold text-neutral-800 hover:text-[#f55f2a]"
-                                        >
-                                            Take tour
-                                        </button>
-                                    </div>
-                                </div>
-                            ) : null}
-                        </div>
-
-                        {/* Project controls (desktop) */}
-                        <div className="ml-0 hidden flex-nowrap items-center gap-1.5 lg:flex lg:gap-2">
-                            {isDev && !isVisualEditorMode ? (
-                                <button
-                                    onClick={() => void openDatabaseConnect()}
-                                    className={`min-w-[170px] px-4 py-2 text-xs font-semibold rounded-full flex items-center justify-center gap-2 transition-colors whitespace-nowrap ${
-                                        supabaseConnected === null
-                                            ? "bg-white text-gray-500 border border-gray-200"
-                                            : supabaseConnected
-                                              ? supabaseDbReachable === false
-                                                  ? (supabaseDbReason === "project_paused" || supabaseDbReason === "timeout_or_network")
-                                                      ? "bg-amber-100 text-amber-900 hover:bg-amber-200"
-                                                      : "bg-red-100 text-red-900 hover:bg-red-200"
-                                                  : supabaseDbReachable === true
-                                                    ? "bg-green-100 text-green-900 hover:bg-green-200"
-                                                    : "bg-white text-green-900 border border-green-200 hover:bg-green-50"
-                                              : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-100"
-                                    }`}
-                                    title={
-                                        supabaseConnected
-                                            ? `${supabaseDbReachable === false ? "Database unreachable" : "Database connected"}${supabaseProjectName ? `: ${supabaseProjectName}` : ""}${supabaseDbStatusText ? `\n\n${supabaseDbStatusText}` : ""}`
-                                            : "Connect your database"
-                                    }
-                                >
-                                    <Database className="w-4 h-4 shrink-0" />
-                                    {supabaseConnected === null ? (
-                                        <span>Database: Verifying…</span>
-                                    ) : supabaseConnected ? (
-                                        <span className="flex flex-col items-start leading-tight">
-                                            <span className="text-[10px] font-bold uppercase tracking-wide opacity-70">
-                                                {supabaseDbReachable === false
-                                                    ? supabaseDbReason === "project_paused"
-                                                        ? "Database: Paused"
-                                                        : supabaseDbReason === "timeout_or_network"
-                                                          ? "Database: Resuming"
-                                                          : "Unreachable"
-                                                    : supabaseDbReachable === true
-                                                      ? "Database: Healthy"
-                                                      : "Database: Connected"}
-                                            </span>
-                                            {supabaseProjectName ? (
-                                                <span className="max-w-[110px] truncate font-semibold" title={supabaseProjectName}>
-                                                    {supabaseProjectName}
-                                                </span>
-                                            ) : supabaseProjectRef ? (
-                                                <span className="max-w-[110px] truncate font-mono text-[10px]" title={supabaseProjectRef}>
-                                                    {supabaseProjectRef}
-                                                </span>
-                                            ) : null}
+                                <Database className="w-4 h-4 shrink-0" />
+                                {supabaseConnected === null ? (
+                                    <span>Database: Verifying…</span>
+                                ) : supabaseConnected ? (
+                                    <span className="flex flex-col items-start leading-tight">
+                                        <span className="text-[10px] font-bold uppercase tracking-wide opacity-70">
+                                            {supabaseDbReachable === false
+                                                ? supabaseDbReason === "project_paused"
+                                                    ? "Database: Paused"
+                                                    : supabaseDbReason === "timeout_or_network"
+                                                      ? "Database: Resuming"
+                                                      : "Unreachable"
+                                                : supabaseDbReachable === true
+                                                  ? "Database: Healthy"
+                                                  : "Database: Connected"}
                                         </span>
-                                    ) : (
-                                        <span>Connect Database</span>
-                                    )}
-                                    <DevOnlyIconBadge title="Development-only database controls" />
-                                </button>
-                            ) : null}
+                                        {supabaseProjectName ? (
+                                            <span className="max-w-[110px] truncate font-semibold" title={supabaseProjectName}>
+                                                {supabaseProjectName}
+                                            </span>
+                                        ) : supabaseProjectRef ? (
+                                            <span className="max-w-[110px] truncate font-mono text-[10px]" title={supabaseProjectRef}>
+                                                {supabaseProjectRef}
+                                            </span>
+                                        ) : null}
+                                    </span>
+                                ) : (
+                                    <span>Connect Database</span>
+                                )}
+                            </button>
 
                             {lastDeployLiveUrl ? (
                                 <button
                                     onClick={() => window.open(lastDeployLiveUrl, "_blank", "noopener,noreferrer")}
-                                    className="inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-full border border-neutral-300 bg-white px-2.5 py-2 text-xs font-semibold text-neutral-700 hover:bg-neutral-50 lg:px-3"
+                                    className="inline-flex items-center justify-center gap-2 rounded-full border border-neutral-300 bg-white px-3 py-2 text-xs font-semibold text-neutral-700 hover:bg-neutral-50"
                                     title="Open live deployment"
                                 >
                                     <Rocket className="h-4 w-4" />
-                                    <span className="hidden md:inline lg:hidden">Live</span>
-                                    <span className="hidden lg:inline">View live</span>
+                                    <span>View live</span>
                                 </button>
                             ) : null}
 
-                            {!isVisualEditorMode ? (
-                                <button
-                                    type="button"
-                                    onClick={handleTakeBuilderTour}
-                                    className="hidden shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-full border border-neutral-300 bg-white px-2.5 py-2 text-xs font-semibold text-neutral-700 hover:bg-neutral-50 lg:inline-flex lg:px-3"
-                                    title="Show the app builder tour"
-                                >
-                                    <span>Take tour</span>
-                                </button>
-                            ) : null}
-
-                            {isDev ? (
-                                <div
-                                    className="inline-flex shrink-0 max-w-[150px] items-center gap-1.5 rounded-full border border-neutral-200 bg-neutral-50 px-2.5 py-1.5 text-[11px] font-medium text-neutral-700 xl:max-w-[320px] xl:px-3 xl:text-xs"
-                                    title={`Current open file: ${currentFile || "(none)"}`}
-                                >
-                                    <DevOnlyIconBadge title="Development-only current file indicator" />
-                                    <span className="hidden text-neutral-500 lg:inline">current file:</span>
-                                    <span className="truncate">{currentFile || "(none)"}</span>
-                                </div>
-                            ) : null}
-
-                            {(
-                                <div data-tour-ui-scale className="inline-flex shrink-0 items-center gap-0.5 rounded-full border border-neutral-300 bg-white px-1.5 py-1 shadow-sm xl:gap-1 xl:px-2">
-                                    <button
-                                        type="button"
-                                        onClick={() => setCustomPreviewScale((s) => Math.max(0.5, +(s - 0.05).toFixed(2)))}
-                                        className="inline-flex h-6 w-6 items-center justify-center rounded-md text-neutral-700 hover:bg-neutral-100"
-                                        title="Zoom out"
-                                    >
-                                        −
-                                    </button>
-                                    <span className="w-9 text-center text-xs font-semibold text-neutral-700 xl:w-10">
-                                        {Math.round(customPreviewScale * 100)}%
-                                    </span>
-                                    <button
-                                        type="button"
-                                        onClick={() => setCustomPreviewScale((s) => Math.min(1.25, +(s + 0.05).toFixed(2)))}
-                                        className="inline-flex h-6 w-6 items-center justify-center rounded-md text-neutral-700 hover:bg-neutral-100"
-                                        title="Zoom in"
-                                    >
-                                        +
-                                    </button>
-                                </div>
-                            )}
-
-                            {isDev && supabaseConnected && !isVisualEditorMode ? (
+                            {supabaseConnected ? (
                                 <button
                                     onClick={() => void disconnectSupabase()}
                                     className="p-2 rounded-full border border-red-200 bg-white text-red-700 hover:bg-red-50 transition-colors"
@@ -6442,13 +5930,10 @@ export default function AppBuilderEditor({
                             ) : null}
                         </div>
                     </div>
-                    {/* Portal target for Custom tab toolbar buttons */}
-                    <div id="kloner-custom-toolbar-portal" className="hidden md:flex items-center gap-2 mx-2" />
                     <div className="relative z-10 flex shrink-0 gap-2 items-center">
                         {!(isRenaming && isMobile) ? (
                             <button
                                 onClick={() => setMobileControlsOpen(true)}
-                                data-tour-mobile-controls
                                 className="md:hidden inline-flex h-8 w-8 items-center justify-center rounded-full border border-neutral-300 bg-white text-neutral-700 shadow-md transition hover:bg-neutral-50"
                                 title="Controls"
                                 aria-label="Controls"
@@ -6458,8 +5943,8 @@ export default function AppBuilderEditor({
                         ) : null}
 
                         {/* Top-right reserved for machine + deploy (PreviewEditorV2-style) */}
-                        <div className={`hidden md:inline-flex items-center gap-1 rounded-full border border-neutral-200 bg-white px-1.5 py-1 shadow-md lg:gap-2 lg:px-2 ${isVisualEditorMode ? "invisible pointer-events-none" : ""}`}>
-                            <div className="px-1.5 text-[10px] font-semibold text-neutral-700 whitespace-nowrap lg:px-2 lg:text-[11px]">
+                        <div className="hidden md:inline-flex items-center gap-2 rounded-full border border-neutral-200 bg-white px-2 py-1 shadow-md">
+                            <div className="px-2 text-[11px] font-semibold text-neutral-700 whitespace-nowrap">
                                 <span
                                     className={`mr-2 inline-block h-2 w-2 rounded-full ${
                                         isPreviewBuilding
@@ -6478,23 +5963,21 @@ export default function AppBuilderEditor({
                             <button
                                 onClick={handleReconnect}
                                 disabled={isRefreshing || isPreviewBuilding}
-                                data-tour-refresh
-                                className="inline-flex h-7 items-center justify-center gap-1.5 rounded-full border border-neutral-300 bg-white px-2.5 text-[11px] font-semibold text-neutral-700 shadow-sm transition hover:bg-neutral-50 disabled:opacity-60 lg:px-2.5 lg:text-[12px]"
+                                className="inline-flex h-7 items-center justify-center gap-1.5 rounded-full border border-neutral-300 bg-white px-2.5 text-[12px] font-semibold text-neutral-700 shadow-sm transition hover:bg-neutral-50 disabled:opacity-60"
                                 title="Reconnect to the existing machine without restarting"
                             >
                                 <RotateCcw className="h-3.5 w-3.5" />
-                                <span className="hidden lg:inline">Refresh</span>
+                                <span>Refresh</span>
                             </button>
 
                             <button
                                 onClick={() => handleRefresh(true)}
                                 disabled={isPreviewBuilding || isRefreshing}
-                                data-tour-rebuild
-                                className="inline-flex h-7 items-center justify-center gap-1.5 rounded-full border border-neutral-300 bg-white px-2.5 text-[11px] font-semibold text-neutral-700 shadow-sm transition hover:bg-neutral-50 disabled:opacity-60 lg:px-2.5 lg:text-[12px]"
+                                className="inline-flex h-7 items-center justify-center gap-1.5 rounded-full border border-neutral-300 bg-white px-2.5 text-[12px] font-semibold text-neutral-700 shadow-sm transition hover:bg-neutral-50 disabled:opacity-60"
                                 title="Delete current machine and rebuild app (this will not delete your website)"
                             >
                                 <RefreshCw className="h-3.5 w-3.5" />
-                                <span className="hidden lg:inline">{isPreviewBuilding ? "Starting" : "Rebuild"}</span>
+                                <span>{isPreviewBuilding ? "Starting" : "Rebuild"}</span>
                             </button>
                         </div>
 
@@ -6534,33 +6017,33 @@ export default function AppBuilderEditor({
                             </div>
                         ) : null}
 
+                        {!(isRenaming && isMobile) && process.env.NODE_ENV !== "production" ? (
+                            <>
+                                <button
+                                    onClick={() => void handleSharePreview()}
+                                    disabled={isSharingPreview}
+                                    className="inline-flex h-8 items-center gap-1.5 rounded-full border border-neutral-300 bg-white px-3 py-1 text-[13px] font-semibold text-neutral-700 shadow-md transition hover:bg-neutral-50 disabled:opacity-60"
+                                    title={shareChoiceError || "Create a shareable preview link"}
+                                    aria-label="Share preview"
+                                >
+                                    <Share2 className="h-3.5 w-3.5" aria-hidden="true" />
+                                    <span>{isSharingPreview ? "Sharing…" : "Share"}</span>
+                                    <DevOnlyIconBadge title="Development-only share preview" />
+                                </button>
+                            </>
+                        ) : null}
+
                         {!(isRenaming && isMobile) ? (
                             <>
-                                {isDev ? (
-                                    <button
-                                        onClick={() => void handleSharePreview()}
-                                        disabled={isSharingPreview}
-                                        data-tour-share
-                                        className="inline-flex h-8 items-center gap-1.5 rounded-full border border-neutral-300 bg-white px-2 py-1 text-[12px] font-semibold text-neutral-700 shadow-md transition hover:bg-neutral-50 disabled:opacity-60 xl:px-3 xl:text-[13px]"
-                                        title={shareChoiceError || "Create a shareable preview link"}
-                                        aria-label="Share preview"
-                                    >
-                                        <Share2 className="h-3.5 w-3.5" aria-hidden="true" />
-                                        <span className="hidden xl:inline">{isSharingPreview ? "Sharing…" : "Share"}</span>
-                                        <DevOnlyIconBadge title="Development-only share control" />
-                                    </button>
-                                ) : null}
-
                                 <button
                                     onClick={handleDeploy}
                                     disabled={isDeploying}
-                                    data-tour-deploy
-                                    className="inline-flex h-8 items-center gap-1.5 rounded-full border border-[#f55f2a] bg-[#f55f2a] px-2 py-1 text-[12px] font-semibold text-white shadow-md transition hover:opacity-90 disabled:opacity-60 xl:px-3 xl:text-[13px]"
+                                    className="inline-flex h-8 items-center gap-1.5 rounded-full border border-[#f55f2a] bg-[#f55f2a] px-3 py-1 text-[13px] font-semibold text-white shadow-md transition hover:opacity-90 disabled:opacity-60"
                                     title="Deploy"
                                     aria-label="Deploy"
                                 >
                                     <Rocket className="h-3.5 w-3.5" aria-hidden="true" />
-                                    <span className="hidden xl:inline">{isDeploying ? "Deploying…" : "Deploy"}</span>
+                                    <span>{isDeploying ? "Deploying…" : "Deploy"}</span>
                                 </button>
                             </>
                         ) : null}
@@ -6584,6 +6067,14 @@ export default function AppBuilderEditor({
                     className="hidden"
                     onChange={handleFaviconFileChange}
                 />
+                <input
+                    ref={imageInputRef}
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    className="hidden"
+                    onChange={handleImageFileChange}
+                />
 
                 {isEmbeddingProcessing ? (
                     <div className="border-b bg-sky-50 px-4 py-2 text-xs text-sky-900">
@@ -6592,114 +6083,60 @@ export default function AppBuilderEditor({
                     </div>
                 ) : null}
 
-                {isGenerationProcessing && activeGeneration.status !== "error" && previewMode === "webcontainer" ? (
-                    <div className="border-b bg-amber-50 px-4 py-2 text-xs text-amber-900">
-                        {"Generating your website. Preview will update automatically when it's ready."}
-                    </div>
-                ) : null}
-
                 <div className="flex flex-1 min-h-0" data-app-builder-container>
                     {/* Left Panel - AI Chat and Controls */}
                     <div 
-                        className={`${showLeftPanel ? "flex" : "hidden"} flex-col bg-gray-50 flex-shrink-0 min-h-0 overflow-hidden w-full md:w-auto ${!isVisualEditorMode ? "md:border-r" : ""}`}
-                        style={!isMobile && !isVisualEditorMode ? { width: `${leftPanelWidth}px` } : isVisualEditorMode ? { width: "100%" } : undefined}
+                        className={`${showLeftPanel ? "flex" : "hidden"} flex-col bg-gray-50 flex-shrink-0 min-h-0 overflow-hidden w-full md:w-auto md:border-r`}
+                        style={!isMobile ? { width: `${leftPanelWidth}px` } : undefined}
                     >
                         {/* View Mode Toggle */}
-                        <div
-                            className={`p-3 border-b sticky top-0 z-10 bg-gray-50 ${
-                                isVisualEditorMode
-                                    ? isCustomSidebarOpen
-                                        ? "w-[min(92vw,520px)]"
-                                        : "hidden"
-                                    : ""
-                            }`}
-                        >
-                            <div className="flex gap-2 overflow-x-auto overflow-y-visible scrollbar-hide min-w-0 py-1">
+                        <div className="p-3 border-b sticky top-0 z-10 bg-gray-50">
+                            <div className={`grid gap-2 ${IS_PRODUCTION ? "grid-cols-2" : "grid-cols-3"}`}>
                                 <button
-                                    onClick={() => { void requestViewModeChange("ai"); }}
-                                    disabled={isModeSwitching}
-                                    data-tour-chat-tab
-                                    className={`px-3 sm:px-4 py-2 text-xs font-semibold rounded-full flex items-center justify-center gap-1.5 transition-colors flex-shrink-0 ${
+                                    onClick={() => setViewMode("ai")}
+                                    className={`flex-1 px-4 py-2 text-xs font-semibold rounded-full flex items-center justify-center gap-2 transition-colors ${
                                         viewMode === "ai"
-                                            ? `text-neutral-900 border border-neutral-300 shadow-sm ${activeTabGlowClass}`
+                                            ? "bg-neutral-100 text-neutral-900 border border-neutral-300 shadow-sm"
                                             : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50"
-                                    } ${isModeSwitching ? "opacity-60 cursor-not-allowed" : ""}`}
-                                    title="Chat"
+                                    }`}
+                                    title="UI"
                                 >
-                                    {isModeSwitching && viewMode !== "ai" ? (
-                                        <Loader2 className="h-4 w-4 animate-spin" />
-                                    ) : (
-                                        <MessageSquare className="h-4 w-4" />
-                                    )}
-                                    Chat
+                                    <MessageSquare className="w-4 h-4" />
+                                    UI
                                 </button>
                                 {!IS_PRODUCTION ? (
                                     <button
-                                        onClick={() => { void requestViewModeChange("code"); }}
-                                        disabled={isModeSwitching}
-                                        className={`px-3 sm:px-4 py-2 text-xs font-semibold rounded-full flex items-center justify-center gap-1.5 transition-colors flex-shrink-0 ${
+                                        onClick={() => setViewMode("code")}
+                                        className={`flex-1 px-4 py-2 text-xs font-semibold rounded-full flex items-center justify-center gap-2 transition-colors ${
                                             viewMode === "code"
-                                                ? `bg-neutral-100 text-neutral-900 border border-neutral-300 shadow-sm ${activeTabGlowClass}`
+                                                ? "bg-neutral-100 text-neutral-900 border border-neutral-300 shadow-sm"
                                                 : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50"
-                                        } ${isModeSwitching ? "opacity-60 cursor-not-allowed" : ""}`}
+                                        }`}
                                         title="Code"
                                     >
-                                        {isModeSwitching && viewMode !== "code" ? (
-                                            <Loader2 className="h-4 w-4 animate-spin" />
-                                        ) : (
-                                            <Code className="h-4 w-4" />
-                                        )}
+                                        <Code className="w-4 h-4" />
                                         Code
                                         <DevOnlyIconBadge title="Development-only code tab" />
                                     </button>
                                 ) : null}
-                                {/* {!IS_PRODUCTION ? ( */}
-                                    <button
-                                        onClick={() => { if (isMobile) { showDesktopOnlyToast(); return; } void requestViewModeChange("images"); }}
-                                        disabled={isModeSwitching}
-                                        data-tour-images-tab
-                                        className={`px-3 sm:px-4 py-2 text-xs font-semibold rounded-full flex items-center justify-center gap-1.5 transition-colors flex-shrink-0 ${
-                                            viewMode === "images"
-                                                ? `bg-neutral-100 text-neutral-900 border border-neutral-300 shadow-sm ${activeTabGlowClass}`
-                                                : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50"
-                                        } ${isModeSwitching ? "opacity-60 cursor-not-allowed" : ""}`}
-                                        title="Images"
-                                    >
-                                        {isModeSwitching && viewMode !== "images" ? (
-                                            <Loader2 className="h-4 w-4 animate-spin" />
-                                        ) : (
-                                            <Images className="h-4 w-4" />
-                                        )}
-                                        Images
-                                    </button>
-                                {/* ) : null} */}
-                                {/* {!IS_PRODUCTION ? ( */}
-                                    <button
-                                        onClick={() => { if (isMobile) { showDesktopOnlyToast(); return; } void requestViewModeChange("custom"); }}
-                                        disabled={isModeSwitching}
-                                        data-tour-custom-tab
-                                        className={`px-3 sm:px-4 py-2 text-xs font-semibold rounded-full flex items-center justify-center gap-1.5 transition-colors flex-shrink-0 ${
-                                            viewMode === "custom"
-                                                ? `bg-neutral-100 text-neutral-900 border border-neutral-300 shadow-sm ${activeTabGlowClass}`
-                                                : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50"
-                                            } ${isModeSwitching ? "opacity-60 cursor-not-allowed" : ""}`}
-                                        title="Custom"
-                                    >
-                                        {isModeSwitching && viewMode !== "custom" ? (
-                                            <Loader2 className="h-4 w-4 animate-spin" />
-                                        ) : (
-                                            <Paintbrush className="h-4 w-4" />
-                                        )}
-                                        Custom
-                                    </button>
-                                {/* ) : null} */}
+                                <button
+                                    onClick={() => setViewMode("images")}
+                                    className={`flex-1 px-4 py-2 text-xs font-semibold rounded-full flex items-center justify-center gap-2 transition-colors ${
+                                        viewMode === "images"
+                                            ? "bg-neutral-100 text-neutral-900 border border-neutral-300 shadow-sm"
+                                            : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50"
+                                    }`}
+                                    title="Images"
+                                >
+                                    <Images className="w-4 h-4" />
+                                    Images
+                                </button>
                             </div>
-
                         </div>
 
                         {/* AI Chat or Code View */}
                         <div className="flex-1 min-h-0 overflow-hidden">
-                            <div data-tour-chat-panel className={viewMode === "ai" ? "h-full" : "hidden"}>
+                            <div className={viewMode === "ai" ? "h-full" : "hidden"}>
                                 <AppBuilderEditorAgentChat
                                     appId={appId}
                                     files={app.files}
@@ -6711,7 +6148,7 @@ export default function AppBuilderEditor({
                                     previewReady={previewMode !== "webcontainer" ? true : isWebPreviewReady}
                                     previewIssue={previewMode !== "webcontainer" ? null : (previewIssue || autoPreviewError || previewError)}
                                     previewIssueActionLabel={previewIssueActionLabel}
-                                    onPreviewIssueAction={() => void handleRefresh()}
+                                    onPreviewIssueAction={() => void handleRefresh(true)}
                                     onPreviewIssueFixRequest={canFixPreviewIssueWithAi ? handlePreviewIssueFixRequest : undefined}
                                     onUserMessageSent={() => {
                                         appBuilderAiMessagesSentRef.current += 1;
@@ -6789,7 +6226,7 @@ export default function AppBuilderEditor({
                                 </div>
                             </div>
 
-                            <div className="hidden">
+                            <div className={viewMode === "images" ? "h-full flex flex-col" : "hidden"}>
                                 <div className="border-b p-3 space-y-3">
                                     <div className="flex items-center justify-end gap-3">
                                         {lastImageInsert ? (
@@ -6949,55 +6386,18 @@ export default function AppBuilderEditor({
                                     })}
                                 </div>
                             </div>
-
-                            <div className={isVisualEditorMode ? "h-full flex flex-col" : "hidden"}>
-                                <AppPreviewEditor
-                                    appId={appId}
-                                    files={app?.files || {}}
-                                    initialPath={currentFile}
-                                    onApplyHtml={handleApplyCustomHtml}
-                                    onSelectPath={handleFileSelect}
-                                    currentHtmlPath={currentFile || undefined}
-                                    onSelectHtmlPath={handleFileSelect}
-                                    editableHtmlPaths={Object.keys(app?.files || {})
-                                        .filter((path) => /\.html?$/i.test(path))
-                                        .sort((a, b) => a.localeCompare(b))}
-                                    onClose={() => { void requestViewModeChange("ai"); }}
-                                    appName={app?.name}
-                                    onRenameSuccess={(newName) => setApp(prev => prev ? { ...prev, name: newName } : null)}
-                                    baseHref={(protectedPreviewUrl || app?.previewUrl || previewSrc || undefined)}
-                                    viewMode={viewMode}
-                                    onChangeViewMode={(mode) => { void requestViewModeChange(mode); }}
-                                    isProduction={IS_PRODUCTION}
-                                    onSidebarVisibilityChange={setIsCustomSidebarOpen}
-                                    sharedUiScale={customPreviewScale}
-                                    onSharedUiScaleChange={setCustomPreviewScale}
-                                    preferredSidePanelMode={viewMode === "images" ? "ai-library" : "style"}
-                                    isVercelConnected={isVercelConnected}
-                                    onConnectVercel={() => {
-                                        setVercelConnectFlow("images");
-                                        setVercelConnectOpen(true);
-                                    }}
-                                    registerBeforeExitFlush={(fn) => {
-                                        previewEditorFlushRef.current = fn;
-                                    }}
-                                    onTakeBuilderTour={handleTakeBuilderTour}
-                                />
-                            </div>
                         </div>
                     </div>
 
                     {/* Resize Handle */}
-                    {!isVisualEditorMode && (
                     <div
                         className="hidden md:block w-1 bg-gray-300 hover:bg-gray-400 cursor-col-resize transition-colors flex-shrink-0"
                         onMouseDown={() => setIsResizing(true)}
                         title="Drag to resize panels"
                     />
-                    )}
 
                     {/* Right Panel - Browser-like App View */}
-                    <div className={`${showRightPanel && !isVisualEditorMode ? "flex" : "hidden"} flex-1 flex flex-col min-h-0`}>
+                    <div className={`${showRightPanel ? "flex" : "hidden"} flex-1 flex flex-col min-h-0`}>
                         {showDeployBanner ? (
                             <div
                                 className={`border-b px-4 py-3 sm:px-4 ${effectiveDeployBanner?.kind === "error"
@@ -7024,13 +6424,13 @@ export default function AppBuilderEditor({
                                         </div>
                                     </div>
                                     <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
-                                        {effectiveDeployBanner?.kind === "error" && effectiveDeployBanner.fixAction ? (
+                                        {effectiveDeployBanner?.kind === "error" ? (
                                             <button
                                                 type="button"
                                                 onClick={handleDeployBannerFixRequest}
                                                 className="inline-flex w-full items-center justify-center gap-1.5 rounded-full bg-[#f55f2a] px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-[#e14f1c] sm:w-auto"
-                                            >
-                                                {effectiveDeployBanner.fixAction === "connect_vercel" ? "Connect Vercel" : "Fix with AI"}
+                                            >,
+                                                Fix with AI
                                             </button>
                                         ) : null}
                                         {effectiveDeployBanner?.liveUrl ? (
@@ -7103,10 +6503,62 @@ export default function AppBuilderEditor({
                                 </div>
                             ) : null}
 
+                                {!IS_PRODUCTION && pageOptions.length > 0 ? (
+                                        <div className="relative ml-3" ref={pageDropdownRef}>
+                                        {hasPageDropdown ? (
+                                            <button
+                                                type="button"
+                                                onClick={() => setIsPageDropdownOpen((prev) => !prev)}
+                                                className="inline-flex items-center gap-1.5 rounded-full border border-neutral-200 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-800 shadow-sm transition hover:bg-neutral-50"
+                                                title={`Current page: ${pageDropdownLabel}`}
+                                                aria-haspopup="menu"
+                                                aria-expanded={isPageDropdownOpen}
+                                            >
+                                                <span className="max-w-[180px] truncate lowercase">{pageDropdownLabel}</span>
+                                                <ChevronDown className={`h-3.5 w-3.5 shrink-0 transition-transform ${isPageDropdownOpen ? "rotate-180" : ""}`} />
+                                                    <DevOnlyIconBadge title="Development-only page chooser" />
+                                            </button>
+                                        ) : (
+                                                <div className="inline-flex items-center gap-1.5 rounded-full border border-neutral-200 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-800 shadow-sm" title={`Current page: ${pageDropdownLabel}`}>
+                                                <span className="max-w-[180px] truncate lowercase">{pageDropdownLabel}</span>
+                                                    <DevOnlyIconBadge title="Development-only page chooser" />
+                                            </div>
+                                        )}
+
+                                        {hasPageDropdown && isPageDropdownOpen ? (
+                                            <div className="absolute left-0 top-[calc(100%+0.5rem)] z-50 w-72 overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-[0_18px_40px_rgba(15,23,42,0.12)]">
+                                                <div className="max-h-64 overflow-y-auto py-1">
+                                                    {pageOptions.map((page) => {
+                                                        const isActive = selectedPreviewPage?.path === page.path;
+                                                        const routeLabel = String(page.route || "").replace(/^\//, "") || "home";
+                                                        return (
+                                                            <button
+                                                                key={page.path}
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    setPreviewPagePath(page.path);
+                                                                    handleFileSelect(page.path);
+                                                                    setIsPageDropdownOpen(false);
+                                                                }}
+                                                                className={`flex w-full items-center justify-between px-4 py-2 text-left text-sm transition-colors hover:bg-orange-50 hover:text-[#F55F2A] ${
+                                                                    isActive ? "bg-orange-50/70 text-[#F55F2A]" : "text-neutral-700"
+                                                                }`}
+                                                            >
+                                                                <span className="truncate lowercase">{routeLabel}</span>
+                                                                {isActive ? <span className="ml-3 shrink-0 h-2 w-2 rounded-full bg-[#F55F2A]" aria-hidden="true" /> : null}
+                                                            </button>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </div>
+                                        ) : null}
+                                    </div>
+                                ) : null}
+
                         </div>
 
                         {/* App Content */}
-                        <div data-tour-builder-preview className="flex-1 bg-white">
+                        <div className="flex-1 bg-white">
                             {previewMode === "webcontainer" ? (
                                 filesHydrated ? (
                                     <div className="h-full w-full p-3">
@@ -7116,12 +6568,16 @@ export default function AppBuilderEditor({
                                             filesReady={filesHydrated}
                                             onFileChange={handleFileChangeFromContainer}
                                             onPreviewReadyChange={setIsWebPreviewReady}
-                                            previewIssue={previewIssue}
-                                            onPreviewIssueChange={(payload) => {
-                                                setPreviewIssue(payload?.issue || null);
-                                                setPreviewIssueDiagnostics(payload?.diagnostics || null);
-                                                setPreviewIssueFailure(normalizePreviewFailureContract(payload?.failure));
-                                                setPreviewIssueActionLabel(payload?.recommendedActionLabel || null);
+                                            onPreviewIssueChange={(payload: any) => {
+                                                const previewPayload = payload as Record<string, any> | null;
+                                                const previewStatus = String(previewPayload?.status || "").trim().toLowerCase();
+                                                const nextPreviewIssue = previewStatus === "processing" || previewStatus === "ready"
+                                                    ? null
+                                                    : (previewPayload?.userMessage || previewPayload?.message || previewPayload?.details || previewPayload?.issue || null);
+                                                setPreviewIssue(nextPreviewIssue);
+                                                setPreviewIssueDiagnostics(previewPayload?.diagnostics || null);
+                                                setPreviewIssueFailure(normalizePreviewFailureContract(previewPayload?.failure));
+                                                setPreviewIssueActionLabel(previewPayload?.recommendedActionLabel || null);
                                             }}
                                             onNavigatePathChange={handlePreviewRouteChange}
                                             onCompileErrorFixRequest={handleCompileErrorFixRequest}
@@ -7151,7 +6607,7 @@ export default function AppBuilderEditor({
                                                 <span className="kloner-dot" />
                                                 <span className="kloner-dot" />
                                             </div>
-                                            <div className="mt-6 w-full max-w-2xl px-6 text-left"><div className="text-sm text-black/60"><span>Hydrating editor</span></div></div>
+                                            <div className="mt-6 w-full max-w-2xl px-6 text-left"><div className="text-sm text-black/60"><span>Hydrating files...</span></div></div>
                                         </div>
                                     </div>
                                 )
@@ -7301,19 +6757,12 @@ export default function AppBuilderEditor({
                 </div>
 
                 {/* Mobile bottom tabs: keep preview in focus */}
-                {desktopOnlyToast ? (
-                    <div className="md:hidden fixed bottom-20 left-1/2 -translate-x-1/2 z-[99999] flex items-center gap-2 rounded-full border border-neutral-200 bg-neutral-900 px-4 py-2 text-sm font-medium text-white shadow-xl">
-                        <Monitor className="h-4 w-4 shrink-0 opacity-70" />
-                        <span>Available on desktop</span>
-                    </div>
-                ) : null}
                 <div className="md:hidden border-t bg-white px-2 py-2">
                     <div role="tablist" aria-label="Builder tabs" className="grid grid-cols-2 gap-2">
                         <button
                             type="button"
                             role="tab"
                             aria-selected={mobileTab === "app"}
-                            data-tour-mobile-preview
                             onClick={() => {
                                 setMobileTab("app");
                                 setMobileControlsOpen(false);
@@ -7332,7 +6781,6 @@ export default function AppBuilderEditor({
                             type="button"
                             role="tab"
                             aria-selected={mobileTab === "prompt"}
-                            data-tour-mobile-prompt
                             onClick={() => {
                                 setMobileTab("prompt");
                                 setMobileControlsOpen(false);
@@ -7439,27 +6887,24 @@ export default function AppBuilderEditor({
                                         <span>Rebuild</span>
                                     </button>
 
-                                    {isDev ? (
-                                        <button
-                                            onClick={() => void openDatabaseConnect()}
-                                            className="inline-flex items-center justify-center gap-2 rounded-full px-4 py-2 text-sm font-semibold border border-neutral-300 bg-white text-neutral-800"
-                                            title={supabaseConnected && (supabaseProjectName || supabaseProjectRef) ? `Connected to: ${supabaseProjectName || supabaseProjectRef}` : supabaseConnected ? "Open Supabase" : "Connect Database"}
-                                        >
-                                            <Database className="h-4 w-4 shrink-0" />
-                                            {supabaseConnected && (supabaseProjectName || supabaseProjectRef) ? (
-                                                <span className="flex flex-col items-start leading-tight">
-                                                    <span className="text-[10px] uppercase tracking-wide opacity-60">Database</span>
-                                                    <span className="max-w-[140px] truncate">{supabaseProjectName || supabaseProjectRef}</span>
-                                                </span>
-                                            ) : (
-                                                <span>{supabaseConnected ? "Database" : "Connect Database"}</span>
-                                            )}
-                                            <DevOnlyIconBadge title="Development-only database controls" />
-                                        </button>
-                                    ) : null}
+                                    <button
+                                        onClick={() => void openDatabaseConnect()}
+                                        className="inline-flex items-center justify-center gap-2 rounded-full px-4 py-2 text-sm font-semibold border border-neutral-300 bg-white text-neutral-800"
+                                        title={supabaseConnected && (supabaseProjectName || supabaseProjectRef) ? `Connected to: ${supabaseProjectName || supabaseProjectRef}` : supabaseConnected ? "Open Supabase" : "Connect Database"}
+                                    >
+                                        <Database className="h-4 w-4 shrink-0" />
+                                        {supabaseConnected && (supabaseProjectName || supabaseProjectRef) ? (
+                                            <span className="flex flex-col items-start leading-tight">
+                                                <span className="text-[10px] uppercase tracking-wide opacity-60">Database</span>
+                                                <span className="max-w-[140px] truncate">{supabaseProjectName || supabaseProjectRef}</span>
+                                            </span>
+                                        ) : (
+                                            <span>{supabaseConnected ? "Database" : "Connect Database"}</span>
+                                        )}
+                                    </button>
                                 </div>
 
-                                {isDev && supabaseConnected ? (
+                                {supabaseConnected ? (
                                     <button
                                         onClick={() => {
                                             setMobileControlsOpen(false);
@@ -7508,7 +6953,7 @@ export default function AppBuilderEditor({
                                     </button>
                                 ) : null}
 
-                                {isDev ? (
+                                {process.env.NODE_ENV !== "production" ? (
                                     <button
                                         onClick={() => {
                                             setMobileControlsOpen(false);
@@ -7520,7 +6965,7 @@ export default function AppBuilderEditor({
                                     >
                                         <Share2 className="h-4 w-4" />
                                         <span>{isSharingPreview ? "Sharing…" : "Share preview"}</span>
-                                        <DevOnlyIconBadge title="Development-only share control" />
+                                        <DevOnlyIconBadge title="Development-only share preview" />
                                     </button>
                                 ) : null}
 
@@ -7557,28 +7002,12 @@ export default function AppBuilderEditor({
                                                 </button>
                                             </div>
                                         ) : null}
-{/* 
-                                        {!isVisualEditorMode ? (
-                                            <button
-                                                type="button"
-                                                onClick={() => {
-                                                    setMobileControlsOpen(false);
-                                                    handleTakeBuilderTour();
-                                                }}
-                                                className="mt-2 w-full inline-flex items-center justify-center gap-2 rounded-full px-4 py-2 text-sm font-semibold border border-neutral-300 bg-white text-neutral-800"
-                                                title="Show the app builder tour"
-                                            >
-                                                <span>Take tour</span>
-                                            </button>
-                                        ) : null} */}
                                     </div>
                                 ) : null}
                             </div>
                         </div>
                     </div>
                 ) : null}
-
-                <AppBuilderEditorTour startToken={builderTourStartToken} />
 
                 {showAppBuilderTrialPrompt ? (
                     <motion.div
@@ -7669,34 +7098,31 @@ export default function AppBuilderEditor({
                 ) : null}
 
                 {vercelConnectOpen && (
-                    <div className="fixed inset-0 z-[17000] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
-                        <div className="w-full max-w-lg overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-lg">
-                            <div className="flex items-start justify-between gap-4 border-b bg-gradient-to-b from-gray-50 to-white px-5 py-5">
-                                <div className="min-w-0 space-y-1">
-                                    <div className="text-2xl font-semibold tracking-tight text-neutral-900">Connect Vercel</div>
-                                    <div className="text-sm leading-6 text-neutral-600">Unlock production-style previews and deploys.</div>
+                    <div className="fixed inset-0 z-[17000] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+                        <div className="w-full max-w-md rounded-xl bg-white shadow-lg border border-neutral-200 overflow-hidden">
+                            <div className="p-4 border-b bg-gradient-to-b from-gray-50 to-white flex items-center justify-between">
+                                <div className="space-y-0.5">
+                                    <div className="font-semibold text-neutral-900">Connect Vercel</div>
+                                    <div className="text-[11px] text-neutral-600">Unlock production-style previews and deploys.</div>
                                 </div>
                                 <button
-                                    type="button"
                                     onClick={() => {
                                         setVercelConnectOpen(false);
                                         setVercelConnectOpening(false);
                                     }}
-                                    className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-800"
+                                    className="p-2 hover:bg-gray-200 rounded transition-colors"
                                     title="Close"
-                                    aria-label="Close"
                                 >
-                                    <X className="h-5 w-5" />
+                                    <X className="w-4 h-4" />
                                 </button>
                             </div>
-
-                            <div className="px-5 py-5">
-                                <div className="text-sm leading-6 text-neutral-700">
+                            <div className="p-4">
+                                <div className="text-sm text-gray-700 mb-3">
                                     Required to build previews and deploy your app live.
                                 </div>
 
-                                <div className="mt-4 rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm leading-6 text-neutral-700">
-                                    <span className="font-semibold text-neutral-900">Status:</span>{" "}
+                                <div className="rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2 text-[11px] text-neutral-600">
+                                    <span className="font-semibold text-neutral-800">Status:</span>{" "}
                                     {isVercelChecking
                                         ? "Checking connection…"
                                         : vercelConnectOpening
@@ -7706,38 +7132,27 @@ export default function AppBuilderEditor({
                                                 : "Not connected yet."}
                                 </div>
 
-                                <div className="mt-4 flex flex-col gap-2">
+                                <div className="mt-3 flex gap-2">
                                     <button
-                                        type="button"
-                                        onClick={
-                                            vercelConnectFlow === "share"
-                                                ? startVercelOAuthForSharePreview
-                                                : vercelConnectFlow === "images"
-                                                    ? startVercelOAuthForImageLibrary
-                                                    : startVercelOAuthForPreview
-                                        }
+                                        onClick={vercelConnectFlow === "share" ? startVercelOAuthForSharePreview : startVercelOAuthForPreview}
                                         disabled={isVercelChecking || vercelConnectOpening}
-                                        className="inline-flex h-12 w-full items-center justify-center gap-2 whitespace-nowrap rounded-full bg-[#F55F2A] px-5 text-sm font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                                        className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2 bg-[#F55F2A] text-xs font-semibold text-white rounded-full hover:opacity-90 disabled:opacity-50"
                                     >
                                         {(isVercelChecking || vercelConnectOpening) ? (
                                             <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white/50 border-t-white" />
                                         ) : null}
-                                        <span>
-                                            {vercelConnectOpening
-                                                ? "Opening Vercel…"
-                                                : isVercelChecking
-                                                    ? "Checking…"
-                                                    : "Connect Vercel"}
-                                        </span>
+                                        {vercelConnectOpening
+                                            ? "Opening Vercel…"
+                                            : isVercelChecking
+                                                ? "Checking…"
+                                                : "Connect Vercel"}
                                     </button>
-
                                     <button
-                                        type="button"
                                         onClick={async () => {
                                             await refreshVercelStatus();
                                             setVercelConnectOpening(false);
                                         }}
-                                        className="inline-flex h-auto w-full items-center justify-center whitespace-nowrap rounded-none border-0 bg-transparent px-0 py-1 text-xs font-medium text-neutral-500 transition hover:bg-transparent hover:text-neutral-700"
+                                        className="px-4 py-2 rounded-full text-sm border border-neutral-200 hover:bg-neutral-50"
                                         title="Re-check connection"
                                     >
                                         I already connected
