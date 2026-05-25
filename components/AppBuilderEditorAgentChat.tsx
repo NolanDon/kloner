@@ -8138,7 +8138,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                         }}
                         disabled={topupBusy}
                     >
-                        <span className="inline-flex items-center gap-1.5">
+                        <span className="inline-flex items-center">
                             {!topupBusy ? <CoinLottieBadge className="h-8 w-8 shrink-0" /> : null}
                             <span>{topupBusy ? "Opening checkout…" : "Add credits"}</span>
                         </span>
