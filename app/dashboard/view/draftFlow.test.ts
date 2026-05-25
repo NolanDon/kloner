@@ -35,7 +35,7 @@ describe("dashboard draft flow", () => {
             createdAt: 1,
         });
 
-        expect(record?.name).toBe("example.com");
+        expect(record?.name).toBe("Draft: example.com");
     });
 
     it("submits a url, clears the pending url after /generate resolves, and persists a draft record", async () => {

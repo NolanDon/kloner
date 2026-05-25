@@ -19,6 +19,23 @@ jest.mock("next/server", () => {
 const callBackend = jest.fn();
 const peekUserCredit = jest.fn();
 const consumeUserCredit = jest.fn();
+const appRefGet = jest.fn();
+const appRefSet = jest.fn();
+const appRef = {
+    get: (...args: any[]) => appRefGet(...args),
+    set: (...args: any[]) => appRefSet(...args),
+};
+const collectionKlonerApps = jest.fn(() => ({
+    doc: () => appRef,
+}));
+const collectionKlonerUsers = jest.fn(() => ({
+    doc: () => ({
+        collection: collectionKlonerApps,
+    }),
+}));
+const getAdminDb = jest.fn(() => ({
+    collection: collectionKlonerUsers,
+}));
 
 jest.mock("@/src/lib/callBackend", () => {
     return {
@@ -38,6 +55,7 @@ jest.mock("../_lib/auth", () => {
     return {
         __esModule: true,
         verifySession: async () => ({ uid: "uid_1", email: "user@example.com" }),
+        getAdminDb: (...args: any[]) => getAdminDb(...args),
     };
 });
 
@@ -69,8 +87,15 @@ describe("POST /api/generate-app-from-url", () => {
         callBackend.mockReset();
         peekUserCredit.mockReset();
         consumeUserCredit.mockReset();
+        getAdminDb.mockClear();
+        collectionKlonerUsers.mockClear();
+        collectionKlonerApps.mockClear();
+        appRefGet.mockReset();
+        appRefSet.mockReset();
         peekUserCredit.mockResolvedValue({ ok: true, remaining: 10 });
         consumeUserCredit.mockResolvedValue(undefined);
+        appRefGet.mockResolvedValue({ exists: false, data: () => ({}) });
+        appRefSet.mockResolvedValue(undefined);
         callBackend.mockResolvedValue({
             status: 202,
             json: { appId: "app_123", jobId: "job_123", accepted: true, status: "queued", message: "Accepted" },
