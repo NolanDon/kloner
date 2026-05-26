@@ -108,6 +108,12 @@ service cloud.firestore {
 
       allow read, write: if isOwnerOrAdmin(userId);
 
+      // Keep owner/admin read access consistent for any nested user-private doc.
+      // Writes remain controlled by explicit subcollection rules below.
+      match /{document=**} {
+        allow read: if isOwnerOrAdmin(userId);
+      }
+
       match /kloner_urls/{urlId} {
         allow read, write: if isOwnerOrAdmin(userId);
       }

@@ -3768,17 +3768,17 @@ export default function PreviewPage(): JSX.Element {
         if (deletingOwnAccount) return;
         const ok = await showConfirm(
             "Delete your account? This will permanently delete all your apps, data, and cancel any active subscription. This cannot be undone.",
-            { confirmLabel: "Delete my account", destructive: true }
+            "Delete Account"
         );
         if (!ok) return;
         setDeletingOwnAccount(true);
         try {
-            const { csrfToken } = await ensureSessionAndCsrf();
+            const csrf = await ensureSessionAndCsrf().catch(() => null);
             const res = await fetch("/api/me", {
                 method: "DELETE",
                 headers: {
                     "Content-Type": "application/json",
-                    "x-csrf": csrfToken,
+                    ...(csrf ? { "x-csrf": csrf } : {}),
                 },
                 body: JSON.stringify({ confirm: "DELETE_MY_ACCOUNT" }),
             });
@@ -11963,23 +11963,6 @@ export default function PreviewPage(): JSX.Element {
                         queueActive={captureLocked || retryRescanPending}
                     />
                 </section>
-
-                {isDev && (
-                    <section className="mb-6">
-                        <div className="flex items-center gap-3 rounded-2xl border border-red-200 bg-red-50 px-4 py-3">
-                            <Trash2 className="h-4 w-4 shrink-0 text-red-500" />
-                            <p className="flex-1 text-sm font-medium text-red-700">Dev only — delete this account and all associated data</p>
-                            <button
-                                type="button"
-                                onClick={() => { void handleDeleteOwnAccount(); }}
-                                disabled={deletingOwnAccount}
-                                className="shrink-0 rounded-xl bg-red-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
-                            >
-                                {deletingOwnAccount ? "Deleting..." : "Delete account"}
-                            </button>
-                        </div>
-                    </section>
-                )}
 
                 {/* Step 1: URL selection */}
                 {showActiveUrlIssueWarning && activeUrlDoc?.url ? (
