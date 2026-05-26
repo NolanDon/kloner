@@ -3629,6 +3629,7 @@ export default function PreviewPage(): JSX.Element {
     const [showDevQuickMenuLauncher, setShowDevQuickMenuLauncher] = useState(true);
     const [previewDebugScenario, setPreviewDebugScenario] = useState<{ mode: 'terminal-error' | 'terminal-error-auto-fix'; nonce: number } | null>(null);
     const isDev = process.env.NODE_ENV !== "production";
+    const [deletingOwnAccount, setDeletingOwnAccount] = useState(false);
 
     const [archivingRender, setArchivingRender] = useState<Record<string, boolean>>({});
     const [archivingApp, setArchivingApp] = useState<Record<string, boolean>>({});
@@ -3762,6 +3763,39 @@ export default function PreviewPage(): JSX.Element {
             });
         }
     }
+
+    const handleDeleteOwnAccount = async () => {
+        if (deletingOwnAccount) return;
+        const ok = await showConfirm(
+            "Delete your account? This will permanently delete all your apps, data, and cancel any active subscription. This cannot be undone.",
+            { confirmLabel: "Delete my account", destructive: true }
+        );
+        if (!ok) return;
+        setDeletingOwnAccount(true);
+        try {
+            const { csrfToken } = await ensureSessionAndCsrf();
+            const res = await fetch("/api/me", {
+                method: "DELETE",
+                headers: {
+                    "Content-Type": "application/json",
+                    "x-csrf": csrfToken,
+                },
+                body: JSON.stringify({ confirm: "DELETE_MY_ACCOUNT" }),
+            });
+            if (!res.ok) {
+                const data = (await res.json().catch(() => ({}))) as { error?: string };
+                void showAlert(data.error ?? "Failed to delete account. Please try again.");
+                return;
+            }
+            resetAuthClientCaches();
+            await firebaseSignOut(auth).catch(() => null);
+            router.replace("/login");
+        } catch {
+            void showAlert("Failed to delete account. Please try again.");
+        } finally {
+            setDeletingOwnAccount(false);
+        }
+    };
 
     const [deployWizardOpen, setDeployWizardOpen] = useState(false);
     const [deployWizardStep, setDeployWizardStep] = useState<1 | 2 | 3 | 5>(1);
@@ -11764,6 +11798,22 @@ export default function PreviewPage(): JSX.Element {
                                 <div className="mt-4 space-y-2">
                                     <button
                                         type="button"
+                                        onClick={() => { void handleDeleteOwnAccount(); }}
+                                        disabled={deletingOwnAccount}
+                                        className="flex w-full items-center justify-between rounded-2xl border border-red-200 bg-red-50 px-3 py-2.5 text-left text-sm font-medium text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
+                                    >
+                                        <span>{deletingOwnAccount ? "Deleting account..." : "Delete my account"}</span>
+                                        {deletingOwnAccount ? (
+                                            <Loader2 className="h-4 w-4 animate-spin text-red-500" />
+                                        ) : (
+                                            <Trash2 className="h-4 w-4 text-red-500" />
+                                        )}
+                                    </button>
+
+                                    <div className="border-t border-neutral-200" />
+
+                                    <button
+                                        type="button"
                                         onClick={() => {
                                             setShowDevQuickMenu(false);
                                             router.push("/dashboard/view?billing=success&trial=1");
@@ -11913,6 +11963,23 @@ export default function PreviewPage(): JSX.Element {
                         queueActive={captureLocked || retryRescanPending}
                     />
                 </section>
+
+                {isDev && (
+                    <section className="mb-6">
+                        <div className="flex items-center gap-3 rounded-2xl border border-red-200 bg-red-50 px-4 py-3">
+                            <Trash2 className="h-4 w-4 shrink-0 text-red-500" />
+                            <p className="flex-1 text-sm font-medium text-red-700">Dev only — delete this account and all associated data</p>
+                            <button
+                                type="button"
+                                onClick={() => { void handleDeleteOwnAccount(); }}
+                                disabled={deletingOwnAccount}
+                                className="shrink-0 rounded-xl bg-red-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                                {deletingOwnAccount ? "Deleting..." : "Delete account"}
+                            </button>
+                        </div>
+                    </section>
+                )}
 
                 {/* Step 1: URL selection */}
                 {showActiveUrlIssueWarning && activeUrlDoc?.url ? (

@@ -125,6 +125,12 @@ const BASE_NAV_SECTIONS: NavSectionConfig[] = [
         label: "Admin",
         items: [
             {
+                href: "/admin/users",
+                label: "Users",
+                icon: Users,
+                adminOnly: true,
+            },
+            {
                 href: "/admin/renders",
                 label: "User renders",
                 icon: Monitor,

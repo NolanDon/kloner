@@ -154,7 +154,7 @@ export async function requireAdmin(req: NextRequest) {
     if (!token) return { ok: false as const };
 
     try {
-        const decoded = await admin.auth().verifyIdToken(token);
+        const decoded = await getAdminAuth().verifyIdToken(token);
         const claims = decoded as any;
         if (!claims?.admin) return { ok: false as const };
         return { ok: true as const, uid: decoded.uid };
