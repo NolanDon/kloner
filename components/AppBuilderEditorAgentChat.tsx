@@ -8601,9 +8601,9 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                         <Send className="h-6 w-6" />
                     </button>
                 </div>
-                {/* <div className="mt-2 text-xs text-neutral-500">
+                <div className="hidden sm:block mt-2 text-xs text-neutral-500">
                     Press Enter to send, Shift+Enter for new line
-                </div> */}
+                </div>
             </div>
         </div>
     );
