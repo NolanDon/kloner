@@ -3198,6 +3198,17 @@ export default function NavBar() {
 
           // Hard timeout guard (12 minutes)
           if (pollStartedAtRef.current && Date.now() - pollStartedAtRef.current > HARD_POLL_TIMEOUT_MS) {
+            // If we already have a live preview surface, a strict polling timeout can
+            // be a false negative (backend `ready` flag lagging behind real reachability).
+            // Keep polling quietly instead of surfacing a terminal error.
+            const hasLoadedPreviewSurface = Boolean(previewUrlRef.current) &&
+              (appLoadedSuccessfullyRef.current || iframeLoadedSuccessfullyRef.current);
+            if (hasLoadedPreviewSurface) {
+              pollStartedAtRef.current = Date.now();
+              statusPollTimeoutRef.current = setTimeout(pollStatus, POLL_INTERVAL_MS);
+              return;
+            }
+
             console.error('[WebContainerRunner] Preview polling timed out');
             const timedOutAgeMs = Date.now() - pollStartedAtRef.current;
             const online = typeof navigator !== 'undefined' ? navigator.onLine : null;
@@ -5634,7 +5645,7 @@ export default function NavBar() {
                   onClick={retryApp}
                   className="mt-3 inline-flex items-center rounded-full border border-neutral-700 bg-neutral-800 px-3 py-1.5 text-xs font-semibold text-neutral-100 transition hover:bg-neutral-700"
                 >
-                  Refresh webcontainer
+                  Refresh
                 </button>
               </div>
             </div>
