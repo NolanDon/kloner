@@ -125,6 +125,7 @@ const FRONTEND_TIMEOUT_DEDUPE_STORAGE_KEY = "dashboardViewFrontendTimeoutAlertsV
 const CAPTURE_STALE_ALERT_STORAGE_KEY = "dashboardViewCaptureStaleAlertsV1";
 const CAPTURE_STALLED_ALERT_STORAGE_KEY = "dashboardViewCaptureStalledAlertsV1";
 const URL_SCAN_RETRY_BACKOFF_STORAGE_KEY = "dashboardViewUrlRetryBackoffV1";
+const URL_ISSUE_DISMISS_STORAGE_KEY = "dashboardViewUrlIssueDismissalsV1";
 const URL_SCAN_RETRY_BACKOFF_SEQUENCE_MS = [10_000, 20_000, 40_000, 90_000, 180_000, 360_000, 720_000];
 const AUTOQUEUE_DEDUPE_STORAGE_KEY = "dashboardViewAutoQueueDedupeV1";
 const AUTOQUEUE_DEDUPE_TTL_MS = 2 * 60 * 1000;
@@ -790,6 +791,66 @@ function writeUrlRetryBackoffMap(map: UrlRetryBackoffMap): void {
     }
 }
 
+function readUrlIssueDismissMap(): Record<string, number> {
+    if (typeof window === "undefined") return {};
+
+    try {
+        const raw = window.sessionStorage.getItem(URL_ISSUE_DISMISS_STORAGE_KEY);
+        if (!raw) return {};
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== "object") return {};
+
+        const out: Record<string, number> = {};
+        for (const [key, value] of Object.entries(parsed)) {
+            const normalizedKey = String(key || "").trim();
+            const ts = Number(value);
+            if (!normalizedKey || !Number.isFinite(ts) || ts <= 0) continue;
+            out[normalizedKey] = ts;
+        }
+        return out;
+    } catch {
+        return {};
+    }
+}
+
+function writeUrlIssueDismissMap(map: Record<string, number>): void {
+    if (typeof window === "undefined") return;
+
+    try {
+        if (!Object.keys(map).length) {
+            window.sessionStorage.removeItem(URL_ISSUE_DISMISS_STORAGE_KEY);
+            return;
+        }
+        window.sessionStorage.setItem(URL_ISSUE_DISMISS_STORAGE_KEY, JSON.stringify(map));
+    } catch {
+        // Ignore storage failures; banner behavior still works in-memory.
+    }
+}
+
+function hasUrlIssueBeenDismissed(urlCanonical: string): boolean {
+    if (typeof window === "undefined") return false;
+    if (!urlCanonical) return false;
+    const map = readUrlIssueDismissMap();
+    return typeof map[urlCanonical] === "number";
+}
+
+function markUrlIssueDismissed(urlCanonical: string): void {
+    if (typeof window === "undefined") return;
+    if (!urlCanonical) return;
+    const map = readUrlIssueDismissMap();
+    map[urlCanonical] = Date.now();
+    writeUrlIssueDismissMap(map);
+}
+
+function clearUrlIssueDismissed(urlCanonical: string): void {
+    if (typeof window === "undefined") return;
+    if (!urlCanonical) return;
+    const map = readUrlIssueDismissMap();
+    if (!Object.prototype.hasOwnProperty.call(map, urlCanonical)) return;
+    delete map[urlCanonical];
+    writeUrlIssueDismissMap(map);
+}
+
 function truncateMiddle(value: string, maxLen = 72): string {
     const text = String(value || "");
     if (text.length <= maxLen) return text;
@@ -846,7 +907,7 @@ function AmberIssueBanner({
         >
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
                 <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2 text-left">
-                    <MessageCircleWarning className="h-4 w-4 shrink-0 text-amber-700" />
+                    <AlertTriangle className="h-4 w-4 shrink-0 text-amber-700" />
                     <span className="min-w-0 whitespace-normal break-words font-semibold leading-5 text-amber-950 sm:whitespace-nowrap sm:leading-6">
                         {message}
                     </span>
@@ -1277,7 +1338,7 @@ function MiniDashboardEntry({
                         <Loader2 className="h-3.5 w-3.5 animate-spin" />
                         {captureStatus === "queued"
                             ? "Queued scan… this can take a few minutes."
-                            : "Processing your URL…"}
+                            : "Processing your URL… this can take a few minutes."}
                     </div>
                 ) : null}
 
@@ -2555,6 +2616,7 @@ function AppCard({
     const [isEditingName, setIsEditingName] = useState(false);
     const [nameDraft, setNameDraft] = useState(appDisplayName);
     const canEditName = !isDraftCard;
+    const [draftEditLaunchBusy, setDraftEditLaunchBusy] = useState(false);
 
     useEffect(() => {
         if (!isEditingName) {
@@ -2583,6 +2645,18 @@ function AppCard({
         await onRename(app.id, trimmed);
         setIsEditingName(false);
     }, [app.id, appDisplayName, canEditName, nameDraft, onRename]);
+
+    useEffect(() => {
+        if (!isDraftCard) {
+            setDraftEditLaunchBusy(false);
+        }
+    }, [isDraftCard]);
+
+    useEffect(() => {
+        if (isPendingCreation) {
+            setDraftEditLaunchBusy(false);
+        }
+    }, [isPendingCreation]);
 
     return (
         <div className="group relative mx-auto w-full max-w-[240px] px-2 pt-2 pb-4 sm:pb-5">
@@ -2652,17 +2726,24 @@ function AppCard({
                                 ) : !draftIssue ? (
                                     <button
                                         type="button"
-                                        onClick={() => {
-                                            if (disableActions || isPendingCreation || isBrokenDraftCard) return;
-                                            onPromoteDraft?.({
-                                                draftId,
-                                                id: app.id,
-                                                name: app.name,
-                                                createdAt: app.createdAt,
-                                                sourceUrl: (app as any)?.sourceUrl || null,
-                                            });
+                                        onClick={async () => {
+                                            if (disableActions || isPendingCreation || isBrokenDraftCard || draftEditLaunchBusy) return;
+                                            if (!onPromoteDraft) return;
+
+                                            setDraftEditLaunchBusy(true);
+                                            try {
+                                                await Promise.resolve(onPromoteDraft({
+                                                    draftId,
+                                                    id: app.id,
+                                                    name: app.name,
+                                                    createdAt: app.createdAt,
+                                                    sourceUrl: (app as any)?.sourceUrl || null,
+                                                }));
+                                            } finally {
+                                                setDraftEditLaunchBusy(false);
+                                            }
                                         }}
-                                        disabled={isDeleting || accessLocked || disableActions || isPendingCreation || isBrokenDraftCard || draftIssueIsBlocked || !onPromoteDraft}
+                                        disabled={isDeleting || accessLocked || disableActions || isPendingCreation || isBrokenDraftCard || draftIssueIsBlocked || draftEditLaunchBusy || !onPromoteDraft}
                                         className="absolute inset-0 grid place-items-center rounded-[2.6rem] border border-neutral-200 bg-transparent text-neutral-800 opacity-0 backdrop-blur-[1px] transition-all duration-200 hover:bg-transparent group-hover/draft-icon:opacity-100 group-focus-visible/draft-icon:opacity-100 group-hover/draft-icon:scale-[1.015] group-focus-visible/draft-icon:scale-[1.015]"
                                         aria-label="Edit draft"
                                         title={draftIssueIsBlocked ? blockedDraftDescription : "Edit draft"}
@@ -2886,7 +2967,7 @@ function AppCard({
                     ) : null
                 ) : null}
 
-                <div className={`mt-2 grid w-full gap-1 sm:mt-3 sm:gap-1.5 ${isDraftCard ? "grid-cols-3" : "grid-cols-4"}`}>
+                <div className={`mt-2 grid w-full gap-0.5 sm:mt-3 sm:gap-1 ${isDraftCard ? "grid-cols-3" : "grid-cols-3"}`}>
                     {isDraftCard ? (
                         <>
                             <div
@@ -2894,34 +2975,16 @@ function AppCard({
                                 style={{ transitionDelay: "0ms" }}
                             >
                                 <span className="pointer-events-none absolute -bottom-6 left-1/2 -translate-x-1/2 whitespace-nowrap text-[10px] font-medium text-neutral-800 opacity-100 transition-opacity duration-150 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
-                                    Edit
+                                    Deploy
                                 </span>
                                 <button
                                     type="button"
-                                    onClick={() => {
-                                        if (disableActions || isPendingCreation || isBrokenDraftCard || draftIssueIsBlocked) return;
-                                        onPromoteDraft?.({
-                                            draftId,
-                                            id: app.id,
-                                            name: app.name,
-                                            createdAt: app.createdAt,
-                                            sourceUrl: (app as any)?.sourceUrl || null,
-                                        });
-                                    }}
-                                    disabled={isDeleting || accessLocked || disableActions || isPendingCreation || isBrokenDraftCard || draftIssueIsBlocked || !onPromoteDraft}
-                                    aria-label="Edit draft"
-                                    title={
-                                        draftIssueIsBlocked
-                                            ? blockedDraftDescription
-                                            : isPendingCreation
-                                            ? "This draft is still being created"
-                                            : accessLocked
-                                                ? "Trial access was cancelled, so this draft is locked in the dashboard"
-                                                : "Open draft in editor"
-                                    }
-                                    className="inline-flex h-7 w-7 items-center justify-center rounded-2xl border border-neutral-300 bg-transparent text-neutral-800 shadow-none transition-all duration-300 ease-out hover:-translate-y-0.5 hover:border-neutral-400 hover:bg-transparent hover:shadow-[0_10px_24px_rgba(15,23,42,0.08)] active:translate-y-0 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f55f2a]/30 disabled:cursor-not-allowed disabled:opacity-60"
+                                    disabled
+                                    aria-label="Deploy draft"
+                                    title="Deploy is unavailable for drafts"
+                                    className="inline-flex h-8 w-8 cursor-not-allowed items-center justify-center rounded-2xl border border-neutral-200 bg-white text-neutral-400 shadow-sm opacity-60"
                                 >
-                                    <BrushIcon className="h-3 w-3 shrink-0 transform transition-transform duration-150 group-hover:-translate-y-0.5 group-active:translate-y-0" />
+                                    <Rocket className="h-3.5 w-3.5" />
                                 </button>
                             </div>
 
@@ -3017,34 +3080,6 @@ function AppCard({
                                 style={{ transitionDelay: "120ms" }}
                             >
                                 <span className="pointer-events-none absolute -bottom-6 left-1/2 -translate-x-1/2 whitespace-nowrap text-[10px] font-medium text-neutral-800 opacity-100 transition-opacity duration-150 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
-                                    Edit
-                                </span>
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        if (disableActions || isPendingCreation) return;
-                                        onCustomize(app.id);
-                                    }}
-                                    disabled={isDeleting || accessLocked || disableActions || isPendingCreation}
-                                    className="inline-flex h-8 w-8 items-center justify-center rounded-2xl border border-neutral-300 bg-white text-neutral-800 shadow-sm transition-all duration-300 ease-out hover:border-neutral-400 disabled:opacity-60"
-                                    title={
-                                        isPendingCreation
-                                            ? "This app is still being created"
-                                            : accessLocked
-                                                ? "Trial access was cancelled, so this app is locked in the dashboard"
-                                                : "Open app in editor"
-                                    }
-                                    aria-label="Open app editor"
-                                >
-                                    <BrushIcon className="h-3.5 w-3.5 shrink-0 transform transition-transform duration-150 group-hover:-translate-y-0.5" />
-                                </button>
-                            </div>
-
-                            <div
-                                className="relative flex justify-center transition-all duration-500 ease-out md:translate-y-3 md:scale-90 md:opacity-0 md:pointer-events-none md:blur-[1px] md:group-hover:translate-y-0 md:group-hover:scale-100 md:group-hover:opacity-100 md:group-hover:pointer-events-auto md:group-hover:blur-0"
-                                style={{ transitionDelay: "240ms" }}
-                            >
-                                <span className="pointer-events-none absolute -bottom-6 left-1/2 -translate-x-1/2 whitespace-nowrap text-[10px] font-medium text-neutral-800 opacity-100 transition-opacity duration-150 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
                                     Archive
                                 </span>
                                 <button
@@ -3068,7 +3103,7 @@ function AppCard({
 
                             <div
                                 className="relative flex justify-center transition-all duration-500 ease-out md:translate-y-3 md:scale-90 md:opacity-0 md:pointer-events-none md:blur-[1px] md:group-hover:translate-y-0 md:group-hover:scale-100 md:group-hover:opacity-100 md:group-hover:pointer-events-auto md:group-hover:blur-0"
-                                style={{ transitionDelay: "360ms" }}
+                                style={{ transitionDelay: "240ms" }}
                             >
                                 <span className="pointer-events-none absolute -bottom-6 left-1/2 -translate-x-1/2 whitespace-nowrap text-[10px] font-medium text-neutral-800 opacity-100 transition-opacity duration-150 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
                                     Delete
@@ -6830,15 +6865,7 @@ export default function PreviewPage(): JSX.Element {
     const forceRetryRequested = retryParam === "1" || retryParam === "true";
 
     const targetUrl = useMemo(() => {
-        let raw = urlParam;
-
-        if (!raw) {
-            try {
-                raw = localStorage.getItem("kloner:lastUrl") || "";
-            } catch {
-                raw = "";
-            }
-        }
+        const raw = urlParam;
 
         if (!raw) return "";
 
@@ -7696,6 +7723,60 @@ export default function PreviewPage(): JSX.Element {
             captureStatus === "processing" ||
             (startRequested && forceRetryRequested));
     const retryRescanPending = !!targetUrl && startRequested && forceRetryRequested;
+    const hasActiveUrlGeneration = Boolean(
+        createWebsitePlusBusy ||
+            websiteSubmitBusy ||
+            captureLocked ||
+            showQueuedScanStatus,
+    );
+
+    useEffect(() => {
+        if (!hasActiveUrlGeneration) return;
+
+        const confirmLeaveMessage =
+            "A URL generation job is still in progress. Are you sure you want to leave this page?";
+
+        const onBeforeUnload = (event: BeforeUnloadEvent) => {
+            event.preventDefault();
+            event.returnValue = "";
+        };
+
+        const onDocumentClickCapture = (event: MouseEvent) => {
+            const target = event.target as Element | null;
+            if (!target) return;
+
+            const anchor = target.closest("a[href]") as HTMLAnchorElement | null;
+            if (!anchor) return;
+            if (anchor.hasAttribute("download")) return;
+            if (anchor.target && anchor.target.toLowerCase() === "_blank") return;
+            if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+
+            let nextUrl: URL;
+            try {
+                nextUrl = new URL(anchor.href, window.location.href);
+            } catch {
+                return;
+            }
+
+            const currentPath = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+            const nextPath = `${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`;
+            if (nextPath === currentPath) return;
+
+            if (window.confirm(confirmLeaveMessage)) return;
+
+            event.preventDefault();
+            event.stopPropagation();
+            event.stopImmediatePropagation?.();
+        };
+
+        window.addEventListener("beforeunload", onBeforeUnload);
+        document.addEventListener("click", onDocumentClickCapture, true);
+
+        return () => {
+            window.removeEventListener("beforeunload", onBeforeUnload);
+            document.removeEventListener("click", onDocumentClickCapture, true);
+        };
+    }, [hasActiveUrlGeneration]);
 
     useEffect(() => {
         if (!websiteSubmissionPendingUrl) return;
@@ -8154,7 +8235,8 @@ export default function PreviewPage(): JSX.Element {
         !startRequested &&
         captureLockUrl !== targetUrl &&
         (Boolean(activeUrlRescanWarning?.blocking) || captureTerminalFailureUrl === activeUrlIssueHref) &&
-        dismissedUrlIssueCanonical !== activeUrlIssueHref;
+        dismissedUrlIssueCanonical !== activeUrlIssueHref &&
+        !hasUrlIssueBeenDismissed(activeUrlIssueHref);
     const retryCooldownActive = retryCooldownUntil > Date.now();
     const retryCooldownRemainingMs = retryCooldownActive ? Math.max(0, retryCooldownUntil - retryCooldownTick) : 0;
     const retryLabel = retryCooldownActive
@@ -9163,6 +9245,7 @@ export default function PreviewPage(): JSX.Element {
             setCaptureIssueNotice("");
             setHideCaptureQueueStatus(false);
             setDismissedUrlIssueCanonical("");
+            clearUrlIssueDismissed(normUrl(normalized));
             setCaptureTerminalFailureUrl("");
             setCaptureIssueDetails("");
             setUrlMenuOpen(false);
@@ -9291,6 +9374,8 @@ export default function PreviewPage(): JSX.Element {
             writeUrlRetryBackoffMap(next);
             return next;
         });
+
+        clearUrlIssueDismissed(activeUrlIssueHref);
     }, [activeUrlIssueHref, activeUrlStatusUi]);
 
     const isBackendFetchFailed502 = useCallback((status: number, payload: any): boolean => {
@@ -11253,16 +11338,6 @@ export default function PreviewPage(): JSX.Element {
         return groups;
     }, [shots]);
 
-    useEffect(() => {
-        if (!urlParam) return;
-        try {
-            localStorage.setItem("kloner:lastUrl", urlParam);
-        } catch {
-            // ignore
-        }
-    }, [urlParam]);
-
-
     // somewhere above the JSX return in this component:
     const hasGhostPending = !err && groupedShots.some((group, groupIndex) => {
         if (groupIndex > 0) return false;
@@ -11969,16 +12044,21 @@ export default function PreviewPage(): JSX.Element {
                     activeUrlIssueIsBlocked ? (
                         <RedIssueBanner
                             message={activeUrlRescanWarning?.message || "This domain is blocked for site cloning. Please use a different URL."}
-                            onDismiss={() => setDismissedUrlIssueCanonical(activeUrlIssueHref || "")}
+                            onDismiss={() => {
+                                const canonical = activeUrlIssueHref || "";
+                                setDismissedUrlIssueCanonical(canonical);
+                                markUrlIssueDismissed(canonical);
+                            }}
                             details={activeUrlIssueDetails}
                         />
                     ) : (
                         <AmberIssueBanner
                             message="Scan issue detected on"
-                            onDismiss={() => setDismissedUrlIssueCanonical(activeUrlIssueHref || "")}
-                            onRetry={() => retryTrackedUrl(activeUrlDoc?.url || "")}
-                            retryDisabled={retryCooldownActive}
-                            retryLabel={retryLabel}
+                            onDismiss={() => {
+                                const canonical = activeUrlIssueHref || "";
+                                setDismissedUrlIssueCanonical(canonical);
+                                markUrlIssueDismissed(canonical);
+                            }}
                             details={activeUrlIssueDetails}
                             linkHref={activeUrlDoc?.url || activeUrlIssueHref || null}
                             linkLabel={formatUrlOriginLabel(activeUrlDoc?.url || activeUrlIssueHref || "")}
@@ -12299,7 +12379,7 @@ export default function PreviewPage(): JSX.Element {
                 {appBuilderOpen && currentAppId && (
                     <AppBuilderEditor
                         appId={currentAppId}
-                        onCanonicalAppIdResolved={(canonicalAppId) => {
+                        onCanonicalAppIdResolved={(canonicalAppId: string) => {
                             const next = String(canonicalAppId || "").trim();
                             if (!next || next === currentAppId) return;
                             setCurrentAppId(next);

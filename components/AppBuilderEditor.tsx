@@ -1208,6 +1208,7 @@ function getEditorLanguageForPath(path: string | null): string {
 
 export default function AppBuilderEditor({
     appId,
+    onCanonicalAppIdResolved,
     onClose,
     onDeploy,
     agentWelcomeContext,
@@ -1220,6 +1221,7 @@ export default function AppBuilderEditor({
     deployIssue = null,
 }: {
     appId: string;
+    onCanonicalAppIdResolved?: (canonicalAppId: string) => void;
     onClose: () => void;
     onDeploy?: (app: { id: string; name: string }) => void;
     agentWelcomeContext?: {
@@ -1242,6 +1244,11 @@ export default function AppBuilderEditor({
         if (agentWelcomeContext?.source !== "url") return "";
         return String(agentWelcomeContext?.url || "").trim();
     }, [agentWelcomeContext?.source, agentWelcomeContext?.url]);
+
+    useEffect(() => {
+        if (!onCanonicalAppIdResolved) return;
+        onCanonicalAppIdResolved(appId);
+    }, [onCanonicalAppIdResolved, appId]);
 
     const faviconInputRef = useRef<HTMLInputElement | null>(null);
     const imageInputRef = useRef<HTMLInputElement | null>(null);

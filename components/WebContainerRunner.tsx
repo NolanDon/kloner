@@ -327,6 +327,7 @@ const pendingCleanupTimers = new Map<string, number>();
 interface WebContainerRunnerProps {
   appId: string;
   files: { [path: string]: { content: string; lastModified: number } };
+  previewIssue?: string | null;
   filesReady?: boolean;
   onFileChange?: (path: string, content: string) => void;
   onPreviewReadyChange?: (ready: boolean) => void;
