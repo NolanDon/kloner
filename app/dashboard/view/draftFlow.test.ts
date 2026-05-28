@@ -1,6 +1,89 @@
-import { normalizeDashboardDraftRecord, normalizeDashboardDraftRecords, submitDashboardUrlDraft } from "./draftFlow";
+import {
+    isPersistedDraftPendingState,
+    normalizeDashboardDraftRecord,
+    normalizeDashboardDraftRecords,
+    shouldDisableDraftDeleteButton,
+    submitDashboardUrlDraft,
+} from "./draftFlow";
 
 describe("dashboard draft flow", () => {
+    it("keeps draft delete enabled during pending or locked states when not deleting", () => {
+        expect(
+            shouldDisableDraftDeleteButton({
+                isDeleting: false,
+                isPendingCreation: true,
+                disableActions: true,
+                accessLocked: true,
+            }),
+        ).toBe(false);
+
+        expect(
+            shouldDisableDraftDeleteButton({
+                isDeleting: false,
+                isPendingCreation: false,
+                disableActions: false,
+                accessLocked: false,
+            }),
+        ).toBe(false);
+    });
+
+    it("disables draft delete only while delete request is in flight", () => {
+        expect(
+            shouldDisableDraftDeleteButton({
+                isDeleting: true,
+                isPendingCreation: false,
+            }),
+        ).toBe(true);
+
+        expect(
+            shouldDisableDraftDeleteButton({
+                isDeleting: true,
+                isPendingCreation: true,
+                disableActions: true,
+            }),
+        ).toBe(true);
+    });
+
+    it("only marks persisted pending state for actual draft cards", () => {
+        expect(
+            isPersistedDraftPendingState({
+                isDraftCard: false,
+                status: "queued",
+                archiveZipPath: null,
+                archiveZipUrl: null,
+            }),
+        ).toBe(false);
+
+        expect(
+            isPersistedDraftPendingState({
+                isDraftCard: true,
+                status: "queued",
+                archiveZipPath: null,
+                archiveZipUrl: null,
+            }),
+        ).toBe(true);
+    });
+
+    it("clears draft pending persistence when archive is ready", () => {
+        expect(
+            isPersistedDraftPendingState({
+                isDraftCard: true,
+                status: "ready",
+                archiveZipPath: "archives/draft.zip",
+                archiveZipUrl: null,
+            }),
+        ).toBe(false);
+
+        expect(
+            isPersistedDraftPendingState({
+                isDraftCard: true,
+                status: "warning",
+                archiveZipPath: null,
+                archiveZipUrl: "https://cdn.example.com/archive.zip",
+            }),
+        ).toBe(false);
+    });
+
     it("normalizes draft API payloads into newest-first dashboard records", () => {
         const records = normalizeDashboardDraftRecords([
             {

@@ -33,6 +33,41 @@ export type DashboardDraftCard = {
 
 type Setter<T> = (next: T | ((prev: T) => T)) => void;
 
+export function shouldDisableDraftDeleteButton(input: {
+    isDeleting: boolean;
+    isPendingCreation?: boolean;
+    disableActions?: boolean;
+    accessLocked?: boolean;
+}): boolean {
+    // Draft delete must stay available even when draft processing is ongoing.
+    // Only lock this button while a delete request for this draft is actively in flight.
+    return Boolean(input.isDeleting);
+}
+
+export function isPersistedDraftPendingState(input: {
+    isDraftCard: boolean;
+    status?: string | null;
+    archiveZipPath?: string | null;
+    archiveZipUrl?: string | null;
+}): boolean {
+    if (!input.isDraftCard) return false;
+
+    const status = String(input.status || "").trim().toLowerCase();
+    const archiveReady = Boolean(
+        String(input.archiveZipPath || "").trim() ||
+        String(input.archiveZipUrl || "").trim(),
+    );
+
+    return (
+        status === "processing" ||
+        status === "in_progress" ||
+        status === "queued" ||
+        status === "pending" ||
+        status === "booting" ||
+        ((status === "ready" || status === "warning") && !archiveReady)
+    );
+}
+
 export function normalizeDashboardDraftRecord(draft: any): DashboardDraftCard | null {
     if (!draft || typeof draft !== "object") return null;
 

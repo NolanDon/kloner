@@ -130,6 +130,8 @@ const URL_SCAN_RETRY_BACKOFF_SEQUENCE_MS = [10_000, 20_000, 40_000, 90_000, 180_
 const AUTOQUEUE_DEDUPE_STORAGE_KEY = "dashboardViewAutoQueueDedupeV1";
 const AUTOQUEUE_DEDUPE_TTL_MS = 2 * 60 * 1000;
 const DRAFT_PENDING_MISSING_TTL_MS = 20_000;
+const DRAFT_EDIT_BUTTON_LOCK_MS = 5_000;
+const DRAFT_PROMOTION_SCAN_STORAGE_KEY = "dashboardViewDraftPromotionScanStateV1";
 const URL_ADD_SUCCESS_MESSAGE = "Your URL has been successfully added!";
 const APP_WIZARD_PROMPT_MAX_CHARS = 2000;
 const FIRST_GEN_TRIAL_OBSERVE_MS = 15 * 1000;
@@ -142,6 +144,102 @@ const APP_BUILDER_COOKIE_CONSENT_KEY = "kloner.appBuilder.necessaryCookiesAccept
 const APP_BUILDER_COOKIE_CONSENT_COOKIE = "kloner_app_builder_nc";
 const BILLING_SUCCESS_COOKIE = "kloner_billing_success_seen_v1";
 const BILLING_SUCCESS_COOKIE_MAX_AGE_SEC = 5 * 60;
+
+type DraftPromotionScanState = {
+    draftId: string;
+    sourceUrl: string;
+    phase: "scanning" | "warning" | "ready" | "generating" | "error";
+    status: string | null;
+    zipPath: string | null;
+    zipUrl: string | null;
+    archiveHealth: any | null;
+    warning: any | null;
+    warningCode: string | null;
+    warningMessage: string | null;
+    warningAction: string | null;
+    lastError: string | null;
+    lastErrorCode: string | null;
+    retry: boolean | null;
+    crawlProgressStage: string | null;
+    crawlProgressMessage: string | null;
+    crawlProgressProgress: number | null;
+    updatedAt: number;
+};
+
+function getDraftPromotionScanStorageKey(uid: string): string {
+    return `${DRAFT_PROMOTION_SCAN_STORAGE_KEY}:${uid || "anonymous"}`;
+}
+
+function readDraftPromotionScanStateMap(uid: string): Record<string, DraftPromotionScanState> {
+    if (typeof window === "undefined" || !uid) return {};
+
+    try {
+        const raw = window.localStorage.getItem(getDraftPromotionScanStorageKey(uid));
+        if (!raw) return {};
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== "object") return {};
+        return parsed as Record<string, DraftPromotionScanState>;
+    } catch {
+        return {};
+    }
+}
+
+function writeDraftPromotionScanStateMap(uid: string, map: Record<string, DraftPromotionScanState>): void {
+    if (typeof window === "undefined" || !uid) return;
+
+    try {
+        const keys = Object.keys(map);
+        const storageKey = getDraftPromotionScanStorageKey(uid);
+        if (!keys.length) {
+            window.localStorage.removeItem(storageKey);
+            return;
+        }
+        window.localStorage.setItem(storageKey, JSON.stringify(map));
+    } catch {
+        // ignore local persistence failures
+    }
+}
+
+function normalizeDraftPromotionScanState(draftId: string, sourceUrl: string, patch: Partial<DraftPromotionScanState>): DraftPromotionScanState {
+    return {
+        draftId,
+        sourceUrl,
+        phase: patch.phase || "scanning",
+        status: typeof patch.status === "string" ? patch.status : null,
+        zipPath: typeof patch.zipPath === "string" && patch.zipPath.trim() ? patch.zipPath.trim() : null,
+        zipUrl: typeof patch.zipUrl === "string" && patch.zipUrl.trim() ? patch.zipUrl.trim() : null,
+        archiveHealth: patch.archiveHealth ?? null,
+        warning: patch.warning ?? null,
+        warningCode: typeof patch.warningCode === "string" && patch.warningCode.trim() ? patch.warningCode.trim() : null,
+        warningMessage: typeof patch.warningMessage === "string" && patch.warningMessage.trim() ? patch.warningMessage.trim() : null,
+        warningAction: typeof patch.warningAction === "string" && patch.warningAction.trim() ? patch.warningAction.trim() : null,
+        lastError: typeof patch.lastError === "string" && patch.lastError.trim() ? patch.lastError.trim() : null,
+        lastErrorCode: typeof patch.lastErrorCode === "string" && patch.lastErrorCode.trim() ? patch.lastErrorCode.trim() : null,
+        retry: typeof patch.retry === "boolean" ? patch.retry : null,
+        crawlProgressStage: typeof patch.crawlProgressStage === "string" && patch.crawlProgressStage.trim() ? patch.crawlProgressStage.trim() : null,
+        crawlProgressMessage: typeof patch.crawlProgressMessage === "string" && patch.crawlProgressMessage.trim() ? patch.crawlProgressMessage.trim() : null,
+        crawlProgressProgress: typeof patch.crawlProgressProgress === "number" && Number.isFinite(patch.crawlProgressProgress) ? patch.crawlProgressProgress : null,
+        updatedAt: typeof patch.updatedAt === "number" && Number.isFinite(patch.updatedAt) ? patch.updatedAt : Date.now(),
+    };
+}
+
+function isDraftPromotionScanPending(state?: DraftPromotionScanState | null): boolean {
+    if (!state) return false;
+
+    const status = String(state.status || "").trim().toLowerCase();
+    const archiveReady = Boolean(state.zipPath || state.zipUrl);
+
+    return Boolean(
+        state.phase === "scanning" ||
+        state.phase === "generating" ||
+        status === "processing" ||
+        status === "in_progress" ||
+        status === "queued" ||
+        status === "pending" ||
+        status === "booting" ||
+        ((status === "ready" || status === "warning") && !archiveReady)
+    );
+}
 
 function getCookieValueSafe(name: string): string | null {
     if (typeof document === "undefined") return null;
@@ -2502,6 +2600,8 @@ function AppCard({
     onDelete,
     onDeleteDraft,
     onPromoteDraft,
+    appBuilderNavigated = false,
+    draftPromotionScanState = null,
 }: {
     app: { id: string; name: string; createdAt: any; updatedAt: any; isDeployed?: boolean; productionUrl?: string | null; lastDeployUrl?: string | null; pendingCompleted?: boolean };
     isDeleting: boolean;
@@ -2521,6 +2621,8 @@ function AppCard({
     onDelete: (appId: string) => void;
     onDeleteDraft?: (draft: { draftId: string; id: string }) => void;
     onPromoteDraft?: (draft: { draftId: string; id: string; name: string; createdAt: any; sourceUrl?: string | null }) => void;
+    appBuilderNavigated?: boolean;
+    draftPromotionScanState?: DraftPromotionScanState | null;
 }) {
     const router = useRouter();
     const showVersionBadge = process.env.NODE_ENV !== "production";
@@ -2532,7 +2634,25 @@ function AppCard({
     const appIssueIsBlocked = Boolean(appIssue?.blocked);
     const appIssueIsRetryable = Boolean(appIssue && !appIssueIsBlocked && appIssue.retryable);
     const pendingIssue = isPendingCreation ? appIssue : null;
-    const draftIssue = isDraftCard ? appIssue : null;
+    const draftPromotionScanPending = isDraftPromotionScanPending(draftPromotionScanState);
+    const draftPromotionScanIssue = useMemo(() => {
+        if (!isDraftCard || !draftPromotionScanState) return null;
+
+        return extractAppCardIssueState({
+            status: draftPromotionScanState.status,
+            warning: draftPromotionScanState.warning,
+            warningCode: draftPromotionScanState.warningCode,
+            warningMessage: draftPromotionScanState.warningMessage,
+            warningAction: draftPromotionScanState.warningAction,
+            errorCode: draftPromotionScanState.lastErrorCode,
+            errorReason: draftPromotionScanState.lastError,
+            userMessage: draftPromotionScanState.lastError,
+            details: draftPromotionScanState.archiveHealth?.details ?? draftPromotionScanState.warning?.details ?? draftPromotionScanState.crawlProgressMessage ?? null,
+            retryable: draftPromotionScanState.retry ?? null,
+            archiveHealth: draftPromotionScanState.archiveHealth,
+        });
+    }, [draftPromotionScanState, isDraftCard]);
+    const draftIssue = isDraftCard ? (appIssue || draftPromotionScanIssue) : null;
     const draftIssueIsBlocked = Boolean(draftIssue?.blocked);
     const draftIssueIsRetryable = Boolean(draftIssue && !draftIssueIsBlocked && draftIssue.retryable);
     const pendingIssueIsBlocked = Boolean(pendingIssue?.blocked);
@@ -2574,8 +2694,8 @@ function AppCard({
         draftLifecycleStatus === "processing" &&
         (draftRecommendedAction === "wait" || !draftRecommendedAction),
     );
-    const isDraftRetryLoading = isDraftCard && isPendingCreation;
-    const isDraftFreshLoading = isDraftCard && isPendingCreation && !draftIssue;
+    const isDraftRetryLoading = isDraftCard && (isPendingCreation || draftPromotionScanPending);
+    const isDraftFreshLoading = isDraftCard && (isPendingCreation || draftPromotionScanPending) && !draftIssue;
     const isBrokenDraftCard = isDraftCard && Boolean(draftIssue || draftIssueIsRetryable);
     const blockedDraftDescription = "Domain blocked for site cloning";
     const draftIssueDetails = draftIssue
@@ -2617,6 +2737,23 @@ function AppCard({
     const [nameDraft, setNameDraft] = useState(appDisplayName);
     const canEditName = !isDraftCard;
     const [draftEditLaunchBusy, setDraftEditLaunchBusy] = useState(false);
+    const [draftEditLockActive, setDraftEditLockActive] = useState(false);
+    const draftEditUnlockTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    const clearDraftEditUnlockTimer = useCallback(() => {
+        if (!draftEditUnlockTimerRef.current) return;
+        clearTimeout(draftEditUnlockTimerRef.current);
+        draftEditUnlockTimerRef.current = null;
+    }, []);
+
+    const activateDraftEditLock = useCallback((durationMs: number) => {
+        clearDraftEditUnlockTimer();
+        setDraftEditLockActive(true);
+        draftEditUnlockTimerRef.current = setTimeout(() => {
+            draftEditUnlockTimerRef.current = null;
+            setDraftEditLockActive(false);
+        }, Math.max(0, durationMs));
+    }, [clearDraftEditUnlockTimer]);
 
     useEffect(() => {
         if (!isEditingName) {
@@ -2649,14 +2786,28 @@ function AppCard({
     useEffect(() => {
         if (!isDraftCard) {
             setDraftEditLaunchBusy(false);
+            setDraftEditLockActive(false);
+            clearDraftEditUnlockTimer();
         }
-    }, [isDraftCard]);
+    }, [clearDraftEditUnlockTimer, isDraftCard]);
 
     useEffect(() => {
         if (isPendingCreation) {
             setDraftEditLaunchBusy(false);
         }
     }, [isPendingCreation]);
+
+    useEffect(() => {
+        if (!isDraftCard || !appBuilderNavigated) return;
+        clearDraftEditUnlockTimer();
+        setDraftEditLockActive(false);
+    }, [appBuilderNavigated, clearDraftEditUnlockTimer, isDraftCard]);
+
+    useEffect(() => {
+        return () => {
+            clearDraftEditUnlockTimer();
+        };
+    }, [clearDraftEditUnlockTimer]);
 
     return (
         <div className="group relative mx-auto w-full max-w-[240px] px-2 pt-2 pb-4 sm:pb-5">
@@ -2727,10 +2878,11 @@ function AppCard({
                                     <button
                                         type="button"
                                         onClick={async () => {
-                                            if (disableActions || isPendingCreation || isBrokenDraftCard || draftEditLaunchBusy) return;
+                                            if (disableActions || isPendingCreation || isBrokenDraftCard || draftEditLaunchBusy || draftEditLockActive) return;
                                             if (!onPromoteDraft) return;
 
                                             setDraftEditLaunchBusy(true);
+                                            activateDraftEditLock(DRAFT_EDIT_BUTTON_LOCK_MS);
                                             try {
                                                 await Promise.resolve(onPromoteDraft({
                                                     draftId,
@@ -2743,7 +2895,7 @@ function AppCard({
                                                 setDraftEditLaunchBusy(false);
                                             }
                                         }}
-                                        disabled={isDeleting || accessLocked || disableActions || isPendingCreation || isBrokenDraftCard || draftIssueIsBlocked || draftEditLaunchBusy || !onPromoteDraft}
+                                        disabled={isDeleting || accessLocked || disableActions || isPendingCreation || isBrokenDraftCard || draftIssueIsBlocked || draftEditLaunchBusy || draftEditLockActive || !onPromoteDraft}
                                         className="absolute inset-0 grid place-items-center rounded-[2.6rem] border border-neutral-200 bg-transparent text-neutral-800 opacity-0 backdrop-blur-[1px] transition-all duration-200 hover:bg-transparent group-hover/draft-icon:opacity-100 group-focus-visible/draft-icon:opacity-100 group-hover/draft-icon:scale-[1.015] group-focus-visible/draft-icon:scale-[1.015]"
                                         aria-label="Edit draft"
                                         title={draftIssueIsBlocked ? blockedDraftDescription : "Edit draft"}
@@ -2755,6 +2907,18 @@ function AppCard({
                                     </button>
                                 ) : null}
                             </div>
+                            {draftPromotionScanPending ? (
+                                <div className="mt-2 max-w-[15rem] text-center text-[11px] font-medium leading-4 text-neutral-500">
+                                    <div className="truncate">
+                                        {draftPromotionScanState?.crawlProgressMessage || "Scanning URL"}
+                                    </div>
+                                    {typeof draftPromotionScanState?.crawlProgressProgress === "number" ? (
+                                        <div className="mt-0.5 text-[10px] text-neutral-400">
+                                            {Math.max(0, Math.min(100, Math.round(draftPromotionScanState.crawlProgressProgress <= 1 ? draftPromotionScanState.crawlProgressProgress * 100 : draftPromotionScanState.crawlProgressProgress)))}%
+                                        </div>
+                                    ) : null}
+                                </div>
+                            ) : null}
                             {draftIssue ? (
                                 <span className="group/issue absolute -right-2 -top-2">
                                     <span
@@ -3902,6 +4066,7 @@ export default function PreviewPage(): JSX.Element {
     const [pendingDraftApps, setPendingDraftApps] = useState<Record<string, boolean>>({});
     const [retryingDraftApps, setRetryingDraftApps] = useState<Record<string, boolean>>({});
     const [suppressedPromotedDrafts, setSuppressedPromotedDrafts] = useState<Record<string, boolean>>({});
+    const [draftPromotionScanByDraftId, setDraftPromotionScanByDraftId] = useState<Record<string, DraftPromotionScanState>>({});
     const [draftApps, setDraftApps] = useState<Array<{
         draftId: string;
         id: string;
@@ -3925,6 +4090,14 @@ export default function PreviewPage(): JSX.Element {
     }>>([]);
     const pendingCreatedAppLaunchRequestedRef = useRef<string | null>(null);
     const draftPromotionInFlightRef = useRef<Record<string, true>>({});
+    const promoteDraftToAppRef = useRef<((draft: {
+        draftId: string;
+        id: string;
+        name: string;
+        createdAt: any;
+        sourceUrl?: string | null;
+    }) => Promise<void>) | null>(null);
+    const draftPromotionScanInFlightRef = useRef<Record<string, true>>({});
     const draftsSnapshotDisabledRef = useRef(false);
     const pendingDraftMissingSinceRef = useRef<Record<string, number>>({});
     const pendingDraftAppsRef = useRef<Record<string, boolean>>({});
@@ -4344,6 +4517,16 @@ export default function PreviewPage(): JSX.Element {
     useEffect(() => {
         pendingDraftAppsRef.current = pendingDraftApps;
     }, [pendingDraftApps]);
+
+    useEffect(() => {
+        if (!user?.uid) return;
+        setDraftPromotionScanByDraftId(readDraftPromotionScanStateMap(user.uid));
+    }, [user?.uid]);
+
+    useEffect(() => {
+        if (!user?.uid) return;
+        writeDraftPromotionScanStateMap(user.uid, draftPromotionScanByDraftId);
+    }, [draftPromotionScanByDraftId, user?.uid]);
 
     useEffect(() => {
         suppressedPromotedDraftsRef.current = suppressedPromotedDrafts;
@@ -5588,6 +5771,8 @@ export default function PreviewPage(): JSX.Element {
                         createPreview: true,
                         generationType,
                         generationFormat: generationType,
+                        zipPath: opts?.zipPath || undefined,
+                        zipUrl: opts?.zipUrl || undefined,
                     }),
                     credentials: "include",
                 });
@@ -6964,9 +7149,205 @@ export default function PreviewPage(): JSX.Element {
         if (!draftKey) return;
         if (draftPromotionInFlightRef.current[draftKey]) return;
 
+        const rawUrl = draft.sourceUrl || targetUrl || "";
+        const normalized = validateAndNormalizePublicHttpUrl(rawUrl);
+        if (!normalized) {
+            setErr("That saved URL looks invalid. Delete it from the list to continue.");
+            return;
+        }
+
+        const inferredName = (() => {
+            try {
+                return new URL(normalized).hostname.replace(/^www\./, "") || draft.name || "Website";
+            } catch {
+                return draft.name || "Website";
+            }
+        })();
+
+        const updateScanState = (patch: Partial<DraftPromotionScanState>) => {
+            setDraftPromotionScanByDraftId((prev) => ({
+                ...prev,
+                [draftKey]: normalizeDraftPromotionScanState(draftKey, normalized, {
+                    ...prev[draftKey],
+                    ...patch,
+                    draftId: draftKey,
+                    sourceUrl: normalized,
+                }),
+            }));
+        };
+
+        const clearScanState = () => {
+            setDraftPromotionScanByDraftId((prev) => {
+                if (!prev[draftKey]) return prev;
+                const next = { ...prev };
+                delete next[draftKey];
+                return next;
+            });
+        };
+
+        const persistReadyScanState = (snapshot: {
+            status: string | null;
+            zipPath: string | null;
+            zipUrl: string | null;
+            archiveHealth: any | null;
+            warning: any | null;
+            warningCode: string | null;
+            warningMessage: string | null;
+            warningAction: string | null;
+            lastError: string | null;
+            lastErrorCode: string | null;
+            retry: boolean | null;
+            crawlProgressStage: string | null;
+            crawlProgressMessage: string | null;
+            crawlProgressProgress: number | null;
+        }) => {
+            const nextPhase = Boolean(snapshot.archiveHealth?.needsRescan || snapshot.warningCode === "ARCHIVE_RESCAN_REQUIRED" || snapshot.status === "warning")
+                ? "warning"
+                : "ready";
+
+            updateScanState({
+                phase: nextPhase,
+                status: snapshot.status,
+                zipPath: snapshot.zipPath,
+                zipUrl: snapshot.zipUrl,
+                archiveHealth: snapshot.archiveHealth,
+                warning: snapshot.warning,
+                warningCode: snapshot.warningCode,
+                warningMessage: snapshot.warningMessage,
+                warningAction: snapshot.warningAction,
+                lastError: snapshot.lastError,
+                lastErrorCode: snapshot.lastErrorCode,
+                retry: snapshot.retry,
+                crawlProgressStage: snapshot.crawlProgressStage,
+                crawlProgressMessage: snapshot.crawlProgressMessage,
+                crawlProgressProgress: snapshot.crawlProgressProgress,
+                updatedAt: Date.now(),
+            });
+        };
+
+        const pollForArchiveReadiness = async (): Promise<{
+            status: string | null;
+            zipPath: string | null;
+            zipUrl: string | null;
+            archiveHealth: any | null;
+            warning: any | null;
+            warningCode: string | null;
+            warningMessage: string | null;
+            warningAction: string | null;
+            lastError: string | null;
+            lastErrorCode: string | null;
+            retry: boolean | null;
+            crawlProgressStage: string | null;
+            crawlProgressMessage: string | null;
+            crawlProgressProgress: number | null;
+        }> => {
+            const startAt = Date.now();
+            const timeoutMs = 120_000;
+            const pollIntervalMs = 2_000;
+
+            while (Date.now() - startAt < timeoutMs) {
+                const snapshot = await getDocs(query(
+                    collection(db, "kloner_users", user!.uid, "kloner_urls"),
+                    where("url", "==", normalized),
+                    limit(1),
+                ));
+
+                if (snapshot.empty) {
+                    updateScanState({
+                        phase: "scanning",
+                        status: "queued",
+                        crawlProgressMessage: "Scanning URL",
+                        crawlProgressProgress: null,
+                        updatedAt: Date.now(),
+                    });
+                    await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+                    continue;
+                }
+
+                const urlDoc = (snapshot.docs[0].data() || {}) as any;
+                const status = String(urlDoc.status || "").trim().toLowerCase() || null;
+                const zipPath = String(urlDoc.zipPath || "").trim() || null;
+                const zipUrl = String(urlDoc.zipUrl || "").trim() || null;
+                const archiveHealth = urlDoc.archiveHealth && typeof urlDoc.archiveHealth === "object" ? urlDoc.archiveHealth : null;
+                const warning = urlDoc.warning && typeof urlDoc.warning === "object" ? urlDoc.warning : null;
+                const warningCode = typeof urlDoc.warningCode === "string" && urlDoc.warningCode.trim() ? urlDoc.warningCode.trim() : (typeof archiveHealth?.warningCode === "string" ? archiveHealth.warningCode : null);
+                const warningMessage = typeof urlDoc.warningMessage === "string" && urlDoc.warningMessage.trim() ? urlDoc.warningMessage.trim() : (typeof archiveHealth?.warningMessage === "string" ? archiveHealth.warningMessage : null);
+                const warningAction = typeof urlDoc.warningAction === "string" && urlDoc.warningAction.trim() ? urlDoc.warningAction.trim() : (typeof archiveHealth?.warningAction === "string" ? archiveHealth.warningAction : null);
+                const lastError = typeof urlDoc.lastError === "string" && urlDoc.lastError.trim() ? urlDoc.lastError.trim() : null;
+                const lastErrorCode = typeof urlDoc.lastErrorCode === "string" && urlDoc.lastErrorCode.trim() ? urlDoc.lastErrorCode.trim() : null;
+                const retry = typeof urlDoc.retry === "boolean" ? urlDoc.retry : null;
+                const crawlProgress = urlDoc.crawlProgress && typeof urlDoc.crawlProgress === "object" ? urlDoc.crawlProgress : null;
+                const crawlProgressStage = typeof crawlProgress?.stage === "string" && crawlProgress.stage.trim() ? crawlProgress.stage.trim() : null;
+                const crawlProgressMessage = typeof crawlProgress?.message === "string" && crawlProgress.message.trim() ? crawlProgress.message.trim() : null;
+                const crawlProgressProgress = typeof crawlProgress?.progress === "number" && Number.isFinite(crawlProgress.progress) ? crawlProgress.progress : null;
+
+                updateScanState({
+                    phase: (status === "ready" || status === "warning") && zipPath ? (status === "warning" ? "warning" : "ready") : "scanning",
+                    status,
+                    zipPath,
+                    zipUrl,
+                    archiveHealth,
+                    warning,
+                    warningCode,
+                    warningMessage,
+                    warningAction,
+                    lastError,
+                    lastErrorCode,
+                    retry,
+                    crawlProgressStage,
+                    crawlProgressMessage,
+                    crawlProgressProgress,
+                    updatedAt: Date.now(),
+                });
+
+                if (crawlProgressMessage) {
+                    setInfo(crawlProgressMessage);
+                }
+
+                const isPendingStatus = status === "in_progress" || status === "queued" || status === "pending" || status === "booting" || status === "processing";
+                if (isPendingStatus || !zipPath) {
+                    await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+                    continue;
+                }
+
+                if ((status === "ready" || status === "warning") && zipPath) {
+                    return {
+                        status,
+                        zipPath,
+                        zipUrl,
+                        archiveHealth,
+                        warning,
+                        warningCode,
+                        warningMessage,
+                        warningAction,
+                        lastError,
+                        lastErrorCode,
+                        retry,
+                        crawlProgressStage,
+                        crawlProgressMessage,
+                        crawlProgressProgress,
+                    };
+                }
+
+                if (status === "error" || status === "stale") {
+                    throw new Error(lastError || warningMessage || "Archive scan failed.");
+                }
+
+                await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+            }
+
+            throw new Error("Archive scan timed out before the archive was ready.");
+        };
+
         draftPromotionInFlightRef.current[draftKey] = true;
         flushSync(() => {
             setPendingDraftApps((prev) => ({ ...prev, [draftKey]: true }));
+        });
+        updateScanState({
+            phase: "scanning",
+            status: "queued",
+            crawlProgressMessage: "Starting scan…",
+            updatedAt: Date.now(),
         });
 
         try {
@@ -6978,57 +7359,73 @@ export default function PreviewPage(): JSX.Element {
 
             if (!canOpenDraftInBuilder) {
                 showWebsiteExitOfferPaywall();
+                updateScanState({
+                    phase: "error",
+                    status: "error",
+                    lastError: "Upgrade to continue editing this draft.",
+                    updatedAt: Date.now(),
+                });
                 return;
             }
-
-            const rawUrl = draft.sourceUrl || targetUrl || "";
-            const normalized = validateAndNormalizePublicHttpUrl(rawUrl);
-            if (!normalized) {
-                setErr("That saved URL looks invalid. Delete it from the list to continue.");
-                return;
-            }
-
-            const inferredName = (() => {
-                try {
-                    return new URL(normalized).hostname.replace(/^www\./, "") || draft.name || "Website";
-                } catch {
-                    return draft.name || "Website";
-                }
-            })();
 
             const csrf = await ensureSessionAndCsrf().catch(() => null);
-            const res = await fetch("/api/generate-app-from-url", {
+            const generateRes = await fetch("/api/private/generate", {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
                     ...(csrf ? { "x-csrf": csrf } : {}),
                 },
                 credentials: "include",
-                body: JSON.stringify({
-                    url: normalized,
-                    name: inferredName,
-                    draftId: draftKey,
-                    createPreview: true,
-                    generationType: "html",
-                    generationFormat: "html",
-                }),
+                body: JSON.stringify({ url: normalized }),
             });
-            const payload: any = await res.json().catch(() => ({}));
+            const generatePayload: any = await generateRes.json().catch(() => ({}));
 
-            if (!res.ok) {
-                const message =
-                    String(payload?.userMessage || payload?.message || payload?.error || "").trim() ||
-                    `Failed to queue app generation (HTTP ${res.status})`;
-                throw new Error(message);
+            if (!generateRes.ok && generateRes.status !== 202) {
+                const errorMessage =
+                    String(generatePayload?.userMessage || generatePayload?.message || generatePayload?.error || "").trim() ||
+                    `Failed to queue URL scan (HTTP ${generateRes.status})`;
+                updateScanState({
+                    phase: "error",
+                    status: "error",
+                    lastError: errorMessage,
+                    lastErrorCode: typeof generatePayload?.code === "string" ? generatePayload.code : String(generatePayload?.reason || generateRes.status),
+                    retry: typeof generatePayload?.retryable === "boolean" ? generatePayload.retryable : null,
+                    warningCode: typeof generatePayload?.warningCode === "string" ? generatePayload.warningCode : null,
+                    warningMessage: typeof generatePayload?.warningMessage === "string" ? generatePayload.warningMessage : null,
+                    warningAction: typeof generatePayload?.warningAction === "string" ? generatePayload.warningAction : null,
+                    updatedAt: Date.now(),
+                });
+                throw new Error(errorMessage);
             }
 
-            const nextAppId = String(payload?.appId || payload?.canonicalAppId || "").trim();
-            if (!nextAppId) {
-                throw new Error("Generation queued but no app ID was returned.");
+            const archiveReady = await pollForArchiveReadiness();
+            const hasWarning = Boolean(
+                archiveReady.status === "warning" ||
+                archiveReady.warningCode === "ARCHIVE_RESCAN_REQUIRED" ||
+                archiveReady.archiveHealth?.needsRescan === true
+            );
+
+            persistReadyScanState(archiveReady);
+            if (archiveReady.crawlProgressMessage) {
+                setInfo(archiveReady.crawlProgressMessage);
             }
 
-            // Optimistically hide the promoted draft immediately so users never see
-            // the new app card appear beside its source draft.
+            const createResult = await handleCreateApp("url", undefined, normalized, {
+                openAppBuilderImmediately: true,
+                generationFormat: "html",
+                draftDocId: draftKey,
+                draftAppId: draft.id,
+                draftCreatedAt: draft.createdAt,
+                zipPath: archiveReady.zipPath || undefined,
+                zipUrl: archiveReady.zipUrl || undefined,
+            });
+
+            if (createResult === null) {
+                throw new Error(hasWarning
+                    ? "The archive was ready, but generation could not continue. Please rescan the URL."
+                    : "Failed to create app. Please try again.");
+            }
+
             setSuppressedPromotedDrafts((prev) => ({ ...prev, [draftKey]: true }));
             setDraftApps((prev) =>
                 prev.filter((item) => {
@@ -7039,7 +7436,7 @@ export default function PreviewPage(): JSX.Element {
             );
             setPendingCreatedApp((prev) => (prev && (prev.id === draft.id || prev.id === draftKey) ? null : prev));
 
-            openAppBuilderWithLaunchLoader(nextAppId);
+            clearScanState();
 
             void (async () => {
                 try {
@@ -7059,7 +7456,6 @@ export default function PreviewPage(): JSX.Element {
                     console.warn("[drafts] failed to delete promoted draft", err);
                 }
             })();
-
         } catch (error) {
             const message =
                 error instanceof Error && error.message
@@ -7067,6 +7463,12 @@ export default function PreviewPage(): JSX.Element {
                     : "Failed to create app. Please try again.";
             setErr(message);
             push(message, "err");
+            updateScanState({
+                phase: "error",
+                status: "error",
+                lastError: message,
+                updatedAt: Date.now(),
+            });
         } finally {
             delete draftPromotionInFlightRef.current[draftKey];
             setPendingDraftApps((prev) => {
@@ -7074,8 +7476,32 @@ export default function PreviewPage(): JSX.Element {
                 delete next[draftKey];
                 return next;
             });
+            setInfo((current) => current === "Starting scan…" ? "" : current);
         }
-    }, [openAppBuilderWithLaunchLoader, push, refreshUserTierNow, showWebsiteExitOfferPaywall, targetUrl]);
+
+    }, [db, handleCreateApp, push, refreshUserTierNow, setDraftPromotionScanByDraftId, showWebsiteExitOfferPaywall, targetUrl, user?.uid]);
+
+    useEffect(() => {
+        promoteDraftToAppRef.current = promoteDraftToApp;
+    }, [promoteDraftToApp]);
+
+    useEffect(() => {
+        if (!user?.uid || draftAppsLoading || !draftAppsInitialLoadComplete) return;
+
+        const draftById = new Map(
+            draftApps.map((draft) => [String(draft.draftId || draft.id || "").trim(), draft] as const)
+        );
+
+        for (const state of Object.values(draftPromotionScanByDraftId)) {
+            if (!isDraftPromotionScanPending(state)) continue;
+            if (draftPromotionInFlightRef.current[state.draftId]) continue;
+
+            const draft = draftById.get(state.draftId);
+            if (!draft?.sourceUrl) continue;
+
+            void promoteDraftToAppRef.current?.(draft);
+        }
+    }, [draftApps, draftAppsInitialLoadComplete, draftAppsLoading, draftPromotionScanByDraftId, user?.uid]);
 
     const [urlMenuOpen, setUrlMenuOpen] = useState(false);
     const urlMenuRef = useRef<HTMLDivElement | null>(null);
@@ -12264,6 +12690,7 @@ export default function PreviewPage(): JSX.Element {
                                     onDelete={handleDeleteApp}
                                     onDeleteDraft={handleDeleteDraft}
                                     onPromoteDraft={promoteDraftToApp}
+                                    appBuilderNavigated={appBuilderOpen}
                                 />
                                     );
                                 })()
