@@ -31,6 +31,9 @@ import {
     Code2,
     Loader2,
     BrushIcon,
+    ExternalLink,
+    Trash2,
+    ShieldAlert,
 } from "lucide-react";
 import type { Device, SeoMeta, ViewMode } from "@/components/editor/PreviewEditor";
 import PreviewEditorManager from "@/components/editor/PreviewEditorManager";
@@ -103,6 +106,26 @@ type VercelIntegration = {
     vercelTeamId?: string | null;
     vercelUserId?: string | null;
     configurationId?: string | null;
+};
+
+type AppDoc = {
+    name?: string;
+    createdAt?: any;
+    updatedAt?: any;
+    isDeployed?: boolean;
+    productionUrl?: string | null;
+    lastDeployUrl?: string | null;
+    vercelProjectId?: string | null;
+    vercelProjectName?: string | null;
+    lastDeploymentId?: string | null;
+};
+
+type DestroyTarget = {
+    appId: string;
+    appName: string;
+    projectId: string | null;
+    projectName: string;
+    deploymentDocIds: string[];
 };
 
 
@@ -208,6 +231,12 @@ export default function DeploymentsPage(): JSX.Element {
     } | null>(null);
 
     const [actionState, setActionState] = useState<ActionState>({});
+    const [apps, setApps] = useState<Array<{ id: string } & AppDoc>>([]);
+    const [destroyTarget, setDestroyTarget] = useState<DestroyTarget | null>(null);
+    const [destroyTypingProject, setDestroyTypingProject] = useState("");
+    const [destroyTypingPhrase, setDestroyTypingPhrase] = useState("");
+    const [destroyLoading, setDestroyLoading] = useState(false);
+    const [destroyError, setDestroyError] = useState<string | null>(null);
 
     const [editorOpen, setEditorOpen] = useState(false);
     const [editorHtml, setEditorHtml] = useState<string>("");
@@ -332,6 +361,7 @@ export default function DeploymentsPage(): JSX.Element {
     useEffect(() => {
         if (!user) {
             setItems([]);
+            setApps([]);
             setLoading(false);
             return;
         }
@@ -356,6 +386,35 @@ export default function DeploymentsPage(): JSX.Element {
             () => {
                 setItems([]);
                 setLoading(false);
+            }
+        );
+
+        return () => off();
+    }, [user]);
+
+    useEffect(() => {
+        if (!user) {
+            setApps([]);
+            return;
+        }
+
+        const appsRef = collection(db, "kloner_users", user.uid, "kloner_apps");
+        const appsQ = query(appsRef, orderBy("createdAt", "desc"), limit(200));
+
+        const off = onSnapshot(
+            appsQ,
+            (snap: QuerySnapshot<DocumentData>) => {
+                const next = snap.docs.map(
+                    (d: QueryDocumentSnapshot<DocumentData>) =>
+                    ({
+                        id: d.id,
+                        ...(d.data() as AppDoc),
+                    } as { id: string } & AppDoc)
+                );
+                setApps(next);
+            },
+            () => {
+                setApps([]);
             }
         );
 
@@ -458,6 +517,39 @@ export default function DeploymentsPage(): JSX.Element {
             return key === selectedProjectKey;
         });
     }, [items, selectedProjectKey]);
+
+    const deployedApps = useMemo(() => {
+        return apps.filter((app) => {
+            const isDeployed = Boolean(app.isDeployed);
+            const hasLiveUrl = Boolean(
+                (app.productionUrl && app.productionUrl.trim()) ||
+                (app.lastDeployUrl && app.lastDeployUrl.trim())
+            );
+            const hasProject = Boolean(
+                (app.vercelProjectId && app.vercelProjectId.trim()) ||
+                (app.vercelProjectName && app.vercelProjectName.trim())
+            );
+            return isDeployed || hasLiveUrl || hasProject;
+        });
+    }, [apps]);
+
+    function appBadgeLabel(name: string, fallback: string): string {
+        const cleaned = String(name || fallback).replace(/^Clone of\s+/i, "").trim();
+        const parts = cleaned.split(/[^a-zA-Z0-9]+/).filter(Boolean);
+        if (parts.length >= 2) {
+            return parts.slice(0, 2).map((part) => part.slice(0, 1)).join("").toUpperCase();
+        }
+        const compact = cleaned.replace(/[^a-zA-Z0-9]/g, "").slice(0, 3).toUpperCase();
+        return compact || "APP";
+    }
+
+    function vercelProjectHref(projectId?: string | null, teamId?: string | null): string | null {
+        if (!projectId || !projectId.trim()) return null;
+        const params = new URLSearchParams();
+        if (teamId) params.set("teamId", teamId);
+        const qs = params.toString();
+        return `https://vercel.com/projects/${encodeURIComponent(projectId)}${qs ? `?${qs}` : ""}`;
+    }
 
     const latestReadyByProject = useMemo(() => {
         const map = new Map<string, string>();
@@ -870,8 +962,121 @@ export default function DeploymentsPage(): JSX.Element {
         }
     }
 
+    async function openDestroyModalForApp(app: { id: string } & AppDoc) {
+        if (!user) return;
+
+        const projectId = app.vercelProjectId?.trim() || null;
+        const projectName =
+            app.vercelProjectName?.trim() ||
+            app.name?.trim() ||
+            projectId ||
+            "Untitled project";
+
+        let deploymentDocIds: string[] = [];
+
+        if (projectId) {
+            try {
+                const depRef = collection(db, "kloner_users", user.uid, "deployments");
+                const depQ = query(depRef, where("vercelProjectId", "==", projectId));
+                const snap = await getDocs(depQ);
+                deploymentDocIds = snap.docs.map((d) => d.id);
+            } catch {
+                deploymentDocIds = [];
+            }
+        }
+
+        if (!deploymentDocIds.length && app.vercelProjectName) {
+            deploymentDocIds = items
+                .filter((d) => d.vercelProjectName === app.vercelProjectName)
+                .map((d) => d.id);
+        }
+
+        setDestroyError(null);
+        setDestroyTypingProject("");
+        setDestroyTypingPhrase("");
+        setDestroyTarget({
+            appId: app.id,
+            appName: app.name?.trim() || app.id,
+            projectId,
+            projectName,
+            deploymentDocIds,
+        });
+    }
+
+    async function confirmDestroyProject() {
+        if (!user || !destroyTarget || destroyLoading) return;
+
+        const expectedProject = destroyTarget.projectName.trim();
+        const expectedPhrase = "DESTROY THIS VERCEL PROJECT";
+
+        if (destroyTypingProject.trim() !== expectedProject) {
+            setDestroyError("Project name confirmation does not match.");
+            return;
+        }
+
+        if (destroyTypingPhrase.trim().toUpperCase() !== expectedPhrase) {
+            setDestroyError("Destruction phrase does not match.");
+            return;
+        }
+
+        if (!destroyTarget.deploymentDocIds.length) {
+            setDestroyError(
+                "No linked deployment records were found. Refresh and retry after a deploy status sync."
+            );
+            return;
+        }
+
+        setDestroyLoading(true);
+        setDestroyError(null);
+
+        try {
+            const csrf = await ensureSessionAndCsrf().catch(() => null);
+
+            const res = await fetch("/api/vercel/delete-deployment", {
+                method: "POST",
+                headers: {
+                    "content-type": "application/json",
+                    ...(csrf ? { "x-csrf": csrf } : {}),
+                },
+                body: JSON.stringify({
+                    deploymentIds: destroyTarget.deploymentDocIds,
+                }),
+            });
+
+            const json = await res.json().catch(() => ({} as any));
+            if (!res.ok || !json?.ok) {
+                throw new Error(json?.error || "Failed to destroy project");
+            }
+
+            const appRef = doc(db, "kloner_users", user.uid, "kloner_apps", destroyTarget.appId);
+            await updateDoc(appRef, {
+                isDeployed: false,
+                productionUrl: null,
+                lastDeployUrl: null,
+                lastDeploymentId: null,
+                lastDeploymentUrl: null,
+                lastDeploymentState: null,
+                lastDeploymentErrorCode: null,
+                lastDeploymentErrorMessage: null,
+                lastDeploymentErrorAt: null,
+                vercelProjectId: null,
+                vercelProjectName: null,
+                updatedAt: serverTimestamp(),
+            } as any);
+
+            setDestroyTarget(null);
+            setDestroyTypingProject("");
+            setDestroyTypingPhrase("");
+        } catch (e: any) {
+            setDestroyError(e?.message || "Failed to destroy project");
+        } finally {
+            setDestroyLoading(false);
+        }
+    }
+
     const latestDeployment = scopedItems[0] || null;
     const history = scopedItems.slice(1);
+    const hasDeploymentContent = scopedItems.length > 0 || deployedApps.length > 0;
 
     return (
         <main className="min-h-screen bg-white">
@@ -950,12 +1155,176 @@ export default function DeploymentsPage(): JSX.Element {
                     </div>
                 </header>
 
+                <section className="mb-8" aria-label="Deployed websites">
+                    <div className="mb-2 flex items-center justify-between">
+                        <h2 className="text-xs font-semibold uppercase tracking-[0.16em] text-neutral-500">
+                            Deployed websites
+                        </h2>
+                        <span className="text-sm text-neutral-400">
+                            {deployedApps.length} app{deployedApps.length === 1 ? "" : "s"}
+                        </span>
+                    </div>
+
+                    {deployedApps.length === 0 ? (
+                        <div className="rounded-xl border border-dashed border-neutral-300 bg-neutral-50 px-4 py-4 text-sm text-neutral-700">
+                            No deployed app projects yet.
+                        </div>
+                    ) : (
+                        <div className="mt-4 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                            {deployedApps.map((app) => {
+                                const displayName = (app.name || app.id).trim();
+                                const badge = appBadgeLabel(displayName, app.id);
+                                const liveUrl =
+                                    (app.productionUrl && app.productionUrl.trim()) ||
+                                    (app.lastDeployUrl && app.lastDeployUrl.trim()) ||
+                                    null;
+
+                                const matchingDeployment = items.find(
+                                    (d) =>
+                                        (app.vercelProjectId && d.vercelProjectId === app.vercelProjectId) ||
+                                        (app.vercelProjectName && d.vercelProjectName === app.vercelProjectName)
+                                );
+
+                                const projectId = app.vercelProjectId || null;
+                                const projectName = app.vercelProjectName || displayName;
+                                const projectHref = vercelProjectHref(projectId, matchingDeployment?.vercelTeamId || null);
+
+                                return (
+                                    <div key={app.id} className="group relative mx-auto w-full max-w-[240px] px-2 pt-2 pb-4 sm:pb-5">
+                                        <div className="flex flex-col items-center gap-4 text-center">
+                                            <div className="flex w-full items-center justify-center pt-8">
+                                                <div className="relative">
+                                                    <div
+                                                        className="relative grid h-36 w-36 place-items-center rounded-[2.6rem] bg-gradient-to-br from-[#f55f2a] via-[#ff6f3d] to-[#ff986e] text-[48px] font-black text-white shadow-[0_10px_20px_rgba(245,95,42,0.10)]"
+                                                        style={{ fontFamily: "ui-rounded, 'SF Pro Rounded', 'Avenir Next Rounded', 'Trebuchet MS', sans-serif" }}
+                                                        title={displayName}
+                                                    >
+                                                        {badge}
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div className="mt-1 flex w-full items-center justify-center gap-2 px-1">
+                                                <div className="group/rename relative flex w-full items-center justify-center px-0 text-center">
+                                                    <div
+                                                        className="min-w-0 w-full max-w-none px-2 text-[15px] font-medium leading-tight text-neutral-900"
+                                                        style={{
+                                                            display: "-webkit-box",
+                                                            WebkitBoxOrient: "vertical",
+                                                            WebkitLineClamp: 2,
+                                                            overflow: "hidden",
+                                                            whiteSpace: "normal",
+                                                            wordBreak: "break-word",
+                                                        }}
+                                                        title={displayName}
+                                                    >
+                                                        {displayName}
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div className="text-[11px] text-neutral-500 -mt-2 min-h-[16px]">
+                                                {liveUrl ? (
+                                                    <a
+                                                        href={liveUrl}
+                                                        target="_blank"
+                                                        rel="noreferrer"
+                                                        className="inline-flex items-center gap-1 text-neutral-700 underline underline-offset-2 hover:text-neutral-900"
+                                                    >
+                                                        Open live site <ArrowUpRight className="h-3 w-3" />
+                                                    </a>
+                                                ) : (
+                                                    <span>Live URL pending</span>
+                                                )}
+                                            </div>
+
+                                            <div className="text-[11px] text-neutral-500 -mt-3 min-h-[16px]">
+                                                {projectHref ? (
+                                                    <a
+                                                        href={projectHref}
+                                                        target="_blank"
+                                                        rel="noreferrer"
+                                                        className="inline-flex items-center gap-1 text-neutral-700 underline underline-offset-2 hover:text-neutral-900"
+                                                    >
+                                                        Open Vercel project <ExternalLink className="h-3 w-3" />
+                                                    </a>
+                                                ) : (
+                                                    <span>Vercel project metadata unavailable</span>
+                                                )}
+                                            </div>
+
+                                            <div className="mt-2 grid w-full gap-1 grid-cols-3">
+                                                <div className="relative flex justify-center">
+                                                    <span className="pointer-events-none absolute -bottom-6 left-1/2 -translate-x-1/2 whitespace-nowrap text-[10px] font-medium text-neutral-800">
+                                                        Live
+                                                    </span>
+                                                    <a
+                                                        href={liveUrl || "#"}
+                                                        target={liveUrl ? "_blank" : undefined}
+                                                        rel={liveUrl ? "noreferrer" : undefined}
+                                                        className={`inline-flex h-8 w-8 items-center justify-center rounded-2xl border text-neutral-800 shadow-sm ${liveUrl
+                                                            ? "border-emerald-200 bg-emerald-500 text-white hover:bg-green-700"
+                                                            : "border-neutral-200 bg-white text-neutral-300 pointer-events-none"
+                                                            }`}
+                                                        aria-label="Open live deployment"
+                                                        title="Open live deployment"
+                                                    >
+                                                        <ArrowUpRight className="h-3.5 w-3.5" />
+                                                    </a>
+                                                </div>
+
+                                                <div className="relative flex justify-center">
+                                                    <span className="pointer-events-none absolute -bottom-6 left-1/2 -translate-x-1/2 whitespace-nowrap text-[10px] font-medium text-neutral-800">
+                                                        Project
+                                                    </span>
+                                                    <a
+                                                        href={projectHref || "#"}
+                                                        target={projectHref ? "_blank" : undefined}
+                                                        rel={projectHref ? "noreferrer" : undefined}
+                                                        className={`inline-flex h-8 w-8 items-center justify-center rounded-2xl border text-neutral-800 shadow-sm ${projectHref
+                                                            ? "border-neutral-300 bg-white text-neutral-700 hover:border-neutral-400"
+                                                            : "border-neutral-200 bg-white text-neutral-300 pointer-events-none"
+                                                            }`}
+                                                        aria-label="Open Vercel project"
+                                                        title="Open Vercel project"
+                                                    >
+                                                        <ExternalLink className="h-3.5 w-3.5" />
+                                                    </a>
+                                                </div>
+
+                                                <div className="relative flex justify-center">
+                                                    <span className="pointer-events-none absolute -bottom-6 left-1/2 -translate-x-1/2 whitespace-nowrap text-[10px] font-medium text-neutral-800">
+                                                        Destroy
+                                                    </span>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => void openDestroyModalForApp(app)}
+                                                        className="inline-flex h-8 w-8 items-center justify-center rounded-2xl border border-neutral-300 bg-white text-neutral-700 shadow-sm transition-all duration-300 ease-out hover:border-red-500 hover:bg-red-600 hover:text-white"
+                                                        aria-label="Destroy Vercel project"
+                                                        title="Destroy project"
+                                                    >
+                                                        <Trash2 className="h-3.5 w-3.5" />
+                                                    </button>
+                                                </div>
+                                            </div>
+
+                                            <div className="text-[10px] text-neutral-400 mt-2">
+                                                {projectName}
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+                </section>
+
                 {loading ? (
                     <div className="space-y-4">
                         <div className="h-40 rounded-xl bg-neutral-100 animate-pulse" />
                         <div className="h-40 rounded-xl bg-neutral-100 animate-pulse" />
                     </div>
-                ) : scopedItems.length === 0 ? (
+                ) : !hasDeploymentContent ? (
                     <div className="rounded-xl border border-dashed border-neutral-300 bg-neutral-50 px-4 py-4 text-sm text-neutral-700">
                         <div className="flex items-center gap-2 text-neutral-800 font-semibold mb-1">
                             <Clock className="h-4 w-4 text-neutral-500" />
@@ -1496,6 +1865,99 @@ export default function DeploymentsPage(): JSX.Element {
                             setActiveSeoMetaByPage(fullMap);
                         }}
                     />
+                )}
+
+                {destroyTarget && (
+                    <div className="fixed inset-0 z-[80] bg-black/40 backdrop-blur-[1px] px-4 py-8 overflow-y-auto">
+                        <div className="mx-auto w-full max-w-xl rounded-2xl border border-red-200 bg-white shadow-xl">
+                            <div className="p-5 sm:p-6">
+                                <div className="inline-flex items-center gap-2 rounded-full border border-red-200 bg-red-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-red-700">
+                                    <ShieldAlert className="h-3.5 w-3.5" />
+                                    Permanent destruction
+                                </div>
+
+                                <h3 className="mt-3 text-xl font-semibold text-neutral-900">
+                                    Destroy this Vercel project?
+                                </h3>
+
+                                <p className="mt-2 text-sm text-neutral-700 leading-relaxed">
+                                    This will permanently delete the Vercel project and all linked deployment records for this project in Kloner.
+                                    This action cannot be undone.
+                                </p>
+
+                                <div className="mt-4 rounded-xl border border-red-200 bg-red-50/70 px-3 py-3 text-sm text-red-800">
+                                    <div>
+                                        <span className="font-semibold">App:</span> {destroyTarget.appName}
+                                    </div>
+                                    <div>
+                                        <span className="font-semibold">Project:</span> {destroyTarget.projectName}
+                                    </div>
+                                    <div>
+                                        <span className="font-semibold">Linked deployments to remove:</span> {destroyTarget.deploymentDocIds.length}
+                                    </div>
+                                </div>
+
+                                <div className="mt-4 space-y-3">
+                                    <div>
+                                        <label className="block text-xs font-semibold uppercase tracking-[0.12em] text-neutral-600 mb-1">
+                                            Type the exact project name to confirm
+                                        </label>
+                                        <input
+                                            value={destroyTypingProject}
+                                            onChange={(e) => setDestroyTypingProject(e.target.value)}
+                                            className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm text-neutral-900 focus:outline-none focus:ring-2 focus:ring-red-200"
+                                            placeholder={destroyTarget.projectName}
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-xs font-semibold uppercase tracking-[0.12em] text-neutral-600 mb-1">
+                                            Type DESTROY THIS VERCEL PROJECT
+                                        </label>
+                                        <input
+                                            value={destroyTypingPhrase}
+                                            onChange={(e) => setDestroyTypingPhrase(e.target.value)}
+                                            className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm text-neutral-900 focus:outline-none focus:ring-2 focus:ring-red-200"
+                                            placeholder="DESTROY THIS VERCEL PROJECT"
+                                        />
+                                    </div>
+                                </div>
+
+                                {destroyError && (
+                                    <p className="mt-3 text-sm text-red-700">{destroyError}</p>
+                                )}
+
+                                <div className="mt-5 flex items-center justify-end gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setDestroyTarget(null);
+                                            setDestroyTypingProject("");
+                                            setDestroyTypingPhrase("");
+                                            setDestroyError(null);
+                                        }}
+                                        disabled={destroyLoading}
+                                        className="rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-800 hover:bg-neutral-50 disabled:opacity-50"
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => void confirmDestroyProject()}
+                                        disabled={destroyLoading}
+                                        className="inline-flex items-center gap-2 rounded-md border border-red-600 bg-red-600 px-3 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50"
+                                    >
+                                        {destroyLoading ? (
+                                            <Loader2 className="h-4 w-4 animate-spin" />
+                                        ) : (
+                                            <Trash2 className="h-4 w-4" />
+                                        )}
+                                        <span>Permanently destroy project</span>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 )}
             </div>
         </main>

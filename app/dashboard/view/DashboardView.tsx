@@ -12940,7 +12940,7 @@ export default function PreviewPage(): JSX.Element {
                                                             <span className="mt-[2px] inline-flex h-5 w-5 items-center justify-center rounded-full text-[14px] font-black text-blue-600">
                                                                 ✓
                                                             </span>
-                                                            <span className="leading-snug">24/7 Priority support</span>
+                                                            <span className="leading-snug">24/7 Human support included</span>
                                                         </div>
                                                     </div>
 
@@ -13646,7 +13646,7 @@ export default function PreviewPage(): JSX.Element {
                                                                     <span className="mt-[2px] inline-flex h-5 w-5 items-center justify-center rounded-full text-[14px] font-black text-accent">
                                                                         ✓
                                                                     </span>
-                                                                    <span className="leading-snug">24/7 Priority support</span>
+                                                                    <span className="leading-snug">24/7 Human support included</span>
                                                                 </div>
                                                             </div>
 
@@ -14165,7 +14165,7 @@ export default function PreviewPage(): JSX.Element {
                                                 <span className="mt-[1px] inline-flex h-6 w-6 items-center justify-center rounded-full text-[12px] font-semibold text-accent shrink-0">
                                                     ✓
                                                 </span>
-                                                <span>Priority support included</span>
+                                                <span>24/7 Human support included</span>
                                             </div>
 
                                             <div className="flex items-start gap-3 text-sm leading-relaxed text-neutral-800">

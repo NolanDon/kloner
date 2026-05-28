@@ -120,7 +120,7 @@ const tiers: Tier[] = [
             "Team seats and client projects",
             "Change tracking and audit history",
             "Priority to new design tools",
-            "Priority support",
+            "24/7 Human support",
         ],
         cta: "Subscribe to Agency",
         fineprint: "Billed yearly at $99/year. Cancel anytime. Secure checkout via Stripe.",
