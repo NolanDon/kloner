@@ -2739,6 +2739,7 @@ function AppCard({
     const [draftEditLaunchBusy, setDraftEditLaunchBusy] = useState(false);
     const [draftEditLockActive, setDraftEditLockActive] = useState(false);
     const draftEditUnlockTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const draftEditClickGuardRef = useRef(false);
 
     const clearDraftEditUnlockTimer = useCallback(() => {
         if (!draftEditUnlockTimerRef.current) return;
@@ -2787,6 +2788,7 @@ function AppCard({
         if (!isDraftCard) {
             setDraftEditLaunchBusy(false);
             setDraftEditLockActive(false);
+            draftEditClickGuardRef.current = false;
             clearDraftEditUnlockTimer();
         }
     }, [clearDraftEditUnlockTimer, isDraftCard]);
@@ -2794,6 +2796,7 @@ function AppCard({
     useEffect(() => {
         if (isPendingCreation) {
             setDraftEditLaunchBusy(false);
+            draftEditClickGuardRef.current = false;
         }
     }, [isPendingCreation]);
 
@@ -2801,11 +2804,13 @@ function AppCard({
         if (!isDraftCard || !appBuilderNavigated) return;
         clearDraftEditUnlockTimer();
         setDraftEditLockActive(false);
+        draftEditClickGuardRef.current = false;
     }, [appBuilderNavigated, clearDraftEditUnlockTimer, isDraftCard]);
 
     useEffect(() => {
         return () => {
             clearDraftEditUnlockTimer();
+            draftEditClickGuardRef.current = false;
         };
     }, [clearDraftEditUnlockTimer]);
 
@@ -2878,9 +2883,11 @@ function AppCard({
                                     <button
                                         type="button"
                                         onClick={async () => {
+                                            if (draftEditClickGuardRef.current) return;
                                             if (disableActions || isPendingCreation || isBrokenDraftCard || draftEditLaunchBusy || draftEditLockActive) return;
                                             if (!onPromoteDraft) return;
 
+                                            draftEditClickGuardRef.current = true;
                                             setDraftEditLaunchBusy(true);
                                             activateDraftEditLock(DRAFT_EDIT_BUTTON_LOCK_MS);
                                             try {
@@ -2892,6 +2899,7 @@ function AppCard({
                                                     sourceUrl: (app as any)?.sourceUrl || null,
                                                 }));
                                             } finally {
+                                                draftEditClickGuardRef.current = false;
                                                 setDraftEditLaunchBusy(false);
                                             }
                                         }}
