@@ -80,57 +80,86 @@ function ensureNextConfigFiles(files: Record<string, any>): Record<string, any> 
 
 async function handleWebcontainerPost(body: any, uid?: string) {
   const { appId, files, mode } = body || {};
-  if (!appId || typeof appId !== 'string' || !files || typeof files !== 'object') {
+  const startupStrategy =
+    typeof body?.startupStrategy === 'string' ? String(body.startupStrategy).trim() : '';
+  const fallbackReason =
+    typeof body?.fallbackReason === 'string' ? String(body.fallbackReason).trim() : undefined;
+  const estimatedRequestBytes = Number.isFinite(Number(body?.estimatedRequestBytes))
+    ? Number(body.estimatedRequestBytes)
+    : undefined;
+
+  if (!appId || typeof appId !== 'string') {
     return NextResponse.json({ error: 'Invalid request' }, { status: 400 });
   }
 
-  const safeFiles = ensureNextConfigFiles(files as Record<string, any>);
+  const isStrategyStartup = Boolean(startupStrategy);
+  if (!isStrategyStartup && (!files || typeof files !== 'object')) {
+    return NextResponse.json({ error: 'Invalid request' }, { status: 400 });
+  }
+
+  const safeFiles = isStrategyStartup
+    ? null
+    : ensureNextConfigFiles(files as Record<string, any>);
 
   // Basic payload limits to reduce abuse.
-  const paths = Object.keys(safeFiles);
-  if (paths.length > 500) {
+  const paths = safeFiles ? Object.keys(safeFiles) : [];
+  if (!isStrategyStartup && paths.length > 500) {
     return NextResponse.json({ error: 'Too many files' }, { status: 400 });
   }
 
-  let totalBytes = 0;
-  for (const p of paths) {
-    const content = (safeFiles as any)[p]?.content;
-    if (typeof content !== 'string') {
-      return NextResponse.json({ error: 'Invalid file content' }, { status: 400 });
-    }
-    totalBytes += Buffer.byteLength(content, 'utf8');
-    if (totalBytes > 25_000_000) {
-      void captureCriticalEvent({
-        source: 'internal',
-        severity: 'critical',
-        route: '/api/webcontainer',
-        method: 'POST',
-        statusCode: 400,
-        userId: uid,
-        action: 'webcontainer_files_too_large',
-        message: 'Files too large',
-        errorName: 'WebcontainerFilesTooLarge',
-        service: 'webcontainer',
-        extra: {
-          appId,
-          mode: mode || null,
-          fileCount: paths.length,
-          totalBytes,
-          limitBytes: 25_000_000,
-        },
-      }).catch((err) => {
-        console.warn('[webcontainer] failed to report oversize payload', err);
-      });
+  if (!isStrategyStartup) {
+    let totalBytes = 0;
+    for (const p of paths) {
+      const content = (safeFiles as any)[p]?.content;
+      if (typeof content !== 'string') {
+        return NextResponse.json({ error: 'Invalid file content' }, { status: 400 });
+      }
+      totalBytes += Buffer.byteLength(content, 'utf8');
+      if (totalBytes > 25_000_000) {
+        void captureCriticalEvent({
+          source: 'internal',
+          severity: 'critical',
+          route: '/api/webcontainer',
+          method: 'POST',
+          statusCode: 400,
+          userId: uid,
+          action: 'webcontainer_files_too_large',
+          message: 'Files too large',
+          errorName: 'WebcontainerFilesTooLarge',
+          service: 'webcontainer',
+          extra: {
+            appId,
+            mode: mode || null,
+            fileCount: paths.length,
+            totalBytes,
+            limitBytes: 25_000_000,
+          },
+        }).catch((err) => {
+          console.warn('[webcontainer] failed to report oversize payload', err);
+        });
 
-      return NextResponse.json({ error: 'Files too large' }, { status: 400 });
+        return NextResponse.json({ error: 'Files too large' }, { status: 400 });
+      }
     }
   }
 
   try {
+    const backendBody: Record<string, unknown> = {
+      appId,
+      mode,
+      ...(isStrategyStartup
+        ? {
+            startupStrategy,
+            ...(fallbackReason ? { fallbackReason } : {}),
+            ...(typeof estimatedRequestBytes === 'number' ? { estimatedRequestBytes } : {}),
+          }
+        : { files: safeFiles as Record<string, any> }),
+    };
+
     const response = await callBackend({ headers: {} } as any, {
       path: "/api/v1/webcontainer",
       method: "POST",
-      body: { appId, files: safeFiles, mode },
+      body: backendBody,
       userCtx: uid ? { uid } : undefined,
       // Startup can legitimately take longer than the default callBackend timeout.
       timeoutMs: 45_000,
