@@ -3240,10 +3240,11 @@ export default function NavBar() {
           }
         }
 
-        if (!response.ok && response.status === 413 && serverHydrateFallbackEnabled && activeRequestBody === requestBody) {
+        if (!response.ok && response.status === 413 && activeRequestBody === requestBody) {
           console.warn('[WebContainerRunner] startup hit HTTP 413; attempting server-hydrated startup fallback', {
             appId,
             estimatedRequestBytes,
+            featureFlagEnabled: serverHydrateFallbackEnabled,
           });
           reportStartupContractIssue(`startup-413-fallback-attempt:${appId}:${runId}`, {
             action: 'preview_start_413_fallback_attempt',
