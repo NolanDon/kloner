@@ -3127,29 +3127,169 @@ export default function NavBar() {
           }
         })();
 
+        const serverHydrateFallbackEnabled = (() => {
+          const raw = String(process.env.NEXT_PUBLIC_WEB_PREVIEW_SERVER_HYDRATE_FALLBACK || '').trim().toLowerCase();
+          return raw === '1' || raw === 'true';
+        })();
+
+        const serverHydrateThresholdBytes = (() => {
+          const raw = Number.parseInt(String(process.env.NEXT_PUBLIC_WEB_PREVIEW_SERVER_HYDRATE_THRESHOLD_BYTES || '').trim(), 10);
+          if (Number.isFinite(raw) && raw > 0) return raw;
+          // Conservative default below typical serverless payload limits.
+          return 4_000_000;
+        })();
+
+        const shouldPreferServerHydrate =
+          serverHydrateFallbackEnabled &&
+          estimatedRequestBytes >= serverHydrateThresholdBytes;
+
+        const serverHydrateRequestBody: Record<string, unknown> = {
+          appId,
+          mode: 'dev',
+          startupStrategy: 'hydrate_server_files',
+          fallbackReason: 'payload_threshold_exceeded',
+          estimatedRequestBytes,
+        };
+
         const formatMb = (bytes: number) => {
           if (!Number.isFinite(bytes) || bytes <= 0) return 'unknown';
           return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
         };
 
-        const postWebcontainer = async (attempt: number): Promise<Response> => {
+        const postWebcontainer = async (attempt: number, body: Record<string, unknown>): Promise<Response> => {
           const headers = await getAuthenticatedHeaders();
           return fetch('/api/webcontainer', {
             method: 'POST',
             headers,
             credentials: "include",
             cache: 'no-store',
-            body: JSON.stringify(requestBody),
+            body: JSON.stringify(body),
+          });
+        };
+
+        const reportStartupContractIssue = (key: string, payload: {
+          action: string;
+          severity: 'critical' | 'error' | 'warning' | 'info';
+          statusCode?: number;
+          reason: string;
+          message: string;
+          force?: boolean;
+        }) => {
+          void reportPreviewAlert({
+            appId,
+            code: pollingCodeRef.current || undefined,
+            action: payload.action,
+            severity: payload.severity,
+            statusCode: payload.statusCode,
+            status: 'webcontainer_startup',
+            reason: payload.reason,
+            message: payload.message,
+            elapsedMs: pollStartedAtRef.current ? Date.now() - pollStartedAtRef.current : undefined,
+            previewUrl: previewUrlRef.current,
+            backendStatusData: lastBackendStatusRef.current,
+            alertKeyOverride: key,
+            dedupeTtlMs: 60 * 1000,
+            force: payload.force,
           });
         };
 
         await ensureAppScopeCookie();
-        let response = await postWebcontainer(0);
+        let activeRequestBody: Record<string, unknown> = requestBody;
+        if (shouldPreferServerHydrate) {
+          console.info('[WebContainerRunner] trying server-hydrated startup fallback', {
+            appId,
+            estimatedRequestBytes,
+            thresholdBytes: serverHydrateThresholdBytes,
+          });
+          activeRequestBody = serverHydrateRequestBody;
+        }
+
+        let response = await postWebcontainer(0, activeRequestBody);
+
+        if (!response.ok && shouldPreferServerHydrate && activeRequestBody === serverHydrateRequestBody) {
+          const fallbackData = await response.clone().json().catch(() => ({} as any));
+          const fallbackCode = String(fallbackData?.code || '').toLowerCase();
+          const fallbackError = String(fallbackData?.error || '').toLowerCase();
+          const backendHydrationUnsupported =
+            response.status === 400 ||
+            response.status === 404 ||
+            response.status === 422 ||
+            response.status === 501 ||
+            fallbackCode.includes('unsupported') ||
+            fallbackCode.includes('invalid_request') ||
+            fallbackCode.includes('missing_files') ||
+            fallbackError.includes('invalid request') ||
+            fallbackError.includes('missing files') ||
+            fallbackError.includes('unsupported startupstrategy');
+
+          if (backendHydrationUnsupported) {
+            console.warn('[WebContainerRunner] backend server-hydrate startup not available yet; retrying legacy full-files startup', {
+              appId,
+              status: response.status,
+              code: fallbackData?.code || null,
+            });
+            reportStartupContractIssue(`startup-hydrate-unsupported-fallback:${appId}:${runId}`, {
+              action: 'preview_start_server_hydrate_unsupported_fallback',
+              severity: 'error',
+              statusCode: response.status,
+              reason: 'server_hydrate_unsupported',
+              message: 'Server-hydrated preview startup is not supported by backend yet. Falling back to legacy full-files startup.',
+            });
+            activeRequestBody = requestBody;
+            response = await postWebcontainer(0, activeRequestBody);
+          }
+        }
+
+        if (!response.ok && response.status === 413 && serverHydrateFallbackEnabled && activeRequestBody === requestBody) {
+          console.warn('[WebContainerRunner] startup hit HTTP 413; attempting server-hydrated startup fallback', {
+            appId,
+            estimatedRequestBytes,
+          });
+          reportStartupContractIssue(`startup-413-fallback-attempt:${appId}:${runId}`, {
+            action: 'preview_start_413_fallback_attempt',
+            severity: 'error',
+            statusCode: 413,
+            reason: 'request_payload_too_large',
+            message: 'Preview startup payload hit HTTP 413. Attempting server-hydrated startup fallback.',
+            force: true,
+          });
+          activeRequestBody = serverHydrateRequestBody;
+          response = await postWebcontainer(0, activeRequestBody);
+        }
 
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({} as any));
           const errorMsg = String(errorData?.error || 'Failed to start app');
           const errorCode = String(errorData?.code || '').trim();
+          const lowerCode = errorCode.toLowerCase();
+          const lowerMsg = errorMsg.toLowerCase();
+          const isTooLargeLikeError =
+            response.status === 413 ||
+            lowerCode.includes('too_large') ||
+            lowerCode.includes('payload_too_large') ||
+            lowerCode.includes('request_too_large') ||
+            lowerCode.includes('entity_too_large') ||
+            lowerCode.includes('function_payload_too_large') ||
+            lowerMsg.includes('payload too large') ||
+            lowerMsg.includes('request entity too large') ||
+            lowerMsg.includes('function_payload_too_large');
+          const isCriticalHttpStartupFailure = response.status >= 500;
+
+          if (isTooLargeLikeError || isCriticalHttpStartupFailure) {
+            reportStartupContractIssue(
+              `startup-critical-http:${appId}:${runId}:${response.status}:${errorCode || 'no-code'}`,
+              {
+                action: isTooLargeLikeError
+                  ? 'preview_start_payload_too_large'
+                  : 'preview_start_critical_http_failure',
+                severity: isTooLargeLikeError ? 'error' : 'critical',
+                statusCode: response.status,
+                reason: isTooLargeLikeError ? 'request_payload_too_large' : 'startup_http_failure',
+                message: `Preview startup failed with HTTP ${response.status}${errorCode ? ` (${errorCode})` : ''}: ${errorMsg}`,
+              },
+            );
+          }
+
           const isScopeProblem =
             errorCode === 'MISSING_APP_SCOPE' ||
             errorCode === 'INVALID_APP_SCOPE' ||
@@ -3158,11 +3298,11 @@ export default function NavBar() {
           // CSRF can drift (cookie/header mismatch). Refresh token and retry once.
           if (response.status === 403 && errorMsg.toLowerCase().includes('csrf')) {
             console.warn('Webcontainer start hit CSRF 403; retrying once with fresh CSRF token');
-            response = await postWebcontainer(1);
+            response = await postWebcontainer(1, activeRequestBody);
           } else if (response.status === 403 && isScopeProblem) {
             console.warn('Webcontainer start hit app-scope 403; refreshing scope cookie and retrying once');
             await ensureAppScopeCookie();
-            response = await postWebcontainer(1);
+            response = await postWebcontainer(1, activeRequestBody);
           } else if (response.status === 413) {
             throw new Error(
               `Preview payload too large (HTTP 413). The generated app payload is about ${formatMb(estimatedRequestBytes)} and exceeds the API/request limit. Remove large assets or split content before retrying.`
