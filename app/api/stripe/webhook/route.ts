@@ -288,11 +288,27 @@ async function applyAiCreditTopupFromCheckoutSession(session: Stripe.Checkout.Se
                 ? remainingRaw
                 : 0;
 
+        const monthlyLimitRaw = bucket?.monthlyLimit;
+        const monthlyLimit =
+            typeof monthlyLimitRaw === "number" && Number.isFinite(monthlyLimitRaw) && monthlyLimitRaw >= 0
+                ? monthlyLimitRaw
+                : null;
+
+        const bonusRaw = (bucket as any)?.bonusRemaining;
+        const existingBonus =
+            typeof bonusRaw === "number" && Number.isFinite(bonusRaw) && bonusRaw >= 0
+                ? Math.floor(bonusRaw)
+                : monthlyLimit !== null
+                    ? Math.max(0, remaining - monthlyLimit)
+                    : 0;
+
         const newRemaining = remaining + credits;
+        const newBonusRemaining = existingBonus + credits;
 
         const nextBucket: Record<string, any> = {
             ...(bucket && typeof bucket === "object" ? bucket : {}),
             remaining: newRemaining,
+            bonusRemaining: newBonusRemaining,
             lastTopUpAt: admin.firestore.FieldValue.serverTimestamp(),
         };
 
