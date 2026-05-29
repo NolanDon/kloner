@@ -8383,7 +8383,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                 <p className="mt-1 text-sm leading-relaxed text-neutral-700">
                                     Something went wrong building website.
                                 </p>
-                                <div className="mt-3 flex items-center gap-2">
+                                <div className="mt-3 flex flex-wrap items-center gap-2">
                                     <button
                                         type="button"
                                         onClick={() => onPreviewIssueAction?.()}
@@ -8402,11 +8402,11 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                             Fix with AI
                                         </button>
                                     ) : null}
-                                    <details className="relative ml-auto shrink-0">
-                                        <summary className="inline-flex cursor-pointer list-none items-center justify-center rounded-full border border-rose-200 bg-white p-2 text-rose-600 transition hover:bg-rose-50">
+                                    <details className="w-full">
+                                        <summary className="ml-auto inline-flex cursor-pointer list-none items-center justify-center rounded-full border border-rose-200 bg-white p-2 text-rose-600 transition hover:bg-rose-50">
                                             <ChevronDown className="h-4 w-4" aria-hidden="true" />
                                         </summary>
-                                        <div className="absolute right-0 z-20 bottom-full mb-2 w-[min(28rem,calc(100vw-4rem))] max-w-[calc(100vw-4rem)] rounded-xl border border-rose-200 bg-white px-3 py-2 shadow-[0_10px_24px_rgba(244,63,94,0.08)]">
+                                        <div className="mt-2 w-full rounded-xl border border-rose-200 bg-white px-3 py-2 shadow-[0_10px_24px_rgba(244,63,94,0.08)]">
                                             <div className="space-y-2">
                                                 <p className="text-sm leading-6 text-neutral-700">
                                                     The preview ran into a problem, but you can still chat here to debug it or ask for help.
