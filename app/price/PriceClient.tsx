@@ -165,6 +165,7 @@ export default function PriceClient(): JSX.Element {
     const [topupSuccessCredits, setTopupSuccessCredits] = useState<number | null>(null);
     const { showAlert } = useModal();
     const { user, userTier, loading: authLoading } = useAuth();
+    const PRICE_TOPUP_HANDLED_PREFIX = "kloner.price.topup.handled:";
 
     const pendingAutoCheckoutAttemptedRef = useRef(false);
 
@@ -190,6 +191,28 @@ export default function PriceClient(): JSX.Element {
 
                 if (topup !== "success" || !sessionId) return;
                 if (authLoading) return;
+
+                const handledKey = `${PRICE_TOPUP_HANDLED_PREFIX}${sessionId}`;
+                const alreadyHandled = (() => {
+                    try {
+                        return window.sessionStorage.getItem(handledKey) === "1";
+                    } catch {
+                        return false;
+                    }
+                })();
+
+                if (alreadyHandled) {
+                    url.searchParams.delete("topup");
+                    url.searchParams.delete("session_id");
+                    window.history.replaceState({}, "", url.toString());
+                    return;
+                }
+
+                try {
+                    window.sessionStorage.setItem(handledKey, "1");
+                } catch {
+                    // ignore
+                }
 
                 const csrf = await ensureCsrf();
 

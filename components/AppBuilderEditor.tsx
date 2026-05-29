@@ -1725,6 +1725,7 @@ export default function AppBuilderEditor({
     const [mobileTab, setMobileTab] = useState<"app" | "prompt">("app");
     const [mobileControlsOpen, setMobileControlsOpen] = useState(false);
     const [tabletControlsOpen, setTabletControlsOpen] = useState(false);
+    const [topupModalTrigger, setTopupModalTrigger] = useState(0);
     const [desktopOnlyToast, setDesktopOnlyToast] = useState(false);
     const desktopOnlyToastTimerRef = useRef<number | null>(null);
     const tabletControlsRef = useRef<HTMLDivElement | null>(null);
@@ -6190,7 +6191,7 @@ export default function AppBuilderEditor({
             ) : null}
             <div className="h-full w-full bg-white flex flex-col">
                 {/* Header */}
-                <div className="relative flex flex-nowrap items-center justify-between gap-2 overflow-x-auto border-b bg-gray-50 p-2.5 sm:p-4">
+                <div className="relative z-30 flex flex-nowrap items-center justify-between gap-2 overflow-visible border-b bg-gray-50 p-2.5 sm:p-4">
                     <div className="relative z-20 flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
                         {isRenaming ? (
                             <div className="flex min-w-0 max-w-full items-center gap-1.5 sm:gap-2">
@@ -6271,6 +6272,24 @@ export default function AppBuilderEditor({
                                         >
                                             <Rocket className="h-4 w-4 text-neutral-500" />
                                             View live
+                                        </button>
+                                    ) : null}
+
+                                    {isDev ? (
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setTabletControlsOpen(false);
+                                                if (viewMode !== "ai") {
+                                                    void requestViewModeChange("ai");
+                                                }
+                                                setTopupModalTrigger((prev) => prev + 1);
+                                            }}
+                                            className="flex w-full items-center gap-2 border-b border-neutral-100 px-4 py-3 text-left text-sm font-semibold text-neutral-800 hover:bg-neutral-50"
+                                            title="Top up AI credits"
+                                        >
+                                            <span>Top up credits</span>
+                                            <DevOnlyIconBadge title="Development-only billing quick action" />
                                         </button>
                                     ) : null}
 
@@ -6379,6 +6398,25 @@ export default function AppBuilderEditor({
                                 </button>
                             ) : null}
 
+                            {isDev ? (
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        if (viewMode !== "ai") {
+                                            void requestViewModeChange("ai");
+                                        }
+                                        setTopupModalTrigger((prev) => prev + 1);
+                                    }}
+                                    className="inline-flex shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-full border border-neutral-300 bg-white px-2.5 py-2 text-xs font-semibold text-neutral-700 hover:bg-neutral-50 lg:px-3"
+                                    title="Top up AI credits"
+                                    aria-label="Top up credits"
+                                >
+                                    <span className="hidden md:inline lg:hidden">Top up</span>
+                                    <span className="hidden lg:inline">Top up credits</span>
+                                    <DevOnlyIconBadge title="Development-only billing quick action" />
+                                </button>
+                            ) : null}
+
                             {lastDeployLiveUrl ? (
                                 <button
                                     onClick={() => window.open(lastDeployLiveUrl, "_blank", "noopener,noreferrer")}
@@ -6450,7 +6488,7 @@ export default function AppBuilderEditor({
                         </div>
                     </div>
                     {/* Portal target for Custom tab toolbar buttons */}
-                    <div id="kloner-custom-toolbar-portal" className="hidden md:flex items-center gap-2 mx-2" />
+                    <div id="kloner-custom-toolbar-portal" className="relative z-40 mx-2 hidden items-center gap-2 overflow-visible md:flex" />
                     <div className="relative z-10 flex shrink-0 gap-2 items-center">
                         {!(isRenaming && isMobile) ? (
                             <button
@@ -6721,6 +6759,7 @@ export default function AppBuilderEditor({
                                     onUserMessageSent={() => {
                                         appBuilderAiMessagesSentRef.current += 1;
                                     }}
+                                    topupModalTrigger={topupModalTrigger}
                                     welcomeContext={agentWelcomeContext}
                                 />
                             </div>
@@ -7510,6 +7549,24 @@ export default function AppBuilderEditor({
                                     >
                                         <Rocket className="h-4 w-4" />
                                         <span>View live</span>
+                                    </button>
+                                ) : null}
+
+                                {isDev ? (
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setMobileControlsOpen(false);
+                                            if (viewMode !== "ai") {
+                                                void requestViewModeChange("ai");
+                                            }
+                                            setTopupModalTrigger((prev) => prev + 1);
+                                        }}
+                                        className="w-full inline-flex items-center justify-center gap-2 rounded-full px-4 py-2 text-sm font-semibold border border-neutral-300 bg-white text-neutral-800"
+                                        title="Top up AI credits"
+                                    >
+                                        <span>Top up credits</span>
+                                        <DevOnlyIconBadge title="Development-only billing quick action" />
                                     </button>
                                 ) : null}
 

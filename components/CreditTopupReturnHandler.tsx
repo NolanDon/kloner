@@ -1,8 +1,11 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@/src/hooks/useAuth";
 import { useModal } from "@/components/ui/ModalContext";
+import SuccessConfetti from "@/components/tools/SuccessConfetti";
+
+const TOPUP_RETURN_HANDLED_PREFIX = "kloner.topup.return.handled:";
 
 async function fetchCsrf(): Promise<string | null> {
     try {
@@ -25,6 +28,7 @@ export default function CreditTopupReturnHandler(): JSX.Element | null {
     const { user, loading: authLoading } = useAuth();
     const { showAlert } = useModal();
     const handledRef = useRef(false);
+    const [topupSuccessCredits, setTopupSuccessCredits] = useState<number | null>(null);
 
     useEffect(() => {
         if (handledRef.current) return;
@@ -37,6 +41,31 @@ export default function CreditTopupReturnHandler(): JSX.Element | null {
 
         if (!topup) return;
         if (topup !== "success" && topup !== "cancel") return;
+
+        const processedKey = `${TOPUP_RETURN_HANDLED_PREFIX}${topup}:${sessionId || "missing"}`;
+
+        const wasProcessed = (() => {
+            try {
+                return window.sessionStorage.getItem(processedKey) === "1";
+            } catch {
+                return false;
+            }
+        })();
+
+        const markProcessed = () => {
+            try {
+                window.sessionStorage.setItem(processedKey, "1");
+            } catch {
+                // ignore
+            }
+        };
+
+        if (wasProcessed) {
+            url.searchParams.delete("topup");
+            url.searchParams.delete("session_id");
+            window.history.replaceState({}, "", url.toString());
+            return;
+        }
 
         handledRef.current = true;
 
@@ -72,6 +101,7 @@ export default function CreditTopupReturnHandler(): JSX.Element | null {
         };
 
         if (topup === "cancel") {
+            markProcessed();
             if (notifyOpener({ status: "cancel" })) {
                 cleanup();
                 closePopupIfPossible();
@@ -91,11 +121,14 @@ export default function CreditTopupReturnHandler(): JSX.Element | null {
         }
 
         if (!sessionId) {
+            markProcessed();
             notifyOpener({ status: "error", error: "Missing checkout session id." });
             cleanup();
             closePopupIfPossible();
             return;
         }
+
+        markProcessed();
 
         void (async () => {
             try {
@@ -120,10 +153,7 @@ export default function CreditTopupReturnHandler(): JSX.Element | null {
                     if (notifyOpener({ status: "success", credits })) {
                         return;
                     }
-                    await showAlert(
-                        credits ? `Added ${credits.toLocaleString()} AI credits to your account.` : "Top-up confirmed.",
-                        "Credits added",
-                    );
+                    setTopupSuccessCredits(credits);
                 } else {
                     const errorMessage =
                         typeof data?.error === "string" && data.error
@@ -162,5 +192,16 @@ export default function CreditTopupReturnHandler(): JSX.Element | null {
         })();
     }, [authLoading, showAlert, user]);
 
-    return null;
+    return (
+        <SuccessConfetti
+            open={topupSuccessCredits !== null}
+            title="Credits added"
+            message={
+                topupSuccessCredits !== null
+                    ? `Added ${topupSuccessCredits.toLocaleString()} AI credits to your account.`
+                    : "Top-up confirmed."
+            }
+            onDismiss={() => setTopupSuccessCredits(null)}
+        />
+    );
 }

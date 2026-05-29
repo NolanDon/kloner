@@ -175,6 +175,7 @@ type AppBuilderEditorAgentChatProps = {
     onPreviewIssueFixRequest?: () => void;
     onUserMessageSent?: () => void;
     onIntroSequenceComplete?: () => void;
+    topupModalTrigger?: number;
     welcomeContext?: {
         source?: "prompt" | "url" | "quickstart" | "template" | "sample" | "unknown";
         prompt?: string | null;
@@ -903,7 +904,7 @@ function buildRestorePointDiffPreview(detail: RestorePointDetail | null | undefi
     return { before, after };
 }
 
-export default function AppBuilderEditorAgentChat({ appId, files, currentFile, onFileEdit, onFilesReplace, onRestoreApplied, creditError, previewReady, previewIssue, previewIssueActionLabel, onPreviewIssueAction, onPreviewIssueFixRequest, onUserMessageSent, onIntroSequenceComplete, welcomeContext }: AppBuilderEditorAgentChatProps) {
+export default function AppBuilderEditorAgentChat({ appId, files, currentFile, onFileEdit, onFilesReplace, onRestoreApplied, creditError, previewReady, previewIssue, previewIssueActionLabel, onPreviewIssueAction, onPreviewIssueFixRequest, onUserMessageSent, onIntroSequenceComplete, topupModalTrigger, welcomeContext }: AppBuilderEditorAgentChatProps) {
     const { user, userTier } = useAuth();
     const { showConfirm, showAlert } = useModal();
     const PRO_MONTHLY_PRICE_USD = Number.isFinite(Number(process.env.NEXT_PUBLIC_PRO_MONTHLY_PRICE_USD))
@@ -915,6 +916,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
     const [showCreditsAccuracyNotice, setShowCreditsAccuracyNotice] = useState(true);
     const [topupBusy, setTopupBusy] = useState(false);
     const [topupModalOpen, setTopupModalOpen] = useState(false);
+    const topupTriggerSeenRef = useRef(0);
     const [topupCredits, setTopupCredits] = useState<number>(500);
     const [topupConfig, setTopupConfig] = useState<
         | {
@@ -970,6 +972,14 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                   ),
               )
             : 0;
+
+    useEffect(() => {
+        const trigger = typeof topupModalTrigger === "number" ? topupModalTrigger : 0;
+        if (!trigger) return;
+        if (trigger === topupTriggerSeenRef.current) return;
+        topupTriggerSeenRef.current = trigger;
+        setTopupModalOpen(true);
+    }, [topupModalTrigger]);
 
     useEffect(() => {
         if (!topupModalOpen) return;

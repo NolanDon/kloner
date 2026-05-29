@@ -4570,8 +4570,6 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                     const portalTarget = document.getElementById("kloner-custom-toolbar-portal");
                     if (!portalTarget) return null;
                     const editableFiles = editableHtmlPaths ?? [];
-                    const hasFileDropdown = editableFiles.length > 1;
-                    const currentFileLabel = currentHtmlPath || "(none)";
                     const labelFromPath = (path: string) => {
                         const normalized = String(path || "")
                             .replace(/^\/+/, "")
@@ -4581,14 +4579,28 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                         const withoutIndex = withoutExt.replace(/\/index$/i, "");
                         return withoutIndex || "index";
                     };
-                    const currentPageLabel = labelFromPath(currentHtmlPath || "");
+                    const labelFromRoute = (route: string) => {
+                        const normalized = String(route || "").trim().toLowerCase();
+                        if (!normalized || normalized === "single" || normalized === "/") return "home";
+                        return normalized.replace(/^\//, "") || "home";
+                    };
+
+                    const routeEntries = (allPages || [])
+                        .filter((page) => !archivedPageIds.includes(page.id))
+                        .map((page) => ({ id: page.id, label: labelFromRoute(page.id) }));
+
+                    const hasRouteEntries = routeEntries.length > 0;
+                    const hasDropdown = hasRouteEntries ? routeEntries.length > 1 : editableFiles.length > 1;
+                    const currentPageLabel = hasRouteEntries
+                        ? labelFromRoute(activePageId || routeEntries[0]?.id || "")
+                        : labelFromPath(currentHtmlPath || "");
                     return createPortal(
                         <div className="flex flex-wrap items-center gap-1.5 lg:gap-2">
-                            {/* File switcher */}
-                            {editableFiles.length > 0 ? (
+                            {/* Page/file switcher */}
+                            {hasRouteEntries || editableFiles.length > 0 ? (
                                 <div className="shrink-0 flex items-center gap-1.5 lg:gap-2">
                                     <div className="relative" ref={pageDropdownRef} id="kloner-page-switcher">
-                                        {hasFileDropdown ? (
+                                        {hasDropdown ? (
                                             <button
                                                 type="button"
                                                 onClick={() => setIsPageDropdownOpen((prev) => !prev)}
@@ -4606,29 +4618,49 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                             </div>
                                         )}
 
-                                        {hasFileDropdown && isPageDropdownOpen ? (
-                                            <div className="absolute left-0 top-[calc(100%+0.5rem)] z-50 w-72 overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-[0_18px_40px_rgba(15,23,42,0.12)]">
+                                        {hasDropdown && isPageDropdownOpen ? (
+                                            <div className="absolute left-0 top-[calc(100%+0.5rem)] z-[22000] w-72 overflow-visible rounded-2xl border border-neutral-200 bg-white shadow-[0_18px_40px_rgba(15,23,42,0.12)]">
                                                 <div className="max-h-64 overflow-y-auto py-1">
-                                                    {editableFiles.map((path) => {
-                                                        const isActive = path === currentHtmlPath;
-                                                        const label = labelFromPath(path);
-                                                        return (
-                                                            <button
-                                                                key={path}
-                                                                type="button"
-                                                                onClick={() => {
-                                                                    onSelectHtmlPath?.(path);
-                                                                    setIsPageDropdownOpen(false);
-                                                                }}
-                                                                className={`flex w-full items-center justify-between px-4 py-2 text-left text-sm transition-colors hover:bg-orange-50 hover:text-[#F55F2A] ${
-                                                                    isActive ? "bg-orange-50/70 text-[#F55F2A]" : "text-neutral-700"
-                                                                }`}
-                                                            >
-                                                                <span className="truncate lowercase">{label}</span>
-                                                                {isActive ? <span className="ml-3 shrink-0 h-2 w-2 rounded-full bg-[#F55F2A]" aria-hidden="true" /> : null}
-                                                            </button>
-                                                        );
-                                                    })}
+                                                    {hasRouteEntries
+                                                        ? routeEntries.map((entry) => {
+                                                            const isActive = entry.id === activePageId;
+                                                            return (
+                                                                <button
+                                                                    key={entry.id}
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        void handlePageSwitch(entry.id);
+                                                                        setIsPageDropdownOpen(false);
+                                                                    }}
+                                                                    className={`flex w-full items-center justify-between px-4 py-2 text-left text-sm transition-colors hover:bg-orange-50 hover:text-[#F55F2A] ${
+                                                                        isActive ? "bg-orange-50/70 text-[#F55F2A]" : "text-neutral-700"
+                                                                    }`}
+                                                                >
+                                                                    <span className="truncate lowercase">{entry.label}</span>
+                                                                    {isActive ? <span className="ml-3 shrink-0 h-2 w-2 rounded-full bg-[#F55F2A]" aria-hidden="true" /> : null}
+                                                                </button>
+                                                            );
+                                                        })
+                                                        : editableFiles.map((path) => {
+                                                            const isActive = path === currentHtmlPath;
+                                                            const label = labelFromPath(path);
+                                                            return (
+                                                                <button
+                                                                    key={path}
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        onSelectHtmlPath?.(path);
+                                                                        setIsPageDropdownOpen(false);
+                                                                    }}
+                                                                    className={`flex w-full items-center justify-between px-4 py-2 text-left text-sm transition-colors hover:bg-orange-50 hover:text-[#F55F2A] ${
+                                                                        isActive ? "bg-orange-50/70 text-[#F55F2A]" : "text-neutral-700"
+                                                                    }`}
+                                                                >
+                                                                    <span className="truncate lowercase">{label}</span>
+                                                                    {isActive ? <span className="ml-3 shrink-0 h-2 w-2 rounded-full bg-[#F55F2A]" aria-hidden="true" /> : null}
+                                                                </button>
+                                                            );
+                                                        })}
                                                 </div>
                                             </div>
                                         ) : null}

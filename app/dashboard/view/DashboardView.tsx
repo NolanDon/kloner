@@ -3896,6 +3896,7 @@ export default function PreviewPage(): JSX.Element {
     const [showWebsitePrePaywall, setShowWebsitePrePaywall] = useState(false);
     const [showTrialSuccessCelebration, setShowTrialSuccessCelebration] = useState(false);
     const [showDeploySuccessConfetti, setShowDeploySuccessConfetti] = useState(false);
+    const [showTopupSuccessConfetti, setShowTopupSuccessConfetti] = useState(false);
     const [showDevQuickMenu, setShowDevQuickMenu] = useState(false);
     const [showDevQuickMenuLauncher, setShowDevQuickMenuLauncher] = useState(true);
     const [previewDebugScenario, setPreviewDebugScenario] = useState<{ mode: 'terminal-error' | 'terminal-error-auto-fix'; nonce: number } | null>(null);
@@ -7212,6 +7213,31 @@ export default function PreviewPage(): JSX.Element {
             setPendingDraftApps,
         }),
         [canUseScreenshotCredit, fetch, push, setErr, setInfo, setPendingDraftApps, setDraftApps, setShowCreditsPaywall, setWebsiteSubmissionPendingUrl]
+    );
+
+    const submitMiniUrlWithDuplicateConfirm = useCallback(
+        async (raw: string) => {
+            const normalized = validateAndNormalizePublicHttpUrl(raw || "");
+            if (normalized) {
+                const canonical = normUrl(normalized);
+                const hasMatchingDraft = draftApps.some((item) => {
+                    const source = validateAndNormalizePublicHttpUrl(String(item?.sourceUrl || ""));
+                    if (!source) return false;
+                    return normUrl(source) === canonical;
+                });
+
+                if (hasMatchingDraft) {
+                    const confirmed = await showConfirm(
+                        "You already have a draft for this URL. Start another scan anyway?",
+                        "URL already added",
+                    );
+                    if (!confirmed) return false;
+                }
+            }
+
+            return submitMiniUrl(raw);
+        },
+        [draftApps, showConfirm, submitMiniUrl],
     );
 
     const promoteDraftToApp = useCallback(async (draft: {
@@ -12445,37 +12471,40 @@ export default function PreviewPage(): JSX.Element {
 
                     <AnimatePresence>
                         {showDevQuickMenu ? (
-                            <motion.aside
+                            <motion.div
                                 key="dev-quick-menu"
                                 initial={{ opacity: 0, x: 24 }}
                                 animate={{ opacity: 1, x: 0 }}
                                 exit={{ opacity: 0, x: 24 }}
                                 transition={{ duration: 0.18, ease: "easeOut" }}
-                                className="fixed right-3 top-1/2 z-[25000] w-[320px] -translate-y-1/2 rounded-3xl border border-neutral-200 bg-white p-4 shadow-[0_24px_80px_rgba(15,23,42,0.22)]"
+                                className="fixed inset-0 z-[25000] flex items-center justify-center p-3"
                             >
-                                <div className="flex items-start justify-between gap-3">
-                                    <div>
-                                        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#f55f2a]">
-                                            Dev only
+                                <motion.aside
+                                    className="flex w-[min(92vw,360px)] max-h-[calc(100vh-1.5rem)] flex-col overflow-hidden rounded-3xl border border-neutral-200 bg-white p-4 shadow-[0_24px_80px_rgba(15,23,42,0.22)]"
+                                >
+                                    <div className="flex shrink-0 items-start justify-between gap-3">
+                                        <div>
+                                            <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#f55f2a]">
+                                                Dev only
+                                            </div>
+                                            <h3 className="mt-1 text-base font-semibold text-neutral-900">
+                                                Quick test menu
+                                            </h3>
+                                            <p className="mt-1 text-xs leading-5 text-neutral-500">
+                                                Use this to open paywalls and replay callback states without going through the full flow.
+                                            </p>
                                         </div>
-                                        <h3 className="mt-1 text-base font-semibold text-neutral-900">
-                                            Quick test menu
-                                        </h3>
-                                        <p className="mt-1 text-xs leading-5 text-neutral-500">
-                                            Use this to open paywalls and replay callback states without going through the full flow.
-                                        </p>
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowDevQuickMenu(false)}
+                                            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-500 hover:bg-neutral-50 hover:text-neutral-800"
+                                            aria-label="Close dev quick menu"
+                                        >
+                                            <X className="h-4 w-4" />
+                                        </button>
                                     </div>
-                                    <button
-                                        type="button"
-                                        onClick={() => setShowDevQuickMenu(false)}
-                                        className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-500 hover:bg-neutral-50 hover:text-neutral-800"
-                                        aria-label="Close dev quick menu"
-                                    >
-                                        <X className="h-4 w-4" />
-                                    </button>
-                                </div>
 
-                                <div className="mt-4 space-y-2">
+                                    <div className="mt-4 space-y-2 overflow-y-auto pr-1">
                                     <button
                                         type="button"
                                         onClick={() => { void handleDeleteOwnAccount(); }}
@@ -12544,6 +12573,18 @@ export default function PreviewPage(): JSX.Element {
                                         type="button"
                                         onClick={() => {
                                             setShowDevQuickMenu(false);
+                                            setShowTopupSuccessConfetti(true);
+                                        }}
+                                        className="flex w-full items-center justify-between rounded-2xl border border-neutral-200 bg-white px-3 py-2.5 text-left text-sm font-medium text-neutral-800 transition hover:bg-neutral-50"
+                                    >
+                                        <span>Show top up celebration</span>
+                                        <Sparkles className="h-4 w-4 text-[#f55f2a]" />
+                                    </button>
+
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setShowDevQuickMenu(false);
                                             setShowProPaywall(true);
                                         }}
                                         className="flex w-full items-center justify-between rounded-2xl border border-neutral-200 bg-white px-3 py-2.5 text-left text-sm font-medium text-neutral-800 transition hover:bg-neutral-50"
@@ -12594,7 +12635,8 @@ export default function PreviewPage(): JSX.Element {
                                         <Send className="h-4 w-4 text-slate-500" />
                                     </button>
                                 </div>
-                            </motion.aside>
+                                </motion.aside>
+                            </motion.div>
                         ) : null}
                     </AnimatePresence>
                 </>
@@ -12620,7 +12662,7 @@ export default function PreviewPage(): JSX.Element {
             <div className="mx-auto max-w-[1200px] px-4 sm:px-6 lg:px-10 py-8">
                 <section className="mb-10">
                     <MiniDashboardEntry
-                        onSubmitUrl={submitMiniUrl}
+                        onSubmitUrl={submitMiniUrlWithDuplicateConfirm}
                         planLabel={planLabel}
                         stripeStatus={stripeStatus}
                         stripeCancelAtPeriodEnd={stripeCancelAtPeriodEnd}
@@ -14881,6 +14923,12 @@ export default function PreviewPage(): JSX.Element {
                     title="Your website is live."
                     message="The deploy finished successfully."
                     onDismiss={() => setShowDeploySuccessConfetti(false)}
+                />
+                <SuccessConfetti
+                    open={showTopupSuccessConfetti}
+                    title="Credits added"
+                    message="Top-up confirmed and credits were added to your account."
+                    onDismiss={() => setShowTopupSuccessConfetti(false)}
                 />
             </div>
         </main>

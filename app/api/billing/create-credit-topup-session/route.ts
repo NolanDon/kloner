@@ -139,7 +139,10 @@ async function handler(req: NextRequest, uid: string) {
     const cancelUrlObj = new URL(nextPath, origin);
     cancelUrlObj.searchParams.set("topup", "cancel");
 
-    const successUrl = successUrlObj.toString();
+    const successUrl = successUrlObj
+        .toString()
+        // Stripe only substitutes the literal token, so avoid percent-encoding braces.
+        .replace(/%7BCHECKOUT_SESSION_ID%7D/gi, "{CHECKOUT_SESSION_ID}");
     const cancelUrl = cancelUrlObj.toString();
 
     const makeSession = async (resolvedCustomerId: string) =>

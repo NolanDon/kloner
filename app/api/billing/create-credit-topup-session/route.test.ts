@@ -161,7 +161,7 @@ describe("POST /api/billing/create-credit-topup-session", () => {
         expect(res.status).toBe(200);
 
         const payload = sessionsCreate.mock.calls[0]?.[0];
-        expect(payload.success_url).toContain("/dashboard/view?appId=proj_123&tab=editor&topup=success&session_id=%7BCHECKOUT_SESSION_ID%7D#chat");
+        expect(payload.success_url).toContain("/dashboard/view?appId=proj_123&tab=editor&topup=success&session_id={CHECKOUT_SESSION_ID}#chat");
         expect(payload.cancel_url).toContain("/dashboard/view?appId=proj_123&tab=editor&topup=cancel#chat");
     });
 });
