@@ -6712,7 +6712,11 @@ export default function AppBuilderEditor({
                                     previewReady={previewMode !== "webcontainer" ? true : isWebPreviewReady}
                                     previewIssue={previewMode !== "webcontainer" ? null : (previewIssue || autoPreviewError || previewError)}
                                     previewIssueActionLabel={previewIssueActionLabel}
-                                    onPreviewIssueAction={() => void handleRefresh()}
+                                    onPreviewIssueAction={() => {
+                                        const normalizedPreviewIssueAction = String(previewIssueActionLabel || "").trim().toLowerCase();
+                                        const shouldForceFreshRebuild = !normalizedPreviewIssueAction || normalizedPreviewIssueAction === "rebuild";
+                                        void handleRefresh(shouldForceFreshRebuild);
+                                    }}
                                     onPreviewIssueFixRequest={canFixPreviewIssueWithAi ? handlePreviewIssueFixRequest : undefined}
                                     onUserMessageSent={() => {
                                         appBuilderAiMessagesSentRef.current += 1;

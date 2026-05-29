@@ -7301,6 +7301,102 @@ export default function PreviewPage(): JSX.Element {
             });
         };
 
+        const parseArchiveSnapshotFromUrlDoc = (urlDoc: any): {
+            status: string | null;
+            zipPath: string | null;
+            zipUrl: string | null;
+            archiveHealth: any | null;
+            warning: any | null;
+            warningCode: string | null;
+            warningMessage: string | null;
+            warningAction: string | null;
+            lastError: string | null;
+            lastErrorCode: string | null;
+            retry: boolean | null;
+            crawlProgressStage: string | null;
+            crawlProgressMessage: string | null;
+            crawlProgressProgress: number | null;
+        } => {
+            const status = String(urlDoc.status || "").trim().toLowerCase() || null;
+            const zipPath = String(urlDoc.zipPath || "").trim() || null;
+            const zipUrl = String(urlDoc.zipUrl || "").trim() || null;
+            const archiveHealth = urlDoc.archiveHealth && typeof urlDoc.archiveHealth === "object" ? urlDoc.archiveHealth : null;
+            const warning = urlDoc.warning && typeof urlDoc.warning === "object" ? urlDoc.warning : null;
+            const warningCode = typeof urlDoc.warningCode === "string" && urlDoc.warningCode.trim() ? urlDoc.warningCode.trim() : (typeof archiveHealth?.warningCode === "string" ? archiveHealth.warningCode : null);
+            const warningMessage = typeof urlDoc.warningMessage === "string" && urlDoc.warningMessage.trim() ? urlDoc.warningMessage.trim() : (typeof archiveHealth?.warningMessage === "string" ? archiveHealth.warningMessage : null);
+            const warningAction = typeof urlDoc.warningAction === "string" && urlDoc.warningAction.trim() ? urlDoc.warningAction.trim() : (typeof archiveHealth?.warningAction === "string" ? archiveHealth.warningAction : null);
+            const lastError = typeof urlDoc.lastError === "string" && urlDoc.lastError.trim() ? urlDoc.lastError.trim() : null;
+            const lastErrorCode = typeof urlDoc.lastErrorCode === "string" && urlDoc.lastErrorCode.trim() ? urlDoc.lastErrorCode.trim() : null;
+            const retry = typeof urlDoc.retry === "boolean" ? urlDoc.retry : null;
+            const crawlProgress = urlDoc.crawlProgress && typeof urlDoc.crawlProgress === "object" ? urlDoc.crawlProgress : null;
+            const crawlProgressStage = typeof crawlProgress?.stage === "string" && crawlProgress.stage.trim() ? crawlProgress.stage.trim() : null;
+            const crawlProgressMessage = typeof crawlProgress?.message === "string" && crawlProgress.message.trim() ? crawlProgress.message.trim() : null;
+            const crawlProgressProgress = typeof crawlProgress?.progress === "number" && Number.isFinite(crawlProgress.progress) ? crawlProgress.progress : null;
+
+            return {
+                status,
+                zipPath,
+                zipUrl,
+                archiveHealth,
+                warning,
+                warningCode,
+                warningMessage,
+                warningAction,
+                lastError,
+                lastErrorCode,
+                retry,
+                crawlProgressStage,
+                crawlProgressMessage,
+                crawlProgressProgress,
+            };
+        };
+
+        const readArchiveSnapshot = async (): Promise<{
+            status: string | null;
+            zipPath: string | null;
+            zipUrl: string | null;
+            archiveHealth: any | null;
+            warning: any | null;
+            warningCode: string | null;
+            warningMessage: string | null;
+            warningAction: string | null;
+            lastError: string | null;
+            lastErrorCode: string | null;
+            retry: boolean | null;
+            crawlProgressStage: string | null;
+            crawlProgressMessage: string | null;
+            crawlProgressProgress: number | null;
+        } | null> => {
+            const snapshot = await getDocs(query(
+                collection(db, "kloner_users", user!.uid, "kloner_urls"),
+                where("url", "==", normalized),
+                limit(1),
+            ));
+            if (snapshot.empty) return null;
+            const urlDoc = (snapshot.docs[0].data() || {}) as any;
+            return parseArchiveSnapshotFromUrlDoc(urlDoc);
+        };
+
+        const isReusableArchiveSnapshot = (snapshot: {
+            status: string | null;
+            zipPath: string | null;
+            archiveHealth: any | null;
+            warningCode: string | null;
+            warningAction: string | null;
+        } | null): boolean => {
+            if (!snapshot?.zipPath) return false;
+            const readyLikeStatus = snapshot.status === "ready" || snapshot.status === "warning";
+            if (!readyLikeStatus) return false;
+
+            const warningAction = String(snapshot.warningAction || "").trim().toLowerCase();
+            const requiresRescan = Boolean(
+                snapshot.archiveHealth?.needsRescan ||
+                snapshot.warningCode === "ARCHIVE_RESCAN_REQUIRED" ||
+                warningAction === "rescan"
+            );
+            return !requiresRescan;
+        };
+
         const pollForArchiveReadiness = async (): Promise<{
             status: string | null;
             zipPath: string | null;
@@ -7341,72 +7437,50 @@ export default function PreviewPage(): JSX.Element {
                 }
 
                 const urlDoc = (snapshot.docs[0].data() || {}) as any;
-                const status = String(urlDoc.status || "").trim().toLowerCase() || null;
-                const zipPath = String(urlDoc.zipPath || "").trim() || null;
-                const zipUrl = String(urlDoc.zipUrl || "").trim() || null;
-                const archiveHealth = urlDoc.archiveHealth && typeof urlDoc.archiveHealth === "object" ? urlDoc.archiveHealth : null;
-                const warning = urlDoc.warning && typeof urlDoc.warning === "object" ? urlDoc.warning : null;
-                const warningCode = typeof urlDoc.warningCode === "string" && urlDoc.warningCode.trim() ? urlDoc.warningCode.trim() : (typeof archiveHealth?.warningCode === "string" ? archiveHealth.warningCode : null);
-                const warningMessage = typeof urlDoc.warningMessage === "string" && urlDoc.warningMessage.trim() ? urlDoc.warningMessage.trim() : (typeof archiveHealth?.warningMessage === "string" ? archiveHealth.warningMessage : null);
-                const warningAction = typeof urlDoc.warningAction === "string" && urlDoc.warningAction.trim() ? urlDoc.warningAction.trim() : (typeof archiveHealth?.warningAction === "string" ? archiveHealth.warningAction : null);
-                const lastError = typeof urlDoc.lastError === "string" && urlDoc.lastError.trim() ? urlDoc.lastError.trim() : null;
-                const lastErrorCode = typeof urlDoc.lastErrorCode === "string" && urlDoc.lastErrorCode.trim() ? urlDoc.lastErrorCode.trim() : null;
-                const retry = typeof urlDoc.retry === "boolean" ? urlDoc.retry : null;
-                const crawlProgress = urlDoc.crawlProgress && typeof urlDoc.crawlProgress === "object" ? urlDoc.crawlProgress : null;
-                const crawlProgressStage = typeof crawlProgress?.stage === "string" && crawlProgress.stage.trim() ? crawlProgress.stage.trim() : null;
-                const crawlProgressMessage = typeof crawlProgress?.message === "string" && crawlProgress.message.trim() ? crawlProgress.message.trim() : null;
-                const crawlProgressProgress = typeof crawlProgress?.progress === "number" && Number.isFinite(crawlProgress.progress) ? crawlProgress.progress : null;
+                const nextSnapshot = parseArchiveSnapshotFromUrlDoc(urlDoc);
 
                 updateScanState({
-                    phase: (status === "ready" || status === "warning") && zipPath ? (status === "warning" ? "warning" : "ready") : "scanning",
-                    status,
-                    zipPath,
-                    zipUrl,
-                    archiveHealth,
-                    warning,
-                    warningCode,
-                    warningMessage,
-                    warningAction,
-                    lastError,
-                    lastErrorCode,
-                    retry,
-                    crawlProgressStage,
-                    crawlProgressMessage,
-                    crawlProgressProgress,
+                    phase: (nextSnapshot.status === "ready" || nextSnapshot.status === "warning") && nextSnapshot.zipPath
+                        ? (nextSnapshot.status === "warning" ? "warning" : "ready")
+                        : "scanning",
+                    status: nextSnapshot.status,
+                    zipPath: nextSnapshot.zipPath,
+                    zipUrl: nextSnapshot.zipUrl,
+                    archiveHealth: nextSnapshot.archiveHealth,
+                    warning: nextSnapshot.warning,
+                    warningCode: nextSnapshot.warningCode,
+                    warningMessage: nextSnapshot.warningMessage,
+                    warningAction: nextSnapshot.warningAction,
+                    lastError: nextSnapshot.lastError,
+                    lastErrorCode: nextSnapshot.lastErrorCode,
+                    retry: nextSnapshot.retry,
+                    crawlProgressStage: nextSnapshot.crawlProgressStage,
+                    crawlProgressMessage: nextSnapshot.crawlProgressMessage,
+                    crawlProgressProgress: nextSnapshot.crawlProgressProgress,
                     updatedAt: Date.now(),
                 });
 
-                if (crawlProgressMessage) {
-                    setInfo(crawlProgressMessage);
+                if (nextSnapshot.crawlProgressMessage) {
+                    setInfo(nextSnapshot.crawlProgressMessage);
                 }
 
-                const isPendingStatus = status === "in_progress" || status === "queued" || status === "pending" || status === "booting" || status === "processing";
-                if (isPendingStatus || !zipPath) {
+                const isPendingStatus =
+                    nextSnapshot.status === "in_progress" ||
+                    nextSnapshot.status === "queued" ||
+                    nextSnapshot.status === "pending" ||
+                    nextSnapshot.status === "booting" ||
+                    nextSnapshot.status === "processing";
+                if (isPendingStatus || !nextSnapshot.zipPath) {
                     await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
                     continue;
                 }
 
-                if ((status === "ready" || status === "warning") && zipPath) {
-                    return {
-                        status,
-                        zipPath,
-                        zipUrl,
-                        archiveHealth,
-                        warning,
-                        warningCode,
-                        warningMessage,
-                        warningAction,
-                        lastError,
-                        lastErrorCode,
-                        retry,
-                        crawlProgressStage,
-                        crawlProgressMessage,
-                        crawlProgressProgress,
-                    };
+                if ((nextSnapshot.status === "ready" || nextSnapshot.status === "warning") && nextSnapshot.zipPath) {
+                    return nextSnapshot;
                 }
 
-                if (status === "error" || status === "stale") {
-                    throw new Error(lastError || warningMessage || "Archive scan failed.");
+                if (nextSnapshot.status === "error" || nextSnapshot.status === "stale") {
+                    throw new Error(nextSnapshot.lastError || nextSnapshot.warningMessage || "Archive scan failed.");
                 }
 
                 await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
@@ -7445,36 +7519,44 @@ export default function PreviewPage(): JSX.Element {
             }
 
             const csrf = await ensureSessionAndCsrf().catch(() => null);
-            const generateRes = await fetch("/api/private/generate", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    ...(csrf ? { "x-csrf": csrf } : {}),
-                },
-                credentials: "include",
-                body: JSON.stringify({ url: normalized }),
-            });
-            const generatePayload: any = await generateRes.json().catch(() => ({}));
+            let archiveReady = await readArchiveSnapshot();
 
-            if (!generateRes.ok && generateRes.status !== 202) {
-                const errorMessage =
-                    String(generatePayload?.userMessage || generatePayload?.message || generatePayload?.error || "").trim() ||
-                    `Failed to queue URL scan (HTTP ${generateRes.status})`;
-                updateScanState({
-                    phase: "error",
-                    status: "error",
-                    lastError: errorMessage,
-                    lastErrorCode: typeof generatePayload?.code === "string" ? generatePayload.code : String(generatePayload?.reason || generateRes.status),
-                    retry: typeof generatePayload?.retryable === "boolean" ? generatePayload.retryable : null,
-                    warningCode: typeof generatePayload?.warningCode === "string" ? generatePayload.warningCode : null,
-                    warningMessage: typeof generatePayload?.warningMessage === "string" ? generatePayload.warningMessage : null,
-                    warningAction: typeof generatePayload?.warningAction === "string" ? generatePayload.warningAction : null,
-                    updatedAt: Date.now(),
+            if (!isReusableArchiveSnapshot(archiveReady)) {
+                const generateRes = await fetch("/api/private/generate", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        ...(csrf ? { "x-csrf": csrf } : {}),
+                    },
+                    credentials: "include",
+                    body: JSON.stringify({ url: normalized }),
                 });
-                throw new Error(errorMessage);
+                const generatePayload: any = await generateRes.json().catch(() => ({}));
+
+                if (!generateRes.ok && generateRes.status !== 202) {
+                    const errorMessage =
+                        String(generatePayload?.userMessage || generatePayload?.message || generatePayload?.error || "").trim() ||
+                        `Failed to queue URL scan (HTTP ${generateRes.status})`;
+                    updateScanState({
+                        phase: "error",
+                        status: "error",
+                        lastError: errorMessage,
+                        lastErrorCode: typeof generatePayload?.code === "string" ? generatePayload.code : String(generatePayload?.reason || generateRes.status),
+                        retry: typeof generatePayload?.retryable === "boolean" ? generatePayload.retryable : null,
+                        warningCode: typeof generatePayload?.warningCode === "string" ? generatePayload.warningCode : null,
+                        warningMessage: typeof generatePayload?.warningMessage === "string" ? generatePayload.warningMessage : null,
+                        warningAction: typeof generatePayload?.warningAction === "string" ? generatePayload.warningAction : null,
+                        updatedAt: Date.now(),
+                    });
+                    throw new Error(errorMessage);
+                }
+
+                archiveReady = await pollForArchiveReadiness();
             }
 
-            const archiveReady = await pollForArchiveReadiness();
+            if (!archiveReady) {
+                throw new Error("Archive scan data was unavailable for this URL.");
+            }
 
             persistReadyScanState(archiveReady);
             if (archiveReady.crawlProgressMessage) {

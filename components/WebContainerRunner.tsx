@@ -3066,7 +3066,7 @@ export default function NavBar() {
         // Ensure all file entries have the correct structure
         const validatedFiles: { [path: string]: any } = {};
         for (const [path, file] of Object.entries(filesRef.current)) {
-          if (!file || typeof file !== 'object' || !file.content || typeof file.content !== 'string') {
+          if (!file || typeof file !== 'object' || typeof file.content !== 'string') {
             console.error('Invalid file entry:', path, file);
             throw new Error(`Invalid file structure for ${path}`);
           }
@@ -4358,6 +4358,8 @@ export default function NavBar() {
         const errorMessage = err instanceof Error ? err.message : 'Unknown error';
         setError(errorMessage);
         setCompileErrorState(null);
+        setCurrentStatusData(null);
+        lastBackendStatusRef.current = null;
         setIsPolling(false); // Reset polling state on error
         pollingRetryCountRef.current = 0; // Reset polling retry count
 
