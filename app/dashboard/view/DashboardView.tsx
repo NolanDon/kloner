@@ -86,6 +86,7 @@ import {
     Trash2,
     LayoutGrid,
     MessageSquare,
+    FileText,
 } from "lucide-react";
 import {
     isHttpUrl,
@@ -704,7 +705,8 @@ function extractAppCardIssueState(source: any): AppCardIssueState | null {
         primaryWarning?.retryable === true ||
         primaryWarning?.rescanRecommended === true ||
         String(rawAction || "").toLowerCase().includes("rescan") ||
-        String(rawCode || "").toLowerCase().includes("rescan")
+        String(rawCode || "").toLowerCase().includes("rescan") ||
+        /networkerror|network error|failed to fetch|fetch failed/i.test(rawMessage || "")
     );
 
     if (!warning && !blocked && !retryable && !rawMessage && !rawDetails) {
@@ -2628,6 +2630,7 @@ function AppCard({
     const showVersionBadge = process.env.NODE_ENV !== "production";
 
     const isDeployedFlag = Boolean((app as any)?.isDeployed) || Boolean((app as any)?.productionUrl) || Boolean((app as any)?.lastDeployUrl);
+    const deployedSiteUrl = String((app as any)?.productionUrl || (app as any)?.lastDeployUrl || "").trim();
     const isPendingCompleted = Boolean((app as any)?.pendingCompleted);
     const isDraftCard = Boolean((app as any)?.draftId);
     const appIssue = useMemo(() => extractAppCardIssueState(app as any), [app]);
@@ -2638,6 +2641,13 @@ function AppCard({
     const draftPromotionScanIssue = useMemo(() => {
         if (!isDraftCard || !draftPromotionScanState) return null;
 
+        const progressDetails = (() => {
+            const raw = String(draftPromotionScanState.crawlProgressMessage || "").trim();
+            if (!raw) return null;
+            if (/scan completed successfully|completed successfully|successfully completed/i.test(raw)) return null;
+            return raw;
+        })();
+
         return extractAppCardIssueState({
             status: draftPromotionScanState.status,
             warning: draftPromotionScanState.warning,
@@ -2647,7 +2657,7 @@ function AppCard({
             errorCode: draftPromotionScanState.lastErrorCode,
             errorReason: draftPromotionScanState.lastError,
             userMessage: draftPromotionScanState.lastError,
-            details: draftPromotionScanState.archiveHealth?.details ?? draftPromotionScanState.warning?.details ?? draftPromotionScanState.crawlProgressMessage ?? null,
+            details: draftPromotionScanState.archiveHealth?.details ?? draftPromotionScanState.warning?.details ?? progressDetails,
             retryable: draftPromotionScanState.retry ?? null,
             archiveHealth: draftPromotionScanState.archiveHealth,
         });
@@ -2686,6 +2696,26 @@ function AppCard({
         if (leaf.length <= 26) return leaf;
         return `${leaf.slice(0, 23)}...`;
     }, [draftArchiveZipRaw]);
+    const draftArchiveArtifactCount = useMemo(() => {
+        const candidates = [
+            (app as any)?.zipPageCount,
+            draftPromotionScanState?.archiveHealth?.zipPageCount,
+            draftPromotionScanState?.archiveHealth?.pageCount,
+            draftPromotionScanState?.archiveHealth?.fileCount,
+            Array.isArray(draftPromotionScanState?.archiveHealth?.files)
+                ? draftPromotionScanState?.archiveHealth?.files.length
+                : null,
+        ];
+
+        for (const candidate of candidates) {
+            const parsed = typeof candidate === "number" ? candidate : Number(candidate);
+            if (Number.isFinite(parsed) && parsed > 0) {
+                return Math.round(parsed);
+            }
+        }
+
+        return null;
+    }, [app, draftPromotionScanState]);
     const draftId = String((app as any)?.draftId || "").trim();
     const shouldShowDraftArchivePendingBadge = Boolean(
         showVersionBadge &&
@@ -2697,6 +2727,63 @@ function AppCard({
     const isDraftRetryLoading = isDraftCard && (isPendingCreation || draftPromotionScanPending);
     const isDraftFreshLoading = isDraftCard && (isPendingCreation || draftPromotionScanPending) && !draftIssue;
     const isBrokenDraftCard = isDraftCard && Boolean(draftIssue || draftIssueIsRetryable);
+    const rawAppDisplayName = String(app.name || app.id.slice(0, 10)).trim();
+    const appDisplayName = isDraftCard
+        ? (rawAppDisplayName.replace(/^Draft:\s*/i, "").trim() || "Draft")
+        : rawAppDisplayName.replace(/^Clone of\s+/i, "").trim() || rawAppDisplayName;
+    const [isEditingName, setIsEditingName] = useState(false);
+    const [nameDraft, setNameDraft] = useState(appDisplayName);
+    const canEditName = !isDraftCard;
+    const [draftEditLaunchBusy, setDraftEditLaunchBusy] = useState(false);
+    const [draftEditLockActive, setDraftEditLockActive] = useState(false);
+    const draftEditUnlockTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const draftEditClickGuardRef = useRef(false);
+
+    const draftScanStatus = String(draftPromotionScanState?.status || "").trim().toLowerCase();
+    const draftArchiveReady = Boolean(
+        draftArchiveZipRaw || draftPromotionScanState?.zipPath || draftPromotionScanState?.zipUrl
+    );
+    const draftArchiveState: "pending" | "ready" | "failed" | "idle" = (() => {
+        if (!isDraftCard) return "idle";
+        if (draftIssue && !draftIssueIsPromotionProgress) return "failed";
+        if (draftPromotionScanState?.phase === "error" || draftScanStatus === "error" || draftScanStatus === "stale") {
+            return "failed";
+        }
+        if (isPendingCreation || draftPromotionScanPending || draftEditLaunchBusy) return "pending";
+        if (draftArchiveReady) return "ready";
+        return "idle";
+    })();
+    const draftArchiveProgressPct = typeof draftPromotionScanState?.crawlProgressProgress === "number"
+        ? Math.max(
+            0,
+            Math.min(
+                100,
+                Math.round(
+                    draftPromotionScanState.crawlProgressProgress <= 1
+                        ? draftPromotionScanState.crawlProgressProgress * 100
+                        : draftPromotionScanState.crawlProgressProgress
+                )
+            )
+        )
+        : null;
+    const draftDevArchiveRingClass = showVersionBadge && isDraftCard
+        ? draftArchiveState === "pending"
+            ? "ring-2 ring-sky-300 ring-offset-2 ring-offset-white"
+            : draftArchiveState === "ready"
+                ? "ring-2 ring-emerald-300 ring-offset-2 ring-offset-white"
+                : draftArchiveState === "failed"
+                    ? "ring-2 ring-red-300 ring-offset-2 ring-offset-white"
+                    : "ring-2 ring-emerald-300 ring-offset-2 ring-offset-white"
+        : "";
+    const draftDevArchiveLabel = showVersionBadge && isDraftCard
+        ? draftArchiveState === "pending"
+            ? `Archive building${typeof draftArchiveProgressPct === "number" ? ` ${draftArchiveProgressPct}%` : ""}`
+            : draftArchiveState === "ready"
+                ? `Archive files${draftArchiveArtifactCount ? `: ${draftArchiveArtifactCount}` : " ready"}`
+                : draftArchiveState === "failed"
+                    ? "Archive failed"
+                    : "No archive yet"
+        : "";
     const blockedDraftDescription = "Domain blocked for site cloning";
     const draftIssueDetails = draftIssue
         ? (() => {
@@ -2720,10 +2807,6 @@ function AppCard({
             return "This draft has an issue.";
         })()
         : "";
-    const rawAppDisplayName = String(app.name || app.id.slice(0, 10)).trim();
-    const appDisplayName = isDraftCard
-        ? (rawAppDisplayName.replace(/^Draft:\s*/i, "").trim() || "Draft")
-        : rawAppDisplayName.replace(/^Clone of\s+/i, "").trim() || rawAppDisplayName;
     const appBadgeLabel = useMemo(() => {
         const cleanedName = appDisplayName.replace(/^Clone of\s+/i, "").trim();
         const parts = cleanedName.split(/[^a-zA-Z0-9]+/).filter(Boolean);
@@ -2733,13 +2816,6 @@ function AppCard({
         const compact = cleanedName.replace(/[^a-zA-Z0-9]/g, "").slice(0, 3).toUpperCase();
         return compact || "APP";
     }, [appDisplayName]);
-    const [isEditingName, setIsEditingName] = useState(false);
-    const [nameDraft, setNameDraft] = useState(appDisplayName);
-    const canEditName = !isDraftCard;
-    const [draftEditLaunchBusy, setDraftEditLaunchBusy] = useState(false);
-    const [draftEditLockActive, setDraftEditLockActive] = useState(false);
-    const draftEditUnlockTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const draftEditClickGuardRef = useRef(false);
 
     const clearDraftEditUnlockTimer = useCallback(() => {
         if (!draftEditUnlockTimerRef.current) return;
@@ -2837,29 +2913,23 @@ function AppCard({
                                     </span>
                                 </span>
                             </span>
-                            {showVersionBadge && draftArchiveZipRaw ? (
-                                <span className="group/draft-zip absolute -left-2 -top-2 z-10">
-                                    <span
-                                        className="inline-flex max-w-[11rem] items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 shadow-sm"
-                                        title={draftArchiveZipRaw}
-                                    >
-                                        <Archive className="h-3 w-3 shrink-0" />
-                                        <span className="truncate">{draftArchiveZipLabel || "archive.zip"}</span>
-                                    </span>
-                                </span>
-                            ) : shouldShowDraftArchivePendingBadge ? (
-                                <span className="group/draft-zip absolute -left-2 -top-2 z-10">
-                                    <span
-                                        className="inline-flex max-w-[11rem] items-center gap-1 rounded-full border border-neutral-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-neutral-600 shadow-sm"
-                                        title="Archive pending: initial scan artifacts are still being prepared."
-                                    >
-                                        <Archive className="h-3 w-3 shrink-0" />
-                                        <span className="truncate">archive pending</span>
-                                    </span>
+                            {showVersionBadge && isDraftCard ? (
+                                <span
+                                    className={`absolute -left-2 -top-2 z-10 inline-flex h-9 w-9 items-center justify-center rounded-full border shadow-sm ${draftArchiveState === "pending"
+                                        ? "border-sky-200 bg-sky-50 text-sky-700"
+                                        : draftArchiveState === "ready"
+                                            ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                                            : draftArchiveState === "failed"
+                                                ? "border-red-200 bg-red-50 text-red-700"
+                                                : "border-emerald-200 bg-emerald-50 text-emerald-700"
+                                        }`}
+                                    title={draftDevArchiveLabel}
+                                >
+                                    <FileText className="h-5 w-5 shrink-0" />
                                 </span>
                             ) : null}
                             <div
-                                className={`group/draft-icon relative grid h-36 w-36 place-items-center rounded-[2.6rem] border border-neutral-200 bg-neutral-100 text-neutral-500 shadow-[0_10px_20px_rgba(15,23,42,0.06)] transition-all duration-300 ease-out ${draftIssueIsBlocked ? "cursor-not-allowed opacity-70" : "hover:scale-[1.14] hover:shadow-[0_14px_26px_rgba(15,23,42,0.08)]"}`}
+                                className={`group/draft-icon relative grid h-36 w-36 place-items-center rounded-[2.6rem] border border-neutral-200 bg-neutral-100 text-neutral-500 shadow-[0_10px_20px_rgba(15,23,42,0.06)] transition-all duration-300 ease-out ${draftIssueIsBlocked ? "cursor-not-allowed opacity-70" : "hover:scale-[1.14] hover:shadow-[0_14px_26px_rgba(15,23,42,0.08)]"} ${draftDevArchiveRingClass}`}
                                 style={{ fontFamily: "ui-rounded, 'SF Pro Rounded', 'Avenir Next Rounded', 'Trebuchet MS', sans-serif" }}
                                 title={appDisplayName || "Draft"}
                             >
@@ -2875,7 +2945,7 @@ function AppCard({
                                         title="Retry draft"
                                     >
                                         <div className="inline-flex items-center gap-2 rounded-full bg-transparent px-3 py-1.5 text-sm font-semibold text-neutral-800 shadow-none transition-all duration-200 group-hover/draft-icon:scale-[1.08] group-focus-visible/draft-icon:scale-[1.08] hover:bg-transparent">
-                                            <AlertTriangle className="h-4 w-4 transition-transform duration-200 group-hover/draft-icon:scale-[1.04] group-focus-visible/draft-icon:scale-[1.04]" />
+                                            <RotateCcw className="h-4 w-4 transition-transform duration-200 group-hover/draft-icon:rotate-[-45deg] group-focus-visible/draft-icon:rotate-[-45deg]" />
                                             <span>Retry</span>
                                         </div>
                                     </button>
@@ -2915,18 +2985,6 @@ function AppCard({
                                     </button>
                                 ) : null}
                             </div>
-                            {draftPromotionScanPending ? (
-                                <div className="mt-2 max-w-[15rem] text-center text-[11px] font-medium leading-4 text-neutral-500">
-                                    <div className="truncate">
-                                        {draftPromotionScanState?.crawlProgressMessage || "Scanning URL"}
-                                    </div>
-                                    {typeof draftPromotionScanState?.crawlProgressProgress === "number" ? (
-                                        <div className="mt-0.5 text-[10px] text-neutral-400">
-                                            {Math.max(0, Math.min(100, Math.round(draftPromotionScanState.crawlProgressProgress <= 1 ? draftPromotionScanState.crawlProgressProgress * 100 : draftPromotionScanState.crawlProgressProgress)))}%
-                                        </div>
-                                    ) : null}
-                                </div>
-                            ) : null}
                             {draftIssue ? (
                                 <span className="group/issue absolute -right-2 -top-2">
                                     <span
@@ -3211,13 +3269,17 @@ function AppCard({
                                 style={{ transitionDelay: "0ms" }}
                             >
                                 <span className="pointer-events-none absolute -bottom-6 left-1/2 -translate-x-1/2 whitespace-nowrap text-[10px] font-medium text-neutral-800 opacity-100 transition-opacity duration-150 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
-                                    {isDeployedFlag ? "Deploy" : "Deploy"}
+                                    {isDeployedFlag ? "View site" : "Deploy"}
                                 </span>
                                 <button
                                     type="button"
                                     onClick={() => {
                                         if (disableActions || isPendingCreation) return;
                                         if (isDeployedFlag) {
+                                            if (deployedSiteUrl) {
+                                                window.open(deployedSiteUrl, "_blank", "noopener,noreferrer");
+                                                return;
+                                            }
                                             router.push("/dashboard/deployments");
                                             return;
                                         }
@@ -3234,10 +3296,12 @@ function AppCard({
                                             : accessLocked
                                                 ? "Trial access was cancelled, so this app is locked in the dashboard"
                                                 : isDeployedFlag
-                                                    ? "View and manage deployments"
+                                                    ? deployedSiteUrl
+                                                        ? "Open deployed site"
+                                                        : "View and manage deployments"
                                                     : "Deploy this app to Vercel"
                                     }
-                                    aria-label={isDeployedFlag ? "View deployments" : "Deploy app"}
+                                    aria-label={isDeployedFlag ? "View site" : "Deploy app"}
                                 >
                                     {isDeployedFlag ? (
                                         <ExternalLink className="h-3.5 w-3.5 shrink-0" />
@@ -5438,9 +5502,13 @@ export default function PreviewPage(): JSX.Element {
         const warningCode = typeof responseData.warningCode === "string" && responseData.warningCode.trim() ? responseData.warningCode.trim() : null;
         const warningMessage = typeof responseData.warningMessage === "string" && responseData.warningMessage.trim() ? responseData.warningMessage.trim() : null;
         const warningAction = typeof responseData.warningAction === "string" && responseData.warningAction.trim() ? responseData.warningAction.trim() : null;
-        const errorReason = typeof responseData.errorReason === "string" && responseData.errorReason.trim() ? responseData.errorReason.trim() : null;
+        const rawReason = typeof responseData.reason === "string" && responseData.reason.trim() ? responseData.reason.trim() : null;
+        const errorReason = typeof responseData.errorReason === "string" && responseData.errorReason.trim()
+            ? responseData.errorReason.trim()
+            : rawReason;
         const userMessage = typeof responseData.userMessage === "string" && responseData.userMessage.trim() ? responseData.userMessage.trim() : null;
         const retryable = typeof responseData.retryable === "boolean" ? responseData.retryable : null;
+        const isPreviewCreditsExhausted = code === "PREVIEW_CREDITS_EXHAUSTED" || errorReason === "preview_credits_exhausted";
         const rescanRequired = Boolean(
             responseData.archiveHealth?.needsRescan === true ||
             responseData.needsRescan === true ||
@@ -5464,7 +5532,7 @@ export default function PreviewPage(): JSX.Element {
         const buildValidationMessage = () => {
             if (typeof responseData.error === "string" && responseData.error.trim()) return responseData.error.trim();
             if (code === "BLOCKED_URL") return "This URL is blocked for site cloning. Please use a different URL.";
-            if (code === "PREVIEW_CREDITS_EXHAUSTED") return "Monthly preview limit reached for your plan.";
+            if (isPreviewCreditsExhausted) return "Monthly preview limit reached for your plan.";
             return "Please check the URL and try again.";
         };
 
@@ -5872,7 +5940,7 @@ export default function PreviewPage(): JSX.Element {
                         setUrlGenerationHealthWarning(null);
                     }
                     if (mode === "url") {
-                        if (parsed.status === 429 || parsed.code === "PREVIEW_CREDITS_EXHAUSTED") {
+                        if (parsed.status === 429 || parsed.code === "PREVIEW_CREDITS_EXHAUSTED" || parsed.errorReason === "preview_credits_exhausted") {
                             void saveUrlDraft({ clearIssue: true, retryable: false, completed: false, sourceUrl: url });
                             setUrlGenerationErrorDetails("");
                             pendingUrlGenerationAppIdRef.current = null;
@@ -7407,11 +7475,6 @@ export default function PreviewPage(): JSX.Element {
             }
 
             const archiveReady = await pollForArchiveReadiness();
-            const hasWarning = Boolean(
-                archiveReady.status === "warning" ||
-                archiveReady.warningCode === "ARCHIVE_RESCAN_REQUIRED" ||
-                archiveReady.archiveHealth?.needsRescan === true
-            );
 
             persistReadyScanState(archiveReady);
             if (archiveReady.crawlProgressMessage) {
@@ -7429,9 +7492,8 @@ export default function PreviewPage(): JSX.Element {
             });
 
             if (createResult === null) {
-                throw new Error(hasWarning
-                    ? "The archive was ready, but generation could not continue. Please rescan the URL."
-                    : "Failed to create app. Please try again.");
+                // handleCreateApp already handles user-facing states (paywall, rescan required, validation errors).
+                return;
             }
 
             setSuppressedPromotedDrafts((prev) => ({ ...prev, [draftKey]: true }));
@@ -9737,6 +9799,8 @@ export default function PreviewPage(): JSX.Element {
             return {
                 ...item,
                 retryable: false,
+                completed: false,
+                pendingCompleted: false,
                 warningCode: null,
                 warningMessage: null,
                 warningAction: null,
@@ -9750,6 +9814,22 @@ export default function PreviewPage(): JSX.Element {
                 updatedAt: Date.now(),
             };
         }));
+
+        setDraftPromotionScanByDraftId((prev) => {
+            if (!prev[draft.draftId]) return prev;
+            const next = { ...prev };
+            delete next[draft.draftId];
+            return next;
+        });
+
+        const currentUid = user?.uid;
+        if (currentUid) {
+            const stored = readDraftPromotionScanStateMap(currentUid);
+            if (stored[draft.draftId]) {
+                delete stored[draft.draftId];
+                writeDraftPromotionScanStateMap(currentUid, stored);
+            }
+        }
 
         try {
             await fetch("/api/private/kloner-draft", {
@@ -9774,8 +9854,17 @@ export default function PreviewPage(): JSX.Element {
             console.warn("[firestore] draft retry clear failed", err);
         }
 
-        await retryTrackedUrl(normalized);
-    }, [activeUrlDoc?.url, retryTrackedUrl, targetUrl]);
+        try {
+            await retryTrackedUrl(normalized);
+        } finally {
+            setRetryingDraftApps((prev) => {
+                if (!prev[draft.draftId]) return prev;
+                const next = { ...prev };
+                delete next[draft.draftId];
+                return next;
+            });
+        }
+    }, [activeUrlDoc?.url, retryTrackedUrl, targetUrl, user]);
 
     useEffect(() => {
         if (!Object.keys(retryingDraftApps).length) return;
@@ -12559,31 +12648,6 @@ export default function PreviewPage(): JSX.Element {
                         ) : null}
                     />
                 ) : null}
-
-                {success ? (
-                    <div className="mt-2 flex items-start justify-between gap-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
-                        <div className="flex min-w-0 items-start gap-2">
-                            <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
-                            <span>{success}</span>
-                        </div>
-                        <button
-                            type="button"
-                            onClick={() => setSuccess("")}
-                            className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-emerald-200 bg-white/70 text-emerald-700 transition hover:bg-white hover:text-emerald-800"
-                            aria-label="Dismiss success message"
-                            title="Dismiss"
-                        >
-                            <X className="h-3.5 w-3.5" />
-                        </button>
-                    </div>
-                ) : null}
-
-                {info ? (
-                    <div className="mt-2 rounded-md border border-neutral-300 bg-neutral-50 px-3 py-2 text-sm text-neutral-800">
-                        {info}
-                    </div>
-                ) : null}
-
                 <section ref={createWebsitesSectionRef} className="mt-10 rounded-3xl border border-neutral-200 bg-white/70 px-4 py-5 sm:px-5 sm:py-6 shadow-sm">
                     <div className="mb-3 flex items-center gap-3">
                         <div className="inline-flex items-center gap-2 rounded-full border border-neutral-200 bg-white/80 px-3 py-1.5 text-xs sm:text-sm text-neutral-700 shadow-sm">
@@ -12671,13 +12735,15 @@ export default function PreviewPage(): JSX.Element {
                                     const draftKey = String((app as any).draftId || app.id || "").trim();
                                     const draftPending = Boolean(draftKey && pendingDraftApps[draftKey]);
                                     const draftRetrying = Boolean(draftKey && retryingDraftApps[draftKey]);
+                                    const draftPromotionScanState = draftKey ? (draftPromotionScanByDraftId[draftKey] || null) : null;
+                                    const draftScanPending = isDraftPromotionScanPending(draftPromotionScanState);
                                     return (
                                 <AppCard
                                     key={(app as any).draftId || app.id}
                                     app={app}
                                     isDeleting={!!deletingDraftApp[(app as any).draftId || app.id]}
                                     isArchiving={!!archivingApp[app.id]}
-                                    isPendingCreation={draftPending || draftRetrying}
+                                    isPendingCreation={draftPending || draftRetrying || draftScanPending}
                                     pendingRetryable={false}
                                     pendingStale={false}
                                     onRetryPendingCreation={() => void retryDraftCreation(app as any)}
@@ -12699,6 +12765,7 @@ export default function PreviewPage(): JSX.Element {
                                     onDeleteDraft={handleDeleteDraft}
                                     onPromoteDraft={promoteDraftToApp}
                                     appBuilderNavigated={appBuilderOpen}
+                                    draftPromotionScanState={draftPromotionScanState}
                                 />
                                     );
                                 })()

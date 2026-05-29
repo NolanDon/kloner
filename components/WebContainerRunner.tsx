@@ -3118,6 +3118,19 @@ export default function NavBar() {
 
         // Start the webcontainer creation (async, fire-and-forget)
         const requestBody = { appId, files: validatedFiles, mode: 'dev' };
+        const estimatedRequestBytes = (() => {
+          try {
+            const encoded = new TextEncoder().encode(JSON.stringify(requestBody));
+            return encoded.byteLength;
+          } catch {
+            return 0;
+          }
+        })();
+
+        const formatMb = (bytes: number) => {
+          if (!Number.isFinite(bytes) || bytes <= 0) return 'unknown';
+          return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+        };
 
         const postWebcontainer = async (attempt: number): Promise<Response> => {
           const headers = await getAuthenticatedHeaders();
@@ -3150,6 +3163,10 @@ export default function NavBar() {
             console.warn('Webcontainer start hit app-scope 403; refreshing scope cookie and retrying once');
             await ensureAppScopeCookie();
             response = await postWebcontainer(1);
+          } else if (response.status === 413) {
+            throw new Error(
+              `Preview payload too large (HTTP 413). The generated app payload is about ${formatMb(estimatedRequestBytes)} and exceeds the API/request limit. Remove large assets or split content before retrying.`
+            );
           } else {
             throw new Error(errorMsg);
           }
@@ -3157,7 +3174,13 @@ export default function NavBar() {
 
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({} as any));
-          throw new Error(String(errorData?.error || 'Failed to start app'));
+          const errorMsg = String(errorData?.error || 'Failed to start app');
+          if (response.status === 413) {
+            throw new Error(
+              `Preview payload too large (HTTP 413). The generated app payload is about ${formatMb(estimatedRequestBytes)} and exceeds the API/request limit. Remove large assets or split content before retrying.`
+            );
+          }
+          throw new Error(errorMsg);
         }
 
         const data = await response.json();
@@ -4369,9 +4392,14 @@ export default function NavBar() {
           errorMessage.includes('Failed to install dependencies') ||
           errorMessage.includes('Could not resolve dependencies');
 
-        const isRetryable = (isNetworkError || isServerError || isTimeout || isProxyError || isBuildError) && !isDiskSpaceError && !isPreconditionError;
+        const isPayloadTooLarge =
+          errorMessage.includes('HTTP 413') ||
+          errorMessage.toLowerCase().includes('payload too large') ||
+          errorMessage.toLowerCase().includes('request entity too large');
 
-        console.log(`Error classification: Network=${isNetworkError}, Server=${isServerError}, Timeout=${isTimeout}, Proxy=${isProxyError}, Build=${isBuildError}, DiskSpace=${isDiskSpaceError}, Precondition=${isPreconditionError}, Retryable=${isRetryable}`);
+        const isRetryable = (isNetworkError || isServerError || isTimeout || isProxyError || isBuildError) && !isDiskSpaceError && !isPreconditionError && !isPayloadTooLarge;
+
+        console.log(`Error classification: Network=${isNetworkError}, Server=${isServerError}, Timeout=${isTimeout}, Proxy=${isProxyError}, Build=${isBuildError}, PayloadTooLarge=${isPayloadTooLarge}, DiskSpace=${isDiskSpaceError}, Precondition=${isPreconditionError}, Retryable=${isRetryable}`);
 
         // Circuit breaker: prevent infinite retries
         totalAttemptsRef.current += 1;
@@ -4430,6 +4458,8 @@ export default function NavBar() {
             finalErrorMessage += ' Error E005: Machine state conflict.';
           } else if (isBuildError) {
             finalErrorMessage += ' Error E006: Build/installation failed.';
+          } else if (isPayloadTooLarge) {
+            finalErrorMessage += ' Error E007: Payload too large (413).';
           }
 
           setError(finalErrorMessage);
@@ -4446,6 +4476,8 @@ export default function NavBar() {
             finalErrorMessage += ' Error E005: Machine state conflict.';
           } else if (isBuildError) {
             finalErrorMessage += ' Error E006: Build/installation failed.';
+          } else if (isPayloadTooLarge) {
+            finalErrorMessage += ' Error E007: Payload too large (413).';
           }
 
           setError(finalErrorMessage);
