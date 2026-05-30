@@ -106,8 +106,9 @@ function scanPageImages(doc: Document): PageImageItem[] {
         if (!src) return;
 
         const selector = buildSelector(img);
+        const stableRef = img.getAttribute("data-kloner-path") || img.getAttribute("data-local-image-id") || src;
         pushItem({
-            key: `img:${selector}:${index}`,
+            key: `img:${selector}:${stableRef}`,
             selector,
             kind: "image",
             label: img.getAttribute("alt")?.trim() || img.getAttribute("data-kloner-filename")?.trim() || getFileName(src) || `Image ${index + 1}`,
@@ -117,7 +118,7 @@ function scanPageImages(doc: Document): PageImageItem[] {
         });
     });
 
-    doc.querySelectorAll<HTMLElement>("body *").forEach((el, index) => {
+    doc.querySelectorAll<HTMLElement>("body *").forEach((el) => {
         if (el.tagName === "IMG") return;
 
         const style = doc.defaultView?.getComputedStyle(el);
@@ -129,8 +130,9 @@ function scanPageImages(doc: Document): PageImageItem[] {
         if (!src) return;
 
         const selector = buildSelector(el);
+        const stableRef = el.getAttribute("data-kloner-bg-path") || el.getAttribute("data-kloner-bg-old-path") || src;
         pushItem({
-            key: `bg:${selector}:${index}`,
+            key: `bg:${selector}:${stableRef}`,
             selector,
             kind: "background",
             label: el.getAttribute("aria-label")?.trim() || el.getAttribute("data-kloner-label")?.trim() || `${el.tagName.toLowerCase()} background`,
@@ -335,45 +337,7 @@ export function AiImageLibraryPanel({ iframeRef, user, renderId, isVercelConnect
             }
             return next;
         });
-
-        if (typeof window === "undefined") return;
-
-        let cancelled = false;
-        const probes: Array<Promise<void>> = [];
-        const probeEntries = [
-            ...pageImages.map((item) => ({ key: item.key, url: item.src })),
-            ...items.map((item) => ({ key: item.path, url: item.url })),
-        ].filter(({ key, url }) => Boolean(key) && Boolean(url));
-
-        const seen = new Set<string>();
-        for (const entry of probeEntries) {
-            if (seen.has(entry.key)) continue;
-            seen.add(entry.key);
-            const promise = new Promise<void>((resolve) => {
-                const probe = new window.Image();
-                probe.onload = () => {
-                    if (!cancelled) markImageAvailability(entry.key, "ok");
-                    resolve();
-                };
-                probe.onerror = () => {
-                    if (!cancelled) markImageAvailability(entry.key, "error");
-                    resolve();
-                };
-                probe.src = entry.url;
-                if (probe.complete && probe.naturalWidth > 0) {
-                    if (!cancelled) markImageAvailability(entry.key, "ok");
-                    resolve();
-                }
-            });
-            probes.push(promise);
-        }
-
-        void Promise.all(probes);
-
-        return () => {
-            cancelled = true;
-        };
-    }, [items, markImageAvailability, pageImages]);
+    }, [items, pageImages]);
 
     const orderedPageImages = useCallback(
         (list: PageImageItem[]) =>

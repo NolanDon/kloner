@@ -1,6 +1,14 @@
 [
   {
-    "origin": ["http://localhost:3000", "https://localhost:3000", "http://127.0.0.1:3000", "https://127.0.0.1:3000"],
+    "origin": [
+      "http://localhost:3000",
+      "https://localhost:3000",
+      "http://127.0.0.1:3000",
+      "https://127.0.0.1:3000",
+      "https://www.kloner.app",
+      "https://kloner.app",
+      "https://preview.kloner.app"
+    ],
     "method": ["GET", "POST", "PUT", "DELETE", "HEAD", "OPTIONS"],
     "maxAgeSeconds": 3600,
     "responseHeader": ["Content-Type", "Authorization", "Content-Length", "Accept-Encoding", "X-CSRF-Token"]
