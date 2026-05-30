@@ -4680,6 +4680,10 @@ export default function NavBar() {
         statusPollTimeoutRef.current = null;
       }
 
+      // Abort any in-flight start/poll loop.
+      startRunIdRef.current = runId + 1;
+      startRunIdRef.current = runId + 1;
+
       // Clear any pending iframe load timeout
       if (!previewUrl) {
         // No preview visible (either not started yet, or errored/reset).
@@ -4691,9 +4695,6 @@ export default function NavBar() {
         clearTimeout(iframeLoadTimeoutRef.current);
         iframeLoadTimeoutRef.current = null;
       }
-      // Abort any in-flight start/poll loop.
-      startRunIdRef.current = runId + 1;
-      startRunIdRef.current = runId + 1;
 
       // Only cleanup if there's no active preview URL (app not successfully loaded)
       // This prevents killing apps that are actively being viewed
@@ -5620,10 +5621,21 @@ export default function NavBar() {
                 const readyUrl = lastReadyUrlRef.current || previewUrl;
                 const serverKind = lastAppServerKindRef.current;
 
-                // If the backend says we're still on the fallback server, an iframe refresh won't help.
-                // Trigger the same force-fresh rebuild flow once.
+                // If backend reports fallback server kind while already ready, avoid
+                // auto force-fresh rebuild. It can trigger duplicate start cycles
+                // (delete + start) even when preview is usable.
                 if (readyUrl && serverKind === 'fallback') {
-                  requestForceFreshRebuild('status_appServerKind_fallback_after_ready', readyUrl);
+                  reportPollIssueOnce(`ready-on-fallback-server:${appId}:${code}`, {
+                    appId,
+                    code,
+                    action: 'preview_ready_on_fallback_server',
+                    severity: 'warning',
+                    status: 'ready_on_fallback_server',
+                    reason: 'app_server_kind_fallback',
+                    message: 'Preview reached ready state on fallback server kind. Auto force-fresh rebuild was skipped to avoid duplicate startup loops.',
+                    previewUrl: readyUrl,
+                    backendStatusData: currentStatusData || lastBackendStatusRef.current || null,
+                  });
                 }
               } else if (uiReady) {
                 // Don't block chat just because the backend hasn't flipped the final `ready` flag yet.
