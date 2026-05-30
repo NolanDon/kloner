@@ -5620,14 +5620,18 @@ export default function NavBar() {
 
                 const readyUrl = lastReadyUrlRef.current || previewUrl;
                 const serverKind = lastAppServerKindRef.current;
+                const reportCode =
+                  pollingCodeRef.current ||
+                  derivePreviewCodeFromUrl(readyUrl || '') ||
+                  'unknown';
 
                 // If backend reports fallback server kind while already ready, avoid
                 // auto force-fresh rebuild. It can trigger duplicate start cycles
                 // (delete + start) even when preview is usable.
                 if (readyUrl && serverKind === 'fallback') {
-                  reportPollIssueOnce(`ready-on-fallback-server:${appId}:${code}`, {
+                  reportPollIssueOnce(`ready-on-fallback-server:${appId}:${reportCode}`, {
                     appId,
-                    code,
+                    code: reportCode,
                     action: 'preview_ready_on_fallback_server',
                     severity: 'warning',
                     status: 'ready_on_fallback_server',
