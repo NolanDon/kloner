@@ -3127,27 +3127,11 @@ export default function NavBar() {
           }
         })();
 
-        const serverHydrateFallbackEnabled = (() => {
-          const raw = String(process.env.NEXT_PUBLIC_WEB_PREVIEW_SERVER_HYDRATE_FALLBACK || '').trim().toLowerCase();
-          return raw === '1' || raw === 'true';
-        })();
-
-        const serverHydrateThresholdBytes = (() => {
-          const raw = Number.parseInt(String(process.env.NEXT_PUBLIC_WEB_PREVIEW_SERVER_HYDRATE_THRESHOLD_BYTES || '').trim(), 10);
-          if (Number.isFinite(raw) && raw > 0) return raw;
-          // Conservative default below typical serverless payload limits.
-          return 4_000_000;
-        })();
-
-        const shouldPreferServerHydrate =
-          serverHydrateFallbackEnabled &&
-          estimatedRequestBytes >= serverHydrateThresholdBytes;
-
         const serverHydrateRequestBody: Record<string, unknown> = {
           appId,
           mode: 'dev',
           startupStrategy: 'hydrate_server_files',
-          fallbackReason: 'payload_threshold_exceeded',
+          fallbackReason: 'default_server_hydrate_startup',
           estimatedRequestBytes,
         };
 
@@ -3194,19 +3178,15 @@ export default function NavBar() {
         };
 
         await ensureAppScopeCookie();
-        let activeRequestBody: Record<string, unknown> = requestBody;
-        if (shouldPreferServerHydrate) {
-          console.info('[WebContainerRunner] trying server-hydrated startup fallback', {
-            appId,
-            estimatedRequestBytes,
-            thresholdBytes: serverHydrateThresholdBytes,
-          });
-          activeRequestBody = serverHydrateRequestBody;
-        }
+        let activeRequestBody: Record<string, unknown> = serverHydrateRequestBody;
+        console.info('[WebContainerRunner] trying server-hydrated startup first', {
+          appId,
+          estimatedRequestBytes,
+        });
 
         let response = await postWebcontainer(0, activeRequestBody);
 
-        if (!response.ok && shouldPreferServerHydrate && activeRequestBody === serverHydrateRequestBody) {
+        if (!response.ok && activeRequestBody === serverHydrateRequestBody) {
           const fallbackData = await response.clone().json().catch(() => ({} as any));
           const fallbackCode = String(fallbackData?.code || '').toLowerCase();
           const fallbackError = String(fallbackData?.error || '').toLowerCase();
@@ -3222,40 +3202,75 @@ export default function NavBar() {
             fallbackError.includes('missing files') ||
             fallbackError.includes('unsupported startupstrategy');
 
-          if (backendHydrationUnsupported) {
-            console.warn('[WebContainerRunner] backend server-hydrate startup not available yet; retrying legacy full-files startup', {
+          const shouldFallbackToLegacy = response.status !== 401 && response.status !== 403;
+          if (shouldFallbackToLegacy) {
+            console.warn('[WebContainerRunner] server-hydrated startup failed; retrying legacy full-files startup', {
               appId,
               status: response.status,
               code: fallbackData?.code || null,
+              backendHydrationUnsupported,
             });
-            reportStartupContractIssue(`startup-hydrate-unsupported-fallback:${appId}:${runId}`, {
-              action: 'preview_start_server_hydrate_unsupported_fallback',
+            reportStartupContractIssue(`startup-hydrate-fallback-attempt:${appId}:${runId}`, {
+              action: backendHydrationUnsupported
+                ? 'preview_start_server_hydrate_unsupported_fallback'
+                : 'preview_start_server_hydrate_legacy_fallback_attempt',
               severity: 'error',
               statusCode: response.status,
-              reason: 'server_hydrate_unsupported',
-              message: 'Server-hydrated preview startup is not supported by backend yet. Falling back to legacy full-files startup.',
+              reason: backendHydrationUnsupported ? 'server_hydrate_unsupported' : 'server_hydrate_startup_failed',
+              message: backendHydrationUnsupported
+                ? 'Server-hydrated preview startup is not supported by backend yet. Falling back to legacy full-files startup.'
+                : `Server-hydrated preview startup failed with HTTP ${response.status}${fallbackCode ? ` (${fallbackCode})` : ''}. Falling back to legacy full-files startup.`,
+              force: true,
             });
             activeRequestBody = requestBody;
             response = await postWebcontainer(0, activeRequestBody);
+            if (response.ok) {
+              reportStartupContractIssue(`startup-hydrate-fallback-succeeded:${appId}:${runId}`, {
+                action: 'preview_start_server_hydrate_legacy_fallback_succeeded',
+                severity: 'warning',
+                reason: 'server_hydrate_startup_failed_legacy_recovered',
+                message: 'Server-hydrated startup failed, but legacy full-files startup succeeded.',
+                force: true,
+              });
+            } else {
+              reportStartupContractIssue(`startup-hydrate-fallback-failed:${appId}:${runId}`, {
+                action: 'preview_start_server_hydrate_legacy_fallback_failed',
+                severity: response.status >= 500 ? 'critical' : 'error',
+                statusCode: response.status,
+                reason: 'server_hydrate_startup_failed_legacy_failed',
+                message: `Server-hydrated startup failed and legacy full-files fallback also failed with HTTP ${response.status}.`,
+                force: true,
+              });
+            }
+          } else {
+            console.warn('[WebContainerRunner] server-hydrated startup failed with auth/scoping response; skipping legacy fallback', {
+              appId,
+              status: response.status,
+            });
+            reportStartupContractIssue(`startup-hydrate-no-legacy-fallback:${appId}:${runId}`, {
+              action: 'preview_start_server_hydrate_auth_failure',
+              severity: 'error',
+              statusCode: response.status,
+              reason: 'server_hydrate_auth_or_scope_failure',
+              message: `Server-hydrated startup failed with HTTP ${response.status}. Legacy fallback skipped because auth/scope likely needs refresh.`,
+              force: true,
+            });
           }
         }
 
         if (!response.ok && response.status === 413 && activeRequestBody === requestBody) {
-          console.warn('[WebContainerRunner] startup hit HTTP 413; attempting server-hydrated startup fallback', {
+          console.warn('[WebContainerRunner] startup hit HTTP 413 on legacy fallback', {
             appId,
             estimatedRequestBytes,
-            featureFlagEnabled: serverHydrateFallbackEnabled,
           });
           reportStartupContractIssue(`startup-413-fallback-attempt:${appId}:${runId}`, {
-            action: 'preview_start_413_fallback_attempt',
+            action: 'preview_start_legacy_payload_too_large',
             severity: 'error',
             statusCode: 413,
             reason: 'request_payload_too_large',
-            message: 'Preview startup payload hit HTTP 413. Attempting server-hydrated startup fallback.',
+            message: 'Legacy full-files startup fallback hit HTTP 413 (payload too large).',
             force: true,
           });
-          activeRequestBody = serverHydrateRequestBody;
-          response = await postWebcontainer(0, activeRequestBody);
         }
 
         if (!response.ok) {
@@ -3287,6 +3302,17 @@ export default function NavBar() {
                 statusCode: response.status,
                 reason: isTooLargeLikeError ? 'request_payload_too_large' : 'startup_http_failure',
                 message: `Preview startup failed with HTTP ${response.status}${errorCode ? ` (${errorCode})` : ''}: ${errorMsg}`,
+              },
+            );
+          } else {
+            reportStartupContractIssue(
+              `startup-http-noncritical:${appId}:${runId}:${response.status}:${errorCode || 'no-code'}`,
+              {
+                action: 'preview_start_http_failure',
+                severity: response.status >= 400 && response.status < 500 ? 'error' : 'warning',
+                statusCode: response.status,
+                reason: 'startup_http_failure_noncritical',
+                message: `Preview startup returned HTTP ${response.status}${errorCode ? ` (${errorCode})` : ''}: ${errorMsg}`,
               },
             );
           }
