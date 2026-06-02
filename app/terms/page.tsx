@@ -380,11 +380,12 @@ export default function TermsPage(): JSX.Element {
                                 15. Governing Law and Jurisdiction
                             </h2>
                             <p className="mt-2">
-                                These Terms are governed by the laws of [INSERT JURISDICTION],
+                                These Terms are governed by the laws of the Province of
+                                Alberta and the federal laws of Canada applicable in Alberta,
                                 without regard to conflict of law principles. Any dispute
                                 arising out of or relating to these Terms or the service will
                                 be subject to the exclusive jurisdiction of the courts located
-                                in [INSERT CITY / REGION], and you and we consent to personal
+                                in Calgary, Alberta, and you and we consent to personal
                                 jurisdiction and venue in those courts.
                             </p>
                         </section>
