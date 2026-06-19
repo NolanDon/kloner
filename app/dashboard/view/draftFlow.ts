@@ -29,9 +29,70 @@ export type DashboardDraftCard = {
     archiveZipGeneratedAt?: string | null;
     archiveZipSource?: "draft" | "promoted_app" | null;
     recommendedAction?: string | null;
+    thumbnailUrl?: string | null;
 };
 
 type Setter<T> = (next: T | ((prev: T) => T)) => void;
+
+export type DashboardDraftThumbnailLookup =
+    | Map<string, string | null>
+    | Record<string, string | null | undefined>
+    | null
+    | undefined;
+
+function getFirstScreenshotUrl(candidate: any): string | null {
+    const screenshots = Array.isArray(candidate?.screenshots) ? candidate.screenshots : null;
+    const first = screenshots?.[0];
+    const url = typeof first?.url === "string" ? first.url.trim() : "";
+    return url || null;
+}
+
+function readThumbnailLookup(
+    lookup: DashboardDraftThumbnailLookup,
+    canonicalUrl: string,
+): string | null {
+    if (!lookup || !canonicalUrl) return null;
+
+    const value = lookup instanceof Map
+        ? lookup.get(canonicalUrl)
+        : lookup[canonicalUrl];
+
+    return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+export function resolveDashboardDraftThumbnailUrl(
+    draft: any,
+    lookup?: DashboardDraftThumbnailLookup,
+): string | null {
+    if (!draft || typeof draft !== "object") return null;
+
+    const explicitThumbnailUrl = typeof draft.thumbnailUrl === "string" && draft.thumbnailUrl.trim()
+        ? draft.thumbnailUrl.trim()
+        : null;
+    if (explicitThumbnailUrl) return explicitThumbnailUrl;
+
+    const details = draft?.details && typeof draft.details === "object" ? draft.details : null;
+    const directScreenshotUrl =
+        getFirstScreenshotUrl(draft) ||
+        getFirstScreenshotUrl(details?.trackedUrl) ||
+        getFirstScreenshotUrl(details);
+    if (directScreenshotUrl) return directScreenshotUrl;
+
+    const normalized = validateAndNormalizePublicHttpUrl(String(draft?.sourceUrl || ""));
+    if (normalized) {
+        const lookupThumbnail = readThumbnailLookup(lookup, normUrl(normalized));
+        if (lookupThumbnail) return lookupThumbnail;
+    }
+
+    const referenceImage = [
+        draft?.referenceImage,
+        details?.referenceImage,
+        details?.render?.referenceImage,
+    ].find((value) => typeof value === "string" && value.trim()) as string | undefined;
+    if (referenceImage) return referenceImage.trim();
+
+    return null;
+}
 
 export function shouldDisableDraftDeleteButton(input: {
     isDeleting: boolean;

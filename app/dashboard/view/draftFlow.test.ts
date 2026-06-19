@@ -2,6 +2,7 @@ import {
     isPersistedDraftPendingState,
     normalizeDashboardDraftRecord,
     normalizeDashboardDraftRecords,
+    resolveDashboardDraftThumbnailUrl,
     shouldDisableDraftDeleteButton,
     submitDashboardUrlDraft,
 } from "./draftFlow";
@@ -119,6 +120,45 @@ describe("dashboard draft flow", () => {
         });
 
         expect(record?.name).toBe("Draft: example.com");
+    });
+
+    it("prefers the first signed screenshot url when one exists on the draft details", () => {
+        const thumbnail = resolveDashboardDraftThumbnailUrl({
+            sourceUrl: "https://example.com",
+            details: {
+                trackedUrl: {
+                    screenshots: [
+                        {
+                            url: "https://cdn.example.com/signed-shot.jpg",
+                        },
+                    ],
+                },
+            },
+        });
+
+        expect(thumbnail).toBe("https://cdn.example.com/signed-shot.jpg");
+    });
+
+    it("falls back to a backend-resolved source url lookup and ignores key-only screenshot entries", () => {
+        const thumbnail = resolveDashboardDraftThumbnailUrl(
+            {
+                sourceUrl: "https://example.com",
+                details: {
+                    trackedUrl: {
+                        screenshots: [
+                            {
+                                key: "kloner-screenshots/user/hash/shot.jpg",
+                            },
+                        ],
+                    },
+                },
+            },
+            new Map([
+                ["https://example.com/", "https://cdn.example.com/lookup-shot.jpg"],
+            ]),
+        );
+
+        expect(thumbnail).toBe("https://cdn.example.com/lookup-shot.jpg");
     });
 
     it("submits a url, clears the pending url after /generate resolves, and persists a draft record", async () => {

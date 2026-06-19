@@ -107,7 +107,11 @@ import { AnimatePresence, motion } from "framer-motion";
 import TrialSuccessCelebration from "../../../components/TrialSuccessCelebration";
 import SuccessConfetti from "../../../components/tools/SuccessConfetti";
 import KlonerLoader from "@/components/KlonerLoader";
-import { normalizeDashboardDraftRecords, submitDashboardUrlDraft } from "./draftFlow";
+import {
+    normalizeDashboardDraftRecords,
+    resolveDashboardDraftThumbnailUrl,
+    submitDashboardUrlDraft,
+} from "./draftFlow";
 import { extractArchivedPageIdsFromRender, fetchRenderForDeployment, getArchivedRoutesForRender, persistArchivedPageIds, scrubArchivedRoutes, secureHtmlForPreviewIframe, withArchivedPageIds } from "@/components/helpers";
 import { useModal } from "@/components/ui/ModalContext";
 import AppBuilderEditor from "@/components/AppBuilderEditor";
@@ -1601,6 +1605,15 @@ function isGenerationTierBlockedMessage(message: string): boolean {
     );
 }
 
+function isDraftEditAccessGateMessage(message: string): boolean {
+    const lower = String(message || "").toLowerCase();
+    return (
+        isGenerationTierBlockedMessage(lower) ||
+        lower.includes("upgrade to continue editing this draft") ||
+        lower.includes("continue editing this draft")
+    );
+}
+
 // ============================================================================
 // HELPER FUNCTION: Strict deployment check
 // ============================================================================
@@ -2613,7 +2626,7 @@ function AppCard({
     appBuilderNavigated = false,
     draftPromotionScanState = null,
 }: {
-    app: { id: string; name: string; createdAt: any; updatedAt: any; isDeployed?: boolean; productionUrl?: string | null; lastDeployUrl?: string | null; pendingCompleted?: boolean };
+    app: { id: string; name: string; createdAt: any; updatedAt: any; isDeployed?: boolean; productionUrl?: string | null; lastDeployUrl?: string | null; pendingCompleted?: boolean; sourceUrl?: string | null; details?: unknown; thumbnailUrl?: string | null };
     isDeleting: boolean;
     isArchiving: boolean;
     isPendingCreation: boolean;
@@ -2673,6 +2686,20 @@ function AppCard({
     const draftIssue = isDraftCard ? (appIssue || draftPromotionScanIssue) : null;
     const draftIssueIsBlocked = Boolean(draftIssue?.blocked);
     const draftIssueIsRetryable = Boolean(draftIssue && !draftIssueIsBlocked && draftIssue.retryable);
+    const draftIssueIsAccessGate = Boolean(
+        draftIssue &&
+        isDraftEditAccessGateMessage(
+            [
+                draftIssue.message,
+                draftIssue.details,
+                draftIssue.action,
+                draftIssue.code,
+            ]
+                .map((part) => String(part || "").trim())
+                .filter(Boolean)
+                .join(" "),
+        ),
+    );
     const pendingIssueIsBlocked = Boolean(pendingIssue?.blocked);
     const pendingIssueIsRetryable = Boolean(pendingIssue && !pendingIssueIsBlocked && pendingIssue.retryable);
     const issueLooksLikePromotionProgress = Boolean(
@@ -2736,6 +2763,9 @@ function AppCard({
     const isDraftFreshLoading = isDraftCard && (isPendingCreation || draftPromotionScanPending) && !draftIssue;
     const isBrokenDraftCard = isDraftCard && Boolean(draftIssue || draftIssueIsRetryable);
     const rawAppDisplayName = String(app.name || app.id.slice(0, 10)).trim();
+    const draftThumbnailUrl = typeof (app as any)?.thumbnailUrl === "string" && String((app as any)?.thumbnailUrl).trim()
+        ? String((app as any)?.thumbnailUrl).trim()
+        : "";
     const appDisplayName = isDraftCard
         ? (rawAppDisplayName.replace(/^Draft:\s*/i, "").trim() || "Draft")
         : rawAppDisplayName.replace(/^Clone of\s+/i, "").trim() || rawAppDisplayName;
@@ -2746,6 +2776,7 @@ function AppCard({
     const [draftEditLockActive, setDraftEditLockActive] = useState(false);
     const draftEditUnlockTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const draftEditClickGuardRef = useRef(false);
+    const [draftThumbnailErrored, setDraftThumbnailErrored] = useState(false);
 
     const draftScanStatus = String(draftPromotionScanState?.status || "").trim().toLowerCase();
     const draftArchiveReady = Boolean(
@@ -2892,6 +2923,10 @@ function AppCard({
     }, [appBuilderNavigated, clearDraftEditUnlockTimer, isDraftCard]);
 
     useEffect(() => {
+        setDraftThumbnailErrored(false);
+    }, [draftThumbnailUrl, draftId]);
+
+    useEffect(() => {
         return () => {
             clearDraftEditUnlockTimer();
             draftEditClickGuardRef.current = false;
@@ -2937,18 +2972,31 @@ function AppCard({
                                 </span>
                             ) : null}
                             <div
-                                className={`group/draft-icon relative grid h-36 w-36 place-items-center rounded-[2.6rem] border border-neutral-200 bg-neutral-100 text-neutral-500 shadow-[0_10px_20px_rgba(15,23,42,0.06)] transition-all duration-300 ease-out ${draftIssueIsBlocked ? "cursor-not-allowed opacity-70" : "hover:scale-[1.14] hover:shadow-[0_14px_26px_rgba(15,23,42,0.08)]"} ${draftDevArchiveRingClass}`}
+                                className={`group/draft-icon relative grid h-40 w-40 place-items-center overflow-hidden rounded-[2.75rem] border border-neutral-200 bg-neutral-100 text-neutral-500 shadow-[0_10px_20px_rgba(15,23,42,0.06)] transition-all duration-300 ease-out ${draftIssueIsBlocked ? "cursor-not-allowed opacity-70" : "hover:scale-[1.12] hover:shadow-[0_14px_26px_rgba(15,23,42,0.08)]"} ${draftDevArchiveRingClass}`}
                                 style={{ fontFamily: "ui-rounded, 'SF Pro Rounded', 'Avenir Next Rounded', 'Trebuchet MS', sans-serif" }}
                                 title={appDisplayName || "Draft"}
                             >
-                                <span className="transition-opacity duration-150 group-hover/draft-icon:opacity-0 group-focus-visible/draft-icon:opacity-0">
-                                    <LayoutGrid className="h-14 w-14" />
-                                </span>
+                                {!isDraftRetryLoading && draftThumbnailUrl && !draftThumbnailErrored ? (
+                                    <>
+                                        <img
+                                            src={draftThumbnailUrl}
+                                            alt={`${appDisplayName || "Draft"} screenshot`}
+                                            className="absolute inset-0 z-0 h-full w-full object-cover"
+                                            loading="lazy"
+                                            onError={() => setDraftThumbnailErrored(true)}
+                                        />
+                                        <div className="pointer-events-none absolute inset-0 z-0 bg-gradient-to-b from-white/10 via-transparent to-black/10" />
+                                    </>
+                                ) : (
+                                    <span className="transition-opacity duration-150 group-hover/draft-icon:opacity-0 group-focus-visible/draft-icon:opacity-0">
+                                        <LayoutGrid className="h-14 w-14" />
+                                    </span>
+                                )}
                                 {draftIssueIsRetryable && onRetryPendingCreation ? (
                                     <button
                                         type="button"
                                         onClick={onRetryPendingCreation}
-                                        className="absolute inset-0 grid place-items-center rounded-[2.6rem] border border-neutral-200 bg-transparent text-neutral-800 opacity-0 backdrop-blur-[1px] transition-all duration-200 hover:bg-transparent group-hover/draft-icon:opacity-100 group-focus-visible/draft-icon:opacity-100 group-hover/draft-icon:scale-[1.015] group-focus-visible/draft-icon:scale-[1.015]"
+                                        className="absolute inset-0 z-20 grid place-items-center rounded-[2.75rem] border border-neutral-200 bg-transparent text-neutral-800 opacity-0 backdrop-blur-[1px] transition-all duration-200 hover:bg-transparent group-hover/draft-icon:opacity-100 group-focus-visible/draft-icon:opacity-100 group-hover/draft-icon:scale-[1.015] group-focus-visible/draft-icon:scale-[1.015]"
                                         aria-label="Retry draft"
                                         title="Retry draft"
                                     >
@@ -2957,7 +3005,7 @@ function AppCard({
                                             <span>Retry</span>
                                         </div>
                                     </button>
-                                ) : !draftIssue ? (
+                                ) : !draftIssue || draftIssueIsAccessGate ? (
                                     <button
                                         type="button"
                                         onClick={async () => {
@@ -2982,7 +3030,7 @@ function AppCard({
                                             }
                                         }}
                                         disabled={isDeleting || accessLocked || disableActions || isPendingCreation || isBrokenDraftCard || draftIssueIsBlocked || draftEditLaunchBusy || draftEditLockActive || !onPromoteDraft}
-                                        className="absolute inset-0 grid place-items-center rounded-[2.6rem] border border-neutral-200 bg-transparent text-neutral-800 opacity-0 backdrop-blur-[1px] transition-all duration-200 hover:bg-transparent group-hover/draft-icon:opacity-100 group-focus-visible/draft-icon:opacity-100 group-hover/draft-icon:scale-[1.015] group-focus-visible/draft-icon:scale-[1.015]"
+                                        className="absolute inset-0 z-20 grid place-items-center rounded-[2.75rem] border border-neutral-200 bg-transparent text-neutral-800 opacity-0 backdrop-blur-[1px] transition-all duration-200 hover:bg-transparent group-hover/draft-icon:opacity-100 group-focus-visible/draft-icon:opacity-100 group-hover/draft-icon:scale-[1.015] group-focus-visible/draft-icon:scale-[1.015]"
                                         aria-label="Edit draft"
                                         title={draftIssueIsBlocked ? blockedDraftDescription : "Edit draft"}
                                     >
@@ -2994,7 +3042,7 @@ function AppCard({
                                 ) : null}
                             </div>
                             {draftIssue ? (
-                                <span className="group/issue absolute -right-2 -top-2">
+                                <span className="group/issue absolute -right-2 -top-2 z-30">
                                     <span
                                         className={`inline-flex h-9 w-9 items-center justify-center rounded-full border shadow-sm ${draftIssueIsBlocked ? "border-red-600 bg-red-600 text-white" : draftIssueIsPromotionProgress ? "border-neutral-200 bg-white text-neutral-500" : "border-amber-200 bg-white text-amber-700"}`}
                                         title={draftIssueDetails || (draftIssueIsBlocked ? blockedDraftDescription : draftIssueIsPromotionProgress ? "Builder opening shortly" : "Scan issue")}
@@ -4626,6 +4674,39 @@ export default function PreviewPage(): JSX.Element {
         if (!user?.uid) return;
         writeDraftPromotionScanStateMap(user.uid, draftPromotionScanByDraftId);
     }, [draftPromotionScanByDraftId, user?.uid]);
+
+    useEffect(() => {
+        const hasDraftEditAccess =
+            userTier === "pro" ||
+            userTier === "agency" ||
+            stripeStatus === "trialing";
+
+        if (!user?.uid || !hasDraftEditAccess) return;
+
+        setDraftPromotionScanByDraftId((prev) => {
+            let changed = false;
+            const next = { ...prev };
+
+            for (const [draftId, state] of Object.entries(prev)) {
+                const combinedMessage = [
+                    state.lastError,
+                    state.warningMessage,
+                    state.warning?.message,
+                    state.warning?.details,
+                ]
+                    .map((part) => String(part || "").trim())
+                    .filter(Boolean)
+                    .join(" ");
+
+                if (!isDraftEditAccessGateMessage(combinedMessage)) continue;
+
+                delete next[draftId];
+                changed = true;
+            }
+
+            return changed ? next : prev;
+        });
+    }, [stripeStatus, user?.uid, userTier]);
 
     useEffect(() => {
         suppressedPromotedDraftsRef.current = suppressedPromotedDrafts;
@@ -6483,6 +6564,47 @@ export default function PreviewPage(): JSX.Element {
 
         return merged;
     }, [apps, draftApps, pendingCreatedApp, pendingCreatedAppCompleted, search]);
+
+    const draftThumbnailLookup = useMemo(() => {
+        const lookup = new Map<string, string>();
+
+        const addUrlDoc = (entry: Partial<UrlDoc> | null | undefined, allowOverwrite = false) => {
+            if (!entry) return;
+            const normalized = validateAndNormalizePublicHttpUrl(String(entry.url || ""));
+            if (!normalized) return;
+
+            const canonical = normUrl(normalized);
+            if (!canonical) return;
+
+            const firstScreenshot = Array.isArray(entry.screenshots) ? entry.screenshots[0] : null;
+            const screenshotUrl = typeof firstScreenshot?.url === "string" ? firstScreenshot.url.trim() : "";
+            if (!screenshotUrl) return;
+
+            if (!allowOverwrite && lookup.has(canonical)) return;
+
+            lookup.set(canonical, screenshotUrl);
+        };
+
+        for (const entry of urls) {
+            addUrlDoc(entry);
+        }
+
+        if (docData) {
+            addUrlDoc({
+                ...docData,
+                url: docData.url,
+            }, true);
+        }
+
+        return lookup;
+    }, [docData, urls]);
+
+    const visibleAppsWithThumbnails = useMemo(() => {
+        return visibleApps.map((app) => ({
+            ...app,
+            thumbnailUrl: resolveDashboardDraftThumbnailUrl(app, draftThumbnailLookup),
+        }));
+    }, [draftThumbnailLookup, visibleApps]);
 
     const pendingCreatedAppActive = Boolean(pendingCreatedApp?.id);
     const isAppCreationPending = Boolean(pendingCreatedAppActive && !pendingCreatedAppCompleted);
@@ -12986,7 +13108,7 @@ export default function PreviewPage(): JSX.Element {
                             className="mt-4 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4"
                             aria-label="Draft websites list"
                         >
-                            {visibleApps.map((app) => (
+                            {visibleAppsWithThumbnails.map((app) => (
                                 (() => {
                                     const draftKey = String((app as any).draftId || app.id || "").trim();
                                     const draftPending = Boolean(draftKey && pendingDraftApps[draftKey]);
