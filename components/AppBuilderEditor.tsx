@@ -5601,7 +5601,7 @@ export default function AppBuilderEditor({
                 "SameSite=Lax",
             ].join("; ");
 
-            const returnTo = `/dashboard/view?appVercel=connected&flow=appDeploy&appId=${encodeURIComponent(appId)}`;
+            const returnTo = `/dashboard/view?vercel=connected&flow=preview&appId=${encodeURIComponent(appId)}`;
             document.cookie = [
                 `vercel_oauth_return=${encodeURIComponent(returnTo)}`,
                 "Path=/",
@@ -5769,6 +5769,19 @@ export default function AppBuilderEditor({
 
         // No-op for embedded preview; deploy actions will work after connect.
     }, [isVercelConnected, appId, app, filesHydrated, loading]);
+
+    useEffect(() => {
+        if (!vercelConnectOpen) return;
+        if (vercelConnectOpening) return;
+        if (isVercelChecking) return;
+        if (!isVercelConnected) return;
+
+        const t = window.setTimeout(() => {
+            setVercelConnectOpen(false);
+        }, 250);
+
+        return () => window.clearTimeout(t);
+    }, [vercelConnectOpen, vercelConnectOpening, isVercelChecking, isVercelConnected]);
 
     useEffect(() => {
         if (!isVercelConnected) return;
@@ -7771,13 +7784,26 @@ export default function AppBuilderEditor({
                                 <div className="mt-4 flex flex-col gap-2">
                                     <button
                                         type="button"
-                                        onClick={
-                                            vercelConnectFlow === "share"
-                                                ? startVercelOAuthForSharePreview
-                                                : vercelConnectFlow === "images"
-                                                    ? startVercelOAuthForImageLibrary
-                                                    : startVercelOAuthForPreview
-                                        }
+                                        onClick={() => {
+                                            if (isVercelChecking || vercelConnectOpening) return;
+
+                                            if (isVercelConnected) {
+                                                setVercelConnectOpen(false);
+                                                return;
+                                            }
+
+                                            if (vercelConnectFlow === "share") {
+                                                startVercelOAuthForSharePreview();
+                                                return;
+                                            }
+
+                                            if (vercelConnectFlow === "images") {
+                                                startVercelOAuthForImageLibrary();
+                                                return;
+                                            }
+
+                                            startVercelOAuthForPreview();
+                                        }}
                                         disabled={isVercelChecking || vercelConnectOpening}
                                         className="inline-flex h-12 w-full items-center justify-center gap-2 whitespace-nowrap rounded-full bg-[#F55F2A] px-5 text-sm font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
                                     >
@@ -7789,7 +7815,9 @@ export default function AppBuilderEditor({
                                                 ? "Opening Vercel…"
                                                 : isVercelChecking
                                                     ? "Checking…"
-                                                    : "Connect Vercel"}
+                                                    : isVercelConnected
+                                                        ? "Continue"
+                                                        : "Connect Vercel"}
                                         </span>
                                     </button>
 

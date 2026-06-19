@@ -14183,12 +14183,19 @@ export default function PreviewPage(): JSX.Element {
                                                     <div className="mt-4 flex flex-col gap-2">
                                                         <button
                                                             type="button"
-                                                            onClick={handleConnectVercelFromWizard}
+                                                            onClick={() => {
+                                                                if (deployWizardBusy) return;
+                                                                if (vercelStatus === "connected") {
+                                                                    setDeployWizardStep(3);
+                                                                    return;
+                                                                }
+                                                                handleConnectVercelFromWizard();
+                                                            }}
                                                             disabled={deployWizardBusy}
                                                             className="inline-flex h-12 w-full items-center justify-center rounded-full px-3 py-1.5 text-sm text-white disabled:opacity-50 disabled:cursor-not-allowed"
                                                             style={{ backgroundColor: ACCENT }}
                                                         >
-                                                            Connect Vercel
+                                                            {vercelStatus === "connected" ? "Continue" : "Connect Vercel"}
                                                         </button>
 
                                                         <button
