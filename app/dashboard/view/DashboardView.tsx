@@ -118,6 +118,14 @@ const VERCEL_INTEGRATION_SLUG =
     process.env.NEXT_PUBLIC_VERCEL_INTEGRATION_SLUG || "kloner";
 
 const ACCENT = "#f55f2a";
+const DEPLOY_RETRY_BASE_DELAY_MS = 1500;
+const DEPLOY_RETRY_MAX_DELAY_MS = 30000;
+
+function computeDeployRetryDelayMs(attempt: number): number {
+    const normalizedAttempt = Math.max(1, Math.floor(attempt));
+    const rawDelay = DEPLOY_RETRY_BASE_DELAY_MS * Math.pow(2, normalizedAttempt - 1);
+    return Math.min(DEPLOY_RETRY_MAX_DELAY_MS, rawDelay);
+}
 const CAPTURE_STALL_TIMEOUT_MS = 6 * 60 * 1000;
 const RENDER_STALL_TIMEOUT_MS = 5 * 60 * 1000;
 const CAPTURE_ISSUE_NOTICE_MS = 10 * 1000;
@@ -4333,6 +4341,8 @@ export default function PreviewPage(): JSX.Element {
     const [appDeployWizardAppName, setAppDeployWizardAppName] = useState<string>("");
     const [appDeployWizardLiveUrl, setAppDeployWizardLiveUrl] = useState<string | null>(null);
     const [showAppDeployWizardStep2CloseButton, setShowAppDeployWizardStep2CloseButton] = useState(false);
+    const [appDeployWizardRetryCount, setAppDeployWizardRetryCount] = useState(0);
+    const [appDeployWizardRetryLockedUntil, setAppDeployWizardRetryLockedUntil] = useState(0);
     const [appBuilderDeployIssue, setAppBuilderDeployIssue] = useState<{
         title: string;
         detail: string;
@@ -4346,7 +4356,7 @@ export default function PreviewPage(): JSX.Element {
     const appDeployWizardResolvedErrorText = useMemo(() => {
         if (!appDeployWizardErrorText) return "";
         if (appDeployWizardPermissionError) {
-            return "This Vercel account or team cannot create a new project here. Reconnect Vercel with the correct account or team, then retry the deploy.";
+            return "This Vercel account or team cannot create a new project here. Fix the account or team, then retry the deploy.";
         }
         return appDeployWizardErrorText;
     }, [appDeployWizardErrorText, appDeployWizardPermissionError]);
@@ -4355,10 +4365,26 @@ export default function PreviewPage(): JSX.Element {
     const deployWizardResolvedErrorText = useMemo(() => {
         if (!deployWizardError) return "";
         if (deployWizardPermissionError) {
-            return "This Vercel account cannot create a new project here. Reconnect Vercel with the right team or account, then try again.";
+            return "This Vercel account cannot create a new project here. Fix the account or team, then retry the deploy.";
         }
         return deployWizardError;
     }, [deployWizardError, deployWizardPermissionError]);
+    const [deployWizardRetryCount, setDeployWizardRetryCount] = useState(0);
+    const [deployWizardRetryLockedUntil, setDeployWizardRetryLockedUntil] = useState(0);
+
+    useEffect(() => {
+        if (!appDeployWizardRetryLockedUntil) return;
+        const delay = Math.max(0, appDeployWizardRetryLockedUntil - Date.now());
+        const timer = window.setTimeout(() => setAppDeployWizardRetryLockedUntil(0), delay);
+        return () => window.clearTimeout(timer);
+    }, [appDeployWizardRetryLockedUntil]);
+
+    useEffect(() => {
+        if (!deployWizardRetryLockedUntil) return;
+        const delay = Math.max(0, deployWizardRetryLockedUntil - Date.now());
+        const timer = window.setTimeout(() => setDeployWizardRetryLockedUntil(0), delay);
+        return () => window.clearTimeout(timer);
+    }, [deployWizardRetryLockedUntil]);
 
     const refreshUserTierNow = useCallback(async (): Promise<{ tier: UserTier; stripeStatus: string | null }> => {
         // Deploy gating should never rely on a stale cached tier.
@@ -5088,6 +5114,8 @@ export default function PreviewPage(): JSX.Element {
         setAppDeployWizardLiveUrl(null);
         setAppDeployWizardAppId(null);
         setAppDeployWizardAppName("");
+        setAppDeployWizardRetryCount(0);
+        setAppDeployWizardRetryLockedUntil(0);
         setShowAppExitOffer(false);
         setAppExitOfferReason(null);
         autoAppDeployTriggeredRef.current = false;
@@ -5116,6 +5144,53 @@ export default function PreviewPage(): JSX.Element {
         }
     }, [router]);
 
+    const reportDeployWizardFailure = useCallback(
+        async (params: {
+            scope: "render" | "app";
+            code?: string | null;
+            message: string;
+            statusCode?: number | null;
+            phase?: string | null;
+            attempt?: number | null;
+            errorName?: string | null;
+            stack?: string | null;
+            extra?: Record<string, unknown>;
+        }) => {
+            if (!user) return;
+
+            try {
+                const csrf = await ensureSessionAndCsrf().catch(() => null);
+                await fetch("/api/internal/observability/deploy-wizard", {
+                    method: "POST",
+                    headers: {
+                        "content-type": "application/json",
+                        ...(csrf ? { "x-csrf": csrf } : {}),
+                    },
+                    credentials: "include",
+                    cache: "no-store",
+                    body: JSON.stringify({
+                        appId: params.scope === "app" ? appDeployWizardAppId : deployWizardRenderId,
+                        appName: params.scope === "app" ? appDeployWizardAppName : deployWizardProjectName,
+                        code: params.code || undefined,
+                        message: params.message,
+                        statusCode: params.statusCode || undefined,
+                        route: "/api/app-builder/[appId]/deploy",
+                        method: "POST",
+                        service: "dashboard-deploy-wizard",
+                        phase: params.phase || undefined,
+                        attempt: params.attempt || undefined,
+                        errorName: params.errorName || params.code || undefined,
+                        stack: params.stack || undefined,
+                        extra: params.extra || {},
+                    }),
+                });
+            } catch (err) {
+                console.warn("[deploy-wizard] failed to report error to observability", err);
+            }
+        },
+        [appDeployWizardAppId, appDeployWizardAppName, deployWizardProjectName, deployWizardRenderId, user],
+    );
+
     const openAppDeployWizard = useCallback(
         (app: { id: string; name: string }) => {
             setAppDeployWizardAppId(app.id);
@@ -5123,6 +5198,8 @@ export default function PreviewPage(): JSX.Element {
             setAppDeployWizardError(null);
             setAppDeployWizardBusy(false);
             setAppDeployWizardLiveUrl(null);
+            setAppDeployWizardRetryCount(0);
+            setAppDeployWizardRetryLockedUntil(0);
             autoAppDeployTriggeredRef.current = false;
 
             // Always start with the Vercel connection check slide.
@@ -5193,27 +5270,51 @@ export default function PreviewPage(): JSX.Element {
                 const friendlyMsg = code === "VERCEL_DEPLOY_BODY_TOO_LARGE"
                     ? "This deployment is too large for Vercel's request-body limit. The hydrated file payload exceeds 10mb, so the app needs to be reduced or split before it can be deployed."
                     : /don't have permission to create the project/i.test(rawMsg)
-                        ? "This Vercel account or team cannot create a new project here. Reconnect Vercel with the correct account or team, then retry the deploy."
+                        ? "This Vercel account or team cannot create a new project here. Fix the account or team, then retry the deploy."
                         : rawMsg;
+                const nextRetryCount = appDeployWizardRetryCount + 1;
+                const nextRetryDelay = computeDeployRetryDelayMs(nextRetryCount);
+                setAppDeployWizardRetryCount(nextRetryCount);
+                setAppDeployWizardRetryLockedUntil(Date.now() + nextRetryDelay);
                 setAppBuilderDeployIssue({
                     title: code === "VERCEL_DEPLOY_BODY_TOO_LARGE" ? "Deployment payload too large" : "Deployment failed",
                     detail: friendlyMsg,
                     fingerprint: `deploy:${code || res.status}:${String(deployBodyBytes || "")}:${String(bodyLimitBytes || "")}:${friendlyMsg.slice(0, 120)}`,
                     fixAction: code === "VERCEL_DEPLOY_BODY_TOO_LARGE" ? "reduce_deploy_payload" : "deploy_issue_fix",
                 });
-                throw new Error(friendlyMsg);
+                setAppDeployWizardError(friendlyMsg);
+                return;
             }
 
             const url = String(data?.url || data?.previewUrl || "").trim();
             if (!url) throw new Error("Deploy completed but no URL was returned.");
             setAppBuilderDeployIssue(null);
             setAppDeployWizardLiveUrl(url);
+            setAppDeployWizardRetryCount(0);
+            setAppDeployWizardRetryLockedUntil(0);
         } catch (e: any) {
-            setAppDeployWizardError(e?.message || "Deploy failed.");
+            const message = e?.message || "Deploy failed.";
+            const nextRetryCount = appDeployWizardRetryCount + 1;
+            setAppDeployWizardRetryCount(nextRetryCount);
+            setAppDeployWizardRetryLockedUntil(Date.now() + computeDeployRetryDelayMs(nextRetryCount));
+            void reportDeployWizardFailure({
+                scope: "app",
+                code: "DEPLOY_REQUEST_FAILED",
+                message,
+                statusCode: 500,
+                phase: "client_deploy_exception",
+                attempt: nextRetryCount,
+                errorName: e?.name || "Error",
+                stack: e?.stack || null,
+                extra: {
+                    rawError: message,
+                },
+            });
+            setAppDeployWizardError(message);
         } finally {
             setAppDeployWizardBusy(false);
         }
-    }, [appDeployWizardAppId, appDeployWizardBusy, isVercelConnected, user]);
+    }, [appDeployWizardAppId, appDeployWizardBusy, appDeployWizardRetryCount, isVercelConnected, reportDeployWizardFailure, user]);
 
     useEffect(() => {
         if (!appDeployWizardOpen) return;
@@ -10856,8 +10957,11 @@ export default function PreviewPage(): JSX.Element {
             if (!r.ok || !j?.url) {
                 const msg = j?.error || "Vercel deploy failed";
                 const friendlyMsg = /don't have permission to create the project/i.test(msg)
-                    ? "This Vercel account cannot create a new project here. Reconnect Vercel with the right team or account, then try again."
+                    ? "This Vercel account cannot create a new project here. Fix the account or team, then retry the deploy."
                     : msg;
+                const nextRetryCount = deployWizardRetryCount + 1;
+                setDeployWizardRetryCount(nextRetryCount);
+                setDeployWizardRetryLockedUntil(Date.now() + computeDeployRetryDelayMs(nextRetryCount));
                 const deployDurationMs = Date.now() - deployStartMs;
                 const funnelDurationMs = Date.now() - funnelStartMs;
 
@@ -10957,9 +11061,12 @@ export default function PreviewPage(): JSX.Element {
         } catch (err: any) {
             const rawMsg = err?.message || "Deploy failed.";
             const friendlyMsg = /don't have permission to create the project/i.test(rawMsg)
-                ? "This Vercel account or team cannot create a new project here. Reconnect Vercel with the correct account or team, then retry the deploy."
+                ? "This Vercel account or team cannot create a new project here. Fix the account or team, then retry the deploy."
                 : rawMsg;
-            setAppDeployWizardError(friendlyMsg);
+            const nextRetryCount = deployWizardRetryCount + 1;
+            setDeployWizardRetryCount(nextRetryCount);
+            setDeployWizardRetryLockedUntil(Date.now() + computeDeployRetryDelayMs(nextRetryCount));
+            setDeployWizardError(friendlyMsg);
             const deployDurationMs = Date.now() - deployStartMs;
             const funnelDurationMs = Date.now() - funnelStartMs;
 
@@ -10979,6 +11086,22 @@ export default function PreviewPage(): JSX.Element {
 
             setDeployWizardError(friendlyMsg);
             setDeployWizardLiveUrl(null);
+            void reportDeployWizardFailure({
+                scope: "render",
+                code: "DEPLOY_REQUEST_FAILED",
+                message: friendlyMsg,
+                statusCode: 500,
+                phase: "client_deploy_exception",
+                attempt: nextRetryCount,
+                errorName: err?.name || "Error",
+                stack: err?.stack || null,
+                extra: {
+                    rawMsg,
+                    url: targetUrl || undefined,
+                    projectName,
+                    renderId: resolvedRenderId,
+                },
+            });
             push(friendlyMsg, "err");
             console.error("Deploy failed", err);
         } finally {
@@ -11423,6 +11546,8 @@ export default function PreviewPage(): JSX.Element {
                     setAppDeployWizardError(null);
                     setAppDeployWizardBusy(false);
                     setAppDeployWizardLiveUrl(null);
+                    setAppDeployWizardRetryCount(0);
+                    setAppDeployWizardRetryLockedUntil(0);
                     setAppDeployWizardOpen(true);
 
                     if (appDeployWizardRestoreTokenRef.current !== token) return;
@@ -11492,6 +11617,8 @@ export default function PreviewPage(): JSX.Element {
             autoDeployTriggeredRef.current = false;
             setDeployWizardError(null);
             setDeployWizardBusy(false);
+            setDeployWizardRetryCount(0);
+            setDeployWizardRetryLockedUntil(0);
             setDeployWizardOpen(true);
             setDeployWizardStep(2);
 
@@ -11595,6 +11722,8 @@ export default function PreviewPage(): JSX.Element {
                 setAppDeployWizardError(null);
                 setAppDeployWizardBusy(false);
                 setAppDeployWizardLiveUrl(null);
+                setAppDeployWizardRetryCount(0);
+                setAppDeployWizardRetryLockedUntil(0);
                 setAppDeployWizardOpen(true);
 
                 if (appDeployWizardRestoreTokenRef.current !== token) return;
@@ -11642,6 +11771,8 @@ export default function PreviewPage(): JSX.Element {
             setDeployWizardStep(1);
             setDeployWizardError(null);
             setDeployWizardOpen(true);
+            setDeployWizardRetryCount(0);
+            setDeployWizardRetryLockedUntil(0);
             autoDeployTriggeredRef.current = false;
         },
         [],
@@ -11655,6 +11786,8 @@ export default function PreviewPage(): JSX.Element {
         setDeployWizardProjectName("");
         setDeployWizardRenderId(null);
         setDeployWizardLiveUrl(null);
+        setDeployWizardRetryCount(0);
+        setDeployWizardRetryLockedUntil(0);
         setShowDeployNextSteps(false);
         setDeployingRenderId(null);
         autoDeployTriggeredRef.current = false;
@@ -11727,7 +11860,6 @@ export default function PreviewPage(): JSX.Element {
         },
         [deployWizardProjectName, exportToVercel],
     );
-
 
     // ───────── auto-deploy exactly once when we land on step 3 ─────────
 
@@ -13677,19 +13809,20 @@ export default function PreviewPage(): JSX.Element {
                                                         Close
                                                     </button>
 
-                                                    {appDeployWizardError ? (
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => {
-                                                                setAppDeployWizardError(null);
-                                                                handleConnectVercelFromWizard();
-                                                            }}
-                                                            className="rounded-full px-3 py-1.5 text-xs font-semibold text-white"
-                                                            style={{ backgroundColor: ACCENT }}
-                                                        >
-                                                            Reconnect Vercel
-                                                        </button>
-                                                    ) : appDeployWizardLiveUrl ? (
+                                                        {appDeployWizardError ? (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    setAppDeployWizardError(null);
+                                                                    void deployAppLive({ force: true });
+                                                                }}
+                                                                disabled={appDeployWizardBusy || Date.now() < appDeployWizardRetryLockedUntil}
+                                                                className="rounded-full px-3 py-1.5 text-xs font-semibold text-white"
+                                                                style={{ backgroundColor: ACCENT }}
+                                                            >
+                                                                Retry deploy
+                                                            </button>
+                                                        ) : appDeployWizardLiveUrl ? (
                                                         <a
                                                             href={appDeployWizardLiveUrl}
                                                             target="_blank"
@@ -14146,12 +14279,13 @@ export default function PreviewPage(): JSX.Element {
                                                                 type="button"
                                                                 onClick={() => {
                                                                     setDeployWizardError(null);
-                                                                    handleConnectVercelFromWizard();
+                                                                    void deployAppLive({ force: true });
                                                                 }}
+                                                                disabled={deployWizardBusy || Date.now() < deployWizardRetryLockedUntil}
                                                                 className="rounded-full px-3 py-1.5 text-xs font-semibold text-white"
                                                                 style={{ backgroundColor: ACCENT }}
                                                             >
-                                                                Reconnect Vercel
+                                                                Retry deploy
                                                             </button>
                                                         ) : !deployWizardBusy && deployWizardLiveUrl ? (
                                                                 <a

@@ -9,8 +9,186 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const EDIT_PLAN_TIMEOUT_MS = 45_000;
+const EDIT_PLAN_WORKER_READY_WAIT_MS = 15_000;
+const EDIT_PLAN_WORKER_FLY_APP = "edit-plan-worker";
+const EDIT_PLAN_WORKER_FLY_MACHINE_ID = "78124d2f950248";
 const NEEDS_MORE_CONTEXT_EMAIL_TO =
     (process.env.EMBEDDINGS_NEEDS_MORE_CONTEXT_TO || process.env.SUPPORT_TO || "support@kloner.app").trim();
+
+function getFlyApiToken(): string {
+    const raw = (process.env.FLY_API_TOKEN || process.env.FLY_API_KEY || process.env.FLY_TOKEN || "").trim();
+    if (!raw) return "";
+
+    // FlyV1 tokens include a comma-separated discharge token.
+    // Avoid splitting on commas so we do not truncate the token.
+    if (raw.startsWith("FlyV1 ")) return raw;
+
+    const parts = raw
+        .split(/[\n\r,]+/)
+        .map((part) => String(part || "").trim())
+        .filter(Boolean);
+    if (!parts.length) return "";
+
+    return parts.find((part) => /^fm\d_/.test(part)) || parts.find((part) => /^fo\d_/.test(part)) || parts[0];
+}
+
+function getEditPlanWorkerTarget(): { app: string; machineId: string } {
+    return {
+        app: EDIT_PLAN_WORKER_FLY_APP,
+        machineId: EDIT_PLAN_WORKER_FLY_MACHINE_ID,
+    };
+}
+
+async function fetchFlyMachineState(app: string, machineId: string): Promise<{ ok: true; state: string | null } | { ok: false; status: number; error: string }> {
+    const token = getFlyApiToken();
+    if (!token) {
+        return { ok: false, status: 500, error: "FLY_API_TOKEN not set" };
+    }
+
+    const res = await fetch(
+        `https://api.machines.dev/v1/apps/${encodeURIComponent(app)}/machines/${encodeURIComponent(machineId)}`,
+        {
+            method: "GET",
+            headers: {
+                accept: "application/json",
+                authorization: `Bearer ${token}`,
+            },
+            cache: "no-store",
+            signal: AbortSignal.timeout(10_000),
+        },
+    );
+
+    const json = await res.json().catch(() => ({} as any));
+    if (!res.ok) {
+        const msg = String((json as any)?.error || (json as any)?.message || `Fly error (HTTP ${res.status})`);
+        return { ok: false, status: res.status, error: msg };
+    }
+
+    return {
+        ok: true,
+        state: typeof (json as any)?.state === "string" ? String((json as any).state) : null,
+    };
+}
+
+async function startFlyMachine(app: string, machineId: string): Promise<{ ok: true; state: string | null } | { ok: false; status: number; error: string }> {
+    const token = getFlyApiToken();
+    if (!token) {
+        return { ok: false, status: 500, error: "FLY_API_TOKEN not set" };
+    }
+
+    const res = await fetch(
+        `https://api.machines.dev/v1/apps/${encodeURIComponent(app)}/machines/${encodeURIComponent(machineId)}/start`,
+        {
+            method: "POST",
+            headers: {
+                accept: "application/json",
+                authorization: `Bearer ${token}`,
+            },
+            cache: "no-store",
+            signal: AbortSignal.timeout(10_000),
+        },
+    );
+
+    const json = await res.json().catch(() => ({} as any));
+    if (!res.ok) {
+        const msg = String((json as any)?.error || (json as any)?.message || `Fly error (HTTP ${res.status})`);
+        return { ok: false, status: res.status, error: msg };
+    }
+
+    return {
+        ok: true,
+        state: typeof (json as any)?.state === "string" ? String((json as any).state) : null,
+    };
+}
+
+async function waitForFlyMachineReady(app: string, machineId: string, timeoutMs = EDIT_PLAN_WORKER_READY_WAIT_MS): Promise<{ ok: true; state: string | null } | { ok: false; status: number; error: string }> {
+    const startedAt = Date.now();
+    let lastState: string | null = null;
+
+    while (Date.now() - startedAt < timeoutMs) {
+        const stateRes = await fetchFlyMachineState(app, machineId);
+        if (!stateRes.ok) return stateRes;
+
+        lastState = stateRes.state;
+        const normalized = String(lastState || "").toLowerCase();
+        if (!normalized || normalized === "started" || normalized === "running" || normalized === "healthy") {
+            return { ok: true, state: lastState };
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
+
+    return { ok: true, state: lastState };
+}
+
+async function ensureEditPlanWorkerRunning(uid: string, requestId: string | null) {
+    const target = getEditPlanWorkerTarget();
+    if (!target) {
+        return { ok: true as const, skipped: true as const };
+    }
+
+    const stateRes = await fetchFlyMachineState(target.app, target.machineId);
+    if (!stateRes.ok) {
+        void captureCriticalEvent({
+            source: "internal",
+            severity: "error",
+            alwaysNotifySlack: true,
+            statusCode: stateRes.status,
+            route: "/api/app-embeddings/edit-plan",
+            method: "POST",
+            action: "edit_plan_worker_status_failed",
+            userId: uid,
+            requestId: requestId || undefined,
+            message: `Failed to read edit-plan worker machine state: ${stateRes.error}`,
+            errorName: "EDIT_PLAN_WORKER_STATUS_FAILED",
+            service: "app-embeddings",
+            extra: {
+                app: target.app,
+                machineId: target.machineId,
+            },
+        }).catch(() => null);
+        return { ok: false as const, status: 503, error: "Unable to read edit-plan worker state." };
+    }
+
+    const normalized = String(stateRes.state || "").toLowerCase();
+    const isReady = !normalized || normalized === "started" || normalized === "running" || normalized === "healthy";
+    if (isReady) {
+        return { ok: true as const, skipped: false as const, state: stateRes.state };
+    }
+
+    if (normalized !== "stopped" && normalized !== "stopping" && normalized !== "failed" && normalized !== "destroyed" && normalized !== "dead") {
+        return { ok: true as const, skipped: false as const, state: stateRes.state };
+    }
+
+    const startRes = await startFlyMachine(target.app, target.machineId);
+    if (!startRes.ok) {
+        void captureCriticalEvent({
+            source: "internal",
+            severity: "critical",
+            alwaysNotifySlack: true,
+            statusCode: startRes.status,
+            route: "/api/app-embeddings/edit-plan",
+            method: "POST",
+            action: "edit_plan_worker_start_failed",
+            userId: uid,
+            requestId: requestId || undefined,
+            message: `Failed to start edit-plan worker machine: ${startRes.error}`,
+            errorName: "EDIT_PLAN_WORKER_START_FAILED",
+            service: "app-embeddings",
+            extra: {
+                app: target.app,
+                machineId: target.machineId,
+                state: stateRes.state,
+            },
+        }).catch(() => null);
+        return { ok: false as const, status: 503, error: "Edit-plan worker is offline and could not be started." };
+    }
+
+    const readyRes = await waitForFlyMachineReady(target.app, target.machineId);
+    if (!readyRes.ok) return readyRes;
+
+    return { ok: true as const, skipped: false as const, state: readyRes.state };
+}
 
 function getResend() {
     const key = process.env.RESEND_API_KEY;
@@ -235,6 +413,20 @@ export async function POST(req: NextRequest) {
             }
 
             assertAppBuilderScope(authedReq, uid, appId);
+
+            const workerReady = await ensureEditPlanWorkerRunning(uid, requestId);
+            if (!workerReady.ok) {
+                const response = NextResponse.json(
+                    {
+                        ok: false,
+                        error: workerReady.error,
+                        code: "EDIT_PLAN_WORKER_OFFLINE",
+                    },
+                    { status: workerReady.status },
+                );
+                response.headers.set("x-observability-skip-status-alert", "1");
+                return response;
+            }
 
             const result = await callBackend(authedReq, {
                 path: "/app-embeddings/edit-plan",

@@ -158,6 +158,7 @@ function reportDeployFailure(params: {
     void captureCriticalEvent({
         source: "internal",
         severity: params.statusCode >= 500 || params.code === "VERCEL_DEPLOY_BODY_TOO_LARGE" ? "critical" : "error",
+        alwaysNotifySlack: true,
         statusCode: params.statusCode,
         route: "/api/app-builder/[appId]/deploy",
         method: "POST",
@@ -590,7 +591,6 @@ export async function POST(
             name: vercelProjectName || resolvedName || "kloner-app",
             files: deploymentFiles,
             target: "production",
-            public: true,
         };
 
         if (deploymentFramework === "nextjs") {

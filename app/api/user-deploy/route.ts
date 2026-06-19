@@ -3,9 +3,45 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAdminDb } from "../_lib/auth";
 import { requireSessionAndMaybeCsrf } from "../_lib/route-guard";
 import { refreshTierFromStripeForUid } from "../_lib/billing";
+import { captureCriticalEvent } from "@/lib/observability";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+function reportUserDeployFailure(params: {
+    uid: string;
+    statusCode: number;
+    code: string;
+    message: string;
+    renderId?: string | null;
+    vercelProjectId?: string | null;
+    vercelProjectName?: string | null;
+    vercelTeamId?: string | null;
+    extra?: Record<string, unknown>;
+}) {
+    void captureCriticalEvent({
+        source: "internal",
+        severity: params.statusCode >= 500 ? "critical" : "error",
+        alwaysNotifySlack: true,
+        statusCode: params.statusCode,
+        route: "/api/user-deploy",
+        method: "POST",
+        action: "user_deploy_failed",
+        userId: params.uid,
+        message: params.message,
+        errorName: params.code,
+        service: "next-api",
+        extra: {
+            renderId: params.renderId || null,
+            vercelProjectId: params.vercelProjectId || null,
+            vercelProjectName: params.vercelProjectName || null,
+            vercelTeamId: params.vercelTeamId || null,
+            ...params.extra,
+        },
+    }).catch((err) => {
+        console.warn("[user-deploy] failed to report deploy failure to Slack", err);
+    });
+}
 
 export async function POST(req: NextRequest) {
     return requireSessionAndMaybeCsrf(
@@ -20,6 +56,12 @@ export async function POST(req: NextRequest) {
             } = await req.json();
 
             if (!html || typeof html !== "string") {
+                reportUserDeployFailure({
+                    uid,
+                    statusCode: 400,
+                    code: "MISSING_HTML",
+                    message: "Missing html",
+                });
                 return NextResponse.json(
                     { ok: false, error: "Missing html" },
                     { status: 400 }
@@ -60,6 +102,12 @@ export async function POST(req: NextRequest) {
             }
 
             if (userTier === "free") {
+                reportUserDeployFailure({
+                    uid,
+                    statusCode: 400,
+                    code: "FREE_TIER_DEPLOY_BLOCKED",
+                    message: "Please upgrade your account to deploy projects.",
+                });
                 return NextResponse.json(
                     {
                         ok: false,
@@ -81,6 +129,13 @@ export async function POST(req: NextRequest) {
                 const ref = db.doc(`kloner_users/${uid}/kloner_renders/${renderId}`);
                 renderDoc = await ref.get();
                 if (!renderDoc.exists) {
+                    reportUserDeployFailure({
+                        uid,
+                        statusCode: 404,
+                        code: "RENDER_NOT_FOUND",
+                        message: "Render not found",
+                        renderId: renderId || null,
+                    });
                     return NextResponse.json(
                         { ok: false, error: "Render not found" },
                         { status: 404 }
@@ -106,6 +161,15 @@ export async function POST(req: NextRequest) {
 
             const integrationSnap = await integrationRef.get();
             if (!integrationSnap.exists) {
+                reportUserDeployFailure({
+                    uid,
+                    statusCode: 400,
+                    code: "VERCEL_NOT_CONNECTED",
+                    message: "Vercel is not connected for this account. Visit settings to fix this.",
+                    renderId: renderId || null,
+                    vercelProjectId,
+                    vercelProjectName,
+                });
                 return NextResponse.json(
                     {
                         ok: false,
@@ -169,6 +233,18 @@ export async function POST(req: NextRequest) {
                 const projectJson = await projectRes.json().catch(() => ({} as any));
 
                 if (!projectRes.ok) {
+                    reportUserDeployFailure({
+                        uid,
+                        statusCode: 400,
+                        code: "VERCEL_PROJECT_CREATE_FAILED",
+                        message:
+                            (projectJson as any)?.error?.message ||
+                            "Failed to create Vercel project",
+                        renderId: renderId || null,
+                        vercelProjectId,
+                        vercelProjectName,
+                        vercelTeamId: vercelTeamId || null,
+                    });
                     return NextResponse.json(
                         {
                             ok: false,
@@ -275,6 +351,21 @@ export async function POST(req: NextRequest) {
             const deployJson = await deployRes.json().catch(() => ({} as any));
 
             if (!deployRes.ok) {
+                reportUserDeployFailure({
+                    uid,
+                    statusCode: deployRes.status,
+                    code: "VERCEL_DEPLOY_FAILED",
+                    message:
+                        (deployJson as any)?.error?.message ||
+                        "Deployment failed",
+                    renderId: renderId || null,
+                    vercelProjectId,
+                    vercelProjectName,
+                    vercelTeamId: vercelTeamId || null,
+                    extra: {
+                        vercelStatus: deployRes.status,
+                    },
+                });
                 return NextResponse.json(
                     {
                         ok: false,
