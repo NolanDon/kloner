@@ -16,6 +16,8 @@ export default function HeroContent({
   const [url, setUrl] = useState("");
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const hintId = "hero-url-hint";
+  const errorId = "hero-url-error";
 
   function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -93,6 +95,9 @@ export default function HeroContent({
         </p>
 
         <form onSubmit={onSubmit} className="mt-[clamp(1rem,3.2vh,2.5rem)] w-full max-w-2xl mx-auto space-y-3">
+          <label htmlFor="hero-url-input" className="sr-only">
+            Website URL
+          </label>
           <div className="rounded-full bg-white/95 p-2 shadow-[0_20px_50px_rgba(0,0,0,0.3)] ring-1 ring-white/20 backdrop-blur-md">
             <div className="flex items-stretch gap-2">
               <div className="flex min-h-[48px] flex-1 items-center rounded-full px-4 sm:px-6">
@@ -101,13 +106,18 @@ export default function HeroContent({
                 </span>
 
                 <input
+                  id="hero-url-input"
                   ref={inputRef}
                   value={url}
                   onChange={handleChange}
                   onPaste={handlePaste}
                   placeholder="example.com"
+                  inputMode="url"
+                  autoCapitalize="none"
                   className="w-full bg-transparent outline-none text-neutral-700 text-base sm:text-lg placeholder:text-neutral-400 font-medium"
                   autoComplete="off"
+                  aria-describedby={error ? errorId : hintId}
+                  aria-invalid={Boolean(error)}
                 />
               </div>
 
@@ -123,7 +133,11 @@ export default function HeroContent({
             </div>
           </div>
 
-          <div className="mt-3 sm:mt-4 text-xs sm:text-sm text-white font-medium">
+          <div
+            id={error ? errorId : hintId}
+            className="mt-3 sm:mt-4 text-xs sm:text-sm text-white font-medium"
+            aria-live="polite"
+          >
             {error ?? "Clone your public website • Instant preview • Customize and launch"}
           </div>
         </form>

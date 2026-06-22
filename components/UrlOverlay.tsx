@@ -21,6 +21,8 @@ export default function UrlOverlay({ open, onClose }: UrlOverlayProps) {
     const [error, setError] = useState<string | null>(null);
     const [submitting, setSubmitting] = useState(false);
     const inputRef = useRef<HTMLInputElement | null>(null);
+    const hintId = "url-overlay-hint";
+    const errorId = "url-overlay-error";
 
     useEffect(() => {
         if (open) {
@@ -125,6 +127,9 @@ export default function UrlOverlay({ open, onClose }: UrlOverlayProps) {
                         </div>
 
                         <form onSubmit={handleSubmit} className="space-y-3">
+                            <label htmlFor="url-overlay-input" className="sr-only">
+                                Website URL
+                            </label>
                             <div className="rounded-full bg-white/95 p-2 shadow-[0_20px_50px_rgba(0,0,0,0.3)] ring-1 ring-white/20 backdrop-blur-md">
                                 <div className="flex items-stretch gap-2">
                                     <div className="flex min-h-[48px] flex-1 items-center rounded-full px-4 sm:px-6">
@@ -133,14 +138,19 @@ export default function UrlOverlay({ open, onClose }: UrlOverlayProps) {
                                         </span>
 
                                         <input
+                                            id="url-overlay-input"
                                             ref={inputRef}
                                             value={url}
                                             onChange={handleChange}
                                             onPaste={handlePaste}
                                             placeholder="example.com"
+                                            inputMode="url"
+                                            autoCapitalize="none"
                                             onFocus={() => setSubmitting(false)}
                                             className="w-full bg-transparent outline-none text-neutral-700 text-base sm:text-lg placeholder:text-neutral-400 font-medium"
                                             autoComplete="off"
+                                            aria-describedby={error ? errorId : hintId}
+                                            aria-invalid={Boolean(error)}
                                         />
                                     </div>
 
@@ -157,7 +167,11 @@ export default function UrlOverlay({ open, onClose }: UrlOverlayProps) {
                             </div>
                         </form>
 
-                        <div className="mt-3 text-xs sm:text-sm text-white/80 min-h-[1.25rem] max-w-[28ch] sm:max-w-none">
+                        <div
+                            id={error ? errorId : hintId}
+                            className="mt-3 text-xs sm:text-sm text-white/80 min-h-[1.25rem] max-w-[28ch] sm:max-w-none"
+                            aria-live="polite"
+                        >
                             {error ?? "Clone any public website • No credit card required to preview"}
                         </div>
                     </motion.div>

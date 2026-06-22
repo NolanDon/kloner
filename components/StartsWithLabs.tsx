@@ -269,15 +269,15 @@ export default function PreviewDashboard({
                                                 <div className="mt-1 flex items-center justify-center gap-2 text-xs text-neutral-700">
                                                     <button
                                                         type="button"
-                                                        aria-disabled
-                                                        className="pointer-events-none rounded-full px-3 py-1 ring-1 transition bg-neutral-100 ring-neutral-300 text-neutral-800"
+                                                        disabled
+                                                        className="rounded-full px-3 py-1 ring-1 transition bg-neutral-100 ring-neutral-300 text-neutral-800 disabled:cursor-not-allowed disabled:opacity-70"
                                                     >
                                                         URL
                                                     </button>
                                                     <button
                                                         type="button"
-                                                        aria-disabled
-                                                        className="pointer-events-none rounded-full px-3 py-1 ring-1 transition bg-transparent ring-neutral-300 text-neutral-500"
+                                                        disabled
+                                                        className="rounded-full px-3 py-1 ring-1 transition bg-transparent ring-neutral-300 text-neutral-500 disabled:cursor-not-allowed disabled:opacity-70"
                                                     >
                                                         Prompt
                                                     </button>
@@ -293,8 +293,9 @@ export default function PreviewDashboard({
                                                     />
 
                                                     <motion.button
-                                                        aria-disabled
-                                                        className="pointer-events-none absolute inset-y-2 right-2 h-auto w-10 rounded-full bg-[#f26522] text-white px-0 inline-flex items-center justify-center gap-2 sm:static sm:h-full sm:w-auto sm:inset-y-auto sm:px-10"
+                                                        type="button"
+                                                        disabled
+                                                        className="absolute inset-y-2 right-2 h-auto w-10 rounded-full bg-[#f26522] text-white px-0 inline-flex items-center justify-center gap-2 disabled:cursor-not-allowed disabled:opacity-70 sm:static sm:h-full sm:w-auto sm:inset-y-auto sm:px-10"
                                                         animate={{
                                                             scale: phase === "highlight" ? 0.94 : 1,
                                                             y: phase === "highlight" ? 1 : 0,
@@ -337,9 +338,9 @@ export default function PreviewDashboard({
 
                                                     <motion.button
                                                         type="button"
-                                                        aria-disabled
+                                                        disabled
                                                         className={[
-                                                            "pointer-events-none inline-flex h-8 w-8 md:w-auto items-center justify-center gap-1.5 rounded-full px-0 md:px-3 py-1 text-[13px] font-semibold text-white transition",
+                                                            "inline-flex h-8 w-8 md:w-auto items-center justify-center gap-1.5 rounded-full px-0 md:px-3 py-1 text-[13px] font-semibold text-white transition disabled:cursor-not-allowed disabled:opacity-70",
                                                             isDeployedState
                                                                 ? "border border-emerald-600 bg-emerald-600"
                                                                 : "border border-[#f55f2a] bg-[#f55f2a]",

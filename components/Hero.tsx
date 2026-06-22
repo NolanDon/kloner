@@ -23,7 +23,8 @@ export default function Hero() {
           <div className="absolute inset-0 overflow-hidden">
             <Image
               src="/images/hero_bg.jpg"
-              alt="Hero background"
+              alt=""
+              aria-hidden="true"
               width={2400}
               height={1600}
               priority

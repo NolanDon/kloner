@@ -61,7 +61,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className={inter.variable}>
-      <body className="bg-white scroll-smooth snap-y snap-mandatory">
+      <body className="bg-white scroll-smooth">
         <StyledJsxRegistry>
           <AuthProviderServer>
             <AppClientProviders>

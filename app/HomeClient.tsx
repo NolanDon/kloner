@@ -19,7 +19,7 @@ export default function HomeClient() {
         <>
             <NavBar />
 
-            <main className="h-screen snap-y snap-mandatory scroll-smooth">
+            <main className="h-screen snap-y snap-mandatory scroll-smooth motion-reduce:snap-none motion-reduce:scroll-auto">
                 <section id="hero" className="snap-start snap-always min-h-screen flex flex-col">
                     <Hero />
                 </section>

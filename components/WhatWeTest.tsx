@@ -128,13 +128,14 @@ export default function WhatWeTest() {
       className="z-40 relative bg-white text-neutral-800 rounded-b-[3rem] overflow-hidden py-40"
     >
       <div className="flex items-center justify-center">
-        <div
+        <button
+          type="button"
           onClick={openUrlOverlay}
-          className="bg-accent hover:bg-accent2 items-center gap-2 rounded-full px-6 py-4 text-white"
+          className="inline-flex items-center gap-2 rounded-full bg-accent px-6 py-4 text-white hover:bg-accent2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#f55f2a]"
+          aria-label="Start your project"
         >
           Start your project <span aria-hidden>›</span>
-
-        </div>
+        </button>
       </div>
       <div className="pointer-events-none absolute left-1/2 top-0 -translate-x-1/2 h-px w-[72%] md:w-[62%] bg-neutral-200 rounded-full" />
 

@@ -17,6 +17,13 @@ body {
     /* use clip over hidden when possible */
 }
 
+@media (prefers-reduced-motion: reduce) {
+    html,
+    body {
+        scroll-behavior: auto;
+    }
+}
+
 .scrollbar-hide::-webkit-scrollbar {
     display: none;
 }

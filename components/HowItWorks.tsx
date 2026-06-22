@@ -28,8 +28,9 @@ function UrlInputModal() {
           Rescan
         </button> */}
         <button
-          aria-disabled
-          className="pointer-events-none inline-flex items-center gap-2 rounded-full bg-accent px-5 py-2.5 text-sm text-white"
+          type="button"
+          disabled
+          className="inline-flex items-center gap-2 rounded-full bg-accent px-5 py-2.5 text-sm text-white disabled:cursor-not-allowed disabled:opacity-70"
         >
           Clone
         </button>
@@ -64,14 +65,16 @@ function PreviewGridModal() {
       <div className="mt-3 flex items-center justify-between">
         <div className="flex gap-2">
           <button
-            aria-disabled
-            className="pointer-events-none whitespace-nowrap inline-flex items-center gap-2 rounded-full border border-neutral-200 bg-white px-4 py-2 text-xs text-neutral-400"
+            type="button"
+            disabled
+            className="whitespace-nowrap inline-flex items-center gap-2 rounded-full border border-neutral-200 bg-white px-4 py-2 text-xs text-neutral-400 disabled:cursor-not-allowed disabled:opacity-70"
           >
             Rebuild preview
           </button>
           <button
-            aria-disabled
-            className="pointer-events-none inline-flex items-center gap-2 rounded-full bg-accent px-4 py-2 text-xs text-white"
+            type="button"
+            disabled
+            className="inline-flex items-center gap-2 rounded-full bg-accent px-4 py-2 text-xs text-white disabled:cursor-not-allowed disabled:opacity-70"
           >
             Continue
           </button>

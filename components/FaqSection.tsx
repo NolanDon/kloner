@@ -168,10 +168,10 @@ export default function FAQSection() {
                 {/* Mobile read more */}
                 <div className="mt-8 md:hidden">
                     <a
-                        href="#faq-all"
+                        href="/dashboard/docs"
                         className="inline-flex items-center rounded-full border border-neutral-200 px-4 py-2 text-sm text-neutral-700"
                     >
-                        Read more
+                        View docs
                     </a>
                 </div>
             </div>
