@@ -19,6 +19,8 @@ class MockIntersectionObserver {
   rootMargin = "0px";
   thresholds: number[] = [];
 
+  constructor(_callback: IntersectionObserverCallback, _options?: IntersectionObserverInit) {}
+
   observe() {}
   unobserve() {}
   disconnect() {}
@@ -28,8 +30,7 @@ class MockIntersectionObserver {
 }
 
 beforeAll(() => {
-  (globalThis as typeof globalThis & { IntersectionObserver?: typeof MockIntersectionObserver }).IntersectionObserver =
-    MockIntersectionObserver as unknown as typeof IntersectionObserver;
+  (globalThis as any).IntersectionObserver = MockIntersectionObserver as any;
 });
 
 jest.mock("next/image", () => ({

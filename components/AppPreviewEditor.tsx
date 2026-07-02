@@ -56,7 +56,6 @@ type Props = {
         };
         version: number;
     }) => Promise<void>;
-    onLiveHtml?: (html: string) => void;
 
     // optional single-page fallback
     initialSeoMeta?: SeoMeta;
@@ -98,8 +97,8 @@ type Props = {
     onTakeBuilderTour?: () => void;
     isVercelConnected?: boolean;
     onConnectVercel?: () => void;
-    isFilesHydrated?: boolean;
     onLiveHtml?: (html: string) => void;
+    isFilesHydrated?: boolean;
 };
 
 const ACCENT = "#f55f2a";
@@ -1334,7 +1333,7 @@ function AppPreviewEditorCore({
     const [saveNudgeArmed, setSaveNudgeArmed] = useState(false);
     const [isPreviewImageHydrating, setIsPreviewImageHydrating] = useState(false);
     const previewImageHydrationRunRef = useRef(0);
-    const previewImageHydrationTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const previewImageHydrationTimeoutRef = useRef<number | null>(null);
     const previewImageHydrationCleanupRef = useRef<(() => void) | null>(null);
 
     const [aiHistory, setAiHistory] = useState<AiEditSuggestion[]>([]);
@@ -6581,6 +6580,9 @@ type AppSourcePreviewEditorProps = {
     onTakeBuilderTour?: () => void;
     isVercelConnected?: boolean;
     onConnectVercel?: () => void;
+    htmlEntryHints?: unknown;
+    onLiveHtml?: (html: string) => void;
+    isFilesHydrated?: boolean;
 };
 
 function isHtmlPath(path: string): boolean {

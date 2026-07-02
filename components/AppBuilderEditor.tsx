@@ -5017,7 +5017,7 @@ export default function AppBuilderEditor({
                 const uploaded = await uploadImageToUserBlob(item.preparedFile);
                 if (!uploaded) {
                     updateStagedImage(id, {
-                        status: "pending",
+                        status: "staged",
                         error: "Connect Vercel to upload this image.",
                     });
                     return;
