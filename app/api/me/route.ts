@@ -153,11 +153,11 @@ async function deleteMatchingQueryDocs(queryRef: FirebaseFirestore.Query): Promi
 async function deleteStorageObjects(uid: string): Promise<number> {
     const bucket = admin.storage().bucket(BUCKET_NAME);
     const prefixes = [
+        "kloner_images/",
         "kloner-images/",
         `screenshots/${uid}/`,
         `kloner-screenshots/${uid}/`,
         `kloner_ai_home/${uid}/`,
-        `kloner_images/${uid}/`,
     ];
 
     const files = new Map<string, FirebaseFirestore.DocumentReference | null>();

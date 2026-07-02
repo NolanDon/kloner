@@ -51,14 +51,20 @@ export async function POST(req: NextRequest) {
             const bucket = getBucket();
 
             // Mode 1: delete by renderId using metadata (ownerUid + renderId)
-            // Matches new upload path: kloner-images/public/<assetId>-<filename>
+            // Matches the per-user upload path: kloner_images/<uid>/<assetId>-<filename>
             if (renderId && typeof renderId === "string") {
-                const [files] = await bucket.getFiles({
-                    prefix: "kloner-images/",
-                });
+                const prefixes = ["kloner_images/", "kloner-images/"];
+                const files = [];
+                for (const prefix of prefixes) {
+                    const [matched] = await bucket.getFiles({ prefix });
+                    files.push(...matched);
+                }
 
                 const toDelete = [];
+                const seen = new Set<string>();
                 for (const file of files) {
+                    if (seen.has(file.name)) continue;
+                    seen.add(file.name);
                     try {
                         const [meta] = await file.getMetadata();
                         const m = meta.metadata || {};

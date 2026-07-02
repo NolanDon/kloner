@@ -50,7 +50,12 @@ async function deleteStoragePath(path: unknown) {
 
 async function deleteUserBlobAssetsForApp(uid: string, appId: string) {
     const bucket = getBucket();
-    const [files] = await bucket.getFiles({ prefix: "kloner-images/" });
+    const prefixes = ["kloner_images/", "kloner-images/"];
+    const files = [];
+    for (const prefix of prefixes) {
+        const [matched] = await bucket.getFiles({ prefix });
+        files.push(...matched);
+    }
     const matches = [] as Awaited<ReturnType<typeof bucket.file>>[];
 
     for (const file of files) {

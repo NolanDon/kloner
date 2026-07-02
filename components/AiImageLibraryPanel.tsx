@@ -97,6 +97,17 @@ function getFileName(value: string): string {
     return parts[parts.length - 1] || raw;
 }
 
+function proxyFirebaseStorageUrl(rawUrl: string): string {
+    const url = String(rawUrl || "").trim();
+    if (!url) return url;
+    if (url.startsWith("/api/user-blob/proxy?url=")) return url;
+    if (!/^https?:\/\//i.test(url)) return url;
+    if (!/^https?:\/\/(?:firebasestorage|storage)\.googleapis\.com\//i.test(url)) {
+        return url;
+    }
+    return `/api/user-blob/proxy?url=${encodeURIComponent(url)}`;
+}
+
 function scanPageImages(doc: Document): PageImageItem[] {
     const items: PageImageItem[] = [];
     const seen = new Set<string>();
@@ -215,7 +226,6 @@ export function AiImageLibraryPanel({ iframeRef, user, renderId, selectionMeta, 
         try {
             const paths = [
                 `kloner_images/${uid}`,
-                `kloner_ai_images/${rid}`,
                 `kloner_ai_home/${uid}`,
             ];
 
@@ -228,7 +238,7 @@ export function AiImageLibraryPanel({ iframeRef, user, renderId, selectionMeta, 
 
                     const fromPath: AiLibraryItem[] = await Promise.all(
                         res.items.map(async (obj) => {
-                            const url = await getDownloadURL(obj);
+                            const url = proxyFirebaseStorageUrl(await getDownloadURL(obj));
                             return {
                                 url,
                                 path: obj.fullPath,

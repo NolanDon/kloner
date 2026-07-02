@@ -57,9 +57,8 @@ export async function POST(req: NextRequest) {
 
                 const bucket = getBucket();
 
-                // new: no uid in path; use opaque asset id
                 const assetId = randomUUID();
-                const objectPath = `kloner-images/public/${assetId}-${filename}`;
+                const objectPath = `kloner_images/${uid}/${assetId}-${filename}`;
 
                 const file = bucket.file(objectPath);
                 const token = randomUUID();

@@ -349,7 +349,9 @@ async function collectAppShardStoragePaths(
 }
 
 function isCoveredByApproxStorage(path: string): boolean {
-    return DIRECT_UID_PREFIXES.some((prefix) => path.startsWith(`${prefix}/`)) || path.startsWith("kloner-images/");
+    return DIRECT_UID_PREFIXES.some((prefix) => path.startsWith(`${prefix}/`))
+        || path.startsWith("kloner-images/")
+        || path.startsWith("kloner_images/");
 }
 
 async function loadUserPageDetails(
