@@ -234,6 +234,10 @@ export function buildProjectFrameworkPrompt(info: ProjectFrameworkInfo, userProm
     return lines.join("\n");
 }
 
+export function shouldPreserveRuntimeScripts(info: ProjectFrameworkInfo | null | undefined): boolean {
+    return Boolean(info && info.key === "html-js");
+}
+
 export function pathLooksLikeNextJsScaffold(path: string): boolean {
     const value = String(path || "").trim();
     if (!value) return false;

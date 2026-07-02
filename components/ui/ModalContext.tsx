@@ -16,7 +16,11 @@ interface ModalState {
 
 interface ModalContextType {
   showAlert: (message: ReactNode, title?: string) => Promise<void>;
-  showConfirm: (message: ReactNode, title?: string) => Promise<boolean>;
+  showConfirm: (
+    message: ReactNode,
+    title?: string,
+    options?: { confirmText?: string; cancelText?: string }
+  ) => Promise<boolean>;
   hideModal: () => void;
 }
 
@@ -55,15 +59,19 @@ export function ModalProvider({ children }: ModalProviderProps) {
     });
   };
 
-  const showConfirm = (message: ReactNode, title = "Confirm"): Promise<boolean> => {
+  const showConfirm = (
+    message: ReactNode,
+    title = "Confirm",
+    options?: { confirmText?: string; cancelText?: string }
+  ): Promise<boolean> => {
     return new Promise((resolve) => {
       setModalState({
         isOpen: true,
         title,
         message,
         type: "confirm",
-        confirmText: "OK",
-        cancelText: "Cancel",
+        confirmText: options?.confirmText || "OK",
+        cancelText: options?.cancelText || "Cancel",
         onConfirm: () => resolve(true),
         onCancel: () => resolve(false),
       });

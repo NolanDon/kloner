@@ -7,6 +7,7 @@ import Image from "next/image";
 import { Folder, File, Upload, X, RefreshCw, MessageSquare, Code, Check, RotateCcw, Database, Rocket, Monitor, SlidersHorizontal, Images, Send, Pencil, Loader2, Share2, ExternalLink, Copy, ChevronDown, ChevronRight, AlertTriangle, Search, Paintbrush, MoreVertical } from "lucide-react";
 import AppBuilderEditorAgentChat from "./AppBuilderEditorAgentChat";
 import { AppBuilderEditorTour } from "./AppBuilderEditorTour";
+import { TOUR_KEY as BUILDER_TOUR_STORAGE_KEY } from "./AppBuilderEditorTour";
 import AppPreviewEditor from "./AppPreviewEditor";
 import KlonerLoader from "./KlonerLoader";
 import WebContainerRunner from "./WebContainerRunner";
@@ -22,7 +23,7 @@ import { compressImageForUpload } from "@/src/lib/clientImageCompression";
 import { sanitizeImageName } from "./helpers";
 import { recordAppBuilderSessionAnalytics } from "@/components/analytics";
 import { motion } from "framer-motion";
-import { detectProjectFramework } from "@/src/lib/projectFramework";
+import { detectProjectFramework, shouldPreserveRuntimeScripts } from "@/src/lib/projectFramework";
 import { normalizePreviewApplyResponse } from "@/src/lib/appEmbeddingsClient";
 import {
     canShowPreviewFixWithAi,
@@ -1719,6 +1720,10 @@ export default function AppBuilderEditor({
     const [stagedImages, setStagedImages] = useState<StagedImage[]>([]);
     const stagedImagesRef = useRef<StagedImage[]>([]);
     const [autoCompressImages, setAutoCompressImages] = useState(true);
+    const isVercelConnectedRef = useRef(false);
+    const ensureFreshVercelConnectionRef = useRef<
+        ((flow: "preview" | "images" | "share") => Promise<boolean>) | null
+    >(null);
     const [lastImageInsert, setLastImageInsert] = useState<LastImageInsert | null>(null);
     const [imagePromptPlaceholderIdx, setImagePromptPlaceholderIdx] = useState(0);
     const [isMobile, setIsMobile] = useState(false);
@@ -1793,6 +1798,12 @@ export default function AppBuilderEditor({
     }, [appId]);
 
     const handleTakeBuilderTour = useCallback(() => {
+        try {
+            window.sessionStorage?.removeItem(BUILDER_TOUR_STORAGE_KEY);
+            window.localStorage?.removeItem(BUILDER_TOUR_STORAGE_KEY);
+        } catch {
+            // ignore storage failures
+        }
         setBuilderTourStartToken((token) => token + 1);
     }, []);
 
@@ -2167,8 +2178,7 @@ export default function AppBuilderEditor({
         if (!effectiveDeployBanner || effectiveDeployBanner.kind !== "error") return;
 
         if (effectiveDeployBanner.fixAction === "connect_vercel") {
-            setVercelConnectFlow("preview");
-            setVercelConnectOpen(true);
+            void ensureFreshVercelConnectionRef.current?.("preview");
             return;
         }
 
@@ -2302,12 +2312,9 @@ export default function AppBuilderEditor({
     }, []);
 
     const uploadImageToUserBlob = useCallback(async (file: globalThis.File) => {
-        if (!isVercelConnected) {
-            void showAlert(
-                "Connect your Vercel account before uploading or replacing images.",
-                "Connect Vercel",
-            );
-            throw new Error("Vercel is not connected yet.");
+        const ensureConnected = ensureFreshVercelConnectionRef.current;
+        if (!ensureConnected || !(await ensureConnected("images"))) {
+            return null;
         }
 
         const csrf = await ensureSessionAndCsrf().catch(() => null);
@@ -3029,6 +3036,28 @@ export default function AppBuilderEditor({
 
     const isVercelConnected = vercelStatus === "connected";
     const isVercelChecking = vercelStatus === "loading" || vercelChecking;
+
+    useEffect(() => {
+        isVercelConnectedRef.current = isVercelConnected;
+    }, [isVercelConnected]);
+
+    const ensureFreshVercelConnection = useCallback(
+        async (flow: "preview" | "images" | "share"): Promise<boolean> => {
+            if (isVercelConnectedRef.current) return true;
+
+            await refreshVercelStatus().catch(() => null);
+            if (isVercelConnectedRef.current) return true;
+
+            setVercelConnectFlow(flow);
+            setVercelConnectOpen(true);
+            return false;
+        },
+        [refreshVercelStatus],
+    );
+
+    useEffect(() => {
+        ensureFreshVercelConnectionRef.current = ensureFreshVercelConnection;
+    }, [ensureFreshVercelConnection]);
 
     const appRef = useRef<AppData | null>(null);
     useEffect(() => {
@@ -4080,6 +4109,10 @@ export default function AppBuilderEditor({
                         const code = (data as any)?.code;
 
                         if (code === "vercel_not_connected") {
+                            await refreshVercelStatus().catch(() => null);
+                            if (isVercelConnectedRef.current) {
+                                continue;
+                            }
                             setAutoPreviewPhase("connecting");
                             setVercelConnectOpen(true);
                             return;
@@ -4154,7 +4187,7 @@ export default function AppBuilderEditor({
                 }
             }
         },
-        [appId, enableVercelProtectionBypassAutomatically],
+        [appId, enableVercelProtectionBypassAutomatically, refreshVercelStatus],
     );
 
     // Load app data
@@ -4982,6 +5015,13 @@ export default function AppBuilderEditor({
             let finalPath = item.uploadedPath;
             if (!finalUrl) {
                 const uploaded = await uploadImageToUserBlob(item.preparedFile);
+                if (!uploaded) {
+                    updateStagedImage(id, {
+                        status: "pending",
+                        error: "Connect Vercel to upload this image.",
+                    });
+                    return;
+                }
                 finalUrl = uploaded.url;
                 finalPath = uploaded.path;
             }
@@ -5395,6 +5435,31 @@ export default function AppBuilderEditor({
         [app?.files, applyPreviewChangesNow, currentFile, saveFileToServer, restartLocalPreview],
     );
 
+    const handleVisualEditorLiveHtml = useCallback((html: string) => {
+        const path = String(currentFileRef.current || "").trim();
+        if (!path || !/\.html?$/i.test(path)) return;
+
+        const nextFiles = {
+            ...(appRef.current?.files || app?.files || {}),
+            [path]: {
+                content: html,
+                lastModified: Date.now(),
+            },
+        };
+
+        setApp((prev) => {
+            if (!prev) return prev;
+            return {
+                ...prev,
+                files: nextFiles,
+            };
+        });
+
+        if (currentFileRef.current === path) {
+            setCode(html);
+        }
+    }, [app?.files]);
+
     const handleDeploy = async () => {
         if (!app || isDeploying) return;
 
@@ -5429,10 +5494,8 @@ export default function AppBuilderEditor({
         setShowShareSuccess(false);
 
         try {
-            if (!isVercelConnected) {
+            if (!(await ensureFreshVercelConnection("share"))) {
                 persistPendingVercelShareFlow(buildCurrentVercelOAuthReturnPath());
-                setVercelConnectFlow("share");
-                setVercelConnectOpen(true);
                 return;
             }
 
@@ -5496,10 +5559,8 @@ export default function AppBuilderEditor({
 
         try {
             // Ensure Vercel is connected before attempting either deploy.
-            if (!isVercelConnected) {
-                setVercelConnectFlow("preview");
-                setVercelConnectOpen(true);
-                throw new Error("Vercel is not connected yet.");
+            if (!(await ensureFreshVercelConnection("preview"))) {
+                return;
             }
 
             const csrf = await ensureSessionAndCsrf().catch(() => null);
@@ -5569,7 +5630,7 @@ export default function AppBuilderEditor({
             // Keep deploy disabled for longer to prevent spam
             setTimeout(() => setIsDeploying(false), 5000);
         }
-    }, [appId, isDeploying, isVercelConnected]);
+    }, [appId, ensureFreshVercelConnection, isDeploying]);
 
     const startVercelOAuthForPreview = useCallback(() => {
         if (!VERCEL_INTEGRATION_SLUG) {
@@ -6538,7 +6599,7 @@ export default function AppBuilderEditor({
                                 disabled={isRefreshing || isPreviewBuilding}
                                 data-tour-refresh
                                 className="inline-flex h-7 items-center justify-center gap-1.5 rounded-full border border-neutral-300 bg-white px-2.5 text-[11px] font-semibold text-neutral-700 shadow-sm transition hover:bg-neutral-50 disabled:opacity-60 lg:px-2.5 lg:text-[12px]"
-                                title="Reconnect to the existing machine without restarting"
+                                title="Refresh machine"
                             >
                                 <RotateCcw className="h-3.5 w-3.5" />
                                 <span className="hidden lg:inline">Refresh</span>
@@ -6549,7 +6610,7 @@ export default function AppBuilderEditor({
                                 disabled={isPreviewBuilding || isRefreshing}
                                 data-tour-rebuild
                                 className="inline-flex h-7 items-center justify-center gap-1.5 rounded-full border border-neutral-300 bg-white px-2.5 text-[11px] font-semibold text-neutral-700 shadow-sm transition hover:bg-neutral-50 disabled:opacity-60 lg:px-2.5 lg:text-[12px]"
-                                title="Delete current machine and rebuild app (this will not delete your website)"
+                                title="Rebuild machine"
                             >
                                 <RefreshCw className="h-3.5 w-3.5" />
                                 <span className="hidden lg:inline">{isPreviewBuilding ? "Starting" : "Rebuild"}</span>
@@ -7007,39 +7068,60 @@ export default function AppBuilderEditor({
                                 </div>
                             </div>
 
-                            <div className={isVisualEditorMode ? "h-full flex flex-col" : "hidden"}>
-                                <AppPreviewEditor
-                                    appId={appId}
-                                    files={app?.files || {}}
-                                    initialPath={currentFile}
-                                    onApplyHtml={handleApplyCustomHtml}
-                                    onSelectPath={handleFileSelect}
-                                    currentHtmlPath={currentFile || undefined}
-                                    onSelectHtmlPath={handleFileSelect}
-                                    editableHtmlPaths={Object.keys(app?.files || {})
-                                        .filter((path) => /\.html?$/i.test(path))
-                                        .sort((a, b) => a.localeCompare(b))}
-                                    onClose={() => { void requestViewModeChange("ai"); }}
-                                    appName={app?.name}
-                                    onRenameSuccess={(newName) => setApp(prev => prev ? { ...prev, name: newName } : null)}
-                                    baseHref={(protectedPreviewUrl || app?.previewUrl || previewSrc || undefined)}
-                                    viewMode={viewMode}
-                                    onChangeViewMode={(mode) => { void requestViewModeChange(mode); }}
-                                    isProduction={IS_PRODUCTION}
-                                    onSidebarVisibilityChange={setIsCustomSidebarOpen}
-                                    sharedUiScale={customPreviewScale}
-                                    onSharedUiScaleChange={setCustomPreviewScale}
-                                    preferredSidePanelMode={viewMode === "images" ? "ai-library" : "style"}
-                                    isVercelConnected={isVercelConnected}
-                                    onConnectVercel={() => {
-                                        setVercelConnectFlow("images");
-                                        setVercelConnectOpen(true);
-                                    }}
-                                    registerBeforeExitFlush={(fn) => {
-                                        previewEditorFlushRef.current = fn;
-                                    }}
-                                    onTakeBuilderTour={handleTakeBuilderTour}
-                                />
+                            <div className={isVisualEditorMode ? "relative h-full flex flex-col" : "hidden"}>
+                                {app ? (
+                                    <div className="relative h-full min-h-[420px] flex-1">
+                                        <AppPreviewEditor
+                                            appId={appId}
+                                            files={app?.files || {}}
+                                            initialPath={currentFile}
+                                            onApplyHtml={handleApplyCustomHtml}
+                                            onSelectPath={handleFileSelect}
+                                            currentHtmlPath={currentFile || undefined}
+                                            htmlEntryHints={(app as any)?.htmlEditIndex}
+                                            preserveRuntimeScripts={shouldPreserveRuntimeScripts(projectFramework)}
+                                            onSelectHtmlPath={handleFileSelect}
+                                            editableHtmlPaths={Object.keys(app?.files || {})
+                                                .filter((path) => /\.html?$/i.test(path))
+                                                .sort((a, b) => a.localeCompare(b))}
+                                            onClose={() => { void requestViewModeChange("ai"); }}
+                                            appName={app?.name}
+                                            onRenameSuccess={(newName) => setApp(prev => prev ? { ...prev, name: newName } : null)}
+                                            baseHref={(protectedPreviewUrl || app?.previewUrl || previewSrc || undefined)}
+                                            viewMode={viewMode}
+                                            onChangeViewMode={(mode) => { void requestViewModeChange(mode); }}
+                                            isProduction={IS_PRODUCTION}
+                                            onSidebarVisibilityChange={setIsCustomSidebarOpen}
+                                            sharedUiScale={customPreviewScale}
+                                            onSharedUiScaleChange={setCustomPreviewScale}
+                                            preferredSidePanelMode={viewMode === "images" ? "ai-library" : "style"}
+                                            isVercelConnected={isVercelConnected}
+                                            onConnectVercel={async () => {
+                                                await ensureFreshVercelConnection("images");
+                                            }}
+                                            onLiveHtml={handleVisualEditorLiveHtml}
+                                            registerBeforeExitFlush={(fn) => {
+                                                previewEditorFlushRef.current = fn;
+                                            }}
+                                            onTakeBuilderTour={handleTakeBuilderTour}
+                                            isFilesHydrated={filesHydrated}
+                                        />
+                                    </div>
+                                ) : (
+                                    <div className="flex h-full min-h-[420px] items-center justify-center bg-white">
+                                        <div className="flex flex-col items-center gap-4 rounded-2xl border border-neutral-200 bg-white px-6 py-8 shadow-sm">
+                                            <KlonerLoader />
+                                            <div className="text-center">
+                                                <div className="text-sm font-semibold text-neutral-900">
+                                                    Preparing preview
+                                                </div>
+                                                <div className="mt-1 text-sm text-neutral-600">
+                                                    Loading your files before Custom and Images can render.
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </div>

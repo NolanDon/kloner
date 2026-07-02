@@ -30,6 +30,12 @@ type Props = {
     iframeRef: RefObject<HTMLIFrameElement>;
     user: FirebaseUser | null;
     renderId: string | null;
+    selectionMeta?: {
+        has: boolean;
+        tagName?: string;
+        path?: string | null;
+        selector?: string | null;
+    } | null;
     isVercelConnected?: boolean;
     onConnectVercel?: () => void;
 };
@@ -161,7 +167,7 @@ function selectImageTarget(iframeRef: RefObject<HTMLIFrameElement>, selector: st
     return { api, element };
 }
 
-export function AiImageLibraryPanel({ iframeRef, user, renderId, isVercelConnected = false, onConnectVercel }: Props) {
+export function AiImageLibraryPanel({ iframeRef, user, renderId, selectionMeta, isVercelConnected = false, onConnectVercel }: Props) {
     const { showAlert } = useModal();
     const { status: vercelStatus, checking, refresh: refreshVercelStatus } = useVercelIntegration();
     const [items, setItems] = useState<AiLibraryItem[]>([]);
@@ -170,8 +176,27 @@ export function AiImageLibraryPanel({ iframeRef, user, renderId, isVercelConnect
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const refreshInFlightRef = useRef(false);
+    const loggedPermissionPathsRef = useRef(new Set<string>());
+    const pageImageRefs = useRef<Record<string, HTMLDivElement | null>>({});
     const isVercelConnectionPending = vercelStatus === "loading" || checking;
     const isVercelActuallyConnected = isVercelConnected || vercelStatus === "connected";
+
+    const selectedPageImage = useCallback((item: PageImageItem): boolean => {
+        const selectedPath = String(selectionMeta?.path || "").trim();
+        const selectedSelector = String(selectionMeta?.selector || "").trim();
+
+        if (selectedPath) {
+            if (item.path && item.path === selectedPath) return true;
+            if (item.description === selectedPath) return true;
+            if (item.key.includes(selectedPath)) return true;
+        }
+
+        if (selectedSelector) {
+            if (item.selector === selectedSelector) return true;
+        }
+
+        return false;
+    }, [selectionMeta]);
 
     useEffect(() => {
         if (isVercelActuallyConnected) return;
@@ -223,7 +248,10 @@ export function AiImageLibraryPanel({ iframeRef, user, renderId, isVercelConnect
                         msg.includes("permission") ||
                         msg.includes("denied")
                     ) {
-                        console.warn(`[AiImageLibraryPanel] permission issue for path ${basePath}`, innerErr);
+                        if (!loggedPermissionPathsRef.current.has(basePath)) {
+                            loggedPermissionPathsRef.current.add(basePath);
+                            console.info(`[AiImageLibraryPanel] permission issue for path ${basePath}`, innerErr);
+                        }
                         setError("You don't have permission to load some images.");
                     } else if (code.includes("storage/unknown") || status === 400) {
                         console.info(`[AiImageLibraryPanel] listing unsupported or empty for path ${basePath}`);
@@ -311,8 +339,12 @@ export function AiImageLibraryPanel({ iframeRef, user, renderId, isVercelConnect
     }, [showAlert]);
 
     const handleConnectVercel = useCallback(() => {
+        if (onConnectVercel) {
+            onConnectVercel();
+            return;
+        }
         startVercelOAuthForImages();
-    }, [startVercelOAuthForImages]);
+    }, [onConnectVercel, startVercelOAuthForImages]);
 
     const handleRefreshLibrary = useCallback(() => {
         if (!user || !renderId) return;
@@ -391,6 +423,14 @@ export function AiImageLibraryPanel({ iframeRef, user, renderId, isVercelConnect
         };
     }, [iframeRef, refreshPageImages, renderId, user?.uid]);
 
+    useEffect(() => {
+        if (!selectionMeta?.has) return;
+        const selected = pageImages.find((item) => selectedPageImage(item));
+        if (!selected) return;
+        const el = pageImageRefs.current[selected.key];
+        el?.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" });
+    }, [pageImages, selectedPageImage, selectionMeta?.has, selectionMeta?.path, selectionMeta?.selector]);
+
     const handleInsert = useCallback((item: AiLibraryItem) => {
         const win = iframeRef.current?.contentWindow as any;
         const api = win?.__klonerApi;
@@ -445,10 +485,7 @@ export function AiImageLibraryPanel({ iframeRef, user, renderId, isVercelConnect
 
     const openReplaceDialog = useCallback(async (item: PageImageItem) => {
         if (!isVercelActuallyConnected) {
-            await showAlert(
-                "Connect your Vercel account before replacing images. Current-page images can still be removed.",
-                "Connect Vercel",
-            );
+            handleConnectVercel();
             return;
         }
 
@@ -472,7 +509,7 @@ export function AiImageLibraryPanel({ iframeRef, user, renderId, isVercelConnect
         } catch (err) {
             console.warn("[AiImageLibraryPanel] replace failed", err);
         }
-    }, [iframeRef, isVercelActuallyConnected, showAlert]);
+    }, [handleConnectVercel, iframeRef, isVercelActuallyConnected]);
 
     const removePageImage = useCallback((item: PageImageItem) => {
         const { api, element } = selectImageTarget(iframeRef, item.selector);
@@ -592,7 +629,10 @@ export function AiImageLibraryPanel({ iframeRef, user, renderId, isVercelConnect
                         {orderedPageImages(pageImages).map((item) => (
                             <div
                                 key={item.key}
-                                className="group overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-[#f55f2a]/50 hover:shadow-[0_14px_32px_rgba(15,23,42,0.10)]"
+                                ref={(node) => {
+                                    pageImageRefs.current[item.key] = node;
+                                }}
+                                className={`group overflow-hidden rounded-2xl border bg-white shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_14px_32px_rgba(15,23,42,0.10)] ${selectedPageImage(item) ? "border-[#f55f2a] ring-2 ring-[#f55f2a]/25" : "border-neutral-200 hover:border-[#f55f2a]/50"}`}
                             >
                                 <div className="grid gap-3 p-2.5 sm:grid-cols-[112px_minmax(0,1fr)] sm:items-stretch">
                                     <div className="relative h-24 overflow-hidden rounded-xl bg-neutral-100 sm:h-full sm:min-h-[110px]">

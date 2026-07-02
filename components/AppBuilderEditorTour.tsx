@@ -8,7 +8,7 @@ type TourStep = {
     content: string;
 };
 
-const TOUR_KEY = "kloner_builder_tour_done";
+export const TOUR_KEY = "kloner_builder_tour_done";
 
 function getTourStorage(): Storage | null {
     if (typeof window === "undefined") return null;

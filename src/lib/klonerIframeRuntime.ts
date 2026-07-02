@@ -1427,9 +1427,42 @@ export function installKlonerIframeApi(
     function publishSelection() {
         if (selected) {
             const r = selected.getBoundingClientRect();
+            const buildSelectionSelector = (el: Element): string => {
+                const tag = el.tagName.toLowerCase();
+                const path = el.getAttribute("data-kloner-path") || el.getAttribute("data-kloner-bg-path") || el.getAttribute("data-local-image-id");
+                if (path) {
+                    const attr = el.getAttribute("data-kloner-path")
+                        ? "data-kloner-path"
+                        : el.getAttribute("data-kloner-bg-path")
+                            ? "data-kloner-bg-path"
+                            : "data-local-image-id";
+                    return `[${attr}="${String(path).replace(/"/g, '\\"')}"]`;
+                }
+
+                if (el.id) {
+                    return `${tag}#${String(el.id).replace(/"/g, '\\"')}`;
+                }
+
+                const parent = el.parentElement;
+                if (!parent) return tag;
+                const sameTagSiblings = Array.from(parent.children).filter((child) => child.tagName.toLowerCase() === tag);
+                if (sameTagSiblings.length <= 1) return tag;
+                const index = sameTagSiblings.indexOf(el) + 1;
+                return `${tag}:nth-of-type(${index})`;
+            };
+            const selectedImg = getImageFromSelection(selected);
+            const selectedPath =
+                selected.getAttribute("data-kloner-path") ||
+                selected.getAttribute("data-kloner-bg-path") ||
+                selected.getAttribute("data-local-image-id") ||
+                selectedImg?.getAttribute("data-kloner-path") ||
+                selectedImg?.getAttribute("data-local-image-id") ||
+                null;
             const payload = {
                 has: true,
                 tagName: selected.tagName,
+                path: selectedPath,
+                selector: buildSelectionSelector(selected),
                 rect: {
                     top: r.top,
                     left: r.left,

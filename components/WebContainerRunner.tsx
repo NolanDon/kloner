@@ -5662,7 +5662,26 @@ export default function NavBar() {
                   if (!currentUrl) return;
                   if (iframePostLoadRecoveryCountRef.current < 1) {
                     iframePostLoadRecoveryCountRef.current += 1;
-                    hardReloadPreview('iframe_loaded_but_not_interactive');
+                    console.warn('[WebContainerRunner] iframe loaded but backend still not ready; keeping the current preview alive instead of hard reloading', {
+                      appId,
+                      previewUrl: currentUrl,
+                    });
+                    reportPreviewAlert({
+                      appId,
+                      code: pollingCodeRef.current || undefined,
+                      action: 'preview_loaded_backend_still_settling',
+                      severity: 'warning',
+                      statusCode: 200,
+                      status: 'iframe_loaded_but_not_interactive',
+                      reason: 'iframe_loaded_backend_still_settling',
+                      message: 'Preview loaded successfully, but the backend is still settling. Keeping the current preview alive and continuing to poll instead of forcing a rebuild.',
+                      elapsedMs: pollStartedAtRef.current ? Date.now() - pollStartedAtRef.current : undefined,
+                      previewUrl: currentUrl,
+                      requestId: lastBackendStatusRef.current?.requestId,
+                      jobId: lastBackendStatusRef.current?.jobId,
+                      backendStatusData: lastBackendStatusRef.current,
+                    }).catch(() => undefined);
+                    if (!isPolling) setIsPolling(true);
                     return;
                   }
 
@@ -5672,7 +5691,7 @@ export default function NavBar() {
                   }
 
                   setCanRetry(true);
-                  setError('Preview loaded but did not become interactive. Refresh first. If it still stays blank, use Rebuild to start a fresh machine.');
+                  setError('Preview loaded but did not become interactive. Reconnect first. If it still stays blank, use Start fresh to create a new machine.');
                 }, 12000);
               }
               // Reset asset failure count on successful load

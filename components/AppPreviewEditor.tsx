@@ -7,6 +7,8 @@ import { createPortal } from "react-dom";
 import { motion, AnimatePresence, useDragControls } from "framer-motion";
 import Image from 'next/image'
 import { useModal } from "@/components/ui/ModalContext";
+import { pickPreferredHtmlPath } from "@/src/lib/htmlEntrypoint";
+import { TOUR_KEY as PREVIEW_TOUR_STORAGE_KEY } from "./PreviewEditorTour";
 
 export type Device = "desktop" | "tablet" | "mobile";
 export type ViewMode = "code" | "preview" | "screenshot";
@@ -88,13 +90,16 @@ type Props = {
     onSharedUiScaleChange?: (scale: number) => void;
     editableHtmlPaths?: string[];
     currentHtmlPath?: string;
+    preserveRuntimeScripts?: boolean;
     onSelectHtmlPath?: (path: string) => void;
     preferredSidePanelMode?: "style" | "ai-library";
     sourceFiles?: { [path: string]: { content: string; lastModified: number } };
-        registerBeforeExitFlush?: (fn: (() => Promise<boolean>) | null) => void;
+    registerBeforeExitFlush?: (fn: (() => Promise<boolean>) | null) => void;
     onTakeBuilderTour?: () => void;
     isVercelConnected?: boolean;
     onConnectVercel?: () => void;
+    isFilesHydrated?: boolean;
+    onLiveHtml?: (html: string) => void;
 };
 
 const ACCENT = "#f55f2a";
@@ -1216,6 +1221,7 @@ function AppPreviewEditorCore({
     onSharedUiScaleChange,
     editableHtmlPaths,
     currentHtmlPath,
+    preserveRuntimeScripts,
     onSelectHtmlPath,
     preferredSidePanelMode,
     sourceFiles,
@@ -1223,6 +1229,7 @@ function AppPreviewEditorCore({
     onTakeBuilderTour,
     isVercelConnected = false,
     onConnectVercel,
+    isFilesHydrated = true,
 }: Props) {
     const { user } = useAuth();
     const isDevCodeMode = process.env.NODE_ENV === "development";
@@ -1325,6 +1332,10 @@ function AppPreviewEditorCore({
     const [aiPreviewHtml, setAiPreviewHtml] = useState<string | null>(null);
     const [showSaveNudge, setShowSaveNudge] = useState(false);
     const [saveNudgeArmed, setSaveNudgeArmed] = useState(false);
+    const [isPreviewImageHydrating, setIsPreviewImageHydrating] = useState(false);
+    const previewImageHydrationRunRef = useRef(0);
+    const previewImageHydrationTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const previewImageHydrationCleanupRef = useRef<(() => void) | null>(null);
 
     const [aiHistory, setAiHistory] = useState<AiEditSuggestion[]>([]);
     const [historyOpen, setHistoryOpen] = useState(false);
@@ -1546,6 +1557,12 @@ function AppPreviewEditorCore({
     };
 
     const handleTakePreviewTour = useCallback(() => {
+        try {
+            window.sessionStorage?.removeItem(PREVIEW_TOUR_STORAGE_KEY);
+            window.localStorage?.removeItem(PREVIEW_TOUR_STORAGE_KEY);
+        } catch {
+            // ignore storage failures
+        }
         setPreviewTourStartToken((token) => token + 1);
     }, []);
 
@@ -1576,10 +1593,10 @@ function AppPreviewEditorCore({
         }, [isPageDropdownOpen]);
 
     useEffect(() => {
-        const win = iframeRef.current?.contentWindow as any;
-        if (!win?.__klonerApi?.setDevice) return;
+        const api = getPreviewIframeApi();
+        if (!api?.setDevice) return;
         try {
-            win.__klonerApi.setDevice(device);
+            api.setDevice(device);
         } catch {
             // ignore
         }
@@ -1888,11 +1905,30 @@ function AppPreviewEditorCore({
         iframe.contentWindow?.postMessage(data, "*");
     }
 
-    function getSelectedBlockHtml(): string | null {
+    function getPreviewIframeApi(): any | null {
         const iframe = iframeRef.current;
         if (!iframe) return null;
 
-        const doc = iframe.contentDocument;
+        try {
+            return iframe.contentWindow?.__klonerApi ?? null;
+        } catch {
+            return null;
+        }
+    }
+
+    function getPreviewIframeDocument(): Document | null {
+        const iframe = iframeRef.current;
+        if (!iframe) return null;
+
+        try {
+            return iframe.contentDocument ?? null;
+        } catch {
+            return null;
+        }
+    }
+
+    function getSelectedBlockHtml(): string | null {
+        const doc = getPreviewIframeDocument();
         if (!doc) return null;
 
         // prefer live selection path; fall back to lastSelectedPath
@@ -1967,7 +2003,7 @@ function AppPreviewEditorCore({
         const iframe = iframeRef.current;
         if (!iframe) return null;
 
-        const doc = iframe.contentDocument;
+        const doc = getPreviewIframeDocument();
         if (!doc) return null;
 
         const path =
@@ -2098,11 +2134,12 @@ function AppPreviewEditorCore({
 
 
     const tryClearIframeSelection = useCallback(() => {
-        const win = iframeRef.current?.contentWindow as any;
+        const api = getPreviewIframeApi();
+        const doc = getPreviewIframeDocument();
         try {
-            if (win?.__klonerApi?.clear) win.__klonerApi.clear();
-            win?.getSelection?.()?.removeAllRanges?.();
-            (win?.document?.activeElement as HTMLElement | null)?.blur?.();
+            if (api?.clear) api.clear();
+            doc?.defaultView?.getSelection?.()?.removeAllRanges?.();
+            (doc?.activeElement as HTMLElement | null)?.blur?.();
         } catch {
             // ignore
         }
@@ -2179,19 +2216,19 @@ function AppPreviewEditorCore({
     }, [draftId]);
 
     useEffect(() => {
-        const baseHtml = stripScripts(initialHtml || "");
+        const baseHtml = preserveRuntimeScripts ? stripEditorArtifacts(initialHtml || "") : stripScripts(stripEditorArtifacts(initialHtml || ""));
         setHtmlDraft(baseHtml);
         setPreviewHtml(baseHtml);
         setDirty(false);
         setHistory([]);
         setActiveHistoryId(null);
-    }, [draftId, initialHtml]);
+    }, [draftId, initialHtml, preserveRuntimeScripts]);
 
     // ---------- snapshot helper for saving/exporting ----------
     const snapshotFromIframeOrDraft = useCallback(() => {
         if (mode === "code") return htmlDraft;
 
-        const doc = iframeRef.current?.contentDocument;
+        const doc = getPreviewIframeDocument();
         if (!doc) return htmlDraft;
 
         try {
@@ -2454,13 +2491,16 @@ function AppPreviewEditorCore({
         setApplyingPreview(true);
 
         try {
-            const doc = iframeRef.current?.contentDocument ?? document;
+            const doc = getPreviewIframeDocument() ?? document;
 
             // 1) Upload any local-only images and rewrite DOM src/src-path
-            await flushPendingImagesBeforeSave({
+            const imagesReady = await flushPendingImagesBeforeSave({
                 doc,
                 draftId,
             });
+            if (!imagesReady) {
+                return;
+            }
 
             // 2) Capture HTML from iframe, without Kloner UI
             const rawHtml = doc
@@ -2487,9 +2527,7 @@ function AppPreviewEditorCore({
 
             if (!saveDraft) {
                 setPreviewHtml(nextHtml);
-                if (options?.applyToPreview) {
-                    emitLive(nextHtml);
-                }
+                emitLive(nextHtml);
 
                 const shouldPersistToSource = options?.persistToSource !== false;
                 if (shouldPersistToSource) {
@@ -2546,10 +2584,7 @@ function AppPreviewEditorCore({
 
             setVersion(nextVersion);
             setPreviewHtml(nextHtml);
-
-            if (options?.applyToPreview) {
-                emitLive(nextHtml);
-            }
+            emitLive(nextHtml);
 
             const shouldPersistToSource = options?.persistToSource !== false;
             if (shouldPersistToSource) {
@@ -2613,7 +2648,7 @@ function AppPreviewEditorCore({
 
         bumpSessionCounter("pageSwitch");
 
-        const doc = iframeRef.current?.contentDocument;
+        const doc = getPreviewIframeDocument();
         const hasPendingImages = !!doc?.querySelector("img[data-local-image-id]");
 
         if (hasPendingImages) {
@@ -2740,7 +2775,9 @@ function AppPreviewEditorCore({
 
     // inject created pages + route-specific CSS into the monolithic HTML for iframe preview
     const renderHtml = useMemo(() => {
-        let base = stripScripts(stripEditorArtifacts(previewHtml || ""));
+        let base = preserveRuntimeScripts
+            ? stripEditorArtifacts(previewHtml || "")
+            : stripScripts(stripEditorArtifacts(previewHtml || ""));
         if (!base) return base;
 
         // Inject <base href> so relative CSS/JS/image paths resolve when the
@@ -2860,12 +2897,12 @@ function AppPreviewEditorCore({
         if (base.includes("</head>")) return base.replace("</head>", `${styleTag}</head>`);
         if (base.includes("<head>")) return base.replace("<head>", `<head>${styleTag}`);
         return styleTag + base;
-    }, [previewHtml, activePageId, allPages, createdPages, baseHref, currentHtmlPath, sourceFiles]);
+    }, [previewHtml, activePageId, allPages, createdPages, baseHref, currentHtmlPath, sourceFiles, preserveRuntimeScripts]);
 
     useEffect(() => {
         if (mode === "screenshot") return;
         setIframeKey((k) => k + 1);
-    }, [renderHtml, mode]);
+    }, [aiPreviewHtml, renderHtml, mode]);
 
     useEffect(() => {
         if (!allPages || allPages.length === 0) {
@@ -3190,7 +3227,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
         const nextId = pageSwitchConfirm.targetId;
 
         try {
-            const doc = iframeRef.current?.contentDocument;
+            const doc = getPreviewIframeDocument();
             const hasPendingImages = !!doc?.querySelector("img[data-local-image-id]");
 
             if (hasPendingImages) {
@@ -3539,26 +3576,30 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
         return base.slice(-64) || "image";
     }
 
+    const verboseImageSaveLogs =
+        process.env.NODE_ENV === "development" &&
+        process.env.NEXT_PUBLIC_KLONER_VERBOSE_IMAGE_SAVE_LOGS === "1";
+
+    function logImageSave(message: string, details?: Record<string, unknown>) {
+        if (process.env.NODE_ENV !== "development") return;
+        console.log(`[image-save] ${message}`, details || "");
+    }
+
+    function logImageSaveVerbose(message: string, details?: Record<string, unknown>) {
+        if (!verboseImageSaveLogs) return;
+        console.log(`[image-save] ${message}`, details || "");
+    }
+
     async function uploadFileToUserBlob(
         file: File,
         draftId: string
-    ): Promise<UploadedAsset> {
-        if (!isVercelConnected) {
-            void showAlert(
-                "Connect your Vercel account before uploading or replacing images.",
-                "Connect Vercel"
-            );
-            throw new Error("Vercel is not connected yet.");
-        }
-
-        if (process.env.NODE_ENV === "development") {
-            console.log("[uploadFileToUserBlob] start", {
-                draftId,
-                originalName: file.name,
-                originalBytes: file.size,
-                originalType: file.type,
-            });
-        }
+    ): Promise<UploadedAsset | null> {
+        logImageSaveVerbose("upload started", {
+            draftId,
+            originalName: file.name,
+            originalBytes: file.size,
+            originalType: file.type,
+        });
 
         // 1) compress on the client first (if helpful)
         let fileForUpload = file;
@@ -3566,33 +3607,26 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
             const compressed = await compressImageForUpload(file);
 
             if (compressed !== file) {
-                if (process.env.NODE_ENV === "development") {
-                    console.log("[uploadFileToUserBlob] compression applied", {
-                        originalName: file.name,
-                        originalBytes: file.size,
-                        compressedName: compressed.name,
-                        compressedBytes: compressed.size,
-                        bytesSaved: file.size - compressed.size,
-                        ratio: compressed.size / file.size,
-                        originalType: file.type,
-                        compressedType: compressed.type,
-                    });
-                }
+                logImageSaveVerbose("compression applied", {
+                    originalName: file.name,
+                    originalBytes: file.size,
+                    compressedName: compressed.name,
+                    compressedBytes: compressed.size,
+                    bytesSaved: file.size - compressed.size,
+                    ratio: compressed.size / file.size,
+                    originalType: file.type,
+                    compressedType: compressed.type,
+                });
                 fileForUpload = compressed;
             } else {
-                if (process.env.NODE_ENV === "development") {
-                    console.log("[uploadFileToUserBlob] compression skipped or not beneficial", {
-                        name: file.name,
-                        size: file.size,
-                        type: file.type,
-                    });
-                }
+                logImageSaveVerbose("compression skipped", {
+                    name: file.name,
+                    size: file.size,
+                    type: file.type,
+                });
             }
         } catch (e) {
-            console.warn(
-                "[uploadFileToUserBlob] compression failed, falling back to original",
-                e
-            );
+            console.warn("[image-save] compression failed, using original file", e);
         }
 
         const csrf = await ensureSessionAndCsrf();
@@ -3602,15 +3636,13 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
             safeName
         )}&renderId=${encodeURIComponent(draftId)}`;
 
-        if (process.env.NODE_ENV === "development") {
-            console.log("[uploadFileToUserBlob] POST", {
-                url,
-                hasCsrf: !!csrf,
-                uploadName: fileForUpload.name,
-                uploadBytes: fileForUpload.size,
-                uploadType: fileForUpload.type,
-            });
-        }
+        logImageSaveVerbose("upload request sent", {
+            url,
+            hasCsrf: !!csrf,
+            uploadName: fileForUpload.name,
+            uploadBytes: fileForUpload.size,
+            uploadType: fileForUpload.type,
+        });
 
         const res = await fetch(url, {
             method: "POST",
@@ -3624,19 +3656,21 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
 
         const j = await res.json().catch(() => ({} as any));
 
-        if (process.env.NODE_ENV === "development") {
-            console.log("[uploadFileToUserBlob] response", {
-                ok: res.ok,
-                status: res.status,
-                bodyKeys: Object.keys(j || {}),
-            });
-        }
+        logImageSaveVerbose("upload response received", {
+            ok: res.ok,
+            status: res.status,
+            bodyKeys: Object.keys(j || {}),
+        });
 
         if (!res.ok || !j?.url || !j?.path) {
-            console.error("[uploadFileToUserBlob] error", {
+            console.error("[image-save] upload failed", {
                 status: res.status,
                 body: j,
             });
+            if (isVercelConnectNeededError(j?.error) || isVercelConnectNeededError(j)) {
+                onConnectVercel?.();
+                return null;
+            }
             throw new Error(j?.error || "storage_upload_failed");
         }
 
@@ -3645,27 +3679,28 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
             path: j.path as string,
         };
 
-        if (process.env.NODE_ENV === "development") {
-            console.log("[uploadFileToUserBlob] success", {
-                ...asset,
-                uploadedBytes: fileForUpload.size,
-                uploadedType: fileForUpload.type,
-            });
-        }
+        logImageSave("uploaded image", {
+            name: asset.path,
+            bytes: fileForUpload.size,
+            type: fileForUpload.type,
+        });
 
         return asset;
+    }
+
+    function isVercelConnectNeededError(err: unknown): boolean {
+        const msg = err instanceof Error ? err.message : String((err as any)?.message || err || "");
+        return /vercel is not connected yet|connect vercel before uploading this image/i.test(msg);
     }
 
 
     async function flushPendingImagesBeforeSave(args: {
         doc: Document;
         draftId: string;
-    }) {
+    }): Promise<boolean> {
         const { doc, draftId } = args;
 
-        if (process.env.NODE_ENV === "development") {
-            console.log("[flushPendingImagesBeforeSave] start", { draftId });
-        }
+        logImageSave("checking pending images", { draftId });
 
         // 0) Backwards-compat: delete any stale data-kloner-old-path assets (foreground)
         const imgsWithOldPath = Array.from(
@@ -3691,12 +3726,10 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
         }
 
         if (stalePaths.length) {
-            if (process.env.NODE_ENV === "development") {
-                console.log("[flushPendingImagesBeforeSave] deleting stale old paths", {
-                    count: stalePaths.length,
-                    stalePaths,
-                });
-            }
+            logImageSaveVerbose("removing stale image paths", {
+                count: stalePaths.length,
+                stalePaths,
+            });
             try {
                 // fire-and-forget; host listener will call the actual delete API
                 requestDeleteAssetsByPaths(stalePaths);
@@ -3714,11 +3747,9 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
         const imgs = Array.from(
             doc.querySelectorAll<HTMLImageElement>("img[data-local-image-id]")
         );
-        if (process.env.NODE_ENV === "development") {
-            console.log("[flushPendingImagesBeforeSave] found img elements", {
-                count: imgs.length,
-            });
-        }
+        const processedImageSummaries: Array<{ localId: string; path?: string }> = [];
+        let skippedStaleImages = 0;
+        let skippedMalformedImages = 0;
 
         for (const img of imgs) {
             const localId = img.dataset.localImageId;
@@ -3726,27 +3757,26 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
             const localFilename = img.dataset.localFilename || "upload.bin";
 
             if (!localId || !tempUrl) {
-                console.warn(
-                    "[flushPendingImagesBeforeSave] img missing local id or src",
-                    { localId, tempUrl }
-                );
+                skippedMalformedImages += 1;
+                continue;
+            }
+
+            if (!/^(blob:|data:)/i.test(tempUrl)) {
+                img.removeAttribute("data-local-image-id");
+                img.removeAttribute("data-local-filename");
+                skippedStaleImages += 1;
                 continue;
             }
 
             try {
-                if (process.env.NODE_ENV === "development") {
-                    console.log("[flushPendingImagesBeforeSave] fetching blob URL (img)", {
-                        localId,
-                        tempUrl,
-                    });
-                }
+                logImageSaveVerbose("reading local image", { localId });
 
                 const res = await fetch(tempUrl);
                 if (!res.ok) {
-                    console.error(
-                        "[flushPendingImagesBeforeSave] fetch failed for blob URL (img)",
-                        { localId, tempUrl, status: res.status }
-                    );
+                    console.error("[image-save] failed to read local image", {
+                        localId,
+                        status: res.status,
+                    });
                     continue;
                 }
 
@@ -3755,16 +3785,15 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                     type: blob.type || "application/octet-stream",
                 });
 
-                if (process.env.NODE_ENV === "development") {
-                    console.log("[flushPendingImagesBeforeSave] uploading image (img)", {
-                        localId,
-                        fileName: file.name,
-                        fileSize: file.size,
-                        type: file.type,
-                    });
-                }
+                logImageSaveVerbose("uploading image", {
+                    localId,
+                    fileName: file.name,
+                    fileSize: file.size,
+                    type: file.type,
+                });
 
                 const asset = await uploadFileToUserBlob(file, draftId);
+                if (!asset) return false;
 
                 const oldTempUrl = img.src;
 
@@ -3776,36 +3805,24 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                     img.setAttribute("data-kloner-path", asset.path);
                 }
 
-                if (process.env.NODE_ENV === "development") {
-                    console.log("[flushPendingImagesBeforeSave] img updated", {
-                        localId,
-                        oldTempUrl,
-                        newUrl: asset.url,
-                        path: asset.path,
-                    });
-                }
+                processedImageSummaries.push({ localId, path: asset.path || undefined });
 
                 try {
                     URL.revokeObjectURL(oldTempUrl);
-                    if (process.env.NODE_ENV === "development") {
-                        console.log(
-                            "[flushPendingImagesBeforeSave] revoked temp URL (img)",
-                            { localId }
-                        );
-                    }
                 } catch (e) {
-                    console.warn(
-                        "[flushPendingImagesBeforeSave] revokeObjectURL failed (img)",
-                        { localId, oldTempUrl },
-                        e
-                    );
+                    console.warn("[image-save] could not release temporary image URL", {
+                        localId,
+                        oldTempUrl,
+                    }, e);
                 }
             } catch (err) {
-                console.error(
-                    "[flushPendingImagesBeforeSave] upload failed (img)",
-                    { localId, tempUrl },
-                    err
-                );
+                if (isVercelConnectNeededError(err)) {
+                    return false;
+                }
+                console.error("[image-save] failed while uploading image", {
+                    localId,
+                    tempUrl,
+                }, err);
                 continue;
             }
         }
@@ -3834,11 +3851,11 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
             doc.querySelectorAll<HTMLElement>("[data-local-image-id]")
         ).filter((el) => el.tagName !== "IMG");
 
-        if (process.env.NODE_ENV === "development") {
-            console.log("[flushPendingImagesBeforeSave] found bg blocks with local image", {
-                count: bgBlocks.length,
-            });
+        if (bgBlocks.length) {
+            logImageSaveVerbose("found background image markers", { count: bgBlocks.length });
         }
+        let skippedStaleBackgrounds = 0;
+        let skippedMalformedBackgrounds = 0;
 
         for (const el of bgBlocks) {
             const localId = (el.dataset as any).localImageId as string | undefined;
@@ -3848,27 +3865,26 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
             const tempUrl = extractBgUrlFromStyle(el);
 
             if (!localId || !tempUrl) {
-                console.warn(
-                    "[flushPendingImagesBeforeSave] bg block missing local id or bg url",
-                    { localId, tempUrl }
-                );
+                skippedMalformedBackgrounds += 1;
+                continue;
+            }
+
+            if (!/^(blob:|data:)/i.test(tempUrl)) {
+                delete (el.dataset as any).localImageId;
+                delete (el.dataset as any).localFilename;
+                skippedStaleBackgrounds += 1;
                 continue;
             }
 
             try {
-                if (process.env.NODE_ENV === "development") {
-                    console.log(
-                        "[flushPendingImagesBeforeSave] fetching blob URL (bg block)",
-                        { localId, tempUrl }
-                    );
-                }
+                logImageSaveVerbose("reading background image", { localId });
 
                 const res = await fetch(tempUrl);
                 if (!res.ok) {
-                    console.error(
-                        "[flushPendingImagesBeforeSave] fetch failed for blob URL (bg block)",
-                        { localId, tempUrl, status: res.status }
-                    );
+                    console.error("[image-save] failed to read background image", {
+                        localId,
+                        status: res.status,
+                    });
                     continue;
                 }
 
@@ -3877,15 +3893,14 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                     type: blob.type || "application/octet-stream",
                 });
 
-                if (process.env.NODE_ENV === "development") {
-                    console.log("[flushPendingImagesBeforeSave] uploading image (bg block)", {
-                        localId,
-                        fileName: file.name,
-                        fileSize: file.size,
-                        type: file.type,
-                    });
-                }
+                logImageSaveVerbose("uploading background image", {
+                    localId,
+                    fileName: file.name,
+                    fileSize: file.size,
+                    type: file.type,
+                });
                 const asset = await uploadFileToUserBlob(file, draftId);
+                if (!asset) return false;
 
                 const oldTempUrl = tempUrl;
 
@@ -3900,38 +3915,64 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                 if (asset.path) {
                     el.setAttribute("data-kloner-bg-path", asset.path);
                 }
-                if (process.env.NODE_ENV === "development") {
-                    console.log("[flushPendingImagesBeforeSave] bg block updated", {
-                        localId,
-                        oldTempUrl,
-                        newUrl: asset.url,
-                        path: asset.path,
-                    });
-                }
                 try {
                     URL.revokeObjectURL(oldTempUrl);
-                    if (process.env.NODE_ENV === "development") {
-                        console.log(
-                            "[flushPendingImagesBeforeSave] revoked temp URL (bg block)",
-                            { localId }
-                        );
-                    }
                 } catch (e) {
-                    console.warn(
-                        "[flushPendingImagesBeforeSave] revokeObjectURL failed (bg block)",
-                        { localId, oldTempUrl },
-                        e
-                    );
+                    console.warn("[image-save] could not release temporary background URL", {
+                        localId,
+                        oldTempUrl,
+                    }, e);
                 }
             } catch (err) {
-                console.error(
-                    "[flushPendingImagesBeforeSave] upload failed (bg block)",
-                    { localId, tempUrl },
-                    err
-                );
+                if (isVercelConnectNeededError(err)) {
+                    return false;
+                }
+                console.error("[image-save] failed while uploading background image", {
+                    localId,
+                    tempUrl,
+                }, err);
                 continue;
             }
         }
+
+        if (
+            processedImageSummaries.length ||
+            skippedStaleImages ||
+            skippedMalformedImages ||
+            skippedStaleBackgrounds ||
+            skippedMalformedBackgrounds
+        ) {
+            const summary: string[] = [];
+            if (processedImageSummaries.length) {
+                summary.push(
+                    `${processedImageSummaries.length} image${processedImageSummaries.length === 1 ? "" : "s"} uploaded`
+                );
+            }
+            if (skippedStaleImages) {
+                summary.push(
+                    `${skippedStaleImages} stale pending image${skippedStaleImages === 1 ? "" : "s"} skipped`
+                );
+            }
+            if (skippedMalformedImages) {
+                summary.push(
+                    `${skippedMalformedImages} malformed image marker${skippedMalformedImages === 1 ? "" : "s"} ignored`
+                );
+            }
+            if (skippedStaleBackgrounds) {
+                summary.push(
+                    `${skippedStaleBackgrounds} stale background marker${skippedStaleBackgrounds === 1 ? "" : "s"} skipped`
+                );
+            }
+            if (skippedMalformedBackgrounds) {
+                summary.push(
+                    `${skippedMalformedBackgrounds} malformed background marker${skippedMalformedBackgrounds === 1 ? "" : "s"} ignored`
+                );
+            }
+
+            logImageSave(`done: ${summary.join(", ")}`);
+        }
+
+        return true;
     }
 
 
@@ -3958,7 +3999,20 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                     );
 
                     if (draftId) {
-                        const { url, path } = await uploadFileToUserBlob(file, draftId);
+                        const uploaded = await uploadFileToUserBlob(file, draftId);
+                        if (!uploaded) {
+                            iframeRef.current?.contentWindow?.postMessage(
+                                {
+                                    type: "kloner:upload:done",
+                                    id,
+                                    ok: false,
+                                    error: "vercel_not_connected",
+                                },
+                                "*"
+                            );
+                            return;
+                        }
+                        const { url, path } = uploaded;
 
                         iframeRef.current?.contentWindow?.postMessage(
                             {
@@ -4033,9 +4087,9 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
 
     const sendStyleCommand = useCallback(
         (cmd: StyleCmd) => {
-            const win = iframeRef.current?.contentWindow as any;
+            const api = getPreviewIframeApi();
             try {
-                win?.__klonerApi?.style?.({ ...cmd, device });
+                api?.style?.({ ...cmd, device });
             } catch {
                 // ignore
             }
@@ -4048,13 +4102,14 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
             const iframe = iframeRef.current;
 
             // Prefer undo inside the iframe (where the user is editing)
-            if (iframe?.contentWindow?.document) {
-                const doc = iframe.contentWindow.document as Document & {
+            const doc = getPreviewIframeDocument();
+            if (doc) {
+                const editableDoc = doc as Document & {
                     execCommand?: (commandId: string) => boolean;
                 };
 
-                if (typeof doc.execCommand === "function") {
-                    doc.execCommand("undo");
+                if (typeof editableDoc.execCommand === "function") {
+                    editableDoc.execCommand("undo");
                     return;
                 }
             }
@@ -4179,10 +4234,8 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
 
             // 2) Snapshot the *pre-AI* full HTML for undo
             try {
-                const iframe = iframeRef.current;
-                if (iframe && iframe.contentDocument) {
-                    const preAiDoc =
-                        iframe.contentDocument.documentElement.outerHTML;
+                const preAiDoc = getPreviewIframeDocument()?.documentElement?.outerHTML;
+                if (preAiDoc) {
                     snapshotBeforeAiEdit(preAiDoc);
                 }
             } catch (err) {
@@ -4389,6 +4442,115 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
     }, [sidePanelMode]);
 
     const showSidebarPanel = isCompactLayout ? mobileTab === "panel" : !sidebarHidden;
+    const shouldShowFilesHydrationLoader =
+        (!isFilesHydrated && (viewMode === "custom" || viewMode === "images")) ||
+        isPreviewImageHydrating;
+
+    const clearPreviewImageHydrationWatchers = useCallback(() => {
+        if (previewImageHydrationTimeoutRef.current) {
+            window.clearTimeout(previewImageHydrationTimeoutRef.current);
+            previewImageHydrationTimeoutRef.current = null;
+        }
+
+        if (previewImageHydrationCleanupRef.current) {
+            previewImageHydrationCleanupRef.current();
+            previewImageHydrationCleanupRef.current = null;
+        }
+    }, []);
+
+    const stopPreviewImageHydration = useCallback(() => {
+        previewImageHydrationRunRef.current += 1;
+        clearPreviewImageHydrationWatchers();
+        setIsPreviewImageHydrating(false);
+    }, [clearPreviewImageHydrationWatchers]);
+
+    const trackPreviewImageHydration = useCallback(
+        (doc: Document | null) => {
+            if (mode === "screenshot") {
+                stopPreviewImageHydration();
+                return;
+            }
+
+            clearPreviewImageHydrationWatchers();
+
+            if (!doc) {
+                setIsPreviewImageHydrating(false);
+                return;
+            }
+
+            const images = Array.from(doc.images ?? []);
+            const pendingImages = images.filter((img) => !img.complete);
+
+            if (pendingImages.length === 0) {
+                setIsPreviewImageHydrating(false);
+                return;
+            }
+
+            const runId = previewImageHydrationRunRef.current;
+            let remaining = pendingImages.length;
+            const removeListeners: Array<() => void> = [];
+
+            const finish = () => {
+                if (runId !== previewImageHydrationRunRef.current) return;
+                remaining -= 1;
+
+                if (remaining > 0) return;
+
+                clearPreviewImageHydrationWatchers();
+                setIsPreviewImageHydrating(false);
+            };
+
+            pendingImages.forEach((img) => {
+                const handleSettled = () => {
+                    img.removeEventListener("load", handleSettled);
+                    img.removeEventListener("error", handleSettled);
+                    finish();
+                };
+
+                removeListeners.push(() => {
+                    img.removeEventListener("load", handleSettled);
+                    img.removeEventListener("error", handleSettled);
+                });
+
+                img.addEventListener("load", handleSettled);
+                img.addEventListener("error", handleSettled);
+            });
+
+            previewImageHydrationCleanupRef.current = () => {
+                removeListeners.forEach((remove) => remove());
+            };
+
+            previewImageHydrationTimeoutRef.current = window.setTimeout(() => {
+                if (runId !== previewImageHydrationRunRef.current) return;
+                clearPreviewImageHydrationWatchers();
+                setIsPreviewImageHydrating(false);
+            }, 12000);
+
+            setIsPreviewImageHydrating(true);
+        },
+        [clearPreviewImageHydrationWatchers, mode, stopPreviewImageHydration],
+    );
+
+    useEffect(() => {
+        if (mode === "screenshot") {
+            stopPreviewImageHydration();
+            return;
+        }
+
+        clearPreviewImageHydrationWatchers();
+        previewImageHydrationRunRef.current += 1;
+        setIsPreviewImageHydrating(true);
+        const runId = previewImageHydrationRunRef.current;
+        previewImageHydrationTimeoutRef.current = window.setTimeout(() => {
+            if (runId !== previewImageHydrationRunRef.current) return;
+            clearPreviewImageHydrationWatchers();
+            setIsPreviewImageHydrating(false);
+        }, 20000);
+
+        return () => {
+            clearPreviewImageHydrationWatchers();
+        };
+    }, [clearPreviewImageHydrationWatchers, iframeKey, mode, stopPreviewImageHydration]);
 
     useEffect(() => {
         onSidebarVisibilityChange?.(showSidebarPanel);
@@ -4416,6 +4578,26 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
         [allPages, activePage, sourceImage]
     );
 
+    const filesHydrationLoader = shouldShowFilesHydrationLoader ? (
+        <div
+            className="absolute inset-0 z-30 flex items-center justify-center bg-white/25 px-4 backdrop-blur-[1px]"
+            role="status"
+            aria-live="polite"
+            aria-busy="true"
+        >
+            <div className="flex flex-col items-center justify-center rounded-2xl border border-neutral-200 bg-white/90 px-6 py-5 text-center shadow-lg">
+                <div className="kloner-dots" aria-hidden="true">
+                    <span className="kloner-dot" />
+                    <span className="kloner-dot" />
+                    <span className="kloner-dot" />
+                </div>
+                <div className="mt-4 text-sm font-medium text-neutral-700">
+                    Hydrating editor
+                </div>
+            </div>
+        </div>
+    ) : null;
+
 
     const iframeWrapperRef = useRef<HTMLDivElement | null>(null);
 
@@ -4433,7 +4615,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                 "<!doctype html><html><head><meta charset='utf-8'></head><body></body></html>"
             }
             onLoad={() => {
-                const doc = iframeRef.current?.contentDocument;
+                const doc = getPreviewIframeDocument();
                 if (!doc) return;
 
                 // doc.querySelectorAll(".kloner-toolbar").forEach((n) => n.remove());
@@ -4450,6 +4632,8 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                     );
                     iframeRef.current?.contentWindow?.focus();
                 }
+
+                trackPreviewImageHydration(doc);
             }}
         />
 
@@ -4729,7 +4913,9 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                     {showSidebarPanel && (
                         <motion.aside
                             id="kloner-style-sidebar"
-                            className={`pointer-events-auto bg-white flex flex-col overflow-hidden ${
+                            className={`bg-white flex flex-col overflow-hidden ${
+                                "pointer-events-auto"
+                            } ${
                                 isCompactLayout
                                     ? "relative z-20 h-full w-full bg-gray-50"
                                     : "absolute bottom-0 left-0 top-0 z-40 w-[360px] max-w-[92vw] rounded-r-2xl border-r border-neutral-200 shadow-xl"
@@ -5262,6 +5448,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                         iframeRef={iframeRef}
                                         user={user}
                                         renderId={draftId ?? null}
+                                        selectionMeta={selectionMeta}
                                         isVercelConnected={Boolean(isVercelConnected)}
                                         onConnectVercel={onConnectVercel}
                                     />
@@ -5626,7 +5813,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                         <button
                                             type="button"
                                             onClick={() => {
-                                                const api = iframeRef.current?.contentWindow?.__klonerApi;
+                                                const api = getPreviewIframeApi();
                                                 if (api?.undo) api.undo();
                                             }}
                                             className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-accent px-4 py-1.5 text-sm font-semibold text-white hover:brightness-95"
@@ -5638,7 +5825,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                         <button
                                             type="button"
                                             onClick={() => {
-                                                const api = iframeRef.current?.contentWindow?.__klonerApi;
+                                                const api = getPreviewIframeApi();
                                                 if (api?.redo) api.redo();
                                             }}
                                             className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-accent px-4 py-1.5 text-sm font-semibold text-white hover:brightness-95"
@@ -5712,10 +5899,11 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                 </div>
 
                                                 <div
-                                                    className="bg-white/90 flex-2 min-h-0 overflow-auto"
+                                                    className="relative bg-white/90 flex-2 min-h-0 overflow-auto"
                                                     style={{ pointerEvents: isDraggingPreview ? "none" : "auto" }}
                                                 >
                                                     {iframeNode}
+                                                    {filesHydrationLoader}
                                                 </div>
                                             </div>
                                         )}
@@ -5734,10 +5922,11 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                 </div>
                                                 <div className="mx-auto mb-2 h-1.5 w-20 rounded-full bg-neutral-700" />
                                                 <div
-                                                    className="overflow-hidden rounded-[20px]"
+                                                    className="relative overflow-hidden rounded-[20px]"
                                                     style={{ pointerEvents: isDraggingPreview ? "none" : "auto" }}
                                                 >
                                                     {iframeNode}
+                                                    {filesHydrationLoader}
                                                 </div>
                                             </div>
                                         )}
@@ -5757,7 +5946,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                     <button
                                                         type="button"
                                                         onClick={() => {
-                                                            const api = iframeRef.current?.contentWindow?.__klonerApi;
+                                                            const api = getPreviewIframeApi();
                                                             if (api?.undo) api.undo();
                                                         }}
                                                         className="inline-flex h-7 w-7 items-center justify-center rounded-md text-neutral-400 hover:text-neutral-100 hover:bg-neutral-800/80 transition"
@@ -5769,7 +5958,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                     <button
                                                         type="button"
                                                         onClick={() => {
-                                                            const api = iframeRef.current?.contentWindow?.__klonerApi;
+                                                            const api = getPreviewIframeApi();
                                                             if (api?.redo) api.redo();
                                                         }}
                                                         className="inline-flex h-7 w-7 items-center justify-center rounded-md text-neutral-400 hover:text-neutral-100 hover:bg-neutral-800/80 transition"
@@ -5780,10 +5969,11 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                 </div>
                                                 <div className="mx-auto mb-3 h-2 w-24 rounded-full bg-neutral-700" />
                                                 <div
-                                                    className="overflow-hidden rounded-[28px]"
+                                                    className="relative overflow-hidden rounded-[28px]"
                                                     style={{ pointerEvents: isDraggingPreview ? "none" : "auto" }}
                                                 >
                                                     {iframeNode}
+                                                    {filesHydrationLoader}
                                                 </div>
                                                 <div className="mx-auto mt-3 h-7 w-24 rounded-full border border-neutral-700" />
                                             </div>
@@ -6383,6 +6573,7 @@ type AppSourcePreviewEditorProps = {
     onSharedUiScaleChange?: (scale: number) => void;
     editableHtmlPaths?: string[];
     currentHtmlPath?: string;
+    preserveRuntimeScripts?: boolean;
     onSelectHtmlPath?: (path: string) => void;
     preferredSidePanelMode?: "style" | "ai-library";
     sourceFiles?: { [path: string]: { content: string; lastModified: number } };
@@ -6425,16 +6616,29 @@ export default function AppPreviewEditor({
     onSharedUiScaleChange,
     editableHtmlPaths,
     currentHtmlPath,
+    htmlEntryHints,
+    preserveRuntimeScripts,
     onSelectHtmlPath,
     preferredSidePanelMode,
     sourceFiles,
     registerBeforeExitFlush,
     onTakeBuilderTour,
     onConnectVercel,
+    onLiveHtml,
 }: AppSourcePreviewEditorProps) {
     const htmlPaths = useMemo(
         () => Object.keys(files || {}).filter(isHtmlPath).sort((a, b) => a.localeCompare(b)),
         [files],
+    );
+
+    const preferredHtmlPath = useMemo(
+        () =>
+            pickPreferredHtmlPath({
+                files,
+                currentPath: currentHtmlPath || initialPath || null,
+                htmlEntryHints,
+            }),
+        [currentHtmlPath, files, htmlEntryHints, initialPath],
     );
 
     const [selectedPath, setSelectedPath] = useState<string>("");
@@ -6493,12 +6697,12 @@ export default function AppPreviewEditor({
             return;
         }
 
-        const preferred = initialPath && htmlPaths.includes(initialPath) ? initialPath : "";
+        const preferred = preferredHtmlPath && htmlPaths.includes(preferredHtmlPath) ? preferredHtmlPath : "";
         setSelectedPath((prev) => {
             if (prev && htmlPaths.includes(prev)) return prev;
             return preferred || htmlPaths[0];
         });
-    }, [htmlPaths, initialPath]);
+    }, [htmlPaths, preferredHtmlPath]);
 
     const selectedHtml = activeHtmlPath ? String(files?.[activeHtmlPath]?.content || "") : "";
 
@@ -6578,12 +6782,14 @@ export default function AppPreviewEditor({
                     onSharedUiScaleChange={onSharedUiScaleChange}
                     editableHtmlPaths={editableHtmlPaths || htmlPaths}
                     currentHtmlPath={activeHtmlPath}
+                    preserveRuntimeScripts={preserveRuntimeScripts}
                     onSelectHtmlPath={onSelectHtmlPath || handlePathChange}
                     preferredSidePanelMode={preferredSidePanelMode}
                     sourceFiles={sourceFiles || files}
                     registerBeforeExitFlush={registerBeforeExitFlush}
                     onTakeBuilderTour={onTakeBuilderTour}
                     onConnectVercel={onConnectVercel}
+                    onLiveHtml={onLiveHtml}
                     appName={appName}
                     isRenaming={isRenaming}
                     tempName={tempName}

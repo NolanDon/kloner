@@ -2805,15 +2805,7 @@ function AppCard({
             )
         )
         : null;
-    const draftDevArchiveRingClass = showVersionBadge && isDraftCard
-        ? draftArchiveState === "pending"
-            ? "ring-2 ring-sky-300 ring-offset-2 ring-offset-white"
-            : draftArchiveState === "ready"
-                ? "ring-2 ring-emerald-300 ring-offset-2 ring-offset-white"
-                : draftArchiveState === "failed"
-                    ? "ring-2 ring-red-300 ring-offset-2 ring-offset-white"
-                    : "ring-2 ring-emerald-300 ring-offset-2 ring-offset-white"
-        : "";
+    const draftDevArchiveRingClass = "";
     const draftDevArchiveLabel = showVersionBadge && isDraftCard
         ? draftArchiveState === "pending"
             ? `Archive building${typeof draftArchiveProgressPct === "number" ? ` ${draftArchiveProgressPct}%` : ""}`
@@ -2959,12 +2951,12 @@ function AppCard({
                             {showVersionBadge && isDraftCard ? (
                                 <span
                                     className={`absolute -left-2 -top-2 z-10 inline-flex h-9 w-9 items-center justify-center rounded-full border shadow-sm ${draftArchiveState === "pending"
-                                        ? "border-sky-200 bg-sky-50 text-sky-700"
+                                        ? "border-neutral-200 bg-white text-neutral-600"
                                         : draftArchiveState === "ready"
-                                            ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                                            ? "border-neutral-200 bg-white text-neutral-600"
                                             : draftArchiveState === "failed"
-                                                ? "border-red-200 bg-red-50 text-red-700"
-                                                : "border-emerald-200 bg-emerald-50 text-emerald-700"
+                                                ? "border-neutral-200 bg-white text-neutral-600"
+                                                : "border-neutral-200 bg-white text-neutral-600"
                                         }`}
                                     title={draftDevArchiveLabel}
                                 >

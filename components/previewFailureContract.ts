@@ -232,7 +232,7 @@ export function canShowPreviewFixWithAi(failure: PreviewFailureContract | null |
 export function mapPreviewUserActionLabel(userAction: PreviewFailureUserAction | null | undefined): string {
   switch (userAction) {
     case "rebuild":
-      return "Generate new preview";
+      return "Start fresh";
     case "reconnect":
       return "Reconnect";
     case "wait_and_retry":

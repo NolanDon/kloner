@@ -80,7 +80,7 @@ describe('previewFailureContract', () => {
 
   test('userAction label mapping', () => {
     expect(mapPreviewUserActionLabel('refresh')).toBe('Refresh');
-    expect(mapPreviewUserActionLabel('rebuild')).toBe('Generate new preview');
+    expect(mapPreviewUserActionLabel('rebuild')).toBe('Start fresh');
     expect(mapPreviewUserActionLabel('reconnect')).toBe('Reconnect');
     expect(mapPreviewUserActionLabel('wait_and_retry')).toBe('Retry');
     expect(mapPreviewUserActionLabel('contact_support')).toBe('Contact support');

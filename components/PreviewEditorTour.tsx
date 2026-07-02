@@ -56,7 +56,7 @@ const steps = [
     },
 ];
 
-const TOUR_KEY = "kloner_preview_tour_done";
+export const TOUR_KEY = "kloner_preview_tour_done";
 
 type PreviewEditorTourProps = {
     startToken?: number;
