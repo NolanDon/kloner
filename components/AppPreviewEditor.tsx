@@ -35,6 +35,26 @@ function requestDeleteAssetsByPaths(paths: string[]) {
     );
 }
 
+function proxyFirebaseStorageUrl(rawUrl: string): string {
+    const url = String(rawUrl || "").trim();
+    if (!url) return url;
+    if (url.startsWith("/api/user-blob/proxy?url=")) return url;
+    if (!/^https?:\/\//i.test(url)) return url;
+    if (!/^https?:\/\/(?:firebasestorage|storage)\.googleapis\.com\//i.test(url)) {
+        return url;
+    }
+    return `/api/user-blob/proxy?url=${encodeURIComponent(url)}`;
+}
+
+function rewriteFirebaseStorageUrlsInHtml(html: string): string {
+    const input = String(html || "");
+    if (!input) return input;
+    return input.replace(
+        /https?:\/\/(?:firebasestorage|storage)\.googleapis\.com\/[^\s"'<>)]*/gi,
+        (match) => proxyFirebaseStorageUrl(match),
+    );
+}
+
 type Props = {
     initialHtml: string;
     sourceImage?: string;
@@ -2778,6 +2798,8 @@ function AppPreviewEditorCore({
             ? stripEditorArtifacts(previewHtml || "")
             : stripScripts(stripEditorArtifacts(previewHtml || ""));
         if (!base) return base;
+
+        base = rewriteFirebaseStorageUrlsInHtml(base);
 
         // Inject <base href> so relative CSS/JS/image paths resolve when the
         // iframe uses srcdoc (which has no origin by itself).

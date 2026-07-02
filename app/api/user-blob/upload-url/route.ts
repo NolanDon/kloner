@@ -81,7 +81,9 @@ export async function POST(req: NextRequest) {
                 const url = `https://firebasestorage.googleapis.com/v0/b/${bucket.name
                     }/o/${encodeURIComponent(objectPath)}?alt=media&token=${token}`;
 
-                return NextResponse.json({ url, path: objectPath });
+                const proxiedUrl = `/api/user-blob/proxy?url=${encodeURIComponent(url)}`;
+
+                return NextResponse.json({ url: proxiedUrl, path: objectPath, firebaseUrl: url });
             } catch (err: any) {
                 console.error("user-blob upload error", err);
                 return NextResponse.json(
