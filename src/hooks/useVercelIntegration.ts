@@ -5,6 +5,7 @@ export type VercelStatus = "loading" | "connected" | "disconnected" | "error";
 
 type VercelStatusResponse = {
     connected: boolean;
+    blobConfigured?: boolean;
     reason?: string;
     transientError?: boolean;
     user?: { id?: string; email?: string; name?: string } | null;

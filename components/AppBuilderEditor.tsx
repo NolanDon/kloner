@@ -13,7 +13,8 @@ import KlonerLoader from "./KlonerLoader";
 import WebContainerRunner from "./WebContainerRunner";
 import { bootstrapServerSession, ensureSessionAndCsrf, resetAuthClientCaches } from "@/lib/auth-client";
 import { useVercelIntegration } from "@/src/hooks/useVercelIntegration";
-import { auth, db } from "@/lib/firebase";
+import { auth, db, storage } from "@/lib/firebase";
+import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
 import { doc, onSnapshot } from "firebase/firestore";
 import { resolveStorageUrl } from "@/src/lib/renders";
 import { signOut as firebaseSignOut } from "firebase/auth";
@@ -31,6 +32,7 @@ import {
     type PreviewFailureContract,
 } from "./previewFailureContract";
 import { postPreviewApply } from "./previewMachineApply";
+import { ensureUserImageStorageRoom, IMAGE_STORAGE_LIMIT_BYTES, loadUserImageStorageUsage, uploadUserImageToFirebase } from "@/src/lib/imageStorage";
 
 const VERCEL_INTEGRATION_SLUG =
     process.env.NEXT_PUBLIC_VERCEL_INTEGRATION_SLUG || "kloner";
@@ -897,18 +899,63 @@ async function readHtmlFromStorage(storagePath: string): Promise<string | null> 
     return pending;
 }
 
-async function hydrateHtmlFilesForApp(data: AppData): Promise<AppData> {
-    const storagePath = typeof data.htmlStoragePath === "string" ? data.htmlStoragePath.trim() : "";
-    if (!storagePath) return data;
+function proxyFirebaseStorageUrl(rawUrl: string, proxyOrigin = ""): string {
+    const url = String(rawUrl || "").trim();
+    if (!url) return url;
+    if (url.startsWith("/api/user-blob/proxy?url=")) {
+        const encoded = url.slice("/api/user-blob/proxy?url=".length);
+        try {
+            return decodeURIComponent(encoded);
+        } catch {
+            return url;
+        }
+    }
+    if (!/^https?:\/\//i.test(url)) return url;
+    if (!/^https?:\/\/(?:firebasestorage|storage)\.googleapis\.com\//i.test(url)) {
+        return url;
+    }
+    return url;
+}
 
-    const targetPaths = pickHtmlTargetPaths(data.files || {}, data.htmlEditIndex);
-    const needsHydration = targetPaths.some((path) => !String(data.files?.[path]?.content || "").trim());
-    if (!needsHydration) return data;
+function rewriteFirebaseStorageUrlsInHtml(html: string, proxyOrigin = ""): string {
+    const input = String(html || "");
+    if (!input) return input;
+    return input.replace(
+        /https?:\/\/(?:firebasestorage|storage)\.googleapis\.com\/[^\s"'<>)]*/gi,
+        (match) => proxyFirebaseStorageUrl(match, proxyOrigin),
+    );
+}
+
+function rewriteFirebaseStorageUrlsInHtmlForWebContainer(html: string, proxyOrigin: string): string {
+    return rewriteFirebaseStorageUrlsInHtml(html, proxyOrigin);
+}
+
+async function hydrateHtmlFilesForApp(data: AppData): Promise<AppData> {
+    const nextFiles: AppData["files"] = {};
+    for (const [path, file] of Object.entries(data.files || {})) {
+        if (typeof file?.content !== "string") {
+            nextFiles[path] = file;
+            continue;
+        }
+
+        nextFiles[path] = isHtmlPath(path)
+            ? {
+                ...file,
+                content: rewriteFirebaseStorageUrlsInHtml(file.content),
+            }
+            : file;
+    }
+
+    const storagePath = typeof data.htmlStoragePath === "string" ? data.htmlStoragePath.trim() : "";
+    if (!storagePath) return { ...data, files: nextFiles };
+
+    const targetPaths = pickHtmlTargetPaths(nextFiles || {}, data.htmlEditIndex);
+    const needsHydration = targetPaths.some((path) => !String(nextFiles?.[path]?.content || "").trim());
+    if (!needsHydration) return { ...data, files: nextFiles };
 
     const html = await readHtmlFromStorage(storagePath);
-    if (!html) return data;
-
-    const nextFiles: AppData["files"] = { ...(data.files || {}) };
+    if (!html) return { ...data, files: nextFiles };
+    const normalizedHtml = rewriteFirebaseStorageUrlsInHtml(html);
     let applied = false;
 
     for (const path of targetPaths) {
@@ -916,7 +963,7 @@ async function hydrateHtmlFilesForApp(data: AppData): Promise<AppData> {
         if (current && String(current.content || "").trim()) continue;
 
         nextFiles[path] = {
-            content: html,
+            content: normalizedHtml,
             lastModified: current?.lastModified || Date.now(),
         };
         applied = true;
@@ -928,7 +975,7 @@ async function hydrateHtmlFilesForApp(data: AppData): Promise<AppData> {
 
     if (!applied && !Object.keys(data.files || {}).some((path) => isHtmlPath(path))) {
         nextFiles["index.html"] = {
-            content: html,
+            content: normalizedHtml,
             lastModified: Date.now(),
         };
     }
@@ -1719,6 +1766,7 @@ export default function AppBuilderEditor({
     const [isModeSwitching, setIsModeSwitching] = useState(false);
     const [stagedImages, setStagedImages] = useState<StagedImage[]>([]);
     const stagedImagesRef = useRef<StagedImage[]>([]);
+    const stagedImageApplyInFlightRef = useRef<string | null>(null);
     const [autoCompressImages, setAutoCompressImages] = useState(true);
     const isVercelConnectedRef = useRef(false);
     const ensureFreshVercelConnectionRef = useRef<
@@ -2312,35 +2360,43 @@ export default function AppBuilderEditor({
     }, []);
 
     const uploadImageToUserBlob = useCallback(async (file: globalThis.File) => {
-        const ensureConnected = ensureFreshVercelConnectionRef.current;
-        if (!ensureConnected || !(await ensureConnected("images"))) {
-            return null;
+        const uid = user?.uid;
+        if (!uid) {
+            throw new Error("Missing user session");
         }
 
-        const csrf = await ensureSessionAndCsrf().catch(() => null);
         const safeName = sanitizeImageName(file.name || "upload.bin");
-        const url = `/api/user-blob/upload-url?filename=${encodeURIComponent(safeName)}&renderId=${encodeURIComponent(appId)}`;
+        const usage = await loadUserImageStorageUsage(uid);
+        if (usage.usedBytes + file.size > IMAGE_STORAGE_LIMIT_BYTES) {
+            throw new Error(
+                `Image storage limit reached. You are using ${Math.round(usage.usedBytes / 1024 / 1024)}MB of ${Math.round(IMAGE_STORAGE_LIMIT_BYTES / 1024 / 1024)}MB.`,
+            );
+        }
 
-        const res = await fetch(url, {
-            method: "POST",
-            headers: {
-                "content-type": file.type || "application/octet-stream",
-                ...(typeof csrf === "string" && csrf ? { "x-csrf": csrf } : {}),
-            },
-            credentials: "include",
-            body: file,
+        const uploaded = await uploadUserImageToFirebase({
+            uid,
+            file,
+            fileName: safeName,
+            renderId: appId || "draft",
         });
-
-        const j = await res.json().catch(() => ({} as any));
-        if (!res.ok || !j?.url) {
-            throw new Error(j?.error || `upload_failed_${res.status}`);
+        if (!uploaded?.url?.trim()) {
+            throw new Error("Image upload returned no URL.");
+        }
+        if (process.env.NODE_ENV === "development") {
+            console.log("[AppBuilderEditor] image upload success", {
+                fileName: safeName,
+                url: uploaded.url,
+                path: uploaded.path || "",
+                bytes: file.size,
+                type: file.type,
+            });
         }
 
         return {
-            url: String(j.url),
-            path: typeof j.path === "string" ? j.path : null,
+            url: uploaded.url,
+            path: uploaded.path,
         };
-    }, [appId]);
+    }, [appId, user?.uid]);
 
     const handlePickFavicon = useCallback(() => {
         if (faviconUploading) return;
@@ -2348,25 +2404,33 @@ export default function AppBuilderEditor({
     }, [faviconUploading]);
 
     const uploadFaviconToUserBlob = useCallback(async (file: globalThis.File): Promise<{ url: string; path?: string }> => {
-        const csrf = await ensureSessionAndCsrf().catch(() => null);
-        const url = `/api/user-blob/upload-url?filename=${encodeURIComponent("favicon.ico")}&renderId=${encodeURIComponent(appId)}`;
-
-        const res = await fetch(url, {
-            method: "POST",
-            headers: {
-                "content-type": file.type || "application/octet-stream",
-                ...(typeof csrf === "string" && csrf ? { "x-csrf": csrf } : {}),
-            },
-            credentials: "include",
-            body: file,
-        });
-
-        const j = await res.json().catch(() => ({} as any));
-        if (!res.ok || !j?.url) {
-            throw new Error(j?.error || `upload_failed_${res.status}`);
+        const uid = user?.uid;
+        if (!uid) throw new Error("Missing user session");
+        const usage = await loadUserImageStorageUsage(uid);
+        if (usage.usedBytes + file.size > IMAGE_STORAGE_LIMIT_BYTES) {
+            throw new Error(
+                `Image storage limit reached. You are using ${Math.round(usage.usedBytes / 1024 / 1024)}MB of ${Math.round(IMAGE_STORAGE_LIMIT_BYTES / 1024 / 1024)}MB.`,
+            );
         }
-        return { url: String(j.url), path: typeof j.path === "string" ? j.path : undefined };
-    }, [appId]);
+        const uploaded = await uploadUserImageToFirebase({
+            uid,
+            file,
+            fileName: "favicon.ico",
+            renderId: appId || "draft",
+        });
+        if (!uploaded?.url?.trim()) {
+            throw new Error("Image upload returned no URL.");
+        }
+        if (process.env.NODE_ENV === "development") {
+            console.log("[AppBuilderEditor] favicon upload success", {
+                url: uploaded.url,
+                path: uploaded.path || "",
+                bytes: file.size,
+                type: file.type,
+            });
+        }
+        return { url: uploaded.url, path: uploaded.path };
+    }, [appId, user?.uid]);
 
     const deleteUserBlobPaths = useCallback(async (paths: string[]) => {
         const filtered = paths.filter((p) => typeof p === "string" && p.trim().length > 0);
@@ -2467,6 +2531,7 @@ export default function AppBuilderEditor({
         // while backend generation is still running.
         const appName = String((app as any)?.name || "Kloner App");
         const safeTitle = appName.replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        const now = Date.now();
         return {
             "package.json": {
                 content: JSON.stringify(
@@ -2487,9 +2552,11 @@ export default function AppBuilderEditor({
                     null,
                     2,
                 ) + "\n",
+                lastModified: now,
             },
             "next.config.mjs": {
                 content: "export default {\n  reactStrictMode: true,\n};\n",
+                lastModified: now,
             },
             "tsconfig.json": {
                 content:
@@ -2518,19 +2585,23 @@ export default function AppBuilderEditor({
                         null,
                         2,
                     ) + "\n",
+                lastModified: now,
             },
             "next-env.d.ts": {
                 content: "/// <reference types=\"next\" />\n/// <reference types=\"next/image-types\" />\n\n// NOTE: This file should not be edited\n// see https://nextjs.org/docs/pages/api-reference/config/typescript for more information.\n",
+                lastModified: now,
             },
             "app/layout.tsx": {
                 content:
                     `export const metadata = {\n  title: ${JSON.stringify(appName)},\n  description: "Generating your app…",\n};\n\nexport default function RootLayout({ children }: { children: React.ReactNode }) {\n  return (\n    <html lang=\"en\">\n      <body style={{ fontFamily: 'ui-sans-serif, system-ui, -apple-system' }}>{children}</body>\n    </html>\n  );\n}\n`,
+                lastModified: now,
             },
             "app/page.tsx": {
                 content:
                     `export default function Page() {\n  return (\n    <main style={{ padding: 24, maxWidth: 760, margin: '0 auto' }}>\n      <h1 style={{ fontSize: 28, fontWeight: 700, marginBottom: 8 }}>${safeTitle}</h1>\n      <p style={{ color: '#374151', marginBottom: 16 }}>\n        Your app is being generated from your screenshots.\n      </p>\n      <div style={{ padding: 16, borderRadius: 12, border: '1px solid #e5e7eb', background: '#f9fafb' }}>\n        <div style={{ fontWeight: 600, marginBottom: 6 }}>Preview machine</div>\n        <div style={{ color: '#6b7280' }}>Starting now so it’s ready when generation finishes.</div>\n      </div>\n    </main>\n  );\n}\n`,
+                lastModified: now,
             },
-        } as Record<string, { content: string }>;
+        } as AppData["files"];
     }, [app]);
 
     const activeGeneration = useMemo(() => normalizeGenerationState(app), [app]);
@@ -2713,7 +2784,21 @@ export default function AppBuilderEditor({
     const effectivePreviewFiles = useMemo(() => {
         if (isGenerationProcessing) return generationPlaceholderFiles;
         if (!filesHydrated) return {};
-        return (app?.files as any) || {};
+        const origin = typeof window !== "undefined" ? window.location.origin : "";
+        const files = (app?.files || {}) as AppData["files"];
+        if (!origin) return files;
+
+        const nextFiles: AppData["files"] = {};
+        for (const [path, record] of Object.entries(files)) {
+            const content = String(record?.content || "");
+            nextFiles[path] = /\.html?$/i.test(path)
+                ? {
+                    ...record,
+                    content: rewriteFirebaseStorageUrlsInHtmlForWebContainer(content, origin),
+                }
+                : { ...record };
+        }
+        return nextFiles;
     }, [app?.files, filesHydrated, generationPlaceholderFiles, isGenerationProcessing]);
 
     const usedPlaceholderRef = useRef(false);
@@ -3031,11 +3116,16 @@ export default function AppBuilderEditor({
         };
     }, []);
 
-    const { status: vercelStatus, checking: vercelChecking, refresh: refreshVercelStatus } =
+    const { status: vercelStatus, meta: vercelMeta, checking: vercelChecking, refresh: refreshVercelStatus } =
         useVercelIntegration();
 
     const isVercelConnected = vercelStatus === "connected";
     const isVercelChecking = vercelStatus === "loading" || vercelChecking;
+    const storageConfiguredRef = useRef(false);
+
+    useEffect(() => {
+        storageConfiguredRef.current = true;
+    }, [vercelMeta?.blobConfigured]);
 
     useEffect(() => {
         isVercelConnectedRef.current = isVercelConnected;
@@ -3058,6 +3148,12 @@ export default function AppBuilderEditor({
     useEffect(() => {
         ensureFreshVercelConnectionRef.current = ensureFreshVercelConnection;
     }, [ensureFreshVercelConnection]);
+
+    const runVercelDeployLiveRef = useRef<(() => Promise<boolean>) | null>(null);
+
+    const ensureStorageConfiguredForImages = useCallback(async (): Promise<boolean> => {
+        return true;
+    }, []);
 
     const appRef = useRef<AppData | null>(null);
     useEffect(() => {
@@ -4903,6 +4999,10 @@ export default function AppBuilderEditor({
         opts?: { afterSave?: "apply" | "none"; interactive?: boolean }
     ): Promise<boolean> => {
         try {
+            const normalizedContent = isHtmlPath(path)
+                ? rewriteFirebaseStorageUrlsInHtml(content)
+                : content;
+
             const getCsrfToken = async (): Promise<string | null> => {
                 try {
                     const res = await fetch("/api/auth/csrf", {
@@ -4928,7 +5028,7 @@ export default function AppBuilderEditor({
                     },
                     credentials: "include",
                     cache: "no-store",
-                    body: JSON.stringify({ path, content }),
+                    body: JSON.stringify({ path, content: normalizedContent }),
                 });
                 const data = await res.json().catch(() => ({} as any));
                 return { res, data };
@@ -4964,7 +5064,7 @@ export default function AppBuilderEditor({
 
             const afterSave = opts?.afterSave || "apply";
             if (afterSave === "apply") {
-                queuePreviewApply([{ path, content }], { interactive: false });
+                queuePreviewApply([{ path, content: normalizedContent }], { interactive: false });
             }
             return true;
         } catch (err) {
@@ -4977,53 +5077,65 @@ export default function AppBuilderEditor({
     }, [appId, bootstrapAppScope, queuePreviewApply, showAlert]);
 
     const applyStagedImage = useCallback(async (id: string) => {
+        if (stagedImageApplyInFlightRef.current === id) return;
+        stagedImageApplyInFlightRef.current = id;
         const item = stagedImages.find((entry) => entry.id === id);
-        if (!item) return;
-
-        const allFiles = appRef.current?.files || ({} as AppData["files"]);
-        const plan = resolveImagePlacementPlan(allFiles, item.placementPrompt, currentFile);
-        if (!plan) {
-            void showAlert("I couldn’t find a place for that prompt. Try something like “homepage top” or “/about bottom”.", "Images");
-            return;
-        }
-
-        const confirm = await showConfirm(
-            <div className="space-y-3">
-                <Image
-                    src={item.previewUrl}
-                    alt={item.alt || "Image preview"}
-                    width={1200}
-                    height={1200}
-                    className="h-auto max-h-56 w-full rounded-lg border border-neutral-200 object-contain"
-                    unoptimized
-                />
-                <div className="text-sm text-neutral-700">
-                    Place image at {plan.label}?
-                </div>
-                <div className="text-sm text-neutral-700">
-                    Prompt: {item.placementPrompt || "(none)"}
-                </div>
-            </div>,
-            "Images",
-        );
-        if (!confirm) return;
-
-        updateStagedImage(id, { status: "uploading", error: null });
-
         try {
+            if (!item) return;
+
+            if (!(await ensureFreshVercelConnection("images"))) return;
+            if (!(await ensureStorageConfiguredForImages())) return;
+
+            const allFiles = appRef.current?.files || ({} as AppData["files"]);
+            const plan = resolveImagePlacementPlan(allFiles, item.placementPrompt, currentFile);
+            if (!plan) {
+                void showAlert("I couldn’t find a place for that prompt. Try something like “homepage top” or “/about bottom”.", "Images");
+                return;
+            }
+
+            const confirm = await showConfirm(
+                <div className="space-y-3">
+                    <Image
+                        src={item.previewUrl}
+                        alt={item.alt || "Image preview"}
+                        width={1200}
+                        height={1200}
+                        className="h-auto max-h-56 w-full rounded-lg border border-neutral-200 object-contain"
+                        unoptimized
+                    />
+                    <div className="text-sm text-neutral-700">
+                        Place image at {plan.label}?
+                    </div>
+                    <div className="text-sm text-neutral-700">
+                        Prompt: {item.placementPrompt || "(none)"}
+                    </div>
+                </div>,
+                "Images",
+            );
+            if (!confirm) return;
+
+            updateStagedImage(id, { status: "uploading", error: null });
+
             let finalUrl = item.uploadedUrl;
             let finalPath = item.uploadedPath;
-            if (!finalUrl) {
+            if (!finalUrl?.trim()) {
                 const uploaded = await uploadImageToUserBlob(item.preparedFile);
-                if (!uploaded) {
+                if (!uploaded?.url?.trim()) {
                     updateStagedImage(id, {
                         status: "staged",
-                        error: "Connect Vercel to upload this image.",
+                        error: "Image upload failed.",
                     });
                     return;
                 }
                 finalUrl = uploaded.url;
                 finalPath = uploaded.path;
+                if (process.env.NODE_ENV === "development") {
+                    console.log("[AppBuilderEditor] staged image upload returned", {
+                        id,
+                        url: finalUrl,
+                        path: finalPath || "",
+                    });
+                }
             }
 
             const targetContent = appRef.current?.files?.[plan.targetPath]?.content || "";
@@ -5052,6 +5164,14 @@ export default function AppBuilderEditor({
             if (!ok) {
                 throw new Error("save_failed");
             }
+            if (process.env.NODE_ENV === "development") {
+                console.log("[AppBuilderEditor] staged image injected and saved", {
+                    id,
+                    targetPath: plan.targetPath,
+                    url: finalUrl,
+                    path: finalPath || "",
+                });
+            }
 
             setLastImageInsert({
                 stagedImageId: item.id,
@@ -5068,13 +5188,26 @@ export default function AppBuilderEditor({
             });
             void showAlert("Image applied to your project.", "Images");
         } catch (err: any) {
+            const msg = String(err?.message || err || "");
+            if (/image storage limit reached/i.test(msg)) {
+                updateStagedImage(id, {
+                    status: "staged",
+                    error: msg,
+                });
+                void showAlert(msg, "Images");
+                return;
+            }
             updateStagedImage(id, {
                 status: "failed",
                 error: err?.message ? String(err.message) : "Failed to apply image",
             });
             void showAlert("Could not apply this image. Please try again.", "Images");
+        } finally {
+            if (stagedImageApplyInFlightRef.current === id) {
+                stagedImageApplyInFlightRef.current = null;
+            }
         }
-    }, [currentFile, saveFileToServer, showAlert, showConfirm, stagedImages, updateStagedImage, uploadImageToUserBlob]);
+    }, [currentFile, ensureFreshVercelConnection, ensureStorageConfiguredForImages, saveFileToServer, showAlert, showConfirm, stagedImages, updateStagedImage, uploadImageToUserBlob]);
 
     const undoLastImageInsert = useCallback(async () => {
         if (!lastImageInsert) {
@@ -5551,16 +5684,16 @@ export default function AppBuilderEditor({
         }
     };
 
-    const runVercelDeployLive = useCallback(async () => {
-        if (!appId) return;
-        if (isDeploying) return;
+    const runVercelDeployLive = useCallback(async (): Promise<boolean> => {
+        if (!appId) return false;
+        if (isDeploying) return false;
 
         setIsDeploying(true);
 
         try {
             // Ensure Vercel is connected before attempting either deploy.
             if (!(await ensureFreshVercelConnection("preview"))) {
-                return;
+                return false;
             }
 
             const csrf = await ensureSessionAndCsrf().catch(() => null);
@@ -5600,6 +5733,18 @@ export default function AppBuilderEditor({
             const url = (data?.url || data?.previewUrl || "").toString().trim();
             if (!url) throw new Error("Deploy completed but no URL was returned.");
 
+            const deployedProjectId = String((data as any)?.vercelProjectId || "").trim();
+            if (deployedProjectId) {
+                setApp((prev) => {
+                    if (!prev) return prev;
+                    return {
+                        ...prev,
+                        vercelProjectId: deployedProjectId || prev.vercelProjectId,
+                        isDeployed: true,
+                    };
+                });
+            }
+
             setLastDeployLiveUrl(url);
             setDeployBannerFromRoute(buildDeploySuccessBanner({
                 appId,
@@ -5607,7 +5752,7 @@ export default function AppBuilderEditor({
                 liveUrl: url,
             }));
 
-            return;
+            return true;
         } catch (err: any) {
             const errorMessage = err?.message || "Deploy failed.";
             const isVercelConnectIssue = /Vercel is not connected yet|Vercel is not connected|not connected for this user/i.test(errorMessage);
@@ -5626,11 +5771,16 @@ export default function AppBuilderEditor({
                     ? "reduce_deploy_payload"
                     : "deploy_issue_fix",
             });
+            return false;
         } finally {
             // Keep deploy disabled for longer to prevent spam
             setTimeout(() => setIsDeploying(false), 5000);
         }
     }, [appId, ensureFreshVercelConnection, isDeploying]);
+
+    useEffect(() => {
+        runVercelDeployLiveRef.current = runVercelDeployLive;
+    }, [runVercelDeployLive]);
 
     const startVercelOAuthForPreview = useCallback(() => {
         if (!VERCEL_INTEGRATION_SLUG) {
@@ -7099,6 +7249,8 @@ export default function AppBuilderEditor({
                                             onConnectVercel={async () => {
                                                 await ensureFreshVercelConnection("images");
                                             }}
+                                            hasVercelProject={Boolean(app?.vercelProjectId?.trim())}
+                                            onPrepareVercelProject={runVercelDeployLive}
                                             onLiveHtml={handleVisualEditorLiveHtml}
                                             registerBeforeExitFlush={(fn) => {
                                                 previewEditorFlushRef.current = fn;

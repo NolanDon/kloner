@@ -9,6 +9,7 @@ import Image from 'next/image'
 import { useModal } from "@/components/ui/ModalContext";
 import { pickPreferredHtmlPath } from "@/src/lib/htmlEntrypoint";
 import { TOUR_KEY as PREVIEW_TOUR_STORAGE_KEY } from "./PreviewEditorTour";
+import { ensureUserImageStorageRoom, IMAGE_STORAGE_LIMIT_BYTES, loadUserImageStorageUsage, uploadUserImageToFirebase } from "@/src/lib/imageStorage";
 
 export type Device = "desktop" | "tablet" | "mobile";
 export type ViewMode = "code" | "preview" | "screenshot";
@@ -38,12 +39,19 @@ function requestDeleteAssetsByPaths(paths: string[]) {
 function proxyFirebaseStorageUrl(rawUrl: string): string {
     const url = String(rawUrl || "").trim();
     if (!url) return url;
-    if (url.startsWith("/api/user-blob/proxy?url=")) return url;
+    if (url.startsWith("/api/user-blob/proxy?url=")) {
+        const encoded = url.slice("/api/user-blob/proxy?url=".length);
+        try {
+            return decodeURIComponent(encoded);
+        } catch {
+            return url;
+        }
+    }
     if (!/^https?:\/\//i.test(url)) return url;
     if (!/^https?:\/\/(?:firebasestorage|storage)\.googleapis\.com\//i.test(url)) {
         return url;
     }
-    return `/api/user-blob/proxy?url=${encodeURIComponent(url)}`;
+    return url;
 }
 
 function rewriteFirebaseStorageUrlsInHtml(html: string): string {
@@ -117,6 +125,8 @@ type Props = {
     onTakeBuilderTour?: () => void;
     isVercelConnected?: boolean;
     onConnectVercel?: () => void;
+    hasVercelProject?: boolean;
+    onPrepareVercelProject?: () => Promise<boolean> | boolean;
     onLiveHtml?: (html: string) => void;
     isFilesHydrated?: boolean;
 };
@@ -1248,6 +1258,8 @@ function AppPreviewEditorCore({
     onTakeBuilderTour,
     isVercelConnected = false,
     onConnectVercel,
+    hasVercelProject = false,
+    onPrepareVercelProject,
     isFilesHydrated = true,
 }: Props) {
     const { user } = useAuth();
@@ -1562,7 +1574,7 @@ function AppPreviewEditorCore({
     const [selectionMeta, setSelectionMeta] = useState<SelectionMeta>({ has: false });
     const [lastSelectedPath, setLastSelectedPath] = useState(null);
     const [archivedPageIds, setArchivedPageIds] = useState<string[]>([]);
-    const { showAlert } = useModal();
+    const { showAlert, showConfirm } = useModal();
     const [showPageLayers, setShowPageLayers] = useState(false);
         const [isPageDropdownOpen, setIsPageDropdownOpen] = useState(false);
         const pageDropdownRef = useRef<HTMLDivElement | null>(null);
@@ -2506,9 +2518,6 @@ function AppPreviewEditorCore({
             return;
         }
 
-        setSavingDraft(true);
-        setApplyingPreview(true);
-
         try {
             const doc = getPreviewIframeDocument() ?? document;
 
@@ -2520,6 +2529,9 @@ function AppPreviewEditorCore({
             if (!imagesReady) {
                 return;
             }
+
+            setSavingDraft(true);
+            setApplyingPreview(true);
 
             // 2) Capture HTML from iframe, without Kloner UI
             const rawHtml = doc
@@ -3650,68 +3662,51 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
             console.warn("[image-save] compression failed, using original file", e);
         }
 
-        const csrf = await ensureSessionAndCsrf();
-        const safeName = sanitizeImageName(fileForUpload.name || "upload.bin");
+        const uid = user?.uid;
+        if (!uid) {
+            throw new Error("Missing user session");
+        }
 
-        const url = `/api/user-blob/upload-url?filename=${encodeURIComponent(
-            safeName
-        )}&renderId=${encodeURIComponent(draftId)}`;
+        const safeName = sanitizeImageName(fileForUpload.name || "upload.bin");
+        const usage = await loadUserImageStorageUsage(uid);
+        if (usage.usedBytes + fileForUpload.size > IMAGE_STORAGE_LIMIT_BYTES) {
+            throw new Error(
+                `Image storage limit reached. You are using ${Math.round(usage.usedBytes / 1024 / 1024)}MB of ${Math.round(IMAGE_STORAGE_LIMIT_BYTES / 1024 / 1024)}MB.`,
+            );
+        }
+
+        const assetId = crypto.randomUUID();
+        const storagePath = `kloner_images/${uid}/${sanitizeImageName(draftId || "draft")}/${assetId}-${safeName}`;
 
         logImageSaveVerbose("upload request sent", {
-            url,
-            hasCsrf: !!csrf,
+            storagePath,
             uploadName: fileForUpload.name,
             uploadBytes: fileForUpload.size,
             uploadType: fileForUpload.type,
         });
 
-        const res = await fetch(url, {
-            method: "POST",
-            headers: {
-                "content-type": fileForUpload.type || "application/octet-stream",
-                ...(csrf ? { "x-csrf": csrf } : {}),
-            },
-            credentials: "include",
-            body: fileForUpload,
+        const uploaded = await uploadUserImageToFirebase({
+            uid,
+            file: fileForUpload,
+            fileName: safeName,
+            renderId: draftId,
         });
-
-        const j = await res.json().catch(() => ({} as any));
-
-        logImageSaveVerbose("upload response received", {
-            ok: res.ok,
-            status: res.status,
-            bodyKeys: Object.keys(j || {}),
-        });
-
-        if (!res.ok || !j?.url || !j?.path) {
-            console.error("[image-save] upload failed", {
-                status: res.status,
-                body: j,
-            });
-            if (isVercelConnectNeededError(j?.error) || isVercelConnectNeededError(j)) {
-                onConnectVercel?.();
-                return null;
-            }
-            throw new Error(j?.error || "storage_upload_failed");
+        if (!uploaded?.url?.trim()) {
+            throw new Error("Image upload returned no URL.");
         }
-
         const asset: UploadedAsset = {
-            url: j.url as string,
-            path: j.path as string,
+            url: uploaded.url,
+            path: uploaded.path,
         };
 
         logImageSave("uploaded image", {
             name: asset.path,
+            url: asset.url,
             bytes: fileForUpload.size,
             type: fileForUpload.type,
         });
 
         return asset;
-    }
-
-    function isVercelConnectNeededError(err: unknown): boolean {
-        const msg = err instanceof Error ? err.message : String((err as any)?.message || err || "");
-        return /vercel is not connected yet|connect vercel before uploading this image/i.test(msg);
     }
 
 
@@ -3776,6 +3771,9 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
             const localId = img.dataset.localImageId;
             const tempUrl = img.src;
             const localFilename = img.dataset.localFilename || "upload.bin";
+            const pendingUploads = getPreviewIframeApi()?.__klonerPendingImageUploads as
+                | Map<string, Promise<{ url: string; path?: string } | null>>
+                | undefined;
 
             if (!localId || !tempUrl) {
                 skippedMalformedImages += 1;
@@ -3790,6 +3788,38 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
             }
 
             try {
+                const pending = pendingUploads?.get(localId);
+                if (pending) {
+                    logImageSaveVerbose("awaiting immediate upload", { localId });
+                    const asset = await pending.catch(() => null);
+                    if (asset?.url) {
+                        logImageSaveVerbose("pending image upload resolved", {
+                            localId,
+                            url: asset.url,
+                            path: asset.path || "",
+                        });
+                        const oldTempUrl = img.src;
+                        img.src = asset.url;
+                        img.removeAttribute("data-local-image-id");
+                        img.removeAttribute("data-local-filename");
+                        if (asset.path) {
+                            img.setAttribute("data-kloner-path", asset.path);
+                        }
+                        logImageSaveVerbose("pending image injected into img", {
+                            localId,
+                            injectedUrl: asset.url,
+                            path: asset.path || "",
+                        });
+                        try {
+                            URL.revokeObjectURL(oldTempUrl);
+                        } catch {
+                            // ignore
+                        }
+                        processedImageSummaries.push({ localId, path: asset.path || undefined });
+                        continue;
+                    }
+                }
+
                 logImageSaveVerbose("reading local image", { localId });
 
                 const res = await fetch(tempUrl);
@@ -3815,6 +3845,11 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
 
                 const asset = await uploadFileToUserBlob(file, draftId);
                 if (!asset) return false;
+                logImageSaveVerbose("uploaded local img during save", {
+                    localId,
+                    url: asset.url,
+                    path: asset.path || "",
+                });
 
                 const oldTempUrl = img.src;
 
@@ -3837,7 +3872,9 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                     }, e);
                 }
             } catch (err) {
-                if (isVercelConnectNeededError(err)) {
+                const msg = String((err as any)?.message || err || "");
+                if (/image storage limit reached/i.test(msg)) {
+                    void showAlert(msg, "Images");
                     return false;
                 }
                 console.error("[image-save] failed while uploading image", {
@@ -3884,6 +3921,9 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                 (el.dataset as any).localFilename || "background.bin";
 
             const tempUrl = extractBgUrlFromStyle(el);
+            const pendingUploads = getPreviewIframeApi()?.__klonerPendingImageUploads as
+                | Map<string, Promise<{ url: string; path?: string } | null>>
+                | undefined;
 
             if (!localId || !tempUrl) {
                 skippedMalformedBackgrounds += 1;
@@ -3898,6 +3938,41 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
             }
 
             try {
+                const pending = pendingUploads?.get(localId);
+                if (pending) {
+                    logImageSaveVerbose("awaiting immediate background upload", { localId });
+                    const asset = await pending.catch(() => null);
+                    if (asset?.url) {
+                        logImageSaveVerbose("pending background upload resolved", {
+                            localId,
+                            url: asset.url,
+                            path: asset.path || "",
+                        });
+                        const cs = doc.defaultView?.getComputedStyle(el);
+                        const currentBgColor = String(cs?.backgroundColor || "").trim();
+                        if (currentBgColor && currentBgColor !== "transparent" && currentBgColor !== "rgba(0, 0, 0, 0)") {
+                            el.style.backgroundColor = currentBgColor;
+                        }
+                        el.style.backgroundImage = `url("${asset.url}")`;
+                        delete (el.dataset as any).localImageId;
+                        delete (el.dataset as any).localFilename;
+                        if (asset.path) {
+                            el.setAttribute("data-kloner-bg-path", asset.path);
+                        }
+                        logImageSaveVerbose("pending background injected", {
+                            localId,
+                            injectedUrl: asset.url,
+                            path: asset.path || "",
+                        });
+                        try {
+                            URL.revokeObjectURL(tempUrl);
+                        } catch {
+                            // ignore
+                        }
+                        continue;
+                    }
+                }
+
                 logImageSaveVerbose("reading background image", { localId });
 
                 const res = await fetch(tempUrl);
@@ -3922,8 +3997,18 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                 });
                 const asset = await uploadFileToUserBlob(file, draftId);
                 if (!asset) return false;
+                logImageSaveVerbose("uploaded local background during save", {
+                    localId,
+                    url: asset.url,
+                    path: asset.path || "",
+                });
 
                 const oldTempUrl = tempUrl;
+                const cs = doc.defaultView?.getComputedStyle(el);
+                const currentBgColor = String(cs?.backgroundColor || "").trim();
+                if (currentBgColor && currentBgColor !== "transparent" && currentBgColor !== "rgba(0, 0, 0, 0)") {
+                    el.style.backgroundColor = currentBgColor;
+                }
 
                 // Swap background to the real storage URL
                 el.style.backgroundImage = `url("${asset.url}")`;
@@ -3945,7 +4030,9 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                     }, e);
                 }
             } catch (err) {
-                if (isVercelConnectNeededError(err)) {
+                const msg = String((err as any)?.message || err || "");
+                if (/image storage limit reached/i.test(msg)) {
+                    void showAlert(msg, "Images");
                     return false;
                 }
                 console.error("[image-save] failed while uploading background image", {
@@ -4034,6 +4121,12 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                             return;
                         }
                         const { url, path } = uploaded;
+                        logImageSave("iframe upload completed", {
+                            id,
+                            filename,
+                            url,
+                            path: path || "",
+                        });
 
                         iframeRef.current?.contentWindow?.postMessage(
                             {
@@ -4188,17 +4281,33 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
 
         try {
             const uid = user.uid;
-            const timestamp = Date.now();
-            const ext = 'jpg'; // assume jpg
-            const fileName = name || `ai-injected-${timestamp}.${ext}`;
-            const storagePath = `kloner_images/${uid}/${fileName}`;
+            const usage = await loadUserImageStorageUsage(uid);
 
-            // Download the image
+            // Download the image first, then re-upload it into the user's storage.
             const response = await fetch(url);
+            if (!response.ok) {
+                throw new Error(`Failed to fetch image (${response.status})`);
+            }
             const blob = await response.blob();
+            const fileName = sanitizeImageName(name || `ai-injected-${Date.now()}.jpg`);
+            const file = new File([blob], fileName, {
+                type: blob.type || "application/octet-stream",
+            });
+            if (usage.usedBytes + file.size > IMAGE_STORAGE_LIMIT_BYTES) {
+                throw new Error(
+                    `Image storage limit reached. You are using ${Math.round(usage.usedBytes / 1024 / 1024)}MB of ${Math.round(IMAGE_STORAGE_LIMIT_BYTES / 1024 / 1024)}MB.`,
+                );
+            }
 
-            const storageRef = ref(storage, storagePath);
-            await uploadBytes(storageRef, blob);
+            const uploaded = await uploadUserImageToFirebase({
+                uid,
+                file,
+                fileName,
+                renderId: draftId,
+            });
+            if (!uploaded?.url?.trim()) {
+                throw new Error("Image upload returned no URL.");
+            }
 
             // No need to add to items here, as the panel will reload
         } catch (err) {
@@ -4464,8 +4573,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
 
     const showSidebarPanel = isCompactLayout ? mobileTab === "panel" : !sidebarHidden;
     const shouldShowFilesHydrationLoader =
-        (!isFilesHydrated && (viewMode === "custom" || viewMode === "images")) ||
-        isPreviewImageHydrating;
+        !isFilesHydrated && (viewMode === "custom" || viewMode === "images");
 
     const clearPreviewImageHydrationWatchers = useCallback(() => {
         if (previewImageHydrationTimeoutRef.current) {
@@ -4651,6 +4759,10 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                         },
                         device,
                     );
+                    const api = doc.defaultView?.__klonerApi as any;
+                    if (api) {
+                        api.uploadImageAsset = uploadFileToUserBlob;
+                    }
                     iframeRef.current?.contentWindow?.focus();
                 }
 
@@ -5472,6 +5584,8 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                         selectionMeta={selectionMeta}
                                         isVercelConnected={Boolean(isVercelConnected)}
                                         onConnectVercel={onConnectVercel}
+                                        hasVercelProject={hasVercelProject}
+                                        onPrepareVercelProject={onPrepareVercelProject}
                                     />
                                 )}
 
@@ -6602,6 +6716,8 @@ type AppSourcePreviewEditorProps = {
     onTakeBuilderTour?: () => void;
     isVercelConnected?: boolean;
     onConnectVercel?: () => void;
+    hasVercelProject?: boolean;
+    onPrepareVercelProject?: () => Promise<boolean> | boolean;
     htmlEntryHints?: unknown;
     onLiveHtml?: (html: string) => void;
     isFilesHydrated?: boolean;
@@ -6648,6 +6764,8 @@ export default function AppPreviewEditor({
     registerBeforeExitFlush,
     onTakeBuilderTour,
     onConnectVercel,
+    hasVercelProject,
+    onPrepareVercelProject,
     onLiveHtml,
 }: AppSourcePreviewEditorProps) {
     const htmlPaths = useMemo(
@@ -6813,6 +6931,8 @@ export default function AppPreviewEditor({
                     registerBeforeExitFlush={registerBeforeExitFlush}
                     onTakeBuilderTour={onTakeBuilderTour}
                     onConnectVercel={onConnectVercel}
+                    hasVercelProject={hasVercelProject}
+                    onPrepareVercelProject={onPrepareVercelProject}
                     onLiveHtml={onLiveHtml}
                     appName={appName}
                     isRenaming={isRenaming}

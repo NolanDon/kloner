@@ -33,8 +33,9 @@ export async function GET(req: NextRequest) {
 
             const data = snap.data() || {};
             const connected = Boolean((data as any).connected);
+            const blobConfigured = Boolean((data as any).blobReadWriteToken);
 
-            return NextResponse.json({ connected }, { status: 200 });
+            return NextResponse.json({ connected, blobConfigured }, { status: 200 });
         },
         {
             methods: ["GET"],

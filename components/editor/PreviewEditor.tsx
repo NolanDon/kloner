@@ -658,6 +658,7 @@ import { injectEditableOverlay } from "@/src/lib/klonerIframeRuntime";
 import { MetaSettings, UploadedAsset } from "../../components/MetaSettings";
 import { AiImageLibraryPanel } from "../../components/AiImageLibraryPanel";
 import { IS_MOBILE, sanitizeImageName } from "../../components/helpers";
+import { IMAGE_STORAGE_LIMIT_BYTES, loadUserImageStorageUsage, uploadUserImageToFirebase } from "@/src/lib/imageStorage";
 import MiniToolbar from "../../src/lib/miniToolbarV2";
 import FloatingBlockToolbar from "../../src/lib/floatingToolbar";
 
@@ -3518,54 +3519,30 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
             );
         }
 
-        const csrf = await ensureSessionAndCsrf();
-        const safeName = sanitizeImageName(fileForUpload.name || "upload.bin");
-
-        const url = `/api/user-blob/upload-url?filename=${encodeURIComponent(
-            safeName
-        )}&renderId=${encodeURIComponent(draftId)}`;
-
-        if (process.env.NODE_ENV === "development") {
-            console.log("[uploadFileToUserBlob] POST", {
-                url,
-                hasCsrf: !!csrf,
-                uploadName: fileForUpload.name,
-                uploadBytes: fileForUpload.size,
-                uploadType: fileForUpload.type,
-            });
+        if (!user?.uid) {
+            throw new Error("You need to sign in before uploading images.");
         }
 
-        const res = await fetch(url, {
-            method: "POST",
-            headers: {
-                "content-type": fileForUpload.type || "application/octet-stream",
-                ...(csrf ? { "x-csrf": csrf } : {}),
-            },
-            credentials: "include",
-            body: fileForUpload,
+        const room = await loadUserImageStorageUsage(user.uid);
+        if (room.usedBytes + fileForUpload.size > IMAGE_STORAGE_LIMIT_BYTES) {
+            throw new Error(
+                `Image storage limit reached. Used ${room.usedBytes} of ${IMAGE_STORAGE_LIMIT_BYTES} bytes.`,
+            );
+        }
+
+        const uploaded = await uploadUserImageToFirebase({
+            uid: user.uid,
+            file: fileForUpload,
+            fileName: sanitizeImageName(fileForUpload.name || "upload.bin"),
+            renderId: draftId,
         });
-
-        const j = await res.json().catch(() => ({} as any));
-
-        if (process.env.NODE_ENV === "development") {
-            console.log("[uploadFileToUserBlob] response", {
-                ok: res.ok,
-                status: res.status,
-                bodyKeys: Object.keys(j || {}),
-            });
-        }
-
-        if (!res.ok || !j?.url || !j?.path) {
-            console.error("[uploadFileToUserBlob] error", {
-                status: res.status,
-                body: j,
-            });
-            throw new Error(j?.error || "storage_upload_failed");
+        if (!uploaded?.url?.trim()) {
+            throw new Error("Image upload returned no URL.");
         }
 
         const asset: UploadedAsset = {
-            url: j.url as string,
-            path: j.path as string,
+            url: uploaded.url,
+            path: uploaded.path,
         };
 
         if (process.env.NODE_ENV === "development") {
@@ -3647,6 +3624,9 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
             const localId = img.dataset.localImageId;
             const tempUrl = img.src;
             const localFilename = img.dataset.localFilename || "upload.bin";
+            const pendingUploads = (iframeRef.current?.contentWindow as any)?.__klonerPendingImageUploads as
+                | Map<string, Promise<{ url: string; path?: string } | null>>
+                | undefined;
 
             if (!localId || !tempUrl) {
                 console.warn(
@@ -3657,6 +3637,43 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
             }
 
             try {
+                const pending = pendingUploads?.get(localId);
+                if (pending) {
+                    if (process.env.NODE_ENV === "development") {
+                        console.log("[flushPendingImagesBeforeSave] awaiting immediate upload (img)", { localId });
+                    }
+                    const asset = await pending.catch(() => null);
+                    if (asset?.url) {
+                        if (process.env.NODE_ENV === "development") {
+                            console.log("[flushPendingImagesBeforeSave] pending img upload resolved", {
+                                localId,
+                                url: asset.url,
+                                path: asset.path || "",
+                            });
+                        }
+                        const oldTempUrl = img.src;
+                        img.src = asset.url;
+                        img.removeAttribute("data-local-image-id");
+                        img.removeAttribute("data-local-filename");
+                        if (asset.path) {
+                            img.setAttribute("data-kloner-path", asset.path);
+                        }
+                        if (process.env.NODE_ENV === "development") {
+                            console.log("[flushPendingImagesBeforeSave] pending img injected", {
+                                localId,
+                                url: asset.url,
+                                path: asset.path || "",
+                            });
+                        }
+                        try {
+                            URL.revokeObjectURL(oldTempUrl);
+                        } catch {
+                            // ignore
+                        }
+                        continue;
+                    }
+                }
+
                 if (process.env.NODE_ENV === "development") {
                     console.log("[flushPendingImagesBeforeSave] fetching blob URL (img)", {
                         localId,
@@ -3688,6 +3705,13 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                 }
 
                 const asset = await uploadFileToUserBlob(file, draftId);
+                if (process.env.NODE_ENV === "development") {
+                    console.log("[flushPendingImagesBeforeSave] uploaded img during save", {
+                        localId,
+                        url: asset.url,
+                        path: asset.path || "",
+                    });
+                }
 
                 const oldTempUrl = img.src;
 
@@ -3769,6 +3793,9 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                 (el.dataset as any).localFilename || "background.bin";
 
             const tempUrl = extractBgUrlFromStyle(el);
+            const pendingUploads = (iframeRef.current?.contentWindow as any)?.__klonerPendingImageUploads as
+                | Map<string, Promise<{ url: string; path?: string } | null>>
+                | undefined;
 
             if (!localId || !tempUrl) {
                 console.warn(
@@ -3779,6 +3806,47 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
             }
 
             try {
+                const pending = pendingUploads?.get(localId);
+                if (pending) {
+                    if (process.env.NODE_ENV === "development") {
+                        console.log("[flushPendingImagesBeforeSave] awaiting immediate upload (bg block)", { localId });
+                    }
+                    const asset = await pending.catch(() => null);
+                    if (asset?.url) {
+                        if (process.env.NODE_ENV === "development") {
+                            console.log("[flushPendingImagesBeforeSave] pending bg upload resolved", {
+                                localId,
+                                url: asset.url,
+                                path: asset.path || "",
+                            });
+                        }
+                        const cs = doc.defaultView?.getComputedStyle(el);
+                        const currentBgColor = String(cs?.backgroundColor || "").trim();
+                        if (currentBgColor && currentBgColor !== "transparent" && currentBgColor !== "rgba(0, 0, 0, 0)") {
+                            el.style.backgroundColor = currentBgColor;
+                        }
+                        el.style.backgroundImage = `url("${asset.url}")`;
+                        delete (el.dataset as any).localImageId;
+                        delete (el.dataset as any).localFilename;
+                        if (asset.path) {
+                            el.setAttribute("data-kloner-bg-path", asset.path);
+                        }
+                        if (process.env.NODE_ENV === "development") {
+                            console.log("[flushPendingImagesBeforeSave] pending bg injected", {
+                                localId,
+                                url: asset.url,
+                                path: asset.path || "",
+                            });
+                        }
+                        try {
+                            URL.revokeObjectURL(tempUrl);
+                        } catch {
+                            // ignore
+                        }
+                        continue;
+                    }
+                }
+
                 if (process.env.NODE_ENV === "development") {
                     console.log(
                         "[flushPendingImagesBeforeSave] fetching blob URL (bg block)",
@@ -3809,6 +3877,13 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                     });
                 }
                 const asset = await uploadFileToUserBlob(file, draftId);
+                if (process.env.NODE_ENV === "development") {
+                    console.log("[flushPendingImagesBeforeSave] uploaded bg during save", {
+                        localId,
+                        url: asset.url,
+                        path: asset.path || "",
+                    });
+                }
 
                 const oldTempUrl = tempUrl;
 
@@ -4110,17 +4185,33 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
 
         try {
             const uid = user.uid;
-            const timestamp = Date.now();
-            const ext = 'jpg'; // assume jpg
-            const fileName = name || `ai-injected-${timestamp}.${ext}`;
-            const storagePath = `kloner_images/${uid}/${fileName}`;
+            const usage = await loadUserImageStorageUsage(uid);
 
-            // Download the image
+            // Download the image first, then re-upload it into the user's storage.
             const response = await fetch(url);
+            if (!response.ok) {
+                throw new Error(`Failed to fetch image (${response.status})`);
+            }
             const blob = await response.blob();
+            const fileName = sanitizeImageName(name || `ai-injected-${Date.now()}.jpg`);
+            const file = new File([blob], fileName, {
+                type: blob.type || "application/octet-stream",
+            });
+            if (usage.usedBytes + file.size > IMAGE_STORAGE_LIMIT_BYTES) {
+                throw new Error(
+                    `Image storage limit reached. You are using ${Math.round(usage.usedBytes / 1024 / 1024)}MB of ${Math.round(IMAGE_STORAGE_LIMIT_BYTES / 1024 / 1024)}MB.`,
+                );
+            }
 
-            const storageRef = ref(storage, storagePath);
-            await uploadBytes(storageRef, blob);
+            const uploaded = await uploadUserImageToFirebase({
+                uid,
+                file,
+                fileName,
+                renderId: draftId,
+            });
+            if (!uploaded?.url?.trim()) {
+                throw new Error("Image upload returned no URL.");
+            }
 
             // No need to add to items here, as the panel will reload
         } catch (err) {
@@ -4386,6 +4477,10 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                         (updated) => setHtmlDraft(updated),
                         device,
                     );
+                    const api = doc.defaultView?.__klonerApi as any;
+                    if (api) {
+                        api.uploadImageAsset = uploadFileToUserBlob;
+                    }
                     iframeRef.current?.contentWindow?.focus();
                 }
             }}

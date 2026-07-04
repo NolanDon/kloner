@@ -394,6 +394,33 @@ function pickHtmlTargetPaths(files: AppBuilderFiles, htmlEditIndex: unknown): st
     return Array.from(hinted);
 }
 
+function proxyFirebaseStorageUrl(rawUrl: string): string {
+    const url = String(rawUrl || "").trim();
+    if (!url) return url;
+    if (url.startsWith("/api/user-blob/proxy?url=")) {
+        const encoded = url.slice("/api/user-blob/proxy?url=".length);
+        try {
+            return decodeURIComponent(encoded);
+        } catch {
+            return url;
+        }
+    }
+    if (!/^https?:\/\//i.test(url)) return url;
+    if (!/^https?:\/\/(?:firebasestorage|storage)\.googleapis\.com\//i.test(url)) {
+        return url;
+    }
+    return url;
+}
+
+function rewriteFirebaseStorageUrlsInHtml(html: string): string {
+    const input = String(html || "");
+    if (!input) return input;
+    return input.replace(
+        /https?:\/\/(?:firebasestorage|storage)\.googleapis\.com\/[^\s"'<>)]*/gi,
+        (match) => proxyFirebaseStorageUrl(match),
+    );
+}
+
 async function readHtmlFromStorage(storagePath: string): Promise<string | null> {
     const path = String(storagePath || "").trim();
     if (!path) return null;
@@ -401,7 +428,7 @@ async function readHtmlFromStorage(storagePath: string): Promise<string | null> 
     try {
         const bucket = getBucket();
         const [buffer] = await bucket.file(path).download();
-        const html = buffer.toString("utf8").trim();
+        const html = rewriteFirebaseStorageUrlsInHtml(buffer.toString("utf8").trim());
         return html || null;
     } catch (error) {
         console.warn("[html-storage] failed to read html from storage", { storagePath: path, error });
@@ -415,17 +442,28 @@ export async function hydrateAppBuilderHtmlFiles(params: {
     htmlEditIndex?: unknown;
 }): Promise<AppBuilderFiles> {
     const files = params.files || {};
-    const storagePath = typeof params.htmlStoragePath === "string" ? params.htmlStoragePath.trim() : "";
-    if (!storagePath) return files;
+    const nextFiles: AppBuilderFiles = {};
+    for (const [path, record] of Object.entries(files)) {
+        const content = String(record?.content || "");
+        nextFiles[path] = isHtmlPath(path)
+            ? {
+                ...record,
+                content: rewriteFirebaseStorageUrlsInHtml(content),
+            }
+            : { ...record };
+    }
 
-    const targetPaths = pickHtmlTargetPaths(files, params.htmlEditIndex);
-    const needsHydration = targetPaths.some((path) => !String(files?.[path]?.content || "").trim());
-    if (!needsHydration) return files;
+    const storagePath = typeof params.htmlStoragePath === "string" ? params.htmlStoragePath.trim() : "";
+    if (!storagePath) return nextFiles;
+
+    const targetPaths = pickHtmlTargetPaths(nextFiles, params.htmlEditIndex);
+    const needsHydration = targetPaths.some((path) => !String(nextFiles?.[path]?.content || "").trim());
+    if (!needsHydration) return nextFiles;
 
     const html = await readHtmlFromStorage(storagePath);
-    if (!html) return files;
+    if (!html) return nextFiles;
 
-    const next: AppBuilderFiles = { ...files };
+    const next: AppBuilderFiles = { ...nextFiles };
     let applied = false;
 
     for (const path of targetPaths) {
@@ -438,12 +476,12 @@ export async function hydrateAppBuilderHtmlFiles(params: {
         };
         applied = true;
 
-        if (Object.prototype.hasOwnProperty.call(files, path)) {
+        if (Object.prototype.hasOwnProperty.call(nextFiles, path)) {
             break;
         }
     }
 
-    if (!applied && !Object.keys(files || {}).some((path) => isHtmlPath(path))) {
+    if (!applied && !Object.keys(nextFiles || {}).some((path) => isHtmlPath(path))) {
         next["index.html"] = {
             content: html,
             lastModified: Date.now(),

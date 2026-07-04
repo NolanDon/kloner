@@ -1241,7 +1241,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
     const latestSummaryFeedbackContextRef = useRef<SummarySearchFeedbackContext | null>(null);
     const previewIssueText = String(previewIssue || '').trim();
     const hasPreviewIssue = Boolean(previewIssueText);
-    const showPreviewIssueDetails = process.env.NODE_ENV !== "production";
+    const showPreviewIssueDetails = true;
     const chatDisabled = PRODUCTION_AGENT_CHAT_BLOCKED || (previewReady === false && !freeCompileFixContext && !hasPreviewIssue);
     // Contract gate is owned by the parent editor; chat only renders Fix with AI
     // when the gated callback is provided.
@@ -7373,67 +7373,29 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                         if (summary.length === 0) return null;
 
                                         return (
-                                            <div className="rounded-xl border border-[#F55F2A]/15 bg-white/80 p-3">
-                                                <div className="flex items-center justify-between gap-2">
-                                                    <div className="text-xs font-semibold text-neutral-800">Restore point diff</div>
-                                                    <div className="text-[11px] text-neutral-500">Captured before the apply request was sent.</div>
-                                                    <span
-                                                        className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-blue-200 bg-blue-50 text-blue-600"
-                                                        title="Development-only diff preview"
-                                                        aria-label="Development-only diff preview"
+                                            <div className="space-y-2">
+                                                {summary.map((entry) => (
+                                                    <button
+                                                        key={entry.path}
+                                                        type="button"
+                                                        onClick={() => setActiveRestorePointPreview({ restorePointId: message.restorePointId!, path: entry.path })}
+                                                        className="w-full rounded-xl border border-neutral-200 bg-white px-3 py-2.5 text-left shadow-sm transition hover:border-[#F55F2A]/25 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#F55F2A]/30"
                                                     >
-                                                        <Info className="h-3 w-3" />
-                                                    </span>
-                                                </div>
-                                                <div className="mt-3 space-y-2">
-                                                    {summary.map((entry) => (
-                                                        <button
-                                                            key={entry.path}
-                                                            type="button"
-                                                            onClick={() => setActiveRestorePointPreview({ restorePointId: message.restorePointId!, path: entry.path })}
-                                                            className="w-full rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-left transition hover:border-[#F55F2A]/30 hover:bg-white hover:shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-[#F55F2A]/30"
-                                                        >
-                                                            <div className="flex items-center justify-between gap-3">
-                                                                <div className="min-w-0 text-xs font-medium text-neutral-900 truncate">{entry.path}</div>
-                                                                <div className="flex shrink-0 items-center gap-2 text-[11px] font-semibold">
-                                                                    <span className="text-emerald-700">+{entry.added}</span>
-                                                                    <span className="text-rose-700">-{entry.removed}</span>
-                                                                </div>
+                                                        <div className="flex items-center justify-between gap-3">
+                                                            <div className="min-w-0 text-xs font-medium text-neutral-900 truncate">{entry.path}</div>
+                                                            <div className="flex shrink-0 items-center gap-2 text-[11px] font-semibold">
+                                                                <span className="text-emerald-700">+{entry.added}</span>
+                                                                <span className="text-rose-700">-{entry.removed}</span>
                                                             </div>
-                                                            <div className="mt-1 text-[11px] text-neutral-500">
-                                                                {entry.beforeLines} lines before • {entry.afterLines} lines after
-                                                            </div>
-                                                        </button>
-                                                    ))}
-                                                </div>
+                                                        </div>
+                                                        <div className="mt-1 text-[11px] text-neutral-500">
+                                                            {entry.beforeLines} lines before • {entry.afterLines} lines after
+                                                        </div>
+                                                    </button>
+                                                ))}
                                             </div>
                                         );
                                     })()}
-                                    <div className="flex flex-wrap items-center gap-2">
-                                        <button
-                                            onClick={() => {
-                                                void applyRestorePoint(message.restorePointId!, {
-                                                    statusMessage: getStatusMessageForAction(message.restoreActionLabel),
-                                                });
-                                            }}
-                                            disabled={isRestoreBusy}
-                                            className="px-2 py-1 text-xs bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50"
-                                            title={message.restoreActionLabel || "Apply"}
-                                        >
-                                            {message.restoreActionLabel || "Apply"}
-                                        </button>
-                                        <button
-                                            onClick={() => keepRestorePoint(message.restorePointId!)}
-                                            disabled={isRestoreBusy}
-                                            className="px-2 py-1 text-xs bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50"
-                                            title="Keep (do not auto-trim)"
-                                        >
-                                            Keep
-                                        </button>
-                                        <span className="text-[11px] text-gray-500">
-                                            {message.restorePointId.slice(0, 8)}
-                                        </span>
-                                    </div>
                                 </div>
                             )}
                             <div className="mt-2 flex items-center justify-between gap-2">

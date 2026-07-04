@@ -3,6 +3,7 @@ import { decryptString, encryptString, type EncryptedBlobV1 } from "./crypto";
 
 export type VercelIntegrationDoc = {
     accessToken?: string | EncryptedBlobV1 | null;
+    blobReadWriteToken?: string | EncryptedBlobV1 | null;
     installationId?: string | null;
     vercelTeamId?: string | null;
     vercelUserId?: string | null;
@@ -41,6 +42,18 @@ async function persistEncryptedAccessToken<T extends VercelIntegrationDoc>(
     await ref.set(
         {
             accessToken: encryptString(accessToken),
+        } as any,
+        { merge: true },
+    );
+}
+
+async function persistEncryptedBlobToken<T extends VercelIntegrationDoc>(
+    ref: DocumentReference<T>,
+    blobReadWriteToken: string,
+): Promise<void> {
+    await ref.set(
+        {
+            blobReadWriteToken: encryptString(blobReadWriteToken),
         } as any,
         { merge: true },
     );
@@ -94,4 +107,75 @@ export async function loadVercelIntegration<T extends VercelIntegrationDoc>(
     }
 
     return { exists: true, data, accessToken: null, migrated: false };
+}
+
+export async function loadVercelBlobReadWriteToken<T extends VercelIntegrationDoc>(
+    ref: DocumentReference<T>,
+): Promise<LoadedVercelIntegration<T> & { blobReadWriteToken: string | null }> {
+    const snap = await ref.get();
+    if (!snap.exists) {
+        return {
+            exists: false,
+            data: null,
+            accessToken: null,
+            migrated: false,
+            blobReadWriteToken: null,
+        };
+    }
+
+    const data = snap.data() as T;
+    const rawToken = data?.blobReadWriteToken;
+    const plaintextToken = normalizePlaintextToken(rawToken);
+    if (plaintextToken) {
+        try {
+            if ((process.env.KLONER_ENCRYPTION_KEY || "").trim()) {
+                await persistEncryptedBlobToken(ref, plaintextToken);
+                return {
+                    exists: true,
+                    data,
+                    accessToken: null,
+                    migrated: true,
+                    blobReadWriteToken: plaintextToken,
+                };
+            }
+        } catch (error) {
+            console.warn("[vercel-integration] failed to encrypt legacy blob token", {
+                path: ref.path,
+                error,
+            });
+        }
+
+        return {
+            exists: true,
+            data,
+            accessToken: null,
+            migrated: false,
+            blobReadWriteToken: plaintextToken,
+        };
+    }
+
+    if (isEncryptedBlobV1(rawToken)) {
+        return {
+            exists: true,
+            data,
+            accessToken: null,
+            migrated: false,
+            blobReadWriteToken: decryptString(rawToken),
+        };
+    }
+
+    return {
+        exists: true,
+        data,
+        accessToken: null,
+        migrated: false,
+        blobReadWriteToken: null,
+    };
+}
+
+export async function saveVercelBlobReadWriteToken<T extends VercelIntegrationDoc>(
+    ref: DocumentReference<T>,
+    blobReadWriteToken: string,
+): Promise<void> {
+    await persistEncryptedBlobToken(ref, blobReadWriteToken);
 }

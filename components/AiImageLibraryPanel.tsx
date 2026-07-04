@@ -4,11 +4,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { RefObject, DragEvent } from "react";
 import { ref, listAll, getDownloadURL } from "firebase/storage";
-import { ArrowUpRight, Image as ImageIcon, MessageCircleWarning, RefreshCcw, Trash2 } from "lucide-react";
+import { AlertTriangle, ArrowUpRight, ChevronDown, ExternalLink, Image as ImageIcon, MessageCircleWarning, RefreshCcw, RotateCcw, Trash2, X } from "lucide-react";
 import { storage } from "@/lib/firebase";
 import type { User as FirebaseUser } from "firebase/auth";
 import { useModal } from "@/components/ui/ModalContext";
-import { useVercelIntegration } from "@/src/hooks/useVercelIntegration";
+import { IMAGE_STORAGE_LIMIT_BYTES, formatBytes, loadUserImageStorageUsage } from "@/src/lib/imageStorage";
 
 type AiLibraryItem = {
     url: string;
@@ -30,6 +30,8 @@ type Props = {
     iframeRef: RefObject<HTMLIFrameElement>;
     user: FirebaseUser | null;
     renderId: string | null;
+    hasVercelProject?: boolean;
+    onPrepareVercelProject?: () => Promise<boolean> | boolean;
     selectionMeta?: {
         has: boolean;
         tagName?: string;
@@ -100,12 +102,19 @@ function getFileName(value: string): string {
 function proxyFirebaseStorageUrl(rawUrl: string): string {
     const url = String(rawUrl || "").trim();
     if (!url) return url;
-    if (url.startsWith("/api/user-blob/proxy?url=")) return url;
+    if (url.startsWith("/api/user-blob/proxy?url=")) {
+        const encoded = url.slice("/api/user-blob/proxy?url=".length);
+        try {
+            return decodeURIComponent(encoded);
+        } catch {
+            return url;
+        }
+    }
     if (!/^https?:\/\//i.test(url)) return url;
     if (!/^https?:\/\/(?:firebasestorage|storage)\.googleapis\.com\//i.test(url)) {
         return url;
     }
-    return `/api/user-blob/proxy?url=${encodeURIComponent(url)}`;
+    return url;
 }
 
 function scanPageImages(doc: Document): PageImageItem[] {
@@ -178,19 +187,360 @@ function selectImageTarget(iframeRef: RefObject<HTMLIFrameElement>, selector: st
     return { api, element };
 }
 
-export function AiImageLibraryPanel({ iframeRef, user, renderId, selectionMeta, isVercelConnected = false, onConnectVercel }: Props) {
+function DashboardWarningCard(props: {
+    message: string;
+    detail?: string;
+    primaryLabel?: string;
+    onPrimary?: () => void;
+    secondaryLabel?: string;
+    onSecondary?: () => void;
+    onDismiss?: () => void;
+}) {
+    const [expanded, setExpanded] = useState(false);
+    const isCompact = !props.detail && Boolean(props.primaryLabel && props.onPrimary);
+
+    if (isCompact) {
+        return (
+            <div className="relative mt-3 flex items-center gap-2 rounded-2xl border border-amber-300/80 bg-white px-3 py-2 text-amber-950 shadow-[0_10px_24px_rgba(180,108,17,0.06)]">
+                <div className="flex h-5 w-5 shrink-0 items-center justify-center text-amber-700">
+                    <AlertTriangle className="h-3.5 w-3.5" />
+                </div>
+                <div className="min-w-0 flex-1 truncate text-[12px] font-semibold leading-4 text-amber-950">
+                    {props.message}
+                </div>
+                {props.onPrimary ? (
+                    <button
+                        type="button"
+                        onClick={props.onPrimary}
+                        className="inline-flex shrink-0 items-center justify-center gap-1 rounded-full border border-amber-300/80 bg-white px-3 py-1 text-[11px] font-semibold text-amber-900 shadow-sm transition hover:border-amber-400 hover:bg-amber-50"
+                    >
+                        <RotateCcw className="h-3 w-3 text-amber-800" />
+                        <span>{props.primaryLabel ?? "Start"}</span>
+                    </button>
+                ) : null}
+                {props.onDismiss ? (
+                    <button
+                        type="button"
+                        onClick={props.onDismiss}
+                        className="ml-1 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-amber-700 transition hover:bg-amber-100 hover:text-amber-950"
+                        aria-label="Dismiss warning"
+                        title="Dismiss"
+                    >
+                        <X className="h-3 w-3" />
+                    </button>
+                ) : null}
+            </div>
+        );
+    }
+
+    return (
+        <div className="relative mt-3 overflow-hidden rounded-2xl border border-amber-300/80 bg-white px-4 py-3 text-xs text-amber-950 shadow-[0_10px_24px_rgba(180,108,17,0.06)] sm:pr-12">
+            <div className="flex items-center gap-3">
+                <div className="flex h-6 w-6 shrink-0 items-center justify-center text-amber-700">
+                    <AlertTriangle className="h-4 w-4" />
+                </div>
+                <div className="min-w-0 flex-1">
+                    <div className="whitespace-nowrap text-sm font-semibold leading-5 text-amber-950">
+                        {props.message}
+                    </div>
+                </div>
+                {props.detail ? (
+                    <button
+                        type="button"
+                        onClick={() => setExpanded((v) => !v)}
+                        className="inline-flex h-6 w-6 shrink-0 items-center justify-center text-amber-800 transition hover:text-amber-950"
+                        aria-expanded={expanded}
+                        aria-label={expanded ? "Hide details" : "Show details"}
+                        title={expanded ? "Hide details" : "Show details"}
+                    >
+                        <ChevronDown className={`h-3.5 w-3.5 transition-transform ${expanded ? "rotate-180" : ""}`} />
+                    </button>
+                ) : null}
+            </div>
+            <div className="mt-3 flex items-center gap-2 pl-9">
+                {props.primaryLabel && props.onPrimary ? (
+                    <button
+                        type="button"
+                        onClick={props.onPrimary}
+                        className="inline-flex items-center justify-center gap-1 rounded-full border border-amber-300/80 bg-white px-3 py-1.5 text-[11px] font-semibold text-amber-900 shadow-sm transition hover:border-amber-400 hover:bg-amber-50"
+                    >
+                        <RotateCcw className="h-3 w-3 text-amber-800" />
+                        <span>{props.primaryLabel}</span>
+                    </button>
+                ) : null}
+                {props.secondaryLabel && props.onSecondary ? (
+                    <button
+                        type="button"
+                        onClick={props.onSecondary}
+                        className="inline-flex items-center justify-center gap-1 rounded-full border border-amber-300/80 bg-white px-3 py-1.5 text-[11px] font-semibold text-amber-900 shadow-sm transition hover:border-amber-400 hover:bg-amber-50"
+                    >
+                        <span>{props.secondaryLabel}</span>
+                    </button>
+                ) : null}
+            </div>
+            {props.detail && expanded ? (
+                <div className="mt-2 pl-9 text-[12px] leading-5 text-amber-900/85">
+                    {props.detail}
+                </div>
+            ) : null}
+            {props.onDismiss ? (
+                <button
+                    type="button"
+                    onClick={props.onDismiss}
+                    className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full text-amber-700 transition hover:bg-amber-100 hover:text-amber-950 sm:right-3 sm:top-1/2 sm:-translate-y-1/2"
+                    aria-label="Dismiss warning"
+                    title="Dismiss"
+                >
+                    <X className="h-3.5 w-3.5" />
+                </button>
+            ) : null}
+        </div>
+    );
+}
+
+function StorageSetupModal({
+    isOpen,
+    onClose,
+    onSave,
+    isVercelConnected,
+    onConnectVercel,
+    hasVercelProject,
+    onPrepareVercelProject,
+}: {
+    isOpen: boolean;
+    onClose: () => void;
+    onSave: (token: string) => Promise<void>;
+    isVercelConnected: boolean;
+    onConnectVercel: () => void;
+    hasVercelProject: boolean;
+    onPrepareVercelProject?: () => Promise<boolean> | boolean;
+}) {
+    const [token, setToken] = useState("");
+    const [saving, setSaving] = useState(false);
+    const [result, setResult] = useState<string | null>(null);
+    const [error, setError] = useState<string | null>(null);
+    const [preparingProject, setPreparingProject] = useState(false);
+    const [projectReadyLocal, setProjectReadyLocal] = useState<boolean>(hasVercelProject);
+    const needsVercelConnection = !isVercelConnected;
+    const projectReady = projectReadyLocal || hasVercelProject;
+    const needsProjectDeployment = isVercelConnected && !projectReady;
+
+    useEffect(() => {
+        if (!isOpen) return;
+        setResult(null);
+        setError(null);
+        setPreparingProject(false);
+        setProjectReadyLocal(hasVercelProject);
+    }, [hasVercelProject, isOpen]);
+
+    if (!isOpen) return null;
+
+    return (
+        <div className="fixed inset-0 z-[20000] flex items-center justify-center bg-black/40 p-4" onMouseDown={(e) => {
+            if (e.target === e.currentTarget) onClose();
+        }}>
+            <div className="w-full max-w-lg rounded-2xl border border-neutral-200 bg-white shadow-2xl">
+                <div className="flex items-start justify-between gap-4 border-b border-neutral-200 px-5 py-4">
+                    <div>
+                        <div className="text-lg font-semibold text-neutral-900">Set up storage</div>
+                        <div className="mt-1 text-sm text-neutral-600">
+                            {needsVercelConnection
+                                ? "Connect Vercel, deploy the website, then save your token."
+                                : needsProjectDeployment
+                                    ? "Deploy the website, then the storage step unlocks."
+                                    : "Paste your token here, then save."}
+                        </div>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={onClose}
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-neutral-100 hover:bg-neutral-200"
+                        title="Close"
+                    >
+                        <X className="h-4 w-4 text-neutral-700" />
+                    </button>
+                </div>
+
+                <div className="px-5 py-4 space-y-4">
+                    <div className="space-y-3">
+                        <div className="rounded-2xl border border-neutral-200 bg-neutral-50 px-4 py-3">
+                            <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0">
+                                    <div className="text-sm font-semibold text-neutral-900">1. Deploy website</div>
+                                    <div className="mt-1 whitespace-pre-line text-sm text-neutral-600">
+                                        Deploy this website to Vercel so the storage step can turn on.
+                                    </div>
+                                </div>
+                                <div className="shrink-0">
+                                    {projectReady ? (
+                                        <span className="inline-flex items-center rounded-full bg-emerald-100 px-3 py-1 text-[11px] font-semibold text-emerald-700">
+                                            Deployed
+                                        </span>
+                                    ) : needsVercelConnection ? (
+                                        <span className="inline-flex items-center rounded-full bg-neutral-200 px-3 py-1 text-[11px] font-semibold text-neutral-600">
+                                            Connect Vercel first
+                                        </span>
+                                    ) : (
+                                        <button
+                                            type="button"
+                                            onClick={async () => {
+                                                if (preparingProject) return;
+                                                setPreparingProject(true);
+                                                setError(null);
+                                                setResult(null);
+                                                try {
+                                                    const ok = await onPrepareVercelProject?.();
+                                                    if (!ok) {
+                                                        setError("Deploy failed.");
+                                                        return;
+                                                    }
+                                                    setProjectReadyLocal(true);
+                                                    setResult("Website deployed. Storage setup is now unlocked.");
+                                                } catch (err: any) {
+                                                    setError(err?.message || "Deploy failed.");
+                                                } finally {
+                                                    setPreparingProject(false);
+                                                }
+                                            }}
+                                            disabled={preparingProject}
+                                            className="inline-flex items-center justify-center rounded-full bg-[#f55f2a] px-4 py-1.5 text-[12px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+                                        >
+                                            {preparingProject ? "Deploying…" : "Deploy"}
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className={`rounded-2xl border px-4 py-3 ${projectReady ? "border-neutral-200 bg-white" : "border-dashed border-neutral-200 bg-neutral-50/70"}`}>
+                            <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0">
+                                    <div className="text-sm font-semibold text-neutral-900">2. Storage token</div>
+                                    <div className="mt-1 text-sm text-neutral-600">
+                                        {projectReady ? (
+                                            <div className="space-y-1">
+                                                <ol className="space-y-0.5">
+                                                    <li>1. Click Open Vercel below.</li>
+                                                    <li>2. Click Storage in the left sidebar.</li>
+                                                    <li>3. Create database &gt; Blob &gt; Continue.</li>
+                                                    <li>4. Click Connect Project and choose the project from Search project.</li>
+                                                    <li>5. Check Add a read-write token env var.</li>
+                                                    <li>6. Choose Public.</li>
+                                                    <li>7. Copy the token here.</li>
+                                                </ol>
+                                            </div>
+                                        ) : (
+                                            "This unlocks after deploy finishes."
+                                        )}
+                                    </div>
+                                </div>
+                                {projectReady ? (
+                                    <span className="inline-flex items-center rounded-full bg-amber-100 px-3 py-1 text-[11px] font-semibold text-amber-800">
+                                        Ready
+                                    </span>
+                                ) : null}
+                            </div>
+
+                            {projectReady ? (
+                                <div className="mt-3 space-y-3">
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-medium text-neutral-800">Storage token</label>
+                                        <input
+                                            value={token}
+                                            onChange={(e) => setToken(e.target.value)}
+                                            type="password"
+                                            autoComplete="off"
+                                            spellCheck={false}
+                                            placeholder="Paste token here"
+                                            className="w-full rounded-xl border border-neutral-300 px-3 py-2 text-sm text-neutral-900 outline-none focus:border-[#f55f2a] focus:ring-2 focus:ring-[#f55f2a]/20"
+                                        />
+                                    </div>
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        <a
+                                            href={needsVercelConnection ? "https://vercel.com/signup" : "https://vercel.com/dashboard"}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="inline-flex items-center gap-1 rounded-full border border-neutral-200 bg-white px-3 py-1.5 text-[12px] font-semibold text-neutral-800 hover:bg-neutral-50"
+                                        >
+                                            Open Vercel
+                                            <ExternalLink className="h-3.5 w-3.5" />
+                                        </a>
+                                        {needsVercelConnection ? (
+                                            <button
+                                                type="button"
+                                                onClick={onConnectVercel}
+                                                className="inline-flex items-center justify-center rounded-full bg-[#f55f2a] px-4 py-1.5 text-[12px] font-semibold text-white"
+                                            >
+                                                Connect Vercel
+                                            </button>
+                                        ) : (
+                                            <button
+                                                type="button"
+                                                onClick={async () => {
+                                                    const next = token.trim();
+                                                    if (!next) {
+                                                        setError("Paste the token first.");
+                                                        return;
+                                                    }
+                                                    setSaving(true);
+                                                    setError(null);
+                                                    setResult(null);
+                                                    try {
+                                                        await onSave(next);
+                                                        setResult("Saved.");
+                                                        setToken("");
+                                                    } catch (err: any) {
+                                                        setError(err?.message || "Could not save.");
+                                                    } finally {
+                                                        setSaving(false);
+                                                    }
+                                                }}
+                                                disabled={saving || !token.trim()}
+                                                className="inline-flex items-center justify-center rounded-full bg-[#f55f2a] px-4 py-1.5 text-[12px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+                                            >
+                                                {saving ? "Saving…" : "Save"}
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                            ) : null}
+                        </div>
+                    </div>
+
+                    {result ? <p className="text-sm text-emerald-700">{result}</p> : null}
+                    {error ? <p className="text-sm text-rose-700">{error}</p> : null}
+                </div>
+            </div>
+        </div>
+    );
+}
+
+export function AiImageLibraryPanel({
+    iframeRef,
+    user,
+    renderId,
+    selectionMeta,
+    isVercelConnected = false,
+    onConnectVercel,
+    hasVercelProject = false,
+    onPrepareVercelProject,
+}: Props) {
     const { showAlert } = useModal();
-    const { status: vercelStatus, checking, refresh: refreshVercelStatus } = useVercelIntegration();
     const [items, setItems] = useState<AiLibraryItem[]>([]);
     const [pageImages, setPageImages] = useState<PageImageItem[]>([]);
     const [imageAvailability, setImageAvailability] = useState<Record<string, "ok" | "error">>({});
     const [loading, setLoading] = useState(false);
+    const [storageUsage, setStorageUsage] = useState({ usedBytes: 0, fileCount: 0 });
+    const [storageUsageLoading, setStorageUsageLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const refreshInFlightRef = useRef(false);
     const loggedPermissionPathsRef = useRef(new Set<string>());
     const pageImageRefs = useRef<Record<string, HTMLDivElement | null>>({});
-    const isVercelConnectionPending = vercelStatus === "loading" || checking;
-    const isVercelActuallyConnected = isVercelConnected || vercelStatus === "connected";
+    const storageLimitReached = storageUsage.usedBytes >= IMAGE_STORAGE_LIMIT_BYTES;
+    const storageUsagePercent = IMAGE_STORAGE_LIMIT_BYTES > 0
+        ? Math.min(100, Math.round((storageUsage.usedBytes / IMAGE_STORAGE_LIMIT_BYTES) * 100))
+        : 0;
+    const storageReady = Boolean(user?.uid) && !storageLimitReached;
 
     const selectedPageImage = useCallback((item: PageImageItem): boolean => {
         const selectedPath = String(selectionMeta?.path || "").trim();
@@ -210,9 +560,70 @@ export function AiImageLibraryPanel({ iframeRef, user, renderId, selectionMeta, 
     }, [selectionMeta]);
 
     useEffect(() => {
-        if (isVercelActuallyConnected) return;
-        void refreshVercelStatus();
-    }, [isVercelActuallyConnected, refreshVercelStatus]);
+        let cancelled = false;
+        if (!user?.uid) {
+            setStorageUsage({ usedBytes: 0, fileCount: 0 });
+            return;
+        }
+
+        setStorageUsageLoading(true);
+        void loadUserImageStorageUsage(user.uid)
+            .then((stats) => {
+                if (!cancelled) setStorageUsage(stats);
+            })
+            .catch(() => {
+                if (!cancelled) setStorageUsage({ usedBytes: 0, fileCount: 0 });
+            })
+            .finally(() => {
+                if (!cancelled) setStorageUsageLoading(false);
+            });
+
+        return () => {
+            cancelled = true;
+        };
+    }, [user?.uid]);
+
+    useEffect(() => {
+        if (!user?.uid) return;
+
+        const refreshUsage = () => {
+            setStorageUsageLoading(true);
+            void loadUserImageStorageUsage(user.uid)
+                .then((stats) => setStorageUsage(stats))
+                .catch(() => setStorageUsage((prev) => prev))
+                .finally(() => setStorageUsageLoading(false));
+        };
+
+        const onStorageChanged = (event: Event) => {
+            const detail = (event as CustomEvent<{
+                uid?: string;
+                deltaBytes?: number;
+                deltaFiles?: number;
+                kind?: "upload" | "delete";
+            }>).detail;
+
+            if (detail?.uid && detail.uid !== user.uid) return;
+
+            if (detail?.kind === "upload" && Number.isFinite(Number(detail.deltaBytes))) {
+                const deltaBytes = Math.max(0, Number(detail.deltaBytes) || 0);
+                const deltaFiles = Math.max(0, Number(detail.deltaFiles) || 0);
+                setStorageUsage((prev) => ({
+                    usedBytes: prev.usedBytes + deltaBytes,
+                    fileCount: prev.fileCount + deltaFiles,
+                }));
+                // Reconcile with the server shortly after the optimistic bump.
+                window.setTimeout(refreshUsage, 250);
+                return;
+            }
+
+            refreshUsage();
+        };
+
+        window.addEventListener("kloner:image-storage-changed", onStorageChanged as EventListener);
+        return () => {
+            window.removeEventListener("kloner:image-storage-changed", onStorageChanged as EventListener);
+        };
+    }, [user?.uid, loadUserImageStorageUsage]);
 
     const loadImages = useCallback(async (uidFromProp?: string, renderIdFromProp?: string) => {
         const uid = uidFromProp ?? user?.uid;
@@ -252,17 +663,16 @@ export function AiImageLibraryPanel({ iframeRef, user, renderId, selectionMeta, 
                     const msg = String(innerErr?.message || "");
                     const code = String(innerErr?.code || "").toLowerCase();
                     const status = Number(innerErr?.customData?.serverResponse?.status || innerErr?.status || 0);
-                    if (
-                        code.includes("unauthorized") ||
-                        msg.includes("storage/unauthorized") ||
-                        msg.includes("permission") ||
-                        msg.includes("denied")
-                    ) {
+                        if (
+                            code.includes("unauthorized") ||
+                            msg.includes("storage/unauthorized") ||
+                            msg.includes("permission") ||
+                            msg.includes("denied")
+                        ) {
                         if (!loggedPermissionPathsRef.current.has(basePath)) {
                             loggedPermissionPathsRef.current.add(basePath);
                             console.info(`[AiImageLibraryPanel] permission issue for path ${basePath}`, innerErr);
                         }
-                        setError("You don't have permission to load some images.");
                     } else if (code.includes("storage/unknown") || status === 400) {
                         console.info(`[AiImageLibraryPanel] listing unsupported or empty for path ${basePath}`);
                     } else {
@@ -302,60 +712,6 @@ export function AiImageLibraryPanel({ iframeRef, user, renderId, selectionMeta, 
         });
     }, []);
 
-    const startVercelOAuthForImages = useCallback(() => {
-        if (typeof window === "undefined") return;
-        if (!VERCEL_INTEGRATION_SLUG) {
-            console.error("Missing NEXT_PUBLIC_VERCEL_INTEGRATION_SLUG");
-            void showAlert("Missing Vercel integration configuration.", "Connect Vercel");
-            return;
-        }
-
-        try {
-            const bytes = new Uint8Array(16);
-            crypto.getRandomValues(bytes);
-            const state = Array.from(bytes)
-                .map((b) => b.toString(16).padStart(2, "0"))
-                .join("");
-
-            const returnTo = "/dashboard/view?vercel=connected&flow=images";
-            window.localStorage.setItem(
-                AI_IMAGE_RESUME_KEY,
-                JSON.stringify({
-                    returnTo,
-                    startedAt: Date.now(),
-                }),
-            );
-            window.localStorage.setItem("kloner_vercel_latest_csrf", state);
-
-            document.cookie = [
-                `vercel_oauth_state=${state}`,
-                "Path=/",
-                "Max-Age=600",
-                "SameSite=Lax",
-            ].join("; ");
-
-            document.cookie = [
-                `vercel_oauth_return=${encodeURIComponent(returnTo)}`,
-                "Path=/",
-                "Max-Age=600",
-                "SameSite=Lax",
-            ].join("; ");
-
-            window.location.assign(`https://vercel.com/integrations/${VERCEL_INTEGRATION_SLUG}/new?state=${state}`);
-        } catch (err) {
-            console.warn("[AiImageLibraryPanel] failed to start Vercel OAuth", err);
-            void showAlert("Could not open the Vercel connection flow.", "Connect Vercel");
-        }
-    }, [showAlert]);
-
-    const handleConnectVercel = useCallback(() => {
-        if (onConnectVercel) {
-            onConnectVercel();
-            return;
-        }
-        startVercelOAuthForImages();
-    }, [onConnectVercel, startVercelOAuthForImages]);
-
     const handleRefreshLibrary = useCallback(() => {
         if (!user || !renderId) return;
         if (loading || refreshInFlightRef.current) return;
@@ -364,6 +720,8 @@ export function AiImageLibraryPanel({ iframeRef, user, renderId, selectionMeta, 
         void (async () => {
             try {
                 await loadImages(user.uid, renderId);
+                const stats = await loadUserImageStorageUsage(user.uid);
+                setStorageUsage(stats);
             } finally {
                 refreshInFlightRef.current = false;
             }
@@ -494,8 +852,13 @@ export function AiImageLibraryPanel({ iframeRef, user, renderId, selectionMeta, 
     }, [iframeRef]);
 
     const openReplaceDialog = useCallback(async (item: PageImageItem) => {
-        if (!isVercelActuallyConnected) {
-            handleConnectVercel();
+        if (!storageReady) {
+            void showAlert(
+                storageLimitReached
+                    ? "Storage is full. Delete an image to continue."
+                    : "Sign in to replace images.",
+                "Images",
+            );
             return;
         }
 
@@ -519,7 +882,7 @@ export function AiImageLibraryPanel({ iframeRef, user, renderId, selectionMeta, 
         } catch (err) {
             console.warn("[AiImageLibraryPanel] replace failed", err);
         }
-    }, [handleConnectVercel, iframeRef, isVercelActuallyConnected]);
+    }, [iframeRef, showAlert, storageLimitReached, storageReady]);
 
     const removePageImage = useCallback((item: PageImageItem) => {
         const { api, element } = selectImageTarget(iframeRef, item.selector);
@@ -566,7 +929,7 @@ export function AiImageLibraryPanel({ iframeRef, user, renderId, selectionMeta, 
                 <div className="min-w-0 flex-1">
                     <div className="text-sm font-semibold text-neutral-900">Images on this page</div>
                     <div className="mt-1 text-sm leading-relaxed text-neutral-600">
-                        Review your images below. Replace is gated until storage is configured.
+                        Review your images below. Replace is gated when storage is full.
                     </div>
                 </div>
                 {/* <button
@@ -584,43 +947,28 @@ export function AiImageLibraryPanel({ iframeRef, user, renderId, selectionMeta, 
                     </button> */}
             </div>
 
-            {isVercelConnectionPending && !isVercelActuallyConnected ? (
-                <div className="relative mt-3 overflow-hidden rounded-3xl border border-neutral-200 bg-white px-4 py-4 shadow-[0_14px_34px_rgba(15,23,42,0.08)]">
-                    <div className="flex items-center gap-3">
-                        <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-neutral-200 bg-neutral-50 text-neutral-600">
-                            <span className="h-4 w-4 animate-spin rounded-full border-2 border-neutral-300 border-t-neutral-900" />
-                        </span>
-                        <div className="min-w-0">
-                            <div className="text-sm font-medium text-neutral-900">Checking Vercel connection…</div>
-                            <div className="mt-0.5 text-sm text-neutral-600">This should only take a moment.</div>
+            <div className={`mt-1 rounded-2xl border px-4 py-3 ${storageLimitReached ? "border-rose-200 bg-rose-50/70" : "border-neutral-200 bg-white"}`}>
+                <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                        <div className="text-xs font-semibold uppercase tracking-[0.14em] text-neutral-500">Storage</div>
+                        <div className="mt-1 text-sm font-medium text-neutral-900">
+                            {storageUsageLoading ? "Checking usage…" : `${formatBytes(storageUsage.usedBytes)} used of ${formatBytes(IMAGE_STORAGE_LIMIT_BYTES)}`}
+                        </div>
+                        <div className="mt-1 text-xs text-neutral-600">
+                            {storageUsageLoading ? "Loading your quota…" : `${storageUsage.fileCount} files`}
                         </div>
                     </div>
-                </div>
-            ) : !isVercelActuallyConnected ? (
-                <>
-                    <div className="relative mt-3 overflow-hidden rounded-3xl border border-amber-200 bg-gradient-to-br from-amber-50 to-white px-4 py-4 shadow-[0_14px_34px_rgba(180,108,17,0.08)]">
-                        <div className="flex items-start gap-2">
-                            <MessageCircleWarning className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
-                            <span className="min-w-0 flex-1 whitespace-nowrap text-sm font-medium leading-5 text-amber-950">
-                                Storage connection required.
-                            </span>
-                        </div>
+                    <div className={`shrink-0 rounded-full px-3 py-1 text-[11px] font-semibold ${storageLimitReached ? "bg-rose-100 text-rose-700" : "bg-emerald-100 text-emerald-700"}`}>
+                        {storageLimitReached ? "Full" : `${storageUsagePercent}%`}
                     </div>
-                    <button
-                        type="button"
-                        onClick={handleConnectVercel}
-                        className="my-3 inline-flex h-9 shrink-0 items-center justify-center whitespace-nowrap rounded-full bg-black px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-neutral-800 focus:outline-none focus:ring-2 focus:ring-black/20"
-                    >
-                        Connect Storage
-                    </button>
-                </>
-            ) : null}
-
-            {error ? (
-                <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-                    {error}
                 </div>
-            ) : null}
+                <div className="mt-3 h-2 overflow-hidden rounded-full bg-neutral-100">
+                    <div
+                        className={`h-full rounded-full ${storageLimitReached ? "bg-rose-500" : "bg-[#f55f2a]"}`}
+                        style={{ width: `${storageUsagePercent}%` }}
+                    />
+                </div>
+            </div>
 
             <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-auto pb-2">
                 <section className="space-y-3">
@@ -679,9 +1027,9 @@ export function AiImageLibraryPanel({ iframeRef, user, renderId, selectionMeta, 
                                             <button
                                                 type="button"
                                                 onClick={() => void openReplaceDialog(item)}
-                                                disabled={!isVercelActuallyConnected}
+                                                disabled={!storageReady || storageUsageLoading}
                                                 className="inline-flex w-full items-center justify-center gap-1.5 rounded-full border border-neutral-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-neutral-700 transition hover:border-[#f55f2a] hover:text-[#f55f2a] disabled:cursor-not-allowed disabled:opacity-45"
-                                                title={isVercelActuallyConnected ? "Replace this image" : "Connect Vercel to replace images"}
+                                                title={storageLimitReached ? "Storage is full" : "Replace this image"}
                                             >
                                                 <ArrowUpRight className="h-3.5 w-3.5" />
                                                 Replace

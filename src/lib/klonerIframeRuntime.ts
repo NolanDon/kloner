@@ -1610,6 +1610,59 @@ export function installKlonerIframeApi(
 
 
     const api: any = (doc.defaultView as any).__klonerApi || {};
+    const pendingImageUploads = new Map<string, Promise<{ url: string; path?: string } | null>>();
+    api.__klonerPendingImageUploads = pendingImageUploads;
+
+    async function queueImageUpload(
+        file: File,
+        localId: string,
+        onUploaded: (asset: { url: string; path?: string }) => void,
+    ) {
+        const uploader = api.uploadImageAsset;
+        if (typeof uploader !== "function") {
+            console.warn("[klonerIframeRuntime] uploadImageAsset handler missing", {
+                localId,
+                fileName: file.name,
+                fileSize: file.size,
+                fileType: file.type,
+            });
+            return;
+        }
+
+        console.log("[klonerIframeRuntime] queueing pending image upload", {
+            localId,
+            fileName: file.name,
+            fileSize: file.size,
+            fileType: file.type,
+        });
+
+        const uploadPromise = Promise.resolve().then(() => uploader(file));
+        pendingImageUploads.set(localId, uploadPromise);
+
+        try {
+            const asset = await uploadPromise;
+            console.log("[klonerIframeRuntime] image upload resolved", {
+                localId,
+                url: asset?.url || "",
+                path: asset?.path || "",
+            });
+            if (!asset?.url) {
+                console.warn("[klonerIframeRuntime] image upload returned no url", { localId });
+                return;
+            }
+            onUploaded(asset);
+            console.log("[klonerIframeRuntime] image injected after upload", {
+                localId,
+                url: asset.url,
+                path: asset.path || "",
+            });
+        } catch (err) {
+            console.warn("[klonerIframeRuntime] image upload failed", { localId }, err);
+        } finally {
+            pendingImageUploads.delete(localId);
+            console.log("[klonerIframeRuntime] cleared pending image upload", { localId });
+        }
+    }
 
     // inside installKlonerIframeApi, after `const api: any = ...`
 
@@ -2315,6 +2368,27 @@ export function installKlonerIframeApi(
         saveHistory();
         notify();
         showHint("Image inserted (pending upload).", block);
+
+        void queueImageUpload(file, localId, (asset) => {
+            if (!img.isConnected) return;
+            if (img.dataset.localImageId !== localId) return;
+
+            const oldTempUrl = img.src;
+            img.src = asset.url;
+            img.removeAttribute("data-local-image-id");
+            img.removeAttribute("data-local-filename");
+            if (asset.path) {
+                img.setAttribute("data-kloner-path", asset.path);
+            }
+            try {
+                URL.revokeObjectURL(oldTempUrl);
+            } catch {
+                // ignore
+            }
+            saveHistory();
+            notify();
+            showHint("Image uploaded.", block);
+        });
     }
 
     async function replaceImage(el: HTMLImageElement) {
@@ -2348,6 +2422,27 @@ export function installKlonerIframeApi(
         saveHistory();
         notify();
         showHint("Image replaced (pending upload).", el);
+
+        void queueImageUpload(file, localId, (asset) => {
+            if (!el.isConnected) return;
+            if (el.dataset.localImageId !== localId) return;
+
+            const oldTempUrl = el.src;
+            el.src = asset.url;
+            el.removeAttribute("data-local-image-id");
+            el.removeAttribute("data-local-filename");
+            if (asset.path) {
+                el.setAttribute("data-kloner-path", asset.path);
+            }
+            try {
+                URL.revokeObjectURL(oldTempUrl);
+            } catch {
+                // ignore
+            }
+            saveHistory();
+            notify();
+            showHint("Image uploaded.", el);
+        });
     }
 
     function applyBlockBackgroundTheme(block: HTMLElement, url: string) {
@@ -2356,16 +2451,17 @@ export function installKlonerIframeApi(
             block.style.position = "relative";
         }
 
+        const currentBgColor = String(cs.backgroundColor || "").trim();
+        if (currentBgColor && currentBgColor !== "transparent" && currentBgColor !== "rgba(0, 0, 0, 0)") {
+            block.style.backgroundColor = currentBgColor;
+        } else if (!block.style.backgroundColor || block.style.backgroundColor === "transparent") {
+            block.style.backgroundColor = "rgba(15,23,42,0.82)";
+        }
+
         block.style.backgroundImage = `url("${url}")`;
         block.style.backgroundSize = "cover";
         block.style.backgroundPosition = "center center";
         block.style.backgroundRepeat = "no-repeat";
-
-        // slight theme harmonisation: keep existing background-color as overlay
-        // but ensure text stays readable if it was transparent
-        if (!block.style.backgroundColor || block.style.backgroundColor === "transparent") {
-            block.style.backgroundColor = "rgba(15,23,42,0.82)";
-        }
     }
 
     async function setBlockBackgroundImage(block: HTMLElement) {
@@ -2393,6 +2489,26 @@ export function installKlonerIframeApi(
         saveHistory();
         notify();
         showHint("Background image set (pending upload).", block);
+
+        void queueImageUpload(file, localId, (asset) => {
+            if (!block.isConnected) return;
+            if ((block.dataset as any).localImageId !== localId) return;
+
+            applyBlockBackgroundTheme(block, asset.url);
+            delete (block.dataset as any).localImageId;
+            delete (block.dataset as any).localFilename;
+            if (asset.path) {
+                block.setAttribute("data-kloner-bg-path", asset.path);
+            }
+            try {
+                URL.revokeObjectURL(tempUrl);
+            } catch {
+                // ignore
+            }
+            saveHistory();
+            notify();
+            showHint("Background image uploaded.", block);
+        });
     }
 
     function setBlockBackgroundImageFromLibrary(

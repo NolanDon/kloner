@@ -40,9 +40,13 @@ function getBucket(): Bucket {
     return cachedBucket;
 }
 
+function normalizeHtmlEntityEncoding(value: string): string {
+    return String(value || "").replace(/&amp;/g, "&");
+}
+
 function parseFirebaseStorageObjectUrl(firebaseUrl: string): { bucket: string; objectPath: string } | null {
     try {
-        const url = new URL(firebaseUrl);
+        const url = new URL(normalizeHtmlEntityEncoding(firebaseUrl));
 
         if (
             !(
@@ -78,7 +82,7 @@ function parseFirebaseStorageObjectUrl(firebaseUrl: string): { bucket: string; o
 export async function GET(req: NextRequest) {
     try {
         const { searchParams } = new URL(req.url);
-        const firebaseUrl = searchParams.get("url");
+        const firebaseUrl = normalizeHtmlEntityEncoding(searchParams.get("url") || "");
 
         if (!firebaseUrl) {
             return NextResponse.json(
@@ -104,8 +108,25 @@ export async function GET(req: NextRequest) {
 
         const bucket = getBucket();
         const file = bucket.file(parsed.objectPath);
-        const [imageBuffer] = await file.download();
-        const [metadata] = await file.getMetadata().catch(() => [null as any]);
+
+        let imageBuffer: Buffer;
+        let metadata: any = null;
+        try {
+            [imageBuffer] = await file.download();
+            [metadata] = await file.getMetadata().catch(() => [null as any]);
+        } catch (downloadErr) {
+            // Fallback to the signed Firebase URL if the admin bucket read fails.
+            const response = await fetch(firebaseUrl);
+            if (!response.ok) {
+                throw downloadErr;
+            }
+            const fallbackBuffer = Buffer.from(await response.arrayBuffer());
+            metadata = {
+                contentType: response.headers.get("content-type") || "image/jpeg",
+                cacheControl: response.headers.get("cache-control") || "public, max-age=31536000",
+            };
+            imageBuffer = fallbackBuffer;
+        }
 
         const proxyResponse = new NextResponse(new Uint8Array(imageBuffer), {
             status: 200,

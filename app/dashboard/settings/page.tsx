@@ -228,6 +228,7 @@ export default function SettingsPage(): JSX.Element {
 
     const {
         status: vercelStatus,
+        meta: vercelMeta,
         checking: vercelChecking,
         refresh: refreshVercelStatus,
     } = useVercelIntegration();
@@ -243,6 +244,10 @@ export default function SettingsPage(): JSX.Element {
     const [accountActionBusy, setAccountActionBusy] = useState(false);
     const [accountActionError, setAccountActionError] = useState<string | null>(null);
     const [accountActionSuccess, setAccountActionSuccess] = useState<string | null>(null);
+
+    const [vercelBlobTokenDraft, setVercelBlobTokenDraft] = useState("");
+    const [vercelBlobTokenBusy, setVercelBlobTokenBusy] = useState(false);
+    const [vercelBlobTokenError, setVercelBlobTokenError] = useState<string | null>(null);
 
     type DeploymentFilter = "all" | "live-only" | "live-projects";
     const [deploymentFilter, setDeploymentFilter] = useState<DeploymentFilter>("all");
@@ -260,6 +265,10 @@ export default function SettingsPage(): JSX.Element {
     const [prefsError, setPrefsError] = useState<string | null>(null);
     const [prefsSaved, setPrefsSaved] = useState<string | null>(null);
     const [prefsLoaded, setPrefsLoaded] = useState(false);
+
+    const isVercelConnected = vercelStatus === "connected";
+    const isVercelChecking = vercelStatus === "loading" || vercelChecking;
+    const hasVercelBlobToken = Boolean(vercelMeta?.blobConfigured);
 
     useEffect(() => {
         const t = (searchParams.get("tab") || "").toLowerCase();
@@ -663,8 +672,6 @@ export default function SettingsPage(): JSX.Element {
         return base.slice(0, 2).toUpperCase();
     }, [user]);
 
-    const isVercelConnected = vercelStatus === "connected";
-    const isVercelChecking = vercelStatus === "loading" || vercelChecking;
     const canDisconnectVercel = isVercelConnected && !isVercelChecking && !disconnectBusy;
 
     function handleConnectVercel() {
@@ -726,6 +733,72 @@ export default function SettingsPage(): JSX.Element {
         if (!confirmed) return;
 
         await handleDisconnectVercel();
+    }
+
+    async function handleSaveVercelBlobToken() {
+        if (!isVercelConnected) {
+            setVercelBlobTokenError("Connect Vercel first, then save your Blob token.");
+            return;
+        }
+
+        const token = vercelBlobTokenDraft.trim();
+        if (!token) {
+            setVercelBlobTokenError("Paste your Vercel Blob read/write token first.");
+            return;
+        }
+
+        setVercelBlobTokenBusy(true);
+        setVercelBlobTokenError(null);
+        try {
+            const csrf = await ensureSessionAndCsrf();
+            const res = await fetch("/api/vercel/blob-token", {
+                method: "POST",
+                headers: {
+                    "content-type": "application/json",
+                    ...(csrf ? { "x-csrf": csrf } : {}),
+                },
+                credentials: "include",
+                body: JSON.stringify({ token }),
+            });
+            const data = await res.json().catch(() => ({} as any));
+            if (!res.ok || !data?.ok) {
+                throw new Error(data?.error || `Save failed (HTTP ${res.status})`);
+            }
+
+            setVercelBlobTokenDraft("");
+            await refreshVercelStatus();
+        } catch (err: any) {
+            setVercelBlobTokenError(err?.message || "Could not save your Blob token.");
+        } finally {
+            setVercelBlobTokenBusy(false);
+        }
+    }
+
+    async function handleRemoveVercelBlobToken() {
+        if (!hasVercelBlobToken) return;
+        setVercelBlobTokenBusy(true);
+        setVercelBlobTokenError(null);
+        try {
+            const csrf = await ensureSessionAndCsrf();
+            const res = await fetch("/api/vercel/blob-token", {
+                method: "DELETE",
+                headers: {
+                    "content-type": "application/json",
+                    ...(csrf ? { "x-csrf": csrf } : {}),
+                },
+                credentials: "include",
+            });
+            const data = await res.json().catch(() => ({} as any));
+            if (!res.ok || !data?.ok) {
+                throw new Error(data?.error || `Remove failed (HTTP ${res.status})`);
+            }
+
+            await refreshVercelStatus();
+        } catch (err: any) {
+            setVercelBlobTokenError(err?.message || "Could not remove your Blob token.");
+        } finally {
+            setVercelBlobTokenBusy(false);
+        }
     }
 
     function handleToggleDeployment(id: string) {
@@ -1402,6 +1475,94 @@ export default function SettingsPage(): JSX.Element {
                                                 </button>
                                             </div>
                                         </details>
+                                    </div>
+
+                                    <div id="vercel-blob-token" className="mt-3 rounded-xl border border-neutral-200 bg-white p-3 scroll-mt-24">
+                                        <div className="flex items-center justify-between gap-2">
+                                            <div className="flex items-center gap-2">
+                                                <Shield className="h-4 w-4 text-neutral-700" />
+                                                <div className="text-sm font-medium text-neutral-800">Storage</div>
+                                            </div>
+                                            <span
+                                                className={
+                                                    "rounded-full px-2 py-0.5 text-[10px] font-semibold border " +
+                                                    (hasVercelBlobToken
+                                                        ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                                        : "bg-neutral-100 text-neutral-600 border-neutral-200")
+                                                }
+                                            >
+                                                {hasVercelBlobToken ? "saved" : "not set"}
+                                            </span>
+                                        </div>
+                                        <p className="mt-1 text-xs text-neutral-600">
+                                            Set up storage for your project, then paste the token here. Images will upload
+                                            to your account only, not Kloner&apos;s.
+                                        </p>
+                                        <p className="mt-1 text-[11px] text-neutral-500">
+                                            In Vercel: open your project, go to <span className="font-medium">Storage</span>, create a blob store, and Vercel will add a <span className="font-mono">BLOB_READ_WRITE_TOKEN</span> for that project.
+                                        </p>
+                                        <a
+                                            href="https://vercel.com/docs/vercel-blob/server-upload"
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="mt-2 inline-flex text-xs font-medium text-[rgba(245,95,42,1)] hover:underline"
+                                        >
+                                            View setup guide
+                                        </a>
+
+                                        <input
+                                            type="password"
+                                            autoComplete="off"
+                                            spellCheck={false}
+                                            value={vercelBlobTokenDraft}
+                                            onChange={(e) => setVercelBlobTokenDraft(e.target.value)}
+                                            placeholder="vercel_blob_rw_..."
+                                            className="mt-2 w-full rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm text-neutral-900 placeholder:text-neutral-400 focus:border-[rgba(245,95,42,0.55)] focus:outline-none focus:ring-2 focus:ring-[rgba(245,95,42,0.18)]"
+                                        />
+
+                                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => void handleSaveVercelBlobToken()}
+                                                disabled={vercelBlobTokenBusy || !isVercelConnected || !vercelBlobTokenDraft.trim()}
+                                                className={btnClass({
+                                                    kind: "soft",
+                                                    disabled: vercelBlobTokenBusy || !isVercelConnected || !vercelBlobTokenDraft.trim(),
+                                                })}
+                                            >
+                                                {vercelBlobTokenBusy ? (
+                                                    <>
+                                                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                                        Saving…
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <Shield className="h-3.5 w-3.5" />
+                                                        Save token
+                                                    </>
+                                                )}
+                                            </button>
+
+                                            <button
+                                                type="button"
+                                                onClick={() => void handleRemoveVercelBlobToken()}
+                                                disabled={vercelBlobTokenBusy || !hasVercelBlobToken}
+                                                className={btnClass({
+                                                    kind: "soft",
+                                                    disabled: vercelBlobTokenBusy || !hasVercelBlobToken,
+                                                })}
+                                            >
+                                                Remove
+                                            </button>
+                                        </div>
+
+                                        {vercelBlobTokenError ? (
+                                            <p className="mt-2 text-xs text-red-600">{vercelBlobTokenError}</p>
+                                        ) : !isVercelConnected ? (
+                                            <p className="mt-2 text-xs text-neutral-500">
+                                                Connect Vercel first so we can keep this storage token tied to that account.
+                                            </p>
+                                        ) : null}
                                     </div>
                                 </div>
 
