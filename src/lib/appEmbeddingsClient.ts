@@ -87,6 +87,30 @@ export type AppEmbeddingEditPlanProposal = {
     [key: string]: unknown;
 };
 
+export type AppEmbeddingEditPlanReport = {
+    reportCode?: string | null;
+    reportPrompt?: string | null;
+    summaryText?: string | null;
+    outcome?: string | null;
+    request?: {
+        appId?: string | null;
+        query?: string | null;
+        currentPath?: string | null;
+        selectedFiles?: string[];
+        framework?: string | null;
+        frameworkLabel?: string | null;
+        frameworkConfidence?: string | null;
+        frameworkReason?: string | null;
+        requestId?: string | null;
+        jobId?: string | null;
+        statusUrl?: string | null;
+        responseSchemaVersion?: string | null;
+    } | null;
+    response?: Record<string, unknown> | null;
+    traceSummary?: unknown;
+    [key: string]: unknown;
+};
+
 export type AppEmbeddingEditPlanResponse = {
     formatVersion: string | null;
     summary: string;
@@ -104,6 +128,11 @@ export type AppEmbeddingEditPlanResponse = {
     requestId?: string | null;
     code?: string | null;
     error?: string | null;
+    responseSchemaVersion?: string | null;
+    reportCode?: string | null;
+    reportPrompt?: string | null;
+    summaryText?: string | null;
+    report?: AppEmbeddingEditPlanReport | null;
     queued?: boolean;
     jobId?: string | null;
     statusUrl?: string | null;
@@ -182,6 +211,11 @@ export type AppEmbeddingEditPlanJobStatus = {
     requestId?: string | null;
     jobId?: string | null;
     statusUrl?: string | null;
+    responseSchemaVersion?: string | null;
+    reportCode?: string | null;
+    reportPrompt?: string | null;
+    summaryText?: string | null;
+    report?: AppEmbeddingEditPlanReport | null;
     error?: string | { code?: string; message?: string; retryAfterSeconds?: number | null; [key: string]: unknown } | null;
     result?: AppEmbeddingEditPlanPlan | null;
     queued?: boolean;
@@ -485,6 +519,42 @@ function normalizeEmbeddingEditPlanProposal(raw: unknown): AppEmbeddingEditPlanP
     };
 }
 
+function normalizeEmbeddingEditPlanReport(raw: unknown): AppEmbeddingEditPlanReport | null {
+    if (!raw || typeof raw !== "object") return null;
+    const source = raw as Record<string, unknown>;
+    const requestSource = source.request && typeof source.request === "object"
+        ? (source.request as Record<string, unknown>)
+        : null;
+
+    const request = requestSource
+        ? {
+            appId: asString(requestSource.appId, 200) || null,
+            query: asString(requestSource.query, 20_000) || null,
+            currentPath: asString(requestSource.currentPath, 500) || null,
+            selectedFiles: Array.isArray(requestSource.selectedFiles)
+                ? requestSource.selectedFiles.map((item: unknown) => asString(item, 500)).filter(Boolean)
+                : undefined,
+            framework: asString(requestSource.framework, 80) || null,
+            frameworkLabel: asString(requestSource.frameworkLabel, 120) || null,
+            frameworkConfidence: asString(requestSource.frameworkConfidence, 20) || null,
+            frameworkReason: asString(requestSource.frameworkReason, 500) || null,
+            requestId: asString(requestSource.requestId, 200) || null,
+            jobId: asString(requestSource.jobId, 200) || null,
+            statusUrl: asString(requestSource.statusUrl, 2_000) || null,
+            responseSchemaVersion: asString(requestSource.responseSchemaVersion, 80) || null,
+        }
+        : null;
+
+    return {
+        reportCode: asString(source.reportCode ?? source.report_code, 200) || null,
+        reportPrompt: asString(source.reportPrompt ?? source.report_prompt, 20_000) || null,
+        summaryText: asString(source.summaryText ?? source.summary_text, 20_000) || null,
+        request,
+        response: source.response && typeof source.response === "object" ? (source.response as Record<string, unknown>) : null,
+        traceSummary: source.traceSummary ?? source.trace_summary ?? null,
+    };
+}
+
 export function normalizeEmbeddingSearchChunk(raw: unknown): AppEmbeddingSearchChunk | null {
     if (!raw || typeof raw !== "object") return null;
     const chunk = raw as Record<string, unknown>;
@@ -629,6 +699,48 @@ export function normalizeEmbeddingEditPlanJobStatus(raw: unknown): AppEmbeddingE
     const envelope = unwrapResponseEnvelope(raw);
     const nestedJob = asRecord(envelope.job) || asRecord(source.job);
     const active = nestedJob || envelope;
+    const envelopeReport = asRecord(envelope.report);
+    const sourceReport = asRecord(source.report);
+    const activeReport = asRecord(active.report) || asRecord((active as any)?.job?.report) || envelopeReport || sourceReport;
+    const reportRequest = (activeReport?.request && typeof activeReport.request === "object"
+        ? (activeReport.request as Record<string, unknown>)
+        : envelopeReport?.request && typeof envelopeReport.request === "object"
+            ? (envelopeReport.request as Record<string, unknown>)
+            : sourceReport?.request && typeof sourceReport.request === "object"
+                ? (sourceReport.request as Record<string, unknown>)
+                : null);
+    const activeReportCode = asString(active.reportCode ?? active.report_code ?? envelope.reportCode ?? envelope.report_code ?? source.reportCode ?? source.report_code, 200) || null;
+    const activeReportPrompt = asString(active.reportPrompt ?? active.report_prompt ?? envelope.reportPrompt ?? envelope.report_prompt ?? source.reportPrompt ?? source.report_prompt, 20_000) || null;
+    const activeSummaryText = asString(active.summaryText ?? active.summary_text ?? envelope.summaryText ?? envelope.summary_text ?? source.summaryText ?? source.summary_text, 20_000) || null;
+    const activeOutcome = asString(active.outcome ?? active.reportOutcome ?? active.report_outcome ?? envelope.outcome ?? envelope.reportOutcome ?? envelope.report_outcome ?? source.outcome ?? source.reportOutcome ?? source.report_outcome, 120) || null;
+    const reportSeed = activeReport || activeReportCode || activeReportPrompt || activeSummaryText
+        ? {
+                reportCode: activeReportCode,
+                reportPrompt: activeReportPrompt,
+                summaryText: activeSummaryText,
+                outcome: activeOutcome,
+                request: {
+                    appId: asString(reportRequest?.appId, 200) || null,
+                    query: asString(reportRequest?.query, 20_000) || null,
+                    currentPath: asString(reportRequest?.currentPath, 500) || null,
+                    selectedFiles: Array.isArray(reportRequest?.selectedFiles)
+                        ? (reportRequest?.selectedFiles as unknown[]).map((item: unknown) => asString(item, 500)).filter(Boolean)
+                        : undefined,
+                    framework: asString(reportRequest?.framework, 80) || null,
+                    frameworkLabel: asString(reportRequest?.frameworkLabel, 120) || null,
+                    frameworkConfidence: asString(reportRequest?.frameworkConfidence, 20) || null,
+                    frameworkReason: asString(reportRequest?.frameworkReason, 500) || null,
+                    requestId: asString(active.requestId ?? envelope.requestId ?? source.requestId, 200) || null,
+                    jobId: asString(active.jobId ?? envelope.jobId ?? source.jobId, 200) || null,
+                    statusUrl: asString(active.statusUrl ?? envelope.statusUrl ?? source.statusUrl, 2_000) || null,
+                    responseSchemaVersion: asString(active.responseSchemaVersion ?? envelope.responseSchemaVersion ?? source.responseSchemaVersion, 80) || null,
+                },
+                response: activeReport?.response && typeof activeReport.response === "object"
+                    ? (activeReport.response as Record<string, unknown>)
+                    : null,
+                traceSummary: activeReport?.traceSummary ?? null,
+            }
+            : null;
     const result = active.result && typeof active.result === "object"
         ? normalizeEmbeddingEditPlanPlan(active.result)
         : envelope.result && typeof envelope.result === "object"
@@ -649,6 +761,11 @@ export function normalizeEmbeddingEditPlanJobStatus(raw: unknown): AppEmbeddingE
         requestId: asString(active.requestId ?? envelope.requestId ?? source.requestId, 120) || null,
         jobId: asString(active.jobId ?? envelope.jobId ?? source.jobId, 120) || null,
         statusUrl: asString(active.statusUrl ?? envelope.statusUrl ?? source.statusUrl, 500) || null,
+        responseSchemaVersion: asString(active.responseSchemaVersion ?? active.response_schema_version ?? envelope.responseSchemaVersion ?? envelope.response_schema_version ?? source.responseSchemaVersion ?? source.response_schema_version, 80) || null,
+        reportCode: asString(active.reportCode ?? active.report_code ?? envelope.reportCode ?? envelope.report_code ?? source.reportCode ?? source.report_code, 200) || null,
+        reportPrompt: asString(active.reportPrompt ?? active.report_prompt ?? envelope.reportPrompt ?? envelope.report_prompt ?? source.reportPrompt ?? source.report_prompt, 20_000) || null,
+        summaryText: asString(active.summaryText ?? active.summary_text ?? envelope.summaryText ?? envelope.summary_text ?? source.summaryText ?? source.summary_text, 20_000) || null,
+        report: normalizeEmbeddingEditPlanReport(reportSeed),
         error: typeof active.error === "string"
             ? active.error
             : active.error && typeof active.error === "object"
@@ -670,6 +787,32 @@ export function normalizeEmbeddingEditPlanResponse(raw: unknown): AppEmbeddingEd
     const envelope = unwrapResponseEnvelope(raw);
     const normalizedPlan = normalizeEmbeddingEditPlanPlan(envelope);
     const normalizedJob = normalizeEmbeddingEditPlanJobStatus(envelope);
+    const normalizedReport = normalizeEmbeddingEditPlanReport(
+        asRecord(envelope.report)
+        || asRecord(source.report)
+        || {
+            reportCode: envelope.reportCode ?? source.reportCode ?? null,
+            reportPrompt: envelope.reportPrompt ?? source.reportPrompt ?? null,
+            summaryText: envelope.summaryText ?? source.summaryText ?? null,
+            outcome: asString(envelope.outcome ?? source.outcome, 120) || null,
+            request: {
+                appId: null,
+                query: null,
+                currentPath: null,
+                selectedFiles: undefined,
+                framework: null,
+                frameworkLabel: null,
+                frameworkConfidence: null,
+                frameworkReason: null,
+                requestId: asString(envelope.requestId ?? source.requestId, 200) || null,
+                jobId: asString(envelope.jobId ?? source.jobId, 200) || null,
+                statusUrl: asString(envelope.statusUrl ?? source.statusUrl, 2_000) || null,
+                responseSchemaVersion: asString(envelope.responseSchemaVersion ?? source.responseSchemaVersion, 80) || null,
+            },
+            response: null,
+            traceSummary: null,
+        },
+    );
 
     return {
         ...normalizedPlan,
@@ -687,6 +830,11 @@ export function normalizeEmbeddingEditPlanResponse(raw: unknown): AppEmbeddingEd
         attemptCount: asNullableNumber(envelope.attemptCount ?? envelope.attempt_count ?? source.attemptCount ?? source.attempt_count),
         job: normalizedJob,
         result: envelope.result && typeof envelope.result === "object" ? normalizeEmbeddingEditPlanPlan(envelope.result) : source.result && typeof source.result === "object" ? normalizeEmbeddingEditPlanPlan(source.result) : undefined,
+        responseSchemaVersion: asString(envelope.responseSchemaVersion ?? envelope.response_schema_version ?? source.responseSchemaVersion ?? source.response_schema_version ?? normalizedJob.responseSchemaVersion ?? normalizedReport?.request?.responseSchemaVersion, 80) || null,
+        reportCode: asString(envelope.reportCode ?? envelope.report_code ?? source.reportCode ?? source.report_code ?? normalizedJob.reportCode ?? normalizedReport?.reportCode, 200) || null,
+        reportPrompt: asString(envelope.reportPrompt ?? envelope.report_prompt ?? source.reportPrompt ?? source.report_prompt ?? normalizedJob.reportPrompt ?? normalizedReport?.reportPrompt, 20_000) || null,
+        summaryText: asString(envelope.summaryText ?? envelope.summary_text ?? source.summaryText ?? source.summary_text ?? normalizedJob.summaryText ?? normalizedReport?.summaryText, 20_000) || null,
+        report: normalizedReport,
     };
 }
 

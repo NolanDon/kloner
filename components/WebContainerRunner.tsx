@@ -2,7 +2,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Loader2 } from 'lucide-react';
 import { db } from "@/lib/firebase";
 import { doc, onSnapshot, updateDoc, getDoc } from "firebase/firestore";
 import { useAuth } from "@/src/hooks/useAuth";
@@ -531,6 +531,8 @@ export default function WebContainerRunner({ appId, files, filesReady = true, on
   const [manualStartNonce, setManualStartNonce] = useState(0);
   const [loadingStatus, setLoadingStatus] = useState('');
   const [isApplyRefreshing, setIsApplyRefreshing] = useState(false);
+  const [isManualRefreshPending, setIsManualRefreshPending] = useState(false);
+  const manualRefreshLockRef = useRef(false);
   const [pollNetworkWarning, setPollNetworkWarning] = useState<string | null>(null);
   const [currentStatusData, setCurrentStatusData] = useState<any>(null); // Store latest status data for UI
   const [connectingToExisting, setConnectingToExisting] = useState(false); // Track if connecting to existing machine
@@ -1444,7 +1446,13 @@ export default function WebContainerRunner({ appId, files, filesReady = true, on
   const retryApp = () => {
     const now = Date.now();
     if (now - previewActionThrottleRef.current.refreshAt < 1500) return;
+    if (manualRefreshLockRef.current) return;
     previewActionThrottleRef.current.refreshAt = now;
+    manualRefreshLockRef.current = true;
+    setIsManualRefreshPending(true);
+    setIsLoading(true);
+    setConnectingToExisting(true);
+    setLoadingStatus('Refreshing preview…');
 
     console.log('[WebContainerRunner] Manual refresh requested', {
       appId,
@@ -5027,6 +5035,14 @@ export default function NavBar() {
   const showApplyRefreshingOverlay = showPreviewSurface && isApplyRefreshing;
   const terminalPreviewStatusData = terminalPreviewStatus ? (currentStatusData || lastBackendStatusRef.current || null) : null;
   const showTerminalPreviewErrorCard = Boolean(error) || terminalPreviewStatus;
+  const showManualRefreshOverlay = Boolean(isManualRefreshPending && !showPreviewSurface && !compileErrorState);
+  useEffect(() => {
+    if (!isManualRefreshPending) return;
+    if (!isLoading && !isPolling && !connectingToExisting) {
+      manualRefreshLockRef.current = false;
+      setIsManualRefreshPending(false);
+    }
+  }, [connectingToExisting, isLoading, isManualRefreshPending, isPolling]);
   const buildPreviewFixIssueMessage = useCallback((baseMessage: string, rawStatusData: any) => {
     const backendContext = extractTimeoutBackendContext(rawStatusData || null);
     const failure = normalizePreviewFailureDetails(rawStatusData || null);
@@ -5860,6 +5876,20 @@ export default function NavBar() {
           />
           )}
         </div>
+      ) : showManualRefreshOverlay ? (
+        <div className="flex-1 flex items-center justify-center px-4">
+          <div className="w-full max-w-lg rounded-[1.5rem] border border-neutral-300 bg-[linear-gradient(180deg,rgba(245,245,245,0.98),rgba(255,255,255,1))] px-4 py-4 shadow-[0_10px_24px_rgba(15,23,42,0.08)]">
+            <div className="flex items-start gap-3">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-neutral-200 text-neutral-700 ring-1 ring-neutral-300">
+                <Loader2 className="h-5 w-5 animate-spin" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold text-neutral-900">Refreshing preview</p>
+                <p className="mt-1 text-sm leading-relaxed text-neutral-700">Reconnecting to the latest preview…</p>
+              </div>
+            </div>
+          </div>
+        </div>
       ) : showTerminalPreviewErrorCard || compileErrorState ? (
         <div className="flex-1 flex items-center justify-center px-4">
           {(() => {
@@ -5880,9 +5910,17 @@ export default function NavBar() {
                 <button
                   type="button"
                   onClick={retryApp}
+                  disabled={isManualRefreshPending}
                   className="mt-3 inline-flex items-center rounded-full border border-neutral-700 bg-neutral-800 px-3 py-1.5 text-xs font-semibold text-neutral-100 transition hover:bg-neutral-700"
                 >
-                  Refresh
+                  {isManualRefreshPending ? (
+                    <span className="inline-flex items-center gap-2">
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      Refreshing…
+                    </span>
+                  ) : (
+                    "Refresh"
+                  )}
                 </button>
               </div>
             </div>

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { Resend } from "resend";
 import { requireSessionAndMaybeCsrf } from "../../_lib/route-guard";
+import { buildEditPlanSlackDiagnosticText } from "@/src/lib/editPlanFeedbackDiagnostic";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -8,35 +8,22 @@ export const fetchCache = "force-no-store";
 export const runtime = "nodejs";
 
 type FeedbackBody = {
-    appId?: string;
     messageId?: string;
     summary?: string;
     feedback?: "up" | "down" | string;
-    context?: {
-        query?: string;
-        currentPath?: string | null;
-        requestedAt?: number;
-        search?: {
-            request?: Record<string, unknown> | null;
-            response?: Record<string, unknown> | null;
-        } | null;
-        jobId?: string | null;
-        requestId?: string | null;
-    } | null;
+    reportCode?: string | null;
+    jobId?: string | null;
+    requestId?: string | null;
+    summaryText?: string | null;
+    reportOutcome?: unknown;
 };
 
-function getResend() {
-    const key = process.env.RESEND_API_KEY;
-    if (!key) throw new Error("RESEND_API_KEY env not set");
-    return new Resend(key);
+function normalizeString(value: unknown): string {
+    return String(value || "").trim();
 }
 
-function safeJson(value: unknown): string {
-    try {
-        return JSON.stringify(value ?? null, null, 2);
-    } catch {
-        return "[unserializable]";
-    }
+function getSlackWebhookUrl(): string {
+    return (process.env.SLACK_ERROR_WEBHOOK_URL || process.env.SLACK_WEBHOOK_URL || "").trim();
 }
 
 export async function POST(req: NextRequest) {
@@ -49,75 +36,57 @@ export async function POST(req: NextRequest) {
                 return NextResponse.json({ ok: false, error: "Invalid feedback." }, { status: 400 });
             }
 
-            // Upvotes are recorded client-side only; no support email required.
+            // Upvotes remain a local UX signal and do not need Slack escalation.
             if (feedback === "up") {
-                return NextResponse.json({ ok: true, sent: false });
+                return NextResponse.json({ ok: true, sent: false, posted: false });
             }
 
-            const appId = String(body.appId || "").trim();
-            const messageId = String(body.messageId || "").trim();
-            const summary = String(body.summary || "").trim();
-            const context = body.context || null;
+            const messageId = normalizeString(body.messageId);
+            const summary = normalizeString(body.summary);
+
+            const webhookUrl = getSlackWebhookUrl();
+            if (!webhookUrl) {
+                return NextResponse.json({ ok: false, error: "SLACK_ERROR_WEBHOOK_URL env not set" }, { status: 500 });
+            }
+
+            const text = buildEditPlanSlackDiagnosticText({
+                messageId,
+                feedback: "down",
+                reportCode: normalizeString(body.reportCode || null) || null,
+                jobId: normalizeString(body.jobId || null) || null,
+                requestId: normalizeString(body.requestId || null) || null,
+                summaryText: normalizeString(body.summaryText || null) || null,
+                reportOutcome: body.reportOutcome ?? null,
+                summary,
+                userId: uid || null,
+            });
 
             try {
-                const resend = getResend();
-                const to = "support@kloner.app";
-                const from = process.env.SUPPORT_ESCALATION_FROM || "hello@kloner.app";
-                const whenIso = new Date().toISOString();
-
-                const subject = `Kloner summary feedback (thumbs down)${appId ? ` · ${appId}` : ""}`;
-                const text = [
-                    "Summary feedback: thumbs down",
-                    `Time: ${whenIso}`,
-                    `User ID: ${uid || "unknown"}`,
-                    `App ID: ${appId || "unknown"}`,
-                    `Message ID: ${messageId || "unknown"}`,
-                    "",
-                    "Summary response:",
-                    summary || "(empty)",
-                    "",
-                    "Inquiry context:",
-                    `Query: ${String(context?.query || "") || "(unknown)"}`,
-                    `Current path: ${String(context?.currentPath || "") || "(none)"}`,
-                    `Requested at: ${context?.requestedAt ? new Date(context.requestedAt).toISOString() : "unknown"}`,
-                    `Job ID: ${String(context?.jobId || "") || "unknown"}`,
-                    `Request ID: ${String(context?.requestId || "") || "unknown"}`,
-                    "",
-                    "Search request:",
-                    safeJson(context?.search?.request || null),
-                    "",
-                    "Search response:",
-                    safeJson(context?.search?.response || null),
-                ].join("\n");
-
-                const html = `<div style="font-family:Arial,sans-serif;color:#111;line-height:1.5">
-<h2>Summary feedback: thumbs down</h2>
-<p><strong>Time:</strong> ${whenIso}</p>
-<p><strong>User ID:</strong> ${uid || "unknown"}</p>
-<p><strong>App ID:</strong> ${appId || "unknown"}</p>
-<p><strong>Message ID:</strong> ${messageId || "unknown"}</p>
-<h3>Summary response</h3>
-<pre style="white-space:pre-wrap;background:#f8fafc;border:1px solid #e5e7eb;padding:10px;border-radius:8px">${(summary || "(empty)").replace(/[<>]/g, "")}</pre>
-<h3>Inquiry context</h3>
-<pre style="white-space:pre-wrap;background:#f8fafc;border:1px solid #e5e7eb;padding:10px;border-radius:8px">${safeJson({
-                    query: context?.query || null,
-                    currentPath: context?.currentPath || null,
-                    requestedAt: context?.requestedAt || null,
-                    jobId: context?.jobId || null,
-                    requestId: context?.requestId || null,
-                    search: context?.search || null,
-                }).replace(/[<>]/g, "")}</pre>
-</div>`;
-
-                await resend.emails.send({
-                    from,
-                    to,
-                    subject,
-                    text,
-                    html,
+                const response = await fetch(webhookUrl, {
+                    method: "POST",
+                    headers: { "content-type": "application/json" },
+                    body: JSON.stringify({
+                        text,
+                        username: "Kloner Feedback",
+                        icon_emoji: ":speech_balloon:",
+                        unfurl_links: false,
+                        unfurl_media: false,
+                    }),
                 });
 
-                return NextResponse.json({ ok: true, sent: true });
+                if (!response.ok) {
+                    const responseText = await response.text().catch(() => "");
+                    throw new Error(`Slack webhook failed: ${response.status} ${response.statusText}${responseText ? ` - ${responseText}` : ""}`);
+                }
+
+                console.info("[support/summary-feedback] posted_to_slack", {
+                    messageId: messageId || null,
+                    reportCode: normalizeString(body.reportCode || null) || null,
+                    jobId: normalizeString(body.jobId || null) || null,
+                    requestId: normalizeString(body.requestId || null) || null,
+                });
+
+                return NextResponse.json({ ok: true, sent: true, posted: true });
             } catch (error) {
                 console.error("[support/summary-feedback] failed", error);
                 return NextResponse.json({ ok: false, error: "Failed to send summary feedback." }, { status: 500 });

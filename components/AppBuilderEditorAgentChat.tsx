@@ -62,26 +62,56 @@ import { resolveAppBuilderChatRoute, type AppBuilderChatMode, type AppBuilderCha
 import CoinLottieBadge from "@/components/tools/CoinLottieBadge";
 
 type SummarySearchFeedbackContext = {
+    appId: string;
     query: string;
     currentPath: string | null;
     requestedAt: number;
+    selectedFiles: string[];
+    framework?: string | null;
+    frameworkLabel?: string | null;
+    frameworkConfidence?: string | null;
+    frameworkReason?: string | null;
     search?: {
         request?: Record<string, unknown> | null;
         response?: Record<string, unknown> | null;
     } | null;
     jobId?: string | null;
     requestId?: string | null;
+    statusUrl?: string | null;
+    responseSchemaVersion?: string | null;
+    reportCode?: string | null;
+    summaryText?: string | null;
+    reportPrompt?: string | null;
+    traceSummary?: unknown;
+    reportRequest?: unknown;
+    reportResponse?: unknown;
+    reportOutcome?: unknown;
 };
 
 type EditPlanRequestMeta = {
+    appId: string;
     query: string;
     currentPath: string | null;
     requestedAt: number;
     preflightRestorePointId?: string | null;
+    selectedFiles: string[];
+    framework?: string | null;
+    frameworkLabel?: string | null;
+    frameworkConfidence?: string | null;
+    frameworkReason?: string | null;
     search?: {
         request?: Record<string, unknown> | null;
         response?: Record<string, unknown> | null;
     } | null;
+    statusUrl?: string | null;
+    responseSchemaVersion?: string | null;
+    reportCode?: string | null;
+    summaryText?: string | null;
+    reportPrompt?: string | null;
+    traceSummary?: unknown;
+    reportRequest?: unknown;
+    reportResponse?: unknown;
+    reportOutcome?: unknown;
 };
 
 type Message = {
@@ -522,6 +552,120 @@ function buildEditPlanDetailsChatMessage(job: AppEmbeddingEditPlanJobStatus): st
     return summary;
 }
 
+function getEditPlanJobReportSnapshot(job: AppEmbeddingEditPlanJobStatus | null | undefined) {
+    const source = job?.report || job?.job?.report || null;
+    const request = source && typeof source === "object" && source.request && typeof source.request === "object"
+        ? source.request
+        : null;
+    const selectedFiles = Array.isArray((request as any)?.selectedFiles)
+        ? ((request as any).selectedFiles as unknown[]).map((item) => String(item || "").trim()).filter(Boolean)
+        : [];
+
+    return {
+        reportCode: String((job as any)?.reportCode || (source as any)?.reportCode || "").trim() || null,
+        reportPrompt: String((job as any)?.reportPrompt || (source as any)?.reportPrompt || "").trim() || null,
+        summaryText: String((job as any)?.summaryText || (source as any)?.summaryText || "").trim() || null,
+        outcome: String((source as any)?.outcome || (source as any)?.reportOutcome || (job as any)?.outcome || "").trim() || null,
+        traceSummary: (source as any)?.traceSummary ?? null,
+        statusUrl: String(job?.statusUrl || (request as any)?.statusUrl || "").trim() || null,
+        responseSchemaVersion: String((job as any)?.responseSchemaVersion || (request as any)?.responseSchemaVersion || "").trim() || null,
+        request: {
+            appId: String((request as any)?.appId || "").trim() || null,
+            query: String((request as any)?.query || "").trim() || null,
+            currentPath: String((request as any)?.currentPath || "").trim() || null,
+            selectedFiles,
+            framework: String((request as any)?.framework || "").trim() || null,
+            frameworkLabel: String((request as any)?.frameworkLabel || "").trim() || null,
+            frameworkConfidence: String((request as any)?.frameworkConfidence || "").trim() || null,
+            frameworkReason: String((request as any)?.frameworkReason || "").trim() || null,
+            requestId: String((request as any)?.requestId || job?.requestId || "").trim() || null,
+            jobId: String((request as any)?.jobId || job?.jobId || "").trim() || null,
+            statusUrl: String((request as any)?.statusUrl || job?.statusUrl || "").trim() || null,
+            responseSchemaVersion: String((request as any)?.responseSchemaVersion || job?.responseSchemaVersion || "").trim() || null,
+        },
+        response: (source as any)?.response ?? null,
+    };
+}
+
+function buildEditPlanRequestMetaFromSnapshot(
+    base: EditPlanRequestMeta | null | undefined,
+    job: AppEmbeddingEditPlanJobStatus | null | undefined,
+): EditPlanRequestMeta | null {
+    if (!base && !job) return null;
+
+    const snapshot = getEditPlanJobReportSnapshot(job);
+    const selectedFiles = base?.selectedFiles?.length ? base.selectedFiles : snapshot.request.selectedFiles || [];
+
+    return {
+        appId: String(base?.appId || snapshot.request.appId || "").trim(),
+        query: String(base?.query || snapshot.request.query || "").trim(),
+        currentPath: typeof base?.currentPath === "string" ? base.currentPath : snapshot.request.currentPath || null,
+        requestedAt: typeof base?.requestedAt === "number" ? base.requestedAt : Date.now(),
+        preflightRestorePointId: base?.preflightRestorePointId ?? null,
+        selectedFiles,
+        framework: base?.framework ?? snapshot.request.framework ?? null,
+        frameworkLabel: base?.frameworkLabel ?? snapshot.request.frameworkLabel ?? null,
+        frameworkConfidence: base?.frameworkConfidence ?? snapshot.request.frameworkConfidence ?? null,
+        frameworkReason: base?.frameworkReason ?? snapshot.request.frameworkReason ?? null,
+        search: base?.search ?? null,
+        statusUrl: String(job?.statusUrl || snapshot.statusUrl || base?.statusUrl || "").trim() || null,
+        responseSchemaVersion: String(job?.responseSchemaVersion || snapshot.responseSchemaVersion || base?.responseSchemaVersion || "").trim() || null,
+        reportCode: String(job?.reportCode || snapshot.reportCode || base?.reportCode || "").trim() || null,
+        summaryText: String(job?.summaryText || snapshot.summaryText || base?.summaryText || "").trim() || null,
+        reportPrompt: String(job?.reportPrompt || snapshot.reportPrompt || base?.reportPrompt || "").trim() || null,
+        traceSummary: snapshot.traceSummary ?? base?.traceSummary ?? null,
+        reportRequest: snapshot.request ?? base?.reportRequest ?? null,
+        reportResponse: snapshot.response ?? base?.reportResponse ?? null,
+        reportOutcome: snapshot.outcome ?? base?.reportOutcome ?? null,
+    };
+}
+
+function buildEditPlanFeedbackContext(params: {
+    appId: string;
+    job: AppEmbeddingEditPlanJobStatus | null | undefined;
+    requestMeta?: EditPlanRequestMeta | null;
+    fallbackSearch?: EditPlanRequestMeta["search"] | null;
+    fallbackRequestedAt?: number | null;
+}): SummarySearchFeedbackContext | null {
+    const report = getEditPlanJobReportSnapshot(params.job);
+    const requestMeta = params.requestMeta || null;
+    const selectedFiles = requestMeta?.selectedFiles?.length
+        ? requestMeta.selectedFiles
+        : report.request.selectedFiles || [];
+    const query = String(requestMeta?.query || report.request.query || "").trim();
+    const currentPath = typeof requestMeta?.currentPath === "string"
+        ? requestMeta.currentPath
+        : report.request.currentPath || null;
+
+    if (!query && !report.reportPrompt && !report.reportCode && !requestMeta) return null;
+
+    return {
+        appId: String(requestMeta?.appId || report.request.appId || params.appId || "").trim(),
+        query,
+        currentPath,
+        requestedAt: typeof requestMeta?.requestedAt === "number"
+            ? requestMeta.requestedAt
+            : params.fallbackRequestedAt || Date.now(),
+        selectedFiles,
+        framework: requestMeta?.framework ?? report.request.framework ?? null,
+        frameworkLabel: requestMeta?.frameworkLabel ?? report.request.frameworkLabel ?? null,
+        frameworkConfidence: requestMeta?.frameworkConfidence ?? report.request.frameworkConfidence ?? null,
+        frameworkReason: requestMeta?.frameworkReason ?? report.request.frameworkReason ?? null,
+        search: requestMeta?.search || params.fallbackSearch || null,
+        jobId: String(params.job?.jobId || report.request.jobId || "").trim() || null,
+        requestId: String(params.job?.requestId || report.request.requestId || "").trim() || null,
+        statusUrl: String(params.job?.statusUrl || report.statusUrl || "").trim() || null,
+        responseSchemaVersion: String(params.job?.responseSchemaVersion || report.responseSchemaVersion || "").trim() || null,
+        reportCode: String(params.job?.reportCode || report.reportCode || "").trim() || null,
+        summaryText: String(params.job?.summaryText || report.summaryText || buildEditPlanDetailsChatMessage(params.job as AppEmbeddingEditPlanJobStatus) || "").trim() || null,
+        reportPrompt: String(params.job?.reportPrompt || report.reportPrompt || "").trim() || null,
+        traceSummary: report.traceSummary ?? null,
+        reportRequest: report.request ?? null,
+        reportResponse: report.response ?? null,
+        reportOutcome: report.outcome ?? null,
+    };
+}
+
 function buildNeedsMoreContextMessage(plan: AppEmbeddingEditPlanResponse, currentFile: string | null): string {
     const questions = [
         ...(Array.isArray(plan.questions) ? plan.questions : []),
@@ -587,6 +731,11 @@ function buildEditPlanJobStorageSnapshot(job: AppEmbeddingEditPlanJobStatus): Ap
         requestId: job.requestId ?? null,
         jobId: job.jobId ?? null,
         statusUrl: job.statusUrl ?? null,
+        responseSchemaVersion: job.responseSchemaVersion ?? null,
+        reportCode: job.reportCode ?? null,
+        reportPrompt: job.reportPrompt ?? null,
+        summaryText: job.summaryText ?? null,
+        report: job.report ?? null,
         queued: job.queued,
         error,
     };
@@ -733,7 +882,6 @@ const PRODUCTION_AGENT_CHAT_BLOCKED = process.env.NEXT_PUBLIC_AGENT_CHAT_BLOCKED
 const PRODUCTION_AGENT_CHAT_BLOCK_MESSAGE = "We’re working on some updates to reduce your token usage. Please check back soon.";
 const FORCE_INTRO_REPLAY_IN_DEV = process.env.NODE_ENV !== "production";
 const BUILDER_CHAT_INTRO_KEY = "kloner_builder_chat_intro_seen_v1";
-const BUILDER_TOUR_CHAT_HIGHLIGHT_EVENT = "kloner:builder-tour-chat-highlighted";
 const RETURNING_WELCOME_MESSAGE = "Hi, im your personal AI assistant, let me know what changes you want and i'll try my best to make that change for you";
 const FIRST_VISIT_INTRO_LINES = [
     "Hi, im your personal ai assistant",
@@ -1052,7 +1200,6 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
     const [chatHistoryResolved, setChatHistoryResolved] = useState(false);
     const [chatHistoryLoadTimedOut, setChatHistoryLoadTimedOut] = useState(false);
     const [chatHasHistory, setChatHasHistory] = useState(false);
-    const [introRequestedByTour, setIntroRequestedByTour] = useState(false);
     const [input, setInput] = useState("");
     const [requestPageOverrides, setRequestPageOverrides] = useState<string[]>([]);
     const [requestPageSearch, setRequestPageSearch] = useState("");
@@ -1711,6 +1858,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
     const submitSummaryFeedback = useCallback(async (message: Message, vote: "up" | "down") => {
         const messageId = String(message.id || "").trim();
         if (!messageId) return;
+        const summaryContext = message.summaryFeedbackContext || latestSummaryFeedbackContextRef.current || null;
         if (vote === "up") {
             setSummaryFeedbackStateByMessageId((prev) => ({ ...prev, [messageId]: "up" }));
             return;
@@ -1725,11 +1873,13 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                 credentials: "include",
                 cache: "no-store",
                 body: JSON.stringify({
-                    appId,
                     messageId,
-                    summary: String(message.content || "").trim(),
                     feedback: "down",
-                    context: message.summaryFeedbackContext || latestSummaryFeedbackContextRef.current || null,
+                    reportCode: summaryContext?.reportCode || null,
+                    jobId: summaryContext?.jobId || null,
+                    requestId: summaryContext?.requestId || null,
+                    summaryText: summaryContext?.summaryText || null,
+                    reportOutcome: summaryContext?.reportOutcome ?? null,
                 }),
             });
             const data = await res.json().catch(() => ({} as any));
@@ -2671,7 +2821,6 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
         setChatHistoryResolved(false);
         setChatHistoryLoadTimedOut(false);
         setChatHasHistory(false);
-        setIntroRequestedByTour(false);
         setShowIntroTyping(false);
         setMessages([]);
     }, [appId]);
@@ -2694,19 +2843,6 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
     useEffect(() => {
         onIntroCompleteRef.current = onIntroSequenceComplete;
     }, [onIntroSequenceComplete]);
-
-    useEffect(() => {
-        if (typeof window === "undefined") return;
-
-        const onTourMessage = (event: MessageEvent) => {
-            if (event.data?.type === BUILDER_TOUR_CHAT_HIGHLIGHT_EVENT) {
-                setIntroRequestedByTour(true);
-            }
-        };
-
-        window.addEventListener("message", onTourMessage);
-        return () => window.removeEventListener("message", onTourMessage);
-    }, []);
 
     // Proactively issue the scope cookie once per appId to avoid noisy 403s.
     useEffect(() => {
@@ -2925,7 +3061,6 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
     useEffect(() => {
         if (typeof window === "undefined") return;
         if (!chatHistoryResolved) return;
-        if (!introRequestedByTour) return;
         if (introCompletionNotifiedRef.current === appId) return;
 
         const notifyIntroCompleteOnce = () => {
@@ -3036,7 +3171,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
             cancelled = true;
             timers.forEach((timer) => window.clearTimeout(timer));
         };
-    }, [appId, chatHasHistory, chatHistoryResolved, introRequestedByTour]);
+    }, [appId, chatHasHistory, chatHistoryResolved]);
 
     const fetchRestorePoints = useCallback(async () => {
         if (!scopeWarmupComplete) return;
@@ -3600,16 +3735,20 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
             || ((activeEditPlanJob as any)?.jobRequestId ? editPlanJobRequestMetaRef.current[`req:${String((activeEditPlanJob as any).jobRequestId)}`] : undefined)
             || latestInquiryMetaRef.current
             || null;
-        const feedbackContext = requestMeta
-            ? {
-                query: requestMeta.query,
-                currentPath: requestMeta.currentPath,
-                requestedAt: requestMeta.requestedAt,
-                search: requestMeta.search || null,
-                jobId: activeEditPlanJob.jobId || null,
-                requestId: activeEditPlanJob.requestId || null,
-            }
-            : undefined;
+        const mergedRequestMeta = buildEditPlanRequestMetaFromSnapshot(requestMeta, activeEditPlanJob);
+        if (mergedRequestMeta) {
+            editPlanJobRequestMetaRef.current[jobKey] = mergedRequestMeta;
+            if (activeEditPlanJob.statusUrl) editPlanJobRequestMetaRef.current[`status:${activeEditPlanJob.statusUrl}`] = mergedRequestMeta;
+            if (activeEditPlanJob.requestId) editPlanJobRequestMetaRef.current[`req:${activeEditPlanJob.requestId}`] = mergedRequestMeta;
+            if (activeEditPlanJob.jobId) editPlanJobRequestMetaRef.current[activeEditPlanJob.jobId] = mergedRequestMeta;
+        }
+        const feedbackContext = buildEditPlanFeedbackContext({
+            appId,
+            job: activeEditPlanJob,
+            requestMeta: mergedRequestMeta,
+            fallbackSearch: requestMeta?.search || null,
+            fallbackRequestedAt: requestMeta?.requestedAt || null,
+        });
         if (feedbackContext) {
             latestSummaryFeedbackContextRef.current = feedbackContext;
         }
@@ -3630,7 +3769,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                     content: details,
                     timestamp: new Date(),
                     type: "text",
-                    summaryFeedbackContext: feedbackContext,
+                    summaryFeedbackContext: feedbackContext || undefined,
                 },
             ]);
             return;
@@ -3644,7 +3783,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                         ? {
                             ...message,
                             content: details,
-                            summaryFeedbackContext: message.summaryFeedbackContext || feedbackContext,
+                            summaryFeedbackContext: message.summaryFeedbackContext || feedbackContext || undefined,
                         }
                         : message,
                 ),
@@ -4258,6 +4397,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                 editPlanFailureHttpStatus: m.editPlanFailureHttpStatus ?? null,
                 restorePointsCard: m.restorePointsCard ?? null,
                 restorePointsCardReason: m.restorePointsCardReason ?? null,
+                summaryFeedbackContext: m.summaryFeedbackContext ?? null,
             }));
 
         const encoder = typeof TextEncoder !== "undefined" ? new TextEncoder() : null;
@@ -4337,36 +4477,52 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
         [saveChatNow],
     );
 
+    const copyTextToClipboard = useCallback(async (text: string): Promise<boolean> => {
+        const value = String(text || "").trim();
+        if (!value) return false;
+
+        try {
+            if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+                await navigator.clipboard.writeText(value);
+                return true;
+            }
+            if (typeof document !== "undefined") {
+                const textarea = document.createElement("textarea");
+                textarea.value = value;
+                textarea.setAttribute("readonly", "true");
+                textarea.style.position = "fixed";
+                textarea.style.opacity = "0";
+                document.body.appendChild(textarea);
+                textarea.focus();
+                textarea.select();
+                document.execCommand("copy");
+                document.body.removeChild(textarea);
+                return true;
+            }
+        } catch {
+            return false;
+        }
+
+        return false;
+    }, []);
+
     const copyMessageText = useCallback(
         async (message: Message) => {
             const text = String(message.content || "").trim();
             if (!text) return;
 
-            try {
-                if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
-                    await navigator.clipboard.writeText(text);
-                } else if (typeof document !== "undefined") {
-                    const textarea = document.createElement("textarea");
-                    textarea.value = text;
-                    textarea.setAttribute("readonly", "true");
-                    textarea.style.position = "fixed";
-                    textarea.style.opacity = "0";
-                    document.body.appendChild(textarea);
-                    textarea.focus();
-                    textarea.select();
-                    document.execCommand("copy");
-                    document.body.removeChild(textarea);
-                }
-
-                setCopiedMessageId(message.id);
-                window.setTimeout(() => {
-                    setCopiedMessageId((current) => (current === message.id ? null : current));
-                }, 1500);
-            } catch {
+            const copied = await copyTextToClipboard(text);
+            if (!copied) {
                 void showAlert("Could not copy this message. Please copy it manually.", "Copy failed");
+                return;
             }
+
+            setCopiedMessageId(message.id);
+            window.setTimeout(() => {
+                setCopiedMessageId((current) => (current === message.id ? null : current));
+            }, 1500);
         },
-        [showAlert],
+        [copyTextToClipboard, showAlert],
     );
 
     // Save chat history via server (debounced)
@@ -5527,9 +5683,11 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
             });
             const inquiryRequestedAt = Date.now();
             latestInquiryMetaRef.current = {
+                appId,
                 query: messageInput,
                 currentPath: visualCurrentFile || null,
                 requestedAt: inquiryRequestedAt,
+                selectedFiles: selectedRequestPaths,
                 search: bypassInitialSearch
                     ? {
                         request: {
@@ -5772,9 +5930,11 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                     },
                 };
                 latestInquiryMetaRef.current = {
+                    appId,
                     query: messageInput,
                     currentPath: visualCurrentFile || null,
                     requestedAt: inquiryRequestedAt,
+                    selectedFiles: selectedRequestPaths,
                     search: summarySearchContext,
                 };
 
@@ -6134,11 +6294,23 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                 const enqueueRequestId = rawPlan.requestId || editPlanResult.requestId || null;
                 const queuedJobId = queuedJob.jobId || rawPlan.jobId || null;
                 const requestMeta: EditPlanRequestMeta = {
+                    appId,
                     query: messageInput,
                     currentPath: visualCurrentFile || null,
                     requestedAt: inquiryRequestedAt,
                     preflightRestorePointId: preflightRestorePointId || null,
+                    selectedFiles: selectedRequestPaths,
+                    framework: projectFramework.key || null,
+                    frameworkLabel: projectFramework.label || null,
+                    frameworkConfidence: projectFramework.confidence || null,
+                    frameworkReason: projectFramework.reason || null,
                     search: summarySearchContext || latestInquiryMetaRef.current?.search || null,
+                    statusUrl: queuedStatusUrl || null,
+                    responseSchemaVersion: rawPlan.responseSchemaVersion || queuedJob.responseSchemaVersion || rawPlan.job?.responseSchemaVersion || null,
+                    reportCode: rawPlan.reportCode || queuedJob.reportCode || rawPlan.job?.reportCode || null,
+                    summaryText: rawPlan.summaryText || queuedJob.summaryText || rawPlan.report?.summaryText || null,
+                    reportPrompt: rawPlan.reportPrompt || queuedJob.reportPrompt || rawPlan.report?.reportPrompt || null,
+                    traceSummary: rawPlan.report?.traceSummary || queuedJob.report?.traceSummary || null,
                 };
                 if (queuedJobId) {
                     editPlanJobRequestMetaRef.current[queuedJobId] = requestMeta;
@@ -6160,6 +6332,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                     creditCost: planMeta?.creditCost,
                     ops: rawPlan?.ops,
                     dbMigrations: rawPlan?.dbMigrations,
+                    needsMoreContext: Boolean(rawPlan.needsMoreContext || rawPlan.result?.needsMoreContext || rawPlan.job?.result?.needsMoreContext),
                 });
                 const planRequestId = chargeDecision.requestId;
                 const creditCost = chargeDecision.creditCost;
@@ -6250,6 +6423,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                 creditCost: planMeta?.creditCost,
                 ops: rawPlan?.ops,
                 dbMigrations: rawPlan?.dbMigrations,
+                needsMoreContext: Boolean(rawPlan.needsMoreContext || rawPlan.result?.needsMoreContext || rawPlan.job?.result?.needsMoreContext),
             });
             const planRequestId = chargeDecision.requestId;
             const creditCost = chargeDecision.creditCost;
@@ -6955,6 +7129,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                             {message.role === "assistant" && String(message.id || "").startsWith("edit_plan_details_") ? (
                                 (() => {
                                     const feedbackState = summaryFeedbackStateByMessageId[message.id] || null;
+                                    const hasCopyablePrompt = Boolean(message.summaryFeedbackContext || latestSummaryFeedbackContextRef.current);
                                     if (feedbackState === "up" || feedbackState === "down") return null;
                                     return (
                                         <div className="mt-3 flex flex-col items-center justify-center gap-2 text-center">
@@ -7373,26 +7548,28 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                         if (summary.length === 0) return null;
 
                                         return (
-                                            <div className="space-y-2">
-                                                {summary.map((entry) => (
-                                                    <button
-                                                        key={entry.path}
-                                                        type="button"
-                                                        onClick={() => setActiveRestorePointPreview({ restorePointId: message.restorePointId!, path: entry.path })}
-                                                        className="w-full rounded-xl border border-neutral-200 bg-white px-3 py-2.5 text-left shadow-sm transition hover:border-[#F55F2A]/25 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#F55F2A]/30"
-                                                    >
-                                                        <div className="flex items-center justify-between gap-3">
-                                                            <div className="min-w-0 text-xs font-medium text-neutral-900 truncate">{entry.path}</div>
-                                                            <div className="flex shrink-0 items-center gap-2 text-[11px] font-semibold">
-                                                                <span className="text-emerald-700">+{entry.added}</span>
-                                                                <span className="text-rose-700">-{entry.removed}</span>
+                                            <div className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
+                                                <div className="space-y-3">
+                                                    {summary.map((entry) => (
+                                                        <button
+                                                            key={entry.path}
+                                                            type="button"
+                                                            onClick={() => setActiveRestorePointPreview({ restorePointId: message.restorePointId!, path: entry.path })}
+                                                            className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-left shadow-sm transition hover:border-[#F55F2A]/25 hover:bg-neutral-50 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#F55F2A]/30"
+                                                        >
+                                                            <div className="flex items-center justify-between gap-3">
+                                                                <div className="min-w-0 text-sm font-semibold text-neutral-900 truncate">{entry.path}</div>
+                                                                <div className="flex shrink-0 items-center gap-2 text-[11px] font-semibold">
+                                                                    <span className="text-emerald-700">+{entry.added}</span>
+                                                                    <span className="text-rose-700">-{entry.removed}</span>
+                                                                </div>
                                                             </div>
-                                                        </div>
-                                                        <div className="mt-1 text-[11px] text-neutral-500">
-                                                            {entry.beforeLines} lines before • {entry.afterLines} lines after
-                                                        </div>
-                                                    </button>
-                                                ))}
+                                                            <div className="mt-1 text-[11px] text-neutral-500">
+                                                                {entry.beforeLines} lines before • {entry.afterLines} lines after
+                                                            </div>
+                                                        </button>
+                                                    ))}
+                                                </div>
                                             </div>
                                         );
                                     })()}

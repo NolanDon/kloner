@@ -3,6 +3,7 @@ export type EditPlanCreditChargeInput = {
     creditCost?: unknown;
     ops?: unknown;
     dbMigrations?: unknown;
+    needsMoreContext?: boolean;
     isFreeCompileFixMode: boolean;
 };
 
@@ -41,6 +42,6 @@ export function resolveEditPlanCreditCharge(input: EditPlanCreditChargeInput): E
         requestId,
         creditCost,
         hasChargeableWork,
-        shouldConsume: !input.isFreeCompileFixMode && Boolean(requestId),
+        shouldConsume: !input.isFreeCompileFixMode && Boolean(requestId) && !input.needsMoreContext,
     };
 }

@@ -66,4 +66,18 @@ describe("resolveEditPlanCreditCharge", () => {
         expect(result.requestId).toBeNull();
         expect(result.shouldConsume).toBe(false);
     });
+
+    it("does not consume when the response needs more context", () => {
+        const result = resolveEditPlanCreditCharge({
+            isFreeCompileFixMode: false,
+            requestId: "req_ctx",
+            creditCost: 2,
+            ops: [{ path: "app/page.tsx" }],
+            dbMigrations: [],
+            needsMoreContext: true,
+        });
+
+        expect(result.hasChargeableWork).toBe(true);
+        expect(result.shouldConsume).toBe(false);
+    });
 });
