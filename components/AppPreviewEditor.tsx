@@ -4709,7 +4709,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
 
     const filesHydrationLoader = shouldShowFilesHydrationLoader ? (
         <div
-            className="absolute inset-0 z-30 flex items-center justify-center bg-white/25 px-4 backdrop-blur-[1px]"
+            className="absolute inset-0 z-[1200] flex items-center justify-center bg-white/70 px-4 backdrop-blur-[1px]"
             role="status"
             aria-live="polite"
             aria-busy="true"
@@ -4721,7 +4721,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                     <span className="kloner-dot" />
                 </div>
                 <div className="mt-4 text-sm font-medium text-neutral-700">
-                    Hydrating editor
+                    Hydrating files
                 </div>
             </div>
         </div>
@@ -6767,6 +6767,7 @@ export default function AppPreviewEditor({
     hasVercelProject,
     onPrepareVercelProject,
     onLiveHtml,
+    isFilesHydrated,
 }: AppSourcePreviewEditorProps) {
     const htmlPaths = useMemo(
         () => Object.keys(files || {}).filter(isHtmlPath).sort((a, b) => a.localeCompare(b)),
@@ -6934,6 +6935,7 @@ export default function AppPreviewEditor({
                     hasVercelProject={hasVercelProject}
                     onPrepareVercelProject={onPrepareVercelProject}
                     onLiveHtml={onLiveHtml}
+                    isFilesHydrated={isFilesHydrated}
                     appName={appName}
                     isRenaming={isRenaming}
                     tempName={tempName}

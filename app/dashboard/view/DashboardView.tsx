@@ -4212,6 +4212,7 @@ export default function PreviewPage(): JSX.Element {
     const [appBuilderOpen, setAppBuilderOpen] = useState(false);
     const [currentAppId, setCurrentAppId] = useState<string | null>(null);
     const [appBuilderLaunchLoading, setAppBuilderLaunchLoading] = useState(false);
+    const [appBuilderInitialViewMode, setAppBuilderInitialViewMode] = useState<"ai" | "custom">("ai");
     const [appBuilderCookiePromptOpen, setAppBuilderCookiePromptOpen] = useState(false);
     const [pendingAppBuilderAppId, setPendingAppBuilderAppId] = useState<string | null>(null);
     const [nextJsGenerationPendingUrl, setNextJsGenerationPendingUrl] = useState<string | null>(null);
@@ -4315,19 +4316,21 @@ export default function PreviewPage(): JSX.Element {
         });
     }, []);
 
-    const openAppBuilderWithCookieGate = useCallback((appId: string | null) => {
+    const openAppBuilderWithCookieGate = useCallback((appId: string | null, initialViewMode: "ai" | "custom" = "ai") => {
         const nextId = typeof appId === "string" ? appId.trim() : "";
         if (!nextId) return;
         if (blockedUrlGenerationAppId && nextId === blockedUrlGenerationAppId) {
             setAppBuilderOpen(false);
             setPendingAppBuilderAppId(null);
             setCurrentAppId(null);
+            setAppBuilderInitialViewMode("ai");
             return;
         }
         if (isTrialAccessRevoked) {
             setAppBuilderOpen(false);
             setPendingAppBuilderAppId(null);
             setCurrentAppId(null);
+            setAppBuilderInitialViewMode("ai");
             void showAlert(
                 "Your trial was cancelled, so existing projects are locked in the dashboard.",
                 "Access locked",
@@ -4336,6 +4339,7 @@ export default function PreviewPage(): JSX.Element {
         }
         const forceCookiePromptInDev = process.env.NODE_ENV !== "production";
 
+        setAppBuilderInitialViewMode(initialViewMode);
         setCurrentAppId(nextId);
         if (!forceCookiePromptInDev && hasAcceptedAppBuilderNecessaryCookies()) {
             setAppBuilderCookiePromptOpen(false);
@@ -4348,6 +4352,10 @@ export default function PreviewPage(): JSX.Element {
         setAppBuilderCookiePromptOpen(true);
     }, [blockedUrlGenerationAppId, isTrialAccessRevoked, showAlert]);
 
+    const openAppBuilderPreviewFirstWithCookieGate = useCallback((appId: string | null) => {
+        openAppBuilderWithCookieGate(appId, "custom");
+    }, [openAppBuilderWithCookieGate]);
+
     const openAppBuilderDirectly = useCallback((appId: string | null) => {
         const nextId = typeof appId === "string" ? appId.trim() : "";
         if (!nextId) return;
@@ -4355,6 +4363,7 @@ export default function PreviewPage(): JSX.Element {
             setAppBuilderOpen(false);
             setPendingAppBuilderAppId(null);
             setCurrentAppId(null);
+            setAppBuilderInitialViewMode("ai");
             return;
         }
         if (isTrialAccessRevoked) {
@@ -4362,9 +4371,11 @@ export default function PreviewPage(): JSX.Element {
                 "Your trial was cancelled, so existing projects are locked in the dashboard.",
                 "Access locked",
             );
+            setAppBuilderInitialViewMode("ai");
             return;
         }
 
+        setAppBuilderInitialViewMode("ai");
         setCurrentAppId(nextId);
         setPendingAppBuilderAppId(null);
         setAppBuilderCookiePromptOpen(false);
@@ -13304,7 +13315,7 @@ export default function PreviewPage(): JSX.Element {
                                             setShowWebsitePrePaywall(true);
                                             return;
                                         }
-                                        openAppBuilderWithCookieGate(appId);
+                                        openAppBuilderPreviewFirstWithCookieGate(appId);
                                     }}
                                     onArchive={handleArchiveApp}
                                     onRename={handleRenameAppCard}
@@ -13429,6 +13440,7 @@ export default function PreviewPage(): JSX.Element {
                 {appBuilderOpen && currentAppId && (
                     <AppBuilderEditor
                         appId={currentAppId}
+                        initialViewMode={appBuilderInitialViewMode}
                         onCanonicalAppIdResolved={(canonicalAppId: string) => {
                             const next = String(canonicalAppId || "").trim();
                             if (!next || next === currentAppId) return;
@@ -13437,6 +13449,7 @@ export default function PreviewPage(): JSX.Element {
                         onClose={() => {
                             setAppBuilderOpen(false);
                             setCurrentAppId(null);
+                            setAppBuilderInitialViewMode("ai");
                         }}
                         onDeploy={(app) => openAppDeployWizard(app)}
                         agentWelcomeContext={agentWelcomeContextByAppId[currentAppId]}

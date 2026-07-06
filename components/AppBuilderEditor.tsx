@@ -2,6 +2,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
+import { createPortal } from "react-dom";
 import Editor from "@monaco-editor/react";
 import Image from "next/image";
 import { Folder, File, Upload, X, RefreshCw, MessageSquare, Code, Check, RotateCcw, Database, Rocket, Monitor, SlidersHorizontal, Images, Send, Pencil, Loader2, Share2, ExternalLink, Copy, ChevronDown, ChevronRight, AlertTriangle, Search, Paintbrush, MoreVertical } from "lucide-react";
@@ -1256,6 +1257,7 @@ function getEditorLanguageForPath(path: string | null): string {
 
 export default function AppBuilderEditor({
     appId,
+    initialViewMode,
     onCanonicalAppIdResolved,
     onClose,
     onDeploy,
@@ -1269,6 +1271,7 @@ export default function AppBuilderEditor({
     deployIssue = null,
 }: {
     appId: string;
+    initialViewMode?: LeftViewMode;
     onCanonicalAppIdResolved?: (canonicalAppId: string) => void;
     onClose: () => void;
     onDeploy?: (app: { id: string; name: string }) => void;
@@ -1762,7 +1765,7 @@ export default function AppBuilderEditor({
     const [forceFreshStart, setForceFreshStart] = useState(false);
     const forceFreshStartRef = useRef(false);
     const forceFreshStartKey = useRef(0);
-    const [viewMode, setViewMode] = useState<LeftViewMode>("ai"); // Default to AI chat
+    const [viewMode, setViewMode] = useState<LeftViewMode>(initialViewMode || "ai"); // Default to AI chat unless dashboard opens in preview first
     const [isModeSwitching, setIsModeSwitching] = useState(false);
     const [stagedImages, setStagedImages] = useState<StagedImage[]>([]);
     const stagedImagesRef = useRef<StagedImage[]>([]);
@@ -1805,6 +1808,8 @@ export default function AppBuilderEditor({
     const [previewNavigateToken, setPreviewNavigateToken] = useState(0);
     const [isPageDropdownOpen, setIsPageDropdownOpen] = useState(false);
     const pageDropdownRef = useRef<HTMLDivElement | null>(null);
+    const previewHydrationAnchorRef = useRef<HTMLDivElement | null>(null);
+    const [previewHydrationAnchorRect, setPreviewHydrationAnchorRect] = useState<{ top: number; left: number; width: number; height: number } | null>(null);
     const previewEditorFlushRef = useRef<null | (() => Promise<boolean>)>(null);
     const lastVisualEditedHtmlPathRef = useRef<string | null>(null);
 
@@ -2092,6 +2097,74 @@ export default function AppBuilderEditor({
         [autoPreviewError, previewError, previewIssue, previewIssueDiagnostics, previewIssueFailure],
     );
     const canFixPreviewIssueWithAi = previewIssueFixDecision.eligible;
+
+    const shouldShowPreviewHydrationLoader = previewMode === "webcontainer" && (!filesHydrated || !isWebPreviewReady);
+    const previewHydrationLoader = shouldShowPreviewHydrationLoader && typeof window !== "undefined" && previewHydrationAnchorRect
+        ? createPortal(
+            <div
+                className="fixed z-[22050] flex items-center justify-center px-4"
+                style={{
+                    top: previewHydrationAnchorRect.top,
+                    left: previewHydrationAnchorRect.left,
+                    width: previewHydrationAnchorRect.width,
+                    height: previewHydrationAnchorRect.height,
+                }}
+                role="status"
+                aria-live="polite"
+                aria-busy="true"
+            >
+                <div className="flex flex-col items-center justify-center rounded-2xl border border-neutral-200 bg-white/95 px-6 py-5 text-center shadow-lg backdrop-blur-[1px]">
+                    <div className="kloner-dots" aria-hidden="true">
+                        <span className="kloner-dot" />
+                        <span className="kloner-dot" />
+                        <span className="kloner-dot" />
+                    </div>
+                    <div className="mt-4 text-sm font-medium text-neutral-700">
+                        Hydrating files
+                    </div>
+                </div>
+            </div>,
+            document.body,
+        )
+        : null;
+
+    useEffect(() => {
+        if (!shouldShowPreviewHydrationLoader) {
+            setPreviewHydrationAnchorRect(null);
+            return;
+        }
+
+        const measure = () => {
+            const el = previewHydrationAnchorRef.current;
+            if (!el) return;
+            const rect = el.getBoundingClientRect();
+            setPreviewHydrationAnchorRect({
+                top: rect.top,
+                left: rect.left,
+                width: rect.width,
+                height: rect.height,
+            });
+        };
+
+        measure();
+
+        const handleChange = () => measure();
+        window.addEventListener("resize", handleChange);
+        window.addEventListener("scroll", handleChange, true);
+
+        const observer = typeof ResizeObserver !== "undefined" && previewHydrationAnchorRef.current
+            ? new ResizeObserver(() => measure())
+            : null;
+        if (observer && previewHydrationAnchorRef.current) {
+            observer.observe(previewHydrationAnchorRef.current);
+        }
+
+        return () => {
+            window.removeEventListener("resize", handleChange);
+            window.removeEventListener("scroll", handleChange, true);
+            observer?.disconnect();
+        };
+    }, [shouldShowPreviewHydrationLoader, previewMode, filesHydrated, isWebPreviewReady]);
 
     const handlePreviewRouteChange = useCallback((nextPath: string | null) => {
         const raw = String(nextPath || "").trim();
@@ -6329,6 +6402,7 @@ export default function AppBuilderEditor({
                                 </button>
                             ) : null}
                         </div>
+                        {previewHydrationLoader}
                     </div>
                 </div>
             </div>
@@ -7400,7 +7474,7 @@ export default function AppBuilderEditor({
                         <div data-tour-builder-preview className="flex-1 bg-white">
                             {previewMode === "webcontainer" ? (
                                 filesHydrated ? (
-                                    <div className="h-full w-full p-3">
+                                    <div ref={previewHydrationAnchorRef} className="relative h-full w-full p-3">
                                         <WebContainerRunner
                                             appId={appId}
                                             files={effectivePreviewFiles}
@@ -7429,21 +7503,13 @@ export default function AppBuilderEditor({
                                             restartToken={localRestartKey}
                                             reconnectToken={reconnectKey}
                                             forceFreshStart={forceFreshStartKey.current}
-                                                navigatePath={previewNavigatePath}
-                                                navigatePathToken={previewNavigateToken}
+                                            navigatePath={previewNavigatePath}
+                                            navigatePathToken={previewNavigateToken}
                                             pollingConfig={generationEver ? { maxPollingRetries: 480, maxContainerNotFound: 10 } : undefined}
                                         />
                                     </div>
                                 ) : (
-                                    <div className="h-full w-full bg-[radial-gradient(circle_at_top,rgba(245,95,42,0.08),transparent_42%),linear-gradient(180deg,rgba(255,255,255,0.98),rgba(250,250,250,1))] flex items-center justify-center px-4">
-                                        <div className="flex flex-col items-center justify-center text-center">
-                                            <div className="kloner-dots" aria-hidden="true">
-                                                <span className="kloner-dot" />
-                                                <span className="kloner-dot" />
-                                                <span className="kloner-dot" />
-                                            </div>
-                                            <div className="mt-6 w-full max-w-2xl px-6 text-left"><div className="text-sm text-black/60"><span>Hydrating editor</span></div></div>
-                                        </div>
+                                    <div ref={previewHydrationAnchorRef} className="relative h-full w-full bg-[radial-gradient(circle_at_top,rgba(245,95,42,0.08),transparent_42%),linear-gradient(180deg,rgba(255,255,255,0.98),rgba(250,250,250,1))]">
                                     </div>
                                 )
                             ) : previewSrc ? (
