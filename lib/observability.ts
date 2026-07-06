@@ -39,8 +39,16 @@ const MAX_STACK_BLOCK_CHARS = 2400;
 const MAX_SLACK_CONTEXT_FIELDS = 4;
 const FRONTEND_LABEL = "[FRONTEND]";
 
-function withFrontendLabel(event: Pick<ObservabilityEvent, "source">, text: string): string {
-    if (event.source !== "frontend") return text;
+function isFrontendOrigin(event: Pick<ObservabilityEvent, "source" | "extra">): boolean {
+    if (event.source === "frontend") return true;
+    const requestContext = (event.extra as Record<string, unknown> | undefined)?.requestContext as
+        | Record<string, unknown>
+        | undefined;
+    return String(requestContext?.callerType || "").trim().toLowerCase() === "frontend-browser";
+}
+
+function withFrontendLabel(event: Pick<ObservabilityEvent, "source" | "extra">, text: string): string {
+    if (!isFrontendOrigin(event)) return text;
     const trimmed = text.trim();
     if (!trimmed) return FRONTEND_LABEL;
     if (trimmed.startsWith(FRONTEND_LABEL)) return trimmed;

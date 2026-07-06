@@ -69,6 +69,39 @@ describe("observability Slack formatting", () => {
         expect(messageBlock.text.text).toContain("[FRONTEND]");
     });
 
+    it("prepends [FRONTEND] for browser-originated frontend requests even when the source is internal", async () => {
+        const { captureCriticalEvent } = await import("./observability");
+
+        await captureCriticalEvent({
+            source: "internal",
+            severity: "error",
+            statusCode: 500,
+            route: "/api/support/summary-feedback",
+            requestId: "req_frontend_browser",
+            message: "Slack feedback failed",
+            action: "api.post",
+            extra: {
+                requestContext: {
+                    callerType: "frontend-browser",
+                },
+            },
+        });
+
+        expect(global.fetch).toHaveBeenCalledTimes(1);
+        const fetchArgs = (global.fetch as jest.Mock).mock.calls[0];
+        const body = JSON.parse(String(fetchArgs[1].body));
+
+        expect(body.text).toContain("[FRONTEND]");
+
+        const headerBlock = body.blocks.find((b: any) => b.type === "header");
+        expect(headerBlock.text.text).toContain("[FRONTEND]");
+
+        const messageBlock = body.blocks.find(
+            (b: any) => b.type === "section" && typeof b.text?.text === "string" && b.text.text.includes("*Message:*"),
+        );
+        expect(messageBlock.text.text).toContain("[FRONTEND]");
+    });
+
     it("does not prepend [FRONTEND] for non-frontend events", async () => {
         const { captureCriticalEvent } = await import("./observability");
 

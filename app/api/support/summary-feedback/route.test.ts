@@ -67,7 +67,7 @@ describe("POST /api/support/summary-feedback", () => {
         expect(webhookUrl).toBe("https://hooks.slack.com/services/test");
         expect(requestInit.method).toBe("POST");
         const slackPayload = JSON.parse(String(requestInit.body));
-        expect(slackPayload.text).toContain("Edit-plan feedback: thumbs down");
+        expect(slackPayload.text).toContain("[FRONTEND] Edit-plan feedback: thumbs down");
         expect(slackPayload.text).toContain("\"reportCode\": \"EPR-APP1-USER-JOBREPOR-REQREP\"");
         expect(slackPayload.text).toContain("\"jobId\": \"job_123\"");
         expect(slackPayload.text).toContain("\"requestId\": \"req_123\"");
@@ -110,7 +110,7 @@ describe("POST /api/support/summary-feedback", () => {
         expect(responsePayload).toMatchObject({ ok: true, sent: true, posted: true });
         expect(fetchMock).toHaveBeenCalledTimes(1);
         const slackPayload = JSON.parse(String(fetchMock.mock.calls[0][1].body));
-        expect(slackPayload.text).toContain("Edit-plan feedback: thumbs down");
+        expect(slackPayload.text).toContain("[FRONTEND] Edit-plan feedback: thumbs down");
         expect(slackPayload.text).toContain("\"reportCode\": \"unknown\"");
         expect(slackPayload.text).toContain("Human note: Needs improvement");
     });

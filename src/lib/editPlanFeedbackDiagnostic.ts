@@ -195,7 +195,7 @@ export function buildEditPlanSlackDiagnosticText(input: EditPlanFeedbackDiagnost
     const humanNote = truncateText(input.summary, 220);
 
     return [
-        "Edit-plan feedback: thumbs down",
+        "[FRONTEND] Edit-plan feedback: thumbs down",
         formatCompactJson({
             reportCode,
             jobId,
