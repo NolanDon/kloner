@@ -23,6 +23,16 @@ async function captureUrlScanFailure(params: {
     reason: string;
     statusCode: number;
     requestId?: string;
+    downstream?: {
+        status?: number | null;
+        statusText?: string | null;
+        code?: string | null;
+        requestId?: string | null;
+        source?: string | null;
+        message?: string | null;
+        raw?: string | null;
+        body?: unknown;
+    };
     extra?: Record<string, unknown>;
 }) {
     await captureCriticalEvent({
@@ -38,8 +48,83 @@ async function captureUrlScanFailure(params: {
         message: `URL scan failed: ${params.reason}`,
         url: params.targetUrl,
         tags: ["url-scan", "generate", "backend-failure"],
-        extra: params.extra,
+        extra: {
+            ...(params.extra || {}),
+            downstream: params.downstream || null,
+        },
     });
+}
+
+function firstNonEmptyString(...values: unknown[]): string {
+    for (const value of values) {
+        if (typeof value !== "string") continue;
+        const trimmed = value.trim();
+        if (trimmed) return trimmed;
+    }
+    return "";
+}
+
+function extractDownstreamFailureDetails(
+    r: { status: number; reqId: string; upstream: { statusText?: string | null }; raw?: string },
+    payload: any
+) {
+    const objectPayload = payload && typeof payload === "object" && !Array.isArray(payload) ? payload : {};
+    const nestedError = (objectPayload as any).error;
+    const nestedErrorMessage =
+        typeof nestedError === "string"
+            ? nestedError
+            : nestedError && typeof nestedError === "object"
+                ? firstNonEmptyString((nestedError as any).message, (nestedError as any).error, (nestedError as any).reason)
+                : "";
+    const message = firstNonEmptyString(
+        nestedErrorMessage,
+        (objectPayload as any).message,
+        (objectPayload as any).reason,
+        (objectPayload as any).detail,
+        (objectPayload as any).errorMessage,
+    );
+    const code = firstNonEmptyString(
+        (objectPayload as any).code,
+        (objectPayload as any).errorCode,
+        (objectPayload as any).failureCode,
+        (objectPayload as any).reasonCode,
+    );
+    const source = firstNonEmptyString(
+        (objectPayload as any).source,
+        (objectPayload as any).service,
+        (objectPayload as any).origin,
+    );
+    const requestId = firstNonEmptyString(
+        (objectPayload as any).requestId,
+        (objectPayload as any).reqId,
+        (objectPayload as any).request_id,
+        r.reqId,
+    );
+    const statusText = firstNonEmptyString(
+        r.upstream?.statusText,
+        (objectPayload as any).statusText,
+        (objectPayload as any).statusMessage,
+    );
+    const raw = typeof r.raw === "string" ? r.raw.trim() : "";
+
+    const reason = firstNonEmptyString(
+        message,
+        code,
+        statusText,
+        raw,
+        `Backend responded with status ${r.status}`,
+    ) || "Backend error";
+
+    return {
+        reason,
+        code: code || null,
+        requestId: requestId || null,
+        source: source || null,
+        message: message || null,
+        statusText: statusText || null,
+        raw: raw || null,
+        body: objectPayload && Object.keys(objectPayload).length ? objectPayload : null,
+    };
 }
 
 function jsonNoStatusAlert(body: any, init: { status: number; headers?: Record<string, string> }) {
@@ -181,35 +266,49 @@ export async function POST(req: NextRequest) {
                             ? r.status
                             : 502;
 
-                    const reason =
-                        (typeof (payload as any).error === "string" && (payload as any).error.trim()) ||
-                        (typeof (payload as any).message === "string" && (payload as any).message.trim()) ||
-                        (typeof (payload as any).reason === "string" && (payload as any).reason.trim()) ||
-                        "Backend error (no captures or failed run).";
-
-                    const backendCode =
-                        typeof (payload as any).code === "string"
-                            ? (payload as any).code
-                            : undefined;
+                    const downstream = extractDownstreamFailureDetails(r, payload);
 
                     await captureUrlScanFailure({
                         uid: decoded.uid,
                         targetUrl: normalizedUrl,
-                        reason,
+                        reason: downstream.reason,
                         statusCode: status,
                         requestId: r.reqId,
+                        downstream: {
+                            status: r.status,
+                            statusText: downstream.statusText,
+                            code: downstream.code,
+                            requestId: downstream.requestId,
+                            source: downstream.source,
+                            message: downstream.message,
+                            raw: downstream.raw,
+                            body: downstream.body,
+                        },
                         extra: {
                             backendStatus: r.status,
+                            backendStatusText: downstream.statusText,
+                            backendRequestId: downstream.requestId,
+                            backendSource: downstream.source,
+                            backendMessage: downstream.message,
                             upstreamOk: r.upstream.ok,
                             payloadOk: okField,
-                            backendCode,
+                            backendCode: downstream.code,
                             totalPlanned,
+                            backendRaw: downstream.raw,
                         },
                     });
 
                     return jsonNoStatusAlert(
                         {
-                            error: reason,
+                            error: downstream.reason,
+                            code: downstream.code || (status >= 500 ? "DOWNSTREAM_FAILURE" : "URL_SCAN_FAILED"),
+                            upstreamStatus: r.status,
+                            upstreamStatusText: downstream.statusText,
+                            upstreamCode: downstream.code,
+                            upstreamRequestId: downstream.requestId,
+                            upstreamSource: downstream.source,
+                            upstreamMessage: downstream.message,
+                            upstreamBody: downstream.body,
                             ...(totalPlanned === 0
                                 ? { reason: "no_captures" }
                                 : {}),
@@ -246,13 +345,29 @@ export async function POST(req: NextRequest) {
                     targetUrl: normalizedUrl,
                     reason: e?.message || "Proxy failed",
                     statusCode: 502,
+                    downstream: {
+                        status: 502,
+                        statusText: "Proxy failed",
+                        code: e?.code || e?.name || "PROXY_FAILURE",
+                        requestId: e?.requestId || e?.reqId || null,
+                        source: "proxy",
+                        message: e?.message || "Proxy failed",
+                    },
                     extra: {
                         errorName: e?.name || "Error",
+                        proxyFailure: true,
+                        proxyErrorCode: e?.code || null,
                     },
                 });
 
                 return jsonNoStatusAlert(
-                    { error: e?.message || "Proxy failed" },
+                    {
+                        error: e?.message || "Proxy failed",
+                        code: e?.code || e?.name || "PROXY_FAILURE",
+                        upstreamStatus: 502,
+                        upstreamSource: "proxy",
+                        upstreamMessage: e?.message || "Proxy failed",
+                    },
                     {
                         status: 502,
                         headers: {

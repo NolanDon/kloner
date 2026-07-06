@@ -38,6 +38,7 @@ const MAX_TEXT_CHARS = 2800;
 const MAX_STACK_BLOCK_CHARS = 2400;
 const MAX_SLACK_CONTEXT_FIELDS = 4;
 const FRONTEND_LABEL = "[FRONTEND]";
+const PROXY_LABEL = "[PROXY]";
 
 function isFrontendOrigin(event: Pick<ObservabilityEvent, "source" | "extra">): boolean {
     if (event.source === "frontend") return true;
@@ -47,12 +48,28 @@ function isFrontendOrigin(event: Pick<ObservabilityEvent, "source" | "extra">): 
     return String(requestContext?.callerType || "").trim().toLowerCase() === "frontend-browser";
 }
 
-function withFrontendLabel(event: Pick<ObservabilityEvent, "source" | "extra">, text: string): string {
-    if (!isFrontendOrigin(event)) return text;
+function isProxyOrigin(event: Pick<ObservabilityEvent, "route" | "service" | "source" | "extra">): boolean {
+    const route = String(event.route || "").trim().toLowerCase();
+    const service = String(event.service || "").trim().toLowerCase();
+    if (service.includes("url-generate-proxy")) return true;
+    if (service.endsWith("-proxy")) return true;
+    if (route === "/api/private/generate") return true;
+    return false;
+}
+
+function getAlertLabel(event: Pick<ObservabilityEvent, "route" | "service" | "source" | "extra">): string {
+    if (isFrontendOrigin(event)) return FRONTEND_LABEL;
+    if (isProxyOrigin(event)) return PROXY_LABEL;
+    return "";
+}
+
+function withAlertLabel(event: Pick<ObservabilityEvent, "route" | "service" | "source" | "extra">, text: string): string {
+    const label = getAlertLabel(event);
+    if (!label) return text;
     const trimmed = text.trim();
-    if (!trimmed) return FRONTEND_LABEL;
-    if (trimmed.startsWith(FRONTEND_LABEL)) return trimmed;
-    return `${FRONTEND_LABEL} ${trimmed}`;
+    if (!trimmed) return label;
+    if (trimmed.startsWith(label)) return trimmed;
+    return `${label} ${trimmed}`;
 }
 
 function envName() {
@@ -242,8 +259,8 @@ function buildDashboardUrl(eventId: string): string {
 }
 
 function cleanContextValue(value: unknown, max = 200): string {
-    if (typeof value !== "string") return "";
-    const trimmed = value.trim();
+    if (typeof value !== "string" && typeof value !== "number" && typeof value !== "boolean") return "";
+    const trimmed = String(value).trim();
     if (!trimmed) return "";
     return trimmed.length > max ? `${trimmed.slice(0, max - 1)}…` : trimmed;
 }
@@ -262,13 +279,38 @@ function compactExtraSummary(extra: ExtraData): Array<[string, string]> {
     ].filter(([, value]) => Boolean(value)) as Array<[string, string]>;
 }
 
+function urlScanExtraSummary(extra: ExtraData): Array<[string, string]> {
+    return [
+        ["Backend status", cleanContextValue((extra as any).backendStatus ?? (extra as any).upstreamStatus ?? (extra as any).statusCode, 80)],
+        ["Backend code", cleanContextValue((extra as any).backendCode ?? (extra as any).upstreamCode ?? (extra as any).responseCode ?? (extra as any).code, 120)],
+        ["Backend req", cleanContextValue((extra as any).backendRequestId ?? (extra as any).upstreamRequestId ?? (extra as any).reqId, 120)],
+        ["Backend source", cleanContextValue((extra as any).backendSource ?? (extra as any).upstreamSource ?? (extra as any).service, 120)],
+        ["Backend reason", cleanContextValue((extra as any).backendMessage ?? (extra as any).upstreamMessage ?? (extra as any).responseError ?? (extra as any).reason ?? (extra as any).message, 220)],
+        ["URL", cleanContextValue((extra as any).url || (extra as any).requestContext?.url, 220)],
+    ].filter(([, value]) => Boolean(value)) as Array<[string, string]>;
+}
+
+function shouldUseUrlScanSummary(event: Pick<StoredEvent, "route" | "service" | "action" | "tags">): boolean {
+    const route = String(event.route || "").toLowerCase();
+    const service = String(event.service || "").toLowerCase();
+    const action = String(event.action || "").toLowerCase();
+    const tags = Array.isArray(event.tags) ? event.tags.map((tag) => String(tag || "").toLowerCase()) : [];
+    return (
+        action.includes("url_scan_failed") ||
+        route === "/api/private/generate" ||
+        service.includes("url-generate-proxy") ||
+        tags.includes("url-scan") ||
+        tags.includes("backend-failure")
+    );
+}
+
 function toSlackBlocks(event: StoredEvent, eventId: string) {
     const route = event.route || event.page || "n/a";
     const user = event.userId || "anonymous";
     const reqId = event.requestId || "n/a";
     const status = typeof event.statusCode === "number" ? String(event.statusCode) : "n/a";
     const env = event.environment || envName();
-    const title = withFrontendLabel(
+    const title = withAlertLabel(
         event,
         `${severityEmoji(event.severity)} ${getProjectLabel()} ${event.severity.toUpperCase()}${event.statusCode ? ` (${event.statusCode})` : ""}`,
     );
@@ -299,7 +341,10 @@ function toSlackBlocks(event: StoredEvent, eventId: string) {
             ["Job", cleanContextValue((extra as any).jobId || (extra as any).job || (extra as any).requestContext?.jobId, 120)],
             ["Machine", cleanContextValue((extra as any).machineId || (extra as any).backend?.debug?.machine?.id || (extra as any).backend?.machineId, 120)],
         ].filter(([, value]) => Boolean(value)) as Array<[string, string]>
-        : compactExtraSummary(extra).slice(0, MAX_SLACK_CONTEXT_FIELDS);
+        : (shouldUseUrlScanSummary(event)
+            ? urlScanExtraSummary(extra)
+            : compactExtraSummary(extra)
+        ).slice(0, MAX_SLACK_CONTEXT_FIELDS);
 
     const contextBlock = contextFields.length
         ? [
@@ -309,7 +354,7 @@ function toSlackBlocks(event: StoredEvent, eventId: string) {
         : "";
 
     const stack = truncate(normalizeMultiline(event.stack), MAX_STACK_CHARS);
-    const message = truncate(asOneLine(withFrontendLabel(event, event.message)), MAX_MESSAGE_CHARS);
+    const message = truncate(asOneLine(withAlertLabel(event, event.message)), MAX_MESSAGE_CHARS);
     const dashboardUrl = buildDashboardUrl(eventId);
 
     const blocks: any[] = [
@@ -419,7 +464,7 @@ async function postToSlack(event: StoredEvent, eventId: string) {
     if (shouldSuppressSlackWebhook(event)) return;
 
     const body: Record<string, unknown> = {
-        text: withFrontendLabel(event, `${event.severity.toUpperCase()}${typeof event.statusCode === "number" ? ` (${event.statusCode})` : ""} ${event.message}`),
+        text: withAlertLabel(event, `${event.severity.toUpperCase()}${typeof event.statusCode === "number" ? ` (${event.statusCode})` : ""} ${event.message}`),
         blocks: toSlackBlocks(event, eventId),
         unfurl_links: false,
         unfurl_media: false,

@@ -18,6 +18,7 @@ jest.mock("next/server", () => {
 const callBackend = jest.fn();
 const peekUserCredit = jest.fn();
 const consumeUserCredit = jest.fn();
+const captureCriticalEventMock = jest.fn<Promise<unknown>, [any]>(async (_event: any) => undefined);
 
 jest.mock("@/src/lib/callBackend", () => ({
     __esModule: true,
@@ -47,7 +48,7 @@ jest.mock("../../_lib/credits-server", () => ({
 
 jest.mock("@/lib/observability", () => ({
     __esModule: true,
-    captureCriticalEvent: async () => undefined,
+    captureCriticalEvent: (event: any) => captureCriticalEventMock(event),
 }));
 
 describe("POST /api/private/generate", () => {
@@ -55,6 +56,7 @@ describe("POST /api/private/generate", () => {
         callBackend.mockReset();
         peekUserCredit.mockReset();
         consumeUserCredit.mockReset();
+        captureCriticalEventMock.mockReset();
         peekUserCredit.mockResolvedValue({ ok: true, remaining: 10 });
         consumeUserCredit.mockResolvedValue(undefined);
         callBackend.mockResolvedValue({
@@ -108,6 +110,73 @@ describe("POST /api/private/generate", () => {
         expect(callBackend.mock.calls[0][1]).toMatchObject({
             path: "/generate-screenshots",
             body: { url: "https://example.com/" },
+        });
+    });
+
+    it("preserves downstream failure details in both the response and Slack alert", async () => {
+        callBackend.mockResolvedValueOnce({
+            status: 500,
+            upstream: { ok: false, statusText: "Internal Server Error" },
+            json: {
+                error: "Internal server error",
+                code: "SCAN_BACKEND_500",
+                requestId: "backend_req_123",
+                source: "generate-screenshots",
+            },
+            raw: JSON.stringify({
+                error: "Internal server error",
+                code: "SCAN_BACKEND_500",
+                requestId: "backend_req_123",
+                source: "generate-screenshots",
+            }),
+            reqId: "req_downstream_1",
+        });
+
+        const { POST } = await import("./route");
+        const req: any = {
+            json: async () => ({ url: "https://example.com/" }),
+        };
+
+        const res: any = await POST(req);
+        const body = await res.json();
+
+        expect(res.status).toBe(500);
+        expect(body).toMatchObject({
+            error: "Internal server error",
+            code: "SCAN_BACKEND_500",
+            upstreamStatus: 500,
+            upstreamStatusText: "Internal Server Error",
+            upstreamCode: "SCAN_BACKEND_500",
+            upstreamRequestId: "backend_req_123",
+            upstreamSource: "generate-screenshots",
+            upstreamMessage: "Internal server error",
+        });
+        expect(consumeUserCredit).not.toHaveBeenCalled();
+        expect(captureCriticalEventMock).toHaveBeenCalledTimes(1);
+        const capturedEvent = captureCriticalEventMock.mock.calls[0]?.[0];
+        expect(capturedEvent).toMatchObject({
+            source: "internal",
+            service: "url-generate-proxy",
+            action: "url_scan_failed",
+            message: "URL scan failed: Internal server error",
+            route: "/api/private/generate",
+            extra: expect.objectContaining({
+                backendStatus: 500,
+                backendStatusText: "Internal Server Error",
+                backendRequestId: "backend_req_123",
+                backendSource: "generate-screenshots",
+                backendMessage: "Internal server error",
+                backendCode: "SCAN_BACKEND_500",
+                backendRaw: expect.stringContaining("Internal server error"),
+                downstream: expect.objectContaining({
+                    status: 500,
+                    statusText: "Internal Server Error",
+                    code: "SCAN_BACKEND_500",
+                    requestId: "backend_req_123",
+                    source: "generate-screenshots",
+                    message: "Internal server error",
+                }),
+            }),
         });
     });
 });

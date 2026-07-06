@@ -129,6 +129,53 @@ describe("observability Slack formatting", () => {
         expect(messageBlock.text.text).not.toContain("[FRONTEND]");
     });
 
+    it("prepends [PROXY] for url-generate proxy failures and surfaces downstream details", async () => {
+        const { captureCriticalEvent } = await import("./observability");
+
+        await captureCriticalEvent({
+            source: "internal",
+            severity: "critical",
+            statusCode: 500,
+            route: "/api/private/generate",
+            requestId: "req_proxy_1",
+            message: "URL scan failed: Internal server error",
+            action: "url_scan_failed",
+            service: "url-generate-proxy",
+            extra: {
+                backendStatus: 500,
+                backendCode: "SCAN_BACKEND_500",
+                backendRequestId: "backend_req_123",
+                backendSource: "generate-screenshots",
+                backendMessage: "Internal server error",
+                backendRaw: "{\"error\":\"Internal server error\"}",
+                url: "https://example.com",
+            },
+        });
+
+        expect(global.fetch).toHaveBeenCalledTimes(1);
+        const fetchArgs = (global.fetch as jest.Mock).mock.calls[0];
+        const body = JSON.parse(String(fetchArgs[1].body));
+
+        expect(body.text).toContain("[PROXY]");
+
+        const headerBlock = body.blocks.find((b: any) => b.type === "header");
+        expect(headerBlock.text.text).toContain("[PROXY]");
+
+        const messageBlock = body.blocks.find(
+            (b: any) => b.type === "section" && typeof b.text?.text === "string" && b.text.text.includes("*Message:*"),
+        );
+        expect(messageBlock.text.text).toContain("[PROXY]");
+        expect(messageBlock.text.text).toContain("Internal server error");
+
+        const contextBlock = body.blocks.find(
+            (b: any) => b.type === "section" && typeof b.text?.text === "string" && b.text.text.includes("*Request Context:*"),
+        );
+        expect(contextBlock.text.text).toContain("Backend status: 500");
+        expect(contextBlock.text.text).toContain("Backend code: SCAN_BACKEND_500");
+        expect(contextBlock.text.text).toContain("Backend req: backend_req_123");
+        expect(contextBlock.text.text).toContain("Backend source: generate-screenshots");
+    });
+
     it("delivers localhost API failures to Slack unless localhost suppression is enabled", async () => {
         const { captureCriticalEvent } = await import("./observability");
 
