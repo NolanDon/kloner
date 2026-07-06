@@ -40,7 +40,8 @@ function getBucket(): Bucket {
 }
 
 async function collectUsageForPrefix(bucket: Bucket, prefix: string): Promise<{ usedBytes: number; fileCount: number }> {
-    const [files, folders] = (await bucket.getFiles({ prefix })) as any;
+    const result = (await bucket.getFiles({ prefix })) as any;
+    const files = Array.isArray(result?.[0]) ? result[0] : [];
     let usedBytes = 0;
     let fileCount = 0;
 
@@ -55,12 +56,6 @@ async function collectUsageForPrefix(bucket: Bucket, prefix: string): Promise<{ 
         }
     }
 
-    for (const folder of folders) {
-        const child = await collectUsageForPrefix(bucket, folder.name);
-        usedBytes += child.usedBytes;
-        fileCount += child.fileCount;
-    }
-
     return { usedBytes, fileCount };
 }
 
@@ -68,6 +63,8 @@ export async function GET(req: NextRequest) {
     return requireSessionAndMaybeCsrf(
         req,
         async ({ uid }) => {
+            let usedBytes = 0;
+            let fileCount = 0;
             try {
                 const bucket = getBucket();
                 const prefixes = [
@@ -76,26 +73,23 @@ export async function GET(req: NextRequest) {
                     `kloner_ai_home/${uid}`,
                 ];
 
-                let usedBytes = 0;
-                let fileCount = 0;
                 for (const prefix of prefixes) {
                     const usage = await collectUsageForPrefix(bucket, prefix);
                     usedBytes += usage.usedBytes;
                     fileCount += usage.fileCount;
                 }
+            } catch (err: any) {
+                console.error("user-blob usage error", err);
+            }
 
-                return NextResponse.json({
+            return NextResponse.json(
+                {
                     usedBytes,
                     fileCount,
                     limitBytes: Number(process.env.NEXT_PUBLIC_IMAGE_STORAGE_LIMIT_BYTES || 250 * 1024 * 1024),
-                }, { headers: { "Cache-Control": "no-store" } });
-            } catch (err: any) {
-                console.error("user-blob usage error", err);
-                return NextResponse.json(
-                    { usedBytes: 0, fileCount: 0, error: err?.message || "usage_failed" },
-                    { status: 500 },
-                );
-            }
+                },
+                { headers: { "Cache-Control": "no-store" } },
+            );
         },
         { methods: ["GET"], csrf: false },
     );
