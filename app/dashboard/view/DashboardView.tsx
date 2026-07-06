@@ -3990,6 +3990,10 @@ export default function PreviewPage(): JSX.Element {
         () => (user?.uid ? `kloner.dashboard.recovery.offer.sent:${user.uid}` : ""),
         [user?.uid],
     );
+    const recoveryOfferSeenStorageKey = useMemo(
+        () => (user?.uid ? `kloner.dashboard.recovery.offer.seen:${user.uid}` : ""),
+        [user?.uid],
+    );
 
     const [archivingRender, setArchivingRender] = useState<Record<string, boolean>>({});
     const [archivingApp, setArchivingApp] = useState<Record<string, boolean>>({});
@@ -5241,6 +5245,14 @@ export default function PreviewPage(): JSX.Element {
         const recoveryParam = search.get("recovery");
         const isCancelledRecovery = billingParam === "cancelled" && recoveryParam === "1";
         const isRecoverySuccess = billingParam === "success" && recoveryParam === "1";
+        const alreadySeenRecoveryOffer = (() => {
+            if (typeof window === "undefined" || !recoveryOfferSeenStorageKey) return false;
+            try {
+                return window.sessionStorage.getItem(recoveryOfferSeenStorageKey) === "1";
+            } catch {
+                return false;
+            }
+        })();
         const pendingRecoveryAt = (() => {
             if (typeof window === "undefined" || !recoveryPendingStorageKey) return 0;
             try {
@@ -5252,6 +5264,10 @@ export default function PreviewPage(): JSX.Element {
             }
         })();
         const hasFreshPendingRecovery = pendingRecoveryAt > 0 && Date.now() - pendingRecoveryAt < 30 * 60 * 1000;
+
+        if (alreadySeenRecoveryOffer && !isRecoverySuccess) {
+            return;
+        }
 
         if (!isCancelledRecovery && !isRecoverySuccess && !hasFreshPendingRecovery) {
             return;
@@ -5272,6 +5288,13 @@ export default function PreviewPage(): JSX.Element {
                     if (recoverySentStorageKey) {
                         try {
                             window.sessionStorage.removeItem(recoverySentStorageKey);
+                        } catch {
+                            // ignore
+                        }
+                    }
+                    if (recoveryOfferSeenStorageKey) {
+                        try {
+                            window.sessionStorage.removeItem(recoveryOfferSeenStorageKey);
                         } catch {
                             // ignore
                         }
@@ -5324,6 +5347,13 @@ export default function PreviewPage(): JSX.Element {
 
                 dismissWebsitePrePaywall();
                 setShowRecoveryOffer(true);
+                if (recoveryOfferSeenStorageKey) {
+                    try {
+                        window.sessionStorage.setItem(recoveryOfferSeenStorageKey, "1");
+                    } catch {
+                        // ignore
+                    }
+                }
 
                 try {
                     const url = new URL(window.location.href);
@@ -5343,7 +5373,7 @@ export default function PreviewPage(): JSX.Element {
         return () => {
             cancelled = true;
         };
-    }, [recoveryPendingStorageKey, recoverySentStorageKey, search, user, router]);
+    }, [recoveryOfferSeenStorageKey, recoveryPendingStorageKey, recoverySentStorageKey, search, user, router]);
 
     const closeAppDeployWizard = useCallback(() => {
         appDeployWizardRestoreTokenRef.current += 1;
@@ -12632,6 +12662,13 @@ export default function PreviewPage(): JSX.Element {
 
     function dismissRecoveryOffer() {
         setShowRecoveryOffer(false);
+        if (recoveryOfferSeenStorageKey) {
+            try {
+                window.sessionStorage.setItem(recoveryOfferSeenStorageKey, "1");
+            } catch {
+                // ignore
+            }
+        }
     }
 
     function startRecoveryCheckout() {
@@ -12656,7 +12693,6 @@ export default function PreviewPage(): JSX.Element {
             } catch (err) {
                 console.error("startRecoveryCheckout failed", err);
                 setShowRecoveryCheckoutLoader(false);
-                setShowRecoveryOffer(true);
                 void showAlert(
                     "Checkout is taking too long. Please try again in a few seconds.",
                     "Checkout Error",
