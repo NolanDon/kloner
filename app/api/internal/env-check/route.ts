@@ -92,6 +92,11 @@ export async function GET(req: NextRequest) {
                       EMAIL_ENABLE_JOURNEY_SET: isSet("EMAIL_ENABLE_JOURNEY"),
                       EMAIL_ENABLE_PRODUCT_LAUNCH_SET: isSet("EMAIL_ENABLE_PRODUCT_LAUNCH"),
                       JOURNEY_EMAIL_FROM_SET: isSet("JOURNEY_EMAIL_FROM"),
+                      WELCOME_EMAIL_FROM_SET: isSet("WELCOME_EMAIL_FROM"),
+                      STRIPE_EXIT40_PROMO_PROD_SET: isSet("STRIPE_EXIT40_PROMO_PROD"),
+                      STRIPE_EXIT40_PROMO_TEST_SET: isSet("STRIPE_EXIT40_PROMO_TEST"),
+                      STRIPE_EXIT40_COUPON_PROD_SET: isSet("STRIPE_EXIT40_COUPON_PROD"),
+                      STRIPE_EXIT40_COUPON_TEST_SET: isSet("STRIPE_EXIT40_COUPON_TEST"),
                   }
                 : null),
         },

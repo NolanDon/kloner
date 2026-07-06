@@ -12,6 +12,7 @@ import SuccessConfetti from "@/components/tools/SuccessConfetti";
 
 const ACCENT = "#f55f2a";
 const AI_EDIT_CREDIT_COST = 3;
+const RECOVERY_PENDING_KEY_PREFIX = "kloner.billing.recovery.pending:";
 
 /* ───────── CSRF helper (reuse / centralize later) ───────── */
 
@@ -169,6 +170,15 @@ export default function PriceClient(): JSX.Element {
 
     const pendingAutoCheckoutAttemptedRef = useRef(false);
 
+    function markRecoveryCheckoutPending() {
+        if (typeof window === "undefined" || !user?.uid) return;
+        try {
+            window.sessionStorage.setItem(`${RECOVERY_PENDING_KEY_PREFIX}${user.uid}`, String(Date.now()));
+        } catch {
+            // ignore
+        }
+    }
+
     const [aiCredits, setAiCredits] = useState<
         null | {
             remaining: number | null;
@@ -249,6 +259,69 @@ export default function PriceClient(): JSX.Element {
             cancelled = true;
         };
     }, [authLoading]);
+
+    useEffect(() => {
+        if (authLoading || !user) return;
+
+        let cancelled = false;
+
+        (async () => {
+            try {
+                if (typeof window === "undefined") return;
+
+                const url = new URL(window.location.href);
+                const billing = url.searchParams.get("billing");
+                const recovery = url.searchParams.get("recovery");
+
+                if (billing !== "cancelled" || recovery !== "1") return;
+
+                const handledKey = `kloner.price.recovery.offer.sent:${user.uid}`;
+                const alreadyHandled = (() => {
+                    try {
+                        return window.sessionStorage.getItem(handledKey) === "1";
+                    } catch {
+                        return false;
+                    }
+                })();
+
+                if (alreadyHandled) {
+                    url.searchParams.delete("billing");
+                    url.searchParams.delete("recovery");
+                    window.history.replaceState({}, "", url.toString());
+                    return;
+                }
+
+                try {
+                    window.sessionStorage.setItem(handledKey, "1");
+                } catch {
+                    // ignore
+                }
+
+                const csrf = await ensureCsrf();
+                if (cancelled) return;
+
+                await fetch("/api/billing/send-recovery-offer", {
+                    method: "POST",
+                    headers: {
+                        "content-type": "application/json",
+                        ...(csrf ? { "x-csrf": csrf } : {}),
+                    },
+                    credentials: "include",
+                    cache: "no-store",
+                }).catch(() => null);
+
+                url.searchParams.delete("billing");
+                url.searchParams.delete("recovery");
+                window.history.replaceState({}, "", url.toString());
+            } catch {
+                // ignore
+            }
+        })();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [authLoading, user]);
 
     useEffect(() => {
         let cancelled = false;
@@ -443,6 +516,7 @@ export default function PriceClient(): JSX.Element {
         setLoadingPlan(plan);
 
         try {
+            markRecoveryCheckoutPending();
             const csrf = await ensureCsrf();
 
             const res = await fetch("/api/billing/create-checkout-session", {

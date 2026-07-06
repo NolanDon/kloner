@@ -17,7 +17,9 @@ const TRIAL_DAYS = 7;
 // Exit-offer rules
 const EXIT_OFFER_MS = 15 * 60 * 1000;
 const EXIT_OFFER_SKEW_MS = 30 * 1000; // client clock tolerance
-const EXIT_OFFER_DISABLED = true; // temporary kill switch for DEPLOY40
+// Exit offer is intentionally disabled here so the 40% discount can only be
+// applied through the signed recovery email link.
+const EXIT_OFFER_DISABLED = true;
 
 async function notifyStripeSubscriptionError(params: {
     action: string;
@@ -349,7 +351,11 @@ async function handler({ req, uid }: { req: NextRequest; uid: string }) {
                     )}&billing=success`
             : `${appOrigin}/dashboard/view?billing=success`;
 
-    const cancelUrl = `${appOrigin}/price?billing=cancelled`;
+    const cancelUrl = `${appOrigin}/dashboard/view?billing=cancelled&recovery=1`;
+
+    // ---- exit-offer discount resolution ----
+    const exitOfferRequested = isValidExitOfferPayload({ offer, offerEndsAt });
+    const exitOfferGranted = exitOfferRequested ? await claimExitOfferOnce(userRef) : false;
 
     const baseMeta: Record<string, string> = {
         firebaseUid: uid,
@@ -359,12 +365,9 @@ async function handler({ req, uid }: { req: NextRequest; uid: string }) {
         ...(returnAppId ? { returnAppId: String(returnAppId) } : {}),
         ...(returnRenderId ? { returnRenderId: String(returnRenderId) } : {}),
         ...(returnStep ? { returnStep: String(returnStep) } : {}),
+        ...(exitOfferRequested ? { checkoutFlow: "recovery_exit40" } : {}),
         ...(isAppDeployTrialSuccess ? { checkoutFlow: "app_deploy_trial" } : {}),
     };
-
-    // ---- exit-offer discount resolution ----
-    const exitOfferRequested = isValidExitOfferPayload({ offer, offerEndsAt });
-    const exitOfferGranted = exitOfferRequested ? await claimExitOfferOnce(userRef) : false;
 
     let discounts:
         | Array<{ promotion_code?: string; coupon?: string }>

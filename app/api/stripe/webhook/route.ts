@@ -11,6 +11,7 @@ import {
     setUserTierFromStripe,
 } from "../../_lib/billing";
 import { captureCriticalEvent, captureException } from "@/lib/observability";
+import { makeRecoveryCheckoutUrl, makeUnsubUrl } from "@/app/api/private/email-links";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -210,6 +211,118 @@ async function sendTrialWelcomeEmail(params: {
                 },
                 { merge: true },
         );
+}
+
+function hasRecoveryOfferEmail(userData: Record<string, any> | null | undefined): boolean {
+        if (!userData || typeof userData !== "object") return false;
+        const nested = (userData as any)?.offers;
+        if (nested && typeof nested === "object" && !Array.isArray(nested)) {
+                if ((nested as any).exitOffer40RecoveryEmailSentAt) return true;
+                if ((nested as any).exitOffer40RecoveryEmailSessionId) return true;
+        }
+        if ((userData as any)["offers.exitOffer40RecoveryEmailSentAt"]) return true;
+        return false;
+}
+
+async function claimRecoveryOfferEmailOnce(userRef: FirebaseFirestore.DocumentReference, sessionId: string): Promise<boolean> {
+        return db.runTransaction(async (tx: any) => {
+                const snap = await tx.get(userRef);
+                const data = snap.exists ? (snap.data() as Record<string, any>) : {};
+                if (hasRecoveryOfferEmail(data)) return false;
+
+                tx.set(
+                        userRef,
+                        {
+                                offers: {
+                                        ...(data?.offers && typeof data.offers === "object" && !Array.isArray(data.offers) ? data.offers : {}),
+                                        exitOffer40RecoveryEmailSessionId: sessionId,
+                                        exitOffer40RecoveryEmailSentAt: admin.firestore.FieldValue.serverTimestamp(),
+                                },
+                        },
+                        { merge: true },
+                );
+
+                return true;
+        });
+}
+
+function buildRecoveryOfferHtml(args: { name?: string | null; linkUrl: string; unsubUrl: string }) {
+        const safeName = (args.name || "there").trim() || "there";
+        return `<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <title>40% off your first month</title>
+</head>
+<body style="margin:0;padding:0;background:#ffffff;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#111827;">
+    <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
+        <tr>
+            <td align="center" style="padding:40px 16px;">
+                <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="max-width:560px;">
+                    <tr>
+                        <td style="font-size:15px;line-height:1.65;">
+                            <p style="margin:0 0 16px 0;">Hey ${safeName},</p>
+                            <p style="margin:0 0 16px 0;">I saw you were close to checkout. If price was the blocker, here’s 40% off your first month.</p>
+                            <p style="margin:0 0 24px 0;">
+                                <a href="${args.linkUrl}" style="display:inline-block;padding:10px 18px;border-radius:8px;background:#111827;color:#ffffff;text-decoration:none;font-weight:600;">Get 40% off now</a>
+                            </p>
+                            <p style="margin:0 0 16px 0;color:#6b7280;font-size:13px;">This is a journey email. <a href="${args.unsubUrl}" style="color:#6b7280;text-decoration:underline;">Unsubscribe from these emails</a>.</p>
+                            <p style="margin:0 0 20px 0;">I’m always here to help get your project started.</p>
+                            <p style="margin:0 0 4px 0;">— Nolan</p>
+                            <p style="margin:0 0 24px 0;color:#6b7280;">Founder, Kloner</p>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>`;
+}
+
+function buildRecoveryOfferText(args: { name?: string | null; linkUrl: string; unsubUrl: string }) {
+        const safeName = (args.name || "there").trim() || "there";
+        return `Hey ${safeName},
+
+I saw you were close to checkout. If price was the blocker, here’s 40% off your first month.
+
+Get 40% off now:
+${args.linkUrl}
+
+This is a journey email. Unsubscribe from these emails:
+${args.unsubUrl}
+
+I’m always here to help get your project started.
+
+— Nolan
+Founder, Kloner`;
+}
+
+async function sendRecoveryOfferEmail(params: { uid: string; sessionId: string; email: string; name?: string | null }) {
+        const userRef = db.collection("kloner_users").doc(params.uid);
+        const snap = await userRef.get();
+        const data = snap.exists ? (snap.data() as any) : {};
+        const prefs = (data?.notificationPrefs || {}) as any;
+        if (prefs?.journeyEmails === false) return;
+
+        const canSend = await claimRecoveryOfferEmailOnce(userRef, params.sessionId);
+        if (!canSend) return;
+
+        const from = process.env.WELCOME_EMAIL_FROM || "hello@kloner.app";
+        const linkUrl = makeRecoveryCheckoutUrl({ uid: params.uid, kind: "exit40" });
+        const unsubUrl = makeUnsubUrl({ uid: params.uid, kind: "journey" });
+        const resend = getResend();
+        const result = await resend.emails.send({
+                from,
+                to: params.email,
+                subject: "40% off your first month",
+                text: buildRecoveryOfferText({ name: params.name, linkUrl, unsubUrl }),
+                html: buildRecoveryOfferHtml({ name: params.name, linkUrl, unsubUrl }),
+        });
+
+        if (result && typeof result === "object" && "error" in result && (result as any).error) {
+                throw new Error(((result as any).error?.message as string) || "Recovery email send failed");
+        }
 }
 
 // ------------------------
@@ -876,6 +989,30 @@ export async function POST(req: NextRequest) {
                         }
                     } catch (err) {
                         console.error("[stripe-webhook] trial welcome email failed", err);
+                    }
+                }
+                break;
+            }
+
+            case "checkout.session.expired": {
+                const session = event.data.object as Stripe.Checkout.Session;
+                const firebaseUid = session.metadata?.firebaseUid as string | undefined;
+                const plan = cleanStr((session.metadata as any)?.plan, 64);
+
+                if (firebaseUid && plan === "pro") {
+                    try {
+                        const authUser = await admin.auth().getUser(firebaseUid);
+                        const email = authUser.email?.trim() || "";
+                        if (email) {
+                            await sendRecoveryOfferEmail({
+                                uid: firebaseUid,
+                                sessionId: session.id,
+                                email,
+                                name: authUser.displayName || null,
+                            });
+                        }
+                    } catch (err) {
+                        console.error("[stripe-webhook] recovery email failed", err);
                     }
                 }
                 break;

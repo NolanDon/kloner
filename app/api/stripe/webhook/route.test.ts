@@ -2,6 +2,9 @@
 
 export {};
 
+const firestoreStore = new Map<string, Record<string, any>>();
+const resendSend = jest.fn();
+
 jest.mock("next/server", () => {
     return {
         __esModule: true,
@@ -15,6 +18,17 @@ jest.mock("next/server", () => {
                 };
             },
         },
+    };
+});
+
+jest.mock("resend", () => {
+    return {
+        __esModule: true,
+        Resend: jest.fn(() => ({
+            emails: {
+                send: resendSend,
+            },
+        })),
     };
 });
 
@@ -43,16 +57,64 @@ jest.mock("../../_lib/billing", () => {
 
 // Avoid firebase-admin init requiring FIREBASE_SERVICE_ACCOUNT
 jest.mock("firebase-admin", () => {
+    const keyFor = (name: string, id: string) => `${name}/${id}`;
+    const getData = (key: string) => {
+        const data = firestoreStore.get(key);
+        return data ? { ...data } : undefined;
+    };
+    const setData = (key: string, data: any, opts?: { merge?: boolean }) => {
+        const prev = firestoreStore.get(key) ?? {};
+        firestoreStore.set(key, opts?.merge ? { ...prev, ...data } : { ...data });
+    };
+    const db = {
+        collection: (name: string) => ({
+            doc: (id: string) => {
+                const key = keyFor(name, id);
+                return {
+                    id,
+                    _collection: name,
+                    get: async () => {
+                        const data = getData(key);
+                        return {
+                            exists: !!data,
+                            data: () => (data ? { ...data } : undefined),
+                        };
+                    },
+                    set: async (data: any, opts?: { merge?: boolean }) => {
+                        setData(key, data, opts);
+                    },
+                };
+            },
+        }),
+        runTransaction: async (handler: any) => {
+            const tx = {
+                get: async (ref: any) => {
+                    return ref.get();
+                },
+                set: (ref: any, data: any, opts?: { merge?: boolean }) => {
+                    const name = String((ref as any)?._collection || "kloner_users");
+                    const id = String((ref as any)?.id || "uid_1");
+                    const key = keyFor(name, id);
+                    setData(key, data, opts);
+                },
+            };
+            return handler(tx);
+        },
+    };
+    const firestore = () => db;
+    (firestore as any).FieldValue = {
+        serverTimestamp: () => ({ __serverTimestamp: true }),
+    };
     return {
         __esModule: true,
         default: {
             apps: [{}],
-            firestore: () => ({
-                collection: () => ({
-                    doc: () => ({
-                        get: async () => ({ exists: false }),
-                        set: async () => {},
-                    }),
+            firestore,
+            auth: () => ({
+                getUser: async (uid: string) => ({
+                    uid,
+                    email: `${uid}@example.com`,
+                    displayName: "Nolan",
                 }),
             }),
         },
@@ -67,12 +129,17 @@ describe("POST /api/stripe/webhook", () => {
         mapPriceToTier.mockClear();
         effectiveTierFromStripeSubscription.mockClear();
         getUidForStripeCustomer.mockClear();
+        resendSend.mockClear();
+        firestoreStore.clear();
 
         process.env.STRIPE_WEBHOOK_SECRET_TEST = "whsec_test";
         process.env.STRIPE_WEBHOOK_SECRET_LIVE = "";
         process.env.STRIPE_SECRET_KEY_TEST = "sk_test_123";
         process.env.STRIPE_SECRET_KEY_LIVE = "";
         process.env.STRIPE_SECRET_KEY = "";
+        process.env.EMAIL_LINK_SECRET = "email-secret";
+        process.env.RESEND_API_KEY = "resend_test";
+        process.env.NEXT_PUBLIC_SITE_URL = "https://kloner.app";
     });
 
     it("checkout.session.completed links customer to firebaseUid", async () => {
@@ -175,5 +242,117 @@ describe("POST /api/stripe/webhook", () => {
                 status: "trialing",
             }),
         );
+    });
+
+    it("checkout.session.expired sends a one-time recovery email for abandoned pro checkout", async () => {
+        firestoreStore.set("kloner_users/uid_abc", {
+            stripeCustomerId: "cus_abc",
+            notificationPrefs: {
+                journeyEmails: true,
+            },
+        });
+
+        const constructEvent = jest.fn(() => ({
+            id: "evt_expired",
+            type: "checkout.session.expired",
+            livemode: false,
+            data: {
+                object: {
+                    id: "cs_expired",
+                    metadata: {
+                        firebaseUid: "uid_abc",
+                        plan: "pro",
+                    },
+                    customer: "cus_abc",
+                },
+            },
+        }));
+
+        jest.doMock("stripe", () => {
+            return {
+                __esModule: true,
+                default: function StripeCtor() {
+                    return {
+                        webhooks: { constructEvent },
+                        invoices: { retrieve: async () => ({}) },
+                    };
+                },
+            };
+        });
+
+        const { POST } = await import("./route");
+
+        const req = {
+            headers: {
+                get: (k: string) => (k === "stripe-signature" ? "sig" : null),
+            },
+            text: async () => "{}",
+        } as any;
+
+        const res: any = await POST(req);
+        const body = await res.json();
+
+        expect(res.status).toBe(200);
+        expect(body.received).toBe(true);
+        expect(resendSend).toHaveBeenCalledTimes(1);
+        const payload = resendSend.mock.calls[0]?.[0];
+        expect(payload.subject).toContain("40% off your first month");
+        expect(String(payload.text)).toContain("/api/billing/recovery-checkout?t=");
+        expect(String(payload.text)).toContain("/api/email/unsubscribe?t=");
+        const userDoc = firestoreStore.get("kloner_users/uid_abc") || {};
+        expect(userDoc.offers?.exitOffer40RecoveryEmailSentAt).toBeTruthy();
+    });
+
+    it("does not send the recovery email when journey emails are unsubscribed", async () => {
+        firestoreStore.set("kloner_users/uid_abc", {
+            stripeCustomerId: "cus_abc",
+            notificationPrefs: {
+                journeyEmails: false,
+            },
+        });
+
+        const constructEvent = jest.fn(() => ({
+            id: "evt_expired",
+            type: "checkout.session.expired",
+            livemode: false,
+            data: {
+                object: {
+                    id: "cs_expired",
+                    metadata: {
+                        firebaseUid: "uid_abc",
+                        plan: "pro",
+                    },
+                    customer: "cus_abc",
+                },
+            },
+        }));
+
+        jest.doMock("stripe", () => {
+            return {
+                __esModule: true,
+                default: function StripeCtor() {
+                    return {
+                        webhooks: { constructEvent },
+                        invoices: { retrieve: async () => ({}) },
+                    };
+                },
+            };
+        });
+
+        const { POST } = await import("./route");
+
+        const req = {
+            headers: {
+                get: (k: string) => (k === "stripe-signature" ? "sig" : null),
+            },
+            text: async () => "{}",
+        } as any;
+
+        const res: any = await POST(req);
+        const body = await res.json();
+
+        expect(res.status).toBe(200);
+        expect(body.received).toBe(true);
+        expect(resendSend).not.toHaveBeenCalled();
     });
 });

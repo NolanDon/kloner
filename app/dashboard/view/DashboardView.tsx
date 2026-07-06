@@ -2811,10 +2811,9 @@ function AppCard({
             ? `Archive building${typeof draftArchiveProgressPct === "number" ? ` ${draftArchiveProgressPct}%` : ""}`
             : draftArchiveState === "ready"
                 ? `Archive files${draftArchiveArtifactCount ? `: ${draftArchiveArtifactCount}` : " ready"}`
-                : draftArchiveState === "failed"
-                    ? "Archive failed"
-                    : "No archive yet"
+                : ""
         : "";
+    const showDraftArchiveBadge = Boolean(draftDevArchiveLabel);
     const blockedDraftDescription = "Domain blocked for site cloning";
     const draftIssueDetails = draftIssue
         ? (() => {
@@ -2862,6 +2861,38 @@ function AppCard({
             setDraftEditLockActive(false);
         }, Math.max(0, durationMs));
     }, [clearDraftEditUnlockTimer]);
+
+    const handleDraftEdit = useCallback(async () => {
+        if (draftEditClickGuardRef.current) return;
+        if (disableActions || draftEditLaunchBusy || draftEditLockActive) return;
+        if (!onPromoteDraft) return;
+
+        draftEditClickGuardRef.current = true;
+        setDraftEditLaunchBusy(true);
+        activateDraftEditLock(DRAFT_EDIT_BUTTON_LOCK_MS);
+        try {
+            await Promise.resolve(onPromoteDraft({
+                draftId,
+                id: app.id,
+                name: app.name,
+                createdAt: app.createdAt,
+                sourceUrl: (app as any)?.sourceUrl || null,
+            }));
+        } finally {
+            draftEditClickGuardRef.current = false;
+            setDraftEditLaunchBusy(false);
+        }
+    }, [
+        activateDraftEditLock,
+        app.createdAt,
+        app.id,
+        app.name,
+        draftEditLaunchBusy,
+        draftEditLockActive,
+        disableActions,
+        draftId,
+        onPromoteDraft,
+    ]);
 
     useEffect(() => {
         if (!isEditingName) {
@@ -2948,7 +2979,7 @@ function AppCard({
                                     </span>
                                 </span>
                             </span>
-                            {showVersionBadge && isDraftCard ? (
+                            {showDraftArchiveBadge ? (
                                 <span
                                     className={`absolute -left-2 -top-2 z-10 inline-flex h-9 w-9 items-center justify-center rounded-full border shadow-sm ${draftArchiveState === "pending"
                                         ? "border-neutral-200 bg-white text-neutral-600"
@@ -3000,28 +3031,8 @@ function AppCard({
                                 ) : !draftIssue || draftIssueIsAccessGate ? (
                                     <button
                                         type="button"
-                                        onClick={async () => {
-                                            if (draftEditClickGuardRef.current) return;
-                                            if (disableActions || isPendingCreation || isBrokenDraftCard || draftEditLaunchBusy || draftEditLockActive) return;
-                                            if (!onPromoteDraft) return;
-
-                                            draftEditClickGuardRef.current = true;
-                                            setDraftEditLaunchBusy(true);
-                                            activateDraftEditLock(DRAFT_EDIT_BUTTON_LOCK_MS);
-                                            try {
-                                                await Promise.resolve(onPromoteDraft({
-                                                    draftId,
-                                                    id: app.id,
-                                                    name: app.name,
-                                                    createdAt: app.createdAt,
-                                                    sourceUrl: (app as any)?.sourceUrl || null,
-                                                }));
-                                            } finally {
-                                                draftEditClickGuardRef.current = false;
-                                                setDraftEditLaunchBusy(false);
-                                            }
-                                        }}
-                                        disabled={isDeleting || accessLocked || disableActions || isPendingCreation || isBrokenDraftCard || draftIssueIsBlocked || draftEditLaunchBusy || draftEditLockActive || !onPromoteDraft}
+                                        onClick={() => void handleDraftEdit()}
+                                        disabled={isDeleting || disableActions || draftEditLaunchBusy || draftEditLockActive || !onPromoteDraft}
                                         className="absolute inset-0 z-20 grid place-items-center rounded-[2.75rem] border border-neutral-200 bg-transparent text-neutral-800 opacity-0 backdrop-blur-[1px] transition-all duration-200 hover:bg-transparent group-hover/draft-icon:opacity-100 group-focus-visible/draft-icon:opacity-100 group-hover/draft-icon:scale-[1.015] group-focus-visible/draft-icon:scale-[1.015]"
                                         aria-label="Edit draft"
                                         title={draftIssueIsBlocked ? blockedDraftDescription : "Edit draft"}
@@ -3245,7 +3256,7 @@ function AppCard({
                     ) : null
                 ) : null}
 
-                <div className={`mt-2 grid w-full gap-0.5 sm:mt-3 sm:gap-1 ${isDraftCard ? "grid-cols-3" : "grid-cols-3"}`}>
+        <div className={`mt-2 grid w-full gap-0.5 sm:mt-3 sm:gap-1 ${isDraftCard ? "grid-cols-4" : "grid-cols-3"}`}>
                     {isDraftCard ? (
                         <>
                             <div
@@ -3281,6 +3292,25 @@ function AppCard({
                                     className="inline-flex h-8 w-8 cursor-not-allowed items-center justify-center rounded-2xl border border-neutral-200 bg-white text-neutral-400 shadow-sm opacity-60"
                                 >
                                     <Archive className="h-3.5 w-3.5" />
+                                </button>
+                            </div>
+
+                            <div
+                                className="relative flex justify-center transition-all duration-500 ease-out md:translate-y-3 md:scale-90 md:opacity-0 md:pointer-events-none md:blur-[1px] md:group-hover:translate-y-0 md:group-hover:scale-100 md:group-hover:opacity-100 md:group-hover:pointer-events-auto md:group-hover:blur-0"
+                                style={{ transitionDelay: "180ms" }}
+                            >
+                                <span className="pointer-events-none absolute -bottom-6 left-1/2 -translate-x-1/2 whitespace-nowrap text-[10px] font-medium text-neutral-800 opacity-100 transition-opacity duration-150 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
+                                    Edit
+                                </span>
+                                <button
+                                    type="button"
+                                    onClick={() => void handleDraftEdit()}
+                                    disabled={isDeleting || disableActions || draftEditLaunchBusy || draftEditLockActive || !onPromoteDraft}
+                                    aria-label="Edit draft"
+                                    title={draftIssueIsBlocked ? blockedDraftDescription : "Edit draft"}
+                                    className="inline-flex h-8 w-8 items-center justify-center rounded-2xl border border-neutral-300 bg-white text-neutral-700 shadow-sm transition-all duration-300 ease-out hover:border-[#f55f2a] hover:bg-[#f55f2a] hover:text-white disabled:pointer-events-none disabled:opacity-60"
+                                >
+                                    <BrushIcon className="h-3.5 w-3.5" />
                                 </button>
                             </div>
 
@@ -3941,15 +3971,25 @@ export default function PreviewPage(): JSX.Element {
     const [renderTrialSessionEligible, setRenderTrialSessionEligible] = useState(false);
     const [appBuilderTrialSessionEligible, setAppBuilderTrialSessionEligible] = useState(false);
     const [exitOfferClaimed, setExitOfferClaimed] = useState(false);
+    const [showRecoveryOffer, setShowRecoveryOffer] = useState(false);
     const [showWebsitePrePaywall, setShowWebsitePrePaywall] = useState(false);
     const [showTrialSuccessCelebration, setShowTrialSuccessCelebration] = useState(false);
     const [showDeploySuccessConfetti, setShowDeploySuccessConfetti] = useState(false);
     const [showTopupSuccessConfetti, setShowTopupSuccessConfetti] = useState(false);
+    const [showRecoveryCheckoutLoader, setShowRecoveryCheckoutLoader] = useState(false);
     const [showDevQuickMenu, setShowDevQuickMenu] = useState(false);
     const [showDevQuickMenuLauncher, setShowDevQuickMenuLauncher] = useState(true);
     const [previewDebugScenario, setPreviewDebugScenario] = useState<{ mode: 'terminal-error' | 'terminal-error-auto-fix'; nonce: number } | null>(null);
     const isDev = process.env.NODE_ENV !== "production";
     const [deletingOwnAccount, setDeletingOwnAccount] = useState(false);
+    const recoveryPendingStorageKey = useMemo(
+        () => (user?.uid ? `kloner.billing.recovery.pending:${user.uid}` : ""),
+        [user?.uid],
+    );
+    const recoverySentStorageKey = useMemo(
+        () => (user?.uid ? `kloner.dashboard.recovery.offer.sent:${user.uid}` : ""),
+        [user?.uid],
+    );
 
     const [archivingRender, setArchivingRender] = useState<Record<string, boolean>>({});
     const [archivingApp, setArchivingApp] = useState<Record<string, boolean>>({});
@@ -4986,6 +5026,21 @@ export default function PreviewPage(): JSX.Element {
         if (!isBillingSuccess) return;
         if (!user) return;
 
+        if (recoveryPendingStorageKey) {
+            try {
+                window.sessionStorage.removeItem(recoveryPendingStorageKey);
+            } catch {
+                // ignore
+            }
+        }
+        if (recoverySentStorageKey) {
+            try {
+                window.sessionStorage.removeItem(recoverySentStorageKey);
+            } catch {
+                // ignore
+            }
+        }
+
         if (!hasRecentlyShownBillingSuccess()) {
             markBillingSuccessShown();
             setShowTrialSuccessCelebration(true);
@@ -5177,7 +5232,118 @@ export default function PreviewPage(): JSX.Element {
         } catch {
             // ignore
         }
-    }, [search, user, router, showWebsiteExitOfferPaywall, stripeStatus, userTier]);
+        }, [search, user, router, showWebsiteExitOfferPaywall, stripeStatus, userTier]);
+
+    useEffect(() => {
+        if (!user) return;
+
+        const billingParam = search.get("billing");
+        const recoveryParam = search.get("recovery");
+        const isCancelledRecovery = billingParam === "cancelled" && recoveryParam === "1";
+        const isRecoverySuccess = billingParam === "success" && recoveryParam === "1";
+        const pendingRecoveryAt = (() => {
+            if (typeof window === "undefined" || !recoveryPendingStorageKey) return 0;
+            try {
+                const raw = window.sessionStorage.getItem(recoveryPendingStorageKey);
+                const parsed = raw ? Number(raw) : 0;
+                return parsed && Number.isFinite(parsed) ? parsed : 0;
+            } catch {
+                return 0;
+            }
+        })();
+        const hasFreshPendingRecovery = pendingRecoveryAt > 0 && Date.now() - pendingRecoveryAt < 30 * 60 * 1000;
+
+        if (!isCancelledRecovery && !isRecoverySuccess && !hasFreshPendingRecovery) {
+            return;
+        }
+
+        let cancelled = false;
+
+        void (async () => {
+            try {
+                if (isRecoverySuccess) {
+                    if (recoveryPendingStorageKey) {
+                        try {
+                            window.sessionStorage.removeItem(recoveryPendingStorageKey);
+                        } catch {
+                            // ignore
+                        }
+                    }
+                    if (recoverySentStorageKey) {
+                        try {
+                            window.sessionStorage.removeItem(recoverySentStorageKey);
+                        } catch {
+                            // ignore
+                        }
+                    }
+                    setShowRecoveryOffer(false);
+                    dismissWebsitePrePaywall();
+                    return;
+                }
+
+                const handledKey = recoverySentStorageKey;
+                const alreadyHandled = (() => {
+                    if (!handledKey || typeof window === "undefined") return false;
+                    try {
+                        return window.sessionStorage.getItem(handledKey) === "1";
+                    } catch {
+                        return false;
+                    }
+                })();
+
+                if (!alreadyHandled) {
+                    if (handledKey) {
+                        try {
+                            window.sessionStorage.setItem(handledKey, "1");
+                        } catch {
+                            // ignore
+                        }
+                    }
+
+                    const csrf = await ensureSessionAndCsrf().catch(() => null);
+                    if (!cancelled) {
+                        await fetch("/api/billing/send-recovery-offer", {
+                            method: "POST",
+                            headers: {
+                                "content-type": "application/json",
+                                ...(csrf ? { "x-csrf": csrf } : {}),
+                            },
+                            credentials: "include",
+                            cache: "no-store",
+                        }).catch(() => null);
+                    }
+                }
+
+                if (recoveryPendingStorageKey) {
+                    try {
+                        window.sessionStorage.removeItem(recoveryPendingStorageKey);
+                    } catch {
+                        // ignore
+                    }
+                }
+
+                dismissWebsitePrePaywall();
+                setShowRecoveryOffer(true);
+
+                try {
+                    const url = new URL(window.location.href);
+                    const params = url.searchParams;
+                    params.delete("billing");
+                    params.delete("recovery");
+                    const qs = params.toString();
+                    const next = qs ? `${url.pathname}?${qs}` : url.pathname;
+                    router.replace(next, { scroll: false });
+                } catch {
+                    // ignore
+                }
+            } catch {
+                // ignore
+            }
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, [recoveryPendingStorageKey, recoverySentStorageKey, search, user, router]);
 
     const closeAppDeployWizard = useCallback(() => {
         appDeployWizardRestoreTokenRef.current += 1;
@@ -8841,40 +9007,6 @@ export default function PreviewPage(): JSX.Element {
 
     const capturePrevStatusRef = useRef<UrlStatusUi | null>(null);
     const captureSuccessShownForUrlRef = useRef<string>("");
-    const firstUrlEmailAttemptedUrlsRef = useRef<Set<string>>(new Set());
-
-    const triggerFirstUrlNextStepsEmail = useCallback(
-        async (url: string) => {
-            if (typeof window !== "undefined") {
-                const host = window.location.hostname.toLowerCase();
-                if (host === "localhost" || host === "127.0.0.1" || host === "::1") return;
-            }
-
-            const normalized = validateAndNormalizePublicHttpUrl(url || "");
-            const canonical = normalized ? normUrl(normalized) : "";
-            if (!canonical) return;
-            if (firstUrlEmailAttemptedUrlsRef.current.has(canonical)) return;
-            firstUrlEmailAttemptedUrlsRef.current.add(canonical);
-
-            try {
-                const csrf = await ensureSessionAndCsrf().catch(() => null);
-                await fetch("/api/private/send-first-url-email", {
-                    method: "POST",
-                    headers: {
-                        "content-type": "application/json",
-                        ...(csrf ? { "x-csrf": csrf } : {}),
-                    },
-                    credentials: "same-origin",
-                    cache: "no-store",
-                    body: JSON.stringify({ url: canonical }),
-                });
-            } catch {
-                // Non-blocking: dashboard flow should not fail on email issues.
-            }
-        },
-        [],
-    );
-
     useEffect(() => {
         function onDocClick(e: MouseEvent) {
             if (!urlMenuRef.current) return;
@@ -12161,8 +12293,6 @@ export default function PreviewPage(): JSX.Element {
 
         if (captureSuccessShownForUrlRef.current === urlKey) return;
         captureSuccessShownForUrlRef.current = urlKey;
-
-        void triggerFirstUrlNextStepsEmail(urlKey);
     }, [
         captureStatus,
         targetUrl,
@@ -12172,7 +12302,6 @@ export default function PreviewPage(): JSX.Element {
         showActiveUrlIssueWarning,
         isUrlProcessingError,
         activeUrlCannotGenerate,
-        triggerFirstUrlNextStepsEmail,
     ]);
 
     /* ───────── collections grouping ───────── */
@@ -12502,15 +12631,54 @@ export default function PreviewPage(): JSX.Element {
         setShowWebsitePrePaywall(false);
     }
 
-    const EXIT_OFFER_PROMO_CODE = "DEPLOY40"; // ✅ Stripe Promotion Code "code" field
+    function dismissRecoveryOffer() {
+        setShowRecoveryOffer(false);
+    }
 
-    // client: patched startProCheckout to apply exit offer code
+    function startRecoveryCheckout() {
+        if (showRecoveryCheckoutLoader || typeof window === "undefined") return;
+        setShowRecoveryCheckoutLoader(true);
+        dismissRecoveryOffer();
+        window.setTimeout(async () => {
+            try {
+                const res = await fetch("/api/billing/recovery-checkout-link", {
+                    method: "GET",
+                    credentials: "include",
+                    cache: "no-store",
+                });
+
+                const data = await res.json().catch(() => null);
+                const url = typeof data?.url === "string" ? data.url : "";
+                if (!res.ok || !url) {
+                    throw new Error(typeof data?.error === "string" ? data.error : "Unable to open recovery checkout.");
+                }
+
+                window.location.href = url;
+            } catch (err) {
+                console.error("startRecoveryCheckout failed", err);
+                setShowRecoveryCheckoutLoader(false);
+                setShowRecoveryOffer(true);
+                void showAlert(
+                    "Checkout is taking too long. Please try again in a few seconds.",
+                    "Checkout Error",
+                );
+            }
+        }, 50);
+    }
+
     const startProCheckout = useCallback(
-        async (opts?: { exitOffer?: boolean; exitOfferReason?: "close" | "back" | "nav" | "outside" | "esc" }) => {
+        async () => {
             if (checkoutBusy) return;
             setCheckoutBusy(true);
 
             try {
+                if (recoveryPendingStorageKey) {
+                    try {
+                        window.sessionStorage.setItem(recoveryPendingStorageKey, String(Date.now()));
+                    } catch {
+                        // ignore
+                    }
+                }
                 const slug = deployWizardProjectName.trim();
                 if (slug && deployWizardRenderId) {
                     try {
@@ -12530,19 +12698,6 @@ export default function PreviewPage(): JSX.Element {
                 const csrfData = csrfRes.ok ? await csrfRes.json().catch(() => null) : null;
                 const csrf = csrfData?.csrf ?? null;
 
-                let offerPayload: any = {};
-                if (opts?.exitOffer) {
-                    const endsAt = step5SaleEndsAt;
-                    if (typeof endsAt === "number" && Date.now() <= endsAt) {
-                        offerPayload = {
-                            offer: "exit40",
-                            offerEndsAt: endsAt,
-                            offerReason: opts.exitOfferReason || "close",
-                            offerPromoCode: EXIT_OFFER_PROMO_CODE, // ✅ send to server
-                        };
-                    }
-                }
-
                 const res = await fetchWithTimeout("/api/billing/create-checkout-session", {
                     method: "POST",
                     headers: {
@@ -12554,7 +12709,6 @@ export default function PreviewPage(): JSX.Element {
                         plan: "pro",
                         returnRenderId: deployWizardRenderId,
                         returnStep: 2,
-                        ...offerPayload,
                     }),
                 });
 
@@ -12581,19 +12735,22 @@ export default function PreviewPage(): JSX.Element {
                 setCheckoutBusy(false);
             }
         },
-        [checkoutBusy, deployWizardRenderId, deployWizardProjectName, step5SaleEndsAt, showAlert],
+        [checkoutBusy, deployWizardRenderId, deployWizardProjectName, recoveryPendingStorageKey, showAlert],
     );
 
     const startProCheckoutForAppDeploy = useCallback(
-        async (opts?: {
-            exitOffer?: boolean;
-            exitOfferReason?: "close" | "back" | "nav" | "outside" | "esc";
-            returnAppId?: string | null;
-        }) => {
+        async (opts?: { returnAppId?: string | null }) => {
             if (checkoutBusy) return;
             setCheckoutBusy(true);
 
             try {
+                if (recoveryPendingStorageKey) {
+                    try {
+                        window.sessionStorage.setItem(recoveryPendingStorageKey, String(Date.now()));
+                    } catch {
+                        // ignore
+                    }
+                }
                 const checkoutReturnAppId =
                     (typeof opts?.returnAppId === "string" && opts.returnAppId.trim()) ||
                     appDeployWizardAppId ||
@@ -12618,19 +12775,6 @@ export default function PreviewPage(): JSX.Element {
                 const csrfData = csrfRes.ok ? await csrfRes.json().catch(() => null) : null;
                 const csrf = csrfData?.csrf ?? null;
 
-                let offerPayload: any = {};
-                if (opts?.exitOffer) {
-                    const endsAt = step5SaleEndsAt;
-                    if (typeof endsAt === "number" && Date.now() <= endsAt) {
-                        offerPayload = {
-                            offer: "exit40",
-                            offerEndsAt: endsAt,
-                            offerReason: opts.exitOfferReason || "close",
-                            offerPromoCode: EXIT_OFFER_PROMO_CODE,
-                        };
-                    }
-                }
-
                 const res = await fetchWithTimeout("/api/billing/create-checkout-session", {
                     method: "POST",
                     headers: {
@@ -12642,7 +12786,6 @@ export default function PreviewPage(): JSX.Element {
                         plan: "pro",
                         returnAppId: checkoutReturnAppId,
                         returnStep: 3,
-                        ...offerPayload,
                     }),
                 });
 
@@ -12669,7 +12812,7 @@ export default function PreviewPage(): JSX.Element {
                 setCheckoutBusy(false);
             }
         },
-        [checkoutBusy, appDeployWizardAppId, currentAppId, step5SaleEndsAt, showAlert],
+        [checkoutBusy, appDeployWizardAppId, currentAppId, recoveryPendingStorageKey, showAlert],
     );
 
 
@@ -14046,11 +14189,7 @@ export default function PreviewPage(): JSX.Element {
                                             type="button"
                                             onClick={() => {
                                                 setShowAppExitOffer(false);
-                                                void startProCheckoutForAppDeploy({
-                                                    exitOffer: true,
-                                                    exitOfferReason: appExitOfferReason || "close",
-                                                    returnAppId: appDeployWizardAppId,
-                                                });
+                                                void startProCheckoutForAppDeploy({ returnAppId: appDeployWizardAppId });
                                             }}
                                             disabled={checkoutBusy}
                                             className="w-full rounded-2xl px-5 py-4 text-[15px] font-extrabold text-white shadow-[0_18px_44px_rgba(0,0,0,0.28)] focus:outline-none focus:ring-2 focus:ring-black/10 disabled:cursor-wait disabled:opacity-70"
@@ -14703,10 +14842,7 @@ export default function PreviewPage(): JSX.Element {
                                                                                 type="button"
                                                                                 onClick={() => {
                                                                                     setShowExitOffer(false);
-                                                                                    void startProCheckout({
-                                                                                        exitOffer: true,
-                                                                                        exitOfferReason: exitOfferReason || "close",
-                                                                                    });
+                                                                                    void startProCheckout();
                                                                                 }}
                                                                                 disabled={checkoutBusy}
                                                                                 className="w-full rounded-2xl px-5 py-4 text-[15px] font-extrabold text-white shadow-[0_18px_44px_rgba(0,0,0,0.28)] focus:outline-none focus:ring-2 focus:ring-black/10 disabled:cursor-wait disabled:opacity-70"
@@ -14943,6 +15079,69 @@ export default function PreviewPage(): JSX.Element {
                     )
                 }
 
+                {
+                    showRecoveryCheckoutLoader ? (
+                        <div className="fixed inset-0 z-[13000] flex items-center justify-center bg-white/70 px-4 backdrop-blur-md">
+                            <div className="w-full max-w-sm rounded-[28px] border border-neutral-200 bg-white px-6 py-6 text-center text-neutral-900 shadow-[0_24px_80px_rgba(15,23,42,0.16)]">
+                                <div className="mt-4 flex items-center justify-center gap-2 text-[#f55f2a]">
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                    <p className="text-sm font-semibold">Opening secure Stripe checkout...</p>
+                                </div>
+                                <p className="mt-2 text-xs leading-5 text-neutral-500">Please wait while we prepare your session.</p>
+                                <div className="mt-4 flex justify-center">
+                                    <span className="inline-flex items-center gap-2 text-xs font-medium text-neutral-500">
+                                        <span>powered by</span>
+                                        <Image src="/images/stripe.png" alt="Stripe" width={160} height={52} className="h-9 w-auto object-contain" />
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                    ) : null
+                }
+
+                {
+                    showRecoveryOffer && (
+                        <div className="fixed inset-0 z-[12010] simple-fade-in">
+                            <div className="absolute inset-0 bg-black/60 simple-fade-in" />
+                            <div className="absolute inset-0 flex items-center justify-center p-4 simple-fade-in">
+                                <div className="relative w-full max-w-md rounded-2xl bg-white shadow-xl border border-neutral-200 p-6 pt-5 text-sm text-neutral-800 simple-fade-in">
+                                    <button
+                                        type="button"
+                                        onClick={dismissRecoveryOffer}
+                                        className="absolute right-4 top-4 inline-flex h-7 w-7 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-500 shadow-sm transition hover:bg-neutral-50 hover:text-neutral-700"
+                                        aria-label="Close recovery offer"
+                                        title="Close"
+                                    >
+                                        <X className="h-4 w-4" />
+                                    </button>
+
+                                    <div className="flex items-center gap-2 mb-2 pr-10">
+                                        <Crown className="h-4 w-4 text-amber-500" />
+                                        <h3 className="text-base font-semibold">40% off your first month</h3>
+                                    </div>
+                                    <p className="text-sm text-neutral-600 mb-4">
+                                        Use this one-time link to return to checkout with 40% off your first month.
+                                    </p>
+                                    <ul className="mb-4 list-disc list-inside text-sm text-neutral-700 space-y-1">
+                                        <li>One-time 40% off your first month</li>
+                                        <li>Cancel anytime before renewal</li>
+                                    </ul>
+                                    <div className="flex items-center justify-center">
+                                        <button
+                                            type="button"
+                                            onClick={startRecoveryCheckout}
+                                            className="inline-flex w-full max-w-sm items-center justify-center rounded-xl px-4 py-3 text-base font-semibold text-white shadow-sm transition hover:opacity-90"
+                                            style={{ backgroundColor: ACCENT }}
+                                        >
+                                            Get 40% off now
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )
+                }
+
                 {/* PRO paywall for apps */}
                 {
                     showProPaywall && (
@@ -15068,7 +15267,7 @@ export default function PreviewPage(): JSX.Element {
                                                 type="button"
                                                 onClick={() => {
                                                     setShowWebsitePrePaywall(false);
-                                                    void startProCheckout({ exitOffer: true, exitOfferReason: "close" });
+                                                    void startProCheckout();
                                                 }}
                                                 className="inline-flex flex-1 items-center justify-center rounded-full bg-[#f55f2a] px-5 py-4 text-[17px] font-semibold tracking-tight text-white shadow-[0_18px_44px_rgba(245,95,42,0.24)] transition hover:translate-y-[-1px] hover:bg-[#f3602c] sm:px-6 sm:py-5 sm:text-[20px]"
                                             >

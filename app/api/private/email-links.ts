@@ -23,10 +23,32 @@ function makeSignedToken(payload: Record<string, any>): string {
     return `${body}.${sig}`;
 }
 
-export { makeSignedToken };
+function verifySignedToken(token: string): Record<string, any> | null {
+    const t = (token || "").trim();
+    const m = t.match(/^([A-Za-z0-9_-]+)\.([A-Za-z0-9_-]+)$/);
+    if (!m) return null;
+    const body = m[1]!;
+    const sig = m[2]!;
+    const expected = hmacBase64Url(getEmailLinkSecret(), body);
+    if (expected !== sig) return null;
+    try {
+        return JSON.parse(Buffer.from(body, "base64url").toString("utf8"));
+    } catch {
+        return null;
+    }
+}
+
+export { makeSignedToken, verifySignedToken };
 
 export function makeUnsubUrl(params: { uid: string; kind: "journey" | "product" | "all" }) {
     const u = new URL(`${baseUrl()}/api/email/unsubscribe`);
+    const token = makeSignedToken({ uid: params.uid, k: params.kind, ts: Date.now() });
+    u.searchParams.set("t", token);
+    return u.toString();
+}
+
+export function makeRecoveryCheckoutUrl(params: { uid: string; kind: "exit40" }) {
+    const u = new URL(`${baseUrl()}/api/billing/recovery-checkout`);
     const token = makeSignedToken({ uid: params.uid, k: params.kind, ts: Date.now() });
     u.searchParams.set("t", token);
     return u.toString();

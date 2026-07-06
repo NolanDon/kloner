@@ -171,6 +171,7 @@ describe("POST /api/billing/create-checkout-session", () => {
         expect(payload.success_url).toContain("render=rid_1");
         expect(payload.success_url).toContain("step=2");
         expect(payload.success_url).toContain("billing=success");
+        expect(payload.cancel_url).toContain("/dashboard/view?billing=cancelled&recovery=1");
         expect(payload.payment_method_options?.card?.request_three_d_secure).toBe("any");
 
         // Pro includes a trial by default.
@@ -485,7 +486,7 @@ describe("POST /api/billing/create-checkout-session", () => {
         expect(userDoc.stripeCustomerId).toBe("cus_new");
     });
 
-    it("ignores exit-offer discount requests while the promo is disabled", async () => {
+    it("ignores exit offer payloads so the discount is only applied through the recovery email link", async () => {
         (process.env as any).NODE_ENV = "production";
         process.env.NEXT_PUBLIC_APP_ORIGIN = "https://kloner.app";
         process.env.STRIPE_PRICE_PRO_PROD = "price_live_pro";
@@ -555,7 +556,7 @@ describe("POST /api/billing/create-checkout-session", () => {
         expect(payload.subscription_data?.metadata?.exitOffer).toBeUndefined();
     });
 
-    it("does not mark the user as claimed when the promo is disabled", async () => {
+    it("does not apply the exit offer even if the payload is repeated", async () => {
         (process.env as any).NODE_ENV = "production";
         process.env.NEXT_PUBLIC_APP_ORIGIN = "https://kloner.app";
         process.env.STRIPE_PRICE_PRO_PROD = "price_live_pro";
@@ -629,6 +630,6 @@ describe("POST /api/billing/create-checkout-session", () => {
         expect(secondPayload.metadata.exitOffer).toBeUndefined();
 
         const userDoc = store.get("kloner_users/uid_1") || {};
-        expect(userDoc.offers?.exitOffer40Claimed).not.toBe(true);
+        expect(userDoc.offers?.exitOffer40Claimed).toBeUndefined();
     });
 });
