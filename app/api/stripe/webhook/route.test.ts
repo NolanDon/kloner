@@ -296,7 +296,7 @@ describe("POST /api/stripe/webhook", () => {
         expect(body.received).toBe(true);
         expect(resendSend).toHaveBeenCalledTimes(1);
         const payload = resendSend.mock.calls[0]?.[0];
-        expect(payload.subject).toContain("40% off your first month");
+        expect(payload.subject).toContain("Open for a surprise");
         expect(String(payload.text)).toContain("/api/billing/recovery-checkout?t=");
         expect(String(payload.text)).toContain("/api/email/unsubscribe?t=");
         const userDoc = firestoreStore.get("kloner_users/uid_abc") || {};

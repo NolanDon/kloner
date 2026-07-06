@@ -145,6 +145,7 @@ const AUTOQUEUE_DEDUPE_TTL_MS = 2 * 60 * 1000;
 const DRAFT_PENDING_MISSING_TTL_MS = 20_000;
 const DRAFT_EDIT_BUTTON_LOCK_MS = 5_000;
 const DRAFT_PROMOTION_SCAN_STORAGE_KEY = "dashboardViewDraftPromotionScanStateV1";
+const DRAFT_EDITOR_HINT_STORAGE_KEY = "dashboardViewDraftEditorHintSeenV1";
 const URL_ADD_SUCCESS_MESSAGE = "Your URL has been successfully added!";
 const APP_WIZARD_PROMPT_MAX_CHARS = 2000;
 const FIRST_GEN_TRIAL_OBSERVE_MS = 15 * 1000;
@@ -208,6 +209,35 @@ function writeDraftPromotionScanStateMap(uid: string, map: Record<string, DraftP
             return;
         }
         window.localStorage.setItem(storageKey, JSON.stringify(map));
+    } catch {
+        // ignore local persistence failures
+    }
+}
+
+function getDraftEditorHintStorageKey(uid: string): string {
+    return `${DRAFT_EDITOR_HINT_STORAGE_KEY}:${uid || "anonymous"}`;
+}
+
+function readDraftEditorHintSeen(uid: string): boolean {
+    if (typeof window === "undefined" || !uid) return false;
+
+    try {
+        return window.localStorage.getItem(getDraftEditorHintStorageKey(uid)) === "1";
+    } catch {
+        return false;
+    }
+}
+
+function writeDraftEditorHintSeen(uid: string, seen: boolean): void {
+    if (typeof window === "undefined" || !uid) return;
+
+    try {
+        const key = getDraftEditorHintStorageKey(uid);
+        if (!seen) {
+            window.localStorage.removeItem(key);
+            return;
+        }
+        window.localStorage.setItem(key, "1");
     } catch {
         // ignore local persistence failures
     }
@@ -2625,6 +2655,8 @@ function AppCard({
     onPromoteDraft,
     appBuilderNavigated = false,
     draftPromotionScanState = null,
+    showDraftEditHint = false,
+    onDraftEditHintSeen,
 }: {
     app: { id: string; name: string; createdAt: any; updatedAt: any; isDeployed?: boolean; productionUrl?: string | null; lastDeployUrl?: string | null; pendingCompleted?: boolean; sourceUrl?: string | null; details?: unknown; thumbnailUrl?: string | null };
     isDeleting: boolean;
@@ -2646,6 +2678,8 @@ function AppCard({
     onPromoteDraft?: (draft: { draftId: string; id: string; name: string; createdAt: any; sourceUrl?: string | null }) => void;
     appBuilderNavigated?: boolean;
     draftPromotionScanState?: DraftPromotionScanState | null;
+    showDraftEditHint?: boolean;
+    onDraftEditHintSeen?: () => void;
 }) {
     const router = useRouter();
     const showVersionBadge = process.env.NODE_ENV !== "production";
@@ -2868,6 +2902,7 @@ function AppCard({
         if (!onPromoteDraft) return;
 
         draftEditClickGuardRef.current = true;
+        onDraftEditHintSeen?.();
         setDraftEditLaunchBusy(true);
         activateDraftEditLock(DRAFT_EDIT_BUTTON_LOCK_MS);
         try {
@@ -2891,6 +2926,7 @@ function AppCard({
         draftEditLockActive,
         disableActions,
         draftId,
+        onDraftEditHintSeen,
         onPromoteDraft,
     ]);
 
@@ -2995,7 +3031,7 @@ function AppCard({
                                 </span>
                             ) : null}
                             <div
-                                className={`group/draft-icon relative grid h-40 w-40 place-items-center overflow-hidden rounded-[2.75rem] border border-neutral-200 bg-neutral-100 text-neutral-500 shadow-[0_10px_20px_rgba(15,23,42,0.06)] transition-all duration-300 ease-out ${draftIssueIsBlocked ? "cursor-not-allowed opacity-70" : "hover:scale-[1.12] hover:shadow-[0_14px_26px_rgba(15,23,42,0.08)]"} ${draftDevArchiveRingClass}`}
+                                className={`group/draft-icon relative grid h-40 w-40 place-items-center overflow-hidden rounded-[2.75rem] border border-neutral-200 bg-neutral-100 text-neutral-500 shadow-[0_10px_20px_rgba(15,23,42,0.06)] transition-all duration-300 ease-out ${draftIssueIsBlocked ? "cursor-not-allowed opacity-70" : "hover:scale-[1.12] hover:shadow-[0_14px_26px_rgba(15,23,42,0.08)]"} ${showDraftEditHint ? "ring-2 ring-[#f55f2a]/25 ring-offset-4 ring-offset-white" : ""} ${draftDevArchiveRingClass}`}
                                 style={{ fontFamily: "ui-rounded, 'SF Pro Rounded', 'Avenir Next Rounded', 'Trebuchet MS', sans-serif" }}
                                 title={appDisplayName || "Draft"}
                             >
@@ -3044,6 +3080,12 @@ function AppCard({
                                     </button>
                                 ) : null}
                             </div>
+                            {showDraftEditHint ? (
+                                <div className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-[#f55f2a]/20 bg-[#f55f2a]/8 px-3 py-1.5 text-[11px] font-semibold text-[#a9441e] shadow-sm">
+                                    <Sparkles className="h-3.5 w-3.5" />
+                                    Hover and edit to get started
+                                </div>
+                            ) : null}
                             {draftIssue ? (
                                 <span className="group/issue absolute -right-2 -top-2 z-30">
                                     <span
@@ -3968,6 +4010,7 @@ export default function PreviewPage(): JSX.Element {
     >(null);
     const [showProPaywall, setShowProPaywall] = useState(false);
     const [firstGenerationTrialPromptShown, setFirstGenerationTrialPromptShown] = useState(false);
+    const [draftEditorHintSeen, setDraftEditorHintSeen] = useState(false);
     const [renderTrialSessionEligible, setRenderTrialSessionEligible] = useState(false);
     const [appBuilderTrialSessionEligible, setAppBuilderTrialSessionEligible] = useState(false);
     const [exitOfferClaimed, setExitOfferClaimed] = useState(false);
@@ -3990,6 +4033,20 @@ export default function PreviewPage(): JSX.Element {
         () => (user?.uid ? `kloner.dashboard.recovery.offer.sent:${user.uid}` : ""),
         [user?.uid],
     );
+
+    useEffect(() => {
+        if (!user?.uid) {
+            setDraftEditorHintSeen(false);
+            return;
+        }
+        setDraftEditorHintSeen(readDraftEditorHintSeen(user.uid));
+    }, [user?.uid]);
+
+    const markDraftEditorHintSeen = useCallback(() => {
+        if (!user?.uid) return;
+        setDraftEditorHintSeen(true);
+        writeDraftEditorHintSeen(user.uid, true);
+    }, [user?.uid]);
 
     const [archivingRender, setArchivingRender] = useState<Record<string, boolean>>({});
     const [archivingApp, setArchivingApp] = useState<Record<string, boolean>>({});
@@ -6763,6 +6820,7 @@ export default function PreviewPage(): JSX.Element {
             thumbnailUrl: resolveDashboardDraftThumbnailUrl(app, draftThumbnailLookup),
         }));
     }, [draftThumbnailLookup, visibleApps]);
+    const draftAppCount = useMemo(() => draftApps.filter((item) => Boolean(item.draftId)).length, [draftApps]);
 
     const pendingCreatedAppActive = Boolean(pendingCreatedApp?.id);
     const isAppCreationPending = Boolean(pendingCreatedAppActive && !pendingCreatedAppCompleted);
@@ -13250,6 +13308,14 @@ export default function PreviewPage(): JSX.Element {
                                     const draftRetrying = Boolean(draftKey && retryingDraftApps[draftKey]);
                                     const draftPromotionScanState = draftKey ? (draftPromotionScanByDraftId[draftKey] || null) : null;
                                     const draftScanPending = isDraftPromotionScanPending(draftPromotionScanState);
+                                    const isFinishedDraftCard = Boolean(draftKey && !draftPending && !draftRetrying && !draftScanPending);
+                                    const showDraftEditHint = Boolean(
+                                        (app as any)?.draftId &&
+                                        isFinishedDraftCard &&
+                                        draftAppCount === 1 &&
+                                        !draftEditorHintSeen &&
+                                        !appBuilderOpen
+                                    );
                                     return (
                                 <AppCard
                                     key={(app as any).draftId || app.id}
@@ -13279,6 +13345,8 @@ export default function PreviewPage(): JSX.Element {
                                     onPromoteDraft={promoteDraftToApp}
                                     appBuilderNavigated={appBuilderOpen}
                                     draftPromotionScanState={draftPromotionScanState}
+                                    showDraftEditHint={showDraftEditHint}
+                                    onDraftEditHintSeen={markDraftEditorHintSeen}
                                 />
                                     );
                                 })()
@@ -15276,7 +15344,10 @@ export default function PreviewPage(): JSX.Element {
 
                                             <button
                                                 type="button"
-                                                onClick={dismissWebsitePrePaywall}
+                                                onClick={() => {
+                                                    setShowWebsitePrePaywall(false);
+                                                    setShowRecoveryOffer(true);
+                                                }}
                                                 className="inline-flex justify-center pt-1 text-sm font-medium text-neutral-600 underline decoration-neutral-300 underline-offset-4 transition hover:text-neutral-900 hover:decoration-neutral-500"
                                             >
                                                 {websitePrePaywallDismissLabel}

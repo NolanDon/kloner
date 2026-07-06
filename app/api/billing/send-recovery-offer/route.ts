@@ -9,6 +9,8 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const fetchCache = "force-no-store";
 
+const RECOVERY_SENDER = "Kloner Team <hello@kloner.app>";
+
 function getResend() {
     const key = process.env.RESEND_API_KEY;
     if (!key) throw new Error("RESEND_API_KEY env not set");
@@ -21,7 +23,7 @@ function buildRecoveryOfferHtml(args: { name?: string | null; linkUrl: string; u
 <html lang="en">
 <head>
     <meta charset="utf-8" />
-    <title>40% off your first month</title>
+    <title>Open for a surprise</title>
 </head>
 <body style="margin:0;padding:0;background:#ffffff;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#111827;">
     <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
@@ -36,9 +38,8 @@ function buildRecoveryOfferHtml(args: { name?: string | null; linkUrl: string; u
                                 <a href="${args.linkUrl}" style="display:inline-block;padding:10px 18px;border-radius:8px;background:#111827;color:#ffffff;text-decoration:none;font-weight:600;">Get 40% off now</a>
                             </p>
                             <p style="margin:0 0 16px 0;color:#6b7280;font-size:13px;">This is a journey email. <a href="${args.unsubUrl}" style="color:#6b7280;text-decoration:underline;">Unsubscribe from these emails</a>.</p>
-                            <p style="margin:0 0 20px 0;">I’m always here to help get your project started.</p>
-                            <p style="margin:0 0 4px 0;">— Nolan</p>
-                            <p style="margin:0 0 24px 0;color:#6b7280;">Founder, Kloner</p>
+                            <p style="margin:0 0 20px 0;">We’re always here to help get your project started.</p>
+                            <p style="margin:0 0 24px 0;color:#6b7280;">— The Kloner team</p>
                         </td>
                     </tr>
                 </table>
@@ -61,10 +62,9 @@ ${args.linkUrl}
 This is a journey email. Unsubscribe from these emails:
 ${args.unsubUrl}
 
-I’m always here to help get your project started.
+We’re always here to help get your project started.
 
-— Nolan
-Founder, Kloner`;
+— The Kloner team`;
 }
 
 export async function POST(req: NextRequest) {
@@ -103,14 +103,14 @@ export async function POST(req: NextRequest) {
                 { merge: true },
             );
 
-            const from = process.env.WELCOME_EMAIL_FROM || "hello@kloner.app";
+            const from = process.env.WELCOME_EMAIL_FROM || RECOVERY_SENDER;
             const linkUrl = makeRecoveryCheckoutUrl({ uid: decoded.uid, kind: "exit40" });
             const unsubUrl = makeUnsubUrl({ uid: decoded.uid, kind: "journey" });
             const resend = getResend();
             const result = await resend.emails.send({
                 from,
                 to: email,
-                subject: "40% off your first month",
+                subject: "Open for a surprise",
                 text: buildRecoveryOfferText({ name: authUser.displayName || null, linkUrl, unsubUrl }),
                 html: buildRecoveryOfferHtml({ name: authUser.displayName || null, linkUrl, unsubUrl }),
             });

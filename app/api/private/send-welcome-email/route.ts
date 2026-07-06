@@ -9,6 +9,8 @@ export const revalidate = 0;
 export const fetchCache = "force-no-store";
 export const runtime = "nodejs";
 
+const WELCOME_SENDER = "Nolan From Kloner <hello@kloner.app>";
+
 function getResend() {
   const key = process.env.RESEND_API_KEY;
   if (!key) throw new Error("RESEND_API_KEY env not set");
@@ -47,49 +49,15 @@ function buildWelcomeHtml(email: string, name?: string) {
               </p>
 
               <p style="margin:0 0 16px 0;">
-                I’m Nolan — founder of Kloner.
-              </p>
-
-              <p style="margin:0 0 16px 0;">
-                I built Kloner because setting up a site before you can even test an idea is usually the slowest, most frustrating part.
+                Kloner helps you clone a site and edit the preview visually.
               </p>
 
               <p style="margin:0 0 20px 0;">
-                Kloner is meant to remove that friction.
-              </p>
-
-              <p style="margin:0 0 12px 0;">
-                Here are 3 good ways to start:
-              </p>
-
-              <ol style="margin:8px 0 24px 18px;padding:0;">
-                <li style="margin:6px 0;">
-                  <a href="https://kloner.app/dashboard/view" style="color:#2563eb;text-decoration:underline;">
-                    Clone a site you like
-                  </a>
-                </li>
-                <li style="margin:6px 0;">
-                  <a href="https://kloner.app/dashboard/view" style="color:#2563eb;text-decoration:underline;">
-                    Edit text, layout, and assets visually
-                  </a>
-                </li>
-                <li style="margin:6px 0;">
-                  <a href="https://kloner.app/dashboard/view" style="color:#2563eb;text-decoration:underline;">
-                    Deploy when it feels right
-                  </a>
-                </li>
-              </ol>
-
-              <p style="margin:0 0 20px 0;font-weight:600;">
-                P.S.: Why did you sign up? What are you hoping to get out of using Kloner?
-              </p>
-
-              <p style="margin:0 0 20px 0;">
-                Hit "Reply" and let me know, I read and reply to every email.
+                Drop a site link to get started, then make changes in the editor.
               </p>
 
               <p style="margin:0;">
-                — Nolan
+                — The Kloner team
               </p>
             </td>
           </tr>
@@ -146,8 +114,7 @@ export async function POST(req: NextRequest) {
           );
         }
 
-        const from =
-          process.env.WELCOME_EMAIL_FROM || "hello@kloner.app";
+        const from = process.env.WELCOME_EMAIL_FROM || WELCOME_SENDER;
         if (!from) {
           return NextResponse.json(
             { error: "WELCOME_EMAIL_FROM env not set" },
@@ -159,10 +126,10 @@ export async function POST(req: NextRequest) {
         const html = buildWelcomeHtml(email, name);
         const text =
           `Hi ${name || "there"},\n\n` +
-          `Thanks for signing up for Kloner. You can now drop a link (or enter a description), generate a base screenshot, create an editable preview, and deploy with one click.\n\n` +
+          `Thanks for signing up for Kloner. Drop a site link to clone it and edit the preview visually.\n\n` +
           `Open your dashboard: https://kloner.app/dashboard\n\n` +
           `If you have any questions, email support@kloner.app.\n\n` +
-          `– The Kloner team`;
+          `— The Kloner team`;
 
         const resend = getResend();
         const result = await resend.emails.send({
