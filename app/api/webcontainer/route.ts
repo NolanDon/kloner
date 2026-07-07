@@ -19,6 +19,16 @@ function isBackendFetchFailed(resp: any) {
   return resp?.status === 502 && String(resp?.json?.error || '') === 'Backend fetch failed';
 }
 
+function pickBackendErrorMessage(response: any, fallback = 'Backend error') {
+  return (
+    response?.json?.error ||
+    response?.json?.message ||
+    response?.json?.detail ||
+    (typeof response?.raw === 'string' && response.raw.trim() ? response.raw.trim() : '') ||
+    fallback
+  );
+}
+
 function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
 }
@@ -200,13 +210,15 @@ async function handleWebcontainerPost(body: any, uid?: string) {
     }
 
     if (response.status >= 400) {
-      const error = response.json?.error || 'Backend error';
+      const error = pickBackendErrorMessage(response);
       const code = typeof response.json?.code === 'string' ? response.json.code : undefined;
       const reason = typeof response.json?.reason === 'string' ? response.json.reason : undefined;
       const debug = response.json?.debug;
       return NextResponse.json(
         {
           error,
+          upstreamStatus: response.status,
+          upstreamRequestId: response.reqId,
           ...(code ? { code } : {}),
           ...(reason ? { reason } : {}),
           ...(debug !== undefined ? { debug } : {}),
@@ -367,13 +379,15 @@ async function handleWebcontainerStatus(code: string, uid?: string) {
     }
 
     if (response.status >= 400) {
-      const error = response.json?.error || 'Backend error';
+      const error = pickBackendErrorMessage(response);
       const code = typeof response.json?.code === 'string' ? response.json.code : undefined;
       const reason = typeof response.json?.reason === 'string' ? response.json.reason : undefined;
       const debug = response.json?.debug;
       return NextResponse.json(
         {
           error,
+          upstreamStatus: response.status,
+          upstreamRequestId: response.reqId,
           ...(code ? { code } : {}),
           ...(reason ? { reason } : {}),
           ...(debug !== undefined ? { debug } : {}),
@@ -424,13 +438,15 @@ async function handleWebcontainerDelete(code: string, uid?: string) {
     }
 
     if (response.status >= 400) {
-      const error = response.json?.error || 'Backend error';
+      const error = pickBackendErrorMessage(response);
       const code = typeof response.json?.code === 'string' ? response.json.code : undefined;
       const reason = typeof response.json?.reason === 'string' ? response.json.reason : undefined;
       const debug = response.json?.debug;
       return NextResponse.json(
         {
           error,
+          upstreamStatus: response.status,
+          upstreamRequestId: response.reqId,
           ...(code ? { code } : {}),
           ...(reason ? { reason } : {}),
           ...(debug !== undefined ? { debug } : {}),

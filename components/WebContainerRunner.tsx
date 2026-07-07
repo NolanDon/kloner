@@ -5617,7 +5617,11 @@ export default function NavBar() {
               // For the chat UX we want to unlock when the preview is actually usable.
               // Backend `ready === true` is authoritative; the shared presentation helper
               // only upgrades to live when the backend is connectable or the iframe is already healthy.
-              const uiReady = backendReadyRef.current || hmrWsStatus === 'ok' || previewPresentation.shouldShowLivePreview;
+              const uiReady =
+                backendReadyRef.current ||
+                hmrWsStatus === 'ok' ||
+                previewPresentation.shouldShowLivePreview ||
+                iframeLoadedSuccessfullyRef.current;
 
               if (backendReadyRef.current) {
                 setError(null);

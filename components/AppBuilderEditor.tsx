@@ -139,6 +139,8 @@ type AppData = {
     lastDeploymentUrl?: string | null;
 };
 
+type FileHydrationProgressCallback = (progress: number) => void;
+
 type NormalizedGenerationState = {
     status: string | null;
     stage: string | null;
@@ -931,31 +933,70 @@ function rewriteFirebaseStorageUrlsInHtmlForWebContainer(html: string, proxyOrig
     return rewriteFirebaseStorageUrlsInHtml(html, proxyOrigin);
 }
 
-async function hydrateHtmlFilesForApp(data: AppData): Promise<AppData> {
+async function hydrateHtmlFilesForApp(
+    data: AppData,
+    opts?: {
+        onProgress?: FileHydrationProgressCallback;
+    },
+): Promise<AppData> {
+    const emitProgress = (completed: number, total: number) => {
+        if (!opts?.onProgress) return;
+        const safeTotal = Math.max(1, total);
+        const nextProgress = Math.max(0, Math.min(100, Math.round((completed / safeTotal) * 100)));
+        opts.onProgress(nextProgress);
+    };
+
+    const yieldToBrowser = () => new Promise<void>((resolve) => window.setTimeout(resolve, 0));
+
+    const sourceFiles = Object.entries(data.files || {});
     const nextFiles: AppData["files"] = {};
-    for (const [path, file] of Object.entries(data.files || {})) {
+    const storagePath = typeof data.htmlStoragePath === "string" ? data.htmlStoragePath.trim() : "";
+    const targetPaths = pickHtmlTargetPaths(data.files || {}, data.htmlEditIndex);
+    const needsHydration = storagePath ? targetPaths.some((path) => !String(data.files?.[path]?.content || "").trim()) : false;
+    const totalWorkUnits = Math.max(1, sourceFiles.length + (needsHydration ? 1 : 0));
+    let completedWorkUnits = 0;
+
+    opts?.onProgress?.(1);
+
+    for (let index = 0; index < sourceFiles.length; index += 1) {
+        const [path, file] = sourceFiles[index];
         if (typeof file?.content !== "string") {
             nextFiles[path] = file;
-            continue;
+        } else {
+            nextFiles[path] = isHtmlPath(path)
+                ? {
+                    ...file,
+                    content: rewriteFirebaseStorageUrlsInHtml(file.content),
+                }
+                : file;
         }
 
-        nextFiles[path] = isHtmlPath(path)
-            ? {
-                ...file,
-                content: rewriteFirebaseStorageUrlsInHtml(file.content),
-            }
-            : file;
+        completedWorkUnits += 1;
+        emitProgress(completedWorkUnits, totalWorkUnits);
+        if ((index + 1) % 8 === 0) {
+            await yieldToBrowser();
+        }
     }
 
-    const storagePath = typeof data.htmlStoragePath === "string" ? data.htmlStoragePath.trim() : "";
-    if (!storagePath) return { ...data, files: nextFiles };
+    if (!storagePath) {
+        opts?.onProgress?.(100);
+        return { ...data, files: nextFiles };
+    }
 
-    const targetPaths = pickHtmlTargetPaths(nextFiles || {}, data.htmlEditIndex);
-    const needsHydration = targetPaths.some((path) => !String(nextFiles?.[path]?.content || "").trim());
-    if (!needsHydration) return { ...data, files: nextFiles };
+    if (!needsHydration) {
+        opts?.onProgress?.(100);
+        return { ...data, files: nextFiles };
+    }
+
+    completedWorkUnits += 1;
+    emitProgress(completedWorkUnits, totalWorkUnits);
+    await yieldToBrowser();
 
     const html = await readHtmlFromStorage(storagePath);
-    if (!html) return { ...data, files: nextFiles };
+    if (!html) {
+        opts?.onProgress?.(100);
+        return { ...data, files: nextFiles };
+    }
     const normalizedHtml = rewriteFirebaseStorageUrlsInHtml(html);
     let applied = false;
 
@@ -981,6 +1022,74 @@ async function hydrateHtmlFilesForApp(data: AppData): Promise<AppData> {
         };
     }
 
+    opts?.onProgress?.(100);
+    return { ...data, files: nextFiles };
+}
+
+async function hydratePrimaryHtmlFileForApp(
+    data: AppData,
+    opts?: {
+        onProgress?: FileHydrationProgressCallback;
+    },
+): Promise<AppData> {
+    const yieldToPaint = () => new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+    const nextFiles: AppData["files"] = { ...(data.files || {}) };
+    const storagePath = typeof data.htmlStoragePath === "string" ? data.htmlStoragePath.trim() : "";
+    const targetPaths = pickHtmlTargetPaths(data.files || {}, data.htmlEditIndex);
+    const firstTarget = targetPaths[0] || null;
+
+    opts?.onProgress?.(10);
+    await yieldToPaint();
+
+    if (!firstTarget) {
+        opts?.onProgress?.(100);
+        return { ...data, files: nextFiles };
+    }
+
+    const current = nextFiles[firstTarget];
+    if (current && String(current.content || "").trim()) {
+        nextFiles[firstTarget] = isHtmlPath(firstTarget)
+            ? {
+                ...current,
+                content: rewriteFirebaseStorageUrlsInHtml(String(current.content || "")),
+            }
+            : current;
+        await yieldToPaint();
+        opts?.onProgress?.(100);
+        return { ...data, files: nextFiles };
+    }
+
+    if (!storagePath) {
+        await yieldToPaint();
+        opts?.onProgress?.(100);
+        return { ...data, files: nextFiles };
+    }
+
+    opts?.onProgress?.(45);
+    await yieldToPaint();
+    const html = await readHtmlFromStorage(storagePath);
+    if (!html) {
+        await yieldToPaint();
+        opts?.onProgress?.(100);
+        return { ...data, files: nextFiles };
+    }
+
+    opts?.onProgress?.(85);
+    await yieldToPaint();
+    nextFiles[firstTarget] = {
+        content: rewriteFirebaseStorageUrlsInHtml(html),
+        lastModified: current?.lastModified || Date.now(),
+    };
+
+    if (!Object.keys(data.files || {}).some((path) => isHtmlPath(path))) {
+        nextFiles["index.html"] = {
+            content: rewriteFirebaseStorageUrlsInHtml(html),
+            lastModified: Date.now(),
+        };
+    }
+
+    await yieldToPaint();
+    opts?.onProgress?.(100);
     return { ...data, files: nextFiles };
 }
 
@@ -1676,6 +1785,15 @@ export default function AppBuilderEditor({
     const projectFramework = useMemo(() => detectProjectFramework(app?.files || null), [app?.files]);
     const [loading, setLoading] = useState(true);
     const [filesHydrated, setFilesHydrated] = useState(false);
+    const [isPreviewBootReady, setIsPreviewBootReady] = useState(false);
+    const [filesHydrationProgress, setFilesHydrationProgress] = useState(0);
+    const [filesHydrationCompletionHold, setFilesHydrationCompletionHold] = useState(false);
+    const filesHydrationRunIdRef = useRef(0);
+    const filesHydrationInFlightRef = useRef<Promise<AppData | null> | null>(null);
+    const filesHydrationCompletionTimerRef = useRef<number | null>(null);
+    const [previewHydrationLoaderMounted, setPreviewHydrationLoaderMounted] = useState(true);
+    const [previewHydrationLoaderVisible, setPreviewHydrationLoaderVisible] = useState(false);
+    const previewHydrationLoaderHideTimerRef = useRef<number | null>(null);
     const [error, setError] = useState<string | null>(null);
 
     const onCloseRef = useRef(onClose);
@@ -1702,50 +1820,102 @@ export default function AppBuilderEditor({
         }
     }, []);
 
+    const clearFilesHydrationTimer = useCallback(() => {
+        // Intentionally left as a stable cleanup hook.
+        // The loader now uses actual request and file hydration progress directly.
+    }, []);
+
+    const clearFilesHydrationCompletionTimer = useCallback(() => {
+        if (filesHydrationCompletionTimerRef.current !== null) {
+            window.clearTimeout(filesHydrationCompletionTimerRef.current);
+            filesHydrationCompletionTimerRef.current = null;
+        }
+    }, []);
+
+    const clearPreviewHydrationLoaderHideTimer = useCallback(() => {
+        if (previewHydrationLoaderHideTimerRef.current !== null) {
+            window.clearTimeout(previewHydrationLoaderHideTimerRef.current);
+            previewHydrationLoaderHideTimerRef.current = null;
+        }
+    }, []);
+
+    const advanceFilesHydrationProgress = useCallback((nextProgress: number) => {
+        setFilesHydrationProgress((prev) => Math.max(prev || 0, Math.max(0, Math.min(100, Math.round(nextProgress)))));
+    }, []);
+
     const fetchAndHydrateAppFiles = useCallback(
         async (opts?: { forceRefreshToken?: boolean; signal?: AbortSignal | null }): Promise<AppData | null> => {
+            if (filesHydrationInFlightRef.current) {
+                return filesHydrationInFlightRef.current;
+            }
+
             if (!user?.uid) {
                 await handleSessionExpired("app_builder_missing_user");
                 return null;
             }
 
             const forceRefreshToken = Boolean(opts?.forceRefreshToken);
-            await bootstrapServerSession({
-                forceRefresh: forceRefreshToken,
-                minIntervalMs: forceRefreshToken ? 0 : 10 * 60 * 1000,
-                timeoutMs: 12_000,
-                reason: "app_builder_load",
-            }).catch(() => false);
+            const runPromise = (async () => {
+                const runId = ++filesHydrationRunIdRef.current;
+                setFilesHydrationProgress(1);
+                advanceFilesHydrationProgress(6);
+                await bootstrapServerSession({
+                    forceRefresh: forceRefreshToken,
+                    minIntervalMs: forceRefreshToken ? 0 : 10 * 60 * 1000,
+                    timeoutMs: 12_000,
+                    reason: "app_builder_load",
+                }).catch(() => false);
+                advanceFilesHydrationProgress(14);
 
-            const idToken = await user.getIdToken(forceRefreshToken);
-            const res = await fetch(`/api/app-builder/${appId}/files`, {
-                method: "GET",
-                credentials: "include",
-                cache: "no-store",
-                signal: opts?.signal || undefined,
-                headers: {
-                    authorization: `Bearer ${idToken}`,
-                },
-            });
+                const idToken = await user.getIdToken(forceRefreshToken);
+                advanceFilesHydrationProgress(20);
+                const res = await fetch(`/api/app-builder/${appId}/files`, {
+                    method: "GET",
+                    credentials: "include",
+                    cache: "no-store",
+                    signal: opts?.signal || undefined,
+                    headers: {
+                        authorization: `Bearer ${idToken}`,
+                    },
+                });
+                advanceFilesHydrationProgress(48);
 
-            if (res.status === 401 || res.status === 403) {
-                await handleSessionExpired("app_builder_load_unauthorized");
-                return null;
-            }
-
-            if (!res.ok) {
-                if (res.status === 404) {
-                    console.error("App not found while loading editor", { appId });
+                if (res.status === 401 || res.status === 403) {
+                    await handleSessionExpired("app_builder_load_unauthorized");
                     return null;
                 }
-                throw new Error(`Failed to load app: ${res.status} ${res.statusText}`);
-            }
 
-            const data = await res.json();
-            const hydratedData = await hydrateHtmlFilesForApp(data as AppData);
-            return hydratedData;
+                if (!res.ok) {
+                    if (res.status === 404) {
+                        console.error("App not found while loading editor", { appId });
+                        clearFilesHydrationTimer();
+                        return null;
+                    }
+                    throw new Error(`Failed to load app: ${res.status} ${res.statusText}`);
+                }
+
+                const data = await res.json();
+                advanceFilesHydrationProgress(62);
+                if (runId !== filesHydrationRunIdRef.current) return null;
+                clearFilesHydrationTimer();
+                const hydratedData = await hydrateHtmlFilesForApp(data as AppData, {
+                    onProgress: (progress) => {
+                        setFilesHydrationProgress(Math.max(0, Math.min(100, Math.round(62 + (progress * 0.38)))));
+                    },
+                });
+                return hydratedData;
+            })();
+
+            filesHydrationInFlightRef.current = runPromise;
+            try {
+                return await runPromise;
+            } finally {
+                if (filesHydrationInFlightRef.current === runPromise) {
+                    filesHydrationInFlightRef.current = null;
+                }
+            }
         },
-        [appId, handleSessionExpired, user],
+        [appId, clearFilesHydrationTimer, handleSessionExpired, user],
     );
 
     const [currentFile, setCurrentFile] = useState<string | null>(null);
@@ -1758,6 +1928,7 @@ export default function AppBuilderEditor({
     const [localRestartKey, setLocalRestartKey] = useState(0);
     const [reconnectKey, setReconnectKey] = useState(0);
     const [isWebPreviewReady, setIsWebPreviewReady] = useState(false);
+    const [isWebPreviewReadyLatched, setIsWebPreviewReadyLatched] = useState(false);
     const [dismissedGenerationError, setDismissedGenerationError] = useState(false);
     const [agentCreditError, setAgentCreditError] = useState<string | null>(null);
     const [builderTourStartToken, setBuilderTourStartToken] = useState(0);
@@ -2098,11 +2269,63 @@ export default function AppBuilderEditor({
     );
     const canFixPreviewIssueWithAi = previewIssueFixDecision.eligible;
 
-    const shouldShowPreviewHydrationLoader = previewMode === "webcontainer" && (!filesHydrated || !isWebPreviewReady);
+    useEffect(() => {
+        const shouldShowLoader =
+            previewMode === "webcontainer" &&
+            ((!isPreviewBootReady && viewMode !== "custom" && viewMode !== "images") || filesHydrationCompletionHold);
+
+        if (!shouldShowLoader) {
+            clearFilesHydrationCompletionTimer();
+            clearPreviewHydrationLoaderHideTimer();
+            setPreviewHydrationLoaderVisible(false);
+            previewHydrationLoaderHideTimerRef.current = window.setTimeout(() => {
+                setPreviewHydrationLoaderMounted(false);
+                previewHydrationLoaderHideTimerRef.current = null;
+            }, 240);
+            return;
+        }
+
+        clearFilesHydrationTimer();
+        clearFilesHydrationCompletionTimer();
+        clearPreviewHydrationLoaderHideTimer();
+        setPreviewHydrationLoaderMounted(true);
+        requestAnimationFrame(() => setPreviewHydrationLoaderVisible(true));
+        if (isPreviewBootReady) {
+            setFilesHydrationProgress(100);
+            setFilesHydrationCompletionHold(true);
+            filesHydrationCompletionTimerRef.current = window.setTimeout(() => {
+                setFilesHydrationCompletionHold(false);
+                filesHydrationCompletionTimerRef.current = null;
+            }, 450);
+        }
+    }, [
+        clearFilesHydrationCompletionTimer,
+        clearPreviewHydrationLoaderHideTimer,
+        clearFilesHydrationTimer,
+        isPreviewBootReady,
+        filesHydrationCompletionHold,
+        previewMode,
+        viewMode,
+    ]);
+
+    useEffect(
+        () => () => {
+            clearFilesHydrationTimer();
+            clearFilesHydrationCompletionTimer();
+            clearPreviewHydrationLoaderHideTimer();
+        },
+        [clearFilesHydrationCompletionTimer, clearFilesHydrationTimer, clearPreviewHydrationLoaderHideTimer],
+    );
+
+    const shouldShowPreviewHydrationLoader =
+        previewMode === "webcontainer" &&
+        (previewHydrationLoaderMounted || filesHydrationCompletionHold) &&
+        viewMode !== "custom" &&
+        viewMode !== "images";
     const previewHydrationLoader = shouldShowPreviewHydrationLoader && typeof window !== "undefined" && previewHydrationAnchorRect
         ? createPortal(
             <div
-                className="fixed z-[22050] flex items-center justify-center px-4"
+                className={`fixed z-[22050] flex items-center justify-center px-4 transition-opacity duration-300 ease-out ${previewHydrationLoaderVisible ? "opacity-100" : "opacity-0"}`}
                 style={{
                     top: previewHydrationAnchorRect.top,
                     left: previewHydrationAnchorRect.left,
@@ -2164,7 +2387,7 @@ export default function AppBuilderEditor({
             window.removeEventListener("scroll", handleChange, true);
             observer?.disconnect();
         };
-    }, [shouldShowPreviewHydrationLoader, previewMode, filesHydrated, isWebPreviewReady]);
+    }, [shouldShowPreviewHydrationLoader, previewMode, isPreviewBootReady, isWebPreviewReady]);
 
     const handlePreviewRouteChange = useCallback((nextPath: string | null) => {
         const raw = String(nextPath || "").trim();
@@ -2856,7 +3079,7 @@ export default function AppBuilderEditor({
     }, [isGenerationProcessing]);
     const effectivePreviewFiles = useMemo(() => {
         if (isGenerationProcessing) return generationPlaceholderFiles;
-        if (!filesHydrated) return {};
+        if (!isPreviewBootReady) return {};
         const origin = typeof window !== "undefined" ? window.location.origin : "";
         const files = (app?.files || {}) as AppData["files"];
         if (!origin) return files;
@@ -2872,7 +3095,7 @@ export default function AppBuilderEditor({
                 : { ...record };
         }
         return nextFiles;
-    }, [app?.files, filesHydrated, generationPlaceholderFiles, isGenerationProcessing]);
+    }, [app?.files, generationPlaceholderFiles, isGenerationProcessing, isPreviewBootReady]);
 
     const usedPlaceholderRef = useRef(false);
     useEffect(() => {
@@ -3076,9 +3299,11 @@ export default function AppBuilderEditor({
     useEffect(() => {
         if (previewMode !== "webcontainer") {
             setIsWebPreviewReady(true);
+            setIsWebPreviewReadyLatched(true);
             return;
         }
         setIsWebPreviewReady(false);
+        setIsWebPreviewReadyLatched(false);
     }, [previewMode, refreshKey, localRestartKey, reconnectKey]);
     const [lastDeployLiveUrl, setLastDeployLiveUrl] = useState<string | null>(null);
     const [lastSharePreviewUrl, setLastSharePreviewUrl] = useState<string | null>(null);
@@ -4402,6 +4627,7 @@ export default function AppBuilderEditor({
                 }
 
                 if (res.status === 401 || res.status === 403) {
+                    clearFilesHydrationTimer();
                     await handleSessionExpired("app_builder_load_unauthorized");
                     return;
                 }
@@ -4427,7 +4653,10 @@ export default function AppBuilderEditor({
                 if (didCancel) return;
                 const rawApp = data as AppData;
                 setFilesHydrated(false);
+                setIsPreviewBootReady(false);
                 setApp(rawApp);
+                setFilesHydrationProgress(1);
+                await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
                 const liveUrl = typeof rawApp?.productionUrl === "string" ? rawApp.productionUrl.trim() : "";
                 setLastDeployLiveUrl(liveUrl || null);
                 const previewShareUrl = typeof rawApp?.previewUrl === "string" ? rawApp.previewUrl.trim() : "";
@@ -4437,15 +4666,48 @@ export default function AppBuilderEditor({
 
                 void (async () => {
                     try {
-                        const hydratedData = await hydrateHtmlFilesForApp(rawApp);
+                        advanceFilesHydrationProgress(22);
+                        await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+                        const bootApp = await hydratePrimaryHtmlFileForApp(rawApp, {
+                            onProgress: (progress) => {
+                                setFilesHydrationProgress(Math.max(0, Math.min(100, Math.round(22 + (progress * 0.78)))));
+                            },
+                        });
                         if (didCancel) return;
-                        setApp(hydratedData);
-                        buildFileTree(hydratedData.files);
-                        setFilesHydrated(true);
+                        setApp(bootApp);
+                        buildFileTree(bootApp.files);
+                        setIsPreviewBootReady(true);
+                        setFilesHydrationProgress(100);
                     } catch (hydrationErr) {
                         if (didCancel) return;
-                        console.warn("[app-builder] background file hydration failed", hydrationErr);
-                        setFilesHydrated(true);
+                        console.warn("[app-builder] primary preview file hydration failed", hydrationErr);
+                        setIsPreviewBootReady(true);
+                        setFilesHydrationProgress(100);
+                    }
+
+                    const backgroundHydrationPromise = (async (): Promise<AppData | null> => {
+                        try {
+                            const hydratedData = await hydrateHtmlFilesForApp(rawApp);
+                            if (didCancel) return null;
+                            setApp(hydratedData);
+                            buildFileTree(hydratedData.files);
+                            setFilesHydrated(true);
+                            return hydratedData;
+                        } catch (hydrationErr) {
+                            if (didCancel) return null;
+                            console.warn("[app-builder] background file hydration failed", hydrationErr);
+                            setFilesHydrated(true);
+                            return null;
+                        }
+                    })();
+
+                    filesHydrationInFlightRef.current = backgroundHydrationPromise;
+                    try {
+                        await backgroundHydrationPromise;
+                    } finally {
+                        if (filesHydrationInFlightRef.current === backgroundHydrationPromise) {
+                            filesHydrationInFlightRef.current = null;
+                        }
                     }
                 })();
             } catch (err: any) {
@@ -4462,6 +4724,7 @@ export default function AppBuilderEditor({
                 // Show error state instead.
                 setError(err instanceof Error ? err.message : "Failed to load app");
                 setFilesHydrated(true);
+                setIsPreviewBootReady(true);
             } finally {
                 if (!didCancel && retryTimer === null) setLoading(false);
             }
@@ -4567,17 +4830,35 @@ export default function AppBuilderEditor({
                         ? mergeFilesPreferNewest(prevApp.files, (firebaseData as any).files)
                         : prevApp.files;
 
+                    const filesAreEffectivelySame = hasFilesUpdate
+                        ? filesShallowEqualByContentAndTimestamp(prevApp.files, mergedFiles)
+                            && (prevApp.htmlStoragePath || null) === ((firebaseData as any).htmlStoragePath || prevApp.htmlStoragePath || null)
+                            && (prevApp.htmlEditIndex ?? null) === (((firebaseData as any).htmlEditIndex ?? prevApp.htmlEditIndex) ?? null)
+                            && (typeof (firebaseData as any).htmlByteLength === "number"
+                                ? (firebaseData as any).htmlByteLength
+                                : prevApp.htmlByteLength ?? null) === (prevApp.htmlByteLength ?? null)
+                        : true;
+
                     const hydratedApp = hasFilesUpdate
-                        ? await hydrateHtmlFilesForApp({
-                            ...prevApp,
-                            files: mergedFiles,
-                            htmlStoragePath: (firebaseData as any).htmlStoragePath || prevApp.htmlStoragePath || null,
-                            htmlEditIndex: (firebaseData as any).htmlEditIndex ?? prevApp.htmlEditIndex,
-                            htmlByteLength:
-                                typeof (firebaseData as any).htmlByteLength === "number"
-                                    ? (firebaseData as any).htmlByteLength
-                                    : prevApp.htmlByteLength ?? null,
-                        })
+                        ? filesAreEffectivelySame
+                            ? prevApp
+                            : await hydrateHtmlFilesForApp(
+                                {
+                                    ...prevApp,
+                                    files: mergedFiles,
+                                    htmlStoragePath: (firebaseData as any).htmlStoragePath || prevApp.htmlStoragePath || null,
+                                    htmlEditIndex: (firebaseData as any).htmlEditIndex ?? prevApp.htmlEditIndex,
+                                    htmlByteLength:
+                                        typeof (firebaseData as any).htmlByteLength === "number"
+                                            ? (firebaseData as any).htmlByteLength
+                                            : prevApp.htmlByteLength ?? null,
+                                },
+                                {
+                                    onProgress: (progress) => {
+                                        setFilesHydrationProgress(Math.max(0, Math.min(100, Math.round(progress))));
+                                    },
+                                },
+                            )
                         : prevApp;
 
                     const filesChanged = hasFilesUpdate
@@ -6011,7 +6292,7 @@ export default function AppBuilderEditor({
         if (!isVercelConnected) return;
         if (!appId) return;
         if (!app || loading) return;
-        if (!filesHydrated) return;
+        if (!isPreviewBootReady) return;
 
         if (pendingShareResumeRef.current) return;
 
@@ -6052,7 +6333,7 @@ export default function AppBuilderEditor({
         }
 
         // No-op for embedded preview; deploy actions will work after connect.
-    }, [isVercelConnected, appId, app, filesHydrated, loading]);
+    }, [isVercelConnected, appId, app, isPreviewBootReady, loading]);
 
     useEffect(() => {
         if (!vercelConnectOpen) return;
@@ -6071,7 +6352,7 @@ export default function AppBuilderEditor({
         if (!isVercelConnected) return;
         if (!appId) return;
         if (!app || loading) return;
-        if (!filesHydrated) return;
+        if (!isPreviewBootReady) return;
 
         let pendingImages: any = null;
         try {
@@ -6090,7 +6371,7 @@ export default function AppBuilderEditor({
         }
 
         setViewMode("images");
-    }, [isVercelConnected, appId, app, filesHydrated, loading]);
+    }, [isVercelConnected, appId, app, isPreviewBootReady, loading]);
 
     useEffect(() => {
         if (!isVercelConnected) {
@@ -6102,7 +6383,7 @@ export default function AppBuilderEditor({
     useEffect(() => {
         if (!appId) return;
         if (loading) return;
-        if (!filesHydrated) return;
+        if (!isPreviewBootReady) return;
         if (isVercelChecking) return;
         if (didAutoPreviewStartRef.current) return;
 
@@ -6112,7 +6393,7 @@ export default function AppBuilderEditor({
         setPreviewMode("webcontainer");
         // Kick the runner once to ensure it starts.
         setRefreshKey((k) => k + 1);
-    }, [appId, filesHydrated, loading, isVercelChecking]);
+    }, [appId, isPreviewBootReady, loading, isVercelChecking]);
 
     const handleRefresh = async (forceFresh: boolean = false) => {
         if (isRefreshing) return;
@@ -6135,6 +6416,7 @@ export default function AppBuilderEditor({
         try {
             if (forceFresh) {
                 setFilesHydrated(false);
+                setIsPreviewBootReady(false);
                 await fetchAndHydrateAppFiles({ forceRefreshToken: true });
                 await restartLocalPreview(true);
                 return;
@@ -7330,7 +7612,9 @@ export default function AppBuilderEditor({
                                                 previewEditorFlushRef.current = fn;
                                             }}
                                             onTakeBuilderTour={handleTakeBuilderTour}
-                                            isFilesHydrated={filesHydrated}
+                                            isFilesHydrated={isPreviewBootReady}
+                                            filesHydrationProgress={filesHydrationProgress}
+                                            isPreviewReady={previewMode !== "webcontainer" ? true : isPreviewBootReady}
                                         />
                                     </div>
                                 ) : (
@@ -7473,15 +7757,26 @@ export default function AppBuilderEditor({
                         {/* App Content */}
                         <div data-tour-builder-preview className="flex-1 bg-white">
                             {previewMode === "webcontainer" ? (
-                                filesHydrated ? (
+                                isPreviewBootReady ? (
                                     <div ref={previewHydrationAnchorRef} className="relative h-full w-full p-3">
-                                        <WebContainerRunner
-                                            appId={appId}
-                                            files={effectivePreviewFiles}
-                                            filesReady={filesHydrated}
-                                            onFileChange={handleFileChangeFromContainer}
-                                            onPreviewReadyChange={setIsWebPreviewReady}
-                                            previewIssue={previewIssue}
+                                            <WebContainerRunner
+                                                appId={appId}
+                                                files={effectivePreviewFiles}
+                                                filesReady={isPreviewBootReady}
+                                                onFileChange={handleFileChangeFromContainer}
+                                                onPreviewReadyChange={(ready) => {
+                                                    if (ready) {
+                                                        setIsWebPreviewReady(true);
+                                                        setIsWebPreviewReadyLatched(true);
+                                                    } else {
+                                                        setIsWebPreviewReady(false);
+                                                    }
+                                                    if (ready && isPreviewBootReady) {
+                                                        clearFilesHydrationTimer();
+                                                        setFilesHydrationProgress(100);
+                                                    }
+                                                }}
+                                                previewIssue={previewIssue}
                                             onPreviewIssueChange={(payload) => {
                                                 setPreviewIssue(payload?.issue || null);
                                                 setPreviewIssueDiagnostics(payload?.diagnostics || null);

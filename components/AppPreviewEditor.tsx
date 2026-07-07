@@ -129,6 +129,8 @@ type Props = {
     onPrepareVercelProject?: () => Promise<boolean> | boolean;
     onLiveHtml?: (html: string) => void;
     isFilesHydrated?: boolean;
+    filesHydrationProgress?: number | null;
+    isPreviewReady?: boolean;
 };
 
 const ACCENT = "#f55f2a";
@@ -1261,6 +1263,8 @@ function AppPreviewEditorCore({
     hasVercelProject = false,
     onPrepareVercelProject,
     isFilesHydrated = true,
+    filesHydrationProgress = null,
+    isPreviewReady = true,
 }: Props) {
     const { user } = useAuth();
     const isDevCodeMode = process.env.NODE_ENV === "development";
@@ -1356,7 +1360,6 @@ function AppPreviewEditorCore({
     const [previewHtml, setPreviewHtml] = useState<string>("");
     const iframeRef = useRef<HTMLIFrameElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
-    const [iframeKey, setIframeKey] = useState<number>(0);
     const [activePageId, setActivePageId] = useState<string>("");
     const [derivedPages, setDerivedPages] = useState<EditorPage[]>([]);
     const [pageSwitchConfirm, setPageSwitchConfirm] = useState<{ targetId: string } | null>(null);
@@ -1364,6 +1367,7 @@ function AppPreviewEditorCore({
     const [showSaveNudge, setShowSaveNudge] = useState(false);
     const [saveNudgeArmed, setSaveNudgeArmed] = useState(false);
     const [isPreviewImageHydrating, setIsPreviewImageHydrating] = useState(false);
+    const previewDirtyBaselineRef = useRef<string>("");
     const previewImageHydrationRunRef = useRef(0);
     const previewImageHydrationTimeoutRef = useRef<number | null>(null);
     const previewImageHydrationCleanupRef = useRef<(() => void) | null>(null);
@@ -2251,9 +2255,22 @@ function AppPreviewEditorCore({
         setHtmlDraft(baseHtml);
         setPreviewHtml(baseHtml);
         setDirty(false);
+        previewDirtyBaselineRef.current = normalizePreviewHtmlForDirtyCheck(baseHtml);
         setHistory([]);
         setActiveHistoryId(null);
     }, [draftId, initialHtml, preserveRuntimeScripts]);
+
+    function normalizePreviewHtmlForDirtyCheck(html: string) {
+        if (!html) return "";
+
+        try {
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(html, "text/html");
+            return snapshotCleanFromDocument(doc).trim();
+        } catch {
+            return stripScripts(stripEditorArtifacts(html)).trim();
+        }
+    }
 
     // ---------- snapshot helper for saving/exporting ----------
     const snapshotFromIframeOrDraft = useCallback(() => {
@@ -2931,11 +2948,6 @@ function AppPreviewEditorCore({
         if (base.includes("<head>")) return base.replace("<head>", `<head>${styleTag}`);
         return styleTag + base;
     }, [previewHtml, activePageId, allPages, createdPages, baseHref, currentHtmlPath, sourceFiles, preserveRuntimeScripts]);
-
-    useEffect(() => {
-        if (mode === "screenshot") return;
-        setIframeKey((k) => k + 1);
-    }, [aiPreviewHtml, renderHtml, mode]);
 
     useEffect(() => {
         if (!allPages || allPages.length === 0) {
@@ -4571,9 +4583,108 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
         }
     }, [sidePanelMode]);
 
+    const [filesHydrationCompletionHold, setFilesHydrationCompletionHold] = useState(false);
+    const hasActiveFilesHydrationProgress =
+        typeof filesHydrationProgress === "number" &&
+        Number.isFinite(filesHydrationProgress) &&
+        filesHydrationProgress > 0 &&
+        filesHydrationProgress < 100;
+    const [filesHydrationLoaderMounted, setFilesHydrationLoaderMounted] = useState(
+        () => !isFilesHydrated || !isPreviewReady || hasActiveFilesHydrationProgress,
+    );
+    const [filesHydrationLoaderVisible, setFilesHydrationLoaderVisible] = useState(false);
+    const iframeWrapperRef = useRef<HTMLDivElement | null>(null);
+    const filesHydrationCompletionTimerRef = useRef<number | null>(null);
+    const filesHydrationLoaderHideTimerRef = useRef<number | null>(null);
     const showSidebarPanel = isCompactLayout ? mobileTab === "panel" : !sidebarHidden;
     const shouldShowFilesHydrationLoader =
-        !isFilesHydrated && (viewMode === "custom" || viewMode === "images");
+        (filesHydrationLoaderMounted || filesHydrationCompletionHold) &&
+        (hasActiveFilesHydrationProgress || !isFilesHydrated || !isPreviewReady) &&
+        mode !== "screenshot";
+    const [filesHydrationAnchorRect, setFilesHydrationAnchorRect] = useState<{
+        top: number;
+        left: number;
+        width: number;
+        height: number;
+    } | null>(null);
+
+    useEffect(() => {
+        if (!shouldShowFilesHydrationLoader) {
+            setFilesHydrationAnchorRect(null);
+            return;
+        }
+
+        const measure = () => {
+            const el = iframeWrapperRef.current;
+            if (!el) return;
+            const rect = el.getBoundingClientRect();
+            setFilesHydrationAnchorRect({
+                top: rect.top,
+                left: rect.left,
+                width: rect.width,
+                height: rect.height,
+            });
+        };
+
+        measure();
+
+        const handleChange = () => measure();
+        window.addEventListener("resize", handleChange);
+        window.addEventListener("scroll", handleChange, true);
+
+        const observer = typeof ResizeObserver !== "undefined" && iframeWrapperRef.current
+            ? new ResizeObserver(() => measure())
+            : null;
+        if (observer && iframeWrapperRef.current) {
+            observer.observe(iframeWrapperRef.current);
+        }
+
+        return () => {
+            window.removeEventListener("resize", handleChange);
+            window.removeEventListener("scroll", handleChange, true);
+            observer?.disconnect();
+        };
+    }, [shouldShowFilesHydrationLoader, mode, isFilesHydrated, isPreviewReady]);
+
+    useEffect(() => {
+        const shouldShowLoader =
+            (mode !== "screenshot" &&
+                (hasActiveFilesHydrationProgress || !isFilesHydrated || !isPreviewReady)) ||
+            filesHydrationCompletionHold;
+
+        if (!shouldShowLoader) {
+            if (filesHydrationCompletionTimerRef.current !== null) {
+                window.clearTimeout(filesHydrationCompletionTimerRef.current);
+                filesHydrationCompletionTimerRef.current = null;
+            }
+            setFilesHydrationCompletionHold(false);
+            if (filesHydrationLoaderHideTimerRef.current !== null) {
+                window.clearTimeout(filesHydrationLoaderHideTimerRef.current);
+                filesHydrationLoaderHideTimerRef.current = null;
+            }
+            setFilesHydrationLoaderVisible(false);
+            filesHydrationLoaderHideTimerRef.current = window.setTimeout(() => {
+                setFilesHydrationLoaderMounted(false);
+                filesHydrationLoaderHideTimerRef.current = null;
+            }, 240);
+            return;
+        }
+
+        if (filesHydrationLoaderHideTimerRef.current !== null) {
+            window.clearTimeout(filesHydrationLoaderHideTimerRef.current);
+            filesHydrationLoaderHideTimerRef.current = null;
+        }
+        setFilesHydrationLoaderMounted(true);
+        requestAnimationFrame(() => setFilesHydrationLoaderVisible(true));
+
+        if (isFilesHydrated && isPreviewReady) {
+            setFilesHydrationCompletionHold(true);
+            filesHydrationCompletionTimerRef.current = window.setTimeout(() => {
+                setFilesHydrationCompletionHold(false);
+                filesHydrationCompletionTimerRef.current = null;
+            }, 450);
+        }
+    }, [filesHydrationCompletionHold, hasActiveFilesHydrationProgress, isFilesHydrated, isPreviewReady, mode]);
 
     const clearPreviewImageHydrationWatchers = useCallback(() => {
         if (previewImageHydrationTimeoutRef.current) {
@@ -4679,7 +4790,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
         return () => {
             clearPreviewImageHydrationWatchers();
         };
-    }, [clearPreviewImageHydrationWatchers, iframeKey, mode, stopPreviewImageHydration]);
+    }, [clearPreviewImageHydrationWatchers, mode, stopPreviewImageHydration]);
 
     useEffect(() => {
         onSidebarVisibilityChange?.(showSidebarPanel);
@@ -4707,32 +4818,38 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
         [allPages, activePage, sourceImage]
     );
 
-    const filesHydrationLoader = shouldShowFilesHydrationLoader ? (
-        <div
-            className="absolute inset-0 z-[1200] flex items-center justify-center bg-white/70 px-4 backdrop-blur-[1px]"
-            role="status"
-            aria-live="polite"
-            aria-busy="true"
-        >
-            <div className="flex flex-col items-center justify-center rounded-2xl border border-neutral-200 bg-white/90 px-6 py-5 text-center shadow-lg">
-                <div className="kloner-dots" aria-hidden="true">
-                    <span className="kloner-dot" />
-                    <span className="kloner-dot" />
-                    <span className="kloner-dot" />
+    const filesHydrationLoader = shouldShowFilesHydrationLoader && typeof window !== "undefined" && filesHydrationAnchorRect
+        ? createPortal(
+            <div
+                className={`fixed z-[22050] flex items-center justify-center px-4 transition-opacity duration-300 ease-out ${filesHydrationLoaderVisible ? "opacity-100" : "opacity-0"}`}
+                style={{
+                    top: filesHydrationAnchorRect.top,
+                    left: filesHydrationAnchorRect.left,
+                    width: filesHydrationAnchorRect.width,
+                    height: filesHydrationAnchorRect.height,
+                }}
+                role="status"
+                aria-live="polite"
+                aria-busy="true"
+            >
+                <div className="flex flex-col items-center justify-center rounded-2xl border border-neutral-200 bg-white/95 px-6 py-5 text-center shadow-lg backdrop-blur-[1px]">
+                    <div className="kloner-dots" aria-hidden="true">
+                        <span className="kloner-dot" />
+                        <span className="kloner-dot" />
+                        <span className="kloner-dot" />
+                    </div>
+                    <div className="mt-4 text-sm font-medium text-neutral-700">
+                        Hydrating files
+                    </div>
                 </div>
-                <div className="mt-4 text-sm font-medium text-neutral-700">
-                    Hydrating files
-                </div>
-            </div>
-        </div>
-    ) : null;
+            </div>,
+            document.body,
+        )
+        : null;
 
-
-    const iframeWrapperRef = useRef<HTMLDivElement | null>(null);
 
     const iframeNode = (
         <iframe
-            key={iframeKey}
             ref={iframeRef}
             className="w-full h-[70vh] sm:h-[80vh] border-0"
             title="KlonerPreview"
@@ -5973,7 +6090,6 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                 </div>
                                 <AnimatePresence mode="wait">
                                     <motion.div
-                                        key={activePageId}
                                         drag
                                         dragControls={previewDragControls}
                                         dragListener={false}
@@ -6526,7 +6642,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                 <AnimatePresence>
                     {pageSwitchConfirm && (
                         <motion.div
-                            className="fixed inset-0 z-[10005] flex items-center justify-center bg-black/40"
+                            className="fixed inset-0 z-[30000] flex items-center justify-center bg-black/40"
                             initial={{ opacity: 0 }}
                             animate={{ opacity: 1 }}
                             exit={{ opacity: 0 }}
@@ -6566,44 +6682,47 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                     )}
                 </AnimatePresence>
 
-                {closePrompt && (
-                    <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/40">
-                        <div className="bg-white rounded-lg shadow-xl p-4 w-full max-w-sm border border-neutral-200">
-                            <div className="text-md font-semibold text-neutral-900 mb-2">
-                                Close editor?
+                {closePrompt && typeof document !== "undefined"
+                    ? createPortal(
+                        <div className="fixed inset-0 z-[2147483647] flex items-center justify-center bg-black/40">
+                            <div className="bg-white rounded-lg shadow-xl p-4 w-full max-w-sm border border-neutral-200">
+                                <div className="text-md font-semibold text-neutral-900 mb-2">
+                                    Close editor?
+                                </div>
+                                <p className="text-sm text-neutral-600 mb-3">
+                                    You have unsaved changes. Save them before closing, or discard
+                                    this draft.
+                                </p>
+                                <div className="flex justify-end gap-2 text-sm">
+                                    <button
+                                        type="button"
+                                        className="px-2.5 py-1.5 text-xs rounded-full border border-neutral-300 bg-white/90 hover:bg-neutral-50 active:scale-[.98]"
+                                        onClick={() => setClosePrompt(false)}
+                                    >
+                                        Keep Editing
+                                    </button>
+                                    <button
+                                        type="button"
+                                        className="px-2.5 py-1.5 text-xs rounded-full border border-neutral-300 bg-white/90 hover:bg-neutral-50 active:scale-[.98]"
+                                        onClick={() => performClose("discard")}>
+                                        Discard
+                                    </button>
+                                    <button
+                                        type="button"
+                                        className="px-2.5 py-1.5 text-xs rounded-full bg-accent text-white hover:brightness-110 active:scale-[.98]"
+                                        onClick={() => performClose("save")}
+                                    >
+                                        Save & close
+                                    </button>
+                                </div>
                             </div>
-                            <p className="text-sm text-neutral-600 mb-3">
-                                You have unsaved changes. Save them before closing, or discard
-                                this draft.
-                            </p>
-                            <div className="flex justify-end gap-2 text-sm">
-                                <button
-                                    type="button"
-                                    className="px-2.5 py-1.5 text-xs rounded-full border border-neutral-300 bg-white/90 hover:bg-neutral-50 active:scale-[.98]"
-                                    onClick={() => setClosePrompt(false)}
-                                >
-                                    Keep Editing
-                                </button>
-                                <button
-                                    type="button"
-                                    className="px-2.5 py-1.5 text-xs rounded-full border border-neutral-300 bg-white/90 hover:bg-neutral-50 active:scale-[.98]"
-                                    onClick={() => performClose("discard")}>
-                                    Discard
-                                </button>
-                                <button
-                                    type="button"
-                                    className="px-2.5 py-1.5 text-xs rounded-full bg-accent text-white hover:brightness-110 active:scale-[.98]"
-                                    onClick={() => performClose("save")}
-                                >
-                                    Save & close
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                )}
+                        </div>,
+                        document.body,
+                    )
+                    : null}
 
                 {exportPrompt && (
-                    <div className="fixed inset-0 z-[10010] flex items-center justify-center bg-black/40">
+                    <div className="fixed inset-0 z-[30000] flex items-center justify-center bg-black/40">
                         <div className="bg-white rounded-lg shadow-xl p-4 w-full max-w-sm border border-neutral-200">
                             <div className="text-md font-semibold text-neutral-900 mb-2">
                                 Deploy your Website?
@@ -6721,6 +6840,8 @@ type AppSourcePreviewEditorProps = {
     htmlEntryHints?: unknown;
     onLiveHtml?: (html: string) => void;
     isFilesHydrated?: boolean;
+    filesHydrationProgress?: number | null;
+    isPreviewReady?: boolean;
 };
 
 function isHtmlPath(path: string): boolean {
@@ -6768,6 +6889,8 @@ export default function AppPreviewEditor({
     onPrepareVercelProject,
     onLiveHtml,
     isFilesHydrated,
+    filesHydrationProgress,
+    isPreviewReady,
 }: AppSourcePreviewEditorProps) {
     const htmlPaths = useMemo(
         () => Object.keys(files || {}).filter(isHtmlPath).sort((a, b) => a.localeCompare(b)),
@@ -6911,7 +7034,6 @@ export default function AppPreviewEditor({
         <div className="h-full flex flex-col app-preview-editor-no-ai">
             <div className="flex-1 min-h-0">
                 <AppPreviewEditorCore
-                    key={activeHtmlPath}
                     initialHtml={selectedHtml}
                     draftId={makeDraftId(appId, activeHtmlPath)}
                     onClose={() => onClose?.()}
@@ -6936,6 +7058,8 @@ export default function AppPreviewEditor({
                     onPrepareVercelProject={onPrepareVercelProject}
                     onLiveHtml={onLiveHtml}
                     isFilesHydrated={isFilesHydrated}
+                    filesHydrationProgress={filesHydrationProgress}
+                    isPreviewReady={isPreviewReady}
                     appName={appName}
                     isRenaming={isRenaming}
                     tempName={tempName}
