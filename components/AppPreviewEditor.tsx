@@ -3,6 +3,7 @@
 
 import { ensureSessionAndCsrf } from "@/lib/auth-client";
 import { useEffect, useMemo, useRef, useState, useCallback, ChangeEvent, type ComponentProps } from "react";
+import Link from "next/link";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence, useDragControls } from "framer-motion";
 import Image from 'next/image'
@@ -135,6 +136,8 @@ type Props = {
 
 const ACCENT = "#f55f2a";
 const SAVE_NUDGE_KEY = "kloner_save_nudge_seen";
+const HTML_DISCOVERY_MAX_ATTEMPTS = 4;
+const HTML_DISCOVERY_RETRY_MS = 700;
 
 export type SelectionMeta = {
     has: boolean;
@@ -4913,7 +4916,9 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
             tabIndex={-1}
             className="h-full w-full bg-white flex flex-col"
         >
-            {!isCompactLayout && (<PreviewEditorTour startToken={previewTourStartToken} autoStart={false} />)}
+            {!isCompactLayout && isDevCodeMode ? (
+                <PreviewEditorTour startToken={previewTourStartToken} autoStart />
+            ) : null}
 
             <div className={`h-full w-full overflow-hidden ${isCompactLayout ? "flex flex-col" : "grid grid-rows-[1fr_auto]"}`}>
 
@@ -5100,13 +5105,15 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                         ) : null}
                                     </div>
                                     {/* {viewMode === "custom" ? ( */}
-                                        <button
-                                            type="button"
-                                            onClick={handleTakePreviewTour}
-                                            className="hidden items-center justify-center gap-2 whitespace-nowrap rounded-full border border-neutral-300 bg-white px-2.5 py-2 text-xs font-semibold text-neutral-700 hover:bg-neutral-50 xl:inline-flex lg:px-3"
-                                        >
-                                            <span>Take tour</span>
-                                        </button>
+                                        {isDevCodeMode ? (
+                                            <button
+                                                type="button"
+                                                onClick={handleTakePreviewTour}
+                                                className="hidden items-center justify-center gap-2 whitespace-nowrap rounded-full border border-neutral-300 bg-white px-2.5 py-2 text-xs font-semibold text-neutral-700 hover:bg-neutral-50 xl:inline-flex lg:px-3"
+                                            >
+                                                <span>Take tour</span>
+                                            </button>
+                                        ) : null}
                                     {/* ) : null} */}
                                 </div>
                             ) : null}
@@ -6896,6 +6903,17 @@ export default function AppPreviewEditor({
         () => Object.keys(files || {}).filter(isHtmlPath).sort((a, b) => a.localeCompare(b)),
         [files],
     );
+    const hasActiveFilesHydrationProgress =
+        typeof filesHydrationProgress === "number" &&
+        Number.isFinite(filesHydrationProgress) &&
+        filesHydrationProgress > 0 &&
+        filesHydrationProgress < 100;
+    const isFilesStillHydrating = !isFilesHydrated || !isPreviewReady || hasActiveFilesHydrationProgress;
+    const [htmlDiscoveryAttempts, setHtmlDiscoveryAttempts] = useState(0);
+    const isHtmlDiscoveryExhausted =
+        !isFilesStillHydrating &&
+        htmlPaths.length === 0 &&
+        htmlDiscoveryAttempts >= HTML_DISCOVERY_MAX_ATTEMPTS;
 
     const preferredHtmlPath = useMemo(
         () =>
@@ -6906,6 +6924,30 @@ export default function AppPreviewEditor({
             }),
         [currentHtmlPath, files, htmlEntryHints, initialPath],
     );
+
+    useEffect(() => {
+        if (htmlPaths.length > 0) {
+            setHtmlDiscoveryAttempts(0);
+            return;
+        }
+
+        if (isFilesStillHydrating) {
+            setHtmlDiscoveryAttempts(0);
+            return;
+        }
+
+        if (htmlDiscoveryAttempts >= HTML_DISCOVERY_MAX_ATTEMPTS) {
+            return;
+        }
+
+        const timeout = window.setTimeout(() => {
+            setHtmlDiscoveryAttempts((attempt) =>
+                Math.min(attempt + 1, HTML_DISCOVERY_MAX_ATTEMPTS),
+            );
+        }, HTML_DISCOVERY_RETRY_MS);
+
+        return () => window.clearTimeout(timeout);
+    }, [htmlDiscoveryAttempts, htmlPaths.length, isFilesStillHydrating]);
 
     const [selectedPath, setSelectedPath] = useState<string>("");
     const [applyError, setApplyError] = useState<string | null>(null);
@@ -7010,11 +7052,52 @@ export default function AppPreviewEditor({
         [onChangeViewMode, onClose],
     );
 
-    if (!htmlPaths.length) {
+    if (!htmlPaths.length && !isHtmlDiscoveryExhausted) {
         return (
             <div className="h-full overflow-auto p-4">
                 <div className="rounded-xl border border-dashed border-neutral-300 bg-white p-4 text-sm text-neutral-700">
-                    No HTML files found in this app yet. The Custom editor works on any `.html` file from your source files.
+                    <div className="flex items-start gap-3">
+                        <div className="mt-0.5">
+                            <Spinner size={16} />
+                        </div>
+                        <div className="min-w-0">
+                            <div className="font-medium text-neutral-900">
+                                Looking for editable HTML files
+                            </div>
+                            <div className="mt-1 text-neutral-600">
+                                We’re still syncing the project files. If nothing appears after a few checks, we’ll show the recovery message here.
+                            </div>
+                            <div className="mt-3 text-xs text-neutral-500">
+                                Attempt {Math.min(htmlDiscoveryAttempts + 1, HTML_DISCOVERY_MAX_ATTEMPTS)} of {HTML_DISCOVERY_MAX_ATTEMPTS}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    if (!htmlPaths.length) {
+        return (
+            <div className="h-full overflow-auto p-4">
+                <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
+                    <div className="font-medium text-amber-950">
+                        We could not load an editable file for this project yet.
+                    </div>
+                    <div className="mt-2 text-amber-900/80">
+                        The files may still be settling, or this project may need a fresh rescan from the dashboard.
+                    </div>
+                    <div className="mt-4 flex flex-wrap items-center gap-3">
+                        <Link
+                            href="/dashboard/view"
+                            className="inline-flex items-center rounded-full bg-amber-950 px-4 py-2 text-xs font-semibold text-white transition hover:bg-amber-900"
+                        >
+                            Open dashboard
+                        </Link>
+                        <span className="text-xs text-amber-900/70">
+                            If the issue keeps happening, rescan the project there and reopen the editor.
+                        </span>
+                    </div>
                 </div>
             </div>
         );

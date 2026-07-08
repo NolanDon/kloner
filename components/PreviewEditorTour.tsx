@@ -73,10 +73,12 @@ function getTourStorage(): Storage | null {
 }
 
 function hasSeenTour(): boolean {
+    if (process.env.NODE_ENV !== "production") return false;
     return getTourStorage()?.getItem(TOUR_KEY) === "1";
 }
 
 function markTourSeen(): void {
+    if (process.env.NODE_ENV !== "production") return;
     try {
         getTourStorage()?.setItem(TOUR_KEY, "1");
     } catch {
@@ -117,12 +119,13 @@ export function PreviewEditorTour({ startToken = 0, autoStart = true }: PreviewE
 
     useEffect(() => {
         if (typeof window === "undefined") return;
-        if (startToken <= 0) return;
-        if (hasSeenTour()) return;
+        const devAutoStart = isDevBuild() && autoStart;
+        if (startToken <= 0 && !devAutoStart) return;
+        if (!isDevBuild() && hasSeenTour()) return;
         markTourSeen();
         setIndex(0);
         setRunning(true);
-    }, [startToken]);
+    }, [autoStart, startToken]);
 
     useEffect(() => {
         if (!running) return;

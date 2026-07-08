@@ -20,10 +20,12 @@ function getTourStorage(): Storage | null {
 }
 
 function hasSeenTour(): boolean {
+    if (process.env.NODE_ENV !== "production") return false;
     return getTourStorage()?.getItem(TOUR_KEY) === "1";
 }
 
 function markTourSeen(): void {
+    if (process.env.NODE_ENV !== "production") return;
     try {
         getTourStorage()?.setItem(TOUR_KEY, "1");
     } catch {

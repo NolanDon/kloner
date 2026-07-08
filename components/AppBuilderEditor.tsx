@@ -8248,7 +8248,9 @@ export default function AppBuilderEditor({
                     </div>
                 ) : null}
 
-                <AppBuilderEditorTour startToken={builderTourStartToken} />
+                {isDev && !isVisualEditorMode ? (
+                    <AppBuilderEditorTour startToken={builderTourStartToken} />
+                ) : null}
 
                 {showAppBuilderTrialPrompt ? (
                     <motion.div
