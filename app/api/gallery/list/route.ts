@@ -1,6 +1,7 @@
 // app/api/gallery/list/route.ts
 import { NextResponse } from "next/server";
 import { getAdminDb } from "../../_lib/auth";
+import { fetchGalleryDocs } from "../../_lib/gallery-feed";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -19,19 +20,13 @@ function toNum(v: unknown, fallback = 0) {
 export async function GET() {
     try {
         const db = await getAdminDb();
+        const docs = await fetchGalleryDocs(db, { approvedOnly: true, limit: 50 });
 
-        const snap = await db
-            .collection("gallery")
-            .where("approved", "==", true)
-            .orderBy("createdAt", "desc")
-            .limit(50)
-            .get();
-
-        if (snap.empty) {
+        if (!docs.length) {
             return NextResponse.json({ items: [] });
         }
 
-        const items = snap.docs.map((doc) => {
+        const items = docs.map((doc) => {
             const data = doc.data() as any;
 
             const pages: CommunityBuildPage[] | null =

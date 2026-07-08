@@ -1,24 +1,18 @@
 // app/api/gallery/approved/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { getAdminDb } from "../../_lib/auth";
+import { fetchGalleryDocs } from "../../_lib/gallery-feed";
 import { requireSessionAndMaybeCsrf } from "../../_lib/route-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
-    return requireSessionAndMaybeCsrf(req, async ({ uid }) => {
+    return requireSessionAndMaybeCsrf(req, async () => {
         const db = getAdminDb();
+        const docs = await fetchGalleryDocs(db, { approvedOnly: true, limit: 50 });
 
-        // IMPORTANT: root collection "gallery", not collectionGroup, no extra path
-        const snap = await db
-            .collection("gallery")
-            .where("approved", "==", true) // boolean match
-            .orderBy("createdAt", "desc")
-            .limit(50)
-            .get();
-
-        const items = snap.docs.map((doc) => {
+        const items = docs.map((doc) => {
             const data = doc.data() || {};
             return {
                 id: doc.id,

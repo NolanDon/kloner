@@ -2,6 +2,7 @@
 import { NextResponse } from "next/server";
 import admin from "firebase-admin";
 import { initAdmin } from "../../../_lib/auth";
+import { fetchGalleryDocs } from "../../../_lib/gallery-feed";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -43,13 +44,11 @@ export async function GET(req: Request) {
 
         const db = getAdminApp().firestore();
 
-        // IMPORTANT: root collection "gallery", not collectionGroup, no extra path
-        let q = db.collection("gallery");
-        if (approvedOnly) q = q.where("approved", "==", true) as any;
+        const docs = approvedOnly
+            ? await fetchGalleryDocs(db, { approvedOnly: true, limit: limitN })
+            : await fetchGalleryDocs(db, { approvedOnly: false, limit: limitN });
 
-        const snap = await q.orderBy("createdAt", "desc").limit(limitN).get();
-
-        const items = snap.docs.map((d) => {
+        const items = docs.map((d) => {
             const data = d.data() as any;
             return {
                 id: d.id,
