@@ -86,6 +86,10 @@ function markTourSeen(): void {
     }
 }
 
+function isDevBuild() {
+    return process.env.NODE_ENV !== "production";
+}
+
 export function PreviewEditorTour({ startToken = 0, autoStart = true }: PreviewEditorTourProps) {
     const [running, setRunning] = useState(false);
     const [index, setIndex] = useState(0);
@@ -200,7 +204,7 @@ export function PreviewEditorTour({ startToken = 0, autoStart = true }: PreviewE
                         break;
                     }
                     if (foundRect) break;
-                } catch (e) {
+                } catch {
                     // cross-origin iframe — ignore
                 }
             }
@@ -245,7 +249,7 @@ export function PreviewEditorTour({ startToken = 0, autoStart = true }: PreviewE
                 const nudge = Math.max(56, rect.width / 2 + 12);
                 clampedLeft = Math.min(Math.max(rect.left + nudge, 12), window.innerWidth - popupWidth - 12);
             }
-        } catch (e) {
+        } catch {
             // ignore
         }
 
@@ -289,7 +293,6 @@ export function PreviewEditorTour({ startToken = 0, autoStart = true }: PreviewE
         return () => {
             removeHighlight();
         };
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     const finish = async (persist = true) => {

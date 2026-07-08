@@ -136,6 +136,9 @@ type Props = {
 
 const ACCENT = "#f55f2a";
 const SAVE_NUDGE_KEY = "kloner_save_nudge_seen";
+const PREVIEW_SIDEBAR_KEY = "kloner:preview-sidebar-collapsed";
+const PREVIEW_SIDEBAR_OPEN_WIDTH = 360;
+const PREVIEW_SIDEBAR_COLLAPSED_WIDTH = 56;
 const HTML_DISCOVERY_MAX_ATTEMPTS = 4;
 const HTML_DISCOVERY_RETRY_MS = 700;
 
@@ -773,7 +776,7 @@ import { db, storage } from "@/lib/firebase"; // or wherever your db is
 import type { User as FirebaseUser } from "firebase/auth";
 import type { RenderDoc } from "@/app/dashboard/view/DashboardView";
 import { useAuth } from "@/src/hooks/useAuth";
-import { Camera, Check, ChevronDown, Code2, Eye, EyeOff, FileText, Images, Loader2, Maximize2, MessageSquare, Minimize2, Monitor, Palette, Pencil, Pipette, Redo2, Rocket, RotateCcw, RotateCw, SlidersHorizontal, Smartphone, Tablet, Trash2Icon, Undo2, X } from "lucide-react";
+import { Camera, Check, ChevronDown, ChevronLeft, ChevronRight, Code2, Eye, EyeOff, FileText, Images, Loader2, Maximize2, MessageSquare, Minimize2, Monitor, Palette, Pencil, Pipette, Redo2, Rocket, RotateCcw, RotateCw, SlidersHorizontal, Smartphone, Tablet, Trash2Icon, Undo2, X } from "lucide-react";
 import { compressImageForUpload } from "@/src/lib/clientImageCompression";
 import { EditorSessionCounters, EditorSessionMetrics, EditorSessionUser, ExportAnalyticsUser, recordEditorSessionAnalytics, recordExportAnalytics } from "./analytics";
 import { PreviewEditorTour } from "./PreviewEditorTour";
@@ -1377,7 +1380,19 @@ function AppPreviewEditorCore({
 
     const [aiHistory, setAiHistory] = useState<AiEditSuggestion[]>([]);
     const [historyOpen, setHistoryOpen] = useState(false);
-    const [sidebarHidden, setSidebarHidden] = useState(IS_MOBILE);
+    const [sidebarHidden, setSidebarHidden] = useState(() => {
+        if (typeof window === "undefined") return IS_MOBILE;
+
+        try {
+            const stored = window.localStorage.getItem(PREVIEW_SIDEBAR_KEY);
+            if (stored === "1") return true;
+            if (stored === "0") return false;
+        } catch {
+            // Ignore storage access issues.
+        }
+
+        return !IS_MOBILE && window.innerHeight < 860;
+    });
     const [isCompactLayout, setIsCompactLayout] = useState(IS_MOBILE);
     const [mobileTab, setMobileTab] = useState<"preview" | "panel">("preview");
     const [mobileControlsOpen, setMobileControlsOpen] = useState(false);
@@ -4599,7 +4614,8 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
     const iframeWrapperRef = useRef<HTMLDivElement | null>(null);
     const filesHydrationCompletionTimerRef = useRef<number | null>(null);
     const filesHydrationLoaderHideTimerRef = useRef<number | null>(null);
-    const showSidebarPanel = isCompactLayout ? mobileTab === "panel" : !sidebarHidden;
+    const isSidebarOpen = isCompactLayout ? mobileTab === "panel" : !sidebarHidden;
+    const showSidebarPanel = isCompactLayout ? mobileTab === "panel" : true;
     const shouldShowFilesHydrationLoader =
         (filesHydrationLoaderMounted || filesHydrationCompletionHold) &&
         (hasActiveFilesHydrationProgress || !isFilesHydrated || !isPreviewReady) &&
@@ -4796,8 +4812,17 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
     }, [clearPreviewImageHydrationWatchers, mode, stopPreviewImageHydration]);
 
     useEffect(() => {
-        onSidebarVisibilityChange?.(showSidebarPanel);
-    }, [onSidebarVisibilityChange, showSidebarPanel]);
+        onSidebarVisibilityChange?.(isSidebarOpen);
+    }, [onSidebarVisibilityChange, isSidebarOpen]);
+
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+        try {
+            window.localStorage.setItem(PREVIEW_SIDEBAR_KEY, sidebarHidden ? "1" : "0");
+        } catch {
+            // Ignore storage failures.
+        }
+    }, [sidebarHidden]);
 
     useEffect(() => {
         if (!preferredSidePanelMode) return;
@@ -4824,7 +4849,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
     const filesHydrationLoader = shouldShowFilesHydrationLoader && typeof window !== "undefined" && filesHydrationAnchorRect
         ? createPortal(
             <div
-                className={`fixed z-[22050] flex items-center justify-center px-4 transition-opacity duration-300 ease-out ${filesHydrationLoaderVisible ? "opacity-100" : "opacity-0"}`}
+                className={`pointer-events-none fixed z-[22050] flex items-center justify-center px-4 transition-opacity duration-300 ease-out ${filesHydrationLoaderVisible ? "opacity-100" : "opacity-0"}`}
                 style={{
                     top: filesHydrationAnchorRect.top,
                     left: filesHydrationAnchorRect.left,
@@ -5170,24 +5195,73 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                     {showSidebarPanel && (
                         <motion.aside
                             id="kloner-style-sidebar"
-                            className={`bg-white flex flex-col overflow-hidden ${
-                                "pointer-events-auto"
-                            } ${
+                            className={`pointer-events-auto flex flex-col overflow-hidden bg-white ${
                                 isCompactLayout
                                     ? "relative z-20 h-full w-full bg-gray-50"
-                                    : "absolute bottom-0 left-0 top-0 z-40 w-[360px] max-w-[92vw] rounded-r-2xl border-r border-neutral-200 shadow-xl"
+                                    : "absolute bottom-0 left-0 top-0 z-40 rounded-r-2xl border-r border-neutral-200 shadow-xl"
                             }`}
                             initial={isCompactLayout ? { opacity: 0, y: 8 } : { x: -16, opacity: 0 }}
-                            animate={{ x: 0, opacity: 1 }}
+                            animate={
+                                isCompactLayout
+                                    ? { opacity: 1, y: 0 }
+                                    : {
+                                          opacity: 1,
+                                          x: 0,
+                                          width: isSidebarOpen
+                                              ? PREVIEW_SIDEBAR_OPEN_WIDTH
+                                              : PREVIEW_SIDEBAR_COLLAPSED_WIDTH,
+                                      }
+                            }
                             exit={isCompactLayout ? { opacity: 0, y: 8 } : { x: -16, opacity: 0 }}
-                            transition={{ duration: 0.18, ease: "easeOut" }}
+                            transition={
+                                isCompactLayout
+                                    ? { duration: 0.18, ease: "easeOut" }
+                                    : { duration: 0.5, ease: [0.22, 1, 0.36, 1] }
+                            }
+                            style={
+                                isCompactLayout
+                                    ? undefined
+                                    : {
+                                          width: isSidebarOpen
+                                              ? PREVIEW_SIDEBAR_OPEN_WIDTH
+                                              : PREVIEW_SIDEBAR_COLLAPSED_WIDTH,
+                                      }
+                            }
                         >
+                            {!isCompactLayout && (
+                                <div className="flex h-12 items-center justify-between border-b border-neutral-200 bg-white px-2">
+                                    <div
+                                        className={`text-xs font-semibold uppercase tracking-[0.16em] text-neutral-400 transition-opacity duration-200 ${
+                                            isSidebarOpen ? "opacity-100" : "opacity-0"
+                                        }`}
+                                    >
+                                        Styles
+                                    </div>
+                                    <button
+                                        type="button"
+                                        aria-label={isSidebarOpen ? "Collapse sidebar" : "Expand sidebar"}
+                                        title={isSidebarOpen ? "Collapse sidebar" : "Expand sidebar"}
+                                        onClick={() => setSidebarHidden((current) => !current)}
+                                        className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-700 shadow-sm transition hover:bg-neutral-50 active:scale-95"
+                                    >
+                                        {isSidebarOpen ? (
+                                            <ChevronLeft className="h-4 w-4" />
+                                        ) : (
+                                            <ChevronRight className="h-4 w-4" />
+                                        )}
+                                    </button>
+                                </div>
+                            )}
+
                             {/* Panel body */}
                             <div
-                                className={`min-h-0 flex-1 overflow-y-auto py-5 px-2 ${isCompactLayout ? "pb-36" : "pb-44"}`}
+                                className={`min-h-0 flex-1 overflow-y-auto px-2 py-5 ${
+                                    isCompactLayout ? "pb-36" : "pb-44"
+                                } ${!isCompactLayout && !isSidebarOpen ? "pointer-events-none select-none opacity-0" : "opacity-100"}`}
+                                aria-hidden={!isCompactLayout && !isSidebarOpen}
                             >
                                 {/* STYLE MODE BODY */}
-                                {!controlsCollapsed && sidePanelMode === "style" && (
+                                {(isCompactLayout || isSidebarOpen) && !controlsCollapsed && sidePanelMode === "style" && (
                                     <>
                                         {mode === "preview" && (
                                             <div
@@ -5664,7 +5738,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                 )}
 
                                 {/* CODE MODE BODY – separate branch */}
-                                {isDevCodeMode && sidePanelMode === "code" && (
+                                {(isCompactLayout || isSidebarOpen) && isDevCodeMode && sidePanelMode === "code" && (
                                     <div className="space-y-3">
                                         <div className="flex items-center justify-between">
                                             <div className="text-xs font-semibold uppercase tracking-wide text-neutral-500">HTML Code</div>
@@ -5700,7 +5774,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                     </div>
                                 )}
 
-                                {sidePanelMode === "ai-library" && (
+                                {(isCompactLayout || isSidebarOpen) && sidePanelMode === "ai-library" && (
                                     <AiImageLibraryPanel
                                         iframeRef={iframeRef}
                                         user={user}
@@ -5713,7 +5787,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                     />
                                 )}
 
-                                {sidePanelMode === "meta" && (
+                                {(isCompactLayout || isSidebarOpen) && sidePanelMode === "meta" && (
                                     <MetaSettings
                                         key={currentPageKey}
                                         draftId={draftId}
