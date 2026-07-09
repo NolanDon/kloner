@@ -5188,17 +5188,17 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                 {/* Scale wrapper: clips the oversized scaled child */}
                 <div className={isCompactLayout ? "flex h-full flex-col" : "overflow-hidden h-full"}>
                 <div
-                    className={`relative ${isCompactLayout ? "flex h-full flex-col bg-white pt-[58px]" : "flex flex-col rounded-xl bg-white/90 p-4 shadow-xl"}`}
+                    className={`relative ${isCompactLayout ? "flex h-full flex-col bg-white pt-[58px]" : "flex h-full min-h-0 flex-row rounded-xl bg-white/90 p-4 shadow-xl"}`}
                 >
 
                     {/* LEFT SIDEBAR (consistent styling) */}
                     {showSidebarPanel && (
                         <motion.aside
                             id="kloner-style-sidebar"
-                            className={`pointer-events-auto flex flex-col overflow-hidden bg-white ${
+                            className={`pointer-events-auto relative flex flex-col overflow-visible bg-white ${
                                 isCompactLayout
                                     ? "relative z-20 h-full w-full bg-gray-50"
-                                    : "absolute bottom-0 left-0 top-0 z-40 rounded-r-2xl border-r border-neutral-200 shadow-xl"
+                                    : "z-40 h-full shrink-0 rounded-r-2xl border-r border-neutral-200 shadow-xl"
                             }`}
                             initial={isCompactLayout ? { opacity: 0, y: 8 } : { x: -16, opacity: 0 }}
                             animate={
@@ -5229,28 +5229,39 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                             }
                         >
                             {!isCompactLayout && (
-                                <div className="flex h-12 items-center justify-between border-b border-neutral-200 bg-white px-2">
-                                    <div
-                                        className={`text-xs font-semibold uppercase tracking-[0.16em] text-neutral-400 transition-opacity duration-200 ${
-                                            isSidebarOpen ? "opacity-100" : "opacity-0"
-                                        }`}
-                                    >
-                                        Styles
-                                    </div>
-                                    <button
-                                        type="button"
-                                        aria-label={isSidebarOpen ? "Collapse sidebar" : "Expand sidebar"}
-                                        title={isSidebarOpen ? "Collapse sidebar" : "Expand sidebar"}
-                                        onClick={() => setSidebarHidden((current) => !current)}
-                                        className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-700 shadow-sm transition hover:bg-neutral-50 active:scale-95"
-                                    >
+                                <button
+                                    type="button"
+                                    aria-label={isSidebarOpen ? "Collapse sidebar" : "Expand sidebar"}
+                                    title={isSidebarOpen ? "Collapse sidebar" : "Expand sidebar"}
+                                    onClick={() => setSidebarHidden((current) => !current)}
+                                    className="absolute right-0 top-1/2 z-50 inline-flex h-10 w-10 translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-700 shadow-lg transition duration-300 ease-out hover:bg-neutral-50 hover:shadow-xl active:scale-95"
+                                >
+                                    <AnimatePresence mode="wait" initial={false}>
                                         {isSidebarOpen ? (
-                                            <ChevronLeft className="h-4 w-4" />
+                                            <motion.span
+                                                key="collapse"
+                                                initial={{ opacity: 0, x: 8, rotate: -12 }}
+                                                animate={{ opacity: 1, x: 0, rotate: 0 }}
+                                                exit={{ opacity: 0, x: 8, rotate: -12 }}
+                                                transition={{ duration: 0.18, ease: "easeOut" }}
+                                                className="flex items-center justify-center"
+                                            >
+                                                <ChevronLeft className="h-4 w-4" />
+                                            </motion.span>
                                         ) : (
-                                            <ChevronRight className="h-4 w-4" />
+                                            <motion.span
+                                                key="expand"
+                                                initial={{ opacity: 0, x: -8, rotate: 12 }}
+                                                animate={{ opacity: 1, x: 0, rotate: 0 }}
+                                                exit={{ opacity: 0, x: -8, rotate: 12 }}
+                                                transition={{ duration: 0.18, ease: "easeOut" }}
+                                                className="flex items-center justify-center"
+                                            >
+                                                <ChevronRight className="h-4 w-4" />
+                                            </motion.span>
                                         )}
-                                    </button>
-                                </div>
+                                    </AnimatePresence>
+                                </button>
                             )}
 
                             {/* Panel body */}

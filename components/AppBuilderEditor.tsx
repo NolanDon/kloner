@@ -1773,12 +1773,12 @@ export default function AppBuilderEditor({
                     } else {
                         window.open("https://supabase.com/dashboard", "_blank", "noopener,noreferrer");
                     }
+                    return;
                 }
-                return;
-            }
 
-            setViewMode("ai");
-            window.dispatchEvent(new CustomEvent("kloner:open-db-connect", { detail: { provider: "supabase" } }));
+                setViewMode("ai");
+                window.dispatchEvent(new CustomEvent("kloner:open-db-connect", { detail: { provider: "supabase" } }));
+            }
         }, [showAlert, showConfirm, supabaseConnected, supabaseProjectName, supabaseProjectRef, user?.uid, verifySupabaseConnection]);
 
     const [app, setApp] = useState<AppData | null>(null);
@@ -2430,6 +2430,11 @@ export default function AppBuilderEditor({
         actionType: "quick_fix_compile";
         fixAction?: string;
         autoSend?: boolean;
+        metadata?: {
+            requestedAssets?: string[];
+            missingAssets?: string[];
+            availableAssets?: string[];
+        };
         compileError: {
             summary: string;
             detail: string;

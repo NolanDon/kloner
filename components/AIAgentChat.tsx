@@ -115,6 +115,11 @@ type CompileErrorQuickFixContext = {
     actionType: "quick_fix_compile";
     fixAction?: string;
     currentPath?: string | null;
+    metadata?: {
+        requestedAssets?: string[];
+        missingAssets?: string[];
+        availableAssets?: string[];
+    } | null;
     compileError: {
         summary: string;
         detail: string;
@@ -312,6 +317,7 @@ function buildCompileFixPrefill(ctx: CompileErrorQuickFixContext): string {
         actionType: ctx.actionType,
         fixAction: ctx.fixAction || null,
         currentPath: ctx.currentPath ?? null,
+        metadata: ctx.metadata || null,
         compileError: {
             summary: ctx.compileError.summary,
             detail: ctx.compileError.detail,
@@ -319,8 +325,16 @@ function buildCompileFixPrefill(ctx: CompileErrorQuickFixContext): string {
         },
     };
 
+    const recoveryHint =
+        ctx.metadata?.missingAssets?.length
+            ? [
+                "The preview appears to be white-screening because it references missing chunk assets.",
+                "Restore or rename the missing files so they match the requested chunk filenames, or update the HTML references to point at the existing chunk files.",
+            ].join(" ")
+            : "";
+
     return [
-        "Please fix this compile error using the immutable context below.",
+        recoveryHint || "Please fix this compile error using the immutable context below.",
         "",
         "Context (immutable in free-fix mode):",
         JSON.stringify(immutableContext, null, 2),
@@ -3689,6 +3703,11 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                 actionType: "quick_fix_compile",
                 fixAction: typeof detail?.fixAction === "string" ? detail.fixAction : undefined,
                 currentPath: null,
+                metadata: detail?.metadata && typeof detail.metadata === "object" ? {
+                    requestedAssets: Array.isArray(detail.metadata.requestedAssets) ? detail.metadata.requestedAssets.map((value: unknown) => String(value || "").trim()).filter(Boolean) : undefined,
+                    missingAssets: Array.isArray(detail.metadata.missingAssets) ? detail.metadata.missingAssets.map((value: unknown) => String(value || "").trim()).filter(Boolean) : undefined,
+                    availableAssets: Array.isArray(detail.metadata.availableAssets) ? detail.metadata.availableAssets.map((value: unknown) => String(value || "").trim()).filter(Boolean) : undefined,
+                } : null,
                 compileError: {
                     summary,
                     detail: detailText,

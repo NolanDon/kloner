@@ -356,6 +356,11 @@ interface WebContainerRunnerProps {
     actionType: 'quick_fix_compile';
     fixAction?: string;
     autoSend?: boolean;
+    metadata?: {
+      requestedAssets?: string[];
+      missingAssets?: string[];
+      availableAssets?: string[];
+    };
     compileError: {
       summary: string;
       detail: string;
@@ -519,6 +524,11 @@ export default function WebContainerRunner({ appId, files, filesReady = true, on
     fixAction?: string;
     userAction: PreviewFailureUserAction;
     canShowFixWithAiCta: boolean;
+    metadata?: {
+      requestedAssets?: string[];
+      missingAssets?: string[];
+      availableAssets?: string[];
+    } | null;
   } | null>(null);
   const compileFixRequestCooldownRef = useRef<{ fingerprint: string; until: number } | null>(null);
   const fixWithAiCooldownTimerRef = useRef<number | null>(null);
@@ -571,6 +581,8 @@ export default function WebContainerRunner({ appId, files, filesReady = true, on
   const iframeLoadTimeoutRef = useRef<NodeJS.Timeout | null>(null); // Track iframe load timeout
   const iframeCriticalTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const iframePostLoadTimeoutRef = useRef<NodeJS.Timeout | null>(null); // Detect white-screen after iframe navigation
+  const iframeWhiteScreenProbeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const iframeRuntimeErrorCleanupRef = useRef<(() => void) | null>(null);
   const automaticRetryTimeoutRef = useRef<NodeJS.Timeout | null>(null); // Track automatic retry timeout
   const pollStartedAtRef = useRef<number>(0);
   const latestDeploymentUrlRef = useRef<string>('');
@@ -592,6 +604,7 @@ export default function WebContainerRunner({ appId, files, filesReady = true, on
   const lastAppServerKindRef = useRef<'fallback' | 'next-dev' | 'next-prod' | ''>('');
   const stickyProgressByCodeRef = useRef<Record<string, number>>({});
   const lastTimeoutReportKeyRef = useRef<string>('');
+  const lastWhiteScreenReportKeyRef = useRef<string>('');
   const lastBackendStatusRef = useRef<any>(null);
   const lastPreviewIssueEmitSignatureRef = useRef<string>('');
   const iframeWarnContextRef = useRef<{ key: string; code: string; previewUrl: string; warnedAt: number } | null>(null);
@@ -929,6 +942,14 @@ export default function WebContainerRunner({ appId, files, filesReady = true, on
     if (iframePostLoadTimeoutRef.current) {
       clearTimeout(iframePostLoadTimeoutRef.current);
       iframePostLoadTimeoutRef.current = null;
+    }
+    if (iframeWhiteScreenProbeTimeoutRef.current) {
+      clearTimeout(iframeWhiteScreenProbeTimeoutRef.current);
+      iframeWhiteScreenProbeTimeoutRef.current = null;
+    }
+    if (iframeRuntimeErrorCleanupRef.current) {
+      iframeRuntimeErrorCleanupRef.current();
+      iframeRuntimeErrorCleanupRef.current = null;
     }
   };
   
@@ -1271,6 +1292,327 @@ export default function WebContainerRunner({ appId, files, filesReady = true, on
     });
   };
 
+  const reportWhiteScreenIssueOnce = (key: string, payload: {
+    appId: string;
+    code?: string;
+    previewUrl?: string | null;
+    reason: string;
+    message: string;
+    bodyText?: string;
+    htmlSnippet?: string;
+    scriptSrcs?: string[];
+    missingScriptSrcs?: string[];
+    availableScriptFiles?: string[];
+    visibleElementCount?: number;
+    titleText?: string | null;
+  }) => {
+    if (lastWhiteScreenReportKeyRef.current === key) return;
+    lastWhiteScreenReportKeyRef.current = key;
+
+    const issueMessage = String(payload.message || '').trim() || 'Preview loaded but rendered a blank page.';
+    const detailLines: string[] = [];
+    if (payload.titleText) detailLines.push(`title=${payload.titleText}`);
+    if (typeof payload.visibleElementCount === 'number') detailLines.push(`visibleElements=${payload.visibleElementCount}`);
+    if (payload.scriptSrcs?.length) detailLines.push(`scripts=${payload.scriptSrcs.slice(0, 6).join(', ')}`);
+    if (payload.missingScriptSrcs?.length) detailLines.push(`missingScripts=${payload.missingScriptSrcs.slice(0, 12).join(', ')}`);
+    if (payload.availableScriptFiles?.length) detailLines.push(`availableScripts=${payload.availableScriptFiles.slice(0, 12).join(', ')}`);
+    if (payload.bodyText) detailLines.push(`bodyText=${payload.bodyText.slice(0, 220)}`);
+    if (payload.htmlSnippet) detailLines.push(`html=${payload.htmlSnippet.slice(0, 220)}`);
+
+    const hasMissingAssets = Boolean(payload.missingScriptSrcs?.length);
+    const whiteScreenFailure: PreviewFailureContract = {
+      errorClass: 'white_screen',
+      aiFixEligible: true,
+      fixActionType: 'quick_fix_compile',
+      userAction: 'refresh',
+      confidence: 0.88,
+      reason: payload.reason,
+      compileError: {
+        quickFixEligible: true,
+        summary: hasMissingAssets
+          ? 'Preview references missing JavaScript chunk files'
+          : 'Preview rendered a blank white screen',
+        detail:
+          issueMessage +
+          (detailLines.length ? `\n\nSignals:\n- ${detailLines.join('\n- ')}` : '') +
+          (hasMissingAssets
+            ? `\n\nRecovery hint:\nThe preview HTML is requesting chunk files that are not present in the current file tree. Restore or rename the missing files so their names match the requested chunk URLs, or update the HTML references to point at the available chunk files.`
+            : `\n\nThis often means a Next.js chunk returned HTML instead of JavaScript or the app crashed during hydration.`),
+        fingerprint: `white_screen:${payload.code || pollingCodeRef.current || 'unknown'}:${String(payload.previewUrl || previewUrlRef.current || '').slice(0, 120)}`,
+        metadata: {
+          requestedAssets: payload.scriptSrcs || [],
+          missingAssets: payload.missingScriptSrcs || [],
+          availableAssets: payload.availableScriptFiles || [],
+        },
+      },
+    };
+
+    const nextStatusData = {
+      status: 'error',
+      uiStage: 'white_screen',
+      uiTitle: 'Blank white screen detected',
+      uiMessage: issueMessage,
+      errorCode: 'PREVIEW_WHITE_SCREEN',
+      retryable: true,
+      recommendedAction: 'retry_scan',
+      warningCode: 'PREVIEW_WHITE_SCREEN',
+      details: {
+        reason: payload.reason,
+        bodyText: payload.bodyText || null,
+        htmlSnippet: payload.htmlSnippet || null,
+        scriptSrcs: payload.scriptSrcs || [],
+        missingScriptSrcs: payload.missingScriptSrcs || [],
+        availableScriptFiles: payload.availableScriptFiles || [],
+        visibleElementCount: payload.visibleElementCount ?? null,
+        titleText: payload.titleText || null,
+      },
+      failure: whiteScreenFailure,
+      debug: {
+        timeoutReason: payload.reason,
+        previewUrl: payload.previewUrl || previewUrlRef.current || null,
+      },
+    };
+
+    setCurrentStatusData(nextStatusData);
+
+    try {
+      onPreviewIssueChange?.({
+        issue: issueMessage,
+        diagnostics: JSON.stringify({
+          appId: payload.appId,
+          previewUrl: payload.previewUrl || previewUrlRef.current || null,
+          reason: payload.reason,
+          titleText: payload.titleText || null,
+          visibleElementCount: payload.visibleElementCount ?? null,
+          scriptSrcs: payload.scriptSrcs || [],
+          missingScriptSrcs: payload.missingScriptSrcs || [],
+          availableScriptFiles: payload.availableScriptFiles || [],
+        }, null, 2),
+        failure: whiteScreenFailure,
+        recommendedActionLabel: hasMissingAssets ? 'Retry' : 'Refresh',
+      });
+    } catch {
+      // ignore
+    }
+
+    void reportPreviewAlert({
+      appId: payload.appId,
+      code: payload.code,
+      action: 'preview_white_screen_detected',
+      severity: 'warning',
+      statusCode: 200,
+      status: 'white_screen',
+      reason: payload.reason,
+      message: issueMessage,
+      previewUrl: payload.previewUrl || previewUrlRef.current,
+      backendStatusData: nextStatusData,
+    });
+  };
+
+  const inspectIframeWhiteScreen = (): {
+    bodyText: string;
+    htmlSnippet: string;
+    scriptSrcs: string[];
+    visibleElementCount: number;
+    titleText: string | null;
+  } | null => {
+    if (typeof window === 'undefined') return null;
+
+    try {
+      const iframe = iframeRef.current;
+      const doc = iframe?.contentDocument || iframe?.contentWindow?.document || null;
+      const body = doc?.body || null;
+      if (!doc || !body) return null;
+
+      const titleText = String(doc.title || '').trim() || null;
+      const bodyText = String(body.innerText || body.textContent || '').replace(/\s+/g, ' ').trim();
+      const htmlSnippet = String(body.innerHTML || '').trim();
+      const scriptSrcs = Array.from(doc.querySelectorAll('script[src]'))
+        .map((script) => String((script as HTMLScriptElement).getAttribute('src') || (script as HTMLScriptElement).src || '').trim())
+        .filter(Boolean);
+      const normalizeAssetPath = (value: string) =>
+        String(value || '')
+          .trim()
+          .replace(/^https?:\/\/[^/]+/i, '')
+          .replace(/^[./]+/, '')
+          .replace(/^public\//i, '')
+          .split(/[?#]/)[0]
+          .replace(/^\/+/, '');
+      const availableScriptFiles = Array.from(new Set(
+        Object.keys(files || {})
+          .map((path) => normalizeAssetPath(path))
+          .filter((path) => /(?:^|\/)_next\/static\/chunks\/.+\.(?:js|css)$/i.test(path)),
+      ));
+      const availableScriptFileSet = new Set(availableScriptFiles);
+      const requestedChunkScripts = scriptSrcs.filter((src) => /(?:^|\/)_next\/static\/chunks\/.+\.(?:js|css)$/i.test(src));
+      const missingScriptSrcs = requestedChunkScripts
+        .map((src) => normalizeAssetPath(src))
+        .filter((src) => src && !availableScriptFileSet.has(src));
+
+      const visibleElementCount = Array.from(body.querySelectorAll('*')).filter((node) => {
+        const el = node as HTMLElement;
+        const tag = String(el.tagName || '').toUpperCase();
+        if (['SCRIPT', 'STYLE', 'NOSCRIPT', 'META', 'LINK'].includes(tag)) return false;
+        const rect = el.getBoundingClientRect();
+        if (rect.width < 24 || rect.height < 12) return false;
+        const style = window.getComputedStyle(el);
+        return style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0';
+      }).length;
+
+      const hasChunkScripts = requestedChunkScripts.length > 0;
+      const hasKnownChunkCrashText = /Minified React error #418|expected expression, got '<'|hydration/i.test(
+        `${titleText || ''}\n${bodyText}\n${htmlSnippet}`,
+      );
+      const blankEnough = bodyText.length < 40 && visibleElementCount <= 1;
+
+      if (!hasKnownChunkCrashText && !(hasChunkScripts && blankEnough) && missingScriptSrcs.length === 0) {
+        return null;
+      }
+
+      return {
+        bodyText,
+        htmlSnippet,
+        scriptSrcs,
+        missingScriptSrcs,
+        availableScriptFiles,
+        visibleElementCount,
+        titleText,
+      };
+    } catch {
+      return null;
+    }
+  };
+
+  const scheduleWhiteScreenProbe = (previewUrlAtSchedule: string | null) => {
+    if (typeof window === 'undefined') return;
+    if (iframeWhiteScreenProbeTimeoutRef.current) {
+      clearTimeout(iframeWhiteScreenProbeTimeoutRef.current);
+      iframeWhiteScreenProbeTimeoutRef.current = null;
+    }
+
+    iframeWhiteScreenProbeTimeoutRef.current = window.setTimeout(() => {
+      iframeWhiteScreenProbeTimeoutRef.current = null;
+
+      if (!iframeLoadedSuccessfullyRef.current) return;
+      const probe = inspectIframeWhiteScreen();
+      if (!probe) return;
+
+      const currentUrl = previewUrlRef.current || previewUrlAtSchedule || '';
+      const code = pollingCodeRef.current || derivePreviewCodeFromUrl(currentUrl) || 'unknown';
+      const reportKey = `white-screen:${appId}:${code}:${String(currentUrl || 'unknown')}:${probe.visibleElementCount}:${probe.titleText || ''}`;
+
+      reportWhiteScreenIssueOnce(reportKey, {
+        appId,
+        code,
+        previewUrl: currentUrl || null,
+        reason: probe.missingScriptSrcs.length > 0 ? 'white_screen_missing_chunk_assets' : 'white_screen_js_chunk_hydration_failure',
+        message: probe.missingScriptSrcs.length > 0
+          ? "Preview loaded, but it references JavaScript chunk files that are missing from the current project files."
+          : "Preview loaded, but the page stayed blank. A JavaScript chunk may have failed to load or returned HTML instead of JavaScript.",
+        bodyText: probe.bodyText,
+        htmlSnippet: probe.htmlSnippet,
+        scriptSrcs: probe.scriptSrcs,
+        missingScriptSrcs: probe.missingScriptSrcs,
+        availableScriptFiles: probe.availableScriptFiles,
+        visibleElementCount: probe.visibleElementCount,
+        titleText: probe.titleText,
+      });
+    }, 2500);
+  };
+
+  const attachIframeRuntimeErrorWatchers = () => {
+    if (typeof window === 'undefined') return;
+    if (iframeRuntimeErrorCleanupRef.current) {
+      iframeRuntimeErrorCleanupRef.current();
+      iframeRuntimeErrorCleanupRef.current = null;
+    }
+
+    try {
+      const iframe = iframeRef.current;
+      const win = iframe?.contentWindow || null;
+      if (!win) return;
+
+      const handleError = (event: ErrorEvent) => {
+        const message = String(event?.message || event?.error?.message || event?.error?.stack || '').trim();
+        const filename = String(event?.filename || '').trim();
+        const lower = `${message}\n${filename}`.toLowerCase();
+
+        if (
+          !lower.includes('expected expression, got \'<\'') &&
+          !lower.includes('minified react error #418') &&
+          !lower.includes('hydrate') &&
+          !lower.includes('/_next/static/chunks/')
+        ) {
+          return;
+        }
+
+        const currentUrl = previewUrlRef.current || previewUrl || activePreviewUrl || '';
+        const code = pollingCodeRef.current || derivePreviewCodeFromUrl(currentUrl) || 'unknown';
+        const reportKey = `white-screen-runtime:${appId}:${code}:${String(currentUrl || 'unknown')}:${message.slice(0, 120)}:${filename.slice(0, 120)}`;
+
+        reportWhiteScreenIssueOnce(reportKey, {
+          appId,
+          code,
+          previewUrl: currentUrl || null,
+          reason: 'white_screen_runtime_or_chunk_failure',
+          message:
+            message ||
+            'Preview failed to render because a JavaScript chunk or runtime script crashed.',
+          bodyText: message,
+          htmlSnippet: filename,
+          scriptSrcs: filename ? [filename] : [],
+          visibleElementCount: 0,
+          titleText: null,
+        });
+      };
+
+      const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
+        const message = String(event?.reason?.message || event?.reason || '').trim();
+        const lower = message.toLowerCase();
+        if (!lower.includes('expected expression, got \'<\'') && !lower.includes('minified react error #418') && !lower.includes('hydrate')) {
+          return;
+        }
+
+        const currentUrl = previewUrlRef.current || previewUrl || activePreviewUrl || '';
+        const code = pollingCodeRef.current || derivePreviewCodeFromUrl(currentUrl) || 'unknown';
+        const reportKey = `white-screen-rejection:${appId}:${code}:${String(currentUrl || 'unknown')}:${message.slice(0, 120)}`;
+
+        reportWhiteScreenIssueOnce(reportKey, {
+          appId,
+          code,
+          previewUrl: currentUrl || null,
+          reason: 'white_screen_runtime_rejection',
+          message: message || 'Preview failed to render due to a runtime rejection.',
+          bodyText: message,
+          htmlSnippet: '',
+          scriptSrcs: [],
+          visibleElementCount: 0,
+          titleText: null,
+        });
+      };
+
+      win.addEventListener('error', handleError);
+      win.addEventListener('unhandledrejection', handleUnhandledRejection as any);
+      iframeRuntimeErrorCleanupRef.current = () => {
+        try {
+          win.removeEventListener('error', handleError);
+          win.removeEventListener('unhandledrejection', handleUnhandledRejection as any);
+        } catch {
+          // ignore
+        }
+      };
+    } catch {
+      // Cross-origin iframe access is expected in some preview modes.
+      // In that case we skip direct window listeners and rely on the outer
+      // preview status / iframe load / white-screen probes that are still safe.
+      try {
+        iframeRuntimeErrorCleanupRef.current = null;
+      } catch {
+        // ignore
+      }
+    }
+  };
+
   const emitCompileErrorTelemetry = useCallback((kind: 'compile_error_seen' | 'compile_error_fix_clicked' | 'compile_error_fix_sent' | 'compile_error_recovered', detail: Record<string, any>) => {
     if (typeof window === 'undefined') return;
     try {
@@ -1300,6 +1642,20 @@ export default function WebContainerRunner({ appId, files, filesReady = true, on
     const detail = String(compileErrorFromFailure?.detail || compileError?.detail || statusData?.error || statusData?.uiMessage || '').trim();
     const fingerprint = String(compileErrorFromFailure?.fingerprint || compileError?.fingerprint || `${code}:${summary || 'compile_error'}`).trim();
     const quickFixEligible = compileErrorFromFailure?.quickFixEligible === true || compileError?.quickFixEligible === true;
+    const metadataSource = asRecord(compileErrorFromFailure?.metadata) || asRecord(compileError?.metadata);
+    const metadata = metadataSource
+      ? {
+          requestedAssets: Array.isArray(metadataSource.requestedAssets)
+            ? metadataSource.requestedAssets.map((value) => String(value || "").trim()).filter(Boolean)
+            : undefined,
+          missingAssets: Array.isArray(metadataSource.missingAssets)
+            ? metadataSource.missingAssets.map((value) => String(value || "").trim()).filter(Boolean)
+            : undefined,
+          availableAssets: Array.isArray(metadataSource.availableAssets)
+            ? metadataSource.availableAssets.map((value) => String(value || "").trim()).filter(Boolean)
+            : undefined,
+        }
+      : null;
 
     const quickActions = Array.isArray(statusData?.quickActions) ? statusData.quickActions : [];
     const quickFixAction = quickActions.find((action: any) => String(action?.type || '').toLowerCase() === 'quick_fix_compile');
@@ -1318,6 +1674,7 @@ export default function WebContainerRunner({ appId, files, filesReady = true, on
       fixAction: fixActionId || undefined,
       userAction: failure.userAction,
       canShowFixWithAiCta,
+      metadata,
     };
   }, []);
 
@@ -5142,6 +5499,8 @@ export default function NavBar() {
               return 'Preview server is unreachable.';
             case 'runtime_crash':
               return 'Preview server crashed.';
+            case 'white_screen':
+              return 'Preview loaded, but the page stayed blank.';
             case 'preview_replaced_or_deleted':
               return 'This preview has ended.';
             case 'app_unreachable':
@@ -5356,6 +5715,7 @@ export default function NavBar() {
                           detail: compileErrorState.detail,
                           fingerprint: compileErrorState.fingerprint,
                         },
+                        metadata: compileErrorState.metadata || undefined,
                       });
                     }}
                     disabled={isFixWithAiCoolingDown}
@@ -5613,6 +5973,8 @@ export default function NavBar() {
               // Only declare the preview "ready" when the backend contract says `ready === true`.
               iframeLoadedSuccessfullyRef.current = true;
               appLoadedSuccessfullyRef.current = true;
+              attachIframeRuntimeErrorWatchers();
+              scheduleWhiteScreenProbe(String(activePreviewUrl || previewUrl || ''));
 
               // For the chat UX we want to unlock when the preview is actually usable.
               // Backend `ready === true` is authoritative; the shared presentation helper

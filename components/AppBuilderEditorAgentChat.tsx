@@ -317,6 +317,11 @@ type CompileErrorQuickFixContext = {
     actionType: "quick_fix_compile";
     fixAction?: string;
     currentPath?: string | null;
+    metadata?: {
+        requestedAssets?: string[];
+        missingAssets?: string[];
+        availableAssets?: string[];
+    } | null;
     compileError: {
         summary: string;
         detail: string;
@@ -979,6 +984,7 @@ function buildCompileFixPrefill(ctx: CompileErrorQuickFixContext): string {
         actionType: ctx.actionType,
         fixAction: ctx.fixAction || null,
         currentPath: ctx.currentPath ?? null,
+        metadata: ctx.metadata || null,
         compileError: {
             summary: ctx.compileError.summary,
             detail: ctx.compileError.detail,
@@ -986,8 +992,16 @@ function buildCompileFixPrefill(ctx: CompileErrorQuickFixContext): string {
         },
     };
 
+    const recoveryHint =
+        ctx.metadata?.missingAssets?.length
+            ? [
+                "The preview appears to be white-screening because it references missing chunk assets.",
+                "Restore or rename the missing files so they match the requested chunk filenames, or update the HTML references to point at the existing chunk files.",
+            ].join(" ")
+            : "";
+
     return [
-        "Please fix this compile error using the immutable context below.",
+        recoveryHint || "Please fix this compile error using the immutable context below.",
         "",
         "Context (immutable in free-fix mode):",
         JSON.stringify(immutableContext, null, 2),
@@ -1389,7 +1403,8 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
     const previewIssueText = String(previewIssue || '').trim();
     const hasPreviewIssue = Boolean(previewIssueText);
     const showPreviewIssueDetails = true;
-    const chatDisabled = PRODUCTION_AGENT_CHAT_BLOCKED || (previewReady === false && !freeCompileFixContext && !hasPreviewIssue);
+    const showPreviewLoadingNotice = !PRODUCTION_AGENT_CHAT_BLOCKED && previewReady === false && !freeCompileFixContext && !hasPreviewIssue;
+    const chatDisabled = PRODUCTION_AGENT_CHAT_BLOCKED;
     // Contract gate is owned by the parent editor; chat only renders Fix with AI
     // when the gated callback is provided.
     const hasPreviewIssueFixRequest = typeof onPreviewIssueFixRequest === "function";
@@ -6799,6 +6814,11 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                 actionType: "quick_fix_compile",
                 fixAction: typeof detail?.fixAction === "string" ? detail.fixAction : undefined,
                 currentPath: null,
+                metadata: detail?.metadata && typeof detail.metadata === "object" ? {
+                    requestedAssets: Array.isArray(detail.metadata.requestedAssets) ? detail.metadata.requestedAssets.map((value: unknown) => String(value || "").trim()).filter(Boolean) : undefined,
+                    missingAssets: Array.isArray(detail.metadata.missingAssets) ? detail.metadata.missingAssets.map((value: unknown) => String(value || "").trim()).filter(Boolean) : undefined,
+                    availableAssets: Array.isArray(detail.metadata.availableAssets) ? detail.metadata.availableAssets.map((value: unknown) => String(value || "").trim()).filter(Boolean) : undefined,
+                } : null,
                 compileError: {
                     summary,
                     detail: detailText,
@@ -8500,7 +8520,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                             </div>
                         </div>
                     </div>
-                ) : chatDisabled ? (
+                ) : showPreviewLoadingNotice ? (
                     <div className="mb-3 rounded-[1.5rem] border border-amber-200 bg-[linear-gradient(180deg,rgba(255,247,237,0.98),rgba(255,255,255,1))] px-4 py-4 shadow-[0_12px_32px_rgba(251,146,60,0.10)]">
                         <div className="flex items-start gap-3">
                             <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-amber-100 text-amber-700 ring-1 ring-amber-200">
@@ -8511,7 +8531,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                     <p className="text-sm font-semibold text-neutral-900">Preview not ready yet</p>
                                 </div>
                                 <p className="mt-1 text-sm leading-relaxed text-neutral-700">
-                                    Preview is still loading. Chat will unlock once the preview renders.
+                                    Preview is still loading. You can keep chatting while it hydrates, and recovery options will appear if a real issue is detected.
                                 </p>
                             </div>
                         </div>

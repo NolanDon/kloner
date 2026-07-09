@@ -1,6 +1,7 @@
 export type PreviewFailureErrorClass =
   | "compile_error"
   | "dependency_error"
+  | "white_screen"
   | "machine_timeout"
   | "proxy_unreachable"
   | "network_unreachable"
@@ -42,12 +43,18 @@ export type PreviewFailureContract = {
     summary: string;
     detail: string;
     fingerprint: string;
+    metadata?: {
+      requestedAssets?: string[];
+      missingAssets?: string[];
+      availableAssets?: string[];
+    } | null;
   };
 };
 
 const PREVIEW_FAILURE_ERROR_CLASSES = new Set<PreviewFailureErrorClass>([
   "compile_error",
   "dependency_error",
+  "white_screen",
   "machine_timeout",
   "proxy_unreachable",
   "network_unreachable",
@@ -69,6 +76,7 @@ const PREVIEW_FAILURE_USER_ACTIONS = new Set<PreviewFailureUserAction>([
 const AI_FIXABLE_FAILURE_CLASSES = new Set<PreviewFailureErrorClass>([
   "compile_error",
   "dependency_error",
+  "white_screen",
 ]);
 
 function asRecord(value: unknown): Record<string, any> | null {
@@ -203,6 +211,19 @@ export function normalizePreviewFailureContract(rawInput: unknown): PreviewFailu
         summary: String(compileErrorRaw.summary || "").trim(),
         detail: String(compileErrorRaw.detail || "").trim(),
         fingerprint: String(compileErrorRaw.fingerprint || "").trim(),
+        metadata: asRecord(compileErrorRaw.metadata)
+          ? {
+              requestedAssets: Array.isArray(compileErrorRaw.metadata.requestedAssets)
+                ? compileErrorRaw.metadata.requestedAssets.map((value) => String(value || "").trim()).filter(Boolean)
+                : undefined,
+              missingAssets: Array.isArray(compileErrorRaw.metadata.missingAssets)
+                ? compileErrorRaw.metadata.missingAssets.map((value) => String(value || "").trim()).filter(Boolean)
+                : undefined,
+              availableAssets: Array.isArray(compileErrorRaw.metadata.availableAssets)
+                ? compileErrorRaw.metadata.availableAssets.map((value) => String(value || "").trim()).filter(Boolean)
+                : undefined,
+            }
+          : null,
       }
     : undefined;
 
