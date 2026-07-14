@@ -1,18 +1,12 @@
 import "./globals.css";
 import type { Metadata } from "next";
 import AuthProviderServer from "@/components/auth/auth-provider.server";
-import { Inter } from "next/font/google";
 import { AppClientProviders } from "./AppClientProvider";
 import ChatWidgetProvider from "@/components/support/ChatWidgetProvider";
 import AffiliateRefCapture from "@/components/AffiliateRefCapture";
 import { Suspense } from "react";
 import StyledJsxRegistry from "./registry";
 import Script from "next/script";
-
-const inter = Inter({
-  subsets: ["latin"],
-  variable: "--font-inter",
-});
 
 export const metadata: Metadata = {
   title: {
@@ -60,7 +54,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={inter.variable}>
+    <html lang="en" style={{ ["--font-inter" as string]: "ui-sans-serif, system-ui, sans-serif" }}>
       <body className="bg-white scroll-smooth">
         <StyledJsxRegistry>
           <AuthProviderServer>

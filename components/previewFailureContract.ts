@@ -214,13 +214,13 @@ export function normalizePreviewFailureContract(rawInput: unknown): PreviewFailu
         metadata: asRecord(compileErrorRaw.metadata)
           ? {
               requestedAssets: Array.isArray(compileErrorRaw.metadata.requestedAssets)
-                ? compileErrorRaw.metadata.requestedAssets.map((value) => String(value || "").trim()).filter(Boolean)
+                ? compileErrorRaw.metadata.requestedAssets.map((value: unknown) => String(value || "").trim()).filter(Boolean)
                 : undefined,
               missingAssets: Array.isArray(compileErrorRaw.metadata.missingAssets)
-                ? compileErrorRaw.metadata.missingAssets.map((value) => String(value || "").trim()).filter(Boolean)
+                ? compileErrorRaw.metadata.missingAssets.map((value: unknown) => String(value || "").trim()).filter(Boolean)
                 : undefined,
               availableAssets: Array.isArray(compileErrorRaw.metadata.availableAssets)
-                ? compileErrorRaw.metadata.availableAssets.map((value) => String(value || "").trim()).filter(Boolean)
+                ? compileErrorRaw.metadata.availableAssets.map((value: unknown) => String(value || "").trim()).filter(Boolean)
                 : undefined,
             }
           : null,

@@ -1,11 +1,5 @@
-import { Outfit } from "next/font/google";
 import Image from "next/image";
 import HeroContent from "./HeroContent";
-
-const display = Outfit({
-  subsets: ["latin"],
-  weight: ["700", "800", "900"],
-});
 
 export default function Hero() {
   return (
@@ -35,7 +29,7 @@ export default function Hero() {
             <div className="absolute inset-0 bg-gradient-to-b from-black/10 via-black/30 to-black/10" />
           </div>
 
-          <HeroContent displayClassName={display.className} />
+          <HeroContent displayClassName="font-black tracking-tight" />
         </div>
       </div>
     </section>

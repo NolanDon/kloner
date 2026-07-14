@@ -577,13 +577,13 @@ export default function WebContainerRunner({ appId, files, filesReady = true, on
   const backendReadyRef = useRef(false); // Backend contract: `ready === true` is authoritative
   const lastUiStageRef = useRef<string>('');
   const lastStatusRef = useRef<string>('');
-  const statusPollTimeoutRef = useRef<NodeJS.Timeout | null>(null); // Track status polling timeout
-  const iframeLoadTimeoutRef = useRef<NodeJS.Timeout | null>(null); // Track iframe load timeout
+  const statusPollTimeoutRef = useRef<number | NodeJS.Timeout | null>(null); // Track status polling timeout
+  const iframeLoadTimeoutRef = useRef<number | NodeJS.Timeout | null>(null); // Track iframe load timeout
   const iframeCriticalTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const iframePostLoadTimeoutRef = useRef<NodeJS.Timeout | null>(null); // Detect white-screen after iframe navigation
-  const iframeWhiteScreenProbeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const iframePostLoadTimeoutRef = useRef<number | NodeJS.Timeout | null>(null); // Detect white-screen after iframe navigation
+  const iframeWhiteScreenProbeTimeoutRef = useRef<number | NodeJS.Timeout | null>(null);
   const iframeRuntimeErrorCleanupRef = useRef<(() => void) | null>(null);
-  const automaticRetryTimeoutRef = useRef<NodeJS.Timeout | null>(null); // Track automatic retry timeout
+  const automaticRetryTimeoutRef = useRef<number | NodeJS.Timeout | null>(null); // Track automatic retry timeout
   const pollStartedAtRef = useRef<number>(0);
   const latestDeploymentUrlRef = useRef<string>('');
   const hubStatusUrlRef = useRef<string | null>(null);
@@ -1413,6 +1413,8 @@ export default function WebContainerRunner({ appId, files, filesReady = true, on
     bodyText: string;
     htmlSnippet: string;
     scriptSrcs: string[];
+    missingScriptSrcs: string[];
+    availableScriptFiles: string[];
     visibleElementCount: number;
     titleText: string | null;
   } | null => {
