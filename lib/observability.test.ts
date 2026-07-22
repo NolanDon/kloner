@@ -265,4 +265,37 @@ describe("observability Slack formatting", () => {
         expect(bodyText).toContain("*Route/Page:*");
         expect(bodyText).toContain("*Action:*");
     });
+
+    it("includes the tried URL in Slack context for frontend URL capture stalls", async () => {
+        const { captureCriticalEvent } = await import("./observability");
+
+        await captureCriticalEvent({
+            source: "frontend",
+            severity: "critical",
+            statusCode: 504,
+            route: "/dashboard/view",
+            method: "POST",
+            requestId: "req_frontend_timeout",
+            action: "url_capture_stalled",
+            service: "dashboard-view",
+            message: "URL capture stayed queued/processing for more than 6 minutes without completion.",
+            url: "https://example.com/tried-url",
+            extra: {
+                requestContext: {
+                    callerType: "frontend-browser",
+                },
+            },
+        });
+
+        expect(global.fetch).toHaveBeenCalledTimes(1);
+        const fetchArgs = (global.fetch as jest.Mock).mock.calls[0];
+        const body = JSON.parse(String(fetchArgs[1].body));
+
+        expect(body.text).toContain("URL capture stayed queued/processing");
+
+        const contextBlock = body.blocks.find(
+            (b: any) => b.type === "section" && typeof b.text?.text === "string" && b.text.text.includes("*Request Context:*"),
+        );
+        expect(contextBlock.text.text).toContain("URL: https://example.com/tried-url");
+    });
 });

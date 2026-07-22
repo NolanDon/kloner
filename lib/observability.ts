@@ -270,23 +270,23 @@ function shouldIncludeVerboseSlackDetails(): boolean {
     return raw === "1" || raw === "true" || raw === "yes";
 }
 
-function compactExtraSummary(extra: ExtraData): Array<[string, string]> {
+function compactExtraSummary(extra: ExtraData, eventUrl?: string): Array<[string, string]> {
     return [
         ["Caller", cleanContextValue((extra as any).callerType || (extra as any).caller || (extra as any).requestContext?.callerType, 80)],
         ["Job", cleanContextValue((extra as any).jobId || (extra as any).job || (extra as any).requestContext?.jobId, 120)],
         ["Machine", cleanContextValue((extra as any).machineId || (extra as any).backend?.debug?.machine?.id || (extra as any).backend?.machineId, 120)],
-        ["URL", cleanContextValue((extra as any).url || (extra as any).requestContext?.url, 220)],
+        ["URL", cleanContextValue((extra as any).url || eventUrl || (extra as any).requestContext?.url, 220)],
     ].filter(([, value]) => Boolean(value)) as Array<[string, string]>;
 }
 
-function urlScanExtraSummary(extra: ExtraData): Array<[string, string]> {
+function urlScanExtraSummary(extra: ExtraData, eventUrl?: string): Array<[string, string]> {
     return [
         ["Backend status", cleanContextValue((extra as any).backendStatus ?? (extra as any).upstreamStatus ?? (extra as any).statusCode, 80)],
         ["Backend code", cleanContextValue((extra as any).backendCode ?? (extra as any).upstreamCode ?? (extra as any).responseCode ?? (extra as any).code, 120)],
         ["Backend req", cleanContextValue((extra as any).backendRequestId ?? (extra as any).upstreamRequestId ?? (extra as any).reqId, 120)],
         ["Backend source", cleanContextValue((extra as any).backendSource ?? (extra as any).upstreamSource ?? (extra as any).service, 120)],
         ["Backend reason", cleanContextValue((extra as any).backendMessage ?? (extra as any).upstreamMessage ?? (extra as any).responseError ?? (extra as any).reason ?? (extra as any).message, 220)],
-        ["URL", cleanContextValue((extra as any).url || (extra as any).requestContext?.url, 220)],
+        ["URL", cleanContextValue((extra as any).url || eventUrl || (extra as any).requestContext?.url, 220)],
     ].filter(([, value]) => Boolean(value)) as Array<[string, string]>;
 }
 
@@ -342,8 +342,8 @@ function toSlackBlocks(event: StoredEvent, eventId: string) {
             ["Machine", cleanContextValue((extra as any).machineId || (extra as any).backend?.debug?.machine?.id || (extra as any).backend?.machineId, 120)],
         ].filter(([, value]) => Boolean(value)) as Array<[string, string]>
         : (shouldUseUrlScanSummary(event)
-            ? urlScanExtraSummary(extra)
-            : compactExtraSummary(extra)
+            ? urlScanExtraSummary(extra, event.url)
+            : compactExtraSummary(extra, event.url)
         ).slice(0, MAX_SLACK_CONTEXT_FIELDS);
 
     const contextBlock = contextFields.length
