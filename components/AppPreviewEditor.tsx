@@ -6986,6 +6986,8 @@ type AppSourcePreviewEditorProps = {
     isFilesHydrated?: boolean;
     filesHydrationProgress?: number | null;
     isPreviewReady?: boolean;
+    deployLocked?: boolean;
+    onRequestDeployCheckout?: () => void;
 };
 
 function isHtmlPath(path: string): boolean {

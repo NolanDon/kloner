@@ -1642,6 +1642,7 @@ function RenderCardInner({
     archiveRender,
     unarchiveRender,
     onShareWithCommunity,
+    setShowCreditsPaywall,
     push,
     onRenameRender,
 }: RenderCardProps) {
