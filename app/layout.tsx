@@ -6,7 +6,6 @@ import ChatWidgetProvider from "@/components/support/ChatWidgetProvider";
 import AffiliateRefCapture from "@/components/AffiliateRefCapture";
 import { Suspense } from "react";
 import StyledJsxRegistry from "./registry";
-import Script from "next/script";
 
 export const metadata: Metadata = {
   title: {
@@ -67,13 +66,6 @@ export default function RootLayout({
             </AppClientProviders>
           </AuthProviderServer>
         </StyledJsxRegistry>
-
-        {/* Google Analytics */}
-        <Script
-          src="https://www.googletagmanager.com/gtag/js?id=G-FVKJJK0379"
-          strategy="afterInteractive"
-        />
-        <Script src="/ga-init.js" strategy="afterInteractive" />
       </body>
     </html>
   );

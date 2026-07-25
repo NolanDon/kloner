@@ -1,3 +1,5 @@
+import { FREE_EDIT_MONTHLY_CREDITS, FREE_PREVIEW_MONTHLY_CREDITS } from "./billingAccess";
+
 export type CreditKind = "screenshot" | "preview" | "edit";
 
 export type UserTier = "free" | "pro" | "agency" | "enterprise" | "unknown";
@@ -19,8 +21,8 @@ export const CREDIT_LIMITS: Record<
 > = {
     free: {
         screenshotMonthly: 100,
-        previewMonthly: 60,
-        editMonthly: 30, // small starter pool for usage-based AI edits
+        previewMonthly: FREE_PREVIEW_MONTHLY_CREDITS,
+        editMonthly: FREE_EDIT_MONTHLY_CREDITS, // small starter pool for usage-based AI edits
     },
     pro: {
         screenshotMonthly: 100,

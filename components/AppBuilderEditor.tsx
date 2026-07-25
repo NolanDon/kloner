@@ -10,6 +10,7 @@ import AppBuilderEditorAgentChat from "./AppBuilderEditorAgentChat";
 import { AppBuilderEditorTour } from "./AppBuilderEditorTour";
 import { TOUR_KEY as BUILDER_TOUR_STORAGE_KEY } from "./AppBuilderEditorTour";
 import AppPreviewEditor from "./AppPreviewEditor";
+import WebsitePrePaywall from "./WebsitePrePaywall";
 import KlonerLoader from "./KlonerLoader";
 import WebContainerRunner from "./WebContainerRunner";
 import { bootstrapServerSession, ensureSessionAndCsrf, resetAuthClientCaches } from "@/lib/auth-client";
@@ -170,6 +171,44 @@ type AutoPreviewPhase =
     | "error";
 
 type LeftViewMode = "ai" | "code" | "images" | "custom";
+
+type UpgradePaywallCopy = {
+    title: string;
+    description: string;
+    benefits: string[];
+    primaryLabel: string;
+    footerNote: string;
+};
+
+const DEPLOY_UPGRADE_PAYWALL_COPY: UpgradePaywallCopy = {
+    title: "Upgrade to publish",
+    description: "Publish your website live from the editor. Upgrade to unlock one-click deploy and higher monthly credits.",
+    benefits: [
+        "Deploy 40+ websites per month",
+        "One-click publishing",
+        "AI task force to build and design your websites",
+        "Higher queue priority for faster outputs",
+        "24/7 Human support included",
+        "Subscriptions starting at only $4.99/wk.",
+    ],
+    primaryLabel: "Subscribe now",
+    footerNote: "Cancel anytime before renewal.",
+};
+
+const FREE_PLAN_UPGRADE_PAYWALL_COPY: UpgradePaywallCopy = {
+    title: "You’ve hit the limit on your free plan",
+    description: "You’ve used your free AI edit credits. Upgrade to keep building, unlock more features, and publish from the same dashboard.",
+    benefits: [
+        "Higher monthly limits for screenshots and previews",
+        "Unlock deployments and live URLs",
+        "Priority rendering and faster queues",
+        "Access way more features",
+        "AI task force to build and design your websites",
+        "Subscriptions starting at only $4.99/wk.",
+    ],
+    primaryLabel: "Subscribe now",
+    footerNote: "Cancel anytime before renewal.",
+};
 
 type PreviewMode = "webcontainer" | "vercel";
 
@@ -1369,7 +1408,10 @@ export default function AppBuilderEditor({
     initialViewMode,
     onCanonicalAppIdResolved,
     onClose,
+    onMissingApp,
     onDeploy,
+    deployLocked = false,
+    onRequestDeployCheckout,
     agentWelcomeContext,
     trialPromptEnabled = false,
     trialPromptSessionEligible = false,
@@ -1383,7 +1425,10 @@ export default function AppBuilderEditor({
     initialViewMode?: LeftViewMode;
     onCanonicalAppIdResolved?: (canonicalAppId: string) => void;
     onClose: () => void;
+    onMissingApp?: (missingAppId: string) => void;
     onDeploy?: (app: { id: string; name: string }) => void;
+    deployLocked?: boolean;
+    onRequestDeployCheckout?: () => void;
     agentWelcomeContext?: {
         source?: "prompt" | "url" | "quickstart" | "template" | "sample" | "unknown";
         prompt?: string | null;
@@ -1398,8 +1443,9 @@ export default function AppBuilderEditor({
     previewDebugScenario?: { mode: 'terminal-error' | 'terminal-error-auto-fix'; nonce: number } | null;
     deployIssue?: EditorIssue | null;
 }) {
-    const { user, loading: authLoading } = useAuth();
+    const { user, userTier, loading: authLoading } = useAuth();
     const { showConfirm, showAlert, hideModal } = useModal();
+    const onMissingAppRef = useRef(onMissingApp);
     const sourceUrlToRescan = useMemo(() => {
         if (agentWelcomeContext?.source !== "url") return "";
         return String(agentWelcomeContext?.url || "").trim();
@@ -1409,6 +1455,10 @@ export default function AppBuilderEditor({
         if (!onCanonicalAppIdResolved) return;
         onCanonicalAppIdResolved(appId);
     }, [onCanonicalAppIdResolved, appId]);
+
+    useEffect(() => {
+        onMissingAppRef.current = onMissingApp;
+    }, [onMissingApp]);
 
     const faviconInputRef = useRef<HTMLInputElement | null>(null);
     const imageInputRef = useRef<HTMLInputElement | null>(null);
@@ -1421,8 +1471,6 @@ export default function AppBuilderEditor({
     const [supabaseDbStatusText, setSupabaseDbStatusText] = useState<string | null>(null);
     const [supabaseDbReason, setSupabaseDbReason] = useState<string | null>(null);
     const [supabaseDbLastCheckedAt, setSupabaseDbLastCheckedAt] = useState<number | null>(null);
-    const [cookiesConsentResolved, setCookiesConsentResolved] = useState(false);
-    const [acceptedNecessaryCookies, setAcceptedNecessaryCookies] = useState(false);
     const supabaseVerifyInFlightRef = useRef(false);
     const lastSupabaseVerifyAtRef = useRef(0);
     const supabaseConnectedRef = useRef<boolean | null>(null);
@@ -1432,22 +1480,6 @@ export default function AppBuilderEditor({
     useEffect(() => {
         supabaseConnectedRef.current = supabaseConnected;
     }, [supabaseConnected]);
-
-    useEffect(() => {
-        const accepted = hasAcceptedBuilderNecessaryCookies();
-        setAcceptedNecessaryCookies(accepted);
-        setCookiesConsentResolved(true);
-    }, []);
-
-    const acceptNecessaryCookiesAndContinue = useCallback(() => {
-        persistBuilderNecessaryCookiesConsent();
-        setAcceptedNecessaryCookies(true);
-        setCookiesConsentResolved(true);
-        setPreviewMode("webcontainer");
-        setAutoPreviewError(null);
-        setReconnectKey((k) => k + 1);
-        setRefreshKey((k) => k + 1);
-    }, []);
 
         const refreshSupabaseStatusFromApi = useCallback(async (): Promise<boolean> => {
             try {
@@ -2010,6 +2042,8 @@ export default function AppBuilderEditor({
     const filteredCodeFileTree = useMemo(() => filterFileTree(fileTree, codeFileSearch), [codeFileSearch, fileTree]);
     const codeFileSearchActive = Boolean(codeFileSearch.trim());
     const activeTabGlowClass = "border-[#F55F2A] ring-2 ring-[#F55F2A]/45 mx-1";
+    const canUsePremiumImagesTab = userTier === "pro" || userTier === "agency";
+    const shouldLockImagesTab = !authLoading && !canUsePremiumImagesTab;
 
     useEffect(() => {
         if (typeof window === "undefined") return;
@@ -2029,6 +2063,16 @@ export default function AppBuilderEditor({
             // ignore storage failures
         }
         setBuilderTourStartToken((token) => token + 1);
+    }, []);
+
+    const openDeployUpgradePaywall = useCallback(() => {
+        setUpgradePaywallCopy(DEPLOY_UPGRADE_PAYWALL_COPY);
+        setShowDeployUpgradePaywall(true);
+    }, []);
+
+    const openFreePlanUpgradePaywall = useCallback(() => {
+        setUpgradePaywallCopy(FREE_PLAN_UPGRADE_PAYWALL_COPY);
+        setShowDeployUpgradePaywall(true);
     }, []);
 
     const pageOptions = useMemo(() => {
@@ -2135,6 +2179,10 @@ export default function AppBuilderEditor({
     const requestViewModeChange = useCallback(async (nextMode: LeftViewMode) => {
         // Prevent multiple simultaneous mode switches
         if (isModeSwitching) return;
+        if (nextMode === "images" && shouldLockImagesTab) {
+            openFreePlanUpgradePaywall();
+            return;
+        }
         
         const leavingVisual = (viewMode === "custom" || viewMode === "images") && !(nextMode === "custom" || nextMode === "images");
         const enteringVisual = !(viewMode === "custom" || viewMode === "images") && (nextMode === "custom" || nextMode === "images");
@@ -2225,7 +2273,7 @@ export default function AppBuilderEditor({
             setViewMode(nextMode);
             setIsModeSwitching(false);
         }
-    }, [fetchAndHydrateAppFiles, showAlert, viewMode, isModeSwitching]);
+    }, [fetchAndHydrateAppFiles, openFreePlanUpgradePaywall, showAlert, shouldLockImagesTab, viewMode, isModeSwitching]);
 
     const [previewError, setPreviewError] = useState<string | null>(null);
     const [protectedPreviewUrl, setProtectedPreviewUrl] = useState<string | null>(null);
@@ -2243,6 +2291,8 @@ export default function AppBuilderEditor({
     const [deployBannerFromApp, setDeployBannerFromApp] = useState<DeployStatusBanner | null>(null);
     const [deployBannerFromRoute, setDeployBannerFromRoute] = useState<DeployStatusBanner | null>(null);
     const [dismissedDeployBannerFingerprint, setDismissedDeployBannerFingerprint] = useState<string | null>(null);
+    const [showDeployUpgradePaywall, setShowDeployUpgradePaywall] = useState(false);
+    const [upgradePaywallCopy, setUpgradePaywallCopy] = useState<UpgradePaywallCopy>(DEPLOY_UPGRADE_PAYWALL_COPY);
     const [autoPreviewAttempt, setAutoPreviewAttempt] = useState<number>(0);
     const [autoPreviewBypassUnsupported, setAutoPreviewBypassUnsupported] = useState(false);
     const [previewMode, setPreviewMode] = useState<PreviewMode>("webcontainer");
@@ -3948,14 +3998,6 @@ export default function AppBuilderEditor({
                 }
 
                 if (restartPending || requiresRestart) {
-                    const now = Date.now();
-                    if (interactive || now - lastApplyAlertAtRef.current > 15000) {
-                        lastApplyAlertAtRef.current = now;
-                        void showAlert(
-                            "Your changes were saved. This update needs a preview restart/rebuild before it appears live. We are restarting now, and you can continue editing while it boots.",
-                            "Live update",
-                        );
-                    }
                     void restartLocalPreview(false);
                 } else if (apply.outcome === "saved") {
                     const now = Date.now();
@@ -4596,6 +4638,7 @@ export default function AppBuilderEditor({
         let didCancel = false;
         const controller = new AbortController();
         const isDraftPromotionAppId = String(appId || "").startsWith("draftapp_");
+        let retriedDraftPromotion404 = false;
         let retryTimer: ReturnType<typeof setTimeout> | ReturnType<typeof window.setTimeout> | null = null;
 
         const loadApp = async () => {
@@ -4640,15 +4683,19 @@ export default function AppBuilderEditor({
                 if (!res.ok) {
                     if (res.status === 404) {
                         if (isDraftPromotionAppId) {
-                            retryTimer = setTimeout(() => {
-                                retryTimer = null;
-                                if (!didCancel) {
-                                    void loadApp();
-                                }
-                            }, 400);
-                            return;
+                            if (!retriedDraftPromotion404) {
+                                retriedDraftPromotion404 = true;
+                                retryTimer = setTimeout(() => {
+                                    retryTimer = null;
+                                    if (!didCancel) {
+                                        void loadApp();
+                                    }
+                                }, 400);
+                                return;
+                            }
                         }
                         console.error("App not found, closing editor");
+                        onMissingAppRef.current?.(String(appId || "").trim());
                         onCloseRef.current?.();
                         return;
                     }
@@ -5954,6 +6001,10 @@ export default function AppBuilderEditor({
 
     const handleDeploy = async () => {
         if (!app || isDeploying) return;
+        if (deployLocked) {
+            openDeployUpgradePaywall();
+            return;
+        }
 
         const alreadyDeployed = Boolean(app.isDeployed) || Boolean(app.productionUrl);
         if (!alreadyDeployed) {
@@ -6696,46 +6747,6 @@ export default function AppBuilderEditor({
         );
     }
 
-    if (!cookiesConsentResolved) {
-        return <KlonerLoader />;
-    }
-
-    if (!acceptedNecessaryCookies) {
-        return (
-            <div className="fixed inset-0 z-[20000] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-                <div className="w-full max-w-lg rounded-2xl border border-neutral-200 bg-white shadow-2xl overflow-hidden">
-                    <div className="border-b border-neutral-200 px-5 py-4 bg-gradient-to-b from-gray-50 to-white">
-                        <div className="text-lg font-semibold text-neutral-900">One quick cookie check</div>
-                        <div className="mt-1 text-sm text-neutral-600">Needed to keep your preview connected</div>
-                    </div>
-
-                    <div className="px-5 py-4 space-y-3">
-                        <p className="text-sm text-neutral-700">
-                            We only use essential app-builder cookies so preview + routing work correctly. No optional marketing cookies here.
-                        </p>
-                    </div>
-
-                    <div className="flex items-center justify-end gap-2 border-t border-neutral-200 px-5 py-4">
-                        <button
-                            type="button"
-                            onClick={() => onCloseRef.current?.()}
-                            className="px-4 py-2 text-sm font-medium text-neutral-700 bg-white border border-neutral-200 rounded-full hover:bg-neutral-50"
-                        >
-                            Close
-                        </button>
-                        <button
-                            type="button"
-                            onClick={acceptNecessaryCookiesAndContinue}
-                            className="px-4 py-2 text-sm font-semibold text-white bg-[#F55F2A] rounded-full hover:bg-[#E04E1B]"
-                        >
-                            Accept and continue
-                        </button>
-                    </div>
-                </div>
-            </div>
-        );
-    }
-
     return (
         <div className="fixed inset-0 z-[16000] bg-black/70 backdrop-blur-sm">
             {isGenerationProcessing && previewMode !== "webcontainer" ? (
@@ -7278,23 +7289,38 @@ export default function AppBuilderEditor({
                                     </button>
                                 ) : null}
                                 {/* {!IS_PRODUCTION ? ( */}
-                                    <button
-                                        onClick={() => { if (isMobile) { showDesktopOnlyToast(); return; } void requestViewModeChange("images"); }}
+                                <button
+                                        onClick={() => {
+                                            if (isMobile) {
+                                                showDesktopOnlyToast();
+                                                return;
+                                            }
+                                            if (shouldLockImagesTab) {
+                                                openFreePlanUpgradePaywall();
+                                                return;
+                                            }
+                                            void requestViewModeChange("images");
+                                        }}
                                         disabled={isModeSwitching}
                                         data-tour-images-tab
                                         className={`px-3 sm:px-4 py-2 text-xs font-semibold rounded-full flex items-center justify-center gap-1.5 transition-colors flex-shrink-0 ${
                                             viewMode === "images"
                                                 ? `bg-neutral-100 text-neutral-900 border border-neutral-300 shadow-sm ${activeTabGlowClass}`
                                                 : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50"
-                                        } ${isModeSwitching ? "opacity-60 cursor-not-allowed" : ""}`}
-                                        title="Images"
+                                        } ${(isModeSwitching || shouldLockImagesTab) ? "opacity-60 cursor-not-allowed" : ""}`}
+                                        title={shouldLockImagesTab ? "Images are available on Pro and Agency plans" : "Images"}
                                     >
                                         {isModeSwitching && viewMode !== "images" ? (
                                             <Loader2 className="h-4 w-4 animate-spin" />
                                         ) : (
                                             <Images className="h-4 w-4" />
                                         )}
-                                        Images
+                                        <span>Images</span>
+                                        {shouldLockImagesTab ? (
+                                            <span className="inline-flex items-center rounded-full border border-neutral-300 bg-white px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-neutral-500">
+                                                Pro
+                                            </span>
+                                        ) : null}
                                     </button>
                                 {/* ) : null} */}
                                 {/* {!IS_PRODUCTION ? ( */}
@@ -7344,6 +7370,7 @@ export default function AppBuilderEditor({
                                     onUserMessageSent={() => {
                                         appBuilderAiMessagesSentRef.current += 1;
                                     }}
+                                    onRequestUpgradePaywall={openFreePlanUpgradePaywall}
                                     topupModalTrigger={topupModalTrigger}
                                     welcomeContext={agentWelcomeContext}
                                 />
@@ -7620,6 +7647,8 @@ export default function AppBuilderEditor({
                                             isFilesHydrated={isPreviewBootReady}
                                             filesHydrationProgress={filesHydrationProgress}
                                             isPreviewReady={previewMode !== "webcontainer" ? true : isPreviewBootReady}
+                                            deployLocked={deployLocked}
+                                            onRequestDeployCheckout={onRequestDeployCheckout}
                                         />
                                     </div>
                                 ) : (
@@ -8257,93 +8286,31 @@ export default function AppBuilderEditor({
                     <AppBuilderEditorTour startToken={builderTourStartToken} />
                 ) : null}
 
-                {showAppBuilderTrialPrompt ? (
-                    <motion.div
-                        className="fixed inset-0 z-[20000] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        transition={{ duration: 0.2, ease: "easeOut" }}
-                    >
-                        <motion.div
-                            className="w-full max-w-md rounded-2xl border border-neutral-200 bg-white p-6 text-sm text-neutral-800 shadow-xl"
-                            initial={{ opacity: 0, y: 18, scale: 0.98 }}
-                            animate={{ opacity: 1, y: 0, scale: 1 }}
-                            transition={{ duration: 0.24, ease: "easeOut" }}
-                        >
-                            <div className="mb-2 flex items-center justify-between gap-2">
-                                <div className="inline-flex items-center rounded-full border border-neutral-200 bg-neutral-50 px-2.5 py-1 text-[11px] font-semibold text-neutral-700">
-                                    7-day free trial
-                                </div>
-                                <button
-                                    type="button"
-                                    onClick={() => setShowAppBuilderTrialPrompt(false)}
-                                    disabled={trialCheckoutBusy}
-                                    className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-60"
-                                    aria-label="Close"
-                                >
-                                    ×
-                                </button>
-                            </div>
+                <WebsitePrePaywall
+                    open={showDeployUpgradePaywall}
+                    onClose={() => setShowDeployUpgradePaywall(false)}
+                    onStartCheckout={() => {
+                        setShowDeployUpgradePaywall(false);
+                        onRequestDeployCheckout?.();
+                    }}
+                    checkoutBusy={trialCheckoutBusy}
+                    zIndexClassName="z-[20001]"
+                    title={upgradePaywallCopy.title}
+                    description={upgradePaywallCopy.description}
+                    benefits={upgradePaywallCopy.benefits}
+                    primaryLabel={upgradePaywallCopy.primaryLabel}
+                    footerNote={upgradePaywallCopy.footerNote}
+                />
 
-                            <h3 className="text-xl font-semibold text-neutral-900">
-                                Like what you built? Publish it live next.
-                            </h3>
-                            <p className="mt-2 text-sm text-neutral-600">
-                                Unlock Next.js 16 app deploys, HTML website deploys, and higher generation credits.
-                            </p>
-
-                            {trialCheckoutBusy ? (
-                                <div className="mt-4 flex items-center justify-center gap-2 rounded-2xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-[#f55f2a]">
-                                    <Image src="/images/stripe.png" alt="Stripe" width={28} height={28} className="h-7 w-7 object-contain" />
-                                    <Loader2 className="h-4 w-4 animate-spin" />
-                                    <span className="text-sm font-semibold">Opening secure Stripe checkout...</span>
-                                </div>
-                            ) : null}
-
-                            <ul className="mt-4 list-disc list-inside space-y-1 text-sm text-neutral-700">
-                                <li>7 days free, cancel anytime</li>
-                                <li>One-click deploy to live URL</li>
-                                <li>Higher monthly generation limits</li>
-                            </ul>
-
-                            <div className="mt-5 space-y-2">
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        onTrialPromptStartCheckout?.(appId);
-                                    }}
-                                    disabled={trialCheckoutBusy}
-                                    className="w-full rounded-xl px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-80"
-                                    style={{ backgroundColor: "#f55f2a" }}
-                                >
-                                    {trialCheckoutBusy ? (
-                                        <span className="inline-flex items-center justify-center gap-2">
-                                            <Loader2 className="h-4 w-4 animate-spin" />
-                                            Redirecting to Stripe...
-                                        </span>
-                                    ) : (
-                                        "Start free trial & publish →"
-                                    )}
-                                </button>
-
-                                <button
-                                    type="button"
-                                    onClick={() => setShowAppBuilderTrialPrompt(false)}
-                                    disabled={trialCheckoutBusy}
-                                    className="w-full rounded-xl border border-neutral-200 bg-white px-4 py-2 text-sm font-semibold text-neutral-700 hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-60"
-                                >
-                                    Keep building for now
-                                </button>
-
-                                {trialCheckoutBusy ? (
-                                    <p className="text-center text-xs text-neutral-500">
-                                        Please wait while we prepare your Stripe session.
-                                    </p>
-                                ) : null}
-                            </div>
-                        </motion.div>
-                    </motion.div>
-                ) : null}
+                <WebsitePrePaywall
+                    open={showAppBuilderTrialPrompt}
+                    onClose={() => setShowAppBuilderTrialPrompt(false)}
+                    onStartCheckout={() => {
+                        onTrialPromptStartCheckout?.(appId);
+                    }}
+                    checkoutBusy={trialCheckoutBusy}
+                    zIndexClassName="z-[20000]"
+                />
 
                 {vercelConnectOpen && (
                     <div className="fixed inset-0 z-[17000] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">

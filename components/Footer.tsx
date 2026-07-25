@@ -7,6 +7,7 @@
 import React from "react";
 import Link from "next/link";
 import SeoInternalLinks from "@/components/SeoInternalLinks";
+import CookieSettingsLink from "@/components/CookieSettingsLink";
 
 type LinkItem = { label: string; href: string; external?: boolean };
 
@@ -182,6 +183,9 @@ export default function Footer() {
               <Link href="/privacy" className="text-neutral-700 hover:text-neutral-900">
                 Privacy
               </Link>
+            </li>
+            <li>
+              <CookieSettingsLink />
             </li>
             <li>
               <Link href="/legal/kloner-vercel-eula" className="text-neutral-700 hover:text-neutral-900">

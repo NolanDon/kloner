@@ -5171,6 +5171,20 @@ export default function NavBar() {
     };
   }, [applyToken, hmrWsStatus]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => {
+    if (!isApplyRefreshing) return;
+    if (hmrWsStatus !== 'ok') return;
+    if (!iframeLoadedSuccessfullyRef.current) return;
+
+    const clearTimer = setTimeout(() => {
+      setIsApplyRefreshing(false);
+    }, 300);
+
+    return () => {
+      clearTimeout(clearTimer);
+    };
+  }, [hmrWsStatus, isApplyRefreshing]);
+
   // Handle iframe load timeout
   useEffect(() => {
     if (externalPreviewMode) {
@@ -5975,6 +5989,9 @@ export default function NavBar() {
               // Only declare the preview "ready" when the backend contract says `ready === true`.
               iframeLoadedSuccessfullyRef.current = true;
               appLoadedSuccessfullyRef.current = true;
+              if (isApplyRefreshing && (backendReadyRef.current || hmrWsStatus === 'ok' || previewPresentation.shouldShowLivePreview)) {
+                setIsApplyRefreshing(false);
+              }
               attachIframeRuntimeErrorWatchers();
               scheduleWhiteScreenProbe(String(activePreviewUrl || previewUrl || ''));
 

@@ -7,6 +7,7 @@ import Link from "next/link";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence, useDragControls } from "framer-motion";
 import Image from 'next/image'
+import WebsitePrePaywall from "./WebsitePrePaywall";
 import { useModal } from "@/components/ui/ModalContext";
 import { pickPreferredHtmlPath } from "@/src/lib/htmlEntrypoint";
 import { TOUR_KEY as PREVIEW_TOUR_STORAGE_KEY } from "./PreviewEditorTour";
@@ -132,6 +133,8 @@ type Props = {
     isFilesHydrated?: boolean;
     filesHydrationProgress?: number | null;
     isPreviewReady?: boolean;
+    deployLocked?: boolean;
+    onRequestDeployCheckout?: () => void;
 };
 
 const ACCENT = "#f55f2a";
@@ -1271,8 +1274,10 @@ function AppPreviewEditorCore({
     isFilesHydrated = true,
     filesHydrationProgress = null,
     isPreviewReady = true,
+    deployLocked = false,
+    onRequestDeployCheckout,
 }: Props) {
-    const { user } = useAuth();
+    const { user, userTier, loading: authLoading } = useAuth();
     const isDevCodeMode = process.env.NODE_ENV === "development";
     const [nameHint, setNameHint] = useState<string>("");
     const [version, setVersion] = useState<number>(1);
@@ -1286,6 +1291,7 @@ function AppPreviewEditorCore({
     const [closing, setClosing] = useState(false);
     const [closePrompt, setClosePrompt] = useState(false);
     const [exportPrompt, setExportPrompt] = useState(false);
+    const [showDeployUpgradePaywall, setShowDeployUpgradePaywall] = useState(false);
     const [controlsCollapsed, setControlsCollapsed] = useState<boolean>(false);
     const [sidePanelMode, setSidePanelMode] = useState<
         "style" | "meta" | "code" | "ai-library" | "revision-chat"
@@ -1295,6 +1301,8 @@ function AppPreviewEditorCore({
     const [prefetchedAiMeta, setPrefetchedAiMeta] = useState<any | null>(null);
     const [prefetchedAiHistoryError, setPrefetchedAiHistoryError] = useState<string | null>(null);
     const [prefetchedAiHistoryLoading, setPrefetchedAiHistoryLoading] = useState<boolean>(false);
+    const canUsePremiumImagesTab = userTier === "pro" || userTier === "agency";
+    const shouldLockImagesTab = !authLoading && !canUsePremiumImagesTab;
 
     function normalizeAiEditCreatedAt(raw: any): string {
         if (!raw) return "";
@@ -2133,6 +2141,21 @@ function AppPreviewEditorCore({
         () => Array.from(new Set([...(theme.textColors || []), ...(theme.bgColors || [])])),
         [theme.textColors, theme.bgColors]
     );
+    const fallbackThemeColors = useMemo(
+        () => [
+            "#ffffff",
+            "#f8fafc",
+            "#e2e8f0",
+            "#111827",
+            "#f55f2a",
+            "#0ea5e9",
+            "#22c55e",
+            "#a855f7",
+        ],
+        []
+    );
+    const activeThemeColors = mergedThemeColors.length > 0 ? mergedThemeColors : fallbackThemeColors;
+    const themeColorSectionLabel = mergedThemeColors.length > 0 ? "Theme Colors" : "Default Colors";
 
     const [uiScale, setUiScale] = useState<number>(() => {
         if (typeof sharedUiScale === "number") return sharedUiScale;
@@ -4561,6 +4584,10 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
 
     const openSidePanelMode = useCallback(
         (nextMode: "style" | "meta" | "code" | "ai-library" | "revision-chat") => {
+            if (nextMode === "ai-library" && shouldLockImagesTab) {
+                setShowDeployUpgradePaywall(true);
+                return;
+            }
             const resolvedMode = nextMode === "revision-chat" ? "style" : nextMode;
             setSidePanelMode(resolvedMode);
             setSidebarHidden(false);
@@ -4576,7 +4603,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                 setMobileTab("panel");
             }
         },
-        [handleModeClick, isCompactLayout, isDevCodeMode, mode],
+        [handleModeClick, isCompactLayout, isDevCodeMode, mode, shouldLockImagesTab],
     );
 
     const openScreenshotMode = useCallback(() => {
@@ -4977,7 +5004,13 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
 
                             <button
                                 type="button"
-                                onClick={() => setExportPrompt(true)}
+                                onClick={() => {
+                                    if (deployLocked) {
+                                        setShowDeployUpgradePaywall(true);
+                                        return;
+                                    }
+                                    setExportPrompt(true);
+                                }}
                                 disabled={exporting}
                                 data-tour-deploy
                                 className={`inline-flex h-9 shrink-0 items-center gap-2 rounded-full border border-[#f55f2a] bg-[#f55f2a] px-3 text-sm font-semibold text-white shadow-md transition ${
@@ -5291,132 +5324,130 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                 </div>
 
                                                 <div className="max-h-64 space-y-4 overflow-y-auto pr-1 text-sm leading-6 lg:max-h-none">
-                                                    {(mergedThemeColors.length || theme.fontFamilies.length) > 0 && (
-                                                        <div className="space-y-4">
-                                                            {mergedThemeColors.length > 0 && (
-                                                                <div>
-                                                                    <div className="mb-2 border-b border-neutral-200 pb-1">
-                                                                        <div className="inline-flex items-center gap-2 text-sm font-semibold text-neutral-800">
-                                                                            <Palette className="h-4 w-4 text-neutral-500" />
-                                                                            Text
-                                                                        </div>
-                                                                    </div>
-                                                                    <div className="mb-3 grid grid-cols-6 gap-2">
-                                                                        {mergedThemeColors.map((c) => (
-                                                                            <button
-                                                                                key={`theme-text-${c}`}
-                                                                                type="button"
-                                                                                className="h-8 w-8 rounded border border-black/10 shadow-sm transition hover:scale-105 active:scale-95 disabled:opacity-40"
-                                                                                style={{ background: c }}
-                                                                                disabled={closing}
-                                                                                onClick={() =>
-                                                                                    sendStyleCommand({
-                                                                                        kind: "textColor",
-                                                                                        value: c,
-                                                                                    })
-                                                                                }
-                                                                            />
-                                                                        ))}
-
-                                                                        <label
-                                                                            className="relative inline-flex h-8 w-8 cursor-pointer items-center justify-center overflow-hidden rounded border border-black/10 shadow-sm"
-                                                                            style={{
-                                                                                background:
-                                                                                    "conic-gradient(from 180deg at 50% 50%, #ff3b30, #ff9500, #ffcc00, #34c759, #0a84ff, #5e5ce6, #bf5af2, #ff2d55, #ff3b30)",
-                                                                            }}
-                                                                            title="Pick custom text color"
-                                                                        >
-                                                                            <Pipette className="h-3.5 w-3.5 text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.45)]" />
-                                                                            <input
-                                                                                type="color"
-                                                                                value={customTextColor}
-                                                                                disabled={closing}
-                                                                                onChange={(e) => {
-                                                                                    const value = e.target.value;
-                                                                                    setCustomTextColor(value);
-                                                                                    sendStyleCommand({
-                                                                                        kind: "textColor",
-                                                                                        value,
-                                                                                    });
-                                                                                }}
-                                                                                className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
-                                                                            />
-                                                                        </label>
-                                                                    </div>
-                                                                </div>
-                                                            )}
-
-                                                            {mergedThemeColors.length > 0 && (
-                                                                <div>
-                                                                    <div className="mb-2 border-b border-neutral-200 pb-1">
-                                                                        <div className="inline-flex items-center gap-2 text-sm font-semibold text-neutral-800">
-                                                                            <Palette className="h-4 w-4 text-neutral-500" />
-                                                                            Background
-                                                                        </div>
-                                                                    </div>
-
-                                                                    <div className="mb-3 grid grid-cols-6 gap-2">
-                                                                        {mergedThemeColors.map((c) => (
-                                                                            <button
-                                                                                key={`theme-bg-${c}`}
-                                                                                type="button"
-                                                                                className="h-8 w-8 rounded border border-black/10 shadow-sm transition hover:scale-105 active:scale-95 disabled:opacity-40"
-                                                                                style={{ background: c }}
-                                                                                disabled={closing}
-                                                                                onClick={() =>
-                                                                                    sendStyleCommand({
-                                                                                        kind: "bgColor",
-                                                                                        value: c,
-                                                                                    })
-                                                                                }
-                                                                            />
-                                                                        ))}
-
-                                                                        <button
-                                                                            key="transparent-bg"
-                                                                            type="button"
-                                                                            disabled={closing}
-                                                                            onClick={() =>
-                                                                                sendStyleCommand({
-                                                                                    kind: "bgColor",
-                                                                                    value: "transparent",
-                                                                                })
-                                                                            }
-                                                                            className="inline-flex h-8 w-8 items-center justify-center rounded border border-dashed border-neutral-400 bg-white text-[10px] font-medium text-neutral-600 shadow-sm transition hover:bg-neutral-50 hover:scale-105 active:scale-95 disabled:opacity-40"
-                                                                            title="Transparent"
-                                                                        >
-                                                                            ⌀
-                                                                        </button>
-
-                                                                        <label
-                                                                            className="relative inline-flex h-8 w-8 cursor-pointer items-center justify-center overflow-hidden rounded border border-black/10 shadow-sm"
-                                                                            style={{
-                                                                                background:
-                                                                                    "conic-gradient(from 180deg at 50% 50%, #ff3b30, #ff9500, #ffcc00, #34c759, #0a84ff, #5e5ce6, #bf5af2, #ff2d55, #ff3b30)",
-                                                                            }}
-                                                                            title="Pick custom background color"
-                                                                        >
-                                                                            <Pipette className="h-3.5 w-3.5 text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.45)]" />
-                                                                            <input
-                                                                                type="color"
-                                                                                value={customBgColor}
-                                                                                disabled={closing}
-                                                                                onChange={(e) => {
-                                                                                    const value = e.target.value;
-                                                                                    setCustomBgColor(value);
-                                                                                    sendStyleCommand({
-                                                                                        kind: "bgColor",
-                                                                                        value,
-                                                                                    });
-                                                                                }}
-                                                                                className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
-                                                                            />
-                                                                        </label>
-                                                                    </div>
-                                                                </div>
-                                                            )}
+                                                    <div className="space-y-4">
+                                                        <div className="text-[13px] font-medium text-neutral-800">
+                                                            {themeColorSectionLabel}
                                                         </div>
-                                                    )}
+
+                                                        <div>
+                                                            <div className="mb-2 border-b border-neutral-200 pb-1">
+                                                                <div className="inline-flex items-center gap-2 text-sm font-semibold text-neutral-800">
+                                                                    <Palette className="h-4 w-4 text-neutral-500" />
+                                                                    Text
+                                                                </div>
+                                                            </div>
+                                                            <div className="mb-3 grid grid-cols-6 gap-2">
+                                                                {activeThemeColors.map((c) => (
+                                                                    <button
+                                                                        key={`theme-text-${c}`}
+                                                                        type="button"
+                                                                        className="h-8 w-8 rounded border border-black/10 shadow-sm transition hover:scale-105 active:scale-95 disabled:opacity-40"
+                                                                        style={{ background: c }}
+                                                                        disabled={closing}
+                                                                        onClick={() =>
+                                                                            sendStyleCommand({
+                                                                                kind: "textColor",
+                                                                                value: c,
+                                                                            })
+                                                                        }
+                                                                    />
+                                                                ))}
+
+                                                                <label
+                                                                    className="relative inline-flex h-8 w-8 cursor-pointer items-center justify-center overflow-hidden rounded border border-black/10 shadow-sm"
+                                                                    style={{
+                                                                        background:
+                                                                            "conic-gradient(from 180deg at 50% 50%, #ff3b30, #ff9500, #ffcc00, #34c759, #0a84ff, #5e5ce6, #bf5af2, #ff2d55, #ff3b30)",
+                                                                    }}
+                                                                    title="Pick custom text color"
+                                                                >
+                                                                    <Pipette className="h-3.5 w-3.5 text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.45)]" />
+                                                                    <input
+                                                                        type="color"
+                                                                        value={customTextColor}
+                                                                        disabled={closing}
+                                                                        onChange={(e) => {
+                                                                            const value = e.target.value;
+                                                                            setCustomTextColor(value);
+                                                                            sendStyleCommand({
+                                                                                kind: "textColor",
+                                                                                value,
+                                                                            });
+                                                                        }}
+                                                                        className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                                                                    />
+                                                                </label>
+                                                            </div>
+                                                        </div>
+
+                                                        <div>
+                                                            <div className="mb-2 border-b border-neutral-200 pb-1">
+                                                                <div className="inline-flex items-center gap-2 text-sm font-semibold text-neutral-800">
+                                                                    <Palette className="h-4 w-4 text-neutral-500" />
+                                                                    Background
+                                                                </div>
+                                                            </div>
+
+                                                            <div className="mb-3 grid grid-cols-6 gap-2">
+                                                                {activeThemeColors.map((c) => (
+                                                                    <button
+                                                                        key={`theme-bg-${c}`}
+                                                                        type="button"
+                                                                        className="h-8 w-8 rounded border border-black/10 shadow-sm transition hover:scale-105 active:scale-95 disabled:opacity-40"
+                                                                        style={{ background: c }}
+                                                                        disabled={closing}
+                                                                        onClick={() =>
+                                                                            sendStyleCommand({
+                                                                                kind: "bgColor",
+                                                                                value: c,
+                                                                            })
+                                                                        }
+                                                                    />
+                                                                ))}
+
+                                                                <button
+                                                                    key="transparent-bg"
+                                                                    type="button"
+                                                                    disabled={closing}
+                                                                    onClick={() =>
+                                                                        sendStyleCommand({
+                                                                            kind: "bgColor",
+                                                                            value: "transparent",
+                                                                        })
+                                                                    }
+                                                                    className="inline-flex h-8 w-8 items-center justify-center rounded border border-dashed border-neutral-400 bg-white text-[10px] font-medium text-neutral-600 shadow-sm transition hover:bg-neutral-50 hover:scale-105 active:scale-95 disabled:opacity-40"
+                                                                    title="Transparent"
+                                                                >
+                                                                    ⌀
+                                                                </button>
+
+                                                                <label
+                                                                    className="relative inline-flex h-8 w-8 cursor-pointer items-center justify-center overflow-hidden rounded border border-black/10 shadow-sm"
+                                                                    style={{
+                                                                        background:
+                                                                            "conic-gradient(from 180deg at 50% 50%, #ff3b30, #ff9500, #ffcc00, #34c759, #0a84ff, #5e5ce6, #bf5af2, #ff2d55, #ff3b30)",
+                                                                    }}
+                                                                    title="Pick custom background color"
+                                                                >
+                                                                    <Pipette className="h-3.5 w-3.5 text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.45)]" />
+                                                                    <input
+                                                                        type="color"
+                                                                        value={customBgColor}
+                                                                        disabled={closing}
+                                                                        onChange={(e) => {
+                                                                            const value = e.target.value;
+                                                                            setCustomBgColor(value);
+                                                                            sendStyleCommand({
+                                                                                kind: "bgColor",
+                                                                                value,
+                                                                            });
+                                                                        }}
+                                                                        className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                                                                    />
+                                                                </label>
+                                                            </div>
+                                                        </div>
+                                                    </div>
 
                                                     {/* Font */}
                                                     <div>
@@ -6574,10 +6605,16 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                         sidePanelMode === "ai-library"
                                                             ? "border-[#f55f2a] bg-[#f55f2a] text-white"
                                                             : "border-neutral-300 bg-white text-neutral-800"
-                                                    }`}
+                                                    } ${shouldLockImagesTab ? "opacity-70" : ""}`}
+                                                    title={shouldLockImagesTab ? "Images are available on Pro and Agency plans" : "Images"}
                                                 >
                                                     <Images className="h-4 w-4" />
                                                     <span>Images</span>
+                                                    {shouldLockImagesTab ? (
+                                                        <span className="inline-flex items-center rounded-full border border-neutral-300 bg-white px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-neutral-500">
+                                                            Pro
+                                                        </span>
+                                                    ) : null}
                                                 </button>
                                             </div>
                                         </div>
@@ -6813,6 +6850,21 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                     )
                     : null}
 
+                <WebsitePrePaywall
+                    open={showDeployUpgradePaywall}
+                    onClose={() => setShowDeployUpgradePaywall(false)}
+                    onStartCheckout={() => {
+                        setShowDeployUpgradePaywall(false);
+                        onRequestDeployCheckout?.();
+                    }}
+                    checkoutBusy={exporting}
+                    zIndexClassName="z-[30001]"
+                    title="Upgrade to publish"
+                    description="Publish your website live from the editor. Upgrade to unlock one-click deploy and higher monthly credits."
+                    primaryLabel="Subscribe now"
+                    footerNote="Cancel anytime before renewal."
+                />
+
                 {exportPrompt && (
                     <div className="fixed inset-0 z-[30000] flex items-center justify-center bg-black/40">
                         <div className="bg-white rounded-lg shadow-xl p-4 w-full max-w-sm border border-neutral-200">
@@ -6983,6 +7035,8 @@ export default function AppPreviewEditor({
     isFilesHydrated,
     filesHydrationProgress,
     isPreviewReady,
+    deployLocked = false,
+    onRequestDeployCheckout,
 }: AppSourcePreviewEditorProps) {
     const htmlPaths = useMemo(
         () => Object.keys(files || {}).filter(isHtmlPath).sort((a, b) => a.localeCompare(b)),
@@ -7228,6 +7282,8 @@ export default function AppPreviewEditor({
                     isFilesHydrated={isFilesHydrated}
                     filesHydrationProgress={filesHydrationProgress}
                     isPreviewReady={isPreviewReady}
+                    deployLocked={deployLocked}
+                    onRequestDeployCheckout={onRequestDeployCheckout}
                     appName={appName}
                     isRenaming={isRenaming}
                     tempName={tempName}

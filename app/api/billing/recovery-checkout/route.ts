@@ -3,12 +3,12 @@ import { getAdminAuth, getAdminDb } from "@/app/api/_lib/auth";
 import { linkCustomerToUid } from "@/app/api/_lib/billing";
 import { getStripe } from "@/lib/stripe";
 import { verifySignedToken } from "@/app/api/private/email-links";
+import { STRIPE_TRIAL_DAYS } from "@/src/lib/billingAccess";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const stripe = getStripe();
-const TRIAL_DAYS = 7;
 const DEFAULT_EXIT_CODE = "DEPLOY40";
 
 function pickExitPromoId(isProd: boolean) {
@@ -168,7 +168,7 @@ export async function GET(req: NextRequest) {
         },
         discounts,
         subscription_data: {
-            trial_period_days: TRIAL_DAYS,
+            ...(STRIPE_TRIAL_DAYS > 0 ? { trial_period_days: STRIPE_TRIAL_DAYS } : {}),
             metadata: baseMeta,
         },
     });

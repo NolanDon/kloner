@@ -10,7 +10,6 @@ import React, {
     memo,
 } from "react";
 import Image from "next/image";
-import logo from "@/public/images/orange_logo.png";
 import { createPortal, flushSync } from "react-dom";
 import { toast } from "react-hot-toast";
 import CoinLottieBadge from "@/components/tools/CoinLottieBadge";
@@ -86,7 +85,6 @@ import {
     Trash2,
     LayoutGrid,
     MessageSquare,
-    FileText,
 } from "lucide-react";
 import {
     isHttpUrl,
@@ -115,6 +113,7 @@ import {
 import { extractArchivedPageIdsFromRender, fetchRenderForDeployment, getArchivedRoutesForRender, persistArchivedPageIds, scrubArchivedRoutes, secureHtmlForPreviewIframe, withArchivedPageIds } from "@/components/helpers";
 import { useModal } from "@/components/ui/ModalContext";
 import AppBuilderEditor from "@/components/AppBuilderEditor";
+import WebsitePrePaywall from "@/components/WebsitePrePaywall";
 import { getPublicHttpUrlRejectionReason, validateAndNormalizePublicHttpUrl } from "@/src/lib/publicHttpUrl";
 import { recordAppBuilderSessionAnalytics, recordDeployAnalytics } from "@/components/analytics";
 
@@ -1867,6 +1866,11 @@ function RenderCardInner({
             return;
         }
 
+        if (deployLocked) {
+            setShowCreditsPaywall("deploy");
+            return;
+        }
+
         startDeployWizard({ id: r.id, nameHint: r.nameHint ?? undefined });
     };
 
@@ -2731,26 +2735,6 @@ function AppCard({
         if (leaf.length <= 26) return leaf;
         return `${leaf.slice(0, 23)}...`;
     }, [draftArchiveZipRaw]);
-    const draftArchiveArtifactCount = useMemo(() => {
-        const candidates = [
-            (app as any)?.zipPageCount,
-            draftPromotionScanState?.archiveHealth?.zipPageCount,
-            draftPromotionScanState?.archiveHealth?.pageCount,
-            draftPromotionScanState?.archiveHealth?.fileCount,
-            Array.isArray(draftPromotionScanState?.archiveHealth?.files)
-                ? draftPromotionScanState?.archiveHealth?.files.length
-                : null,
-        ];
-
-        for (const candidate of candidates) {
-            const parsed = typeof candidate === "number" ? candidate : Number(candidate);
-            if (Number.isFinite(parsed) && parsed > 0) {
-                return Math.round(parsed);
-            }
-        }
-
-        return null;
-    }, [app, draftPromotionScanState]);
     const draftId = String((app as any)?.draftId || "").trim();
     const shouldShowDraftArchivePendingBadge = Boolean(
         showVersionBadge &&
@@ -2779,19 +2763,6 @@ function AppCard({
     const [draftThumbnailErrored, setDraftThumbnailErrored] = useState(false);
 
     const draftScanStatus = String(draftPromotionScanState?.status || "").trim().toLowerCase();
-    const draftArchiveReady = Boolean(
-        draftArchiveZipRaw || draftPromotionScanState?.zipPath || draftPromotionScanState?.zipUrl
-    );
-    const draftArchiveState: "pending" | "ready" | "failed" | "idle" = (() => {
-        if (!isDraftCard) return "idle";
-        if (draftIssue && !draftIssueIsPromotionProgress) return "failed";
-        if (draftPromotionScanState?.phase === "error" || draftScanStatus === "error" || draftScanStatus === "stale") {
-            return "failed";
-        }
-        if (isPendingCreation || draftPromotionScanPending || draftEditLaunchBusy) return "pending";
-        if (draftArchiveReady) return "ready";
-        return "idle";
-    })();
     const draftArchiveProgressPct = typeof draftPromotionScanState?.crawlProgressProgress === "number"
         ? Math.max(
             0,
@@ -2806,14 +2777,6 @@ function AppCard({
         )
         : null;
     const draftDevArchiveRingClass = "";
-    const draftDevArchiveLabel = showVersionBadge && isDraftCard
-        ? draftArchiveState === "pending"
-            ? `Archive building${typeof draftArchiveProgressPct === "number" ? ` ${draftArchiveProgressPct}%` : ""}`
-            : draftArchiveState === "ready"
-                ? `Archive files${draftArchiveArtifactCount ? `: ${draftArchiveArtifactCount}` : " ready"}`
-                : ""
-        : "";
-    const showDraftArchiveBadge = Boolean(draftDevArchiveLabel);
     const blockedDraftDescription = "Domain blocked for site cloning";
     const draftIssueDetails = draftIssue
         ? (() => {
@@ -2979,21 +2942,6 @@ function AppCard({
                                     </span>
                                 </span>
                             </span>
-                            {showDraftArchiveBadge ? (
-                                <span
-                                    className={`absolute -left-2 -top-2 z-10 inline-flex h-9 w-9 items-center justify-center rounded-full border shadow-sm ${draftArchiveState === "pending"
-                                        ? "border-neutral-200 bg-white text-neutral-600"
-                                        : draftArchiveState === "ready"
-                                            ? "border-neutral-200 bg-white text-neutral-600"
-                                            : draftArchiveState === "failed"
-                                                ? "border-neutral-200 bg-white text-neutral-600"
-                                                : "border-neutral-200 bg-white text-neutral-600"
-                                        }`}
-                                    title={draftDevArchiveLabel}
-                                >
-                                    <FileText className="h-5 w-5 shrink-0" />
-                                </span>
-                            ) : null}
                             <div
                                 className={`group/draft-icon relative grid h-40 w-40 place-items-center overflow-hidden rounded-[2.75rem] border border-neutral-200 bg-neutral-100 text-neutral-500 shadow-[0_10px_20px_rgba(15,23,42,0.06)] transition-all duration-300 ease-out ${draftIssueIsBlocked ? "cursor-not-allowed opacity-70" : "hover:scale-[1.12] hover:shadow-[0_14px_26px_rgba(15,23,42,0.08)]"} ${draftDevArchiveRingClass}`}
                                 style={{ fontFamily: "ui-rounded, 'SF Pro Rounded', 'Avenir Next Rounded', 'Trebuchet MS', sans-serif" }}
@@ -3971,7 +3919,6 @@ export default function PreviewPage(): JSX.Element {
     const [renderTrialSessionEligible, setRenderTrialSessionEligible] = useState(false);
     const [appBuilderTrialSessionEligible, setAppBuilderTrialSessionEligible] = useState(false);
     const [exitOfferClaimed, setExitOfferClaimed] = useState(false);
-    const [showRecoveryOffer, setShowRecoveryOffer] = useState(false);
     const [showWebsitePrePaywall, setShowWebsitePrePaywall] = useState(false);
     const [showTrialSuccessCelebration, setShowTrialSuccessCelebration] = useState(false);
     const [showDeploySuccessConfetti, setShowDeploySuccessConfetti] = useState(false);
@@ -4213,7 +4160,6 @@ export default function PreviewPage(): JSX.Element {
     const [currentAppId, setCurrentAppId] = useState<string | null>(null);
     const [appBuilderLaunchLoading, setAppBuilderLaunchLoading] = useState(false);
     const [appBuilderInitialViewMode, setAppBuilderInitialViewMode] = useState<"ai" | "custom">("ai");
-    const [appBuilderCookiePromptOpen, setAppBuilderCookiePromptOpen] = useState(false);
     const [pendingAppBuilderAppId, setPendingAppBuilderAppId] = useState<string | null>(null);
     const [nextJsGenerationPendingUrl, setNextJsGenerationPendingUrl] = useState<string | null>(null);
     const [htmlGenerationPendingUrl, setHtmlGenerationPendingUrl] = useState<string | null>(null);
@@ -4272,7 +4218,6 @@ export default function PreviewPage(): JSX.Element {
     const draftsApiLoadInFlightRef = useRef(false);
     const appBuilderLaunchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const pendingUrlGenerationAppIdRef = useRef<string | null>(null);
-    const appBuilderCookiePromptResolverRef = useRef<((accepted: boolean) => void) | null>(null);
     const buildFromCollectionRef = useRef<((storageKeys: string[]) => Promise<void>) | null>(null);
     const previousEditorOpenRef = useRef(false);
     const previousAppBuilderOpenRef = useRef(false);
@@ -4288,32 +4233,8 @@ export default function PreviewPage(): JSX.Element {
         >
     >({});
 
-    const resolveAppBuilderCookiePrompt = useCallback((accepted: boolean) => {
-        const resolve = appBuilderCookiePromptResolverRef.current;
-        appBuilderCookiePromptResolverRef.current = null;
-
-        setAppBuilderCookiePromptOpen(false);
-        setPendingAppBuilderAppId(null);
-        if (!accepted) {
-            setCurrentAppId(null);
-        }
-
-        if (resolve) resolve(accepted);
-    }, []);
-
     const requestAppBuilderCookieConsent = useCallback(async (): Promise<boolean> => {
-        const forceCookiePromptInDev = process.env.NODE_ENV !== "production";
-        if (!forceCookiePromptInDev && hasAcceptedAppBuilderNecessaryCookies()) {
-            return true;
-        }
-
-        setPendingAppBuilderAppId(null);
-        setCurrentAppId(null);
-        setAppBuilderCookiePromptOpen(true);
-
-        return await new Promise<boolean>((resolve) => {
-            appBuilderCookiePromptResolverRef.current = resolve;
-        });
+        return true;
     }, []);
 
     const openAppBuilderWithCookieGate = useCallback((appId: string | null, initialViewMode: "ai" | "custom" = "ai") => {
@@ -4337,19 +4258,10 @@ export default function PreviewPage(): JSX.Element {
             );
             return;
         }
-        const forceCookiePromptInDev = process.env.NODE_ENV !== "production";
-
         setAppBuilderInitialViewMode(initialViewMode);
         setCurrentAppId(nextId);
-        if (!forceCookiePromptInDev && hasAcceptedAppBuilderNecessaryCookies()) {
-            setAppBuilderCookiePromptOpen(false);
-            setPendingAppBuilderAppId(null);
-            setAppBuilderOpen(true);
-            return;
-        }
-
-        setPendingAppBuilderAppId(nextId);
-        setAppBuilderCookiePromptOpen(true);
+        setPendingAppBuilderAppId(null);
+        setAppBuilderOpen(true);
     }, [blockedUrlGenerationAppId, isTrialAccessRevoked, showAlert]);
 
     const openAppBuilderPreviewFirstWithCookieGate = useCallback((appId: string | null) => {
@@ -4378,7 +4290,6 @@ export default function PreviewPage(): JSX.Element {
         setAppBuilderInitialViewMode("ai");
         setCurrentAppId(nextId);
         setPendingAppBuilderAppId(null);
-        setAppBuilderCookiePromptOpen(false);
         setAppBuilderOpen(true);
     }, [blockedUrlGenerationAppId, isTrialAccessRevoked, showAlert]);
 
@@ -4410,22 +4321,6 @@ export default function PreviewPage(): JSX.Element {
             }
         };
     }, []);
-
-    const acceptCookiesAndOpenAppBuilder = useCallback(() => {
-        persistAppBuilderNecessaryCookiesConsent();
-        const nextId = pendingAppBuilderAppId || currentAppId;
-        resolveAppBuilderCookiePrompt(true);
-        if (nextId) {
-            if (blockedUrlGenerationAppId && nextId === blockedUrlGenerationAppId) {
-                setAppBuilderOpen(false);
-                setPendingAppBuilderAppId(null);
-                setCurrentAppId(null);
-                return;
-            }
-            setCurrentAppId(nextId);
-            setAppBuilderOpen(true);
-        }
-    }, [blockedUrlGenerationAppId, pendingAppBuilderAppId, currentAppId, resolveAppBuilderCookiePrompt]);
 
     // ───────── app deploy wizard (first deploy) ─────────
     const [appDeployWizardOpen, setAppDeployWizardOpen] = useState(false);
@@ -5310,7 +5205,6 @@ export default function PreviewPage(): JSX.Element {
                             // ignore
                         }
                     }
-                    setShowRecoveryOffer(false);
                     dismissWebsitePrePaywall();
                     return;
                 }
@@ -5357,7 +5251,6 @@ export default function PreviewPage(): JSX.Element {
                 }
 
                 dismissWebsitePrePaywall();
-                setShowRecoveryOffer(true);
                 if (recoveryOfferSeenStorageKey) {
                     try {
                         window.sessionStorage.setItem(recoveryOfferSeenStorageKey, "1");
@@ -5768,7 +5661,6 @@ export default function PreviewPage(): JSX.Element {
         setUrlGenerationRescanModal({ open: false, message: "", url: "" });
         setAppBuilderOpen(false);
         setCurrentAppId(null);
-        setAppBuilderCookiePromptOpen(false);
         setPendingAppBuilderAppId(null);
         setPendingCreatedApp(null);
         pendingCreatedAppLaunchRequestedRef.current = null;
@@ -5795,7 +5687,6 @@ export default function PreviewPage(): JSX.Element {
         setAppWizardOpen(false);
         setAppBuilderOpen(false);
         setCurrentAppId(null);
-        setAppBuilderCookiePromptOpen(false);
         setPendingAppBuilderAppId(null);
         setPendingCreatedApp(null);
         pendingCreatedAppLaunchRequestedRef.current = null;
@@ -6066,33 +5957,13 @@ export default function PreviewPage(): JSX.Element {
     ) => {
         if (!user) return;
 
-        const shouldOpenAppBuilderImmediately = mode === "url" && Boolean(opts?.openAppBuilderImmediately);
-        const optimisticAppBuilderId = shouldOpenAppBuilderImmediately
-            ? `pending-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-            : null;
+        const shouldOpenAppBuilderImmediately =
+            mode === "url" &&
+            Boolean(opts?.openAppBuilderImmediately) &&
+            Boolean(opts?.draftAppId);
+        const isDraftPromotionRequest = Boolean(shouldOpenAppBuilderImmediately && typeof opts?.draftAppId === "string");
 
-        if (shouldOpenAppBuilderImmediately) {
-            const tierRefresh = await refreshUserTierNow();
-            const canOpenAppBuilder =
-                tierRefresh.tier === "pro" ||
-                tierRefresh.tier === "agency" ||
-                tierRefresh.stripeStatus === "trialing";
-
-            if (!canOpenAppBuilder) {
-                if (optimisticAppBuilderId) {
-                    setAppBuilderOpen(false);
-                    setCurrentAppId(null);
-                }
-                setAppWizardBusy(false);
-                setAppWizardError(null);
-                showWebsiteExitOfferPaywall();
-                return null;
-            }
-        } else if (!opts?.skipGenerationTierCheck && !(await canProceedWithAppWizardGeneration())) {
-            if (optimisticAppBuilderId) {
-                setAppBuilderOpen(false);
-                setCurrentAppId(null);
-            }
+        if (!shouldOpenAppBuilderImmediately && !opts?.skipGenerationTierCheck && !(await canProceedWithAppWizardGeneration())) {
             return null;
         }
 
@@ -6100,19 +5971,6 @@ export default function PreviewPage(): JSX.Element {
             const consentAccepted = await requestAppBuilderCookieConsent();
             if (!consentAccepted) {
                 return null;
-            }
-        }
-
-        const shouldDeferImmediateOpenForDraftPromotion = Boolean(
-            shouldOpenAppBuilderImmediately &&
-            typeof opts?.draftAppId === "string" &&
-            /^draftapp_/i.test(opts.draftAppId.trim()),
-        );
-
-        if (shouldOpenAppBuilderImmediately && !shouldDeferImmediateOpenForDraftPromotion) {
-            const immediateAppId = opts?.draftAppId || optimisticAppBuilderId;
-            if (immediateAppId) {
-                openAppBuilderDirectly(immediateAppId);
             }
         }
 
@@ -6262,7 +6120,7 @@ export default function PreviewPage(): JSX.Element {
                     const resolvedAppId = acceptedAny?.kind === "accepted" && acceptedAny?.appId
                         ? acceptedAny.appId
                         : pendingCreatedAppId || fallbackJobId || fallbackRequestId || "";
-                    void saveUrlDraft({
+                    await saveUrlDraft({
                         retryable: Boolean(responseWarning),
                         completed: true,
                         warningCode: responseWarning?.code || null,
@@ -6311,9 +6169,6 @@ export default function PreviewPage(): JSX.Element {
                     }
 
                     appId = resolvedAppId || pendingCreatedAppId || fallbackJobId || fallbackRequestId || appName;
-                    if (optimisticAppBuilderId) {
-                        setCurrentAppId(appId);
-                    }
                 } else {
                     const shouldPersistRescanWarning =
                         responseWarning?.blocking ||
@@ -6387,6 +6242,13 @@ export default function PreviewPage(): JSX.Element {
                         }
 
                         if (parsed.status === 403) {
+                            if (isDraftPromotionRequest) {
+                                pendingUrlGenerationAppIdRef.current = null;
+                                setPendingCreatedApp(null);
+                                setUrlGenerationErrorDetails("");
+                                setErr("");
+                                return null;
+                            }
                             setUrlGenerationErrorDetails("");
                             setErr("");
                             showWebsiteExitOfferPaywall();
@@ -6491,20 +6353,10 @@ export default function PreviewPage(): JSX.Element {
                                 url: parsed.url || url,
                             });
 
-                            if (optimisticAppBuilderId) {
-                                setAppBuilderOpen(false);
-                                setCurrentAppId(null);
-                            }
-
                             return null;
                         }
 
                         setErr(parsed.message || "Something went wrong while generating this URL. Please retry.");
-
-                        if (optimisticAppBuilderId) {
-                            setAppBuilderOpen(false);
-                            setCurrentAppId(null);
-                        }
 
                         return null;
                     }
@@ -6564,6 +6416,19 @@ export default function PreviewPage(): JSX.Element {
             if (mode === "url" && opts?.draftDocId) {
                 const draftDocIdToDelete = String(opts.draftDocId || "").trim();
                 if (draftDocIdToDelete) {
+                    const nextSuppressed = {
+                        ...suppressedPromotedDraftsRef.current,
+                        [draftDocIdToDelete]: true,
+                    };
+                    if (typeof opts?.draftAppId === "string" && opts.draftAppId.trim()) {
+                        nextSuppressed[opts.draftAppId.trim()] = true;
+                    }
+                    if (typeof appId === "string" && appId.trim()) {
+                        nextSuppressed[appId.trim()] = true;
+                    }
+                    suppressedPromotedDraftsRef.current = nextSuppressed;
+                    setSuppressedPromotedDrafts(nextSuppressed);
+
                     try {
                         await fetch("/api/private/kloner-draft", {
                             method: "POST",
@@ -6588,10 +6453,9 @@ export default function PreviewPage(): JSX.Element {
                     });
                 }
             }
-
-                if (mode === "url" && opts?.openAppBuilderImmediately) {
-                    openAppBuilderDirectly(appId);
-                }
+            if (shouldOpenAppBuilderImmediately) {
+                openAppBuilderDirectly(appId);
+            }
 
             // No agent application for new modes, as they are full generations
 
@@ -6600,6 +6464,15 @@ export default function PreviewPage(): JSX.Element {
             const message = getUserFacingErrorMessage(error, "Failed to create app. Please try again.");
             console.error("Failed to create app:", error);
             if (isGenerationTierBlockedMessage(message)) {
+                if (isDraftPromotionRequest) {
+                    if (appWizardOpen) {
+                        setAppWizardOpen(false);
+                        setAppWizardError(null);
+                        setAppWizardBusy(false);
+                    }
+                    setPendingCreatedApp(null);
+                    return null;
+                }
                 showWebsiteExitOfferPaywall();
                 if (appWizardOpen) {
                     setAppWizardOpen(false);
@@ -6616,19 +6489,11 @@ export default function PreviewPage(): JSX.Element {
                     setAppWizardError(null);
                     setAppWizardBusy(false);
                 }
-                if (optimisticAppBuilderId) {
-                    setAppBuilderOpen(false);
-                    setCurrentAppId(null);
-                }
                 setPendingCreatedApp(null);
                 return null;
             }
 
             if (mode === "url" && Boolean((error as any)?.terminalUrlGenerationFailure)) {
-                if (optimisticAppBuilderId) {
-                    setAppBuilderOpen(false);
-                    setCurrentAppId(null);
-                }
                 setPendingCreatedApp(null);
                 return null;
             }
@@ -6643,10 +6508,6 @@ export default function PreviewPage(): JSX.Element {
             }
 
             opts?.onError?.(message);
-            if (optimisticAppBuilderId) {
-                setAppBuilderOpen(false);
-                setCurrentAppId(null);
-            }
             setPendingCreatedApp(null);
             push(message, "err");
             return null;
@@ -6674,23 +6535,18 @@ export default function PreviewPage(): JSX.Element {
             return;
         }
 
-        if (appBuilderCookiePromptOpen && pendingAppBuilderAppId === pendingCreatedApp.id) {
-            return;
-        }
-
         if (pendingCreatedAppLaunchRequestedRef.current !== pendingCreatedApp.id) {
             pendingCreatedAppLaunchRequestedRef.current = pendingCreatedApp.id;
             openAppBuilderWithCookieGate(pendingCreatedApp.id);
             return;
         }
 
-        if (!appBuilderOpen && !appBuilderCookiePromptOpen && currentAppId !== pendingCreatedApp.id && pendingAppBuilderAppId !== pendingCreatedApp.id) {
+        if (!appBuilderOpen && currentAppId !== pendingCreatedApp.id && pendingAppBuilderAppId !== pendingCreatedApp.id) {
             pendingCreatedAppLaunchRequestedRef.current = null;
             setPendingCreatedApp(null);
         }
     }, [
         apps,
-        appBuilderCookiePromptOpen,
         appBuilderOpen,
         currentAppId,
         openAppBuilderWithCookieGate,
@@ -7567,7 +7423,6 @@ export default function PreviewPage(): JSX.Element {
     const startNextJsAppBuilder = useCallback(async (url: string) => {
         await handleCreateApp("url", undefined, url, {
             skipCookieConsent: true,
-            openAppBuilderImmediately: true,
             generationFormat: "nextjs",
         });
     }, [handleCreateApp]);
@@ -7575,7 +7430,6 @@ export default function PreviewPage(): JSX.Element {
     const startHtmlAppBuilder = useCallback(async (url: string) => {
         await handleCreateApp("url", undefined, url, {
             skipCookieConsent: true,
-            openAppBuilderImmediately: true,
             generationFormat: "html",
         });
     }, [handleCreateApp]);
@@ -7936,10 +7790,16 @@ export default function PreviewPage(): JSX.Element {
             throw new Error("Archive scan timed out before the archive was ready.");
         };
 
+        if (!canUsePreviewCredit()) {
+            setErr("");
+            setInfo("");
+            push("You have used all available preview credits for this month.", "warn");
+            setShowCreditsPaywall("preview");
+            return;
+        }
+
         draftPromotionInFlightRef.current[draftKey] = true;
-        flushSync(() => {
-            setPendingDraftApps((prev) => ({ ...prev, [draftKey]: true }));
-        });
+        setPendingDraftApps((prev) => ({ ...prev, [draftKey]: true }));
         updateScanState({
             phase: "scanning",
             status: "queued",
@@ -7948,22 +7808,7 @@ export default function PreviewPage(): JSX.Element {
         });
 
         try {
-            const tierRefresh = await refreshUserTierNow();
-            const canOpenDraftInBuilder =
-                tierRefresh.tier === "pro" ||
-                tierRefresh.tier === "agency" ||
-                tierRefresh.stripeStatus === "trialing";
-
-            if (!canOpenDraftInBuilder) {
-                showWebsiteExitOfferPaywall();
-                updateScanState({
-                    phase: "error",
-                    status: "error",
-                    lastError: "Upgrade to continue editing this draft.",
-                    updatedAt: Date.now(),
-                });
-                return;
-            }
+            await refreshUserTierNow();
 
             const csrf = await ensureSessionAndCsrf().catch(() => null);
             let archiveReady = await readArchiveSnapshot();
@@ -8025,12 +7870,24 @@ export default function PreviewPage(): JSX.Element {
                 return;
             }
 
-            setSuppressedPromotedDrafts((prev) => ({ ...prev, [draftKey]: true }));
+            const promotedAppId = String(createResult || "").trim();
+            const nextSuppressed = {
+                ...suppressedPromotedDraftsRef.current,
+                [draftKey]: true,
+            };
+            if (draft.id) {
+                nextSuppressed[String(draft.id || "").trim()] = true;
+            }
+            if (promotedAppId) {
+                nextSuppressed[promotedAppId] = true;
+            }
+            suppressedPromotedDraftsRef.current = nextSuppressed;
+            setSuppressedPromotedDrafts(nextSuppressed);
             setDraftApps((prev) =>
                 prev.filter((item) => {
                     const itemDraftId = String(item.draftId || "").trim();
                     const itemId = String(item.id || "").trim();
-                    return itemDraftId !== draftKey && itemId !== draftKey && itemId !== String(draft.id || "").trim();
+                    return itemDraftId !== draftKey && itemId !== draftKey && itemId !== String(draft.id || "").trim() && itemId !== promotedAppId;
                 })
             );
             setPendingCreatedApp((prev) => (prev && (prev.id === draft.id || prev.id === draftKey) ? null : prev));
@@ -8078,7 +7935,7 @@ export default function PreviewPage(): JSX.Element {
             setInfo((current) => current === "Starting scan…" ? "" : current);
         }
 
-    }, [db, handleCreateApp, push, refreshUserTierNow, setDraftPromotionScanByDraftId, showWebsiteExitOfferPaywall, targetUrl, user?.uid]);
+    }, [canUsePreviewCredit, db, handleCreateApp, push, refreshUserTierNow, setDraftPromotionScanByDraftId, showWebsiteExitOfferPaywall, targetUrl, user?.uid]);
 
     useEffect(() => {
         promoteDraftToAppRef.current = promoteDraftToApp;
@@ -12586,38 +12443,6 @@ export default function PreviewPage(): JSX.Element {
         "/images/showcase/showcase5.jpg",
     ];
 
-    const websitePrePaywallBenefits = [
-        {
-            value: '01',
-            title: '40+ site generations/mo',
-            metric: 'Included',
-            text: 'Build and publish more pages without running out of runs.',
-        },
-        {
-            value: '02',
-            title: 'AI Agent for app tasks',
-            metric: 'Included',
-            text: 'Use AI to handle small changes, fixes, and build tasks.',
-        },
-        {
-            value: '03',
-            title: 'Editor for design tweaks',
-            metric: 'Included',
-            text: 'Make quick visual updates without rebuilding from scratch.',
-        },
-        {
-            value: '04',
-            title: '24/7 support',
-            metric: 'Included',
-            text: 'Get help anytime you need it.',
-        },
-    ];
-
-    const websitePrePaywallWeeklyPrice = 19.99 / 4;
-    const websitePrePaywallDismissLabel = targetUrl
-        ? `No, I don't want to clone ${truncateMiddle(targetUrl, 42)}.`
-        : "No thanks, skip cloning for now.";
-
     function openExitOffer(reason: NonNullable<typeof exitOfferReason>) {
         if (!canUseExitOffer) {
             closeDeployWizard();
@@ -12669,47 +12494,6 @@ export default function PreviewPage(): JSX.Element {
         setExitOfferReason(null);
         setAppExitOfferReason(null);
         setShowWebsitePrePaywall(false);
-    }
-
-    function dismissRecoveryOffer() {
-        setShowRecoveryOffer(false);
-        if (recoveryOfferSeenStorageKey) {
-            try {
-                window.sessionStorage.setItem(recoveryOfferSeenStorageKey, "1");
-            } catch {
-                // ignore
-            }
-        }
-    }
-
-    function startRecoveryCheckout() {
-        if (showRecoveryCheckoutLoader || typeof window === "undefined") return;
-        setShowRecoveryCheckoutLoader(true);
-        dismissRecoveryOffer();
-        window.setTimeout(async () => {
-            try {
-                const res = await fetch("/api/billing/recovery-checkout-link", {
-                    method: "GET",
-                    credentials: "include",
-                    cache: "no-store",
-                });
-
-                const data = await res.json().catch(() => null);
-                const url = typeof data?.url === "string" ? data.url : "";
-                if (!res.ok || !url) {
-                    throw new Error(typeof data?.error === "string" ? data.error : "Unable to open recovery checkout.");
-                }
-
-                window.location.href = url;
-            } catch (err) {
-                console.error("startRecoveryCheckout failed", err);
-                setShowRecoveryCheckoutLoader(false);
-                void showAlert(
-                    "Checkout is taking too long. Please try again in a few seconds.",
-                    "Checkout Error",
-                );
-            }
-        }, 50);
     }
 
     const startProCheckout = useCallback(
@@ -13311,10 +13095,6 @@ export default function PreviewPage(): JSX.Element {
                                     disableActions={isTrialAccessRevoked || websiteSubmitBusy}
                                     accessLocked={isTrialAccessRevoked}
                                     onCustomize={(appId) => {
-                                        if (isFreeTierNotTrialing) {
-                                            setShowWebsitePrePaywall(true);
-                                            return;
-                                        }
                                         openAppBuilderPreviewFirstWithCookieGate(appId);
                                     }}
                                     onArchive={handleArchiveApp}
@@ -13452,6 +13232,10 @@ export default function PreviewPage(): JSX.Element {
                             setAppBuilderInitialViewMode("ai");
                         }}
                         onDeploy={(app) => openAppDeployWizard(app)}
+                        deployLocked={userTier === "free"}
+                        onRequestDeployCheckout={() => {
+                            void startProCheckoutForAppDeploy({ returnAppId: currentAppId });
+                        }}
                         agentWelcomeContext={agentWelcomeContextByAppId[currentAppId]}
                         trialPromptEnabled={isFreeTierNotTrialing && !firstGenerationTrialPromptShown}
                         trialPromptSessionEligible={appBuilderTrialSessionEligible && !firstGenerationTrialPromptShown}
@@ -13469,67 +13253,6 @@ export default function PreviewPage(): JSX.Element {
                 )}
 
                 {appBuilderLaunchLoading ? <KlonerLoader /> : null}
-
-                <AnimatePresence>
-                    {appBuilderCookiePromptOpen && (
-                        <motion.div
-                            key="app-builder-cookie-wizard"
-                            className="fixed inset-0 z-[18100]"
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            exit={{ opacity: 0 }}
-                        >
-                            <motion.div
-                                className="absolute inset-0 bg-black/70 backdrop-blur-sm"
-                                onClick={() => {
-                                    resolveAppBuilderCookiePrompt(false);
-                                }}
-                                initial={{ opacity: 0 }}
-                                animate={{ opacity: 1 }}
-                                exit={{ opacity: 0 }}
-                                transition={{ duration: 0.18 }}
-                            />
-
-                            <div className="absolute inset-0 flex items-center justify-center px-4 sm:px-6">
-                                <motion.div
-                                    className="relative w-full max-w-md overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-xl"
-                                    initial={{ opacity: 0, y: 24, scale: 0.96 }}
-                                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                                    exit={{ opacity: 0, y: 16, scale: 0.96 }}
-                                    transition={{ duration: 0.22, ease: [0.23, 0.82, 0.25, 1] }}
-                                >
-                                    <div className="p-5 pt-6">
-                                        <p className="text-[11px] uppercase tracking-[0.16em] text-neutral-400">Final step</p>
-                                        <p className="mt-1 text-lg font-semibold text-neutral-900">One quick cookie check</p>
-                                        <p className="mt-2 text-sm text-neutral-600">
-                                            To keep your preview connected, we need essential app cookies. No marketing cookies, just builder basics.
-                                        </p>
-
-                                        <div className="mt-4 flex items-center justify-end gap-2">
-                                            <button
-                                                type="button"
-                                                onClick={() => {
-                                                    resolveAppBuilderCookiePrompt(false);
-                                                }}
-                                                className="rounded-xl border border-neutral-200 bg-white px-4 py-2 text-sm font-semibold text-neutral-800 hover:bg-neutral-50"
-                                            >
-                                                Not now
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={acceptCookiesAndOpenAppBuilder}
-                                                className="rounded-xl px-4 py-2 text-sm font-semibold text-white hover:opacity-90"
-                                                style={{ backgroundColor: ACCENT }}
-                                            >
-                                                Accept and continue
-                                            </button>
-                                        </div>
-                                    </div>
-                                </motion.div>
-                            </div>
-                        </motion.div>
-                    )}
-                </AnimatePresence>
 
                 {/* web app wizard */}
                 <AnimatePresence>
@@ -13966,7 +13689,7 @@ export default function PreviewPage(): JSX.Element {
                                                                 Upgrade to launch with one click
                                                             </p>
                                                             <p className="mt-1 text-[11px] leading-relaxed text-neutral-600 sm:text-xs">
-                                                                Build in Next.js 16 or ship a lightweight HTML site. Includes a 7-day trial.
+                                                                Build in Next.js 16 or ship a lightweight HTML site. Billed immediately.
                                                             </p>
                                                         </div>
                                                     </div>
@@ -14038,11 +13761,11 @@ export default function PreviewPage(): JSX.Element {
                                                     whileTap={{ scale: 0.99 }}
                                                     transition={{ duration: 0.16, ease: "easeOut" }}
                                                 >
-                                                    {checkoutBusy ? "Redirecting to Stripe…" : "Start 7-day trial & publish →"}
+                                                    {checkoutBusy ? "Redirecting to Stripe…" : "Subscribe now & publish →"}
                                                 </motion.button>
 
                                                 <p className="-mt-1 text-center text-[11px] text-neutral-500 pb-1 sm:pb-0">
-                                                    Trial starts today. Cancel anytime before renewal.
+                                                    Billed immediately. Cancel anytime before renewal.
                                                 </p>
 
                                                 <button
@@ -14213,11 +13936,11 @@ export default function PreviewPage(): JSX.Element {
                                             </div>
 
                                             <div className="mt-1 flex justify-center text-[12px] text-neutral-700 gap-1">
-                                                <span className="font-medium">7-day trial + discount after trial</span>
+                                                <span className="font-medium">Immediate billing + one-time discount</span>
                                             </div>
 
                                             <div className="my-5 rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2 text-[12px] text-neutral-700">
-                                                Build websites with databases, products, and AI integrations, then publish them from the same dashboard.
+                                                Build websites with databases, products, and AI integrations, access way more features, then publish them from the same dashboard.
                                             </div>
                                         </div>
 
@@ -14246,7 +13969,7 @@ export default function PreviewPage(): JSX.Element {
                                             whileTap={{ scale: 0.99 }}
                                             transition={{ duration: 0.16, ease: "easeOut" }}
                                         >
-                                            {checkoutBusy ? "Redirecting to Stripe…" : "Start free trial & claim 40% off →"}
+                                            {checkoutBusy ? "Redirecting to Stripe…" : "Subscribe now & claim 40% off →"}
                                         </motion.button>
 
                                         <p className="mt-3 text-center text-[11px] text-neutral-500">
@@ -14660,7 +14383,7 @@ export default function PreviewPage(): JSX.Element {
                                                         <div className="px-7 pb-6 pt-5">
                                                             {/* badge */}
                                                             <div className="inline-flex items-center rounded-full border border-neutral-200 bg-white px-3 py-1 text-[11px] font-extrabold tracking-[0.18em] text-neutral-800 uppercase">
-                                                                Start 7-day trial
+                                                                Subscribe now
                                                             </div>
 
                                                             {/* headline */}
@@ -14670,7 +14393,7 @@ export default function PreviewPage(): JSX.Element {
 
                                                             {/* subcopy */}
                                                             <p className="mt-3 text-[13px] leading-relaxed text-neutral-600">
-                                                                Build websites with databases, products, and AI integrations, then publish them from the same dashboard.
+                                                                Build websites with databases, products, and AI integrations, access way more features, then publish them from the same dashboard.
                                                             </p>
 
                                                             {/* {canUseExitOffer ? (
@@ -14741,11 +14464,11 @@ export default function PreviewPage(): JSX.Element {
                                                                     whileTap={{ scale: 0.99 }}
                                                                     transition={{ duration: 0.16, ease: "easeOut" }}
                                                                 >
-                                                                    {checkoutBusy ? "Redirecting to Stripe…" : "Start 7-day trial & publish →"}
+                                                                    {checkoutBusy ? "Redirecting to Stripe…" : "Subscribe now & publish →"}
                                                                 </motion.button>
 
                                                                 <p className="mt-3 text-center text-[11px] text-neutral-500">
-                                                                    Trial starts today. Cancel anytime before renewal.
+                                                                    Billed immediately. Cancel anytime before renewal.
                                                                 </p>
                                                             </div>
                                                         </div>
@@ -14903,7 +14626,7 @@ export default function PreviewPage(): JSX.Element {
                                                                             </motion.button>
 
                                                                             <p className="mt-3 text-center text-[11px] text-neutral-500">
-                                                                                Free for 7 days. 40% off applies to your first month after trial.
+                                                                                Billed immediately. 40% off applies to your first month.
                                                                             </p>
                                                                         </div>
 
@@ -15056,74 +14779,32 @@ export default function PreviewPage(): JSX.Element {
                 {/* generic paywall */}
                 {
                     showCreditsPaywall && (
-                        <div className="fixed inset-0 z-[12000] simple-fade-in">
-                            <div className="absolute inset-0 bg-black/60 simple-fade-in" />
-                            <div className="absolute inset-0 flex items-center justify-center p-4 simple-fade-in">
-                                <div className="relative w-full max-w-md rounded-2xl bg-white shadow-xl border border-neutral-200 p-6 pt-5 text-sm text-neutral-800 simple-fade-in">
-                                    <button
-                                        type="button"
-                                        onClick={() => setShowCreditsPaywall(null)}
-                                        className="absolute right-4 top-4 inline-flex h-7 w-7 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-500 shadow-sm transition hover:bg-neutral-50 hover:text-neutral-700"
-                                        aria-label="Close paywall"
-                                        title="Close"
-                                    >
-                                        <X className="h-4 w-4" />
-                                    </button>
-
-                                    <div className="flex items-center gap-2 mb-2 pr-10">
-                                        <Crown className="h-4 w-4 text-amber-500" />
-                                        <h3 className="text-base font-semibold">
-                                            You’ve hit the limit on your{" "}
-                                            {userTier === "free" ? "free" : userTier} plan
-                                        </h3>
-                                    </div>
-                                    <p className="text-sm text-neutral-600 mb-3">
-                                        {showCreditsPaywall === "screenshot" &&
-                                            "You have used all monthly screenshot credits. Upgrade to capture more pages and monitor more sites."}
-                                        {showCreditsPaywall === "preview" &&
-                                            "You have used all monthly generation credits. Upgrade to websites and unlock one-click deploy."}
-                                        {showCreditsPaywall === "deploy" &&
-                                            "To publish your app or website live, upgrade to unlock one-click deploy and higher monthly credits."}
-                                    </p>
-                                    <ul className="mb-4 list-disc list-inside text-sm text-neutral-700 space-y-1">
-                                        <li>
-                                            Higher monthly limits for screenshots and previews
-                                        </li>
-                                        <li>
-                                            Unlock deployments and live URLs
-                                        </li>
-                                        <li>Priority rendering and faster queues</li>
-                                    </ul>
-                                    <div className="flex items-center justify-center">
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                setShowCreditsPaywall(null);
-                                                void startProCheckout();
-                                            }}
-                                            className="inline-flex w-full max-w-sm items-center justify-center rounded-xl px-4 py-3 text-base font-semibold text-white shadow-sm transition hover:opacity-90"
-                                            style={{ backgroundColor: ACCENT }}
-                                        >
-                                            Claim free 7-day trial
-                                        </button>
-                                    </div>
-                                    {showCreditsPaywall === "preview" ? (
-                                        <div className="mt-3 flex items-center justify-center">
-                                            <button
-                                                type="button"
-                                                onClick={() => {
-                                                    setShowCreditsPaywall(null);
-                                                    router.push("/price", { scroll: false });
-                                                }}
-                                                className="inline-flex w-full max-w-sm items-center justify-center rounded-xl border border-neutral-200 bg-white px-4 py-3 text-base font-semibold text-neutral-800 transition hover:bg-neutral-50"
-                                            >
-                                                View pricing
-                                            </button>
-                                        </div>
-                                    ) : null}
-                                </div>
-                            </div>
-                        </div>
+                        <WebsitePrePaywall
+                            open={Boolean(showCreditsPaywall)}
+                            onClose={() => setShowCreditsPaywall(null)}
+                            onStartCheckout={() => {
+                                setShowCreditsPaywall(null);
+                                void startProCheckout();
+                            }}
+                            checkoutBusy={checkoutBusy}
+                            title={
+                                showCreditsPaywall === "deploy"
+                                    ? "Upgrade to publish"
+                                    : userTier === "free"
+                                        ? "You’ve hit the limit on your free plan"
+                                        : `You’ve hit the limit on your ${userTier} plan`
+                            }
+                            description={
+                                showCreditsPaywall === "screenshot"
+                                    ? "You have used all monthly screenshot credits. Upgrade to capture more pages and monitor more sites."
+                                    : showCreditsPaywall === "preview"
+                                        ? "You have used all monthly generation credits. Upgrade to websites and unlock one-click deploy."
+                                        : "Publish your website live from the editor. Upgrade to unlock one-click deploy and higher monthly credits."
+                            }
+                            primaryLabel="Subscribe now"
+                            footerNote="Cancel anytime before renewal."
+                            zIndexClassName="z-[12049]"
+                        />
                     )
                 }
 
@@ -15148,46 +14829,7 @@ export default function PreviewPage(): JSX.Element {
                 }
 
                 {
-                    showRecoveryOffer && (
-                        <div className="fixed inset-0 z-[12010] simple-fade-in">
-                            <div className="absolute inset-0 bg-black/60 simple-fade-in" />
-                            <div className="absolute inset-0 flex items-center justify-center p-4 simple-fade-in">
-                                <div className="relative w-full max-w-md rounded-2xl bg-white shadow-xl border border-neutral-200 p-6 pt-5 text-sm text-neutral-800 simple-fade-in">
-                                    <button
-                                        type="button"
-                                        onClick={dismissRecoveryOffer}
-                                        className="absolute right-4 top-4 inline-flex h-7 w-7 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-500 shadow-sm transition hover:bg-neutral-50 hover:text-neutral-700"
-                                        aria-label="Close recovery offer"
-                                        title="Close"
-                                    >
-                                        <X className="h-4 w-4" />
-                                    </button>
-
-                                    <div className="flex items-center gap-2 mb-2 pr-10">
-                                        <Crown className="h-4 w-4 text-amber-500" />
-                                        <h3 className="text-base font-semibold">40% off your first month</h3>
-                                    </div>
-                                    <p className="text-sm text-neutral-600 mb-4">
-                                        Use this one-time link to return to checkout with 40% off your first month.
-                                    </p>
-                                    <ul className="mb-4 list-disc list-inside text-sm text-neutral-700 space-y-1">
-                                        <li>One-time 40% off your first month</li>
-                                        <li>Cancel anytime before renewal</li>
-                                    </ul>
-                                    <div className="flex items-center justify-center">
-                                        <button
-                                            type="button"
-                                            onClick={startRecoveryCheckout}
-                                            className="inline-flex w-full max-w-sm items-center justify-center rounded-xl px-4 py-3 text-base font-semibold text-white shadow-sm transition hover:opacity-90"
-                                            style={{ backgroundColor: ACCENT }}
-                                        >
-                                            Get 40% off now
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    )
+                    null
                 }
 
                 {/* PRO paywall for apps */}
@@ -15228,7 +14870,7 @@ export default function PreviewPage(): JSX.Element {
                                             className="rounded-md px-3 py-1.5 text-sm font-semibold text-white"
                                             style={{ backgroundColor: ACCENT }}
                                         >
-                                            Start 7-day trial
+                                            Subscribe now
                                         </button>
                                     </div>
                                 </div>
@@ -15239,143 +14881,16 @@ export default function PreviewPage(): JSX.Element {
 
                 {
                     showWebsitePrePaywall && (
-                        <motion.div
-                            className="website-paywall-overlay fixed inset-0 z-[12049]"
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            exit={{ opacity: 0 }}
-                            transition={{ duration: 1.15, ease: [0.22, 1, 0.36, 1] }}
-                        >
-                            <div className="absolute inset-0 bg-black/70" />
-
-                            <div className="absolute inset-0 flex items-start justify-center overflow-y-auto px-4 py-6 sm:items-center sm:px-6 sm:py-8">
-                                <div className="relative w-full max-w-2xl max-h-[calc(100dvh-3rem)] overflow-y-auto overscroll-contain rounded-[32px] border border-neutral-200 bg-white shadow-[0_30px_120px_rgba(0,0,0,0.24)] sm:max-h-[calc(100dvh-4rem)]">
-                                    <div className="p-5 sm:p-8 lg:p-10">
-                                        <div className="max-w-xl">
-                                            <h3 className="text-3xl sm:text-4xl tracking-tight text-neutral-900">
-                                                You&apos;re close to publishing
-                                            </h3>
-                                            <p className="mt-6 text-sm sm:text-base leading-relaxed text-neutral-600">
-                                                Build websites with databases, products, and AI integrations, then publish them from the same dashboard.
-                                            </p>
-                                        </div>
-
-                                        <div className="mt-5 space-y-3">
-                                            <div className="flex items-start gap-3 text-sm leading-relaxed text-neutral-800">
-                                                <span className="mt-[1px] inline-flex h-6 w-6 items-center justify-center rounded-full text-[12px] font-semibold text-accent shrink-0">
-                                                    ✓
-                                                </span>
-                                                <span>Deploy 40+ websites per month</span>
-                                            </div>
-
-                                            <div className="flex items-start gap-3 text-sm leading-relaxed text-neutral-800">
-                                                <span className="mt-[1px] inline-flex h-6 w-6 items-center justify-center rounded-full text-[12px] font-semibold text-accent shrink-0">
-                                                    ✓
-                                                </span>
-                                                <span>One-click publishing</span>
-                                            </div>
-
-                                            <div className="flex items-start gap-3 text-sm leading-relaxed text-neutral-800">
-                                                <span className="mt-[1px] inline-flex h-6 w-6 items-center justify-center rounded-full text-[12px] font-semibold text-accent shrink-0">
-                                                    ✓
-                                                </span>
-                                                <span>AI task force to build and design your websites</span>
-                                            </div>
-
-                                            <div className="flex items-start gap-3 text-sm leading-relaxed text-neutral-800">
-                                                <span className="mt-[1px] inline-flex h-6 w-6 items-center justify-center rounded-full text-[12px] font-semibold text-accent shrink-0">
-                                                    ✓
-                                                </span>
-                                                <span>Higher queue priority for faster outputs</span>
-                                            </div>
-
-                                            <div className="flex items-start gap-3 text-sm leading-relaxed text-neutral-800">
-                                                <span className="mt-[1px] inline-flex h-6 w-6 items-center justify-center rounded-full text-[12px] font-semibold text-accent shrink-0">
-                                                    ✓
-                                                </span>
-                                                <span>24/7 Human support included</span>
-                                            </div>
-
-                                            <div className="flex items-start gap-3 text-sm leading-relaxed text-neutral-800">
-                                                <span className="mt-[1px] inline-flex h-6 w-6 items-center justify-center rounded-full text-[12px] font-semibold text-accent shrink-0">
-                                                    ✓
-                                                </span>
-                                                <span className="font-semibold text-neutral-900">
-                                                    {`Memberships starting at only $4.99/wk.`}
-                                                </span>
-                                            </div>
-                                        </div>
-
-                                        <div className="mt-7 flex flex-col gap-4">
-                                            <p className="text-[11px] text-neutral-500 sm:text-xs">
-                                                Cancel anytime before renewal.
-                                            </p>
-
-                                            <button
-                                                type="button"
-                                                onClick={() => {
-                                                    setShowWebsitePrePaywall(false);
-                                                    void startProCheckout();
-                                                }}
-                                                className="inline-flex flex-1 items-center justify-center rounded-full bg-[#f55f2a] px-5 py-4 text-[17px] font-semibold tracking-tight text-white shadow-[0_18px_44px_rgba(245,95,42,0.24)] transition hover:translate-y-[-1px] hover:bg-[#f3602c] sm:px-6 sm:py-5 sm:text-[20px]"
-                                            >
-                                                Start generating websites for free →
-                                            </button>
-
-                                            <button
-                                                type="button"
-                                                onClick={() => {
-                                                    setShowWebsitePrePaywall(false);
-                                                    setShowRecoveryOffer(true);
-                                                }}
-                                                className="inline-flex justify-center pt-1 text-sm font-medium text-neutral-600 underline decoration-neutral-300 underline-offset-4 transition hover:text-neutral-900 hover:decoration-neutral-500"
-                                            >
-                                                {websitePrePaywallDismissLabel}
-                                            </button>
-                                        </div>
-
-                                        <div className="mt-8 border-t border-neutral-200 pt-6">
-                                            <div className="mb-3 flex items-center justify-center gap-3 text-center">
-                                                <span className="text-[12px] uppercase tracking-[0.1em] text-neutral-500 sm:text-[12px]">
-                                                    See what <span className="text-[15px] font-bold text-[rgba(245,95,42,1)]">5000+</span> Kloner members have built with
-                                                </span>
-                                                <span className="relative inline-block h-[48px] w-[48px] sm:h-[72px] sm:w-[72px]">
-                                                    <Image
-                                                        src={logo}
-                                                        alt="Kloner logo"
-                                                        fill
-                                                        sizes="(max-width: 640px) 56px, 72px"
-                                                        className="object-contain"
-                                                    />
-                                                </span>
-                                            </div>
-
-                                            <div className="relative overflow-hidden rounded-[28px] border border-neutral-200 bg-white shadow-[0_18px_48px_rgba(0,0,0,0.08)]">
-                                                <div className="overflow-hidden py-4 sm:py-5">
-                                                    <div className="website-paywall-carousel flex w-max items-stretch gap-4 px-4">
-                                                        {[...websitePaywallShowcaseImages, ...websitePaywallShowcaseImages].map((src, index) => (
-                                                            <div
-                                                                key={`${src}-${index}`}
-                                                                className="relative h-[170px] w-[220px] shrink-0 overflow-hidden rounded-[24px] border border-neutral-200 bg-neutral-100 shadow-[0_16px_36px_rgba(0,0,0,0.12)] sm:h-[250px] sm:w-[300px]"
-                                                            >
-                                                                <Image
-                                                                    src={src}
-                                                                    alt={`Showcase ${index + 1}`}
-                                                                    fill
-                                                                    sizes="(min-width: 640px) 300px, 220px"
-                                                                    className="object-cover"
-                                                                    priority={index < 2}
-                                                                />
-                                                            </div>
-                                                        ))}
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </motion.div>
+                        <WebsitePrePaywall
+                            open={showWebsitePrePaywall}
+                            onClose={dismissWebsitePrePaywall}
+                            onStartCheckout={() => {
+                                setShowWebsitePrePaywall(false);
+                                void startProCheckout();
+                            }}
+                            checkoutBusy={checkoutBusy}
+                            zIndexClassName="z-[12049]"
+                        />
                     )
                 }
 

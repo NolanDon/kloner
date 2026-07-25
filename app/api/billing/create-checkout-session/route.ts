@@ -1,6 +1,7 @@
 // app/api/billing/create-checkout-session/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { getStripe } from "@/lib/stripe";
+import { STRIPE_TRIAL_DAYS } from "@/src/lib/billingAccess";
 import admin from "firebase-admin";
 import { linkCustomerToUid } from "../../_lib/billing";
 import { requireSessionAndMaybeCsrf } from "../../_lib/route-guard";
@@ -11,8 +12,6 @@ export const dynamic = "force-dynamic";
 
 const stripe = getStripe();
 const db = admin.firestore();
-
-const TRIAL_DAYS = 7;
 
 // Exit-offer rules
 const EXIT_OFFER_MS = 15 * 60 * 1000;
@@ -196,9 +195,8 @@ async function handler({ req, uid }: { req: NextRequest; uid: string }) {
         return NextResponse.json({ error: "Missing plan" }, { status: 400 });
     }
 
-    // Only Pro can be eligible for trial. Final decision is made after checking
-    // Stripe subscription history for this customer.
-    const trialCandidate = plan === "pro";
+    // Trial is configurable and disabled by default.
+    const trialCandidate = plan === "pro" && STRIPE_TRIAL_DAYS > 0;
 
     const isProd = process.env.NODE_ENV === "production";
 
@@ -432,7 +430,7 @@ async function handler({ req, uid }: { req: NextRequest; uid: string }) {
             ...(discounts?.length ? { discounts } : { allow_promotion_codes: true }),
 
             subscription_data: {
-                ...(includeTrial ? { trial_period_days: TRIAL_DAYS } : {}),
+                ...(includeTrial ? { trial_period_days: STRIPE_TRIAL_DAYS } : {}),
                 metadata: baseMeta,
             },
         });

@@ -5,6 +5,7 @@ import { ensureSessionAndCsrf } from "@/lib/auth-client";
 import { useEffect, useMemo, useRef, useState, useCallback, ChangeEvent } from "react";
 import { motion, AnimatePresence, useDragControls } from "framer-motion";
 import Image from 'next/image'
+import WebsitePrePaywall from "@/components/WebsitePrePaywall";
 
 export type Device = "desktop" | "tablet" | "mobile";
 export type ViewMode = "code" | "preview" | "screenshot";
@@ -70,6 +71,8 @@ type Props = {
     pages?: EditorPage[];
     initialPageId?: string;
     onPageHtmlChange?: (pageId: string, html: string) => void;
+    deployLocked?: boolean;
+    onRequestDeployCheckout?: () => Promise<void> | void;
 };
 
 const ACCENT = "#f55f2a";
@@ -1117,6 +1120,8 @@ export default function PreviewEditorV2({
     initialSeoMetaByPage,
     onArchivedPageIdsChange,
     isAdmin = false,
+    deployLocked = false,
+    onRequestDeployCheckout,
 }: Props) {
     const { user } = useAuth();
     const isDevCodeMode = process.env.NODE_ENV === "development";
@@ -1132,6 +1137,7 @@ export default function PreviewEditorV2({
     const [closing, setClosing] = useState(false);
     const [closePrompt, setClosePrompt] = useState(false);
     const [exportPrompt, setExportPrompt] = useState(false);
+    const [showDeployUpgradePaywall, setShowDeployUpgradePaywall] = useState(false);
     const [controlsCollapsed, setControlsCollapsed] = useState<boolean>(false);
     const [sidePanelMode, setSidePanelMode] = useState<
         "style" | "meta" | "code" | "ai-library" | "revision-chat"
@@ -1861,7 +1867,21 @@ export default function PreviewEditorV2({
     );
 
     const mergedThemeColors = useMemo(
-        () => Array.from(new Set([...(theme.textColors || []), ...(theme.bgColors || [])])),
+        () => {
+            const colors = Array.from(new Set([...(theme.textColors || []), ...(theme.bgColors || [])]));
+            return colors.length > 0
+                ? colors
+                : [
+                    "#ffffff",
+                    "#f8fafc",
+                    "#e2e8f0",
+                    "#111827",
+                    "#f55f2a",
+                    "#0ea5e9",
+                    "#22c55e",
+                    "#a855f7",
+                ];
+        },
         [theme.textColors, theme.bgColors]
     );
 
@@ -4533,7 +4553,13 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                         {/* Deploy button */}
                         <button
                             type="button"
-                            onClick={() => setExportPrompt(true)}
+                            onClick={() => {
+                                if (deployLocked) {
+                                    setShowDeployUpgradePaywall(true);
+                                    return;
+                                }
+                                setExportPrompt(true);
+                            }}
                             disabled={exporting}
                             className={`inline-flex h-8 items-center gap-1.5 rounded-full border border-neutral-300 bg-white px-3 py-1 text-[13px] font-semibold text-neutral-700 shadow-md transition ${
                                 exporting
@@ -6304,6 +6330,21 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                         </div>
                     </div>
                 )}
+
+                <WebsitePrePaywall
+                    open={showDeployUpgradePaywall}
+                    onClose={() => setShowDeployUpgradePaywall(false)}
+                    onStartCheckout={() => {
+                        setShowDeployUpgradePaywall(false);
+                        onRequestDeployCheckout?.();
+                    }}
+                    checkoutBusy={exporting}
+                    zIndexClassName="z-[30001]"
+                    title="Upgrade to publish"
+                    description="Publish your website live from the editor. Upgrade to unlock one-click deploy and higher monthly credits."
+                    primaryLabel="Subscribe now"
+                    footerNote="Cancel anytime before renewal."
+                />
 
                 {exportPrompt && (
                     <div className="fixed inset-0 z-[10010] flex items-center justify-center bg-black/40">

@@ -387,7 +387,7 @@ export function getPublicHttpUrlRejectionReason(input: string): string | null {
     }
 
     if (BLOCKED_HOST_RE.test(hostLower)) {
-      return "Kloner domains are blocked from cloning.";
+      return "This domain is blocked from cloning.";
     }
 
     if (!DOMAIN_RE.test(hostLower)) return "Please enter a valid public http(s) URL.";

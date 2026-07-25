@@ -7,12 +7,14 @@ import Footer from "@/components/Footer";
 import { AnimatedCreditCard } from "@/components/AnimatedCreditCard";
 import { useModal } from "@/components/ui/ModalContext";
 import { useAuth } from "@/src/hooks/useAuth";
+import { STRIPE_TRIAL_DAYS } from "@/src/lib/billingAccess";
 import { Check, Loader2 } from "lucide-react";
 import SuccessConfetti from "@/components/tools/SuccessConfetti";
 
 const ACCENT = "#f55f2a";
 const AI_EDIT_CREDIT_COST = 3;
 const RECOVERY_PENDING_KEY_PREFIX = "kloner.billing.recovery.pending:";
+const TRIAL_ENABLED = STRIPE_TRIAL_DAYS > 0;
 
 /* ───────── CSRF helper (reuse / centralize later) ───────── */
 
@@ -99,8 +101,10 @@ const tiers: Tier[] = [
             "Multiple projects and workspaces",
             "Email support with faster response targets",
         ],
-        cta: "Start 7-day free trial",
-        fineprint: "Billed monthly at $19.99/month. Cancel anytime. Secure checkout via Stripe.",
+        cta: TRIAL_ENABLED ? "Start trial" : "Subscribe now",
+        fineprint: TRIAL_ENABLED
+            ? "Billed monthly at $19.99/month. Cancel anytime. Secure checkout via Stripe."
+            : "Billed immediately at $19.99/month. Cancel anytime. Secure checkout via Stripe.",
     },
     {
         name: "Agency",
@@ -730,7 +734,7 @@ export default function PriceClient(): JSX.Element {
 
                                             {isPro ? (
                                                 <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[rgba(245,95,42,1)]">
-                                                    7-day free trial
+                                                    {TRIAL_ENABLED ? "7-day free trial" : "Billed immediately"}
                                                 </span>
                                             ) : null}
                                         </div>
@@ -770,7 +774,7 @@ export default function PriceClient(): JSX.Element {
 
                                         <p className="mt-3 text-[11px] text-neutral-500">
                                             {isPro
-                                                ? "Trial starts today. Billing begins after 7 days unless canceled."
+                                                ? "Billed immediately. Cancel anytime."
                                                 : isAgency
                                                     ? "Starts immediately. Cancel anytime."
                                                     : "Start cloning immediately. Upgrade when you hit limits."}

@@ -29,7 +29,7 @@ export default function PrivacyPage(): JSX.Element {
                             Privacy Policy
                         </h1>
                         <p className="mt-2 text-sm text-neutral-600">
-                            Last updated: 20 May 2026
+                            Last updated: 25 July 2026
                         </p>
                     </div>
 
@@ -57,7 +57,22 @@ export default function PrivacyPage(): JSX.Element {
                         </section>
 
                         <section>
-                            <h2 className="text-base font-semibold text-neutral-900">3. How We Use Information</h2>
+                            <h2 className="text-base font-semibold text-neutral-900">3. Cookies and Similar Technologies</h2>
+                            <p className="mt-2">
+                                We use strictly necessary cookies and similar storage for authentication, security, previews, routing,
+                                and other core app functions you request. These are always on.
+                            </p>
+                            <p className="mt-2">
+                                Analytics cookies, affiliate cookies, and related tracking storage stay off until you accept them in the
+                                cookie banner. If you reject, some features will be limited.
+                            </p>
+                            <p className="mt-2">
+                                You can change your choice any time from the Cookie settings link in the footer.
+                            </p>
+                        </section>
+
+                        <section>
+                            <h2 className="text-base font-semibold text-neutral-900">4. How We Use Information</h2>
                             <ul className="mt-2 list-disc pl-5 space-y-1.5">
                                 <li>Authenticate users and secure sessions.</li>
                                 <li>Provide website capture, editing, preview, deployment, and billing features.</li>
@@ -69,7 +84,7 @@ export default function PrivacyPage(): JSX.Element {
                         </section>
 
                         <section>
-                            <h2 className="text-base font-semibold text-neutral-900">4. Sharing and Processors</h2>
+                            <h2 className="text-base font-semibold text-neutral-900">5. Sharing and Processors</h2>
                             <p className="mt-2">
                                 We use third-party processors to operate the service, including Firebase, Vercel, Stripe, Resend,
                                 Mixpanel, Google Analytics, Supabase, Google AI services, and the backend generation service used for
@@ -83,7 +98,7 @@ export default function PrivacyPage(): JSX.Element {
                         </section>
 
                         <section>
-                            <h2 className="text-base font-semibold text-neutral-900">5. Storage and Retention</h2>
+                            <h2 className="text-base font-semibold text-neutral-900">6. Storage and Retention</h2>
                             <p className="mt-2">
                                 We retain account, project, and operational data for as long as needed to provide the service, comply with
                                 legal obligations, resolve disputes, and enforce agreements. Some analytics, logs, and backups may be
@@ -92,7 +107,7 @@ export default function PrivacyPage(): JSX.Element {
                         </section>
 
                         <section>
-                            <h2 className="text-base font-semibold text-neutral-900">6. Your Choices and Rights</h2>
+                            <h2 className="text-base font-semibold text-neutral-900">7. Your Choices and Rights</h2>
                             <p className="mt-2">
                                 You can unsubscribe from marketing-style emails using the unsubscribe links in those messages or by
                                 adjusting notification settings in your account. You may also contact support to request account closure,
@@ -105,7 +120,7 @@ export default function PrivacyPage(): JSX.Element {
                         </section>
 
                         <section>
-                            <h2 className="text-base font-semibold text-neutral-900">7. Security</h2>
+                            <h2 className="text-base font-semibold text-neutral-900">8. Security</h2>
                             <p className="mt-2">
                                 We use session cookies, CSRF protection, access controls, and operational monitoring to protect the
                                 service. No internet-connected service can guarantee complete security, and we continuously work to reduce
@@ -114,7 +129,7 @@ export default function PrivacyPage(): JSX.Element {
                         </section>
 
                         <section>
-                            <h2 className="text-base font-semibold text-neutral-900">8. Contact</h2>
+                            <h2 className="text-base font-semibold text-neutral-900">9. Contact</h2>
                             <p className="mt-2">
                                 Questions or requests can be sent through the{" "}
                                 <a href="/contact" className="font-medium underline underline-offset-2" style={{ color: ACCENT }}>

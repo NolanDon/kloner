@@ -13,6 +13,8 @@ type Props = PreviewEditorProps & {
   isAdminOverride?: boolean;
   userTier?: UserTier;
   startProCheckout?: () => Promise<void>;
+  deployLocked?: boolean;
+  onRequestDeployCheckout?: () => Promise<void> | void;
   mode?: "website" | "app";
   sourceUrl?: string;
   onCreateApp?: (mode: "clone" | "prompt", prompt?: string, renderId?: string) => Promise<void>;
@@ -44,6 +46,8 @@ export default function PreviewEditorManager({
   isAdminOverride,
   userTier,
   startProCheckout,
+  deployLocked,
+  onRequestDeployCheckout,
   mode = "website",
   sourceUrl,
   onCreateApp,
@@ -82,9 +86,17 @@ export default function PreviewEditorManager({
       <PreviewEditorV2
         {...editorProps}
         isAdmin={isAdmin}
+        deployLocked={deployLocked ?? userTier === "free"}
+        onRequestDeployCheckout={onRequestDeployCheckout ?? startProCheckout}
       />
     );
   }
 
-  return <PreviewEditorV2 {...editorProps} />;
+  return (
+    <PreviewEditorV2
+      {...editorProps}
+      deployLocked={deployLocked ?? userTier === "free"}
+      onRequestDeployCheckout={onRequestDeployCheckout ?? startProCheckout}
+    />
+  );
 }

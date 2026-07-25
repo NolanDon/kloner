@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
+import { useCookieConsent } from "@/components/CookieConsent";
 
 const COOKIE_REF = "kl_aff_ref";
 const COOKIE_CODE = "kl_aff_code";
@@ -41,8 +42,10 @@ function clean(value: string) {
 export default function AffiliateRefCapture() {
     const pathname = usePathname();
     const searchParams = useSearchParams();
+    const { status } = useCookieConsent();
 
     useEffect(() => {
+        if (status !== "accepted") return;
         if (!searchParams) return;
 
         // Support a few common param names. Standardize on `ref` + `code` going forward.
@@ -73,7 +76,7 @@ export default function AffiliateRefCapture() {
             setCookie(COOKIE_CODE, codeClean, maxAge);
             setLocalStorage(LS_CODE, codeClean);
         }
-    }, [pathname, searchParams]);
+    }, [pathname, searchParams, status]);
 
     return null;
 }

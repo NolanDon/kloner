@@ -205,6 +205,7 @@ type AppBuilderEditorAgentChatProps = {
     onPreviewIssueFixRequest?: () => void;
     onUserMessageSent?: () => void;
     onIntroSequenceComplete?: () => void;
+    onRequestUpgradePaywall?: () => void;
     topupModalTrigger?: number;
     welcomeContext?: {
         source?: "prompt" | "url" | "quickstart" | "template" | "sample" | "unknown";
@@ -1066,7 +1067,7 @@ function buildRestorePointDiffPreview(detail: RestorePointDetail | null | undefi
     return { before, after };
 }
 
-export default function AppBuilderEditorAgentChat({ appId, files, currentFile, onFileEdit, onFilesReplace, onRestoreApplied, creditError, previewReady, previewIssue, previewIssueActionLabel, onPreviewIssueAction, onPreviewIssueFixRequest, onUserMessageSent, onIntroSequenceComplete, topupModalTrigger, welcomeContext }: AppBuilderEditorAgentChatProps) {
+export default function AppBuilderEditorAgentChat({ appId, files, currentFile, onFileEdit, onFilesReplace, onRestoreApplied, creditError, previewReady, previewIssue, previewIssueActionLabel, onPreviewIssueAction, onPreviewIssueFixRequest, onUserMessageSent, onIntroSequenceComplete, onRequestUpgradePaywall, topupModalTrigger, welcomeContext }: AppBuilderEditorAgentChatProps) {
     const { user, userTier } = useAuth();
     const { showConfirm, showAlert } = useModal();
     const PRO_MONTHLY_PRICE_USD = Number.isFinite(Number(process.env.NEXT_PUBLIC_PRO_MONTHLY_PRICE_USD))
@@ -8315,6 +8316,22 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                     </button>
                 </div>
 
+                {typeof aiCreditsRemaining === "number" && aiCreditsRemaining <= 0 ? (
+                    <div className="mb-3 rounded-2xl border border-[#f55f2a]/20 bg-[#f55f2a]/8 px-4 py-3 shadow-sm">
+                        <div className="text-sm font-semibold text-neutral-900">You’ve hit the limit on your free plan</div>
+                        <p className="mt-1 text-xs leading-5 text-neutral-600">
+                            You’ve used all of your free AI edit credits. Upgrade to keep building inside the editor.
+                        </p>
+                        <button
+                            type="button"
+                            onClick={() => onRequestUpgradePaywall?.()}
+                            className="mt-3 inline-flex items-center justify-center rounded-full bg-[#f55f2a] px-4 py-2 text-xs font-semibold text-white shadow-[0_10px_24px_rgba(245,95,42,0.18)] transition hover:bg-[#e95420]"
+                        >
+                            Upgrade now
+                        </button>
+                    </div>
+                ) : null}
+
                 {topupModalOpen ? (
                     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
                         <div className="relative w-full max-w-lg rounded-2xl border border-black/10 bg-white shadow-xl">
@@ -8531,7 +8548,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                     <p className="text-sm font-semibold text-neutral-900">Preview not ready yet</p>
                                 </div>
                                 <p className="mt-1 text-sm leading-relaxed text-neutral-700">
-                                    Preview is still loading. You can keep chatting while it hydrates, and recovery options will appear if a real issue is detected.
+                                    Preview is still loading. You can keep chatting while it hydrates
                                 </p>
                             </div>
                         </div>

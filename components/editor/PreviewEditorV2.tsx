@@ -5,6 +5,7 @@ import { ensureSessionAndCsrf } from "@/lib/auth-client";
 import { useEffect, useMemo, useRef, useState, useCallback, ChangeEvent } from "react";
 import { motion, AnimatePresence, useDragControls } from "framer-motion";
 import Image from 'next/image'
+import WebsitePrePaywall from "@/components/WebsitePrePaywall";
 
 export type Device = "desktop" | "tablet" | "mobile";
 export type ViewMode = "code" | "preview" | "screenshot";
@@ -70,6 +71,8 @@ type Props = {
     pages?: EditorPage[];
     initialPageId?: string;
     onPageHtmlChange?: (pageId: string, html: string) => void;
+    deployLocked?: boolean;
+    onRequestDeployCheckout?: () => Promise<void> | void;
 };
 
 const ACCENT = "#f55f2a";
@@ -1117,8 +1120,10 @@ export default function PreviewEditorV2({
     initialSeoMetaByPage,
     onArchivedPageIdsChange,
     isAdmin = false,
+    deployLocked = false,
+    onRequestDeployCheckout,
 }: Props) {
-    const { user } = useAuth();
+    const { user, userTier, loading: authLoading } = useAuth();
     const isDevCodeMode = process.env.NODE_ENV === "development";
     const [nameHint, setNameHint] = useState<string>("");
     const [version, setVersion] = useState<number>(1);
@@ -1132,6 +1137,7 @@ export default function PreviewEditorV2({
     const [closing, setClosing] = useState(false);
     const [closePrompt, setClosePrompt] = useState(false);
     const [exportPrompt, setExportPrompt] = useState(false);
+    const [showDeployUpgradePaywall, setShowDeployUpgradePaywall] = useState(false);
     const [controlsCollapsed, setControlsCollapsed] = useState<boolean>(false);
     const [sidePanelMode, setSidePanelMode] = useState<
         "style" | "meta" | "code" | "ai-library" | "revision-chat"
@@ -1141,6 +1147,8 @@ export default function PreviewEditorV2({
     const [prefetchedAiMeta, setPrefetchedAiMeta] = useState<any | null>(null);
     const [prefetchedAiHistoryError, setPrefetchedAiHistoryError] = useState<string | null>(null);
     const [prefetchedAiHistoryLoading, setPrefetchedAiHistoryLoading] = useState<boolean>(false);
+    const canUsePremiumImagesTab = userTier === "pro" || userTier === "agency";
+    const shouldLockImagesTab = !authLoading && !canUsePremiumImagesTab;
 
     function normalizeAiEditCreatedAt(raw: any): string {
         if (!raw) return "";
@@ -1900,7 +1908,21 @@ export default function PreviewEditorV2({
     );
 
     const mergedThemeColors = useMemo(
-        () => Array.from(new Set([...(theme.textColors || []), ...(theme.bgColors || [])])),
+        () => {
+            const colors = Array.from(new Set([...(theme.textColors || []), ...(theme.bgColors || [])]));
+            return colors.length > 0
+                ? colors
+                : [
+                    "#ffffff",
+                    "#f8fafc",
+                    "#e2e8f0",
+                    "#111827",
+                    "#f55f2a",
+                    "#0ea5e9",
+                    "#22c55e",
+                    "#a855f7",
+                ];
+        },
         [theme.textColors, theme.bgColors]
     );
 
@@ -4476,6 +4498,10 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
 
     const openSidePanelMode = useCallback(
         (nextMode: "style" | "meta" | "code" | "ai-library" | "revision-chat") => {
+            if (nextMode === "ai-library" && shouldLockImagesTab) {
+                setShowDeployUpgradePaywall(true);
+                return;
+            }
             setSidePanelMode(nextMode);
             setSidebarHidden(false);
             setMobileControlsOpen(false);
@@ -4493,7 +4519,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                 }
             }
         },
-        [handleModeClick, isCompactLayout, isDevCodeMode, mode],
+        [handleModeClick, isCompactLayout, isDevCodeMode, mode, shouldLockImagesTab],
     );
 
     const openScreenshotMode = useCallback(() => {
@@ -4627,7 +4653,13 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
 
                             <button
                                 type="button"
-                                onClick={() => setExportPrompt(true)}
+                                onClick={() => {
+                                    if (deployLocked) {
+                                        setShowDeployUpgradePaywall(true);
+                                        return;
+                                    }
+                                    setExportPrompt(true);
+                                }}
                                 disabled={exporting}
                                 data-tour-deploy
                                 className={`inline-flex h-9 shrink-0 items-center gap-2 rounded-full border border-[#f55f2a] bg-[#f55f2a] px-3 text-sm font-semibold text-white shadow-md transition ${
@@ -4881,6 +4913,10 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                     if (isActive) {
                                         setSidebarHidden(true);
                                     } else {
+                                        if (shouldLockImagesTab) {
+                                            setShowDeployUpgradePaywall(true);
+                                            return;
+                                        }
                                         setSidePanelMode("ai-library");
                                         setSidebarHidden(false);
                                         if (mode === "screenshot") handleModeClick("preview");
@@ -4890,8 +4926,8 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                     !sidebarHidden && sidePanelMode === "ai-library"
                                         ? "bg-[#f55f2a] text-white"
                                         : "bg-white text-neutral-600 hover:bg-neutral-100"
-                                }`}
-                                title="AI images"
+                                } ${shouldLockImagesTab ? "opacity-70" : ""}`}
+                                title={shouldLockImagesTab ? "Images are available on Pro and Agency plans" : "AI images"}
                                 aria-label="AI images"
                             >
                                 <Images className="h-3 w-3" aria-hidden="true" />
@@ -6572,10 +6608,16 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                         sidePanelMode === "ai-library"
                                                             ? "border-[#f55f2a] bg-[#f55f2a] text-white"
                                                             : "border-neutral-300 bg-white text-neutral-800"
-                                                    }`}
+                                                    } ${shouldLockImagesTab ? "opacity-70" : ""}`}
+                                                    title={shouldLockImagesTab ? "Images are available on Pro and Agency plans" : "Images"}
                                                 >
                                                     <Images className="h-4 w-4" />
                                                     <span>Images</span>
+                                                    {shouldLockImagesTab ? (
+                                                        <span className="inline-flex items-center rounded-full border border-neutral-300 bg-white px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-neutral-500">
+                                                            Pro
+                                                        </span>
+                                                    ) : null}
                                                 </button>
                                             </div>
                                         </div>
@@ -6807,6 +6849,21 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                         </div>
                     </div>
                 )}
+
+                <WebsitePrePaywall
+                    open={showDeployUpgradePaywall}
+                    onClose={() => setShowDeployUpgradePaywall(false)}
+                    onStartCheckout={() => {
+                        setShowDeployUpgradePaywall(false);
+                        onRequestDeployCheckout?.();
+                    }}
+                    checkoutBusy={exporting}
+                    zIndexClassName="z-[30001]"
+                    title="Upgrade to publish"
+                    description="Publish your website live from the editor. Upgrade to unlock one-click deploy and higher monthly credits."
+                    primaryLabel="Subscribe now"
+                    footerNote="Cancel anytime before renewal."
+                />
 
                 {exportPrompt && (
                     <div className="fixed inset-0 z-[10010] flex items-center justify-center bg-black/40">
