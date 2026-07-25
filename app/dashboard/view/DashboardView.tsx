@@ -4288,7 +4288,7 @@ export default function PreviewPage(): JSX.Element {
             return;
         }
 
-        setAppBuilderInitialViewMode("ai");
+        setAppBuilderInitialViewMode("custom");
         setCurrentAppId(nextId);
         setPendingAppBuilderAppId(null);
         setAppBuilderOpen(true);

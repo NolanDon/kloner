@@ -8351,7 +8351,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                         <span>Top up AI credits</span>
                                     </div>
                                     <div className="mt-0.5 text-xs leading-5 text-neutral-600">
-                                        AI edit credits let you ask the editor to generate changes, apply code edits, fix issues, and update content inside your project. Bigger requests use more credits.
+                                        AI edit credits let you ask the editor to generate changes, apply code edits, fix issues, and update content inside your project.
                                     </div>
                                 </div>
                             </div>
