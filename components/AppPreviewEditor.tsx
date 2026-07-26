@@ -7226,7 +7226,7 @@ export default function AppPreviewEditor({
                                 Looking for editable HTML files
                             </div>
                             <div className="mt-1 text-neutral-600">
-                                We’re still syncing the project files. If nothing appears after a few checks, we’ll show the recovery message here.
+                                We’re still syncing the project files.
                             </div>
                             <div className="mt-3 text-xs text-neutral-500">
                                 Attempt {Math.min(htmlDiscoveryAttempts + 1, HTML_DISCOVERY_MAX_ATTEMPTS)} of {HTML_DISCOVERY_MAX_ATTEMPTS}
