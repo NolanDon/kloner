@@ -4161,6 +4161,25 @@ export default function PreviewPage(): JSX.Element {
     const [currentAppId, setCurrentAppId] = useState<string | null>(null);
     const [appBuilderLaunchLoading, setAppBuilderLaunchLoading] = useState(false);
     const [appBuilderInitialViewMode, setAppBuilderInitialViewMode] = useState<"ai" | "custom">("ai");
+    const [isMobileViewport, setIsMobileViewport] = useState<boolean>(() => {
+        if (typeof window === "undefined") return false;
+        return window.matchMedia("(max-width: 767px)").matches;
+    });
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+
+        const mq = window.matchMedia("(max-width: 767px)");
+        const update = () => setIsMobileViewport(Boolean(mq.matches));
+        update();
+
+        if (typeof mq.addEventListener === "function") {
+            mq.addEventListener("change", update);
+            return () => mq.removeEventListener("change", update);
+        }
+
+        mq.addListener(update);
+        return () => mq.removeListener(update);
+    }, []);
     const [pendingAppBuilderAppId, setPendingAppBuilderAppId] = useState<string | null>(null);
     const [nextJsGenerationPendingUrl, setNextJsGenerationPendingUrl] = useState<string | null>(null);
     const [htmlGenerationPendingUrl, setHtmlGenerationPendingUrl] = useState<string | null>(null);
@@ -4259,15 +4278,15 @@ export default function PreviewPage(): JSX.Element {
             );
             return;
         }
-        setAppBuilderInitialViewMode(initialViewMode);
+        setAppBuilderInitialViewMode(isMobileViewport ? "ai" : initialViewMode);
         setCurrentAppId(nextId);
         setPendingAppBuilderAppId(null);
         setAppBuilderOpen(true);
-    }, [blockedUrlGenerationAppId, isTrialAccessRevoked, showAlert]);
+    }, [blockedUrlGenerationAppId, isMobileViewport, isTrialAccessRevoked, showAlert]);
 
     const openAppBuilderPreviewFirstWithCookieGate = useCallback((appId: string | null) => {
-        openAppBuilderWithCookieGate(appId, "custom");
-    }, [openAppBuilderWithCookieGate]);
+        openAppBuilderWithCookieGate(appId, isMobileViewport ? "ai" : "custom");
+    }, [isMobileViewport, openAppBuilderWithCookieGate]);
 
     const openAppBuilderDirectly = useCallback((appId: string | null) => {
         const nextId = typeof appId === "string" ? appId.trim() : "";
@@ -4288,11 +4307,11 @@ export default function PreviewPage(): JSX.Element {
             return;
         }
 
-        setAppBuilderInitialViewMode("custom");
+        setAppBuilderInitialViewMode(isMobileViewport ? "ai" : "custom");
         setCurrentAppId(nextId);
         setPendingAppBuilderAppId(null);
         setAppBuilderOpen(true);
-    }, [blockedUrlGenerationAppId, isTrialAccessRevoked, showAlert]);
+    }, [blockedUrlGenerationAppId, isMobileViewport, isTrialAccessRevoked, showAlert]);
 
     const openAppBuilderWithLaunchLoader = useCallback((appId: string | null) => {
         const nextId = typeof appId === "string" ? appId.trim() : "";

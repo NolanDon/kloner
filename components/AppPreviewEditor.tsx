@@ -4873,31 +4873,51 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
         [allPages, activePage, sourceImage]
     );
 
-    const filesHydrationLoader = shouldShowFilesHydrationLoader && typeof window !== "undefined" && filesHydrationAnchorRect
+    const filesHydrationLoader = shouldShowFilesHydrationLoader && typeof window !== "undefined"
         ? createPortal(
-            <div
-                className={`pointer-events-none fixed z-[22050] flex items-center justify-center px-4 transition-opacity duration-300 ease-out ${filesHydrationLoaderVisible ? "opacity-100" : "opacity-0"}`}
-                style={{
-                    top: filesHydrationAnchorRect.top,
-                    left: filesHydrationAnchorRect.left,
-                    width: filesHydrationAnchorRect.width,
-                    height: filesHydrationAnchorRect.height,
-                }}
-                role="status"
-                aria-live="polite"
-                aria-busy="true"
-            >
-                <div className="flex flex-col items-center justify-center rounded-2xl border border-neutral-200 bg-white/95 px-6 py-5 text-center shadow-lg backdrop-blur-[1px]">
-                    <div className="kloner-dots" aria-hidden="true">
-                        <span className="kloner-dot" />
-                        <span className="kloner-dot" />
-                        <span className="kloner-dot" />
-                    </div>
-                    <div className="mt-4 text-sm font-medium text-neutral-700">
-                        Hydrating files
+            isCompactLayout || !filesHydrationAnchorRect ? (
+                <div
+                    className={`pointer-events-none fixed inset-0 z-[22050] flex items-center justify-center bg-black/25 px-4 transition-opacity duration-300 ease-out ${filesHydrationLoaderVisible ? "opacity-100" : "opacity-0"}`}
+                    role="status"
+                    aria-live="polite"
+                    aria-busy="true"
+                >
+                    <div className="flex flex-col items-center justify-center rounded-2xl border border-neutral-200 bg-white/95 px-7 py-6 text-center shadow-[0_20px_50px_rgba(15,23,42,0.18)] backdrop-blur-[1px]">
+                        <div className="kloner-dots" aria-hidden="true">
+                            <span className="kloner-dot" />
+                            <span className="kloner-dot" />
+                            <span className="kloner-dot" />
+                        </div>
+                        <div className="mt-4 text-sm font-medium text-neutral-700">
+                            Hydrating files
+                        </div>
                     </div>
                 </div>
-            </div>,
+            ) : (
+                <div
+                    className={`pointer-events-none fixed z-[22050] flex items-center justify-center px-4 transition-opacity duration-300 ease-out ${filesHydrationLoaderVisible ? "opacity-100" : "opacity-0"}`}
+                    style={{
+                        top: filesHydrationAnchorRect.top,
+                        left: filesHydrationAnchorRect.left,
+                        width: filesHydrationAnchorRect.width,
+                        height: filesHydrationAnchorRect.height,
+                    }}
+                    role="status"
+                    aria-live="polite"
+                    aria-busy="true"
+                >
+                    <div className="flex flex-col items-center justify-center rounded-2xl border border-neutral-200 bg-white/95 px-6 py-5 text-center shadow-lg backdrop-blur-[1px]">
+                        <div className="kloner-dots" aria-hidden="true">
+                            <span className="kloner-dot" />
+                            <span className="kloner-dot" />
+                            <span className="kloner-dot" />
+                        </div>
+                        <div className="mt-4 text-sm font-medium text-neutral-700">
+                            Hydrating files
+                        </div>
+                    </div>
+                </div>
+            ),
             document.body,
         )
         : null;

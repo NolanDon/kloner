@@ -1993,6 +1993,11 @@ export default function AppBuilderEditor({
         if (desktopOnlyToastTimerRef.current) window.clearTimeout(desktopOnlyToastTimerRef.current);
         desktopOnlyToastTimerRef.current = window.setTimeout(() => setDesktopOnlyToast(false), 2800);
     };
+    useEffect(() => {
+        if (!isMobile) return;
+        if (viewMode === "ai") return;
+        setViewMode("ai");
+    }, [isMobile, viewMode]);
     const [isRenaming, setIsRenaming] = useState(false);
     const [isRenameSaving, setIsRenameSaving] = useState(false);
     const [tempName, setTempName] = useState("");
@@ -2372,31 +2377,51 @@ export default function AppBuilderEditor({
         (previewHydrationLoaderMounted || filesHydrationCompletionHold) &&
         viewMode !== "custom" &&
         viewMode !== "images";
-    const previewHydrationLoader = shouldShowPreviewHydrationLoader && typeof window !== "undefined" && previewHydrationAnchorRect
+    const previewHydrationLoader = shouldShowPreviewHydrationLoader && typeof window !== "undefined"
         ? createPortal(
-            <div
-                className={`fixed z-[22050] flex items-center justify-center px-4 transition-opacity duration-300 ease-out ${previewHydrationLoaderVisible ? "opacity-100" : "opacity-0"}`}
-                style={{
-                    top: previewHydrationAnchorRect.top,
-                    left: previewHydrationAnchorRect.left,
-                    width: previewHydrationAnchorRect.width,
-                    height: previewHydrationAnchorRect.height,
-                }}
-                role="status"
-                aria-live="polite"
-                aria-busy="true"
-            >
-                <div className="flex flex-col items-center justify-center rounded-2xl border border-neutral-200 bg-white/95 px-6 py-5 text-center shadow-lg backdrop-blur-[1px]">
-                    <div className="kloner-dots" aria-hidden="true">
-                        <span className="kloner-dot" />
-                        <span className="kloner-dot" />
-                        <span className="kloner-dot" />
-                    </div>
-                    <div className="mt-4 text-sm font-medium text-neutral-700">
-                        Hydrating files
+            isMobile || !previewHydrationAnchorRect ? (
+                <div
+                    className={`fixed inset-0 z-[22050] flex items-center justify-center bg-black/25 px-4 transition-opacity duration-300 ease-out ${previewHydrationLoaderVisible ? "opacity-100" : "opacity-0"}`}
+                    role="status"
+                    aria-live="polite"
+                    aria-busy="true"
+                >
+                    <div className="flex flex-col items-center justify-center rounded-2xl border border-neutral-200 bg-white/95 px-7 py-6 text-center shadow-[0_20px_50px_rgba(15,23,42,0.18)] backdrop-blur-[1px]">
+                        <div className="kloner-dots" aria-hidden="true">
+                            <span className="kloner-dot" />
+                            <span className="kloner-dot" />
+                            <span className="kloner-dot" />
+                        </div>
+                        <div className="mt-4 text-sm font-medium text-neutral-700">
+                            Hydrating files
+                        </div>
                     </div>
                 </div>
-            </div>,
+            ) : (
+                <div
+                    className={`fixed z-[22050] flex items-center justify-center px-4 transition-opacity duration-300 ease-out ${previewHydrationLoaderVisible ? "opacity-100" : "opacity-0"}`}
+                    style={{
+                        top: previewHydrationAnchorRect.top,
+                        left: previewHydrationAnchorRect.left,
+                        width: previewHydrationAnchorRect.width,
+                        height: previewHydrationAnchorRect.height,
+                    }}
+                    role="status"
+                    aria-live="polite"
+                    aria-busy="true"
+                >
+                    <div className="flex flex-col items-center justify-center rounded-2xl border border-neutral-200 bg-white/95 px-6 py-5 text-center shadow-lg backdrop-blur-[1px]">
+                        <div className="kloner-dots" aria-hidden="true">
+                            <span className="kloner-dot" />
+                            <span className="kloner-dot" />
+                            <span className="kloner-dot" />
+                        </div>
+                        <div className="mt-4 text-sm font-medium text-neutral-700">
+                            Hydrating files
+                        </div>
+                    </div>
+                </div>
+            ),
             document.body,
         )
         : null;
@@ -6921,18 +6946,6 @@ export default function AppBuilderEditor({
                                         </div>
                                     </div>
 
-                                    <div className="border-t border-neutral-100 px-4 py-2">
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                setTabletControlsOpen(false);
-                                                handleTakeBuilderTour();
-                                            }}
-                                            className="inline-flex items-center gap-2 text-sm font-semibold text-neutral-800 hover:text-[#f55f2a]"
-                                        >
-                                            Take tour
-                                        </button>
-                                    </div>
                                 </div>
                             ) : null}
                         </div>
@@ -7303,7 +7316,7 @@ export default function AppBuilderEditor({
                                         }}
                                         disabled={isModeSwitching}
                                         data-tour-images-tab
-                                        className={`px-3 sm:px-4 py-2 text-xs font-semibold rounded-full flex items-center justify-center gap-1.5 transition-colors flex-shrink-0 ${
+                                        className={`hidden lg:inline-flex px-3 sm:px-4 py-2 text-xs font-semibold rounded-full items-center justify-center gap-1.5 transition-colors flex-shrink-0 ${
                                             viewMode === "images"
                                                 ? `bg-neutral-100 text-neutral-900 border border-neutral-300 shadow-sm ${activeTabGlowClass}`
                                                 : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50"
@@ -7328,7 +7341,7 @@ export default function AppBuilderEditor({
                                         onClick={() => { if (isMobile) { showDesktopOnlyToast(); return; } void requestViewModeChange("custom"); }}
                                         disabled={isModeSwitching}
                                         data-tour-custom-tab
-                                        className={`px-3 sm:px-4 py-2 text-xs font-semibold rounded-full flex items-center justify-center gap-1.5 transition-colors flex-shrink-0 ${
+                                        className={`hidden lg:inline-flex px-3 sm:px-4 py-2 text-xs font-semibold rounded-full items-center justify-center gap-1.5 transition-colors flex-shrink-0 ${
                                             viewMode === "custom"
                                                 ? `bg-neutral-100 text-neutral-900 border border-neutral-300 shadow-sm ${activeTabGlowClass}`
                                                 : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50"
@@ -8159,30 +8172,6 @@ export default function AppBuilderEditor({
                                     </button>
                                 ) : null}
 
-                                <div className="grid grid-cols-2 gap-2">
-                                    <button
-                                        type="button"
-                                        onClick={handlePickFavicon}
-                                        disabled={faviconUploading}
-                                        className="inline-flex items-center justify-center gap-2 rounded-full px-4 py-2 text-sm font-semibold border border-neutral-300 bg-white text-neutral-800 disabled:opacity-60"
-                                        title="Upload favicon"
-                                    >
-                                        <span>{faviconUploading ? "Uploading…" : "Upload favicon"}</span>
-                                    </button>
-                                    {faviconUrl ? (
-                                        <button
-                                            type="button"
-                                            onClick={() => window.open(faviconUrl, "_blank", "noopener,noreferrer")}
-                                            className="inline-flex items-center justify-center gap-2 rounded-full px-4 py-2 text-sm font-semibold border border-neutral-300 bg-white text-neutral-800"
-                                            title="View favicon"
-                                        >
-                                            <span>View favicon</span>
-                                        </button>
-                                    ) : (
-                                        <div />
-                                    )}
-                                </div>
-
                                 {lastDeployLiveUrl ? (
                                     <button
                                         onClick={() => window.open(lastDeployLiveUrl, "_blank", "noopener,noreferrer")}
@@ -8261,20 +8250,6 @@ export default function AppBuilderEditor({
                                                 </button>
                                             </div>
                                         ) : null}
-{/* 
-                                        {!isVisualEditorMode ? (
-                                            <button
-                                                type="button"
-                                                onClick={() => {
-                                                    setMobileControlsOpen(false);
-                                                    handleTakeBuilderTour();
-                                                }}
-                                                className="mt-2 w-full inline-flex items-center justify-center gap-2 rounded-full px-4 py-2 text-sm font-semibold border border-neutral-300 bg-white text-neutral-800"
-                                                title="Show the app builder tour"
-                                            >
-                                                <span>Take tour</span>
-                                            </button>
-                                        ) : null} */}
                                     </div>
                                 ) : null}
                             </div>
