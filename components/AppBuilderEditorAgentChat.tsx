@@ -8570,13 +8570,30 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                     Something went wrong building website.
                                 </p>
                                 <div className="mt-3 flex flex-wrap items-center gap-2">
-                                    <button
-                                        type="button"
-                                        onClick={() => onPreviewIssueAction?.()}
-                                        className="inline-flex shrink-0 items-center rounded-full border border-rose-600 bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-rose-700"
-                                    >
-                                        {previewIssueActionLabel || "Rebuild"}
-                                    </button>
+                                    <div className="inline-flex items-center gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => onPreviewIssueAction?.()}
+                                            className="inline-flex shrink-0 items-center rounded-full border border-rose-600 bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-rose-700"
+                                        >
+                                            {previewIssueActionLabel || "Rebuild"}
+                                        </button>
+                                        <details className="shrink-0">
+                                            <summary className="inline-flex cursor-pointer list-none items-center justify-center rounded-full border border-rose-200 bg-white p-2 text-rose-600 transition hover:bg-rose-50">
+                                                <ChevronDown className="h-4 w-4" aria-hidden="true" />
+                                            </summary>
+                                            <div className="mt-2 w-full rounded-xl border border-rose-200 bg-white px-3 py-2 shadow-[0_10px_24px_rgba(244,63,94,0.08)]">
+                                                <div className="space-y-2">
+                                                    <p className="text-sm leading-6 text-neutral-700">
+                                                        The preview ran into a problem, but you can still chat here to debug it or ask for help.
+                                                    </p>
+                                                    <div className="max-w-full rounded-xl border border-rose-100 bg-rose-50 px-3 py-2 text-xs leading-5 text-rose-900 break-words whitespace-pre-wrap">
+                                                        {previewIssueText}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </details>
+                                    </div>
                                     {hasPreviewIssueFixRequest ? (
                                         <button
                                             type="button"
@@ -8588,21 +8605,6 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                             Fix with AI
                                         </button>
                                     ) : null}
-                                    <details className="w-full">
-                                        <summary className="ml-auto inline-flex cursor-pointer list-none items-center justify-center rounded-full border border-rose-200 bg-white p-2 text-rose-600 transition hover:bg-rose-50">
-                                            <ChevronDown className="h-4 w-4" aria-hidden="true" />
-                                        </summary>
-                                        <div className="mt-2 w-full rounded-xl border border-rose-200 bg-white px-3 py-2 shadow-[0_10px_24px_rgba(244,63,94,0.08)]">
-                                            <div className="space-y-2">
-                                                <p className="text-sm leading-6 text-neutral-700">
-                                                    The preview ran into a problem, but you can still chat here to debug it or ask for help.
-                                                </p>
-                                                <div className="max-w-full rounded-xl border border-rose-100 bg-rose-50 px-3 py-2 text-xs leading-5 text-rose-900 break-words whitespace-pre-wrap">
-                                                    {previewIssueText}
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </details>
                                 </div>
                             </div>
                         </div>
