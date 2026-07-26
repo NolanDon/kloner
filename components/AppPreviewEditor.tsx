@@ -4877,12 +4877,12 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
         ? createPortal(
             isCompactLayout || !filesHydrationAnchorRect ? (
                 <div
-                    className={`pointer-events-none fixed inset-0 z-[22050] flex items-center justify-center bg-black/25 px-4 transition-opacity duration-300 ease-out ${filesHydrationLoaderVisible ? "opacity-100" : "opacity-0"}`}
+                    className={`pointer-events-none fixed inset-0 z-[22050] flex items-center justify-center px-4 transition-opacity duration-300 ease-out ${filesHydrationLoaderVisible ? "opacity-100" : "opacity-0"}`}
                     role="status"
                     aria-live="polite"
                     aria-busy="true"
                 >
-                    <div className="flex flex-col items-center justify-center rounded-2xl border border-neutral-200 bg-white/95 px-7 py-6 text-center shadow-[0_20px_50px_rgba(15,23,42,0.18)] backdrop-blur-[1px]">
+                    <div className="flex flex-col items-center justify-center text-center">
                         <div className="kloner-dots" aria-hidden="true">
                             <span className="kloner-dot" />
                             <span className="kloner-dot" />
@@ -4906,7 +4906,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                     aria-live="polite"
                     aria-busy="true"
                 >
-                    <div className="flex flex-col items-center justify-center rounded-2xl border border-neutral-200 bg-white/95 px-6 py-5 text-center shadow-lg backdrop-blur-[1px]">
+                    <div className="flex flex-col items-center justify-center text-center">
                         <div className="kloner-dots" aria-hidden="true">
                             <span className="kloner-dot" />
                             <span className="kloner-dot" />
@@ -7069,6 +7069,8 @@ export default function AppPreviewEditor({
         Number.isFinite(filesHydrationProgress) &&
         filesHydrationProgress > 0 &&
         filesHydrationProgress < 100;
+    const [debugHydrationLoaderOpen, setDebugHydrationLoaderOpen] = useState(false);
+    const debugHydrationLoaderTimerRef = useRef<number | null>(null);
     const isFilesStillHydrating = !isFilesHydrated || !isPreviewReady || hasActiveFilesHydrationProgress;
     const [htmlDiscoveryAttempts, setHtmlDiscoveryAttempts] = useState(0);
     const isHtmlDiscoveryExhausted =
@@ -7109,6 +7111,30 @@ export default function AppPreviewEditor({
 
         return () => window.clearTimeout(timeout);
     }, [htmlDiscoveryAttempts, htmlPaths.length, isFilesStillHydrating]);
+
+    useEffect(() => {
+        const handleDebugShowLoader = (event: Event) => {
+            if (!(event instanceof CustomEvent)) return;
+            setDebugHydrationLoaderOpen(true);
+            if (debugHydrationLoaderTimerRef.current !== null) {
+                window.clearTimeout(debugHydrationLoaderTimerRef.current);
+            }
+            const durationMs = Math.max(400, Number(event.detail?.durationMs ?? 2200));
+            debugHydrationLoaderTimerRef.current = window.setTimeout(() => {
+                setDebugHydrationLoaderOpen(false);
+                debugHydrationLoaderTimerRef.current = null;
+            }, durationMs);
+        };
+
+        window.addEventListener("kloner:debug-show-loader", handleDebugShowLoader as EventListener);
+        return () => {
+            window.removeEventListener("kloner:debug-show-loader", handleDebugShowLoader as EventListener);
+            if (debugHydrationLoaderTimerRef.current !== null) {
+                window.clearTimeout(debugHydrationLoaderTimerRef.current);
+                debugHydrationLoaderTimerRef.current = null;
+            }
+        };
+    }, []);
 
     const [selectedPath, setSelectedPath] = useState<string>("");
     const [applyError, setApplyError] = useState<string | null>(null);
@@ -7213,25 +7239,17 @@ export default function AppPreviewEditor({
         [onChangeViewMode, onClose],
     );
 
-    if (!htmlPaths.length && !isHtmlDiscoveryExhausted) {
+    if ((debugHydrationLoaderOpen || (!htmlPaths.length && !isHtmlDiscoveryExhausted))) {
         return (
-            <div className="h-full overflow-auto p-4">
-                <div className="rounded-xl border border-dashed border-neutral-300 bg-white p-4 text-sm text-neutral-700">
-                    <div className="flex items-start gap-3">
-                        <div className="mt-0.5">
-                            <Spinner size={16} />
-                        </div>
-                        <div className="min-w-0">
-                            <div className="font-medium text-neutral-900">
-                                Looking for editable HTML files
-                            </div>
-                            <div className="mt-1 text-neutral-600">
-                                We’re still syncing the project files.
-                            </div>
-                            <div className="mt-3 text-xs text-neutral-500">
-                                Attempt {Math.min(htmlDiscoveryAttempts + 1, HTML_DISCOVERY_MAX_ATTEMPTS)} of {HTML_DISCOVERY_MAX_ATTEMPTS}
-                            </div>
-                        </div>
+            <div className="pointer-events-none fixed inset-0 z-[22050] flex items-center justify-center px-4">
+                <div className="flex flex-col items-center justify-center text-center">
+                    <div className="kloner-dots" aria-hidden="true">
+                        <span className="kloner-dot" />
+                        <span className="kloner-dot" />
+                        <span className="kloner-dot" />
+                    </div>
+                    <div className="mt-4 text-sm font-medium text-neutral-700">
+                        Loading project
                     </div>
                 </div>
             </div>

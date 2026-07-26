@@ -2020,6 +2020,8 @@ export default function AppBuilderEditor({
     const [previewHydrationAnchorRect, setPreviewHydrationAnchorRect] = useState<{ top: number; left: number; width: number; height: number } | null>(null);
     const previewEditorFlushRef = useRef<null | (() => Promise<boolean>)>(null);
     const lastVisualEditedHtmlPathRef = useRef<string | null>(null);
+    const [debugHydrationLoaderOpen, setDebugHydrationLoaderOpen] = useState(false);
+    const debugHydrationLoaderTimerRef = useRef<number | null>(null);
 
     useEffect(() => {
         if (!tabletControlsOpen) return;
@@ -2037,10 +2039,35 @@ export default function AppBuilderEditor({
         window.addEventListener("keydown", handleKeyDown);
 
         return () => {
-            window.removeEventListener("pointerdown", handlePointerDown);
-            window.removeEventListener("keydown", handleKeyDown);
+        window.removeEventListener("pointerdown", handlePointerDown);
+        window.removeEventListener("keydown", handleKeyDown);
         };
     }, [tabletControlsOpen]);
+
+    useEffect(() => {
+        const handleDebugShowLoader = (event: Event) => {
+            if (!(event instanceof CustomEvent)) return;
+            setDebugHydrationLoaderOpen(true);
+            if (debugHydrationLoaderTimerRef.current !== null) {
+                window.clearTimeout(debugHydrationLoaderTimerRef.current);
+            }
+            const durationMs = Math.max(400, Number(event.detail?.durationMs ?? 2200));
+            debugHydrationLoaderTimerRef.current = window.setTimeout(() => {
+                setDebugHydrationLoaderOpen(false);
+                debugHydrationLoaderTimerRef.current = null;
+            }, durationMs);
+        };
+
+        window.addEventListener("kloner:debug-show-loader", handleDebugShowLoader as EventListener);
+        return () => {
+            window.removeEventListener("kloner:debug-show-loader", handleDebugShowLoader as EventListener);
+            if (debugHydrationLoaderTimerRef.current !== null) {
+                window.clearTimeout(debugHydrationLoaderTimerRef.current);
+                debugHydrationLoaderTimerRef.current = null;
+            }
+        };
+    }, []);
+
     const applyPreviewChangesNowRef = useRef<null | ((changes: Array<{ path: string; content: string }>, opts: { interactive: boolean; source?: string }) => Promise<void>)>(null);
     const isDev = process.env.NODE_ENV !== "production";
     const isVisualEditorMode = viewMode === "custom" || viewMode === "images";
@@ -2327,7 +2354,9 @@ export default function AppBuilderEditor({
     useEffect(() => {
         const shouldShowLoader =
             previewMode === "webcontainer" &&
-            ((!isPreviewBootReady && viewMode !== "custom" && viewMode !== "images") || filesHydrationCompletionHold);
+            (debugHydrationLoaderOpen ||
+                (!isPreviewBootReady && viewMode !== "custom" && viewMode !== "images") ||
+                filesHydrationCompletionHold);
 
         if (!shouldShowLoader) {
             clearFilesHydrationCompletionTimer();
@@ -2361,6 +2390,7 @@ export default function AppBuilderEditor({
         filesHydrationCompletionHold,
         previewMode,
         viewMode,
+        debugHydrationLoaderOpen,
     ]);
 
     useEffect(
@@ -2375,18 +2405,17 @@ export default function AppBuilderEditor({
     const shouldShowPreviewHydrationLoader =
         previewMode === "webcontainer" &&
         (previewHydrationLoaderMounted || filesHydrationCompletionHold) &&
-        viewMode !== "custom" &&
-        viewMode !== "images";
+        (debugHydrationLoaderOpen || (viewMode !== "custom" && viewMode !== "images"));
     const previewHydrationLoader = shouldShowPreviewHydrationLoader && typeof window !== "undefined"
         ? createPortal(
             isMobile || !previewHydrationAnchorRect ? (
                 <div
-                    className={`fixed inset-0 z-[22050] flex items-center justify-center bg-black/25 px-4 transition-opacity duration-300 ease-out ${previewHydrationLoaderVisible ? "opacity-100" : "opacity-0"}`}
+                    className={`fixed inset-0 z-[22050] flex items-center justify-center px-4 transition-opacity duration-300 ease-out ${previewHydrationLoaderVisible ? "opacity-100" : "opacity-0"}`}
                     role="status"
                     aria-live="polite"
                     aria-busy="true"
                 >
-                    <div className="flex flex-col items-center justify-center rounded-2xl border border-neutral-200 bg-white/95 px-7 py-6 text-center shadow-[0_20px_50px_rgba(15,23,42,0.18)] backdrop-blur-[1px]">
+                    <div className="flex flex-col items-center justify-center text-center">
                         <div className="kloner-dots" aria-hidden="true">
                             <span className="kloner-dot" />
                             <span className="kloner-dot" />
@@ -2410,7 +2439,7 @@ export default function AppBuilderEditor({
                     aria-live="polite"
                     aria-busy="true"
                 >
-                    <div className="flex flex-col items-center justify-center rounded-2xl border border-neutral-200 bg-white/95 px-6 py-5 text-center shadow-lg backdrop-blur-[1px]">
+                    <div className="flex flex-col items-center justify-center text-center">
                         <div className="kloner-dots" aria-hidden="true">
                             <span className="kloner-dot" />
                             <span className="kloner-dot" />

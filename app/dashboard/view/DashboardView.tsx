@@ -12665,6 +12665,16 @@ export default function PreviewPage(): JSX.Element {
         [checkoutBusy, appDeployWizardAppId, currentAppId, recoveryPendingStorageKey, showAlert],
     );
 
+    const showDevHydrationLoader = useCallback(() => {
+        if (!isDev || typeof window === "undefined") return;
+        setShowDevQuickMenu(false);
+        window.dispatchEvent(
+            new CustomEvent("kloner:debug-show-loader", {
+                detail: { durationMs: 2500 },
+            }),
+        );
+    }, [isDev]);
+
 
     return (
         <main className="min-h-screen bg-white notranslate" translate="no">
@@ -12782,6 +12792,15 @@ export default function PreviewPage(): JSX.Element {
                                     >
                                         <span>Show trial celebration</span>
                                         <Sparkles className="h-4 w-4 text-[#f55f2a]" />
+                                    </button>
+
+                                    <button
+                                        type="button"
+                                        onClick={showDevHydrationLoader}
+                                        className="flex w-full items-center justify-between rounded-2xl border border-neutral-200 bg-white px-3 py-2.5 text-left text-sm font-medium text-neutral-800 transition hover:bg-neutral-50"
+                                    >
+                                        <span>Show loader</span>
+                                        <Loader2 className="h-4 w-4 text-neutral-400" />
                                     </button>
 
                                     <button
