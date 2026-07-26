@@ -10,6 +10,7 @@ import Image from 'next/image'
 import WebsitePrePaywall from "./WebsitePrePaywall";
 import { useModal } from "@/components/ui/ModalContext";
 import { pickPreferredHtmlPath } from "@/src/lib/htmlEntrypoint";
+import { useHtmlDiscoveryFallbackGate } from "@/src/lib/htmlDiscoveryGate";
 import { TOUR_KEY as PREVIEW_TOUR_STORAGE_KEY } from "./PreviewEditorTour";
 import { ensureUserImageStorageRoom, IMAGE_STORAGE_LIMIT_BYTES, loadUserImageStorageUsage, uploadUserImageToFirebase } from "@/src/lib/imageStorage";
 
@@ -142,8 +143,6 @@ const SAVE_NUDGE_KEY = "kloner_save_nudge_seen";
 const PREVIEW_SIDEBAR_KEY = "kloner:preview-sidebar-collapsed";
 const PREVIEW_SIDEBAR_OPEN_WIDTH = 360;
 const PREVIEW_SIDEBAR_COLLAPSED_WIDTH = 56;
-const HTML_DISCOVERY_MAX_ATTEMPTS = 4;
-const HTML_DISCOVERY_RETRY_MS = 700;
 
 export type SelectionMeta = {
     has: boolean;
@@ -7072,11 +7071,10 @@ export default function AppPreviewEditor({
     const [debugHydrationLoaderOpen, setDebugHydrationLoaderOpen] = useState(false);
     const debugHydrationLoaderTimerRef = useRef<number | null>(null);
     const isFilesStillHydrating = !isFilesHydrated || !isPreviewReady || hasActiveFilesHydrationProgress;
-    const [htmlDiscoveryAttempts, setHtmlDiscoveryAttempts] = useState(0);
-    const isHtmlDiscoveryExhausted =
-        !isFilesStillHydrating &&
-        htmlPaths.length === 0 &&
-        htmlDiscoveryAttempts >= HTML_DISCOVERY_MAX_ATTEMPTS;
+    const { isHtmlDiscoveryFallbackReady } = useHtmlDiscoveryFallbackGate({
+        htmlPathCount: htmlPaths.length,
+        isFilesStillHydrating,
+    });
 
     const preferredHtmlPath = useMemo(
         () =>
@@ -7087,30 +7085,6 @@ export default function AppPreviewEditor({
             }),
         [currentHtmlPath, files, htmlEntryHints, initialPath],
     );
-
-    useEffect(() => {
-        if (htmlPaths.length > 0) {
-            setHtmlDiscoveryAttempts(0);
-            return;
-        }
-
-        if (isFilesStillHydrating) {
-            setHtmlDiscoveryAttempts(0);
-            return;
-        }
-
-        if (htmlDiscoveryAttempts >= HTML_DISCOVERY_MAX_ATTEMPTS) {
-            return;
-        }
-
-        const timeout = window.setTimeout(() => {
-            setHtmlDiscoveryAttempts((attempt) =>
-                Math.min(attempt + 1, HTML_DISCOVERY_MAX_ATTEMPTS),
-            );
-        }, HTML_DISCOVERY_RETRY_MS);
-
-        return () => window.clearTimeout(timeout);
-    }, [htmlDiscoveryAttempts, htmlPaths.length, isFilesStillHydrating]);
 
     useEffect(() => {
         const handleDebugShowLoader = (event: Event) => {
@@ -7239,7 +7213,7 @@ export default function AppPreviewEditor({
         [onChangeViewMode, onClose],
     );
 
-    if ((debugHydrationLoaderOpen || (!htmlPaths.length && !isHtmlDiscoveryExhausted))) {
+    if (debugHydrationLoaderOpen || (!htmlPaths.length && !isHtmlDiscoveryFallbackReady)) {
         return (
             <div className="pointer-events-none fixed inset-0 z-[22050] flex items-center justify-center px-4">
                 <div className="flex flex-col items-center justify-center text-center">
