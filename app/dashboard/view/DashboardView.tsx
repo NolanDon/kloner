@@ -4372,6 +4372,7 @@ export default function PreviewPage(): JSX.Element {
     }, [appDeployWizardErrorText, appDeployWizardPermissionError]);
     const autoAppDeployTriggeredRef = useRef(false);
     const deployWizardPermissionError = /don't have permission to create the project/i.test(deployWizardError || "");
+    const deployWizardUpgradeRequiredError = /please upgrade your account to deploy projects/i.test(deployWizardError || "");
     const deployWizardResolvedErrorText = useMemo(() => {
         if (!deployWizardError) return "";
         if (deployWizardPermissionError) {
@@ -14348,14 +14349,19 @@ export default function PreviewPage(): JSX.Element {
                                                             <button
                                                                 type="button"
                                                                 onClick={() => {
+                                                                    if (deployWizardUpgradeRequiredError) {
+                                                                        setShowCreditsPaywall("deploy");
+                                                                        return;
+                                                                    }
+
                                                                     setDeployWizardError(null);
                                                                     void deployAppLive({ force: true });
                                                                 }}
-                                                                disabled={deployWizardBusy || Date.now() < deployWizardRetryLockedUntil}
+                                                                disabled={deployWizardBusy || (!deployWizardUpgradeRequiredError && Date.now() < deployWizardRetryLockedUntil)}
                                                                 className="rounded-full px-3 py-1.5 text-xs font-semibold text-white"
                                                                 style={{ backgroundColor: ACCENT }}
                                                             >
-                                                                Retry deploy
+                                                                {deployWizardUpgradeRequiredError ? "Upgrade" : "Retry deploy"}
                                                             </button>
                                                         ) : !deployWizardBusy && deployWizardLiveUrl ? (
                                                                 <a
