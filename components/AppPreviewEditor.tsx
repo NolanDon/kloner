@@ -7039,6 +7039,7 @@ type AppSourcePreviewEditorProps = {
     isPreviewReady?: boolean;
     deployLocked?: boolean;
     accessLocked?: boolean;
+    showTour?: boolean;
     onRequestDeployCheckout?: () => void;
 };
 
