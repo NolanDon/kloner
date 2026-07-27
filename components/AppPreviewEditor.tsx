@@ -135,6 +135,8 @@ type Props = {
     filesHydrationProgress?: number | null;
     isPreviewReady?: boolean;
     deployLocked?: boolean;
+    accessLocked?: boolean;
+    showTour?: boolean;
     onRequestDeployCheckout?: () => void;
 };
 
@@ -778,10 +780,11 @@ import { db, storage } from "@/lib/firebase"; // or wherever your db is
 import type { User as FirebaseUser } from "firebase/auth";
 import type { RenderDoc } from "@/app/dashboard/view/DashboardView";
 import { useAuth } from "@/src/hooks/useAuth";
+import { TRIAL_CTA_LABEL } from "@/src/lib/billingAccess";
 import { Camera, Check, ChevronDown, ChevronLeft, ChevronRight, Code2, Eye, EyeOff, FileText, Images, Loader2, Maximize2, MessageSquare, Minimize2, Monitor, Palette, Pencil, Pipette, Redo2, Rocket, RotateCcw, RotateCw, SlidersHorizontal, Smartphone, Tablet, Trash2Icon, Undo2, X } from "lucide-react";
 import { compressImageForUpload } from "@/src/lib/clientImageCompression";
 import { EditorSessionCounters, EditorSessionMetrics, EditorSessionUser, ExportAnalyticsUser, recordEditorSessionAnalytics, recordExportAnalytics } from "./analytics";
-import { PreviewEditorTour } from "./PreviewEditorTour";
+import { hasSeenPreviewTour, PreviewEditorTour } from "./PreviewEditorTour";
 import { injectEditableOverlay } from "@/src/lib/klonerIframeRuntime";
 import { MetaSettings, UploadedAsset } from "./MetaSettings";
 import { AiImageLibraryPanel } from "./AiImageLibraryPanel";
@@ -1274,6 +1277,8 @@ function AppPreviewEditorCore({
     filesHydrationProgress = null,
     isPreviewReady = true,
     deployLocked = false,
+    accessLocked = false,
+    showTour,
     onRequestDeployCheckout,
 }: Props) {
     const { user, userTier, loading: authLoading } = useAuth();
@@ -1291,6 +1296,9 @@ function AppPreviewEditorCore({
     const [closePrompt, setClosePrompt] = useState(false);
     const [exportPrompt, setExportPrompt] = useState(false);
     const [showDeployUpgradePaywall, setShowDeployUpgradePaywall] = useState(false);
+    const showAccessPaywall = accessLocked && !isAdmin;
+    const shouldShowTour = typeof showTour === "boolean" ? showTour : true;
+    const [hasCompletedPreviewTour, setHasCompletedPreviewTour] = useState(() => hasSeenPreviewTour());
     const [controlsCollapsed, setControlsCollapsed] = useState<boolean>(false);
     const [sidePanelMode, setSidePanelMode] = useState<
         "style" | "meta" | "code" | "ai-library" | "revision-chat"
@@ -1407,6 +1415,8 @@ function AppPreviewEditorCore({
     const previewDragControls = useDragControls();
 
     const [isDraggingPreview, setIsDraggingPreview] = useState(false);
+    const shouldRunPreviewTour = !isCompactLayout && isDevCodeMode && shouldShowTour;
+    const shouldShowAccessPaywall = showAccessPaywall && (!shouldRunPreviewTour || hasCompletedPreviewTour);
 
     // 1) Per-session counters
     const sessionCountersRef = useRef<EditorSessionCounters>({
@@ -4645,6 +4655,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
     const shouldShowFilesHydrationLoader =
         (filesHydrationLoaderMounted || filesHydrationCompletionHold) &&
         (hasActiveFilesHydrationProgress || !isFilesHydrated || !isPreviewReady) &&
+        !shouldShowAccessPaywall &&
         mode !== "screenshot";
     const [filesHydrationAnchorRect, setFilesHydrationAnchorRect] = useState<{
         top: number;
@@ -4987,8 +4998,29 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
             tabIndex={-1}
             className="h-full w-full bg-white flex flex-col"
         >
-            {!isCompactLayout && isDevCodeMode ? (
-                <PreviewEditorTour startToken={previewTourStartToken} autoStart />
+            <WebsitePrePaywall
+                open={shouldShowAccessPaywall}
+                onClose={() => {
+                    void onClose?.();
+                }}
+                onStartCheckout={() => {
+                    void onRequestDeployCheckout?.();
+                }}
+                checkoutBusy={exporting}
+                zIndexClassName="z-[9999999999]"
+                dismissible={false}
+                title="Start your 7-day free trial to unlock the editor"
+                description="You can see the website in the background, but editing is locked until you subscribe."
+                primaryLabel={TRIAL_CTA_LABEL}
+                footerNote="Cancel anytime before renewal."
+            />
+
+            {shouldRunPreviewTour ? (
+                <PreviewEditorTour
+                    startToken={previewTourStartToken}
+                    autoStart
+                    onEnd={() => setHasCompletedPreviewTour(true)}
+                />
             ) : null}
 
             <div className={`h-full w-full overflow-hidden ${isCompactLayout ? "flex flex-col" : "grid grid-rows-[1fr_auto]"}`}>
@@ -6880,7 +6912,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                     zIndexClassName="z-[30001]"
                     title="Upgrade to publish"
                     description="Publish your website live from the editor. Upgrade to unlock one-click deploy and higher monthly credits."
-                    primaryLabel="Subscribe now"
+                    primaryLabel={TRIAL_CTA_LABEL}
                     footerNote="Cancel anytime before renewal."
                 />
 
@@ -7006,6 +7038,7 @@ type AppSourcePreviewEditorProps = {
     filesHydrationProgress?: number | null;
     isPreviewReady?: boolean;
     deployLocked?: boolean;
+    accessLocked?: boolean;
     onRequestDeployCheckout?: () => void;
 };
 
@@ -7057,6 +7090,7 @@ export default function AppPreviewEditor({
     filesHydrationProgress,
     isPreviewReady,
     deployLocked = false,
+    accessLocked = false,
     onRequestDeployCheckout,
 }: AppSourcePreviewEditorProps) {
     const htmlPaths = useMemo(
@@ -7297,6 +7331,7 @@ export default function AppPreviewEditor({
                     filesHydrationProgress={filesHydrationProgress}
                     isPreviewReady={isPreviewReady}
                     deployLocked={deployLocked}
+                    accessLocked={accessLocked}
                     onRequestDeployCheckout={onRequestDeployCheckout}
                     appName={appName}
                     isRenaming={isRenaming}

@@ -9,7 +9,7 @@ describe("billing access defaults", () => {
         const { FREE_EDIT_MONTHLY_CREDITS, STRIPE_TRIAL_DAYS } = await import("./billingAccess");
         const { monthlyLimitFor } = await import("./credits");
 
-        expect(STRIPE_TRIAL_DAYS).toBe(0);
+        expect(STRIPE_TRIAL_DAYS).toBe(7);
         expect(FREE_EDIT_MONTHLY_CREDITS).toBe(2);
         expect(monthlyLimitFor("free", "edit")).toBe(2);
     });

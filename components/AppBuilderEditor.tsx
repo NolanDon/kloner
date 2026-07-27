@@ -16,6 +16,7 @@ import WebContainerRunner from "./WebContainerRunner";
 import { bootstrapServerSession, ensureSessionAndCsrf, resetAuthClientCaches } from "@/lib/auth-client";
 import { useVercelIntegration } from "@/src/hooks/useVercelIntegration";
 import { auth, db, storage } from "@/lib/firebase";
+import { TRIAL_CTA_LABEL } from "@/src/lib/billingAccess";
 import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
 import { doc, onSnapshot } from "firebase/firestore";
 import { resolveStorageUrl } from "@/src/lib/renders";
@@ -191,7 +192,7 @@ const DEPLOY_UPGRADE_PAYWALL_COPY: UpgradePaywallCopy = {
         "24/7 Human support included",
         "Subscriptions starting at only $4.99/wk.",
     ],
-    primaryLabel: "Subscribe now",
+    primaryLabel: TRIAL_CTA_LABEL,
     footerNote: "Cancel anytime before renewal.",
 };
 
@@ -206,7 +207,7 @@ const FREE_PLAN_UPGRADE_PAYWALL_COPY: UpgradePaywallCopy = {
         "AI task force to build and design your websites",
         "Subscriptions starting at only $4.99/wk.",
     ],
-    primaryLabel: "Subscribe now",
+    primaryLabel: TRIAL_CTA_LABEL,
     footerNote: "Cancel anytime before renewal.",
 };
 
@@ -358,7 +359,7 @@ const IMAGE_PLACEMENT_PLACEHOLDERS = [
 
 const APP_BUILDER_COOKIE_CONSENT_KEY = "kloner.appBuilder.necessaryCookiesAccepted.v1";
 const APP_BUILDER_COOKIE_CONSENT_COOKIE = "kloner_app_builder_nc";
-const APP_BUILDER_TRIAL_DWELL_MS = 15 * 1000;
+const APP_BUILDER_TRIAL_DWELL_MS = 0;
 const IS_PRODUCTION = process.env.NODE_ENV === "production";
 const PREVIEW_RECOVERY_MESSAGE = "Something went wrong while preparing the preview. Please try again.";
 
@@ -1411,6 +1412,8 @@ export default function AppBuilderEditor({
     onMissingApp,
     onDeploy,
     deployLocked = false,
+    accessLocked = false,
+    showTour = false,
     onRequestDeployCheckout,
     agentWelcomeContext,
     trialPromptEnabled = false,
@@ -1428,6 +1431,8 @@ export default function AppBuilderEditor({
     onMissingApp?: (missingAppId: string) => void;
     onDeploy?: (app: { id: string; name: string }) => void;
     deployLocked?: boolean;
+    accessLocked?: boolean;
+    showTour?: boolean;
     onRequestDeployCheckout?: () => void;
     agentWelcomeContext?: {
         source?: "prompt" | "url" | "quickstart" | "template" | "sample" | "unknown";
@@ -1476,6 +1481,34 @@ export default function AppBuilderEditor({
     const supabaseConnectedRef = useRef<boolean | null>(null);
     const supabaseDbHealthInFlightRef = useRef(false);
     const lastSupabaseDbHealthAtRef = useRef(0);
+    const getOptionalAuthHeaders = useCallback(
+        async (forceRefreshToken: boolean): Promise<Record<string, string>> => {
+            if (!user?.uid) return {};
+
+            const buildHeaders = (token: string) => ({
+                authorization: `Bearer ${token}`,
+            });
+
+            try {
+                const idToken = await user.getIdToken(forceRefreshToken);
+                return buildHeaders(idToken);
+            } catch (err) {
+                console.warn("[app-builder] Firebase ID token unavailable; falling back to session cookie", err);
+
+                if (forceRefreshToken) {
+                    try {
+                        const cachedToken = await user.getIdToken(false);
+                        return buildHeaders(cachedToken);
+                    } catch (fallbackErr) {
+                        console.warn("[app-builder] cached Firebase ID token fallback failed", fallbackErr);
+                    }
+                }
+
+                return {};
+            }
+        },
+        [user],
+    );
 
     useEffect(() => {
         supabaseConnectedRef.current = supabaseConnected;
@@ -1899,16 +1932,14 @@ export default function AppBuilderEditor({
                 }).catch(() => false);
                 advanceFilesHydrationProgress(14);
 
-                const idToken = await user.getIdToken(forceRefreshToken);
+                const authHeaders = await getOptionalAuthHeaders(forceRefreshToken);
                 advanceFilesHydrationProgress(20);
                 const res = await fetch(`/api/app-builder/${appId}/files`, {
                     method: "GET",
                     credentials: "include",
                     cache: "no-store",
                     signal: opts?.signal || undefined,
-                    headers: {
-                        authorization: `Bearer ${idToken}`,
-                    },
+                    headers: authHeaders,
                 });
                 advanceFilesHydrationProgress(48);
 
@@ -2338,6 +2369,7 @@ export default function AppBuilderEditor({
     const appBuilderViewSwitchesRef = useRef<number>(0);
     const previousViewModeRef = useRef<LeftViewMode>("ai");
     const [showAppBuilderTrialPrompt, setShowAppBuilderTrialPrompt] = useState(false);
+    const showAccessPaywall = accessLocked;
     const appBuilderTrialShownThisOpenRef = useRef(false);
     const pendingShareResumeRef = useRef(false);
     const previewActionThrottleRef = useRef<{ refreshAt: number; rebuildAt: number; saveAt: number }>({
@@ -2405,6 +2437,7 @@ export default function AppBuilderEditor({
     const shouldShowPreviewHydrationLoader =
         previewMode === "webcontainer" &&
         (previewHydrationLoaderMounted || filesHydrationCompletionHold) &&
+        !showAccessPaywall &&
         (debugHydrationLoaderOpen || (viewMode !== "custom" && viewMode !== "images"));
     const previewHydrationLoader = shouldShowPreviewHydrationLoader && typeof window !== "undefined"
         ? createPortal(
@@ -2491,7 +2524,7 @@ export default function AppBuilderEditor({
             window.removeEventListener("scroll", handleChange, true);
             observer?.disconnect();
         };
-    }, [shouldShowPreviewHydrationLoader, previewMode, isPreviewBootReady, isWebPreviewReady]);
+    }, [shouldShowPreviewHydrationLoader, previewMode, isPreviewBootReady, isWebPreviewReady, showAccessPaywall]);
 
     const handlePreviewRouteChange = useCallback((nextPath: string | null) => {
         const raw = String(nextPath || "").trim();
@@ -4710,16 +4743,14 @@ export default function AppBuilderEditor({
                         reason: "app_builder_load",
                     }).catch(() => false);
 
-                    const idToken = await user.getIdToken(forceRefreshToken);
+                    const authHeaders = await getOptionalAuthHeaders(forceRefreshToken);
 
                     return fetch(`/api/app-builder/${appId}/files`, {
                         method: "GET",
                         credentials: "include",
                         cache: "no-store",
                         signal: controller.signal,
-                        headers: {
-                            authorization: `Bearer ${idToken}`,
-                        },
+                        headers: authHeaders,
                     });
                 };
 
@@ -7690,6 +7721,8 @@ export default function AppBuilderEditor({
                                             filesHydrationProgress={filesHydrationProgress}
                                             isPreviewReady={previewMode !== "webcontainer" ? true : isPreviewBootReady}
                                             deployLocked={deployLocked}
+                                            accessLocked={accessLocked}
+                                            showTour={showTour}
                                             onRequestDeployCheckout={onRequestDeployCheckout}
                                         />
                                     </div>
@@ -8286,9 +8319,26 @@ export default function AppBuilderEditor({
                     </div>
                 ) : null}
 
-                {isDev && !isVisualEditorMode ? (
+                {isDev && !isVisualEditorMode && showTour ? (
                     <AppBuilderEditorTour startToken={builderTourStartToken} />
                 ) : null}
+
+                <WebsitePrePaywall
+                    open={showAccessPaywall}
+                    onClose={() => {
+                        void onClose?.();
+                    }}
+                    onStartCheckout={() => {
+                        onRequestDeployCheckout?.();
+                    }}
+                    checkoutBusy={trialCheckoutBusy}
+                    zIndexClassName="z-[9999999999]"
+                    dismissible={false}
+                    title="Start your 7-day free trial to unlock the editor"
+                    description="You can see the website in the background, but editing is locked until you subscribe."
+                    primaryLabel={TRIAL_CTA_LABEL}
+                    footerNote="Cancel anytime before renewal."
+                />
 
                 <WebsitePrePaywall
                     open={showDeployUpgradePaywall}

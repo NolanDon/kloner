@@ -2,8 +2,11 @@
 
 import Image from "next/image";
 import { motion } from "framer-motion";
+import { useEffect } from "react";
+import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import logo from "@/public/images/orange_logo.png";
+import { TRIAL_CTA_LABEL } from "@/src/lib/billingAccess";
 
 type WebsitePrePaywallProps = {
     open: boolean;
@@ -11,10 +14,12 @@ type WebsitePrePaywallProps = {
     onStartCheckout: () => void;
     checkoutBusy?: boolean;
     zIndexClassName?: string;
+    dismissible?: boolean;
     title?: string;
     description?: string;
     benefits?: string[];
     primaryLabel?: string;
+    secondaryLabel?: string;
     footerNote?: string;
 };
 
@@ -31,7 +36,8 @@ export function WebsitePrePaywall({
     onClose,
     onStartCheckout,
     checkoutBusy = false,
-    zIndexClassName = "z-[12049]",
+    zIndexClassName = "z-[2147483647]",
+    dismissible = true,
     title = "Don't slow down, keep building",
     description = "Build websites with databases, products, and AI integrations, access way more features, then publish them from the same dashboard.",
     benefits = [
@@ -42,12 +48,30 @@ export function WebsitePrePaywall({
         "24/7 Human support included",
         "Subscriptions starting at only $4.99/wk.",
     ],
-    primaryLabel = "Start generating websites →",
+    primaryLabel = TRIAL_CTA_LABEL,
+    secondaryLabel = "No thanks, I don't want this website",
     footerNote = "Cancel anytime before renewal.",
 }: WebsitePrePaywallProps) {
+    useEffect(() => {
+        if (!open) return;
+
+        const docEl = document.documentElement;
+        const body = document.body;
+        const prevHtmlOverflow = docEl.style.overflow;
+        const prevBodyOverflow = body.style.overflow;
+
+        docEl.style.overflow = "hidden";
+        body.style.overflow = "hidden";
+
+        return () => {
+            docEl.style.overflow = prevHtmlOverflow;
+            body.style.overflow = prevBodyOverflow;
+        };
+    }, [open]);
+
     if (!open) return null;
 
-    return (
+    const modal = (
         <motion.div
             className={`website-paywall-overlay fixed inset-0 ${zIndexClassName}`}
             initial={{ opacity: 0 }}
@@ -56,7 +80,7 @@ export function WebsitePrePaywall({
             transition={{ duration: 0.75, ease: [0.22, 1, 0.36, 1] }}
         >
             <motion.div
-                className="absolute inset-0 bg-black/70"
+                className="absolute inset-0 bg-black/55 backdrop-blur-2xl backdrop-saturate-150"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
@@ -71,102 +95,119 @@ export function WebsitePrePaywall({
                     exit={{ opacity: 0, y: 10, scale: 0.985 }}
                     transition={{ duration: 0.85, ease: [0.22, 1, 0.36, 1], delay: 0.04 }}
                 >
-                    <button
-                        type="button"
-                        onClick={onClose}
-                        className="absolute right-4 top-4 z-10 inline-flex h-12 w-12 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-600 shadow-sm transition hover:bg-neutral-50 hover:text-neutral-900 disabled:cursor-not-allowed disabled:opacity-60"
-                        aria-label="Close"
-                        title="Close"
-                        disabled={checkoutBusy}
-                    >
-                        <X className="h-5 w-5" />
-                    </button>
+                    {dismissible ? (
+                        <button
+                            type="button"
+                            onClick={onClose}
+                            className="absolute right-4 top-4 z-10 inline-flex h-12 w-12 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-600 shadow-sm transition hover:bg-neutral-50 hover:text-neutral-900 disabled:cursor-not-allowed disabled:opacity-60"
+                            aria-label="Close"
+                            title="Close"
+                            disabled={checkoutBusy}
+                        >
+                            <X className="h-5 w-5" />
+                        </button>
+                    ) : null}
 
                     <div className="max-h-[calc(100dvh-3rem)] overflow-y-auto overscroll-contain sm:max-h-[calc(100dvh-4rem)]">
-                    <div className="p-5 sm:p-8 lg:p-10">
-                        <div className="max-w-xl pr-16">
-                            <h3 className="text-3xl sm:text-4xl tracking-tight text-neutral-900">
-                                {title}
-                            </h3>
-                            <p className="mt-6 text-sm sm:text-base leading-relaxed text-neutral-600">
-                                {description}
-                            </p>
-                        </div>
-
-                        <div className="mt-5 space-y-3">
-                            {benefits.map((item) => (
-                                <div key={item} className="flex items-start gap-3 text-sm leading-relaxed text-neutral-800">
-                                    <span className="mt-[1px] inline-flex h-6 w-6 items-center justify-center rounded-full text-[12px] font-semibold text-accent shrink-0">
-                                        ✓
-                                    </span>
-                                    <span className={/starting at/i.test(item) ? "font-semibold text-neutral-900" : ""}>
-                                        {item}
-                                    </span>
-                                </div>
-                            ))}
-                        </div>
-
-                        <div className="mt-7 flex flex-col gap-4">
-                            <p className="text-[11px] text-neutral-500 sm:text-xs">
-                                {footerNote}
-                            </p>
-
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    onStartCheckout();
-                                }}
-                                className="inline-flex flex-1 items-center justify-center rounded-full bg-[#f55f2a] px-5 py-4 text-[17px] font-semibold tracking-tight text-white shadow-[0_18px_44px_rgba(245,95,42,0.24)] transition hover:translate-y-[-1px] hover:bg-[#f3602c] sm:px-6 sm:py-5 sm:text-[20px]"
-                                disabled={checkoutBusy}
-                            >
-                                {checkoutBusy ? "Redirecting to Stripe…" : primaryLabel}
-                            </button>
-                        </div>
-
-                        <div className="mt-8 border-t border-neutral-200 pt-6">
-                            <div className="mb-3 flex items-center justify-center gap-3 text-center">
-                                <span className="text-[12px] uppercase tracking-[0.1em] text-neutral-500 sm:text-[12px]">
-                                    See what <span className="text-[15px] font-bold text-[rgba(245,95,42,1)]">5000+</span> Kloner members have built with
-                                </span>
-                                <span className="relative inline-block h-[48px] w-[48px] sm:h-[72px] sm:w-[72px]">
-                                    <Image
-                                        src={logo}
-                                        alt="Kloner logo"
-                                        fill
-                                        sizes="(max-width: 640px) 56px, 72px"
-                                        className="object-contain"
-                                    />
-                                </span>
+                        <div className="p-5 sm:p-8 lg:p-10">
+                            <div className="max-w-xl pr-16">
+                                <h3 className="text-3xl tracking-tight text-neutral-900 sm:text-4xl">
+                                    {title}
+                                </h3>
+                                <p className="mt-6 text-sm leading-relaxed text-neutral-600 sm:text-base">
+                                    {description}
+                                </p>
                             </div>
 
-                            <div className="relative overflow-hidden rounded-[28px] border border-neutral-200 bg-white shadow-[0_18px_48px_rgba(0,0,0,0.08)]">
-                                <div className="overflow-hidden py-4 sm:py-5">
-                                    <div className="website-paywall-carousel flex w-max items-stretch gap-4 px-4">
-                                        {[...websitePaywallShowcaseImages, ...websitePaywallShowcaseImages].map((src, index) => (
-                                            <div
-                                                key={`${src}-${index}`}
-                                                className="relative h-[170px] w-[220px] shrink-0 overflow-hidden rounded-[24px] border border-neutral-200 bg-neutral-100 shadow-[0_16px_36px_rgba(0,0,0,0.12)] sm:h-[250px] sm:w-[300px]"
-                                            >
-                                                <Image
-                                                    src={src}
-                                                    alt={`Showcase ${index + 1}`}
-                                                    fill
-                                                    sizes="(min-width: 640px) 300px, 220px"
-                                                    className="object-cover"
-                                                    priority={index < 2}
-                                                />
-                                            </div>
-                                        ))}
+                            <div className="mt-5 space-y-3">
+                                {benefits.map((item) => (
+                                    <div key={item} className="flex items-start gap-3 text-sm leading-relaxed text-neutral-800">
+                                        <span className="mt-[1px] inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[12px] font-semibold text-accent">
+                                            ✓
+                                        </span>
+                                        <span className={/starting at/i.test(item) ? "font-semibold text-neutral-900" : ""}>
+                                            {item}
+                                        </span>
+                                    </div>
+                                ))}
+                            </div>
+
+                            <div className="mt-7 flex flex-col gap-4">
+                                <p className="text-[11px] text-neutral-500 sm:text-xs">
+                                    {footerNote}
+                                </p>
+
+                                <button
+                                    type="button"
+                                    onClick={onStartCheckout}
+                                    className="inline-flex flex-1 items-center justify-center rounded-full bg-[#f55f2a] px-5 py-4 text-[17px] font-semibold tracking-tight text-white shadow-[0_18px_44px_rgba(245,95,42,0.24)] transition hover:translate-y-[-1px] hover:bg-[#f3602c] sm:px-6 sm:py-5 sm:text-[20px]"
+                                    disabled={checkoutBusy}
+                                >
+                                    {checkoutBusy ? "Redirecting to Stripe…" : primaryLabel}
+                                </button>
+
+                                {secondaryLabel ? (
+                                    <button
+                                        type="button"
+                                        onClick={onClose}
+                                        className="inline-flex items-center justify-center px-1 py-0 text-sm font-semibold tracking-tight text-neutral-600 underline underline-offset-4 transition hover:text-neutral-900"
+                                        disabled={checkoutBusy}
+                                    >
+                                        {secondaryLabel}
+                                    </button>
+                                ) : null}
+                            </div>
+
+                            <div className="mt-8 border-t border-neutral-200 pt-6">
+                                <div className="mb-3 flex items-center justify-center gap-3 text-center">
+                                    <span className="text-[12px] uppercase tracking-[0.1em] text-neutral-500 sm:text-[12px]">
+                                        See what <span className="text-[15px] font-bold text-[rgba(245,95,42,1)]">5000+</span> Kloner members have built with
+                                    </span>
+                                    <span className="relative inline-block h-[48px] w-[48px] sm:h-[72px] sm:w-[72px]">
+                                        <Image
+                                            src={logo}
+                                            alt="Kloner logo"
+                                            fill
+                                            sizes="(max-width: 640px) 56px, 72px"
+                                            className="object-contain"
+                                        />
+                                    </span>
+                                </div>
+
+                                <div className="relative overflow-hidden rounded-[28px] border border-neutral-200 bg-white shadow-[0_18px_48px_rgba(0,0,0,0.08)]">
+                                    <div className="overflow-hidden py-4 sm:py-5">
+                                        <div className="website-paywall-carousel flex w-max items-stretch gap-4 px-4">
+                                            {[...websitePaywallShowcaseImages, ...websitePaywallShowcaseImages].map((src, index) => (
+                                                <div
+                                                    key={`${src}-${index}`}
+                                                    className="relative h-[170px] w-[220px] shrink-0 overflow-hidden rounded-[24px] border border-neutral-200 bg-neutral-100 shadow-[0_16px_36px_rgba(0,0,0,0.12)] sm:h-[250px] sm:w-[300px]"
+                                                >
+                                                    <Image
+                                                        src={src}
+                                                        alt={`Showcase ${index + 1}`}
+                                                        fill
+                                                        sizes="(min-width: 640px) 300px, 220px"
+                                                        className="object-cover"
+                                                        priority={index < 2}
+                                                    />
+                                                </div>
+                                            ))}
+                                        </div>
                                     </div>
                                 </div>
                             </div>
                         </div>
                     </div>
-                    </div>
                 </motion.div>
             </div>
         </motion.div>
     );
+
+    if (typeof window === "undefined") {
+        return modal;
+    }
+
+    return createPortal(modal, document.body);
 }
 
 export default WebsitePrePaywall;

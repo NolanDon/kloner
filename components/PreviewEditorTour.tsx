@@ -61,6 +61,7 @@ export const TOUR_KEY = "kloner_preview_tour_done";
 type PreviewEditorTourProps = {
     startToken?: number;
     autoStart?: boolean;
+    onEnd?: () => void;
 };
 
 function getTourStorage(): Storage | null {
@@ -72,7 +73,7 @@ function getTourStorage(): Storage | null {
     }
 }
 
-function hasSeenTour(): boolean {
+export function hasSeenPreviewTour(): boolean {
     if (process.env.NODE_ENV !== "production") return false;
     return getTourStorage()?.getItem(TOUR_KEY) === "1";
 }
@@ -90,7 +91,7 @@ function isDevBuild() {
     return process.env.NODE_ENV !== "production";
 }
 
-export function PreviewEditorTour({ startToken = 0, autoStart = true }: PreviewEditorTourProps) {
+export function PreviewEditorTour({ startToken = 0, autoStart = true, onEnd }: PreviewEditorTourProps) {
     const [running, setRunning] = useState(false);
     const [index, setIndex] = useState(0);
     const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
@@ -116,7 +117,7 @@ export function PreviewEditorTour({ startToken = 0, autoStart = true }: PreviewE
         if (!autoStart) return;
         if (typeof window === "undefined") return;
 
-        if (hasSeenTour()) return;
+        if (hasSeenPreviewTour()) return;
         markTourSeen();
         setRunning(true);
     }, [autoStart, user]);
@@ -125,7 +126,7 @@ export function PreviewEditorTour({ startToken = 0, autoStart = true }: PreviewE
         if (typeof window === "undefined") return;
         const devAutoStart = isDevBuild() && autoStart;
         if (startToken <= 0 && !devAutoStart) return;
-        if (!isDevBuild() && hasSeenTour()) return;
+        if (!isDevBuild() && hasSeenPreviewTour()) return;
         markTourSeen();
         setIndex(0);
         setRunning(true);
@@ -310,6 +311,7 @@ export function PreviewEditorTour({ startToken = 0, autoStart = true }: PreviewE
         }
         setRunning(false);
         setIndex(0);
+        onEnd?.();
     };
 
     const next = () => {

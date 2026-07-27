@@ -12,6 +12,7 @@ type Props = PreviewEditorProps & {
   firebaseUser?: User | null;
   isAdminOverride?: boolean;
   userTier?: UserTier;
+  showTour?: boolean;
   startProCheckout?: () => Promise<void>;
   deployLocked?: boolean;
   onRequestDeployCheckout?: () => Promise<void> | void;
@@ -45,6 +46,7 @@ export default function PreviewEditorManager({
   firebaseUser,
   isAdminOverride,
   userTier,
+  showTour,
   startProCheckout,
   deployLocked,
   onRequestDeployCheckout,
@@ -87,6 +89,7 @@ export default function PreviewEditorManager({
         {...editorProps}
         isAdmin={isAdmin}
         deployLocked={deployLocked ?? userTier === "free"}
+        showTour={showTour}
         onRequestDeployCheckout={onRequestDeployCheckout ?? startProCheckout}
       />
     );
@@ -96,6 +99,7 @@ export default function PreviewEditorManager({
     <PreviewEditorV2
       {...editorProps}
       deployLocked={deployLocked ?? userTier === "free"}
+      showTour={showTour}
       onRequestDeployCheckout={onRequestDeployCheckout ?? startProCheckout}
     />
   );

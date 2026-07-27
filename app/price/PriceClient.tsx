@@ -7,7 +7,7 @@ import Footer from "@/components/Footer";
 import { AnimatedCreditCard } from "@/components/AnimatedCreditCard";
 import { useModal } from "@/components/ui/ModalContext";
 import { useAuth } from "@/src/hooks/useAuth";
-import { STRIPE_TRIAL_DAYS } from "@/src/lib/billingAccess";
+import { STRIPE_TRIAL_DAYS, TRIAL_CTA_LABEL } from "@/src/lib/billingAccess";
 import { Check, Loader2 } from "lucide-react";
 import SuccessConfetti from "@/components/tools/SuccessConfetti";
 
@@ -101,9 +101,9 @@ const tiers: Tier[] = [
             "Multiple projects and workspaces",
             "Email support with faster response targets",
         ],
-        cta: TRIAL_ENABLED ? "Start trial" : "Subscribe now",
+        cta: TRIAL_CTA_LABEL,
         fineprint: TRIAL_ENABLED
-            ? "Billed monthly at $19.99/month. Cancel anytime. Secure checkout via Stripe."
+            ? "Includes a 7-day free trial. Billed monthly at $19.99/month. Cancel anytime. Secure checkout via Stripe."
             : "Billed immediately at $19.99/month. Cancel anytime. Secure checkout via Stripe.",
     },
     {

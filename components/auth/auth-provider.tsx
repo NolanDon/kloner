@@ -33,8 +33,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const unsub = onIdTokenChanged(auth, async (authUser) => {
             try {
                 if (authUser) {
-                    // no forced refresh here
-                    const tokenResult = await getIdTokenResult(authUser);
+                    // no forced refresh here; if token refresh fails, keep the
+                    // signed-in user and fall back to conservative defaults.
+                    let tokenResult: Awaited<ReturnType<typeof getIdTokenResult>> | null = null;
+                    try {
+                        tokenResult = await getIdTokenResult(authUser);
+                    } catch (err) {
+                        console.warn("[auth-provider] Firebase token refresh failed; using fallback auth state", err);
+                    }
 
                     let firestoreData: Record<string, any> = {};
                     try {
@@ -43,8 +49,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                     } catch { }
 
                     setUser(Object.assign(authUser, firestoreData));
-                    setIsAdmin(!!tokenResult.claims?.admin);
-                    setUserTier((tokenResult.claims?.userTier as UserTier) || "free");
+                    setIsAdmin(!!tokenResult?.claims?.admin);
+                    setUserTier((tokenResult?.claims?.userTier as UserTier) || "free");
 
                     // Establish the server session cookie at most once per page load
                     // (and then rely on the global de-dupe + throttle in bootstrapServerSession).

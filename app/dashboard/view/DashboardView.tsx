@@ -114,6 +114,7 @@ import { extractArchivedPageIdsFromRender, fetchRenderForDeployment, getArchived
 import { useModal } from "@/components/ui/ModalContext";
 import AppBuilderEditor from "@/components/AppBuilderEditor";
 import WebsitePrePaywall from "@/components/WebsitePrePaywall";
+import { TRIAL_CTA_LABEL } from "@/src/lib/billingAccess";
 import { getPublicHttpUrlRejectionReason, validateAndNormalizePublicHttpUrl } from "@/src/lib/publicHttpUrl";
 import { recordAppBuilderSessionAnalytics, recordDeployAnalytics } from "@/components/analytics";
 
@@ -151,6 +152,7 @@ const FIRST_GEN_TRIAL_SESSION_INTERVAL = 3;
 const RENDER_TRIAL_SESSION_STORAGE_KEY = "kloner.firstGenTrial.renderSessions.v1";
 const APP_BUILDER_TRIAL_SESSION_STORAGE_KEY = "kloner.firstGenTrial.appBuilderSessions.v1";
 const CHECKOUT_FETCH_TIMEOUT_MS = 20_000;
+const CHECKOUT_SESSION_FETCH_TIMEOUT_MS = 60_000;
 
 const APP_BUILDER_COOKIE_CONSENT_KEY = "kloner.appBuilder.necessaryCookiesAccepted.v1";
 const APP_BUILDER_COOKIE_CONSENT_COOKIE = "kloner_app_builder_nc";
@@ -12083,6 +12085,7 @@ export default function PreviewPage(): JSX.Element {
 
     const forceTrialPromptInDev = process.env.NODE_ENV !== "production";
     const isFreeTierNotTrialing = userTier === "free" && stripeStatus !== "trialing";
+    const isTourEligible = true;
 
     useEffect(() => {
         const wasOpen = previousEditorOpenRef.current;
@@ -12561,7 +12564,7 @@ export default function PreviewPage(): JSX.Element {
                         returnRenderId: deployWizardRenderId,
                         returnStep: 2,
                     }),
-                });
+                }, CHECKOUT_SESSION_FETCH_TIMEOUT_MS);
 
                 if (res.status === 401) {
                     const next = encodeURIComponent("/dashboard/view?upgraded=1");
@@ -12638,7 +12641,7 @@ export default function PreviewPage(): JSX.Element {
                         returnAppId: checkoutReturnAppId,
                         returnStep: 3,
                     }),
-                });
+                }, CHECKOUT_SESSION_FETCH_TIMEOUT_MS);
 
                 if (res.status === 401) {
                     const next = encodeURIComponent("/dashboard/view?upgraded=1");
@@ -13195,6 +13198,8 @@ export default function PreviewPage(): JSX.Element {
                         mode={editorMode}
                         initialHtml={editorHtml}
                         sourceImage={editorRefImg}
+                        accessLocked={isFreeTierNotTrialing}
+                        showTour={isTourEligible}
                         sourceUrl={activeRender?.source || activeRender?.url || undefined}
                         initialSeoMetaByPage={activeSeoMetaByPage || undefined}
                         initialArchivedPageIds={activeArchivedPageIds}
@@ -13273,6 +13278,8 @@ export default function PreviewPage(): JSX.Element {
                         }}
                         onDeploy={(app) => openAppDeployWizard(app)}
                         deployLocked={userTier === "free"}
+                        accessLocked={isFreeTierNotTrialing}
+                        showTour={isTourEligible}
                         onRequestDeployCheckout={() => {
                             void startProCheckoutForAppDeploy({ returnAppId: currentAppId });
                         }}
@@ -13801,7 +13808,7 @@ export default function PreviewPage(): JSX.Element {
                                                     whileTap={{ scale: 0.99 }}
                                                     transition={{ duration: 0.16, ease: "easeOut" }}
                                                 >
-                                                    {checkoutBusy ? "Redirecting to Stripe…" : "Subscribe now & publish →"}
+                                                    {checkoutBusy ? "Redirecting to Stripe…" : "Start your 7-day free trial & publish →"}
                                                 </motion.button>
 
                                                 <p className="-mt-1 text-center text-[11px] text-neutral-500 pb-1 sm:pb-0">
@@ -14009,7 +14016,7 @@ export default function PreviewPage(): JSX.Element {
                                             whileTap={{ scale: 0.99 }}
                                             transition={{ duration: 0.16, ease: "easeOut" }}
                                         >
-                                            {checkoutBusy ? "Redirecting to Stripe…" : "Subscribe now & claim 40% off →"}
+                                            {checkoutBusy ? "Redirecting to Stripe…" : "Start your 7-day free trial & claim 40% off →"}
                                         </motion.button>
 
                                         <p className="mt-3 text-center text-[11px] text-neutral-500">
@@ -14428,7 +14435,7 @@ export default function PreviewPage(): JSX.Element {
                                                         <div className="px-7 pb-6 pt-5">
                                                             {/* badge */}
                                                             <div className="inline-flex items-center rounded-full border border-neutral-200 bg-white px-3 py-1 text-[11px] font-extrabold tracking-[0.18em] text-neutral-800 uppercase">
-                                                                Subscribe now
+                                                                Start your free trial
                                                             </div>
 
                                                             {/* headline */}
@@ -14509,7 +14516,7 @@ export default function PreviewPage(): JSX.Element {
                                                                     whileTap={{ scale: 0.99 }}
                                                                     transition={{ duration: 0.16, ease: "easeOut" }}
                                                                 >
-                                                                    {checkoutBusy ? "Redirecting to Stripe…" : "Subscribe now & publish →"}
+                                                                    {checkoutBusy ? "Redirecting to Stripe…" : "Start your 7-day free trial & publish →"}
                                                                 </motion.button>
 
                                                                 <p className="mt-3 text-center text-[11px] text-neutral-500">
@@ -14846,7 +14853,7 @@ export default function PreviewPage(): JSX.Element {
                                         ? "You have used all monthly generation credits. Upgrade to websites and unlock one-click deploy."
                                         : "Publish your website live from the editor. Upgrade to unlock one-click deploy and higher monthly credits."
                             }
-                            primaryLabel="Subscribe now"
+                            primaryLabel={TRIAL_CTA_LABEL}
                             footerNote="Cancel anytime before renewal."
                             zIndexClassName="z-[12049]"
                         />
@@ -14915,7 +14922,7 @@ export default function PreviewPage(): JSX.Element {
                                             className="rounded-md px-3 py-1.5 text-sm font-semibold text-white"
                                             style={{ backgroundColor: ACCENT }}
                                         >
-                                            Subscribe now
+                                            Start your free trial
                                         </button>
                                     </div>
                                 </div>

@@ -8,5 +8,5 @@ export const brand = {
     { label: "FAQs", href: "/#faq" },
     { label: "Docs", href: "/dashboard/docs#about" },
   ],
-  cta: { label: "Try Kloner", href: "/login?mode=signup" }
+  cta: { label: "Start your free trial", href: "/login?mode=signup" }
 } as const;

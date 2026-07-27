@@ -112,6 +112,7 @@ describe("GET /api/billing/recovery-checkout", () => {
         expect(payload.line_items?.[0]?.price).toBe("price_pro_live");
         expect(payload.discounts?.[0]?.promotion_code).toBe("promo_123");
         expect(payload.cancel_url).toContain("/dashboard/view");
+        expect(payload.subscription_data?.trial_period_days).toBe(7);
         expect(payload.subscription_data?.metadata?.checkoutFlow).toBe("recovery_exit40");
         expect(res.headers.get("Location")).toBe("https://stripe/checkout");
     });

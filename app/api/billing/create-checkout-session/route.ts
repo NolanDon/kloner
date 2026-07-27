@@ -195,7 +195,7 @@ async function handler({ req, uid }: { req: NextRequest; uid: string }) {
         return NextResponse.json({ error: "Missing plan" }, { status: 400 });
     }
 
-    // Trial is configurable and disabled by default.
+    // Trial is configurable and defaults to 7 days.
     const trialCandidate = plan === "pro" && STRIPE_TRIAL_DAYS > 0;
 
     const isProd = process.env.NODE_ENV === "production";

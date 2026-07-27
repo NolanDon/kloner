@@ -8,12 +8,15 @@ function readIntEnv(name: string, fallback: number): number {
 /**
  * Reversible billing knobs shared by client and server.
  *
- * `NEXT_PUBLIC_STRIPE_TRIAL_DAYS=0` disables the current free trial without
+ * `NEXT_PUBLIC_STRIPE_TRIAL_DAYS=0` disables the free trial without
  * changing the checkout architecture.
  * `NEXT_PUBLIC_FREE_PREVIEW_CREDITS` and `NEXT_PUBLIC_FREE_EDIT_CREDITS`
  * keep the free allowance small and easy to tune.
  */
-export const STRIPE_TRIAL_DAYS = Math.max(0, readIntEnv("NEXT_PUBLIC_STRIPE_TRIAL_DAYS", 0));
+export const STRIPE_TRIAL_DAYS = Math.max(0, readIntEnv("NEXT_PUBLIC_STRIPE_TRIAL_DAYS", 7));
+
+export const TRIAL_CTA_LABEL =
+    STRIPE_TRIAL_DAYS > 0 ? `Start your ${STRIPE_TRIAL_DAYS}-day free trial` : "Subscribe now";
 
 export const FREE_PREVIEW_MONTHLY_CREDITS = Math.max(
     0,

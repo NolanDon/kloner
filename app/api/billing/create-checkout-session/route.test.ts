@@ -174,8 +174,8 @@ describe("POST /api/billing/create-checkout-session", () => {
         expect(payload.cancel_url).toContain("/dashboard/view?billing=cancelled&recovery=1");
         expect(payload.payment_method_options?.card?.request_three_d_secure).toBe("any");
 
-        // Trials are disabled by default, so checkout charges immediately.
-        expect(payload.subscription_data?.trial_period_days).toBeUndefined();
+        // The default checkout includes the 7-day trial for Pro.
+        expect(payload.subscription_data?.trial_period_days).toBe(7);
     });
 
     it("does not include a free trial for agency", async () => {

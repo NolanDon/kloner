@@ -6,6 +6,8 @@ import { useEffect, useMemo, useRef, useState, useCallback, ChangeEvent } from "
 import { motion, AnimatePresence, useDragControls } from "framer-motion";
 import Image from 'next/image'
 import WebsitePrePaywall from "@/components/WebsitePrePaywall";
+import { TRIAL_CTA_LABEL } from "@/src/lib/billingAccess";
+import type { UserTier } from "@/src/lib/credits";
 
 export type Device = "desktop" | "tablet" | "mobile";
 export type ViewMode = "code" | "preview" | "screenshot";
@@ -72,6 +74,8 @@ type Props = {
     initialPageId?: string;
     onPageHtmlChange?: (pageId: string, html: string) => void;
     deployLocked?: boolean;
+    accessLocked?: boolean;
+    showTour?: boolean;
     onRequestDeployCheckout?: () => Promise<void> | void;
 };
 
@@ -656,7 +660,7 @@ import { Camera, Code2, Eye, EyeOff, FileText, Images, Loader2, Maximize2, Messa
 import { compressImageForUpload } from "@/src/lib/clientImageCompression";
 import { EditorSessionCounters, EditorSessionMetrics, EditorSessionUser, ExportAnalyticsUser, recordEditorSessionAnalytics, recordExportAnalytics } from "../../components/analytics";
 import PreviewEditorAgentPanel from "../../components/editor/PreviewEditorAgentPanel";
-import { PreviewEditorTour } from "../../components/PreviewEditorTour";
+import { hasSeenPreviewTour, PreviewEditorTour } from "../../components/PreviewEditorTour";
 import { injectEditableOverlay } from "@/src/lib/klonerIframeRuntime";
 import { MetaSettings, UploadedAsset } from "../../components/MetaSettings";
 import { AiImageLibraryPanel } from "../../components/AiImageLibraryPanel";
@@ -1121,9 +1125,11 @@ export default function PreviewEditorV2({
     onArchivedPageIdsChange,
     isAdmin = false,
     deployLocked = false,
+    accessLocked = false,
+    showTour,
     onRequestDeployCheckout,
 }: Props) {
-    const { user, userTier, loading: authLoading } = useAuth();
+    const { user, userTier, loading: authLoading } = useAuth() as { user: unknown; userTier: UserTier; loading: boolean };
     const isDevCodeMode = process.env.NODE_ENV === "development";
     const [nameHint, setNameHint] = useState<string>("");
     const [version, setVersion] = useState<number>(1);
@@ -1138,6 +1144,11 @@ export default function PreviewEditorV2({
     const [closePrompt, setClosePrompt] = useState(false);
     const [exportPrompt, setExportPrompt] = useState(false);
     const [showDeployUpgradePaywall, setShowDeployUpgradePaywall] = useState(false);
+    const showAccessPaywall = accessLocked && !isAdmin;
+    const shouldShowTour = typeof showTour === "boolean" ? showTour : true;
+    const shouldRunPreviewTour = !isCompactLayout && shouldShowTour;
+    const [hasCompletedPreviewTour, setHasCompletedPreviewTour] = useState(() => hasSeenPreviewTour());
+    const shouldShowAccessPaywall = showAccessPaywall && (!shouldRunPreviewTour || hasCompletedPreviewTour);
     const [controlsCollapsed, setControlsCollapsed] = useState<boolean>(false);
     const [sidePanelMode, setSidePanelMode] = useState<
         "style" | "meta" | "code" | "ai-library" | "revision-chat"
@@ -4619,7 +4630,26 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
             tabIndex={-1}
             className="fixed inset-0 z-[9999] bg-black/50"
         >
-            {!isCompactLayout && (<PreviewEditorTour />)}
+            <WebsitePrePaywall
+                open={shouldShowAccessPaywall}
+                onClose={() => {
+                    void onClose?.();
+                }}
+                onStartCheckout={() => {
+                    void onRequestDeployCheckout?.();
+                }}
+                checkoutBusy={exporting}
+                zIndexClassName="z-[9999999999]"
+                dismissible={false}
+                title="Start your 7-day free trial to unlock the editor"
+                description="You can see the website in the background, but editing is locked until you subscribe."
+                primaryLabel={TRIAL_CTA_LABEL}
+                footerNote="Cancel anytime before renewal."
+            />
+
+            {shouldRunPreviewTour ? (
+                <PreviewEditorTour onEnd={() => setHasCompletedPreviewTour(true)} />
+            ) : null}
 
             <div className={`absolute overflow-hidden ${isCompactLayout ? "inset-0 bg-white" : "inset-4"}`}>
 
@@ -6861,7 +6891,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                     zIndexClassName="z-[30001]"
                     title="Upgrade to publish"
                     description="Publish your website live from the editor. Upgrade to unlock one-click deploy and higher monthly credits."
-                    primaryLabel="Subscribe now"
+                    primaryLabel={TRIAL_CTA_LABEL}
                     footerNote="Cancel anytime before renewal."
                 />
 
