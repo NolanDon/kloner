@@ -1129,7 +1129,7 @@ export default function PreviewEditorV2({
     showTour,
     onRequestDeployCheckout,
 }: Props) {
-    const { user, userTier, loading: authLoading } = useAuth() as { user: unknown; userTier: UserTier; loading: boolean };
+    const { user, userTier, loading: authLoading } = useAuth() as { user: FirebaseUser | null; userTier: UserTier; loading: boolean };
     const isDevCodeMode = process.env.NODE_ENV === "development";
     const [nameHint, setNameHint] = useState<string>("");
     const [version, setVersion] = useState<number>(1);
@@ -1146,9 +1146,7 @@ export default function PreviewEditorV2({
     const [showDeployUpgradePaywall, setShowDeployUpgradePaywall] = useState(false);
     const showAccessPaywall = accessLocked && !isAdmin;
     const shouldShowTour = typeof showTour === "boolean" ? showTour : true;
-    const shouldRunPreviewTour = !isCompactLayout && shouldShowTour;
     const [hasCompletedPreviewTour, setHasCompletedPreviewTour] = useState(() => hasSeenPreviewTour());
-    const shouldShowAccessPaywall = showAccessPaywall && (!shouldRunPreviewTour || hasCompletedPreviewTour);
     const [controlsCollapsed, setControlsCollapsed] = useState<boolean>(false);
     const [sidePanelMode, setSidePanelMode] = useState<
         "style" | "meta" | "code" | "ai-library" | "revision-chat"
@@ -1445,6 +1443,8 @@ export default function PreviewEditorV2({
     const [lastSelectedPath, setLastSelectedPath] = useState(null);
     const [archivedPageIds, setArchivedPageIds] = useState<string[]>([]);
     const [showPageLayers, setShowPageLayers] = useState(false);
+    const shouldRunPreviewTour = !isCompactLayout && shouldShowTour;
+    const shouldShowAccessPaywall = showAccessPaywall && (!shouldRunPreviewTour || hasCompletedPreviewTour);
 
     // inside your component body
     const [isPreviewFullscreen, setIsPreviewFullscreen] = useState(false);
@@ -2778,7 +2778,7 @@ export default function PreviewEditorV2({
             setSeoMetaByPage(next);
             setActiveSeoMetaByPage(next);
 
-            if (user && resolvedRenderId) {
+            if (user?.uid && resolvedRenderId) {
                 try {
                     const dref = doc(db, "kloner_users", user.uid, "kloner_renders", resolvedRenderId);
 

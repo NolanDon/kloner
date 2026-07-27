@@ -781,6 +781,7 @@ import type { User as FirebaseUser } from "firebase/auth";
 import type { RenderDoc } from "@/app/dashboard/view/DashboardView";
 import { useAuth } from "@/src/hooks/useAuth";
 import { TRIAL_CTA_LABEL } from "@/src/lib/billingAccess";
+import type { UserTier } from "@/src/lib/credits";
 import { Camera, Check, ChevronDown, ChevronLeft, ChevronRight, Code2, Eye, EyeOff, FileText, Images, Loader2, Maximize2, MessageSquare, Minimize2, Monitor, Palette, Pencil, Pipette, Redo2, Rocket, RotateCcw, RotateCw, SlidersHorizontal, Smartphone, Tablet, Trash2Icon, Undo2, X } from "lucide-react";
 import { compressImageForUpload } from "@/src/lib/clientImageCompression";
 import { EditorSessionCounters, EditorSessionMetrics, EditorSessionUser, ExportAnalyticsUser, recordEditorSessionAnalytics, recordExportAnalytics } from "./analytics";
@@ -1281,7 +1282,7 @@ function AppPreviewEditorCore({
     showTour,
     onRequestDeployCheckout,
 }: Props) {
-    const { user, userTier, loading: authLoading } = useAuth();
+    const { user, userTier, loading: authLoading } = useAuth() as { user: FirebaseUser | null; userTier: UserTier; loading: boolean };
     const isDevCodeMode = process.env.NODE_ENV === "development";
     const [nameHint, setNameHint] = useState<string>("");
     const [version, setVersion] = useState<number>(1);
@@ -2847,7 +2848,7 @@ function AppPreviewEditorCore({
             setSeoMetaByPage(next);
             setActiveSeoMetaByPage(next);
 
-            if (user && resolvedRenderId) {
+            if (user?.uid && resolvedRenderId) {
                 try {
                     const dref = doc(db, "kloner_users", user.uid, "kloner_renders", resolvedRenderId);
 

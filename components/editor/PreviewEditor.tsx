@@ -1129,7 +1129,7 @@ export default function PreviewEditorV2({
     showTour,
     onRequestDeployCheckout,
 }: Props) {
-    const { user, userTier } = useAuth() as { user: unknown; userTier: UserTier };
+    const { user, userTier } = useAuth() as { user: FirebaseUser | null; userTier: UserTier };
     const isDevCodeMode = process.env.NODE_ENV === "development";
     const [nameHint, setNameHint] = useState<string>("");
     const [version, setVersion] = useState<number>(1);
@@ -2737,7 +2737,7 @@ export default function PreviewEditorV2({
             setSeoMetaByPage(next);
             setActiveSeoMetaByPage(next);
 
-            if (user && resolvedRenderId) {
+            if (user?.uid && resolvedRenderId) {
                 try {
                     const dref = doc(db, "kloner_users", user.uid, "kloner_renders", resolvedRenderId);
 

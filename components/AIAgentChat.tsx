@@ -4947,7 +4947,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                                             setTopupModalOpen(false);
                                             window.location.href = "/price#topup";
                                         }}
-                                        className="w-full rounded-full border border-black/10 bg-white px-4 py-3 text-sm font-semibold text-neutral-900 hover:bg-neutral-50"
+                                        className="w-full px-4 py-3 text-sm underline text-neutral-900"
                                     >
                                         View pricing
                                     </button>

@@ -8380,7 +8380,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                         </select>
 
                                         <div className="mt-2 text-[12px] text-neutral-700">
-                                            Credit carryover: Unused credits remain in your account and can be used for future edits. You won&apos;t lose any credits you purchase.
+                                            Unused credits remain in your account and carry over month to month. You won&apos;t lose any credits you purchase.
                                         </div>
                                     </div>
 
@@ -8503,7 +8503,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                             setTopupModalOpen(false);
                                             window.location.href = "/price#topup";
                                         }}
-                                        className="w-full rounded-full border border-black/10 bg-white px-4 py-3 text-sm font-semibold text-neutral-900 hover:bg-neutral-50"
+                                        className="w-full px-4 py-3 text-sm text-neutral-900 underline"
                                     >
                                         View pricing
                                     </button>
