@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { auth } from "@/lib/firebase";
 import { onAuthStateChanged, signOut, type User as FirebaseUser } from "firebase/auth";
 import { useRouter } from "next/navigation";
+import { resetAuthClientCaches } from "@/lib/auth-client";
 
 export type User = FirebaseUser;
 
@@ -22,6 +23,11 @@ export default function UserMenu() {
             <span className="text-sm text-white/70">{user.displayName || user.email}</span>
             <button
                 onClick={async () => {
+                    await fetch("/api/auth/session", {
+                        method: "DELETE",
+                        credentials: "include",
+                    }).catch(() => null);
+                    resetAuthClientCaches();
                     await signOut(auth);
                     router.refresh();
                 }}

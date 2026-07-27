@@ -4,7 +4,7 @@ import { createContext, useContext, useEffect, useMemo, useRef, useState } from 
 import { onIdTokenChanged, getIdTokenResult, type User } from "firebase/auth";
 import { auth, db } from "@/lib/firebase";
 import { doc, getDoc } from "firebase/firestore";
-import { bootstrapServerSession } from "@/lib/auth-client";
+import { bootstrapServerSession, resetAuthClientCaches } from "@/lib/auth-client";
 
 export type UserTier = "free" | "pro" | "agency" | "enterprise" | null;
 
@@ -33,6 +33,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const unsub = onIdTokenChanged(auth, async (authUser) => {
             try {
                 if (authUser) {
+                    // Switching accounts in the same tab should start from a clean
+                    // client auth cache so stale CSRF/session state cannot leak across users.
+                    resetAuthClientCaches();
+
                     // no forced refresh here; if token refresh fails, keep the
                     // signed-in user and fall back to conservative defaults.
                     let tokenResult: Awaited<ReturnType<typeof getIdTokenResult>> | null = null;
@@ -64,6 +68,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                         });
                     }
                 } else {
+                    resetAuthClientCaches();
                     setUser(null);
                     setIsAdmin(false);
                     setUserTier(null);

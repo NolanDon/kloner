@@ -8,6 +8,7 @@ import {
     signOut,
 } from "firebase/auth";
 import { auth, db } from "@/lib/firebase";
+import { resetAuthClientCaches } from "@/lib/auth-client";
 import { collection, onSnapshot, DocumentData } from "firebase/firestore";
 import Link from "next/link";
 import Image from "next/image";
@@ -308,6 +309,7 @@ function AccountBlock() {
                 method: "DELETE",
                 credentials: "include",
             });
+            resetAuthClientCaches();
             await signOut(auth);
             router.replace("/login");
         } catch {
@@ -491,6 +493,7 @@ function MobileHeader({
                 method: "DELETE",
                 credentials: "include",
             });
+            resetAuthClientCaches();
             await signOut(auth);
             close();
             router.replace("/login");

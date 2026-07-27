@@ -24,6 +24,7 @@ import {
 import { useAuth } from "@/src/hooks/useAuth";
 import { signOut, type User } from "firebase/auth";
 import { auth } from "@/lib/firebase";
+import { resetAuthClientCaches } from "@/lib/auth-client";
 import Image from "next/image";
 import logo from "@/public/images/logo.png";
 import { useUrlOverlay } from "@/components/UrlOverlayProvider";
@@ -85,6 +86,7 @@ export default function NavBar(): JSX.Element {
         method: "DELETE",
         credentials: "include",
       });
+      resetAuthClientCaches();
       await signOut(auth);
       setUserMenuOpen(false);
     } catch {
