@@ -112,6 +112,7 @@ export async function POST(req: NextRequest) {
                     {
                         ok: false,
                         error: "Please upgrade your account to deploy projects.",
+                        code: "FREE_TIER_DEPLOY_BLOCKED",
                     },
                     { status: 400 }
                 );

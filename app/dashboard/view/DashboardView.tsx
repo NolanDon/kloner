@@ -114,7 +114,7 @@ import { extractArchivedPageIdsFromRender, fetchRenderForDeployment, getArchived
 import { useModal } from "@/components/ui/ModalContext";
 import AppBuilderEditor from "@/components/AppBuilderEditor";
 import WebsitePrePaywall from "@/components/WebsitePrePaywall";
-import { TRIAL_CTA_LABEL } from "@/src/lib/billingAccess";
+import { STRIPE_TRIAL_DAYS, TRIAL_CTA_LABEL } from "@/src/lib/billingAccess";
 import { getPublicHttpUrlRejectionReason, validateAndNormalizePublicHttpUrl } from "@/src/lib/publicHttpUrl";
 import { recordAppBuilderSessionAnalytics, recordDeployAnalytics } from "@/components/analytics";
 
@@ -4355,6 +4355,7 @@ export default function PreviewPage(): JSX.Element {
     const [showAppDeployWizardStep2CloseButton, setShowAppDeployWizardStep2CloseButton] = useState(false);
     const [appDeployWizardRetryCount, setAppDeployWizardRetryCount] = useState(0);
     const [appDeployWizardRetryLockedUntil, setAppDeployWizardRetryLockedUntil] = useState(0);
+    const [appDeployWizardUpgradePaywallOpen, setAppDeployWizardUpgradePaywallOpen] = useState(false);
     const [appBuilderDeployIssue, setAppBuilderDeployIssue] = useState<{
         title: string;
         detail: string;
@@ -4365,6 +4366,7 @@ export default function PreviewPage(): JSX.Element {
     const appDeployWizardRestoreTokenRef = useRef(0);
     const appDeployWizardErrorText = appDeployWizardError || "";
     const appDeployWizardPermissionError = /don't have permission to create the project/i.test(appDeployWizardErrorText);
+    const appDeployWizardUpgradeRequiredError = /please upgrade your account to deploy projects/i.test(appDeployWizardErrorText);
     const appDeployWizardResolvedErrorText = useMemo(() => {
         if (!appDeployWizardErrorText) return "";
         if (appDeployWizardPermissionError) {
@@ -4384,6 +4386,9 @@ export default function PreviewPage(): JSX.Element {
     }, [deployWizardError, deployWizardPermissionError]);
     const [deployWizardRetryCount, setDeployWizardRetryCount] = useState(0);
     const [deployWizardRetryLockedUntil, setDeployWizardRetryLockedUntil] = useState(0);
+    const appDeployWizardUpgradePrimaryLabel = STRIPE_TRIAL_DAYS > 0
+        ? `Start your ${STRIPE_TRIAL_DAYS}-day free trial & deploy →`
+        : "Upgrade to deploy →";
 
     useEffect(() => {
         if (!appDeployWizardRetryLockedUntil) return;
@@ -5096,6 +5101,7 @@ export default function PreviewPage(): JSX.Element {
                 setAppDeployWizardError(null);
                 setAppDeployWizardBusy(false);
                 setAppDeployWizardLiveUrl(null);
+                setAppDeployWizardUpgradePaywallOpen(false);
                 setAppDeployWizardOpen(true);
 
                 const nextStep: 1 | 2 | 3 = stepParam === "1" ? 1 : stepParam === "2" ? 2 : 3;
@@ -5312,6 +5318,7 @@ export default function PreviewPage(): JSX.Element {
         setAppDeployWizardAppName("");
         setAppDeployWizardRetryCount(0);
         setAppDeployWizardRetryLockedUntil(0);
+        setAppDeployWizardUpgradePaywallOpen(false);
         setShowAppExitOffer(false);
         setAppExitOfferReason(null);
         autoAppDeployTriggeredRef.current = false;
@@ -5339,6 +5346,16 @@ export default function PreviewPage(): JSX.Element {
             console.error("Failed to clear app deploy wizard query params on close", e);
         }
     }, [router]);
+
+    const openAppDeployUpgradePaywall = useCallback(() => {
+        setAppDeployWizardBusy(false);
+        setAppDeployWizardError(null);
+        setAppBuilderDeployIssue(null);
+        setAppDeployWizardLiveUrl(null);
+        setAppDeployWizardUpgradePaywallOpen(true);
+        setAppDeployWizardStep(2);
+        autoAppDeployTriggeredRef.current = false;
+    }, []);
 
     const reportDeployWizardFailure = useCallback(
         async (params: {
@@ -5468,6 +5485,13 @@ export default function PreviewPage(): JSX.Element {
                     : /don't have permission to create the project/i.test(rawMsg)
                         ? "This Vercel account or team cannot create a new project here. Fix the account or team, then retry the deploy."
                         : rawMsg;
+                const upgradeBlocked = code === "FREE_TIER_DEPLOY_BLOCKED" || /please upgrade your account to deploy projects/i.test(rawMsg);
+
+                if (upgradeBlocked) {
+                    openAppDeployUpgradePaywall();
+                    return;
+                }
+
                 const nextRetryCount = appDeployWizardRetryCount + 1;
                 const nextRetryDelay = computeDeployRetryDelayMs(nextRetryCount);
                 setAppDeployWizardRetryCount(nextRetryCount);
@@ -5506,11 +5530,11 @@ export default function PreviewPage(): JSX.Element {
                     rawError: message,
                 },
             });
-            setAppDeployWizardError(message);
-        } finally {
-            setAppDeployWizardBusy(false);
-        }
-    }, [appDeployWizardAppId, appDeployWizardBusy, appDeployWizardRetryCount, isVercelConnected, reportDeployWizardFailure, user]);
+                setAppDeployWizardError(message);
+            } finally {
+                setAppDeployWizardBusy(false);
+            }
+    }, [appDeployWizardAppId, appDeployWizardBusy, appDeployWizardRetryCount, isVercelConnected, openAppDeployUpgradePaywall, reportDeployWizardFailure, user]);
 
     useEffect(() => {
         if (!appDeployWizardOpen) return;
@@ -5558,6 +5582,7 @@ export default function PreviewPage(): JSX.Element {
         if (!appDeployWizardOpen) return;
         if (appDeployWizardStep !== 2) return;
         if (vercelStatus !== "connected") return;
+        if (appDeployWizardUpgradePaywallOpen) return;
 
         const token = appDeployWizardRestoreTokenRef.current;
         const timer = window.setTimeout(() => {
@@ -5567,7 +5592,7 @@ export default function PreviewPage(): JSX.Element {
         }, 900);
 
         return () => window.clearTimeout(timer);
-    }, [appDeployWizardOpen, appDeployWizardStep, vercelStatus]);
+    }, [appDeployWizardOpen, appDeployWizardStep, appDeployWizardUpgradePaywallOpen, vercelStatus]);
 
     // Auto-advance: once Vercel is connected, move straight to deploy.
     useEffect(() => {
@@ -5580,6 +5605,7 @@ export default function PreviewPage(): JSX.Element {
             void (async () => {
                 const tierNow = await refreshUserTierNow();
                 if (tierNow.tier === "free") {
+                    setAppDeployWizardUpgradePaywallOpen(true);
                     setAppDeployWizardStep(2);
                     return;
                 }
@@ -13727,102 +13753,20 @@ export default function PreviewPage(): JSX.Element {
                                             </div>
                                         ) : null}
 
-                                        {appDeployWizardStep === 2 ? (
-                                            <div className="space-y-4 pb-1 sm:pb-0">
-                                                <div className="rounded-2xl border border-neutral-200 bg-white px-4 py-4 shadow-sm">
-                                                    <div className="flex items-start justify-between gap-3">
-                                                        <div className="min-w-0">
-                                                            <p className="text-[18px] font-semibold leading-tight text-neutral-900 sm:text-lg">
-                                                                Upgrade to launch with one click
-                                                            </p>
-                                                            <p className="mt-1 text-[11px] leading-relaxed text-neutral-600 sm:text-xs">
-                                                                Build in Next.js 16 or ship a lightweight HTML site. Billed immediately.
-                                                            </p>
-                                                        </div>
-                                                    </div>
-
-                                                    {canUseExitOffer ? (
-                                                        <div className="mt-3 inline-flex items-center rounded-full border border-neutral-200 bg-neutral-50 px-2.5 py-1 text-[11px] font-semibold text-neutral-700">
-                                                            Limited welcome offer ends in {step5Time.mm}:{step5Time.ss}
-                                                        </div>
-                                                    ) : null}
-
-                                                    <div className="mt-4 space-y-2">
-                                                        <div className="flex items-start gap-3 text-[13px] text-neutral-800 sm:text-[14px]">
-                                                            <span className="mt-[2px] inline-flex h-5 w-5 items-center justify-center rounded-full text-[14px] font-black text-blue-600">
-                                                                ✓
-                                                            </span>
-                                                            <span className="leading-snug">Deploy 40+ apps and websites per month</span>
-                                                        </div>
-
-                                                        <div className="flex items-start gap-3 text-[13px] text-neutral-800 sm:text-[14px]">
-                                                            <span className="mt-[2px] inline-flex h-5 w-5 items-center justify-center rounded-full text-[14px] font-black text-blue-600">
-                                                                ✓
-                                                            </span>
-                                                            <span className="leading-snug">One-click publishing</span>
-                                                        </div>
-
-                                                        <div className="flex items-start gap-3 text-[13px] text-neutral-800 sm:text-[14px]">
-                                                            <span className="mt-[2px] inline-flex h-5 w-5 items-center justify-center rounded-full text-[14px] font-black text-blue-600">
-                                                                ✓
-                                                            </span>
-                                                            <span className="leading-snug">AI task-force to help build your projects</span>
-                                                        </div>
-
-                                                        <div className="flex items-start gap-3 text-[13px] text-neutral-800 sm:text-[14px]">
-                                                            <span className="mt-[2px] inline-flex h-5 w-5 items-center justify-center rounded-full text-[14px] font-black text-blue-600">
-                                                                ✓
-                                                            </span>
-                                                            <span className="leading-snug">24/7 Human support included</span>
-                                                        </div>
-                                                    </div>
-
-                                                    <div className="my-4 flex items-start gap-2 rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2">
-                                                        <div className="mt-[1px] h-7 w-7 shrink-0 overflow-hidden rounded-full border border-neutral-200 bg-white">
-                                                            <Image
-                                                                src="/images/testimonial-avatar.jpg"
-                                                                alt="Customer avatar"
-                                                                width={28}
-                                                                height={28}
-                                                                className="h-full w-full object-cover"
-                                                                loading="lazy"
-                                                            />
-                                                        </div>
-
-                                                        <div className="min-w-0">
-                                                            <p className="text-[12px] leading-snug text-neutral-800">
-                                                                “I struggled with a slow wordpress site but didn&apos;t have the budget to redo it. This app helped me clone and redeploy it in under 10 minutes, I recommend it to anyone needing a quick landing page”
-                                                            </p>
-                                                            <p className="mt-1 text-[11px] text-neutral-500">Karissa, freelancer</p>
-                                                        </div>
-                                                    </div>
-                                                </div>
-
-                                                <motion.button
-                                                    type="button"
-                                                    onClick={() => void startProCheckoutForAppDeploy()}
-                                                    disabled={checkoutBusy}
-                                                    className="w-full rounded-2xl px-5 py-4 text-[15px] font-extrabold text-white shadow-[0_18px_44px_rgba(0,0,0,0.28)] focus:outline-none focus:ring-2 focus:ring-black/10 disabled:cursor-wait disabled:opacity-70"
-                                                    style={{ backgroundColor: ACCENT }}
-                                                    whileHover={{ scale: 1.01 }}
-                                                    whileTap={{ scale: 0.99 }}
-                                                    transition={{ duration: 0.16, ease: "easeOut" }}
-                                                >
-                                                    {checkoutBusy ? "Redirecting to Stripe…" : "Start your 7-day free trial & publish →"}
-                                                </motion.button>
-
-                                                <p className="-mt-1 text-center text-[11px] text-neutral-500 pb-1 sm:pb-0">
-                                                    Billed immediately. Cancel anytime before renewal.
-                                                </p>
-
-                                                <button
-                                                    type="button"
-                                                    onClick={() => openAppExitOffer("back")}
-                                                    className="w-full rounded-xl border border-neutral-200 bg-white px-4 py-2 text-sm font-semibold text-neutral-700 hover:bg-neutral-50"
-                                                >
-                                                    Not now
-                                                </button>
-                                            </div>
+                                        {appDeployWizardStep === 2 && appDeployWizardUpgradePaywallOpen ? (
+                                            <WebsitePrePaywall
+                                                open={appDeployWizardOpen && appDeployWizardStep === 2 && appDeployWizardUpgradePaywallOpen}
+                                                onClose={closeAppDeployWizard}
+                                                onStartCheckout={() => void startProCheckoutForAppDeploy()}
+                                                checkoutBusy={checkoutBusy}
+                                                dismissible={false}
+                                                zIndexClassName="z-[18060]"
+                                                title="Upgrade to deploy this website"
+                                                description="Your current plan is blocking live deployment. Upgrade to continue and publish from the dashboard."
+                                                primaryLabel={appDeployWizardUpgradePrimaryLabel}
+                                                secondaryLabel={undefined}
+                                                footerNote="Your upgrade unlocks deploy access right away."
+                                            />
                                         ) : null}
 
                                         {appDeployWizardStep === 3 ? (
@@ -13888,14 +13832,19 @@ export default function PreviewPage(): JSX.Element {
                                                             <button
                                                                 type="button"
                                                                 onClick={() => {
+                                                                    if (appDeployWizardUpgradeRequiredError) {
+                                                                        openAppDeployUpgradePaywall();
+                                                                        return;
+                                                                    }
+
                                                                     setAppDeployWizardError(null);
                                                                     void deployAppLive({ force: true });
                                                                 }}
-                                                                disabled={appDeployWizardBusy || Date.now() < appDeployWizardRetryLockedUntil}
+                                                                disabled={appDeployWizardBusy || (!appDeployWizardUpgradeRequiredError && Date.now() < appDeployWizardRetryLockedUntil)}
                                                                 className="rounded-full px-3 py-1.5 text-xs font-semibold text-white"
                                                                 style={{ backgroundColor: ACCENT }}
                                                             >
-                                                                Retry deploy
+                                                                {appDeployWizardUpgradeRequiredError ? "Upgrade" : "Retry deploy"}
                                                             </button>
                                                         ) : appDeployWizardLiveUrl ? (
                                                         <a
