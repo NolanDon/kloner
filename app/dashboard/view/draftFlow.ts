@@ -271,6 +271,7 @@ export async function submitDashboardUrlDraft({
     setWebsiteSubmissionPendingUrl,
     setDraftApps,
     setPendingDraftApps,
+    onDraftReady,
 }: {
     rawUrl: string;
     canUseScreenshotCredit: () => boolean;
@@ -282,6 +283,7 @@ export async function submitDashboardUrlDraft({
     setWebsiteSubmissionPendingUrl: Setter<string | null>;
     setDraftApps: Setter<DashboardDraftCard[]>;
     setPendingDraftApps: Setter<Record<string, boolean>>;
+    onDraftReady?: (draft: DashboardDraftCard) => void | Promise<void>;
 }): Promise<boolean> {
     // Clear any previous error/info as soon as a new submission begins
     setErr("");
@@ -315,6 +317,19 @@ export async function submitDashboardUrlDraft({
             return "Website";
         }
     })();
+    const readyDraft: DashboardDraftCard = {
+        draftId: draftDocId,
+        id: draftAppId,
+        name: draftName,
+        createdAt: draftCreatedAt,
+        updatedAt: draftCreatedAt,
+        sourceUrl: normalized,
+        retryable: false,
+        completed: true,
+        pendingCompleted: true,
+        warnings: [],
+        blocked: false,
+    };
 
     setDraftApps((prev) => {
         if (prev.some((item) => item.draftId === draftDocId || item.id === draftAppId)) return prev;
@@ -433,6 +448,11 @@ export async function submitDashboardUrlDraft({
 
         setErr("");
         setInfo("");
+        try {
+            await onDraftReady?.(readyDraft);
+        } catch (readyDraftError) {
+            console.warn("[drafts] failed to auto-promote ready draft", readyDraftError);
+        }
         return true;
     } catch (error) {
         setPendingDraftApps((prev) => {

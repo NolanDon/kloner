@@ -1365,7 +1365,7 @@ function MiniDashboardEntry({
                         </span> */}
 
                         <span className="inline-flex items-center rounded-full bg-neutral-100 px-2.5 py-1 text-neutral-700">
-                            Generation credits:&nbsp;
+                            Scan credits:&nbsp;
                             <span className="font-semibold text-neutral-900">
                                 {previewRemaining === null || !previewLimitDisplay
                                     ? "-"
@@ -2678,6 +2678,7 @@ function AppCard({
         name: string;
         createdAt: any;
         sourceUrl?: string | null;
+        skipPreviewCreditGate?: boolean;
     }) => void;
     appBuilderNavigated?: boolean;
     draftPromotionScanState?: DraftPromotionScanState | null;
@@ -2871,6 +2872,7 @@ function AppCard({
                 name: app.name,
                 createdAt: app.createdAt,
                 sourceUrl: (app as any)?.sourceUrl || null,
+                skipPreviewCreditGate: !draftIssue,
             }));
         } finally {
             draftEditClickGuardRef.current = false;
@@ -4256,6 +4258,7 @@ export default function PreviewPage(): JSX.Element {
         name: string;
         createdAt: any;
         sourceUrl?: string | null;
+        skipPreviewCreditGate?: boolean;
     }) => Promise<void>) | null>(null);
     const draftPromotionScanInFlightRef = useRef<Record<string, true>>({});
     const draftsSnapshotDisabledRef = useRef(false);
@@ -7583,6 +7586,12 @@ export default function PreviewPage(): JSX.Element {
             setWebsiteSubmissionPendingUrl,
             setDraftApps,
             setPendingDraftApps,
+            onDraftReady: async (draft) => {
+                await promoteDraftToAppRef.current?.({
+                    ...draft,
+                    skipPreviewCreditGate: true,
+                });
+            },
         }),
         [canUseScreenshotCredit, fetch, push, setErr, setInfo, setPendingDraftApps, setDraftApps, setShowCreditsPaywall, setWebsiteSubmissionPendingUrl]
     );
@@ -7618,6 +7627,7 @@ export default function PreviewPage(): JSX.Element {
         name: string;
         createdAt: any;
         sourceUrl?: string | null;
+        skipPreviewCreditGate?: boolean;
     }) => {
         const draftKey = String(draft.draftId || draft.id || "").trim();
         if (!draftKey) return;
@@ -7887,7 +7897,7 @@ export default function PreviewPage(): JSX.Element {
             throw new Error("Archive scan timed out before the archive was ready.");
         };
 
-        if (!canUsePreviewCredit()) {
+        if (!draft.skipPreviewCreditGate && !canUsePreviewCredit()) {
             setErr("");
             setInfo("");
             push("You have used all available preview credits for this month.", "warn");
@@ -8052,7 +8062,10 @@ export default function PreviewPage(): JSX.Element {
             const draft = draftById.get(state.draftId);
             if (!draft?.sourceUrl) continue;
 
-            void promoteDraftToAppRef.current?.(draft);
+            void promoteDraftToAppRef.current?.({
+                ...draft,
+                skipPreviewCreditGate: true,
+            });
         }
     }, [draftApps, draftAppsInitialLoadComplete, draftAppsLoading, draftPromotionScanByDraftId, user?.uid]);
 
