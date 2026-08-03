@@ -794,7 +794,7 @@ import { MetaSettings, UploadedAsset } from "./MetaSettings";
 import { AiImageLibraryPanel } from "./AiImageLibraryPanel";
 import { IS_MOBILE, sanitizeImageName } from "./helpers";
 import MiniToolbar from "@/src/lib/miniToolbarV2";
-import FloatingBlockToolbar from "@/src/lib/floatingToolbar";
+import FloatingBlockToolbar from "@/src/lib/floatingToolbarV2";
 
 function formatSnapshotTime(ts: number) {
     try {
@@ -5795,6 +5795,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                         </div>
                                                     </div>
 
+                                                    {false && (<>
                                                     {/* Layout */}
                                                     <div>
                                                         <div className="mb-3 border-b border-neutral-200 pb-1">
@@ -5845,6 +5846,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                             </button>
                                                         </div>
                                                     </div>
+                                                    </>)}
                                                 </div>
                                             </div>
                                         )}
@@ -6851,13 +6853,13 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
 
                 {!aiEditing && !isCompactLayout && !shouldShowAccessPaywall && typeof document !== "undefined" ? (
                     createPortal(
-                        <FloatingBlockToolbar
+                <FloatingBlockToolbar
                             iframeRef={iframeRef}
                             wrapperRef={iframeWrapperRef}
                             selectionMeta={selectionMeta}
                             uiScale={0}
                             docked
-                            dockedOpen={showRightSidebarToggle ? !rightSidebarHidden : true}
+                            dockedOpen={showRightSidebarToggle ? (!rightSidebarHidden || shouldRunPreviewTour) : true}
                             onDockedToggle={() => setRightSidebarHidden((current) => !current)}
                             showDockToggle={showRightSidebarToggle}
                         />,

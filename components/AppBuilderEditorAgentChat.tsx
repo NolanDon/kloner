@@ -181,6 +181,8 @@ type DatabaseConnection = {
     status: "connected" | "disconnected" | "connecting";
 };
 
+const MAX_EDITOR_PROMPT_CHARS = 600;
+
 type ChatRequestPageOption = {
     path: string;
     route: string;
@@ -5484,7 +5486,10 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
         hideUserMessage?: boolean;
         bypassInitialSearch?: boolean;
     }) => {
-        const messageInput = typeof opts?.forcedInput === "string" ? opts.forcedInput : input;
+        const rawMessageInput = typeof opts?.forcedInput === "string" ? opts.forcedInput : input;
+        const messageInput = rawMessageInput.length > MAX_EDITOR_PROMPT_CHARS
+            ? rawMessageInput.slice(0, MAX_EDITOR_PROMPT_CHARS)
+            : rawMessageInput;
         const activeCompileFixContext = opts?.forcedCompileFixContext ?? freeCompileFixContext;
         const allowWhenChatDisabled = opts?.allowWhenChatDisabled === true;
         const hideUserMessage = opts?.hideUserMessage === true;
@@ -5494,6 +5499,12 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
 
         if (chatDisabled && !allowWhenChatDisabled) return;
         if (!messageInput.trim() || isLoading) return;
+        if (messageInput !== rawMessageInput) {
+            setHistoryToast(`Prompt trimmed to ${MAX_EDITOR_PROMPT_CHARS} characters.`);
+            if (typeof opts?.forcedInput !== "string") {
+                setInput(messageInput);
+            }
+        }
 
         const compileFixPrefill = activeCompileFixContext ? buildCompileFixPrefill(activeCompileFixContext) : "";
         const isFreeCompileFixMode = Boolean(activeCompileFixContext && messageInput === compileFixPrefill);
@@ -8769,12 +8780,13 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                     return;
                                 }
                             }
-                            setInput(nextValue);
+                            setInput(nextValue.slice(0, MAX_EDITOR_PROMPT_CHARS));
                         }}
                         onKeyPress={handleKeyPress}
                         placeholder="Ask me to build something..."
                         className="flex-1 resize-none bg-transparent px-4 py-3 text-sm text-neutral-900 placeholder:text-neutral-400 focus:outline-none"
                         rows={3}
+                        maxLength={MAX_EDITOR_PROMPT_CHARS}
                         disabled={isLoading || chatDisabled}
                     />
                     <button
@@ -8789,8 +8801,9 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                         <Send className="h-6 w-6" />
                     </button>
                 </div>
-                <div className="hidden sm:block mt-2 text-xs text-neutral-500">
-                    Press Enter to send, Shift+Enter for new line
+                <div className="mt-2 flex items-center justify-between gap-3 text-xs text-neutral-500">
+                    <span className="hidden sm:inline">Press Enter to send, Shift+Enter for new line</span>
+                    <span>{input.length}/{MAX_EDITOR_PROMPT_CHARS}</span>
                 </div>
             </div>
         </div>

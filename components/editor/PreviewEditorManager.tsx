@@ -2,11 +2,10 @@ import React, { useEffect, useMemo, useState } from "react";
 import type { User } from "firebase/auth";
 import { getIdTokenResult } from "firebase/auth";
 
-import PreviewEditor from "@/components/editor/PreviewEditor";
-import type { UserTier } from "@/src/lib/credits";
 import PreviewEditorV2 from "./PreviewEditorV2";
+import type { UserTier } from "@/src/lib/credits";
 
-type PreviewEditorProps = React.ComponentProps<typeof PreviewEditor>;
+type PreviewEditorProps = React.ComponentProps<typeof PreviewEditorV2>;
 
 type Props = PreviewEditorProps & {
   firebaseUser?: User | null;

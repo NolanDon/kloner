@@ -14,8 +14,13 @@ import {
     Move,
     Check,
     ChevronDown,
+    ChevronLeft,
+    ChevronRight,
+    SlidersHorizontal,
+    Type,
+    Palette,
 } from "lucide-react";
-import type { SelectionMeta } from "@/components/editor/PreviewEditor";
+import type { SelectionMeta } from "@/components/editor/PreviewEditorV2";
 
 type FloatingBlockToolbarProps = {
     iframeRef: React.RefObject<HTMLIFrameElement>;
@@ -23,6 +28,10 @@ type FloatingBlockToolbarProps = {
     selectionMeta: SelectionMeta | null;
     uiScale: number;
     bottomBarRef?: React.RefObject<HTMLElement>;
+    docked?: boolean;
+    dockedOpen?: boolean;
+    onDockedToggle?: () => void;
+    showDockToggle?: boolean;
 };
 
 type ToolbarPos = { top: number; left: number } | null;
@@ -240,17 +249,22 @@ function BlockToolbar({
     callApi,
     selectionMeta,
     onDragStart,
+    docked = false,
 }: {
     style: React.CSSProperties;
     callApi: (method: string, ...args: any[]) => any;
     selectionMeta: SelectionMeta;
     onDragStart: (e: React.MouseEvent<HTMLDivElement>) => void;
+    docked?: boolean;
 }) {
     const tagName = selectionMeta.tagName?.toUpperCase?.() || (selectionMeta as any).tagName || "DIV";
 
     const [hasNavLink, setHasNavLink] = useState(false);
+    const [canShowLinkSlot, setCanShowLinkSlot] = useState(false);
     const [navHref, setNavHref] = useState("");
     const [currentFontFamily, setCurrentFontFamily] = useState<string>("");
+    const [hasImageContent, setHasImageContent] = useState(false);
+    const [hasTextContent, setHasTextContent] = useState(false);
 
     useEffect(() => {
         try {
@@ -265,6 +279,13 @@ function BlockToolbar({
         } catch {
             setHasNavLink(false);
             setNavHref("");
+        }
+
+        try {
+            const canLink = callApi("blockCanHaveLink");
+            setCanShowLinkSlot(!!canLink);
+        } catch {
+            setCanShowLinkSlot(false);
         }
     }, [selectionMeta, callApi]);
 
@@ -284,6 +305,21 @@ function BlockToolbar({
             return "";
         };
         setCurrentFontFamily(tryGet());
+    }, [selectionMeta, callApi]);
+
+    useEffect(() => {
+        try {
+            setHasImageContent(!!callApi("blockHasImage"));
+        } catch {
+            setHasImageContent(false);
+        }
+
+        try {
+            setHasTextContent(!!callApi("blockHasTextContent"));
+        } catch {
+            const tag = (selectionMeta.tagName || "").toUpperCase();
+            setHasTextContent(!["IMG", "VIDEO", "IFRAME", "SVG", "CANVAS"].includes(tag));
+        }
     }, [selectionMeta, callApi]);
 
     const commitNavHref = (value: string) => {
@@ -341,6 +377,10 @@ function BlockToolbar({
         } catch { }
         if (currentFontFamily) tryCallFontApi("fontFamilySet", currentFontFamily);
     };
+
+    const showImageSection = hasImageContent || tagName === "IMG";
+    const showFontSection = hasTextContent;
+    const showLinkSection = canShowLinkSlot || hasNavLink;
 
     const MiniPill = ({
         title,
@@ -430,16 +470,30 @@ function BlockToolbar({
         </button>
     );
 
+    const SectionHeader = ({
+        icon: Icon,
+        label,
+    }: {
+        icon: React.ComponentType<{ className?: string }>;
+        label: string;
+    }) => (
+        <div className="mb-2 border-b border-neutral-200 pb-1">
+            <div className="inline-flex items-center gap-2 text-sm font-semibold text-neutral-800">
+                <Icon className="h-4 w-4 text-neutral-500" />
+                <span>{label}</span>
+            </div>
+        </div>
+    );
+
     return (
         <div className="bg-transparent">
             <div
                 style={style}
                 className={[
-                    "cursor-default overflow-visible border border-neutral-200 bg-white text-neutral-800 shadow-2xl",
-                    "text-[10px] leading-tight",
-                    "w-[260px] rounded-2xl",
-                    "sm:w-[260px] sm:rounded-2xl",
-                    "max-sm:w-[min(96vw,560px)] max-sm:rounded-2xl",
+                    "cursor-default border border-neutral-200 bg-white text-neutral-800 shadow-2xl",
+                    docked
+                        ? "flex w-full flex-col overflow-hidden rounded-none border-0 shadow-none"
+                        : "overflow-visible text-[10px] leading-tight w-[260px] rounded-2xl sm:w-[260px] sm:rounded-2xl max-sm:w-[min(96vw,560px)] max-sm:rounded-2xl",
                 ].join(" ")}
             >
                 {/* MOBILE */}
@@ -474,30 +528,40 @@ function BlockToolbar({
                             </div>
                         </div>
 
-                        {hasNavLink ? (
-                            <div className="mt-2 flex items-center gap-2">
-                                <div className="flex-1 min-w-0 rounded-xl border border-neutral-200 bg-white px-2 py-1.5 shadow-sm">
-                                    <input
-                                        type="text"
-                                        className="w-full bg-transparent text-[12px] text-neutral-800 outline-none"
-                                        placeholder="/about"
-                                        value={navHref}
-                                        onChange={handleNavInputChange}
-                                        onBlur={handleNavInputBlur}
-                                        onKeyDown={handleNavInputKeyDown}
-                                        onMouseDown={(e) => e.stopPropagation()}
-                                    />
+                        {showLinkSection ? (
+                            <div className="mt-2">
+                                <div className="mb-2 border-b border-neutral-200 pb-1">
+                                    <div className="inline-flex items-center gap-2 text-sm font-semibold text-neutral-800">
+                                        <Link2 className="h-4 w-4 text-neutral-500" />
+                                        <span>Link</span>
+                                    </div>
                                 </div>
-                                <MobileActionBtn
-                                    title="Clear link"
-                                    onClick={() => {
-                                        setNavHref("");
-                                        commitNavHref("");
-                                    }}
-                                    danger
-                                >
-                                    <Trash2 className="h-4 w-4" />
-                                </MobileActionBtn>
+                                <div className="flex items-center gap-2">
+                                    <div className="flex-1 min-w-0 rounded-xl border border-neutral-200 bg-white px-2 py-1.5 shadow-sm">
+                                        <input
+                                            type="text"
+                                            className="w-full bg-transparent text-[12px] text-neutral-800 outline-none"
+                                            placeholder="Paste or type a URL"
+                                            value={navHref}
+                                            onChange={handleNavInputChange}
+                                            onBlur={handleNavInputBlur}
+                                            onKeyDown={handleNavInputKeyDown}
+                                            onMouseDown={(e) => e.stopPropagation()}
+                                        />
+                                    </div>
+                                    {hasNavLink ? (
+                                        <MobileActionBtn
+                                            title="Clear link"
+                                            onClick={() => {
+                                                setNavHref("");
+                                                commitNavHref("");
+                                            }}
+                                            danger
+                                        >
+                                            <Trash2 className="h-4 w-4" />
+                                        </MobileActionBtn>
+                                    ) : null}
+                                </div>
                             </div>
                         ) : null}
                     </div>
@@ -515,10 +579,10 @@ function BlockToolbar({
                             </div>
 
                             <div className="min-w-0 leading-tight">
-                                <div className="text-[9px] font-semibold tracking-[0.14em] text-neutral-500 uppercase">
+                                <div className="text-sm font-semibold text-neutral-800">
                                     Selected
                                 </div>
-                                <div className="text-[11px] font-semibold text-neutral-800 truncate">
+                                <div className="text-xs font-medium text-neutral-500 truncate">
                                     &lt;{tagName.toLowerCase()}&gt;
                                 </div>
                             </div>
@@ -530,18 +594,20 @@ function BlockToolbar({
                     </div>
 
                     {/* Link editor (only if link exists) */}
-                    {hasNavLink ? (
+                    {showLinkSection ? (
                         <div className="border-b border-neutral-200 px-2 py-1.5">
+                            <div className="mb-2 border-b border-neutral-200 pb-1">
+                                <div className="inline-flex items-center gap-2 text-sm font-semibold text-neutral-800">
+                                    <Link2 className="h-4 w-4 text-neutral-500" />
+                                    <span>Link</span>
+                                </div>
+                            </div>
                             <div className="flex items-center justify-between gap-1.5">
                                 <div className="flex flex-col flex-1 min-w-0">
-                                    <span className="flex items-center gap-1 text-[8px] font-semibold uppercase tracking-[0.16em] text-neutral-500">
-                                        <Link2 className="h-3 w-3" />
-                                        Link
-                                    </span>
                                     <input
                                         type="text"
-                                        className="mt-0.5 w-full rounded-md border border-neutral-200 bg-white px-1.5 py-1 text-[10px] text-neutral-800 shadow-sm outline-none focus:border-neutral-400 focus:ring-0"
-                                        placeholder="/about"
+                                        className="w-full rounded-md border border-neutral-200 bg-white px-1.5 py-1 text-[10px] text-neutral-800 shadow-sm outline-none focus:border-neutral-400 focus:ring-0"
+                                        placeholder="Paste or type a URL"
                                         value={navHref}
                                         onChange={handleNavInputChange}
                                         onBlur={handleNavInputBlur}
@@ -550,18 +616,20 @@ function BlockToolbar({
                                     />
                                 </div>
 
-                                <button
-                                    type="button"
-                                    className="mt-4 inline-flex h-6 w-6 items-center justify-center rounded-md border border-neutral-200 bg-white text-neutral-500 hover:bg-neutral-50"
-                                    title="Clear link"
-                                    onClick={() => {
-                                        setNavHref("");
-                                        commitNavHref("");
-                                    }}
-                                    onMouseDown={(e) => e.stopPropagation()}
-                                >
-                                    <Trash2 className="h-3 w-3" />
-                                </button>
+                                {hasNavLink ? (
+                                    <button
+                                        type="button"
+                                        className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-neutral-200 bg-white text-neutral-500 hover:bg-neutral-50"
+                                        title="Clear link"
+                                        onClick={() => {
+                                            setNavHref("");
+                                            commitNavHref("");
+                                        }}
+                                        onMouseDown={(e) => e.stopPropagation()}
+                                    >
+                                        <Trash2 className="h-3 w-3" />
+                                    </button>
+                                ) : null}
                             </div>
                         </div>
                     ) : null}
@@ -570,9 +638,7 @@ function BlockToolbar({
                     <div className="mt-1 flex-1 space-y-2 overflow-y-auto px-2 py-2 text-[10px]">
                         {/* Danger */}
                         <div>
-                            <div className="mb-0.5 text-[8px] font-semibold uppercase tracking-[0.16em] text-neutral-500">
-                                Danger
-                            </div>
+                            <SectionHeader icon={Trash2} label="Danger" />
                             <button
                                 type="button"
                                 onClick={() => callApi("blockDelete")}
@@ -586,9 +652,7 @@ function BlockToolbar({
 
                         {/* Layout (block move) */}
                         <div>
-                            <div className="mb-0.5 text-[8px] font-semibold uppercase tracking-[0.16em] text-neutral-500">
-                                Layout
-                            </div>
+                            <SectionHeader icon={Move} label="Layout" />
                             {/* PATCH: arrows horizontally aligned as a single row of 4 */}
                             <div className="flex items-center gap-1">
                                 <button
@@ -633,9 +697,7 @@ function BlockToolbar({
 
                         {/* Padding */}
                         <div>
-                            <div className="mb-0.5 text-[8px] font-semibold uppercase tracking-[0.16em] text-neutral-500">
-                                Padding
-                            </div>
+                            <SectionHeader icon={SlidersHorizontal} label="Padding" />
                             {/* PATCH: arrows horizontally aligned as a single row of 4 */}
                             <div className="flex items-center gap-1">
                                 <button
@@ -708,9 +770,7 @@ function BlockToolbar({
 
                         {/* Margin */}
                         <div>
-                            <div className="mb-0.5 text-[8px] font-semibold uppercase tracking-[0.16em] text-neutral-500">
-                                Margin
-                            </div>
+                            <SectionHeader icon={SlidersHorizontal} label="Margin" />
                             {/* PATCH: arrows horizontally aligned as a single row of 4 */}
                             <div className="flex items-center gap-1">
                                 <button
@@ -783,9 +843,7 @@ function BlockToolbar({
 
                         {/* Size */}
                         <div>
-                            <div className="mb-0.5 text-[8px] font-semibold uppercase tracking-[0.16em] text-neutral-500">
-                                Size
-                            </div>
+                            <SectionHeader icon={SlidersHorizontal} label="Size" />
                             <div className="flex items-center gap-1">
                                 <button
                                     type="button"
@@ -817,9 +875,7 @@ function BlockToolbar({
 
                         {/* Corners */}
                         <div>
-                            <div className="mb-0.5 text-[8px] font-semibold uppercase tracking-[0.16em] text-neutral-500">
-                                Corners
-                            </div>
+                            <SectionHeader icon={Palette} label="Corners" />
                             <div className="flex items-center gap-1">
                                 <button
                                     type="button"
@@ -849,100 +905,98 @@ function BlockToolbar({
                             </div>
                         </div>
 
-                        {/* Images */}
-                        <div>
-                            <div className="mb-0.5 text-[8px] font-semibold uppercase tracking-[0.16em] text-neutral-500">
-                                Images
+                        {showImageSection ? (
+                            <div>
+                                <SectionHeader icon={ImageIcon} label="Images" />
+
+                                <div className="flex items-center gap-1">
+                                    <button
+                                        type="button"
+                                        onClick={() => callApi("imgInsert")}
+                                        className="flex-1 inline-flex items-center justify-center gap-1 rounded-md border border-neutral-200 bg-white px-1.5 py-1 text-[10px] hover:bg-neutral-50"
+                                        onMouseDown={(e) => e.stopPropagation()}
+                                    >
+                                        <ImageIcon className="h-3.5 w-3.5" />
+                                        <span>Add</span>
+                                    </button>
+
+                                    <button
+                                        type="button"
+                                        onClick={() => callApi("imgBg")}
+                                        className="flex-1 inline-flex items-center justify-center gap-1 rounded-md border border-neutral-200 bg-white px-1.5 py-1 text-[10px] hover:bg-neutral-50"
+                                        onMouseDown={(e) => e.stopPropagation()}
+                                    >
+                                        <Layers className="h-3.5 w-3.5" />
+                                        <span>BG</span>
+                                    </button>
+
+                                    <button
+                                        type="button"
+                                        onClick={() => callApi("imgDelete")}
+                                        className="flex-1 inline-flex items-center justify-center gap-1 rounded-md border border-rose-200 bg-rose-50 px-1.5 py-1 text-[10px] text-rose-700 hover:bg-rose-100"
+                                        onMouseDown={(e) => e.stopPropagation()}
+                                    >
+                                        <Trash2 className="h-3.5 w-3.5" />
+                                        <span>Remove</span>
+                                    </button>
+                                </div>
+
+                                <div className="mt-1 flex items-center gap-1">
+                                    <button
+                                        type="button"
+                                        onClick={() => callApi("imgShrink")}
+                                        className="flex-1 rounded-md border border-neutral-200 bg-white px-1.5 py-1 text-[10px] hover:bg-neutral-50"
+                                        onMouseDown={(e) => e.stopPropagation()}
+                                    >
+                                        Smaller
+                                    </button>
+
+                                    <button
+                                        type="button"
+                                        onClick={() => callApi("imgGrow")}
+                                        className="flex-1 rounded-md border border-neutral-200 bg-white px-1.5 py-1 text-[10px] hover:bg-neutral-50"
+                                        onMouseDown={(e) => e.stopPropagation()}
+                                    >
+                                        Larger
+                                    </button>
+
+                                    <button
+                                        type="button"
+                                        onClick={() => callApi("bringImageForward")}
+                                        className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-neutral-200 bg-white hover:bg-neutral-50"
+                                        title="Bring image forward"
+                                        onMouseDown={(e) => e.stopPropagation()}
+                                    >
+                                        <ArrowUp className="h-3 w-3" />
+                                    </button>
+
+                                    <button
+                                        type="button"
+                                        onClick={() => callApi("sendImageBackward")}
+                                        className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-neutral-200 bg-white hover:bg-neutral-50"
+                                        title="Send image backward"
+                                        onMouseDown={(e) => e.stopPropagation()}
+                                    >
+                                        <ArrowDown className="h-3 w-3" />
+                                    </button>
+                                </div>
                             </div>
+                        ) : null}
 
-                            <div className="flex items-center gap-1">
-                                <button
-                                    type="button"
-                                    onClick={() => callApi("imgInsert")}
-                                    className="flex-1 inline-flex items-center justify-center gap-1 rounded-md border border-neutral-200 bg-white px-1.5 py-1 text-[10px] hover:bg-neutral-50"
-                                    onMouseDown={(e) => e.stopPropagation()}
-                                >
-                                    <ImageIcon className="h-3.5 w-3.5" />
-                                    <span>Add</span>
-                                </button>
-
-                                <button
-                                    type="button"
-                                    onClick={() => callApi("imgBg")}
-                                    className="flex-1 inline-flex items-center justify-center gap-1 rounded-md border border-neutral-200 bg-white px-1.5 py-1 text-[10px] hover:bg-neutral-50"
-                                    onMouseDown={(e) => e.stopPropagation()}
-                                >
-                                    <Layers className="h-3.5 w-3.5" />
-                                    <span>BG</span>
-                                </button>
-
-                                <button
-                                    type="button"
-                                    onClick={() => callApi("imgDelete")}
-                                    className="flex-1 inline-flex items-center justify-center gap-1 rounded-md border border-rose-200 bg-rose-50 px-1.5 py-1 text-[10px] text-rose-700 hover:bg-rose-100"
-                                    onMouseDown={(e) => e.stopPropagation()}
-                                >
-                                    <Trash2 className="h-3.5 w-3.5" />
-                                    <span>Remove</span>
-                                </button>
+                        {showFontSection ? (
+                            <div>
+                                <SectionHeader icon={Type} label="Font" />
+                                <FontFamilyDropdown
+                                    initialFontFamily={currentFontFamily || ""}
+                                    onPreview={(family) => previewFont(family)}
+                                    onRevertPreview={() => revertPreviewFont()}
+                                    onApply={(family) => {
+                                        tryCallFontApi("fontFamilySet", family);
+                                        setCurrentFontFamily(family);
+                                    }}
+                                />
                             </div>
-
-                            <div className="mt-1 flex items-center gap-1">
-                                <button
-                                    type="button"
-                                    onClick={() => callApi("imgShrink")}
-                                    className="flex-1 rounded-md border border-neutral-200 bg-white px-1.5 py-1 text-[10px] hover:bg-neutral-50"
-                                    onMouseDown={(e) => e.stopPropagation()}
-                                >
-                                    Smaller
-                                </button>
-
-                                <button
-                                    type="button"
-                                    onClick={() => callApi("imgGrow")}
-                                    className="flex-1 rounded-md border border-neutral-200 bg-white px-1.5 py-1 text-[10px] hover:bg-neutral-50"
-                                    onMouseDown={(e) => e.stopPropagation()}
-                                >
-                                    Larger
-                                </button>
-
-                                <button
-                                    type="button"
-                                    onClick={() => callApi("bringImageForward")}
-                                    className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-neutral-200 bg-white hover:bg-neutral-50"
-                                    title="Bring image forward"
-                                    onMouseDown={(e) => e.stopPropagation()}
-                                >
-                                    <ArrowUp className="h-3 w-3" />
-                                </button>
-
-                                <button
-                                    type="button"
-                                    onClick={() => callApi("sendImageBackward")}
-                                    className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-neutral-200 bg-white hover:bg-neutral-50"
-                                    title="Send image backward"
-                                    onMouseDown={(e) => e.stopPropagation()}
-                                >
-                                    <ArrowDown className="h-3 w-3" />
-                                </button>
-                            </div>
-                        </div>
-
-                        {/* Font */}
-                        <div>
-                            <div className="mb-0.5 text-[8px] font-semibold uppercase tracking-[0.16em] text-neutral-500">
-                                Font
-                            </div>
-                            <FontFamilyDropdown
-                                initialFontFamily={currentFontFamily || ""}
-                                onPreview={(family) => previewFont(family)}
-                                onRevertPreview={() => revertPreviewFont()}
-                                onApply={(family) => {
-                                    tryCallFontApi("fontFamilySet", family);
-                                    setCurrentFontFamily(family);
-                                }}
-                            />
-                        </div>
+                        ) : null}
 
                     </div>
                 </div>
@@ -956,6 +1010,10 @@ export function FloatingBlockToolbar({
     wrapperRef,
     selectionMeta,
     bottomBarRef,
+    docked = false,
+    dockedOpen = false,
+    onDockedToggle,
+    showDockToggle = true,
 }: FloatingBlockToolbarProps) {
     const [toolbarPos, setToolbarPos] = useState<ToolbarPos>(null);
     const toolbarPosRef = useRef<ToolbarPos>(null);
@@ -965,9 +1023,12 @@ export function FloatingBlockToolbar({
 
     const [isMobile, setIsMobile] = useState(false);
     const [bottomBarH, setBottomBarH] = useState(72);
+    const [dockedBounds, setDockedBounds] = useState<{ top: number; bottom: number } | null>(null);
 
     const PANEL_W = 260;
     const PANEL_H = 520;
+    const DOCKED_SIDEBAR_OPEN_WIDTH = 360;
+    const DOCKED_SIDEBAR_COLLAPSED_WIDTH = 56;
 
     useEffect(() => {
         if (!isMobile) return;
@@ -1045,7 +1106,88 @@ export function FloatingBlockToolbar({
         setToolbarPos({ top, left });
     }, [selectionMeta?.has, iframeRef, wrapperRef, isMobile]);
 
+    useEffect(() => {
+        if (!docked) return;
+
+        const updateDockedBounds = () => {
+            const wrapper = wrapperRef.current;
+            if (!wrapper) return;
+
+            const rect = wrapper.getBoundingClientRect();
+            const top = Math.max(0, Math.round(rect.top));
+            const bottom = Math.max(0, Math.round(window.innerHeight - rect.bottom));
+            setDockedBounds({ top, bottom });
+        };
+
+        updateDockedBounds();
+
+        const wrapper = wrapperRef.current;
+        const ro = typeof ResizeObserver !== "undefined" && wrapper ? new ResizeObserver(() => updateDockedBounds()) : null;
+        if (ro && wrapper) ro.observe(wrapper);
+
+        window.addEventListener("resize", updateDockedBounds);
+        window.addEventListener("scroll", updateDockedBounds, true);
+
+        return () => {
+            ro?.disconnect();
+            window.removeEventListener("resize", updateDockedBounds);
+            window.removeEventListener("scroll", updateDockedBounds, true);
+        };
+    }, [docked, wrapperRef]);
+
+    const isDocked = docked;
+    const isDockedOpen = dockedOpen;
+
     if (!selectionMeta || !selectionMeta.has || !(selectionMeta as any).rect) return null;
+
+    if (isDocked) {
+        const dockedSelectionMeta = selectionMeta || ({ has: false } as SelectionMeta);
+        const effectiveDockedOpen = showDockToggle ? isDockedOpen : true;
+        const dockedStyle: React.CSSProperties = {
+            top: dockedBounds?.top ?? 0,
+            height: "fit-content",
+            maxHeight: dockedBounds
+                ? `calc(100vh - ${dockedBounds.top + dockedBounds.bottom}px)`
+                : undefined,
+            width: effectiveDockedOpen ? DOCKED_SIDEBAR_OPEN_WIDTH : DOCKED_SIDEBAR_COLLAPSED_WIDTH,
+            visibility: "visible",
+        };
+
+        return (
+            <aside
+                id="kloner-right-sidebar"
+                className="pointer-events-auto fixed right-0 z-[25000] overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-xl"
+                style={dockedStyle}
+            >
+                {showDockToggle ? (
+                    <button
+                        type="button"
+                        aria-label={effectiveDockedOpen ? "Collapse sidebar" : "Expand sidebar"}
+                        title={effectiveDockedOpen ? "Collapse sidebar" : "Expand sidebar"}
+                        onClick={onDockedToggle}
+                        className="absolute left-3 top-3 z-50 inline-flex h-10 w-10 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-700 shadow-lg transition duration-300 ease-out hover:bg-neutral-50 hover:shadow-xl active:scale-95"
+                    >
+                        <span className="flex items-center justify-center">
+                            {effectiveDockedOpen ? (
+                                <ChevronRight className="h-4 w-4" />
+                            ) : (
+                                <ChevronLeft className="h-4 w-4" />
+                            )}
+                        </span>
+                    </button>
+                ) : null}
+                {effectiveDockedOpen ? (
+                    <BlockToolbar
+                        style={{ width: "100%", minHeight: "100%" }}
+                        callApi={callApi}
+                        selectionMeta={dockedSelectionMeta}
+                        onDragStart={handleDragStart}
+                        docked
+                    />
+                ) : null}
+            </aside>
+        );
+    }
 
     const wrapper = wrapperRef.current;
     if (!wrapper) return null;
@@ -1079,7 +1221,7 @@ export function FloatingBlockToolbar({
         }
     }
 
-    const handleDragStart = (e: React.MouseEvent<HTMLDivElement>) => {
+    function handleDragStart(e: React.MouseEvent<HTMLDivElement>) {
         if (isMobile) return;
 
         e.preventDefault();
@@ -1127,7 +1269,7 @@ export function FloatingBlockToolbar({
 
         window.addEventListener("mousemove", onMove);
         window.addEventListener("mouseup", onUp);
-    };
+    }
 
     return (
         <div style={baseStyle}>

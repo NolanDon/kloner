@@ -10,15 +10,13 @@ import React, {
 import {
     ArrowUp,
     ArrowDown,
-    Plus,
     Sparkles,
     X,
     Image as ImageIcon,
     ArrowLeft,
     ArrowRight,
-    Trash2,
 } from "lucide-react";
-import type { SelectionMeta } from "@/components/editor/PreviewEditor";
+import type { SelectionMeta } from "@/components/editor/PreviewEditorV2";
 
 type MiniToolbarProps = {
     iframeRef: React.RefObject<HTMLIFrameElement>;
@@ -178,49 +176,6 @@ export function MiniToolbar({
         callApi(iframeRef, "blockMoveRight");
     };
 
-    const handleInsertBelowSimple = () => {
-        if (disabled) return;
-        const win = iframeRef.current?.contentWindow as any;
-        const api = win?.__klonerApi;
-        if (!api || typeof api.blockDuplicate !== "function") return;
-
-        try {
-            api.blockDuplicate();
-        } catch {
-            // swallow
-        }
-    };
-
-    const handleDeleteBlock = () => {
-        if (disabled) return;
-
-        // Tie to your existing block deletion logic.
-        // Preferred: __klonerApi.blockDelete()
-        // Fallback: __klonerApi.blockRemove() if that's what you already expose.
-        const win = iframeRef.current?.contentWindow as any;
-        const api = win?.__klonerApi;
-
-        if (!api) return;
-
-        try {
-            if (typeof api.blockDelete === "function") {
-                api.blockDelete();
-                return;
-            }
-            if (typeof api.blockRemove === "function") {
-                api.blockRemove();
-                return;
-            }
-            // last-resort compatibility: some builds used "blockTrash"
-            if (typeof api.blockTrash === "function") {
-                api.blockTrash();
-                return;
-            }
-        } catch {
-            // ignore
-        }
-    };
-
     const handleAiSubmit = () => {
         const trimmed = prompt.trim();
         if (!trimmed) return;
@@ -313,69 +268,56 @@ export function MiniToolbar({
             )}
 
             {/* EXTREMELY COMPACT MAIN TOOLBAR */}
-            <div className="inline-flex items-center gap-0.5 rounded-full bg-white px-1 py-0.5 text-[10px] border border-neutral-700 font-semibold text-neutral-800 shadow-xl">
-                <button
-                    type="button"
-                    onClick={handleMoveUp}
-                    disabled={disabled}
-                    className={`inline-flex h-7 w-7 items-center justify-center rounded-full hover:bg-accent hover:text-white ${disabled ? "cursor-not-allowed opacity-50" : ""
-                        }`}
-                    title="Move section up"
-                >
-                    <ArrowUp className="h-5 w-5" />
-                </button>
-                <button
-                    type="button"
-                    onClick={handleMoveDown}
-                    disabled={disabled}
-                    className={`inline-flex h-7 w-7 items-center justify-center rounded-full hover:bg-accent hover:text-white ${disabled ? "cursor-not-allowed opacity-50" : ""
-                        }`}
-                    title="Move section down"
-                >
-                    <ArrowDown className="h-5 w-5" />
-                </button>
-                <button
-                    type="button"
-                    onClick={handleMoveLeft}
-                    disabled={disabled}
-                    className={`inline-flex h-7 w-7 items-center justify-center rounded-full hover:bg-accent hover:text-white ${disabled ? "cursor-not-allowed opacity-50" : ""
-                        }`}
-                    title="Move section left"
-                >
-                    <ArrowLeft className="h-5 w-5" />
-                </button>
-                <button
-                    type="button"
-                    onClick={handleMoveRight}
-                    disabled={disabled}
-                    className={`inline-flex h-7 w-7 items-center justify-center rounded-full hover:bg-accent hover:text-white ${disabled ? "cursor-not-allowed opacity-50" : ""
-                        }`}
-                    title="Move section right"
-                >
-                    <ArrowRight className="h-5 w-5" />
-                </button>
-                <button
-                    type="button"
-                    onClick={handleInsertBelowSimple}
-                    disabled={disabled}
-                    className={`inline-flex h-7 w-7 items-center justify-center rounded-full hover:bg-accent hover:text-white ${disabled ? "cursor-not-allowed opacity-50" : ""
-                        }`}
-                    title="Duplicate this block"
-                >
-                    <Plus className="h-5 w-5" />
-                </button>
+            <div className="inline-flex items-center rounded-lg border border-[rgba(245,95,42,0.28)] bg-white p-1.5 text-[10px] font-semibold text-neutral-800 shadow-[0_10px_28px_rgba(15,23,42,0.12)]">
+                <div className="grid grid-cols-3 grid-rows-3 gap-1">
+                    <div />
+                    <button
+                        type="button"
+                        onClick={handleMoveUp}
+                        disabled={disabled}
+                        className={`inline-flex h-8 w-8 items-center justify-center rounded-md border border-transparent transition-colors hover:border-neutral-200 hover:bg-neutral-50 ${disabled ? "cursor-not-allowed opacity-50" : ""
+                            }`}
+                        title="Move section up"
+                    >
+                        <ArrowUp className="h-4.5 w-4.5" />
+                    </button>
+                    <div />
 
-                {/* DELETE (red trash, at far right) */}
-                <button
-                    type="button"
-                    onClick={handleDeleteBlock}
-                    disabled={disabled}
-                    className={`inline-flex h-7 w-7 items-center justify-center rounded-full text-red-600 hover:bg-red-500/50 hover:text-red-700 ${disabled ? "cursor-not-allowed opacity-50" : ""
-                        }`}
-                    title="Delete this block"
-                >
-                    <Trash2 className="h-5 w-5" />
-                </button>
+                    <button
+                        type="button"
+                        onClick={handleMoveLeft}
+                        disabled={disabled}
+                        className={`inline-flex h-8 w-8 items-center justify-center rounded-md border border-transparent transition-colors hover:border-neutral-200 hover:bg-neutral-50 ${disabled ? "cursor-not-allowed opacity-50" : ""
+                            }`}
+                        title="Move section left"
+                    >
+                        <ArrowLeft className="h-4.5 w-4.5" />
+                    </button>
+                    <div className="h-8 w-8 rounded-md border border-neutral-200 bg-neutral-50/80 shadow-inner" aria-hidden="true" />
+                    <button
+                        type="button"
+                        onClick={handleMoveRight}
+                        disabled={disabled}
+                        className={`inline-flex h-8 w-8 items-center justify-center rounded-md border border-transparent transition-colors hover:border-neutral-200 hover:bg-neutral-50 ${disabled ? "cursor-not-allowed opacity-50" : ""
+                            }`}
+                        title="Move section right"
+                    >
+                        <ArrowRight className="h-4.5 w-4.5" />
+                    </button>
+
+                    <div />
+                    <button
+                        type="button"
+                        onClick={handleMoveDown}
+                        disabled={disabled}
+                        className={`inline-flex h-8 w-8 items-center justify-center rounded-md border border-transparent transition-colors hover:border-neutral-200 hover:bg-neutral-50 ${disabled ? "cursor-not-allowed opacity-50" : ""
+                            }`}
+                        title="Move section down"
+                    >
+                        <ArrowDown className="h-4.5 w-4.5" />
+                    </button>
+                    <div />
+                </div>
             </div>
         </div>
     );

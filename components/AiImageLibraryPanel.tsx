@@ -144,7 +144,12 @@ function scanPageImages(doc: Document): PageImageItem[] {
         });
     });
 
-    doc.querySelectorAll<HTMLElement>("body *").forEach((el) => {
+    const backgroundRoots: HTMLElement[] = [];
+    if (doc.documentElement instanceof HTMLElement) backgroundRoots.push(doc.documentElement);
+    if (doc.body instanceof HTMLElement) backgroundRoots.push(doc.body);
+    doc.querySelectorAll<HTMLElement>("body *").forEach((el) => backgroundRoots.push(el));
+
+    backgroundRoots.forEach((el) => {
         if (el.tagName === "IMG") return;
 
         const style = doc.defaultView?.getComputedStyle(el);

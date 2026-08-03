@@ -667,7 +667,7 @@ import { AiImageLibraryPanel } from "../../components/AiImageLibraryPanel";
 import { IS_MOBILE, sanitizeImageName } from "../../components/helpers";
 import { IMAGE_STORAGE_LIMIT_BYTES, loadUserImageStorageUsage, uploadUserImageToFirebase } from "@/src/lib/imageStorage";
 import MiniToolbar from "../../src/lib/miniToolbarV2";
-import FloatingBlockToolbar from "../../src/lib/floatingToolbar";
+import FloatingBlockToolbar from "../../src/lib/floatingToolbarV2";
 
 function formatSnapshotTime(ts: number) {
     try {

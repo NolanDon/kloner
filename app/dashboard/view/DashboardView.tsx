@@ -50,7 +50,7 @@ import {
     type StorageReference,
 } from "firebase/storage";
 import { auth, db, storage } from "@/lib/firebase";
-import { buildFinalExport, buildSeoMetaMapForExport, SeoMeta, SeoMetaMap } from "@/components/editor/PreviewEditor";
+import { buildFinalExport, buildSeoMetaMapForExport, SeoMeta, SeoMetaMap } from "@/components/editor/PreviewEditorV2";
 import PreviewEditorManager from "@/components/editor/PreviewEditorManager";
 import {
     Rocket,

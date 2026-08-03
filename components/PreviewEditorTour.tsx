@@ -38,12 +38,6 @@ const steps = [
         action: "showStylePanel"
     },
     {
-        target: "#kloner-right-sidebar",
-        title: "Element Inspector",
-        content: "Use this inspector to adjust the selected element's layout, spacing, sizing, corners, and layers without leaving the preview.",
-        action: "none"
-    },
-    {
         target: "#kloner-apply-changes",
         title: "Save & Apply",
         content: "Your changes auto-save as you work. Click Apply to update the live preview.",

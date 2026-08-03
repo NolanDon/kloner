@@ -1,6 +1,6 @@
 // src/lib/installKlonerIframeApi.ts
 
-import { Device } from "@/components/editor/PreviewEditor";
+import type { Device } from "@/components/editor/PreviewEditorV2";
 
 export function installKlonerIframeApi(
     doc: Document,
@@ -191,8 +191,6 @@ export function installKlonerIframeApi(
        ========================================= */
     a[data-kloner-nav-page-id]{
       position: relative;
-      outline: 1px dashed rgba(59,130,246,0.75);
-      outline-offset: 2px;
       transition:
         outline-color 120ms ease-out,
         background-color 120ms ease-out;
@@ -231,12 +229,22 @@ export function installKlonerIframeApi(
     [data-kloner-sel]{
       position: relative;
       outline: 2px solid rgba(16,185,129,0.95) !important;
+      outline-offset: 0 !important;
       border-radius: 10px;
       box-shadow: 0 10px 24px rgba(15,23,42,0.18);
       transition:
         box-shadow 140ms ease-out,
         background-color 140ms ease-out,
         transform 120ms ease-out;
+    }
+
+    /* keep browser focus rings from leaking a second blue border */
+    [data-kloner-sel]:focus,
+    [data-kloner-sel]:focus-visible,
+    [data-kloner-textbox]:focus,
+    [data-kloner-textbox]:focus-visible{
+      outline: 2px solid rgba(16,185,129,0.95) !important;
+      outline-offset: 0 !important;
     }
 
     [data-kloner-sel]:hover{
@@ -2107,6 +2115,22 @@ export function installKlonerIframeApi(
             : { has: false };
     };
 
+    api.blockHasImage = () => {
+        if (!selected) return false;
+        return !!getImageFromSelection(selected);
+    };
+
+    api.blockHasTextContent = () => {
+        if (!selected) return false;
+        const text = (selected.textContent || "").replace(/\s+/g, " ").trim();
+        return text.length > 0;
+    };
+
+    api.blockCanHaveLink = () => {
+        if (!selected) return false;
+        return selected.tagName !== "HTML" && selected.tagName !== "BODY";
+    };
+
     // new nav helpers for toolbar
     api.blockGetHref = () => {
         return getHrefForSelection();
@@ -2215,46 +2239,89 @@ export function installKlonerIframeApi(
         return target.closest("a") as HTMLAnchorElement | null;
     }
 
+    function canWrapSelectionAsLink(target: HTMLElement | null): boolean {
+        if (!target) return false;
+        const tag = target.tagName.toUpperCase();
+        if (tag === "HTML" || tag === "BODY") return false;
+        if (["A", "BUTTON", "INPUT", "TEXTAREA", "SELECT", "OPTION", "LABEL"].includes(tag)) return false;
+        return true;
+    }
+
+    function isSafeLocalHref(rawHref: string): boolean {
+        const href = (rawHref || "").trim();
+        if (!href) return true;
+
+        if (href.startsWith("#")) {
+            return /^#[A-Za-z0-9][A-Za-z0-9._:-]*$/.test(href);
+        }
+
+        if (!href.startsWith("/") || href.startsWith("//")) return false;
+        if (!/^\/[A-Za-z0-9\-._~!$&'()*+,;=:@/%?]*$/.test(href)) return false;
+        if (href.includes("..")) return false;
+
+        try {
+            const baseOrigin = doc.defaultView?.location?.origin || "https://example.invalid";
+            const parsed = new URL(href, baseOrigin);
+            return parsed.origin === baseOrigin && parsed.pathname.startsWith("/");
+        } catch {
+            return false;
+        }
+    }
+
     function getHrefForSelection() {
         const linkEl = findLinkFor(selected);
-        if (!linkEl) {
-            return { hasLink: false, href: "" };
+        if (linkEl) {
+            return {
+                hasLink: true,
+                href: linkEl.getAttribute("href") || "",
+            };
         }
         return {
-            hasLink: true,
-            href: linkEl.getAttribute("href") || "",
+            hasLink: !!selected && canWrapSelectionAsLink(selected),
+            href: "",
         };
     }
 
     function setHrefForSelection(nextHrefRaw: string) {
         const linkEl = findLinkFor(selected);
-        if (!linkEl) {
-            if (selected) {
-                showHint("No link found on this block.", selected);
+        const nextHref = (nextHrefRaw || "").trim();
+
+        let resolvedLinkEl = linkEl;
+        const selectedEl = selected;
+        if (!resolvedLinkEl && nextHref && canWrapSelectionAsLink(selectedEl)) {
+            const parent = selectedEl?.parentElement;
+            if (parent) {
+                const wrapper = doc.createElement("a");
+                parent.insertBefore(wrapper, selectedEl);
+                wrapper.appendChild(selectedEl);
+                resolvedLinkEl = wrapper;
+            }
+        }
+
+        if (!resolvedLinkEl) {
+            if (selectedEl) {
+                showHint("No link found on this block.", selectedEl);
             }
             return;
         }
 
-        const nextHref = (nextHrefRaw || "").trim();
-
-        // Basic safety: disallow javascript: URLs
-        if (/^\s*javascript:/i.test(nextHref)) {
-            showHint("This type of link is not allowed here.", linkEl);
+        if (!isSafeLocalHref(nextHref)) {
+            showHint("This type of link is not allowed here.", resolvedLinkEl);
             return;
         }
 
         if (!nextHref) {
-            linkEl.removeAttribute("href");
+            resolvedLinkEl.removeAttribute("href");
             saveHistory();
             notify();
-            showHint("Link cleared.", linkEl);
+            showHint("Link cleared.", resolvedLinkEl);
             return;
         }
 
-        linkEl.setAttribute("href", nextHref);
+        resolvedLinkEl.setAttribute("href", nextHref);
         saveHistory();
         notify();
-        showHint("Link updated.", linkEl);
+        showHint("Link updated.", resolvedLinkEl);
     }
 
 

@@ -35,7 +35,7 @@ import {
     Trash2,
     ShieldAlert,
 } from "lucide-react";
-import type { Device, SeoMeta, ViewMode } from "@/components/editor/PreviewEditor";
+import type { Device, SeoMeta, ViewMode } from "@/components/editor/PreviewEditorV2";
 import PreviewEditorManager from "@/components/editor/PreviewEditorManager";
 import { ensureSessionAndCsrf } from "@/lib/auth-client";
 import {
