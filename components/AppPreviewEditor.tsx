@@ -145,6 +145,7 @@ type Props = {
 const ACCENT = "#f55f2a";
 const SAVE_NUDGE_KEY = "kloner_save_nudge_seen";
 const PREVIEW_SIDEBAR_KEY = "kloner:preview-sidebar-collapsed";
+const PREVIEW_RIGHT_SIDEBAR_KEY = "kloner:preview-right-sidebar-collapsed";
 const PREVIEW_SIDEBAR_OPEN_WIDTH = 360;
 const PREVIEW_SIDEBAR_COLLAPSED_WIDTH = 56;
 
