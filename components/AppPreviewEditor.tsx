@@ -4958,6 +4958,10 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
         )
         : null;
 
+    const previewHydrationSurfaceClassName = filesHydrationLoaderVisible
+        ? "opacity-40 blur-sm saturate-75 transition-[opacity,filter] duration-300 ease-out"
+        : "opacity-100 transition-[opacity,filter] duration-300 ease-out";
+
 
     const iframeNode = (
         <iframe
@@ -6404,7 +6408,9 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                     className="relative bg-white/90 flex-2 min-h-0 overflow-auto"
                                                     style={{ pointerEvents: isDraggingPreview ? "none" : "auto" }}
                                                 >
-                                                    {iframeNode}
+                                                    <div className={previewHydrationSurfaceClassName}>
+                                                        {iframeNode}
+                                                    </div>
                                                     {filesHydrationLoader}
                                                 </div>
                                             </div>
@@ -6427,7 +6433,9 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                     className="relative overflow-hidden rounded-[20px]"
                                                     style={{ pointerEvents: isDraggingPreview ? "none" : "auto" }}
                                                 >
-                                                    {iframeNode}
+                                                    <div className={previewHydrationSurfaceClassName}>
+                                                        {iframeNode}
+                                                    </div>
                                                     {filesHydrationLoader}
                                                 </div>
                                             </div>
@@ -6474,7 +6482,9 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                     className="relative overflow-hidden rounded-[28px]"
                                                     style={{ pointerEvents: isDraggingPreview ? "none" : "auto" }}
                                                 >
-                                                    {iframeNode}
+                                                    <div className={previewHydrationSurfaceClassName}>
+                                                        {iframeNode}
+                                                    </div>
                                                     {filesHydrationLoader}
                                                 </div>
                                                 <div className="mx-auto mt-3 h-7 w-24 rounded-full border border-neutral-700" />
