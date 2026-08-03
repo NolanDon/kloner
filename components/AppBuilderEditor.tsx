@@ -29,6 +29,7 @@ import { recordAppBuilderSessionAnalytics } from "@/components/analytics";
 import { motion } from "framer-motion";
 import { detectProjectFramework, shouldPreserveRuntimeScripts } from "@/src/lib/projectFramework";
 import { normalizePreviewApplyResponse } from "@/src/lib/appEmbeddingsClient";
+import { getResponsiveUiScale } from "@/src/lib/uiScale";
 import {
     canShowPreviewFixWithAi,
     normalizePreviewFailureContract,
@@ -2039,9 +2040,9 @@ export default function AppBuilderEditor({
     const [isPreviewBuilding, setIsPreviewBuilding] = useState(false);
     const [isCustomSidebarOpen, setIsCustomSidebarOpen] = useState(true);
     const [customPreviewScale, setCustomPreviewScale] = useState<number>(() => {
-        if (typeof window === "undefined") return isMobile ? 1.05 : 0.7;
+        if (typeof window === "undefined") return 0.6;
         const v = Number(localStorage.getItem("kloner:uiScale"));
-        return Number.isFinite(v) && v >= 0.5 && v <= 1.25 ? v : (isMobile ? 1.05 : 0.7);
+        return Number.isFinite(v) && v >= 0.5 && v <= 1.25 ? v : getResponsiveUiScale(window.innerWidth);
     });
     const [previewPagePath, setPreviewPagePath] = useState<string | null>(null);
     const [previewNavigateToken, setPreviewNavigateToken] = useState(0);
@@ -7157,7 +7158,7 @@ export default function AppBuilderEditor({
                         </div>
                     </div>
                     {/* Portal target for Custom tab toolbar buttons */}
-                    <div id="kloner-custom-toolbar-portal" className="relative z-40 mx-2 hidden items-center gap-2 overflow-visible md:flex" />
+                    <div id="kloner-custom-toolbar-portal" className="relative z-[40000] mx-2 hidden items-center gap-2 overflow-visible md:flex" />
                     <div className="relative z-10 flex shrink-0 gap-2 items-center">
                         {!(isRenaming && isMobile) ? (
                             <button
@@ -7724,6 +7725,7 @@ export default function AppBuilderEditor({
                                             accessLocked={accessLocked}
                                             showTour={showTour}
                                             onRequestDeployCheckout={onRequestDeployCheckout}
+                                            showRightSidebarToggle={false}
                                         />
                                     </div>
                                 ) : (

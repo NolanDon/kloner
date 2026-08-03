@@ -12,10 +12,10 @@ import {
     LayoutGrid,
     Rocket,
     Plug,
-    Gauge,
     Loader2,
     ArchiveRestore,
     XCircle,
+    Trash2,
 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useVercelIntegration } from "@/src/hooks/useVercelIntegration";
@@ -26,13 +26,16 @@ import { useModal } from "@/components/ui/ModalContext";
 const ACCENT = "#f55f2a";
 const VERCEL_INTEGRATION_SLUG =
     process.env.NEXT_PUBLIC_VERCEL_INTEGRATION_SLUG || "kloner";
+const IS_DEV = process.env.NODE_ENV !== "production";
 
 type BillingTier = "free" | "pro" | "agency";
 
 type TierResponse = {
     uid: string;
     tier: BillingTier;
+    billingState?: "free" | "active" | "trialing" | "trial_cancelled";
     stripeStatus: string | null;
+    stripeSubscriptionId?: string | null;
     currentPeriodEnd: number | null;
     cancelAtPeriodEnd: boolean | null;
     trialEnd?: number | null;
@@ -148,7 +151,7 @@ function btnClass({
     kind,
     disabled,
 }: {
-    kind: "primary" | "soft" | "danger" | "warn" | "ghost";
+    kind: "primary" | "trial" | "soft" | "danger" | "warn" | "ghost";
     disabled?: boolean;
 }) {
     const base =
@@ -157,6 +160,13 @@ function btnClass({
 
     if (kind === "primary")
         return [base, "bg-accent text-white hover:brightness-95", dis].join(" ");
+
+    if (kind === "trial")
+        return [
+            base,
+            "border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100",
+            dis,
+        ].join(" ");
 
     if (kind === "soft")
         return [
@@ -209,7 +219,9 @@ export default function SettingsPage(): JSX.Element {
     const [tier, setTier] = useState<BillingTier>("free");
     const [tierLoading, setTierLoading] = useState(false);
     const [tierError, setTierError] = useState<string | null>(null);
+    const [billingState, setBillingState] = useState<"free" | "active" | "trialing" | "trial_cancelled">("free");
     const [stripeStatus, setStripeStatus] = useState<string | null>(null);
+    const [stripeSubscriptionId, setStripeSubscriptionId] = useState<string | null>(null);
     const [cancelAtPeriodEnd, setCancelAtPeriodEnd] = useState<boolean | null>(null);
 
     const [currentPeriodEndSec, setCurrentPeriodEndSec] = useState<number | null>(null);
@@ -225,6 +237,9 @@ export default function SettingsPage(): JSX.Element {
     const [renewBusy, setRenewBusy] = useState(false);
     const [renewError, setRenewError] = useState<string | null>(null);
     const [renewSuccess, setRenewSuccess] = useState<string | null>(null);
+    const [billingResetBusy, setBillingResetBusy] = useState(false);
+    const [billingResetError, setBillingResetError] = useState<string | null>(null);
+    const [billingResetSuccess, setBillingResetSuccess] = useState<string | null>(null);
 
     const {
         status: vercelStatus,
@@ -412,7 +427,9 @@ export default function SettingsPage(): JSX.Element {
             const data: TierResponse = await res.json();
 
             setTier(data.tier);
+            setBillingState(data.billingState ?? "free");
             setStripeStatus(data.stripeStatus);
+            setStripeSubscriptionId(data.stripeSubscriptionId ?? null);
             setCancelAtPeriodEnd(data.cancelAtPeriodEnd ?? null);
             setCurrentPeriodEndSec(data.currentPeriodEnd ?? null);
             setTrialEndSec((data.trialEnd ?? null) as any);
@@ -1069,6 +1086,51 @@ export default function SettingsPage(): JSX.Element {
         }
     }
 
+    async function handleDevResetStripeCustomer() {
+        if (!IS_DEV) return;
+
+        const ok = await showConfirm(
+            "Delete the attached Stripe customer and reset this account to free? This is dev/test only.",
+            "Reset Stripe Customer",
+        );
+        if (!ok) return;
+
+        setBillingResetBusy(true);
+        setBillingResetError(null);
+        setBillingResetSuccess(null);
+        setRenewError(null);
+        setRenewSuccess(null);
+        setCancelError(null);
+        setCancelSuccess(null);
+
+        try {
+            const csrf = await ensureSessionAndCsrf();
+            const res = await fetch("/api/billing/dev-reset-stripe-customer", {
+                method: "POST",
+                credentials: "include",
+                headers: {
+                    "content-type": "application/json",
+                    ...(csrf ? { "x-csrf": csrf } : {}),
+                },
+                body: JSON.stringify({}),
+            });
+
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok || !data?.ok) {
+                setBillingResetError(data?.error || `Reset failed (HTTP ${res.status})`);
+                return;
+            }
+
+            setBillingResetSuccess("Stripe customer deleted and billing reset to free.");
+            await loadTier();
+        } catch (err: any) {
+            console.error("Dev reset Stripe customer error", err);
+            setBillingResetError(err?.message || "Reset failed.");
+        } finally {
+            setBillingResetBusy(false);
+        }
+    }
+
     const vercelBadgeLabel =
         vercelStatus === "connected"
             ? "connected"
@@ -1092,17 +1154,18 @@ export default function SettingsPage(): JSX.Element {
                 ? "bg-[rgba(245,95,42,0.08)] text-[rgba(245,95,42,1)] border-[rgba(245,95,42,0.4)]"
                 : "bg-neutral-100 text-neutral-600 border-neutral-200";
 
-    const stripeStatusLabel = stripeStatus ?? "no active subscription";
-    const downgradeNotice = stripeStatus === "canceled" || stripeStatus === "unpaid";
+    const stripeStatusLabel = billingState === "trial_cancelled" ? "free" : stripeStatus ?? "no active subscription";
+    const downgradeNotice =
+        billingState === "trial_cancelled" || stripeStatus === "canceled" || stripeStatus === "unpaid";
 
     const nowSec = Date.now() / 1000;
 
-    const onTrial = !!trialEndSec && trialEndSec > nowSec && stripeStatus === "trialing";
+    const onTrial = !!trialEndSec && trialEndSec > nowSec && billingState === "trialing";
     const trialDaysRemaining = onTrial ? daysUntilUnixSeconds(trialEndSec) : null;
 
     const nextBillingLabel = !onTrial && currentPeriodEndSec ? formatUnixSeconds(currentPeriodEndSec) : "";
 
-    const endOfAccessSec = cancelAtPeriodEnd ? (onTrial ? trialEndSec : currentPeriodEndSec) : null;
+    const endOfAccessSec = cancelAtPeriodEnd && billingState !== "trial_cancelled" ? (onTrial ? trialEndSec : currentPeriodEndSec) : null;
     const endOfAccessDays = cancelAtPeriodEnd ? daysUntilUnixSeconds(endOfAccessSec) : null;
 
     const canCancel =
@@ -1114,15 +1177,14 @@ export default function SettingsPage(): JSX.Element {
         cancelAtPeriodEnd !== true;
 
     const canRenew =
-        tier !== "free" &&
         !tierLoading &&
-        !!stripeStatus &&
-        stripeStatus !== "canceled" &&
-        stripeStatus !== "unpaid" &&
+        billingState === "trial_cancelled" &&
+        !!stripeSubscriptionId &&
         cancelAtPeriodEnd === true;
 
     const showRenewSubscription =
-        canRenew && stripeStatus !== "active" && stripeStatus !== "trialing";
+        canRenew;
+    const renewButtonKind = "trial";
 
     const unsubStatus = (searchParams.get("unsub") || "").toLowerCase();
     const unsubKindRaw = (searchParams.get("k") || "").toLowerCase();
@@ -1737,6 +1799,42 @@ export default function SettingsPage(): JSX.Element {
                                 <h2 className="text-sm font-semibold text-neutral-800">Billing & subscription</h2>
                             </div>
 
+                            {showRenewSubscription && (
+                                <div className="mt-3">
+                                    <button
+                                        type="button"
+                                        onClick={() => void handleRenewSubscription()}
+                                        disabled={!canRenew || renewBusy}
+                                        className={btnClass({ kind: renewButtonKind, disabled: !canRenew || renewBusy })}
+                                        title={canRenew ? "Resume your subscription" : "No cancellation scheduled"}
+                                    >
+                                        {renewBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                                        <span>Resume subscription</span>
+                                    </button>
+                                    <p className="mt-2 text-[11px] leading-5 text-neutral-500">
+                                        This restores auto-renew immediately and removes the scheduled cancellation.
+                                    </p>
+                                </div>
+                            )}
+
+                            {IS_DEV && (
+                                <div className="mt-3">
+                                    <button
+                                        type="button"
+                                        onClick={() => void handleDevResetStripeCustomer()}
+                                        disabled={billingResetBusy}
+                                        className={btnClass({ kind: "danger", disabled: billingResetBusy })}
+                                        title="Delete the attached Stripe customer and reset billing"
+                                    >
+                                        {billingResetBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                                        <span>Reset Stripe customer</span>
+                                    </button>
+                                    <p className="mt-2 text-[11px] leading-5 text-neutral-500">
+                                        Dev/test only. Deletes the attached Stripe customer and resets this account to free.
+                                    </p>
+                                </div>
+                            )}
+
                             <details className="group mt-3 px-1 py-1">
                                 <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-[13px] font-medium text-neutral-800 [&::-webkit-details-marker]:hidden">
                                     <span className="inline-flex items-center gap-2">
@@ -1763,7 +1861,11 @@ export default function SettingsPage(): JSX.Element {
 
                                     <p className="text-[11px] text-neutral-500">
                                         Stripe status: <span className="font-semibold">{stripeStatusLabel}</span>
-                                        {downgradeNotice && <> · your account will fall back to the Free tier after this period.</>}
+                                        {billingState === "trial_cancelled" ? (
+                                            <> · trial canceled, access is paused until you renew.</>
+                                        ) : downgradeNotice ? (
+                                            <> · your account will fall back to the Free tier after this period.</>
+                                        ) : null}
                                     </p>
 
                                     {onTrial && trialDaysRemaining !== null && (
@@ -1798,6 +1900,8 @@ export default function SettingsPage(): JSX.Element {
 
                                     {renewError && <p className="text-[11px] text-red-600">{renewError}</p>}
                                     {renewSuccess && <p className="text-[11px] text-emerald-600">{renewSuccess}</p>}
+                                    {billingResetError && <p className="text-[11px] text-red-600">{billingResetError}</p>}
+                                    {billingResetSuccess && <p className="text-[11px] text-emerald-600">{billingResetSuccess}</p>}
                                     <span className="text-[11px] text-neutral-500">Billing managed by Stripe</span>
 
                                     <div className="flex flex-col gap-2 pt-1">
@@ -1807,19 +1911,6 @@ export default function SettingsPage(): JSX.Element {
                                         >
                                             View plans
                                         </a>
-
-                                        {showRenewSubscription && (
-                                            <button
-                                                type="button"
-                                                onClick={() => void handleRenewSubscription()}
-                                                disabled={!canRenew || renewBusy}
-                                                className="inline-flex items-center gap-1 text-[12px] font-medium text-neutral-700 hover:text-neutral-900 disabled:opacity-50 disabled:pointer-events-none"
-                                                title={canRenew ? "Remove scheduled cancellation" : "No cancellation scheduled"}
-                                            >
-                                                {renewBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
-                                                Renew
-                                            </button>
-                                        )}
 
                                         <button
                                             type="button"
@@ -1936,19 +2027,12 @@ export default function SettingsPage(): JSX.Element {
                                             className="inline-flex items-center justify-center rounded-full bg-accent px-4 py-2 text-sm font-semibold text-white hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-50"
                                         >
                                             {cancelBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                                            <span className="ml-2">Confirm cancellation</span>
+                                            <span className="ml-2">Cancel subscription, and pause my projects</span>
                                         </button>
                                     </div>
                                 </div>
                             </div>
                         )}
-
-                        <div className="mt-6 inline-flex items-center gap-2 rounded-full border border-neutral-200 bg-neutral-50 px-3 py-1.5 text-xs text-neutral-700">
-                            <Gauge className="h-3.5 w-3.5" />
-                            <span>System status:</span>
-                            <span className="font-semibold text-emerald-600">OK</span>
-                            <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
-                        </div>
 
                         <section className="mt-6 rounded-2xl border border-neutral-200 bg-neutral-50 p-4">
                             <div className="mt-1">

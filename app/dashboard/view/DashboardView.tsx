@@ -1146,6 +1146,7 @@ type MiniDashboardEntryProps = {
     planLabel?: string;
     stripeStatus?: string | null;
     stripeCancelAtPeriodEnd?: boolean;
+    billingState?: "free" | "active" | "trialing" | "trial_cancelled";
     userTier?: UserTier | "unknown";
     screenshotRemaining?: number | null;
     screenshotLimitDisplay?: string | number | null;
@@ -1168,6 +1169,7 @@ function MiniDashboardEntry({
     planLabel,
     stripeStatus,
     stripeCancelAtPeriodEnd = false,
+    billingState = "free",
     userTier = "unknown",
     screenshotRemaining = null,
     screenshotLimitDisplay = null,
@@ -1202,7 +1204,8 @@ function MiniDashboardEntry({
         };
     }, []);
 
-    const isActiveTrial = stripeStatus === "trialing" && !stripeCancelAtPeriodEnd;
+    const isActiveTrial = billingState === "trialing";
+    const isTrialCancellationPending = billingState === "trial_cancelled";
     const badgeLabel = isActiveTrial ? "trialing" : planLabel;
 
     useEffect(() => {
@@ -1280,7 +1283,7 @@ function MiniDashboardEntry({
                 <div className="min-w-0">
                     <div
                         className={
-                            "hidden sm:inline-flex items-center gap-2 rounded-full bg-accent text-neutral-50 px-3 py-1 mb-4 " +
+                            "hidden sm:inline-flex items-center gap-2 rounded-full text-neutral-50 bg-accent px-3 py-1 mb-4 " +
                             (isCompact ? "text-[10px] mb-3" : "text-[11px] mb-4")
                         }
                     >
@@ -1298,26 +1301,45 @@ function MiniDashboardEntry({
                         </h2>
                         {userTier !== "unknown" && badgeLabel ? (
                             <div className="inline-flex items-center">
-                                <div className={badgeClassName}>
-                                    <Crown className={badgeIconClassName} />
-                                    <span className={badgeTextClassName}>
-                                        {badgeLabel}
-                                    </span>
-                                </div>
+                                    <div className={badgeClassName}>
+                                        <Crown className={badgeIconClassName} />
+                                        <span className={badgeTextClassName}>
+                                            {badgeLabel}
+                                        </span>
+                                    </div>
                                 {onManagePlan ? (
                                     <span className="ml-3 inline-flex shrink-0">
                                         <button
                                             type="button"
                                             onClick={onManagePlan}
-                                            title={userTier === "free" ? "Upgrade plan" : "Manage plan"}
-                                            aria-label={userTier === "free" ? "Upgrade plan" : "Manage plan"}
+                                            title={
+                                                isTrialCancellationPending
+                                                    ? "Resume subscription"
+                                                    : userTier === "free"
+                                                        ? "Upgrade plan"
+                                                        : "Manage plan"
+                                            }
+                                            aria-label={
+                                                isTrialCancellationPending
+                                                    ? "Resume subscription"
+                                                    : userTier === "free"
+                                                        ? "Upgrade plan"
+                                                        : "Manage plan"
+                                            }
                                             className={
-                                                userTier === "free"
-                                                    ? "inline-flex items-center gap-1.5 rounded-full border border-[rgba(245,95,42,0.45)] bg-[#f55f2a] px-3 py-1.5 text-[11px] font-semibold text-white shadow-[0_12px_32px_rgba(245,95,42,0.24)] ring-1 ring-[rgba(245,95,42,0.18)] transition hover:bg-[#f3602c] hover:shadow-[0_14px_36px_rgba(245,95,42,0.3)] active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-[rgba(245,95,42,0.28)] focus:ring-offset-2"
+                                                isTrialCancellationPending
+                                                    ? "inline-flex items-center gap-1.5 rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-[11px] font-semibold text-blue-700 shadow-[0_12px_32px_rgba(59,130,246,0.16)] ring-1 ring-[rgba(59,130,246,0.14)] transition hover:bg-blue-100 hover:shadow-[0_14px_36px_rgba(59,130,246,0.2)] active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-[rgba(59,130,246,0.28)] focus:ring-offset-2"
+                                                    : userTier === "free"
+                                                        ? "inline-flex items-center gap-1.5 rounded-full border border-[rgba(245,95,42,0.45)] bg-[#f55f2a] px-3 py-1.5 text-[11px] font-semibold text-white shadow-[0_12px_32px_rgba(245,95,42,0.24)] ring-1 ring-[rgba(245,95,42,0.18)] transition hover:bg-[#f3602c] hover:shadow-[0_14px_36px_rgba(245,95,42,0.3)] active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-[rgba(245,95,42,0.28)] focus:ring-offset-2"
                                                     : "group inline-flex items-center justify-center rounded-md p-1 transition-all duration-150 hover:bg-white/10 hover:scale-[1.06] active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-[#C6F44D]/60 focus:ring-offset-2 focus:ring-offset-transparent"
                                             }
                                         >
-                                            {userTier === "free" ? (
+                                            {isTrialCancellationPending ? (
+                                                <>
+                                                    <CheckCircle2 className="h-3.5 w-3.5" />
+                                                    <span>Renew subscription</span>
+                                                </>
+                                            ) : userTier === "free" ? (
                                                 <>
                                                     <Crown className="h-3.5 w-3.5" />
                                                     <span>Upgrade</span>
@@ -2650,7 +2672,13 @@ function AppCard({
     onDeploy: (app: { id: string; name: string }) => void;
     onDelete: (appId: string) => void;
     onDeleteDraft?: (draft: { draftId: string; id: string }) => void;
-    onPromoteDraft?: (draft: { draftId: string; id: string; name: string; createdAt: any; sourceUrl?: string | null }) => void;
+    onPromoteDraft?: (draft: {
+        draftId: string;
+        id: string;
+        name: string;
+        createdAt: any;
+        sourceUrl?: string | null;
+    }) => void;
     appBuilderNavigated?: boolean;
     draftPromotionScanState?: DraftPromotionScanState | null;
 }) {
@@ -2938,13 +2966,13 @@ function AppCard({
                         </div>
                     ) : isDraftCard ? (
                         <div className="relative">
-                            <span className="absolute left-1/2 top-0 z-10 -translate-x-1/2 -translate-y-1/2">
+                            {/* <span className="absolute left-1/2 top-0 z-10 -translate-x-1/2 -translate-y-1/2">
                                 <span className="inline-flex items-center rounded-full border border-neutral-200 bg-white px-3 py-1 shadow-sm">
                                     <span className="text-[11px] font-medium uppercase tracking-[0.18em] text-neutral-400">
                                         Draft
                                     </span>
                                 </span>
-                            </span>
+                            </span> */}
                             <div
                                 className={`group/draft-icon relative grid h-40 w-40 place-items-center overflow-hidden rounded-[2.75rem] border border-neutral-200 bg-neutral-100 text-neutral-500 shadow-[0_10px_20px_rgba(15,23,42,0.06)] transition-all duration-300 ease-out ${draftIssueIsBlocked ? "cursor-not-allowed opacity-70" : "hover:scale-[1.12] hover:shadow-[0_14px_26px_rgba(15,23,42,0.08)]"} ${draftDevArchiveRingClass}`}
                                 style={{ fontFamily: "ui-rounded, 'SF Pro Rounded', 'Avenir Next Rounded', 'Trebuchet MS', sans-serif" }}
@@ -3908,10 +3936,10 @@ export default function PreviewPage(): JSX.Element {
     const [userTier, setUserTier] = useState<UserTier>("unknown");
     const [stripeStatus, setStripeStatus] = useState<string | null>(null);
     const [stripeCancelAtPeriodEnd, setStripeCancelAtPeriodEnd] = useState<boolean>(false);
+    const [billingState, setBillingState] = useState<"free" | "active" | "trialing" | "trial_cancelled">("free");
     const [dashboardCompactLayout, setDashboardCompactLayout] = useState<boolean>(false);
     const [showArchivedApps, setShowArchivedApps] = useState<boolean>(false);
-    const isTrialAccessRevoked =
-        userTier === "free" && stripeStatus === "trialing" && stripeCancelAtPeriodEnd;
+    const isTrialAccessRevoked = billingState === "trial_cancelled";
 
 
     const [showCreditsPaywall, setShowCreditsPaywall] = useState<
@@ -3928,7 +3956,6 @@ export default function PreviewPage(): JSX.Element {
     const [showTopupSuccessConfetti, setShowTopupSuccessConfetti] = useState(false);
     const [showRecoveryCheckoutLoader, setShowRecoveryCheckoutLoader] = useState(false);
     const [showDevQuickMenu, setShowDevQuickMenu] = useState(false);
-    const [showDevQuickMenuLauncher, setShowDevQuickMenuLauncher] = useState(true);
     const [previewDebugScenario, setPreviewDebugScenario] = useState<{ mode: 'terminal-error' | 'terminal-error-auto-fix'; nonce: number } | null>(null);
     const isDev = process.env.NODE_ENV !== "production";
     const [deletingOwnAccount, setDeletingOwnAccount] = useState(false);
@@ -4210,7 +4237,6 @@ export default function PreviewPage(): JSX.Element {
         sourceUrl?: string | null;
         retryable?: boolean;
         completed?: boolean;
-        pendingCompleted?: boolean;
         warningCode?: string | null;
         warningMessage?: string | null;
         warningAction?: string | null;
@@ -4416,10 +4442,19 @@ export default function PreviewPage(): JSX.Element {
             if (res.ok) {
                 const data = await res.json().catch(() => ({} as any));
                 const t = typeof data?.tier === "string" ? data.tier : "free";
+                const nextBillingState =
+                    typeof data?.billingState === "string" && data.billingState.trim()
+                        ? (data.billingState.trim().toLowerCase() as
+                              | "free"
+                              | "active"
+                              | "trialing"
+                              | "trial_cancelled")
+                        : "free";
                 const nextStripeStatus =
                     typeof data?.stripeStatus === "string" && data.stripeStatus.trim()
                         ? data.stripeStatus.trim().toLowerCase()
                         : null;
+                setBillingState(nextBillingState);
                 setStripeStatus(nextStripeStatus);
                 const normalized: UserTier =
                     t === "pro" || t === "agency" || t === "enterprise" ? (t as UserTier) : "free";
@@ -4905,7 +4940,7 @@ export default function PreviewPage(): JSX.Element {
                     delete pendingDraftMissingSinceRef.current[draftId];
                 }
 
-                if (Boolean(draft.pendingCompleted) || Boolean(draft.completed)) {
+                if (Boolean(draft.completed)) {
                     delete next[draftId];
                     delete pendingDraftMissingSinceRef.current[draftId];
                     changed = true;
@@ -4979,18 +5014,29 @@ export default function PreviewPage(): JSX.Element {
             }
         }
 
+        try {
+            const url = new URL(window.location.href);
+            const params = url.searchParams;
+            params.delete("billing");
+            params.delete("trial");
+            params.delete("wizard");
+            params.delete("step");
+            params.delete("render");
+            params.delete("appId");
+
+            const qs = params.toString();
+            const next = qs ? `${url.pathname}?${qs}` : url.pathname;
+            router.replace(next, { scroll: false });
+        } catch (e) {
+            console.error("Failed to clear trial success params", e);
+        }
+
         if (!hasRecentlyShownBillingSuccess()) {
             markBillingSuccessShown();
             setShowTrialSuccessCelebration(true);
         }
 
         void (async () => {
-            if (isTrialSuccess) {
-                setStripeStatus("trialing");
-                setStripeCancelAtPeriodEnd(false);
-                setUserTier("pro");
-            }
-
             // pull latest nameHint/app name from Firestore
             let nameFromDb = "";
             try {
@@ -5039,37 +5085,29 @@ export default function PreviewPage(): JSX.Element {
                 if (tierRes.ok) {
                     const data = await tierRes.json().catch(() => ({} as any));
                     const t = data?.tier as string | undefined;
+                    const nextBillingState =
+                        typeof data?.billingState === "string" && data.billingState.trim()
+                            ? (data.billingState.trim().toLowerCase() as
+                                  | "free"
+                                  | "active"
+                                  | "trialing"
+                                  | "trial_cancelled")
+                            : "free";
+                    const nextStripeStatus =
+                        typeof data?.stripeStatus === "string" && data.stripeStatus.trim()
+                            ? data.stripeStatus.trim().toLowerCase()
+                            : null;
+                    setBillingState(nextBillingState);
+                    setStripeStatus(nextStripeStatus);
                     setStripeCancelAtPeriodEnd(!!data?.cancelAtPeriodEnd);
-                    if (isTrialSuccess) {
-                        setStripeStatus("trialing");
-                    }
                     if (t === "pro" || t === "agency" || t === "enterprise") {
                         setUserTier(t as any);
-                            } else if (isTrialSuccess) {
-                        setUserTier("pro");
                     } else {
-                        setUserTier("free");
+                        setUserTier((t as any) || "free");
                     }
                 }
             } catch {
                 // ignore; normal tier detection will run via auth effect
-            }
-
-            try {
-                const url = new URL(window.location.href);
-                const params = url.searchParams;
-                params.delete("billing");
-                params.delete("trial");
-                params.delete("wizard");
-                params.delete("step");
-                params.delete("render");
-                params.delete("appId");
-
-                const qs = params.toString();
-                const next = qs ? `${url.pathname}?${qs}` : url.pathname;
-                router.replace(next, { scroll: false });
-            } catch (e) {
-                console.error("Failed to clear trial success params", e);
             }
 
             return;
@@ -6644,9 +6682,6 @@ export default function PreviewPage(): JSX.Element {
 
     const visibleApps = useMemo(() => {
         const merged = [...draftApps, ...apps];
-        const hasDraftForPending = Boolean(
-            pendingCreatedApp && draftApps.some((draft) => draft.id === pendingCreatedApp.id),
-        );
         const aqFromQuery = (search.get("aq") || "").toLowerCase();
         const startFromQuery = (search.get("start") || "").toLowerCase();
         const retryFromQuery = (search.get("retry") || "").toLowerCase();
@@ -6654,7 +6689,7 @@ export default function PreviewPage(): JSX.Element {
             ((aqFromQuery === "1" || aqFromQuery === "true") || (startFromQuery === "1" || startFromQuery === "true")) &&
             !(retryFromQuery === "1" || retryFromQuery === "true");
 
-        if (!suppressPendingCreatedAppCard && pendingCreatedApp && !hasDraftForPending && !merged.some((app) => app.id === pendingCreatedApp.id)) {
+        if (!suppressPendingCreatedAppCard && pendingCreatedApp && !merged.some((app) => app.id === pendingCreatedApp.id)) {
             merged.push({
                 id: pendingCreatedApp.id,
                 name: pendingCreatedApp.name,
@@ -7047,6 +7082,19 @@ export default function PreviewPage(): JSX.Element {
                     typeof creditsMap.stripeStatus === "string" && creditsMap.stripeStatus.trim()
                         ? creditsMap.stripeStatus.trim().toLowerCase()
                         : "";
+                const nextBillingState =
+                    typeof creditsMap.billingState === "string" && creditsMap.billingState.trim()
+                        ? (creditsMap.billingState.trim().toLowerCase() as
+                              | "free"
+                              | "active"
+                              | "trialing"
+                              | "trial_cancelled")
+                        : nextStripeStatus === "trialing" && typeof creditsMap.stripeCancelAtPeriodEnd === "boolean" && creditsMap.stripeCancelAtPeriodEnd
+                            ? "trial_cancelled"
+                            : nextTier === "pro" || nextTier === "agency" || nextTier === "enterprise"
+                                ? "active"
+                                : "free";
+                setBillingState(nextBillingState);
                 if (nextStripeStatus) setStripeStatus(nextStripeStatus);
 
                 if (typeof creditsMap.stripeCancelAtPeriodEnd === "boolean") {
@@ -9365,10 +9413,19 @@ export default function PreviewPage(): JSX.Element {
                 if (res.ok) {
                     const data = await res.json();
                     const t = data?.tier as string | undefined;
+                    const nextBillingState =
+                        typeof data?.billingState === "string" && data.billingState.trim()
+                            ? (data.billingState.trim().toLowerCase() as
+                                  | "free"
+                                  | "active"
+                                  | "trialing"
+                                  | "trial_cancelled")
+                            : "free";
                     const nextStripeStatus =
                         typeof data?.stripeStatus === "string" && data.stripeStatus.trim()
                             ? data.stripeStatus.trim().toLowerCase()
                             : null;
+                    setBillingState(nextBillingState);
                     setStripeStatus(nextStripeStatus);
                     setStripeCancelAtPeriodEnd(!!data?.cancelAtPeriodEnd);
 
@@ -9378,6 +9435,7 @@ export default function PreviewPage(): JSX.Element {
                         effectiveTier = "free";
                     }
                 } else {
+                    setBillingState("free");
                     setStripeStatus(null);
                     setStripeCancelAtPeriodEnd(false);
                     // 2) Fallback: custom claims
@@ -9394,6 +9452,7 @@ export default function PreviewPage(): JSX.Element {
                     }
                 }
             } catch {
+                setBillingState("free");
                 setStripeStatus(null);
                     setStripeCancelAtPeriodEnd(false);
                 // 3) Hard fallback: try claims, otherwise stay on "free"
@@ -10201,7 +10260,6 @@ export default function PreviewPage(): JSX.Element {
                 ...item,
                 retryable: false,
                 completed: false,
-                pendingCompleted: false,
                 warningCode: null,
                 warningMessage: null,
                 warningAction: null,
@@ -10277,7 +10335,7 @@ export default function PreviewPage(): JSX.Element {
             for (const draftId of Object.keys(prev)) {
                 const draft = draftApps.find((item) => item.draftId === draftId || item.id === draftId);
                 const seenOnServer = serverDraftKeysRef.current.has(draftId);
-                if (!draft || !seenOnServer || Boolean(draft.pendingCompleted) || Boolean(draft.completed)) {
+                if (!draft || !seenOnServer || Boolean(draft.completed)) {
                     delete next[draftId];
                     changed = true;
                 }
@@ -12710,44 +12768,6 @@ export default function PreviewPage(): JSX.Element {
         <main className="min-h-screen bg-white notranslate" translate="no">
             {isDev ? (
                 <>
-                    {showDevQuickMenuLauncher ? (
-                        <div className="fixed bottom-4 right-4 z-[25000] sm:bottom-auto sm:right-3 sm:top-1/2 sm:-translate-y-1/2">
-                            <button
-                                type="button"
-                                onClick={() => setShowDevQuickMenu((v) => !v)}
-                                className="rounded-full border border-neutral-200 bg-white px-3 py-3 text-left shadow-[0_16px_45px_rgba(15,23,42,0.14)] transition hover:bg-neutral-50 sm:rounded-l-2xl sm:rounded-r-none sm:border-r-0"
-                                aria-label="Open dev quick menu"
-                                title="Dev quick menu"
-                            >
-                                <div className="flex items-center gap-2">
-                                    <span className="grid h-8 w-8 place-items-center rounded-full bg-[#f55f2a]/10 text-[#f55f2a]">
-                                        <Sparkles className="h-4 w-4" />
-                                    </span>
-                                    <div className="hidden sm:block">
-                                        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-500">
-                                            Dev
-                                        </div>
-                                        <div className="text-sm font-semibold text-neutral-800">
-                                            Quick Tests
-                                        </div>
-                                    </div>
-                                </div>
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    setShowDevQuickMenu(false);
-                                    setShowDevQuickMenuLauncher(false);
-                                }}
-                                className="absolute -right-2 -top-2 inline-flex h-6 w-6 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-500 shadow-sm transition hover:bg-neutral-50 hover:text-neutral-800"
-                                aria-label="Dismiss dev quick tests launcher"
-                                title="Dismiss"
-                            >
-                                <X className="h-3.5 w-3.5" />
-                            </button>
-                        </div>
-                    ) : null}
-
                     <AnimatePresence>
                         {showDevQuickMenu ? (
                             <motion.div
@@ -12954,6 +12974,7 @@ export default function PreviewPage(): JSX.Element {
                         planLabel={planLabel}
                         stripeStatus={stripeStatus}
                         stripeCancelAtPeriodEnd={stripeCancelAtPeriodEnd}
+                        billingState={billingState}
                         userTier={userTier}
                         screenshotRemaining={screenshotRemaining}
                         screenshotLimitDisplay={screenshotLimitDisplay}

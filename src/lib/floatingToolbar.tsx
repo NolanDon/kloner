@@ -16,6 +16,8 @@ import {
     Move,
     Check,
     ChevronDown,
+    ChevronLeft,
+    ChevronRight,
     Type as TypeIcon,
 } from "lucide-react";
 import type { SelectionMeta } from "@/components/editor/PreviewEditor";
@@ -26,6 +28,10 @@ type FloatingBlockToolbarProps = {
     selectionMeta: SelectionMeta | null;
     uiScale: number;
     bottomBarRef?: React.RefObject<HTMLElement>;
+    docked?: boolean;
+    dockedOpen?: boolean;
+    onDockedToggle?: () => void;
+    showDockToggle?: boolean;
 };
 
 type ToolbarPos = { top: number; left: number } | null;
@@ -243,11 +249,13 @@ function BlockToolbar({
     callApi,
     selectionMeta,
     onDragStart,
+    docked = false,
 }: {
     style: React.CSSProperties;
     callApi: (method: string, ...args: any[]) => any;
     selectionMeta: SelectionMeta;
     onDragStart: (e: React.MouseEvent<HTMLDivElement>) => void;
+    docked?: boolean;
 }) {
     const tagName = selectionMeta.tagName?.toUpperCase?.() || (selectionMeta as any).tagName || "DIV";
 
@@ -363,7 +371,9 @@ function BlockToolbar({
             title={title}
             onClick={onClick}
             className={[
-                "inline-flex items-center justify-center gap-1 rounded-lg border px-1.5 py-1 text-[9px] leading-none shadow-sm transition active:scale-[0.98]",
+                docked
+                    ? "inline-flex items-center justify-center gap-1 rounded-xl border px-2 py-1.5 text-[12px] leading-none shadow-sm transition active:scale-[0.98]"
+                    : "inline-flex items-center justify-center gap-1 rounded-lg border px-1.5 py-1 text-[9px] leading-none shadow-sm transition active:scale-[0.98]",
                 danger
                     ? "border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100"
                     : "border-neutral-200 bg-white text-neutral-700 hover:bg-neutral-50",
@@ -393,7 +403,9 @@ function BlockToolbar({
             title={title}
             onClick={onClick}
             className={[
-                "inline-flex h-7 w-7 items-center justify-center rounded-lg border shadow-sm active:scale-[0.98] transition",
+                docked
+                    ? "inline-flex h-8 w-8 items-center justify-center rounded-xl border shadow-sm active:scale-[0.98] transition"
+                    : "inline-flex h-7 w-7 items-center justify-center rounded-lg border shadow-sm active:scale-[0.98] transition",
                 danger
                     ? "border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100"
                     : "border-neutral-200 bg-white text-neutral-700 hover:bg-neutral-50",
@@ -439,10 +451,8 @@ function BlockToolbar({
                 style={style}
                 className={[
                     "cursor-default overflow-visible border border-neutral-200 bg-white text-neutral-800 shadow-2xl",
-                    "text-[10px] leading-tight",
-                    "w-[260px] rounded-2xl",
-                    "sm:w-[260px] sm:rounded-2xl",
-                    "max-sm:w-[min(96vw,560px)] max-sm:rounded-2xl",
+                    docked ? "text-sm leading-6" : "text-[10px] leading-tight",
+                    docked ? "h-full w-full rounded-none border-0 shadow-none" : "w-[260px] rounded-2xl sm:w-[260px] sm:rounded-2xl max-sm:w-[min(96vw,560px)] max-sm:rounded-2xl",
                 ].join(" ")}
             >
                 {/* MOBILE */}
@@ -451,7 +461,7 @@ function BlockToolbar({
                         <div className="flex items-center gap-2">
                             <div
                                 className="inline-flex items-center gap-2 rounded-xl border border-neutral-200 bg-neutral-50 px-2 py-1.5 cursor-move select-none"
-                                onMouseDown={onDragStart}
+                                onMouseDown={docked ? undefined : onDragStart}
                             >
                                 <Move className="h-4 w-4 text-neutral-600" />
                                 <span className="text-[11px] font-semibold text-neutral-700">{tagName.toLowerCase()}</span>
@@ -515,27 +525,31 @@ function BlockToolbar({
                 {/* DESKTOP */}
                 <div className="hidden sm:block">
                     <div
-                        className="flex items-center justify-between border-b border-neutral-200 px-2 py-1.5 cursor-move select-none"
-                        onMouseDown={onDragStart}
+                        className={`flex items-center ${docked ? "justify-start" : "justify-between"} border-b border-neutral-200 px-2 py-1.5 ${docked ? "" : "cursor-move select-none"}`}
+                        onMouseDown={docked ? undefined : onDragStart}
                     >
                         <div className="flex items-center gap-1.5 min-w-0">
-                            <div className="flex h-7 w-7 items-center justify-center rounded-xl border border-neutral-200 bg-neutral-50 text-neutral-500">
-                                <Move className="h-3.5 w-3.5" />
-                            </div>
+                            {!docked ? (
+                                <div className="flex h-7 w-7 items-center justify-center rounded-xl border border-neutral-200 bg-neutral-50 text-neutral-500">
+                                    <Move className="h-3.5 w-3.5" />
+                                </div>
+                            ) : null}
 
                             <div className="min-w-0 leading-tight">
-                                <div className="text-[9px] font-semibold tracking-[0.14em] text-neutral-500 uppercase">
+                                <div className="text-sm font-semibold text-neutral-800">
                                     Selected
                                 </div>
-                                <div className="text-[11px] font-semibold text-neutral-800 truncate">
+                                <div className="text-[13px] font-medium text-neutral-500 truncate">
                                     &lt;{tagName.toLowerCase()}&gt;
                                 </div>
                             </div>
                         </div>
 
-                        <IconBtn title="Deselect block" onClick={() => callApi("clear")}>
-                            <span className="text-[14px] leading-none">×</span>
-                        </IconBtn>
+                        {!docked ? (
+                            <IconBtn title="Deselect block" onClick={() => callApi("clear")}>
+                                <span className="text-[14px] leading-none">×</span>
+                            </IconBtn>
+                        ) : null}
                     </div>
 
                     {/* Link editor (only if link exists) */}
@@ -579,8 +593,11 @@ function BlockToolbar({
                     <div className="mt-1 flex-1 space-y-2 overflow-y-auto px-2 py-2 text-[10px]">
                         {/* Danger */}
                         <div>
-                            <div className="mb-0.5 text-[8px] font-semibold uppercase tracking-[0.16em] text-neutral-500">
-                                Danger
+                            <div className="mb-2 border-b border-neutral-200 pb-1">
+                                <div className="inline-flex items-center gap-2 text-sm font-semibold text-neutral-800">
+                                    <Trash2 className="h-4 w-4 text-neutral-500" />
+                                    Danger
+                                </div>
                             </div>
                             <button
                                 type="button"
@@ -595,8 +612,11 @@ function BlockToolbar({
 
                         {/* Layout (block move) */}
                         <div>
-                            <div className="mb-0.5 text-[8px] font-semibold uppercase tracking-[0.16em] text-neutral-500">
-                                Layout
+                            <div className="mb-2 border-b border-neutral-200 pb-1">
+                                <div className="inline-flex items-center gap-2 text-sm font-semibold text-neutral-800">
+                                    <Move className="h-4 w-4 text-neutral-500" />
+                                    Layout
+                                </div>
                             </div>
                             {/* PATCH: arrows horizontally aligned as a single row of 4 */}
                             <div className="flex items-center gap-1">
@@ -642,8 +662,11 @@ function BlockToolbar({
 
                         {/* Padding */}
                         <div>
-                            <div className="mb-0.5 text-[8px] font-semibold uppercase tracking-[0.16em] text-neutral-500">
-                                Padding
+                            <div className="mb-2 border-b border-neutral-200 pb-1">
+                                <div className="inline-flex items-center gap-2 text-sm font-semibold text-neutral-800">
+                                    <RotateCcw className="h-4 w-4 text-neutral-500" />
+                                    Padding
+                                </div>
                             </div>
                             {/* PATCH: arrows horizontally aligned as a single row of 4 */}
                             <div className="flex items-center gap-1">
@@ -717,8 +740,11 @@ function BlockToolbar({
 
                         {/* Margin */}
                         <div>
-                            <div className="mb-0.5 text-[8px] font-semibold uppercase tracking-[0.16em] text-neutral-500">
-                                Margin
+                            <div className="mb-2 border-b border-neutral-200 pb-1">
+                                <div className="inline-flex items-center gap-2 text-sm font-semibold text-neutral-800">
+                                    <RotateCcw className="h-4 w-4 text-neutral-500" />
+                                    Margin
+                                </div>
                             </div>
                             {/* PATCH: arrows horizontally aligned as a single row of 4 */}
                             <div className="flex items-center gap-1">
@@ -792,8 +818,11 @@ function BlockToolbar({
 
                         {/* Size */}
                         <div>
-                            <div className="mb-0.5 text-[8px] font-semibold uppercase tracking-[0.16em] text-neutral-500">
-                                Size
+                            <div className="mb-2 border-b border-neutral-200 pb-1">
+                                <div className="inline-flex items-center gap-2 text-sm font-semibold text-neutral-800">
+                                    <Move className="h-4 w-4 text-neutral-500" />
+                                    Size
+                                </div>
                             </div>
                             <div className="flex items-center gap-1">
                                 <button
@@ -826,8 +855,11 @@ function BlockToolbar({
 
                         {/* Corners */}
                         <div>
-                            <div className="mb-0.5 text-[8px] font-semibold uppercase tracking-[0.16em] text-neutral-500">
-                                Corners
+                            <div className="mb-2 border-b border-neutral-200 pb-1">
+                                <div className="inline-flex items-center gap-2 text-sm font-semibold text-neutral-800">
+                                    <Check className="h-4 w-4 text-neutral-500" />
+                                    Corners
+                                </div>
                             </div>
                             <div className="flex items-center gap-1">
                                 <button
@@ -860,8 +892,11 @@ function BlockToolbar({
 
                         {/* Layering (block) */}
                         <div>
-                            <div className="mb-0.5 text-[8px] font-semibold uppercase tracking-[0.16em] text-neutral-500">
-                                Layer
+                            <div className="mb-2 border-b border-neutral-200 pb-1">
+                                <div className="inline-flex items-center gap-2 text-sm font-semibold text-neutral-800">
+                                    <Layers className="h-4 w-4 text-neutral-500" />
+                                    Layer
+                                </div>
                             </div>
                             <div className="flex items-center gap-1">
                                 <button
@@ -887,8 +922,11 @@ function BlockToolbar({
 
                         {/* Text & links */}
                         <div>
-                            <div className="mb-0.5 text-[8px] font-semibold uppercase tracking-[0.16em] text-neutral-500">
-                                Text & links
+                            <div className="mb-2 border-b border-neutral-200 pb-1">
+                                <div className="inline-flex items-center gap-2 text-sm font-semibold text-neutral-800">
+                                    <TypeIcon className="h-4 w-4 text-neutral-500" />
+                                    Text & links
+                                </div>
                             </div>
                             <div className="flex items-center gap-1">
                                 <button
@@ -905,8 +943,11 @@ function BlockToolbar({
 
                         {/* Images */}
                         <div>
-                            <div className="mb-0.5 text-[8px] font-semibold uppercase tracking-[0.16em] text-neutral-500">
-                                Images
+                            <div className="mb-2 border-b border-neutral-200 pb-1">
+                                <div className="inline-flex items-center gap-2 text-sm font-semibold text-neutral-800">
+                                    <ImageIcon className="h-4 w-4 text-neutral-500" />
+                                    Images
+                                </div>
                             </div>
 
                             <div className="flex items-center gap-1">
@@ -984,8 +1025,11 @@ function BlockToolbar({
 
                         {/* Font */}
                         <div>
-                            <div className="mb-0.5 text-[8px] font-semibold uppercase tracking-[0.16em] text-neutral-500">
-                                Font
+                            <div className="mb-2 border-b border-neutral-200 pb-1">
+                                <div className="inline-flex items-center gap-2 text-sm font-semibold text-neutral-800">
+                                    <ChevronDown className="h-4 w-4 text-neutral-500" />
+                                    Font
+                                </div>
                             </div>
                             <FontFamilyDropdown
                                 initialFontFamily={currentFontFamily || ""}
@@ -1010,6 +1054,10 @@ export function FloatingBlockToolbar({
     wrapperRef,
     selectionMeta,
     bottomBarRef,
+    docked = false,
+    dockedOpen = false,
+    onDockedToggle,
+    showDockToggle = true,
 }: FloatingBlockToolbarProps) {
     const [toolbarPos, setToolbarPos] = useState<ToolbarPos>(null);
     const toolbarPosRef = useRef<ToolbarPos>(null);
@@ -1019,9 +1067,11 @@ export function FloatingBlockToolbar({
 
     const [isMobile, setIsMobile] = useState(false);
     const [bottomBarH, setBottomBarH] = useState(72);
-
+    const [dockedBounds, setDockedBounds] = useState<{ top: number; bottom: number } | null>(null);
     const PANEL_W = 260;
     const PANEL_H = 520;
+    const DOCKED_SIDEBAR_OPEN_WIDTH = 360;
+    const DOCKED_SIDEBAR_COLLAPSED_WIDTH = 56;
 
     useEffect(() => {
         if (!isMobile) return;
@@ -1099,28 +1149,36 @@ export function FloatingBlockToolbar({
         setToolbarPos({ top, left });
     }, [selectionMeta?.has, iframeRef, wrapperRef, isMobile]);
 
-    if (!selectionMeta || !selectionMeta.has || !(selectionMeta as any).rect) return null;
+    useEffect(() => {
+        if (!docked) return;
+        const updateDockedBounds = () => {
+            const wrapper = wrapperRef.current;
+            if (!wrapper) return;
 
-    const wrapper = wrapperRef.current;
-    if (!wrapper) return null;
+            const rect = wrapper.getBoundingClientRect();
+            const top = Math.max(0, Math.round(rect.top));
+            const bottom = Math.max(0, Math.round(window.innerHeight - rect.bottom));
+            setDockedBounds({ top, bottom });
+        };
 
-    const APPLY_BAR_ESTIMATED_H = Math.max(56, bottomBarH || 0);
+        updateDockedBounds();
 
-    const mobileFixedStyle: React.CSSProperties = {
-        position: "fixed",
-        left: "50%",
-        bottom: `calc(env(safe-area-inset-bottom, 0px) + ${APPLY_BAR_ESTIMATED_H}px + 10px)`,
-        transform: "translateX(-50%)",
-        zIndex: 9999,
-        pointerEvents: "auto",
-    };
+        const wrapper = wrapperRef.current;
+        const ro = typeof ResizeObserver !== "undefined" && wrapper ? new ResizeObserver(() => updateDockedBounds()) : null;
+        if (ro && wrapper) ro.observe(wrapper);
 
-    const desktopStyle: React.CSSProperties =
-        toolbarPos != null
-            ? { position: "absolute", top: toolbarPos.top, left: toolbarPos.left, zIndex: 120, pointerEvents: "auto" }
-            : { position: "absolute", top: wrapper.scrollTop + 72, left: wrapper.scrollLeft + 12, zIndex: 120, pointerEvents: "auto" };
+        window.addEventListener("resize", updateDockedBounds);
+        window.addEventListener("scroll", updateDockedBounds, true);
 
-    const baseStyle = isMobile ? mobileFixedStyle : desktopStyle;
+        return () => {
+            ro?.disconnect();
+            window.removeEventListener("resize", updateDockedBounds);
+            window.removeEventListener("scroll", updateDockedBounds, true);
+        };
+    }, [docked, wrapperRef]);
+
+    const isDocked = docked;
+    const isDockedOpen = dockedOpen;
 
     function callApi(method: string, ...args: any[]) {
         const win = iframeRef.current?.contentWindow as any;
@@ -1182,6 +1240,79 @@ export function FloatingBlockToolbar({
         window.addEventListener("mousemove", onMove);
         window.addEventListener("mouseup", onUp);
     };
+
+    if (isDocked) {
+        const dockedSelectionMeta = selectionMeta || ({ has: false } as SelectionMeta);
+        const effectiveDockedOpen = showDockToggle ? isDockedOpen : true;
+        const dockedStyle: React.CSSProperties = {
+            top: dockedBounds?.top ?? 0,
+            bottom: dockedBounds?.bottom ?? 0,
+            width: effectiveDockedOpen ? DOCKED_SIDEBAR_OPEN_WIDTH : DOCKED_SIDEBAR_COLLAPSED_WIDTH,
+            visibility: "visible",
+        };
+
+        return (
+            <aside
+                id="kloner-right-sidebar"
+                className="pointer-events-auto fixed right-0 z-[25000] flex overflow-visible rounded-2xl border border-neutral-200 bg-white shadow-xl"
+                style={dockedStyle}
+            >
+                <div className="relative flex h-full w-full flex-col overflow-hidden rounded-2xl bg-white">
+                    {showDockToggle ? (
+                        <button
+                            type="button"
+                            aria-label={effectiveDockedOpen ? "Collapse sidebar" : "Expand sidebar"}
+                            title={effectiveDockedOpen ? "Collapse sidebar" : "Expand sidebar"}
+                            onClick={onDockedToggle}
+                            className="absolute left-3 top-3 z-50 inline-flex h-10 w-10 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-700 shadow-lg transition duration-300 ease-out hover:bg-neutral-50 hover:shadow-xl active:scale-95"
+                        >
+                            <span className="flex items-center justify-center">
+                                {effectiveDockedOpen ? (
+                                    <ChevronRight className="h-4 w-4" />
+                                ) : (
+                                    <ChevronLeft className="h-4 w-4" />
+                                )}
+                            </span>
+                        </button>
+                    ) : null}
+                    {effectiveDockedOpen ? (
+                        <div className={`min-h-0 flex-1 overflow-y-auto ${showDockToggle ? "pt-14" : "p-2"}`}>
+                            <BlockToolbar
+                                style={{ width: "100%", minHeight: "100%" }}
+                                callApi={callApi}
+                                selectionMeta={dockedSelectionMeta}
+                                onDragStart={handleDragStart}
+                                docked
+                            />
+                        </div>
+                    ) : null}
+                </div>
+            </aside>
+        );
+    }
+
+    if (!selectionMeta || !selectionMeta.has || !(selectionMeta as any).rect) return null;
+
+    const wrapper = wrapperRef.current;
+    if (!wrapper) return null;
+
+    const APPLY_BAR_ESTIMATED_H = Math.max(56, bottomBarH || 0);
+
+    const mobileFixedStyle: React.CSSProperties = {
+        position: "fixed",
+        left: "50%",
+        bottom: `calc(env(safe-area-inset-bottom, 0px) + ${APPLY_BAR_ESTIMATED_H}px + 10px)`,
+        transform: "translateX(-50%)",
+        zIndex: 9999,
+        pointerEvents: "auto",
+    };
+
+    const desktopStyle: React.CSSProperties =
+        toolbarPos != null
+            ? { position: "absolute", top: toolbarPos.top, left: toolbarPos.left, zIndex: 120, pointerEvents: "auto" }
+            : { position: "absolute", top: wrapper.scrollTop + 72, left: wrapper.scrollLeft + 12, zIndex: 120, pointerEvents: "auto" };
+
+    const baseStyle = isMobile ? mobileFixedStyle : desktopStyle;
 
     return (
         <div style={baseStyle}>

@@ -13,6 +13,7 @@ import { pickPreferredHtmlPath } from "@/src/lib/htmlEntrypoint";
 import { useHtmlDiscoveryFallbackGate } from "@/src/lib/htmlDiscoveryGate";
 import { TOUR_KEY as PREVIEW_TOUR_STORAGE_KEY } from "./PreviewEditorTour";
 import { ensureUserImageStorageRoom, IMAGE_STORAGE_LIMIT_BYTES, loadUserImageStorageUsage, uploadUserImageToFirebase } from "@/src/lib/imageStorage";
+import { getResponsiveUiScale } from "@/src/lib/uiScale";
 
 export type Device = "desktop" | "tablet" | "mobile";
 export type ViewMode = "code" | "preview" | "screenshot";
@@ -138,6 +139,7 @@ type Props = {
     accessLocked?: boolean;
     showTour?: boolean;
     onRequestDeployCheckout?: () => void;
+    showRightSidebarToggle?: boolean;
 };
 
 const ACCENT = "#f55f2a";
@@ -1230,7 +1232,6 @@ type DraftSnapshot = {
 };
 
 const SINGLE_PAGE_KEY = "__single__";
-
 function AppPreviewEditorCore({
     initialHtml,
     sourceImage,
@@ -1281,6 +1282,7 @@ function AppPreviewEditorCore({
     accessLocked = false,
     showTour,
     onRequestDeployCheckout,
+    showRightSidebarToggle = true,
 }: Props) {
     const { user, userTier, loading: authLoading } = useAuth() as { user: FirebaseUser | null; userTier: UserTier; loading: boolean };
     const isDevCodeMode = process.env.NODE_ENV === "development";
@@ -1408,6 +1410,19 @@ function AppPreviewEditorCore({
         }
 
         return !IS_MOBILE && window.innerHeight < 860;
+    });
+    const [rightSidebarHidden, setRightSidebarHidden] = useState(() => {
+        if (typeof window === "undefined") return false;
+
+        try {
+            const stored = window.localStorage.getItem(PREVIEW_RIGHT_SIDEBAR_KEY);
+            if (stored === "1") return true;
+            if (stored === "0") return false;
+        } catch {
+            // Ignore storage access issues.
+        }
+
+        return false;
     });
     const [isCompactLayout, setIsCompactLayout] = useState(IS_MOBILE);
     const [mobileTab, setMobileTab] = useState<"preview" | "panel">("preview");
@@ -2169,9 +2184,9 @@ function AppPreviewEditorCore({
 
     const [uiScale, setUiScale] = useState<number>(() => {
         if (typeof sharedUiScale === "number") return sharedUiScale;
-        if (typeof window === "undefined") return (IS_MOBILE ? 1.05 : 0.75)
+        if (typeof window === "undefined") return 0.6;
         const v = Number(localStorage.getItem("kloner:uiScale"));
-        return Number.isFinite(v) && v >= 0.5 && v <= 1.25 ? v : (IS_MOBILE ? 1.05 : 0.75)
+        return Number.isFinite(v) && v >= 0.5 && v <= 1.25 ? v : getResponsiveUiScale(window.innerWidth)
     });
 
     useEffect(() => {
@@ -4863,6 +4878,15 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
     }, [sidebarHidden]);
 
     useEffect(() => {
+        if (typeof window === "undefined") return;
+        try {
+            window.localStorage.setItem(PREVIEW_RIGHT_SIDEBAR_KEY, rightSidebarHidden ? "1" : "0");
+        } catch {
+            // Ignore storage failures.
+        }
+    }, [rightSidebarHidden]);
+
+    useEffect(() => {
         if (!preferredSidePanelMode) return;
         setSidePanelMode(preferredSidePanelMode);
         setSidebarHidden(false);
@@ -5027,7 +5051,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
             <div className={`h-full w-full overflow-hidden ${isCompactLayout ? "flex flex-col" : "grid grid-rows-[1fr_auto]"}`}>
 
                 {isCompactLayout && (
-                    <div className="absolute inset-x-0 top-0 z-[104] border-b border-neutral-200 bg-gray-50/95 px-3 py-2 backdrop-blur">
+                    <div className="absolute inset-x-0 top-0 z-[30010] border-b border-neutral-200 bg-gray-50/95 px-3 py-2 backdrop-blur">
                         <div className="flex items-center gap-2">
                             <div className="min-w-0 flex-1">
                                 <div className="truncate text-sm font-semibold text-neutral-900">
@@ -5283,7 +5307,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                             className={`pointer-events-auto relative flex flex-col overflow-visible bg-white ${
                                 isCompactLayout
                                     ? "relative z-20 h-full w-full bg-gray-50"
-                                    : "z-40 h-full shrink-0 rounded-r-2xl border-r border-neutral-200 shadow-xl"
+                                    : "-ml-4 z-40 h-full shrink-0 rounded-r-2xl border-r border-t border-neutral-200 shadow-xl"
                             }`}
                             initial={isCompactLayout ? { opacity: 0, y: 8 } : { x: -16, opacity: 0 }}
                             animate={
@@ -5361,10 +5385,10 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                     <>
                                         {mode === "preview" && (
                                             <div
-                                                className="mt-1 border-t border-neutral-200 pt-3 text-sm leading-6"
+                                                className="mt-1 text-sm leading-6"
                                                 id="kloner-selection-style"
                                             >
-                                                <div className="mb-3 flex items-center justify-between">
+                                                <div className="mb-3 flex items-center justify-between border-b border-neutral-200 pb-1.5">
                                                     <div className="text-sm font-semibold text-neutral-800">
                                                         {selectionMeta.has
                                                             ? selectionMeta.tagName || "Element"
@@ -5552,7 +5576,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                                 <button
                                                                     key={s.id}
                                                                     type="button"
-                                                                    className="rounded border border-neutral-300 bg-white px-3 py-1.5 text-sm font-medium shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                                    className="rounded-md border border-neutral-300 bg-white px-2 py-1 text-[10px] font-medium shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
                                                                     disabled={closing}
                                                                     onClick={() =>
                                                                         sendStyleCommand({
@@ -5584,7 +5608,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                                 <button
                                                                     key={a.id}
                                                                     type="button"
-                                                                    className="rounded border border-neutral-300 bg-white px-3 py-1.5 text-sm font-medium shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                                    className="rounded-md border border-neutral-300 bg-white px-2 py-1 text-[10px] font-medium shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
                                                                     disabled={closing}
                                                                     onClick={() =>
                                                                         sendStyleCommand({
@@ -5611,7 +5635,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                         <div className="flex flex-wrap gap-2">
                                                             <button
                                                                 type="button"
-                                                                className="rounded border border-neutral-300 bg-white px-3 py-1.5 text-sm font-light shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                                className="rounded-md border border-neutral-300 bg-white px-2 py-1 text-[10px] font-medium shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
                                                                 disabled={closing}
                                                                 onClick={() =>
                                                                     sendStyleCommand({
@@ -5624,7 +5648,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                             </button>
                                                             <button
                                                                 type="button"
-                                                                className="rounded border border-neutral-300 bg-white px-3 py-1.5 text-sm font-normal shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                                className="rounded-md border border-neutral-300 bg-white px-2 py-1 text-[10px] font-medium shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
                                                                 disabled={closing}
                                                                 onClick={() =>
                                                                     sendStyleCommand({
@@ -5637,7 +5661,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                             </button>
                                                             <button
                                                                 type="button"
-                                                                className="rounded border border-neutral-300 bg-white px-3 py-1.5 text-sm font-medium shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                                className="rounded-md border border-neutral-300 bg-white px-2 py-1 text-[10px] font-medium shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
                                                                 disabled={closing}
                                                                 onClick={() =>
                                                                     sendStyleCommand({
@@ -5650,7 +5674,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                             </button>
                                                             <button
                                                                 type="button"
-                                                                className="rounded border border-neutral-300 bg-white px-3 py-1.5 text-sm font-semibold shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                                className="rounded-md border border-neutral-300 bg-white px-2 py-1 text-[10px] font-medium shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
                                                                 disabled={closing}
                                                                 onClick={() =>
                                                                     sendStyleCommand({
@@ -5663,7 +5687,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                             </button>
                                                             <button
                                                                 type="button"
-                                                                className="rounded border border-neutral-300 bg-white px-3 py-1.5 text-sm font-bold shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                                className="rounded-md border border-neutral-300 bg-white px-2 py-1 text-[10px] font-medium shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
                                                                 disabled={closing}
                                                                 onClick={() =>
                                                                     sendStyleCommand({
@@ -5688,7 +5712,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                         <div className="flex gap-2">
                                                             <button
                                                                 type="button"
-                                                                className="rounded border border-neutral-300 bg-white px-3 py-1.5 text-sm font-medium shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                                className="rounded-md border border-neutral-300 bg-white px-2 py-1 text-[10px] font-medium shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
                                                                 disabled={closing}
                                                                 onClick={() =>
                                                                     sendStyleCommand({
@@ -5701,7 +5725,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                             </button>
                                                             <button
                                                                 type="button"
-                                                                className="rounded border border-neutral-300 bg-white px-3 py-1.5 text-sm font-medium shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                                className="rounded-md border border-neutral-300 bg-white px-2 py-1 text-[10px] font-medium shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
                                                                 disabled={closing}
                                                                 onClick={() =>
                                                                     sendStyleCommand({
@@ -5726,7 +5750,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                         <div className="flex gap-2">
                                                             <button
                                                                 type="button"
-                                                                className="rounded border border-neutral-300 bg-white px-3 py-1.5 text-sm font-medium shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                                className="rounded-md border border-neutral-300 bg-white px-2 py-1 text-[10px] font-medium shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
                                                                 disabled={closing}
                                                                 onClick={() =>
                                                                     sendStyleCommand({
@@ -5739,7 +5763,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                             </button>
                                                             <button
                                                                 type="button"
-                                                                className="rounded border border-neutral-300 bg-white px-3 py-1.5 text-sm font-medium shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                                className="rounded-md border border-neutral-300 bg-white px-2 py-1 text-[10px] font-medium shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
                                                                 disabled={closing}
                                                                 onClick={() =>
                                                                     sendStyleCommand({
@@ -5752,7 +5776,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                             </button>
                                                             <button
                                                                 type="button"
-                                                                className="rounded border border-neutral-300 bg-white px-3 py-1.5 text-sm font-medium shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                                className="rounded-md border border-neutral-300 bg-white px-2 py-1 text-[10px] font-medium shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
                                                                 disabled={closing}
                                                                 onClick={() =>
                                                                     sendStyleCommand({
@@ -5777,7 +5801,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                         <div className="flex gap-2">
                                                             <button
                                                                 type="button"
-                                                                className="rounded border border-neutral-300 bg-white px-3 py-1.5 text-sm font-medium shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                                className="rounded-md border border-neutral-300 bg-white px-2 py-1 text-[10px] font-medium shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
                                                                 disabled={closing}
                                                                 onClick={() =>
                                                                     sendStyleCommand({
@@ -5790,7 +5814,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                             </button>
                                                             <button
                                                                 type="button"
-                                                                className="rounded border border-neutral-300 bg-white px-3 py-1.5 text-sm font-medium shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                                className="rounded-md border border-neutral-300 bg-white px-2 py-1 text-[10px] font-medium shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
                                                                 disabled={closing}
                                                                 onClick={() =>
                                                                     sendStyleCommand({
@@ -5803,7 +5827,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                             </button>
                                                             <button
                                                                 type="button"
-                                                                className="rounded border border-neutral-300 bg-white px-3 py-1.5 text-sm font-medium shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
+                                                                className="rounded-md border border-neutral-300 bg-white px-2 py-1 text-[10px] font-medium shadow-sm transition hover:bg-neutral-50 active:scale-[.98] disabled:opacity-40"
                                                                 disabled={closing}
                                                                 onClick={() =>
                                                                     sendStyleCommand({
@@ -5910,7 +5934,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                     >
                         {mode === "preview" && draftId && (
                             <div
-                                className="border-t max-h-72 overflow-auto"
+                                className="max-h-72 overflow-auto"
                                 id="kloner-ai-edit-panel"
                             >
 
@@ -6236,31 +6260,82 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                 }
                             >
                                 <div className="mb-3 flex items-center justify-center">
-                                    <div className="inline-flex items-center gap-2 rounded-xl border border-neutral-200 bg-white/95 p-1 shadow-sm">
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                const api = getPreviewIframeApi();
-                                                if (api?.undo) api.undo();
-                                            }}
-                                            className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-accent px-4 py-1.5 text-sm font-semibold text-white hover:brightness-95"
-                                            aria-label="Undo"
-                                        >
-                                            <Undo2 className="h-4 w-4" />
-                                            <span>Undo</span>
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                const api = getPreviewIframeApi();
-                                                if (api?.redo) api.redo();
-                                            }}
-                                            className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-accent px-4 py-1.5 text-sm font-semibold text-white hover:brightness-95"
-                                            aria-label="Redo"
-                                        >
-                                            <Redo2 className="h-4 w-4" />
-                                            <span>Redo</span>
-                                        </button>
+                                    <div className="relative inline-flex items-center gap-2">
+                                        <div className="inline-flex items-center gap-2 rounded-xl border border-neutral-200 bg-white/95 p-1 shadow-sm">
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    const api = getPreviewIframeApi();
+                                                    if (api?.undo) api.undo();
+                                                }}
+                                                className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-accent px-4 py-1.5 text-sm font-semibold text-white hover:brightness-95"
+                                                aria-label="Undo"
+                                            >
+                                                <Undo2 className="h-4 w-4" />
+                                                <span>Undo</span>
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    const api = getPreviewIframeApi();
+                                                    if (api?.redo) api.redo();
+                                                }}
+                                                className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-accent px-4 py-1.5 text-sm font-semibold text-white hover:brightness-95"
+                                                aria-label="Redo"
+                                            >
+                                                <Redo2 className="h-4 w-4" />
+                                                <span>Redo</span>
+                                            </button>
+                                        </div>
+
+                                        <div className="relative hidden lg:block">
+                                            <button
+                                                type="button"
+                                                id="kloner-history-button"
+                                                onClick={() => setHistoryOpen((current) => !current)}
+                                                className="inline-flex items-center gap-1.5 rounded-xl border border-neutral-200 bg-white/95 px-3 py-2 text-sm font-semibold text-neutral-700 shadow-sm hover:bg-neutral-100 hover:text-neutral-900"
+                                                title="Show edit history"
+                                                aria-expanded={historyOpen}
+                                                aria-controls="kloner-history"
+                                            >
+                                                {historyOpen ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                                                <span>History</span>
+                                            </button>
+
+                                            {historyOpen ? (
+                                                <div
+                                                    id="kloner-history"
+                                                    className="absolute right-0 top-full z-[80] mt-2 w-72 max-h-[70vh]"
+                                                >
+                                                    <div className="flex flex-col rounded-lg border border-neutral-200 bg-white/95 shadow-lg">
+                                                        <div className="flex items-center justify-between border-b border-neutral-200 px-3 py-2">
+                                                            <span className="text-[13px] font-semibold uppercase tracking-[0.14em] text-neutral-500">
+                                                                History
+                                                            </span>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setHistoryOpen(false)}
+                                                                className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-neutral-200 bg-white/90 text-neutral-500 shadow-sm hover:bg-neutral-100 hover:text-neutral-800"
+                                                                title="Hide history"
+                                                            >
+                                                                <EyeOff className="h-4 w-4" />
+                                                                <span className="sr-only">Hide history</span>
+                                                            </button>
+                                                        </div>
+
+                                                        <div className="min-h-0 flex-1 overflow-y-auto bg-white p-2">
+                                                            <HistoryPanel
+                                                                snapshots={mergedHistory}
+                                                                onRestore={handleRestoreSnapshot}
+                                                                activeId={activeHistoryId}
+                                                                onDelete={deleteHistoryItem}
+                                                                onClearAll={clearHistory}
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            ) : null}
+                                        </div>
                                     </div>
                                 </div>
                                 <AnimatePresence mode="wait">
@@ -6450,53 +6525,6 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                 </div>
                             </div>
                         )}
-
-                        {/* Right-side history menu (top-right overlay) */}
-                        {historyOpen ? (
-                            <div
-                                id="kloner-history"
-                                className="hidden lg:block absolute top-20 right-3 z-[80] w-72 max-h-[70vh]"
-                            >
-                                <div className="flex flex-col rounded-lg border border-neutral-200 bg-white/90/95 shadow-lg">
-                                    <div className="flex items-center justify-between px-3 py-2 border-b border-neutral-200">
-                                        <span className="text-[13px] font-semibold uppercase tracking-[0.14em] text-neutral-500">
-                                            History
-                                        </span>
-                                        <button
-                                            type="button"
-                                            onClick={() => setHistoryOpen(false)}
-                                            className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-neutral-200 bg-white/90 text-neutral-500 shadow-sm hover:bg-neutral-100 hover:text-neutral-800"
-                                            title="Hide history"
-                                        >
-                                            <EyeOff className="w-4 h-4" />
-                                            <span className="sr-only">Hide history</span>
-                                        </button>
-                                    </div>
-
-                                    <div className="min-h-0 flex-1 overflow-y-auto p-2 bg-white">
-                                        <HistoryPanel
-                                            snapshots={mergedHistory}
-                                            onRestore={handleRestoreSnapshot}
-                                            activeId={activeHistoryId}
-                                            onDelete={deleteHistoryItem}
-                                            onClearAll={clearHistory}
-                                        />
-                                    </div>
-                                </div>
-                            </div>
-                        ) : (
-                            <button
-                                type="button"
-                                id="kloner-history-button"
-                                onClick={() => setHistoryOpen(true)}
-                                className="hidden lg:flex absolute top-20 right-3 z-[70] h-8 w-8 items-center justify-center rounded-full border border-neutral-200 bg-white/90/95 text-neutral-600 shadow-md hover:bg-neutral-100 hover:text-neutral-800"
-                                title="Show edit history"
-                            >
-                                <Eye className="w-4 h-4" />
-                                <span className="sr-only">Show history</span>
-                            </button>
-                        )}
-
 
                         {/* Mobile footer actions */}
                         {isCompactLayout && (
@@ -6810,7 +6838,23 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                     )}
                 </div>
 
-                {!aiEditing && (
+                {!aiEditing && !isCompactLayout && !shouldShowAccessPaywall && typeof document !== "undefined" ? (
+                    createPortal(
+                        <FloatingBlockToolbar
+                            iframeRef={iframeRef}
+                            wrapperRef={iframeWrapperRef}
+                            selectionMeta={selectionMeta}
+                            uiScale={0}
+                            docked
+                            dockedOpen={showRightSidebarToggle ? !rightSidebarHidden : true}
+                            onDockedToggle={() => setRightSidebarHidden((current) => !current)}
+                            showDockToggle={showRightSidebarToggle}
+                        />,
+                        document.body,
+                    )
+                ) : null}
+
+                {!aiEditing && isCompactLayout ? (
                     <div id="kloner-floating-toolbar">
                         <FloatingBlockToolbar
                             iframeRef={iframeRef}
@@ -6819,7 +6863,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                             uiScale={0}
                         />
                     </div>
-                )}
+                ) : null}
                 <AnimatePresence>
                     {pageSwitchConfirm && (
                         <motion.div
@@ -6960,15 +7004,16 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
 
                     {/* Apply changes footer - sits under the sidebar overlay */}
                     {!isCompactLayout && (
-                    <div className="absolute inset-x-0 bottom-0 z-10 hidden lg:block px-5 py-3" id="kloner-apply-changes">
+                    <div className="absolute inset-x-0 bottom-0 z-10 hidden lg:flex justify-center px-5 py-3">
                         <button
+                            id="kloner-apply-changes"
                             onClick={() => {
                                 bumpSessionCounter("save")
                                 doSave({ persistToSource: true })
                             }}
                             disabled={closing || savingDraft || applyingPreview || exporting || !dirty}
                             aria-busy={applyingPreview}
-                            className={`rounded-xl px-4 py-4 w-full text-xl font-semibold transition disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-green-500 active:scale-[.99] ${dirty
+                            className={`inline-flex w-auto shrink-0 items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-green-500 active:scale-[.99] ${dirty
                                 ? "bg-green-600 text-white hover:bg-green-700 shadow-lg"
                                 : "bg-neutral-100 text-neutral-600 pointer-events-none"
                                 }`}
@@ -6976,7 +7021,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                         >
                             {applyingPreview || savingDraft ? (
                                 <div className="flex items-center justify-center gap-2">
-                                    <Loader2 className="h-5 w-5 animate-spin" />
+                                    <Loader2 className="h-4 w-4 animate-spin" />
                                     Updating preview…
                                 </div>
                             ) : dirty ? (
@@ -7042,6 +7087,7 @@ type AppSourcePreviewEditorProps = {
     accessLocked?: boolean;
     showTour?: boolean;
     onRequestDeployCheckout?: () => void;
+    showRightSidebarToggle?: boolean;
 };
 
 function isHtmlPath(path: string): boolean {
@@ -7094,6 +7140,7 @@ export default function AppPreviewEditor({
     deployLocked = false,
     accessLocked = false,
     onRequestDeployCheckout,
+    showRightSidebarToggle = true,
 }: AppSourcePreviewEditorProps) {
     const htmlPaths = useMemo(
         () => Object.keys(files || {}).filter(isHtmlPath).sort((a, b) => a.localeCompare(b)),
@@ -7335,6 +7382,7 @@ export default function AppPreviewEditor({
                     deployLocked={deployLocked}
                     accessLocked={accessLocked}
                     onRequestDeployCheckout={onRequestDeployCheckout}
+                    showRightSidebarToggle={showRightSidebarToggle}
                     appName={appName}
                     isRenaming={isRenaming}
                     tempName={tempName}

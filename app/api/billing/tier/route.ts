@@ -70,6 +70,22 @@ function toDateFromFirestoreTimestampLike(v: any): Date | null {
     return null;
 }
 
+type BillingState = "free" | "active" | "trialing" | "trial_cancelled";
+
+function getBillingState(data: any, tier: UserTier): BillingState {
+    if (!data || typeof data !== "object") return tier === "free" ? "free" : "active";
+
+    const rawReason = typeof data.tierOverrideReason === "string" ? data.tierOverrideReason : "";
+    const reason = rawReason.trim().toLowerCase();
+    const stripeStatus = typeof data.stripeStatus === "string" ? data.stripeStatus.trim().toLowerCase() : "";
+    const cancelAtPeriodEnd = data.stripeCancelAtPeriodEnd === true;
+
+    if (reason === "trial_cancelled" && cancelAtPeriodEnd) return "trial_cancelled";
+    if (stripeStatus === "trialing") return "trialing";
+    if (tier !== "free") return "active";
+    return "free";
+}
+
 function getActiveTierOverride(data: any, now: Date): UserTier | null {
     if (!data || typeof data !== "object") return null;
     const rawTier = typeof data.tierOverrideTier === "string" ? data.tierOverrideTier : "";
@@ -115,11 +131,14 @@ export async function GET(req: NextRequest) {
                 const now = new Date();
                 const overrideTier = getActiveTierOverride(userData, now);
                 if (overrideTier) {
+                    const billingState = getBillingState(userData, overrideTier);
                     return NextResponse.json(
                         {
                             uid,
                             tier: overrideTier,
+                            billingState,
                             stripeStatus: userData.stripeStatus ?? null,
+                            stripeSubscriptionId: userData.stripeSubscriptionId ?? null,
                             currentPeriodEnd: userData.stripeCurrentPeriodEnd ?? null,
                             cancelAtPeriodEnd: userData.stripeCancelAtPeriodEnd ?? null,
                             source: userData.tierSource ?? "override",
@@ -233,11 +252,14 @@ export async function GET(req: NextRequest) {
                     console.error("billing/tier aiEdits self-heal failed", e);
                 }
 
+                const billingState = getBillingState(userData, tier);
                 return NextResponse.json(
                     {
                         uid,
                         tier,
+                        billingState,
                         stripeStatus: userData.stripeStatus ?? null,
+                        stripeSubscriptionId: userData.stripeSubscriptionId ?? null,
                         currentPeriodEnd: userData.stripeCurrentPeriodEnd ?? null,
                         cancelAtPeriodEnd: userData.stripeCancelAtPeriodEnd ?? null,
                         source: userData.tierSource ?? "stripe",

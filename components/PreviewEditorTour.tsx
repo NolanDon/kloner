@@ -1,6 +1,7 @@
 // components/PreviewEditorTour.tsx
 "use client";
 
+import { createPortal } from "react-dom";
 import { useState, useEffect, useRef } from "react";
 import { getFirestore, doc, updateDoc } from "firebase/firestore";
 import { useAuth } from "@/src/hooks/useAuth";
@@ -35,6 +36,12 @@ const steps = [
         title: "Style Panel",
         content: "Use the beautifully redesigned style panel to customize typography, colors, and layout. Fine-tune the visual appearance of your website.",
         action: "showStylePanel"
+    },
+    {
+        target: "#kloner-right-sidebar",
+        title: "Element Inspector",
+        content: "Use this inspector to adjust the selected element's layout, spacing, sizing, corners, and layers without leaving the preview.",
+        action: "none"
     },
     {
         target: "#kloner-apply-changes",
@@ -225,7 +232,13 @@ export function PreviewEditorTour({ startToken = 0, autoStart = true, onEnd }: P
         const spaceAbove = rect.top;
         const preferAbove = spaceAbove > 160;
         const desiredTop = preferAbove ? rect.top - 140 : rect.bottom + 12;
-        const desiredLeft = Math.min(Math.max(rect.left, 16), window.innerWidth - 360 - 16);
+        const isRightSidebarStep = step.target.includes("#kloner-right-sidebar");
+        const isSaveApplyStep = step.target.includes("#kloner-apply-changes");
+        const desiredLeft = isRightSidebarStep
+            ? rect.left - 360 - 20
+            : isSaveApplyStep
+                ? Math.max(rect.left - 360 - 20, 16)
+            : Math.min(Math.max(rect.left, 16), window.innerWidth - 360 - 16);
 
         // Attempt to measure the popover so we can clamp it inside the viewport
         const container = containerRef.current;
@@ -267,7 +280,6 @@ export function PreviewEditorTour({ startToken = 0, autoStart = true, onEnd }: P
 
     const highlightBoxRef = useRef<HTMLDivElement | null>(null);
     const [overlayMask, setOverlayMask] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
-    const maskIdRef = useRef<string>(`kloner-tour-mask-${Math.random().toString(36).slice(2)}`);
 
     const showHighlightRect = (rect: DOMRect) => {
         const box = highlightBoxRef.current;
@@ -334,32 +346,25 @@ export function PreviewEditorTour({ startToken = 0, autoStart = true, onEnd }: P
 
     // overlayMask is now rectangular: { left, top, width, height }
 
-    return (
+    return createPortal(
         <div ref={containerRef} className="fixed inset-0 z-[999999] pointer-events-none">
             {/* overlay */}
-            <div className="absolute inset-0 pointer-events-auto" onClick={() => finish(false)} style={{ zIndex: 999996 }}>
-                {/* SVG mask to cut a rectangular hole so target is visible */}
+            <div className="absolute inset-0 pointer-events-auto" onClick={() => finish(false)} style={{ zIndex: 2147483645 }}>
+                <div className="absolute inset-0 bg-black/44" aria-hidden="true" />
                 {overlayMask ? (
-                    <svg className="absolute inset-0 w-full h-full" style={{ position: "absolute", inset: 0 }} aria-hidden>
-                        <defs>
-                            <mask id={maskIdRef.current} x="0" y="0" width="100%" height="100%">
-                                <rect x="0" y="0" width="100%" height="100%" fill="white" />
-                                <rect
-                                    x={overlayMask.left}
-                                    y={overlayMask.top}
-                                    width={overlayMask.width}
-                                    height={overlayMask.height}
-                                    fill="black"
-                                    rx="6"
-                                    ry="6"
-                                />
-                            </mask>
-                        </defs>
-                        <rect width="100%" height="100%" fill="rgba(0,0,0,0.44)" mask={`url(#${maskIdRef.current})`} />
-                    </svg>
-                ) : (
-                    <div className="absolute inset-0 bg-black/44 backdrop-blur-sm" />
-                )}
+                    <div
+                        aria-hidden="true"
+                        className="absolute bg-transparent"
+                        style={{
+                            top: overlayMask.top,
+                            left: overlayMask.left,
+                            width: overlayMask.width,
+                            height: overlayMask.height,
+                            borderRadius: 10,
+                            boxShadow: "0 0 0 9999px rgba(0,0,0,0.44)",
+                        }}
+                    />
+                ) : null}
             </div>
 
             {/* highlight box (positioned over the target) */}
@@ -376,7 +381,7 @@ export function PreviewEditorTour({ startToken = 0, autoStart = true, onEnd }: P
                     top: pos?.top ?? 120,
                     left: pos?.left ?? 40,
                     fontFamily: "var(--font-inter), Inter, system-ui, sans-serif",
-                    zIndex: 999999,
+                    zIndex: 2147483647,
                 }}
                 className="pointer-events-auto absolute w-[340px] max-w-[90vw] bg-white border border-black/5 rounded-2xl shadow-lg p-5 transition-transform duration-200 ease-out transform opacity-100"
             >
@@ -420,6 +425,7 @@ export function PreviewEditorTour({ startToken = 0, autoStart = true, onEnd }: P
                     </div>
                 </div>
             </div>
-        </div>
+        </div>,
+        document.body,
     );
 }
