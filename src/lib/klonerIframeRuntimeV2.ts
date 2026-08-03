@@ -2892,6 +2892,36 @@ export function installKlonerIframeApi(
     doc.addEventListener("keydown", (e) => {
         const key = e.key.toLowerCase();
         const mod = e.metaKey || e.ctrlKey;
+
+        if (e.key === " " || e.code === "Space") {
+            const active = doc.activeElement as HTMLElement | null;
+            const editableTarget =
+                (e.target as HTMLElement | null)?.closest?.("[contenteditable='true']") as HTMLElement | null ||
+                (active?.isContentEditable ? active : null);
+
+            if (editableTarget && editableTarget.isContentEditable) {
+                e.preventDefault();
+                try {
+                    if (typeof doc.execCommand === "function") {
+                        doc.execCommand("insertText", false, " ");
+                    } else {
+                        const selection = doc.getSelection();
+                        if (selection && selection.rangeCount > 0) {
+                            const range = selection.getRangeAt(0);
+                            range.deleteContents();
+                            range.insertNode(doc.createTextNode(" "));
+                            range.collapse(false);
+                            selection.removeAllRanges();
+                            selection.addRange(range);
+                        }
+                    }
+                } finally {
+                    notify();
+                }
+                return;
+            }
+        }
+
         if (mod && key === "z") {
             e.preventDefault();
             if (e.shiftKey) redo();
