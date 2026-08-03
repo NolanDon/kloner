@@ -233,7 +233,6 @@ export function installKlonerIframeApi(
       outline: 2px solid rgba(16,185,129,0.95) !important;
       border-radius: 10px;
       box-shadow: 0 10px 24px rgba(15,23,42,0.18);
-      background-image: none;
       transition:
         box-shadow 140ms ease-out,
         background-color 140ms ease-out,
