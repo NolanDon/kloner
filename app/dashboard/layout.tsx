@@ -60,12 +60,12 @@ const BASE_NAV_SECTIONS: NavSectionConfig[] = [
         label: "General",
         items: [
             { href: "/", label: "Home", icon: Home },
-            { href: "/affiliate", label: "Affiliate Hub", icon: Users },
-            {
-                href: "/community-builds",
-                label: "Community templates",
-                icon: Sparkles,
-            },
+            // { href: "/affiliate", label: "Affiliate Hub", icon: Users },
+            // {
+            //     href: "/community-builds",
+            //     label: "Community templates",
+            //     icon: Sparkles,
+            // },
 
             // // external links
             {
@@ -87,16 +87,16 @@ const BASE_NAV_SECTIONS: NavSectionConfig[] = [
             { href: "/dashboard/archived", label: "Archive", icon: Archive },
         ],
     },
-    {
-        label: "Deployments",
-        items: [
-            {
-                href: "/dashboard/deployments",
-                label: "Deployments",
-                icon: Rocket,
-            },
-        ],
-    },
+    // {
+    //     label: "Deployments",
+    //     items: [
+    //         {
+    //             href: "/dashboard/deployments",
+    //             label: "Deployments",
+    //             icon: Rocket,
+    //         },
+    //     ],
+    // },
     {
         label: "Settings",
         items: [
