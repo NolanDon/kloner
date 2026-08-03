@@ -64,6 +64,32 @@ function firstNonEmptyString(...values: unknown[]): string {
     return "";
 }
 
+function buildDomainVerificationMessage(targetUrl: string): {
+    error: string;
+    userMessage: string;
+    code: string;
+    verificationUrl: string;
+    verificationDomain: string;
+} | null {
+    try {
+        const parsed = new URL(targetUrl);
+        const verificationDomain = parsed.hostname.replace(/^www\./i, "").trim();
+        if (!verificationDomain) return null;
+
+        const verificationUrl = parsed.origin;
+
+        return {
+            error: `Please verify your domain ${verificationDomain}.`,
+            userMessage: `Please verify your domain ${verificationDomain}.`,
+            code: "DOMAIN_VERIFICATION_REQUIRED",
+            verificationUrl,
+            verificationDomain,
+        };
+    } catch {
+        return null;
+    }
+}
+
 function extractDownstreamFailureDetails(
     r: { status: number; reqId: string; upstream: { statusText?: string | null }; raw?: string },
     payload: any
@@ -267,6 +293,10 @@ export async function POST(req: NextRequest) {
                             : 502;
 
                     const downstream = extractDownstreamFailureDetails(r, payload);
+                    const domainVerification = status >= 500
+                        ? buildDomainVerificationMessage(normalizedUrl)
+                        : null;
+                    const userError = domainVerification?.userMessage || downstream.reason;
 
                     await captureUrlScanFailure({
                         uid: decoded.uid,
@@ -300,8 +330,9 @@ export async function POST(req: NextRequest) {
 
                     return jsonNoStatusAlert(
                         {
-                            error: downstream.reason,
-                            code: downstream.code || (status >= 500 ? "DOWNSTREAM_FAILURE" : "URL_SCAN_FAILED"),
+                            error: userError,
+                            userMessage: userError,
+                            code: domainVerification?.code || downstream.code || (status >= 500 ? "DOWNSTREAM_FAILURE" : "URL_SCAN_FAILED"),
                             upstreamStatus: r.status,
                             upstreamStatusText: downstream.statusText,
                             upstreamCode: downstream.code,
@@ -309,6 +340,8 @@ export async function POST(req: NextRequest) {
                             upstreamSource: downstream.source,
                             upstreamMessage: downstream.message,
                             upstreamBody: downstream.body,
+                            verificationUrl: domainVerification?.verificationUrl,
+                            verificationDomain: domainVerification?.verificationDomain,
                             ...(totalPlanned === 0
                                 ? { reason: "no_captures" }
                                 : {}),

@@ -2775,7 +2775,7 @@ function AppCard({
         draftLifecycleStatus === "processing" &&
         (draftRecommendedAction === "wait" || !draftRecommendedAction),
     );
-    const isDraftRetryLoading = isDraftCard && (isPendingCreation || draftPromotionScanPending);
+    const isDraftRetryLoading = isDraftCard && (isPendingCreation || draftPromotionScanPending || draftIssueIsPromotionProgress);
     const isDraftFreshLoading = isDraftCard && (isPendingCreation || draftPromotionScanPending) && !draftIssue;
     const isBrokenDraftCard = isDraftCard && Boolean(draftIssue || draftIssueIsRetryable);
     const rawAppDisplayName = String(app.name || app.id.slice(0, 10)).trim();
@@ -2952,21 +2952,24 @@ function AppCard({
         };
     }, [clearDraftEditUnlockTimer]);
 
+    if (isDraftRetryLoading) {
+        return (
+            <div className="group relative mx-auto flex w-full max-w-[240px] items-center justify-center px-2 pt-8 pb-4 sm:pb-5">
+                <KlonerLoader icon />
+            </div>
+        );
+    }
+
+    const shouldHideDraftCard = isDraftCard && !draftIssue && !isDraftRetryLoading;
+    if (shouldHideDraftCard) {
+        return null;
+    }
+
     return (
         <div className="group relative mx-auto w-full max-w-[240px] px-2 pt-2 pb-4 sm:pb-5">
             <div className="flex flex-col items-center gap-4 text-center">
                 <div className="flex w-full items-center justify-center pt-8">
-                    {isDraftRetryLoading ? (
-                        <div className="relative">
-                            <div
-                                className="grid h-36 w-36 place-items-center rounded-[2.6rem] border border-dashed border-neutral-200 bg-neutral-100 text-neutral-400 shadow-[0_10px_20px_rgba(15,23,42,0.06)] transition-all duration-300 ease-out"
-                                style={{ fontFamily: "ui-rounded, 'SF Pro Rounded', 'Avenir Next Rounded', 'Trebuchet MS', sans-serif" }}
-                                title={appDisplayName || "Draft"}
-                            >
-                                <KlonerLoader icon />
-                            </div>
-                        </div>
-                    ) : isDraftCard ? (
+                    {isDraftCard ? (
                         <div className="relative">
                             {/* <span className="absolute left-1/2 top-0 z-10 -translate-x-1/2 -translate-y-1/2">
                                 <span className="inline-flex items-center rounded-full border border-neutral-200 bg-white px-3 py-1 shadow-sm">
@@ -2980,7 +2983,7 @@ function AppCard({
                                 style={{ fontFamily: "ui-rounded, 'SF Pro Rounded', 'Avenir Next Rounded', 'Trebuchet MS', sans-serif" }}
                                 title={appDisplayName || "Draft"}
                             >
-                                {!isDraftRetryLoading && draftThumbnailUrl && !draftThumbnailErrored ? (
+                                {draftThumbnailUrl && !draftThumbnailErrored ? (
                                     <>
                                         <img
                                             src={draftThumbnailUrl}
@@ -3042,51 +3045,7 @@ function AppCard({
                             ) : null}
                         </div>
                     ) : isPendingCreation && !isPendingCompleted ? (
-                        <div className="relative">
-                            <div
-                                className={`grid h-36 w-36 place-items-center rounded-[2.6rem] border border-dashed bg-neutral-100 text-neutral-400 shadow-[0_10px_20px_rgba(15,23,42,0.06)] transition-all duration-300 ease-out ${pendingIssueIsBlocked ? "border-red-300" : pendingIssue ? "border-amber-300" : "border-neutral-300"}`}
-                                style={{ fontFamily: "ui-rounded, 'SF Pro Rounded', 'Avenir Next Rounded', 'Trebuchet MS', sans-serif" }}
-                                title={appDisplayName || "App"}
-                            >
-                                <LayoutGrid className="h-12 w-12" />
-                            </div>
-                            {pendingIssue ? (
-                                <span
-                                    className={`absolute -right-1 -top-1 inline-flex h-8 w-8 items-center justify-center rounded-full border bg-white shadow-sm ${pendingIssueIsBlocked ? "border-red-200 text-red-600" : "border-amber-200 text-amber-700"}`}
-                                    title={pendingIssue.message || (pendingIssueIsBlocked ? "Site blocked" : "Scan issue")}
-                                >
-                                    {pendingIssueIsBlocked ? (
-                                        <AlertTriangle className="h-4 w-4" />
-                                    ) : (
-                                        <MessageCircleWarning className="h-4 w-4" />
-                                    )}
-                                </span>
-                            ) : null}
-                            {pendingIssueIsRetryable && onRetryPendingCreation && !isBrokenDraftCard ? (
-                                <button
-                                    type="button"
-                                    onClick={onRetryPendingCreation}
-                                    className="group absolute inset-0 grid place-items-center rounded-[2.6rem] border border-[rgba(217,119,6,0.28)] bg-[rgba(255,251,235,0.84)] text-neutral-900 transition-all duration-200 hover:-translate-y-0.5 hover:border-[rgba(217,119,6,0.46)] hover:bg-[rgba(255,247,237,0.96)] focus-visible:-translate-y-0.5 focus-visible:border-[rgba(217,119,6,0.46)] focus-visible:bg-[rgba(255,247,237,0.96)] focus-visible:outline-none"
-                                    aria-label="Retry scan"
-                                    title="Retry scan"
-                                >
-                                    <div className="flex flex-col items-center gap-2 text-center transition-transform duration-200 group-hover:scale-[1.05] group-focus-visible:scale-[1.05]">
-                                        <div className="grid h-14 w-14 place-items-center rounded-full border border-amber-200 bg-white text-amber-700 transition-all duration-200 group-hover:border-amber-300 group-hover:bg-amber-50 group-focus-visible:border-amber-300 group-focus-visible:bg-amber-50">
-                                            <AlertTriangle className="h-6 w-6 transition-transform duration-200 group-hover:scale-[1.04] group-focus-visible:scale-[1.04]" />
-                                        </div>
-                                        <div className="text-sm font-semibold text-neutral-900 transition-colors duration-200 group-hover:text-neutral-950 group-focus-visible:text-neutral-950">
-                                            Retry
-                                        </div>
-                                    </div>
-                                </button>
-                            ) : pendingIssue ? (
-                                <div className="pointer-events-none absolute inset-x-0 -bottom-8 flex justify-center px-4">
-                                    <div className="max-w-[14rem] rounded-full border border-amber-200 bg-white px-3 py-1.5 text-[11px] font-semibold leading-tight text-amber-800 shadow-sm">
-                                        {pendingIssue.message || "Scan issue detected"}
-                                    </div>
-                                </div>
-                            ) : null}
-                        </div>
+                        <KlonerLoader icon />
                     ) : (
                         <>
                         <div className="relative">
@@ -6610,6 +6569,16 @@ export default function PreviewPage(): JSX.Element {
             return;
         }
 
+        if (showWebsitePrePaywall || (userTier === "free" && stripeStatus !== "trialing")) {
+            pendingCreatedAppLaunchRequestedRef.current = null;
+            if (appBuilderOpen) {
+                setAppBuilderOpen(false);
+                setCurrentAppId(null);
+                setAppBuilderInitialViewMode("ai");
+            }
+            return;
+        }
+
         if (blockedUrlGenerationAppId && pendingCreatedApp.id === blockedUrlGenerationAppId) {
             pendingCreatedAppLaunchRequestedRef.current = null;
             setPendingCreatedApp(null);
@@ -6643,6 +6612,9 @@ export default function PreviewPage(): JSX.Element {
         pendingAppBuilderAppId,
         pendingCreatedApp,
         blockedUrlGenerationAppId,
+        showWebsitePrePaywall,
+        userTier,
+        stripeStatus,
     ]);
 
     useEffect(() => {

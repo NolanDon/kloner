@@ -113,7 +113,7 @@ describe("POST /api/private/generate", () => {
         });
     });
 
-    it("preserves downstream failure details in both the response and Slack alert", async () => {
+    it("maps downstream 500s to a domain verification message in the response", async () => {
         callBackend.mockResolvedValueOnce({
             status: 500,
             upstream: { ok: false, statusText: "Internal Server Error" },
@@ -142,14 +142,17 @@ describe("POST /api/private/generate", () => {
 
         expect(res.status).toBe(500);
         expect(body).toMatchObject({
-            error: "Internal server error",
-            code: "SCAN_BACKEND_500",
+            error: "Please verify your domain example.com.",
+            userMessage: "Please verify your domain example.com.",
+            code: "DOMAIN_VERIFICATION_REQUIRED",
             upstreamStatus: 500,
             upstreamStatusText: "Internal Server Error",
             upstreamCode: "SCAN_BACKEND_500",
             upstreamRequestId: "backend_req_123",
             upstreamSource: "generate-screenshots",
             upstreamMessage: "Internal server error",
+            verificationUrl: "https://example.com",
+            verificationDomain: "example.com",
         });
         expect(consumeUserCredit).not.toHaveBeenCalled();
         expect(captureCriticalEventMock).toHaveBeenCalledTimes(1);

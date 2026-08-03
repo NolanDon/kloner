@@ -349,7 +349,7 @@ async function queueGenerate(cleanedUrl: string): Promise<void> {
 
     if (!r.ok) {
         const j = await r.json().catch(() => ({} as any));
-        throw new Error(j?.error || "Failed to queue capture.");
+        throw new Error(j?.userMessage || j?.message || j?.error || "Failed to queue capture.");
     }
 }
 

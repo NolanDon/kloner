@@ -367,7 +367,8 @@ export async function submitDashboardUrlDraft({
             let errorBody: Record<string, any> = {};
             try { errorBody = await res.json(); } catch { /* ignore */ }
 
-            const errorText = String(errorBody?.error || errorBody?.message || "").toLowerCase();
+            const userFacingText = String(errorBody?.userMessage || errorBody?.message || errorBody?.error || "").trim();
+            const errorText = userFacingText.toLowerCase();
             const isDomainBlocked =
                 errorText.includes("domain blocked") ||
                 errorText.includes("blocked for site cloning") ||
@@ -399,7 +400,7 @@ export async function submitDashboardUrlDraft({
             } else {
                 // Any other error — remove the optimistic draft entirely
                 setDraftApps((prev) => prev.filter((item) => item.draftId !== draftDocId));
-                const fallbackMsg = errorBody?.error || errorBody?.message || "Failed to scan this URL. Please try again.";
+                const fallbackMsg = errorBody?.userMessage || errorBody?.message || errorBody?.error || "Failed to scan this URL. Please try again.";
                 setErr(String(fallbackMsg));
             }
 
