@@ -40,6 +40,7 @@ import {
     detectProjectFramework,
     planWouldSwitchFramework,
 } from "@/src/lib/projectFramework";
+import { BASIC_MONTHLY_PRICE_USD } from "@/src/lib/billingAccess";
 import { deriveEmbeddingCurrentPath } from "@/src/lib/embeddingCurrentPath";
 import {
     buildChatRestorePointRevertSuccessMessage,
@@ -60,6 +61,7 @@ import {
 import { resolveEditPlanCreditCharge } from "@/src/lib/editPlanCreditConsumption";
 import { resolveAppBuilderChatRoute, type AppBuilderChatMode, type AppBuilderChatRoute } from "@/src/lib/appBuilderChatIntent";
 import CoinLottieBadge from "@/components/tools/CoinLottieBadge";
+import { requestPreviewForceFresh } from "@/components/previewRefresh";
 
 type SummarySearchFeedbackContext = {
     appId: string;
@@ -1072,9 +1074,7 @@ function buildRestorePointDiffPreview(detail: RestorePointDetail | null | undefi
 export default function AppBuilderEditorAgentChat({ appId, files, currentFile, onFileEdit, onFilesReplace, onRestoreApplied, creditError, previewReady, previewIssue, previewIssueActionLabel, onPreviewIssueAction, onPreviewIssueFixRequest, onUserMessageSent, onIntroSequenceComplete, onRequestUpgradePaywall, topupModalTrigger, welcomeContext }: AppBuilderEditorAgentChatProps) {
     const { user, userTier } = useAuth();
     const { showConfirm, showAlert } = useModal();
-    const PRO_MONTHLY_PRICE_USD = Number.isFinite(Number(process.env.NEXT_PUBLIC_PRO_MONTHLY_PRICE_USD))
-        ? Math.max(1, Number(process.env.NEXT_PUBLIC_PRO_MONTHLY_PRICE_USD))
-        : 19.99;
+    const PRO_MONTHLY_PRICE_USD = BASIC_MONTHLY_PRICE_USD;
     const TOPUP_COMING_SOON = false;
     const allowDatabaseSetupUi = process.env.NODE_ENV !== "production";
     const [aiCreditsRemaining, setAiCreditsRemaining] = useState<number | null>(null);
@@ -1855,14 +1855,9 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                 },
             ]);
 
-            // Trigger preview refresh so the reverted files are visible.
-            if (typeof window !== "undefined") {
-                window.dispatchEvent(
-                    new CustomEvent("kloner:preview-force-fresh", {
-                        detail: { appId, reason: "restore-point-revert" },
-                    }),
-                );
-            }
+            // Restore points already re-apply the diff through the editor; avoid forcing
+            // a fresh machine rebuild here so small undo actions stay fast.
+            requestPreviewForceFresh({ appId, reason: "restore-point-revert" });
 
             await fetchChatRestorePoints({ silent: false, limit: 20 });
             pushRestorePointsCardMessage("after_revert");
@@ -5318,13 +5313,8 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
             // and keep index html style entry files aligned with server state.
             await syncFilesFromServer({ applyToState: true }).catch(() => null);
 
-            if (typeof window !== "undefined") {
-                window.dispatchEvent(
-                    new CustomEvent("kloner:preview-force-fresh", {
-                        detail: { appId, reason: "restore-point-revert" },
-                    }),
-                );
-            }
+            // The editor will reconcile the restored files in place. Do not force a rebuild.
+            requestPreviewForceFresh({ appId, reason: "restore-point-revert" });
 
             if (data?.requiresRestart) {
                 setEditPlanApplyStatusMessage("Restore applied. Preview restart is required.");

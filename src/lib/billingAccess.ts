@@ -5,6 +5,13 @@ function readIntEnv(name: string, fallback: number): number {
     return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+function readFloatEnv(name: string, fallback: number): number {
+    const raw = process.env[name];
+    if (typeof raw !== "string" || !raw.trim()) return fallback;
+    const parsed = Number.parseFloat(raw);
+    return Number.isFinite(parsed) ? parsed : fallback;
+}
+
 /**
  * Reversible billing knobs shared by client and server.
  *
@@ -17,6 +24,14 @@ export const STRIPE_TRIAL_DAYS = Math.max(0, readIntEnv("NEXT_PUBLIC_STRIPE_TRIA
 
 export const TRIAL_CTA_LABEL =
     STRIPE_TRIAL_DAYS > 0 ? `Start your ${STRIPE_TRIAL_DAYS}-day free trial` : "Subscribe now";
+
+export const BASIC_MONTHLY_PRICE_USD = Math.max(
+    1,
+    readFloatEnv(
+        "NEXT_PUBLIC_BASIC_MONTHLY_PRICE_USD",
+        readFloatEnv("NEXT_PUBLIC_PRO_MONTHLY_PRICE_USD", 29.99),
+    ),
+);
 
 export const FREE_PREVIEW_MONTHLY_CREDITS = Math.max(
     0,

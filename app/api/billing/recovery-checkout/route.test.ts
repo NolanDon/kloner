@@ -89,6 +89,7 @@ describe("GET /api/billing/recovery-checkout", () => {
         store.clear();
         process.env.EMAIL_LINK_SECRET = "test-secret";
         (process.env as any).NODE_ENV = "production";
+        process.env.STRIPE_PRICE_BASIC_PROD = "price_basic_live";
         process.env.STRIPE_PRICE_PRO_PROD = "price_pro_live";
         process.env.STRIPE_EXIT40_PROMO_PROD = "";
         process.env.STRIPE_EXIT40_COUPON_PROD = "";
@@ -109,7 +110,7 @@ describe("GET /api/billing/recovery-checkout", () => {
         expect(sessionsCreate).toHaveBeenCalledTimes(1);
         const payload = sessionsCreate.mock.calls[0][0];
         expect(payload.customer).toBe("cus_abc");
-        expect(payload.line_items?.[0]?.price).toBe("price_pro_live");
+        expect(payload.line_items?.[0]?.price).toBe("price_basic_live");
         expect(payload.discounts?.[0]?.promotion_code).toBe("promo_123");
         expect(payload.cancel_url).toContain("/dashboard/view");
         expect(payload.subscription_data?.trial_period_days).toBe(7);

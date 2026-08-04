@@ -4,7 +4,7 @@ export {};
 
 /*
   These tests intentionally mock Stripe + firebase-admin.
-  They verify that production env var names (STRIPE_PRICE_PRO_PROD)
+  They verify that production env var names (STRIPE_PRICE_BASIC_PROD / STRIPE_PRICE_PRO_PROD)
   and Stripe statuses (trialing) correctly grant Pro/Agency.
 */
 
@@ -81,12 +81,15 @@ describe("billing tier logic", () => {
         delete process.env.STRIPE_PRICE_PRO_TEST;
         delete process.env.STRIPE_PRICE_PRO_PROD;
         delete process.env.STRIPE_PRICE_PRO_PRO;
+        delete process.env.STRIPE_PRICE_BASIC_TEST;
+        delete process.env.STRIPE_PRICE_BASIC_PROD;
         delete process.env.STRIPE_PRICE_AGENCY_TEST;
         delete process.env.STRIPE_PRICE_PRO_AGENCY;
+        delete process.env.STRIPE_PRICE_AGENCY_PROD;
         delete process.env.STRIPE_SUBSCRIPTION_PAYMENT_GRACE_DAYS;
     });
 
-    it("mapPriceToTier: uses STRIPE_PRICE_PRO_PROD for production pro", async () => {
+    it("mapPriceToTier: uses STRIPE_PRICE_BASIC_PROD for production pro", async () => {
         const { db } = createFirestoreMock({});
         installFirebaseAdminMock(db);
 
@@ -96,12 +99,12 @@ describe("billing tier logic", () => {
             getStripe: () => ({ subscriptions: { list: async () => ({ data: [] }) } }),
         }));
 
-        process.env.STRIPE_PRICE_PRO_PROD = "price_live_pro";
-        process.env.STRIPE_PRICE_PRO_TEST = "price_test_pro";
+        process.env.STRIPE_PRICE_BASIC_PROD = "price_live_basic";
+        process.env.STRIPE_PRICE_BASIC_TEST = "price_test_basic";
 
         const mod = await import("./billing");
-        expect(mod.mapPriceToTier("price_live_pro")).toBe("pro");
-        expect(mod.mapPriceToTier("price_test_pro")).toBe("pro");
+        expect(mod.mapPriceToTier("price_live_basic")).toBe("pro");
+        expect(mod.mapPriceToTier("price_test_basic")).toBe("pro");
     });
 
     it("refreshTierFromStripeForUid: chooses active over trialing and returns effectiveTier", async () => {

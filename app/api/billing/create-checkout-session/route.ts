@@ -77,6 +77,25 @@ function pickExitPromoId(isProd: boolean) {
     return { promo, coupon };
 }
 
+function resolveCheckoutPriceId(plan: string, isProd: boolean): string | null {
+    const normalizedPlan = String(plan || "").trim().toLowerCase();
+    if (normalizedPlan === "agency") {
+        return isProd
+            ? process.env.STRIPE_PRICE_AGENCY_PROD || process.env.STRIPE_PRICE_PRO_AGENCY
+            : process.env.STRIPE_PRICE_AGENCY_TEST;
+    }
+
+    if (normalizedPlan === "pro" || normalizedPlan === "basic") {
+        return isProd
+            ? process.env.STRIPE_PRICE_BASIC_PROD ||
+                  process.env.STRIPE_PRICE_PRO_PROD
+            : process.env.STRIPE_PRICE_BASIC_TEST ||
+                  process.env.STRIPE_PRICE_PRO_TEST;
+    }
+
+    return null;
+}
+
 function isValidExitOfferPayload(payload: { offer?: unknown; offerEndsAt?: unknown }) {
     if (EXIT_OFFER_DISABLED) return false;
     if (payload.offer !== "exit40") return false;
@@ -200,14 +219,7 @@ async function handler({ req, uid }: { req: NextRequest; uid: string }) {
 
     const isProd = process.env.NODE_ENV === "production";
 
-    const priceId =
-        plan === "pro"
-            ? isProd
-                ? process.env.STRIPE_PRICE_PRO_PROD
-                : process.env.STRIPE_PRICE_PRO_TEST
-            : isProd
-                ? process.env.STRIPE_PRICE_PRO_AGENCY
-                : process.env.STRIPE_PRICE_AGENCY_TEST;
+    const priceId = resolveCheckoutPriceId(plan, isProd);
 
     if (!priceId) {
         return NextResponse.json(

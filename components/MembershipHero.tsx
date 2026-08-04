@@ -6,6 +6,7 @@ import { Check, Shield, Clock4, CreditCard } from "lucide-react";
 import React, { useEffect, useMemo, useState } from "react";
 import { AnimatedCreditCard } from "./AnimatedCreditCard";
 import { useUrlOverlay } from "./UrlOverlayProvider";
+import { BASIC_MONTHLY_PRICE_USD } from "@/src/lib/billingAccess";
 
 const BULLETS = [
     "Includes 400 preview credits per month",
@@ -24,7 +25,7 @@ function RotatingCards() {
         <div className="relative aspect-[4/3] rounded-2xl overflow-hidden bg-neutral-100">
             {children}
             <div className="absolute bottom-3 left-3 md:bottom-4 md:left-4 rounded-xl px-2.5 py-1 bg-white/90 text-neutral-900 text-xs md:text-sm font-semibold shadow">
-                $19.99<span className="font-normal"> /month</span>
+                ${BASIC_MONTHLY_PRICE_USD.toFixed(2)}<span className="font-normal"> /month</span>
             </div>
         </div>
     );
@@ -254,7 +255,7 @@ export default function MembershipHero() {
 
                         {/* Price + credits */}
                         <div className="mt-5 md:mt-6 flex flex-wrap items-center gap-3">
-                            <div className="text-5xl md:text-6xl text-neutral-900">$19.99</div>
+                            <div className="text-5xl md:text-6xl text-neutral-900">${BASIC_MONTHLY_PRICE_USD.toFixed(2)}</div>
                             <div className="text-neutral-600 text-sm md:text-base">
                                 /month · cancel anytime
                             </div>

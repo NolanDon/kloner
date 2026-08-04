@@ -33,6 +33,7 @@ import {
     detectProjectFramework,
     planWouldSwitchFramework,
 } from "@/src/lib/projectFramework";
+import { BASIC_MONTHLY_PRICE_USD } from "@/src/lib/billingAccess";
 
 type Message = {
     id: string;
@@ -345,9 +346,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
     const { user, userTier } = useAuth();
     const { showConfirm, showAlert } = useModal();
     const AI_EDIT_COST = 3;
-    const PRO_MONTHLY_PRICE_USD = Number.isFinite(Number(process.env.NEXT_PUBLIC_PRO_MONTHLY_PRICE_USD))
-        ? Math.max(1, Number(process.env.NEXT_PUBLIC_PRO_MONTHLY_PRICE_USD))
-        : 19.99;
+    const PRO_MONTHLY_PRICE_USD = BASIC_MONTHLY_PRICE_USD;
     const TOPUP_COMING_SOON = false;
     // Supabase OAuth setup is safe to expose in production (still requires session + CSRF on the server).
     const allowDatabaseSetupUi = true;

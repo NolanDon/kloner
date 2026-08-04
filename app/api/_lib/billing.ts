@@ -76,14 +76,17 @@ export function mapPriceToTier(priceId: string | null | undefined): UserTier {
     if (!priceId) return "free";
 
     const proIds = [
+        process.env.STRIPE_PRICE_BASIC_TEST,
         process.env.STRIPE_PRICE_PRO_TEST,
         // Production (live) env var (used by create-checkout-session)
+        process.env.STRIPE_PRICE_BASIC_PROD,
         process.env.STRIPE_PRICE_PRO_PROD,
     ].filter(Boolean) as string[];
 
     const agencyIds = [
         process.env.STRIPE_PRICE_AGENCY_TEST,
         process.env.STRIPE_PRICE_PRO_AGENCY,
+        process.env.STRIPE_PRICE_AGENCY_PROD,
     ].filter(Boolean) as string[];
 
     if (proIds.includes(priceId)) return "pro";

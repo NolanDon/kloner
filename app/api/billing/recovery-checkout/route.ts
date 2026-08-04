@@ -11,6 +11,12 @@ export const dynamic = "force-dynamic";
 const stripe = getStripe();
 const DEFAULT_EXIT_CODE = "DEPLOY40";
 
+function resolveRecoveryPriceId(isProd: boolean): string | null {
+    return isProd
+        ? process.env.STRIPE_PRICE_BASIC_PROD || process.env.STRIPE_PRICE_PRO_PROD
+        : process.env.STRIPE_PRICE_BASIC_TEST || process.env.STRIPE_PRICE_PRO_TEST;
+}
+
 function pickExitPromoId(isProd: boolean) {
     const promo = isProd
         ? process.env.STRIPE_EXIT40_PROMO_PROD
@@ -77,10 +83,7 @@ export async function GET(req: NextRequest) {
     const userData = snap.exists ? (snap.data() as any) : {};
 
     const isProd = process.env.NODE_ENV === "production";
-    const priceId =
-        process.env.NODE_ENV === "production"
-            ? process.env.STRIPE_PRICE_PRO_PROD
-            : process.env.STRIPE_PRICE_PRO_TEST;
+    const priceId = resolveRecoveryPriceId(isProd);
 
     if (!priceId) {
         return NextResponse.json({ ok: false, error: "Recovery pricing is not configured." }, { status: 500 });

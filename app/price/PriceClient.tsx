@@ -7,7 +7,7 @@ import Footer from "@/components/Footer";
 import { AnimatedCreditCard } from "@/components/AnimatedCreditCard";
 import { useModal } from "@/components/ui/ModalContext";
 import { useAuth } from "@/src/hooks/useAuth";
-import { STRIPE_TRIAL_DAYS, TRIAL_CTA_LABEL } from "@/src/lib/billingAccess";
+import { BASIC_MONTHLY_PRICE_USD, STRIPE_TRIAL_DAYS, TRIAL_CTA_LABEL } from "@/src/lib/billingAccess";
 import { Check, Loader2 } from "lucide-react";
 import SuccessConfetti from "@/components/tools/SuccessConfetti";
 
@@ -84,7 +84,7 @@ const tiers: Tier[] = [
         badge: "Most popular",
         price: "$4.99",
         period: "/week",
-        billedAs: "Billed as $19.99/month",
+        billedAs: `Billed as $${BASIC_MONTHLY_PRICE_USD.toFixed(2)}/month`,
         highlight: true,
         blurb: "For shipping real client work fast without rebuilding from scratch.",
         topFeatures: [
@@ -103,8 +103,8 @@ const tiers: Tier[] = [
         ],
         cta: TRIAL_CTA_LABEL,
         fineprint: TRIAL_ENABLED
-            ? "Includes a 7-day free trial. Billed monthly at $19.99/month. Cancel anytime. Secure checkout via Stripe."
-            : "Billed immediately at $19.99/month. Cancel anytime. Secure checkout via Stripe.",
+            ? `Includes a 7-day free trial. Billed monthly at $${BASIC_MONTHLY_PRICE_USD.toFixed(2)}/month. Cancel anytime. Secure checkout via Stripe.`
+            : `Billed immediately at $${BASIC_MONTHLY_PRICE_USD.toFixed(2)}/month. Cancel anytime. Secure checkout via Stripe.`,
     },
     {
         name: "Agency",

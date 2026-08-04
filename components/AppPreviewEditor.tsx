@@ -1348,6 +1348,13 @@ function AppPreviewEditorCore({
         setShowAccessUpgradePaywall(true);
     }, []);
 
+    const handlePreviewTourEnd = useCallback(() => {
+        setHasCompletedPreviewTour(true);
+        if (accessLocked && !isAdmin) {
+            openAccessPaywall("panel");
+        }
+    }, [accessLocked, isAdmin, openAccessPaywall]);
+
     function normalizeAiEditCreatedAt(raw: any): string {
         if (!raw) return "";
         if (typeof raw === "string") return raw;
@@ -5064,9 +5071,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                 <PreviewEditorTour
                     startToken={previewTourStartToken}
                     autoStart
-                    onEnd={() => {
-                        setHasCompletedPreviewTour(true);
-                    }}
+                    onEnd={handlePreviewTourEnd}
                 />
             ) : null}
 
@@ -7394,9 +7399,9 @@ export default function AppPreviewEditor({
                         >
                             Open dashboard
                         </Link>
-                        <span className="text-xs text-amber-900/70">
+                        {/* <span className="text-xs text-amber-900/70">
                             If the issue keeps happening, rescan the project there and reopen the editor.
-                        </span>
+                        </span> */}
                     </div>
                 </div>
             </div>
