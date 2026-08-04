@@ -6,6 +6,7 @@ import { useEffect, useMemo, useRef, useState, useCallback, ChangeEvent } from "
 import { motion, AnimatePresence, useDragControls } from "framer-motion";
 import Image from 'next/image'
 import WebsitePrePaywall from "@/components/WebsitePrePaywall";
+import AccessLockBadge from "@/components/editor/AccessLockBadge";
 import { TRIAL_CTA_LABEL } from "@/src/lib/billingAccess";
 import type { UserTier } from "@/src/lib/credits";
 
@@ -1144,7 +1145,8 @@ export default function PreviewEditorV2({
     const [closePrompt, setClosePrompt] = useState(false);
     const [exportPrompt, setExportPrompt] = useState(false);
     const [showDeployUpgradePaywall, setShowDeployUpgradePaywall] = useState(false);
-    const showAccessPaywall = accessLocked && !isAdmin;
+    const isAccessLocked = accessLocked && !isAdmin;
+    const [showAccessPaywall, setShowAccessPaywall] = useState(false);
     const shouldShowTour = typeof showTour === "boolean" ? showTour : true;
     const [hasCompletedPreviewTour, setHasCompletedPreviewTour] = useState(() => hasSeenPreviewTour());
     const [controlsCollapsed, setControlsCollapsed] = useState<boolean>(false);
@@ -1444,7 +1446,17 @@ export default function PreviewEditorV2({
     const [archivedPageIds, setArchivedPageIds] = useState<string[]>([]);
     const [showPageLayers, setShowPageLayers] = useState(false);
     const shouldRunPreviewTour = !isCompactLayout && shouldShowTour;
-    const shouldShowAccessPaywall = showAccessPaywall && (!shouldRunPreviewTour || hasCompletedPreviewTour);
+
+    useEffect(() => {
+        if (!isAccessLocked) {
+            setShowAccessPaywall(false);
+            return;
+        }
+
+        if (!shouldRunPreviewTour || hasCompletedPreviewTour) {
+            setShowAccessPaywall(true);
+        }
+    }, [hasCompletedPreviewTour, isAccessLocked, shouldRunPreviewTour]);
 
     // inside your component body
     const [isPreviewFullscreen, setIsPreviewFullscreen] = useState(false);
@@ -4631,19 +4643,19 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
             className="fixed inset-0 z-[9999] bg-black/50"
         >
             <WebsitePrePaywall
-                open={shouldShowAccessPaywall}
+                open={showAccessPaywall}
                 onClose={() => {
-                    void onClose?.();
+                    setShowAccessPaywall(false);
                 }}
                 onStartCheckout={() => {
                     void onRequestDeployCheckout?.();
                 }}
                 checkoutBusy={exporting}
                 zIndexClassName="z-[9999999999]"
-                dismissible={false}
                 title="Start your 7-day free trial to unlock the editor"
                 description="You can see the website in the background, but editing is locked until you subscribe."
                 primaryLabel={TRIAL_CTA_LABEL}
+                secondaryLabel=""
                 footerNote="Cancel anytime before renewal."
             />
 
@@ -4810,7 +4822,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                         {/* Tools strip (left of device) */}
                         <div className="p-1 flex min-w-0 flex-1 items-center gap-2 overflow-x-auto whitespace-nowrap [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
                         {/* Mode switcher */}
-                        <div className="shrink-0 inline-flex items-center gap-1 rounded-full border border-neutral-200 bg-white px-2 py-1 shadow-md">
+                        <div className={`shrink-0 inline-flex items-center gap-1 rounded-full border border-neutral-200 bg-white px-2 py-1 shadow-md ${isAccessLocked && !showAccessPaywall ? "blur-[1.5px] opacity-70" : ""}`}>
                             <button
                                 type="button"
                                 onClick={() => handleModeClick("preview")}
@@ -4844,28 +4856,28 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                             </button>
 
                             {isDevCodeMode && (
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        setSidebarHidden(false);
-                                        setSidePanelMode("code");
-                                        handleModeClick("code");
-                                    }}
-                                    className={`inline-flex h-6 w-6 items-center justify-center rounded-full transition-colors ${
-                                        mode === "code"
-                                            ? "bg-[#f55f2a] text-white"
-                                            : "bg-white text-neutral-600 hover:bg-neutral-100"
-                                    }`}
-                                    title="Code"
-                                    aria-label="Code"
-                                >
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setSidebarHidden(false);
+                                    setSidePanelMode("code");
+                                    handleModeClick("code");
+                                }}
+                                className={`inline-flex h-6 w-6 items-center justify-center rounded-full transition-colors ${
+                                    mode === "code"
+                                        ? "bg-[#f55f2a] text-white"
+                                        : "bg-white text-neutral-600 hover:bg-neutral-100"
+                                } ${isAccessLocked && !showAccessPaywall ? "blur-[1.5px] opacity-70" : ""}`}
+                                title="Code"
+                                aria-label="Code"
+                            >
                                     <Code2 className="h-3 w-3" aria-hidden="true" />
                                 </button>
                             )}
                         </div>
 
                         {/* Panel tools */}
-                        <div className="shrink-0 inline-flex items-center gap-1 rounded-full border border-neutral-200 bg-white px-2 py-1 shadow-md">
+                        <div className={`shrink-0 inline-flex items-center gap-1 rounded-full border border-neutral-200 bg-white px-2 py-1 shadow-md ${isAccessLocked && !showAccessPaywall ? "blur-[1.5px] opacity-70" : ""}`}>
                             <button
                                 type="button"
                                 onClick={() => {
@@ -4915,6 +4927,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                             <button
                                 id="kloner-ai-sidebar"
                                 type="button"
+                                disabled={isAccessLocked && !showAccessPaywall}
                                 onClick={() => {
                                     const isActive = !sidebarHidden && sidePanelMode === "revision-chat";
                                     if (isActive) {
@@ -4929,7 +4942,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                     !sidebarHidden && sidePanelMode === "revision-chat"
                                         ? "bg-[#f55f2a] text-white"
                                         : "bg-white text-neutral-600 hover:bg-neutral-100"
-                                }`}
+                                } ${isAccessLocked && !showAccessPaywall ? "cursor-not-allowed opacity-60" : ""}`}
                                 title="AI edits"
                                 aria-label="AI edits"
                             >
@@ -4938,6 +4951,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
 
                             <button
                                 type="button"
+                                disabled={isAccessLocked && !showAccessPaywall}
                                 onClick={() => {
                                     const isActive = !sidebarHidden && sidePanelMode === "ai-library";
                                     if (isActive) {
@@ -4956,7 +4970,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                     !sidebarHidden && sidePanelMode === "ai-library"
                                         ? "bg-[#f55f2a] text-white"
                                         : "bg-white text-neutral-600 hover:bg-neutral-100"
-                                } ${shouldLockImagesTab ? "opacity-70" : ""}`}
+                                } ${shouldLockImagesTab || (isAccessLocked && !showAccessPaywall) ? "cursor-not-allowed opacity-60" : ""}`}
                                 title={shouldLockImagesTab ? "Images are available on Pro and Agency plans" : "AI images"}
                                 aria-label="AI images"
                             >
@@ -5033,20 +5047,30 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
 
                     {/* LEFT SIDEBAR (consistent styling) */}
                     {showSidebarPanel && (
-                        <motion.aside
-                            id="kloner-style-sidebar"
-                            className={`pointer-events-auto bg-white flex flex-col overflow-hidden ${
-                                isCompactLayout
-                                    ? "relative z-20 h-full w-full bg-gray-50"
-                                    : "fixed bottom-0 left-0 top-0 z-40 w-[min(92vw,520px)] rounded-r-2xl border-r border-neutral-200 shadow-xl"
-                            }`}
-                            initial={isCompactLayout ? { opacity: 0, y: 8 } : { x: -16, opacity: 0 }}
-                            animate={{ x: 0, opacity: 1 }}
-                            exit={isCompactLayout ? { opacity: 0, y: 8 } : { x: -16, opacity: 0 }}
-                            transition={{ duration: 0.18, ease: "easeOut" }}
-                        >
-                            {/* Panel header */}
-                            <div className="flex items-center justify-between px-4 py-3" style={{ backgroundColor: "rgba(245, 95, 42, 0.08)" }}>
+                    <motion.aside
+                        id="kloner-style-sidebar"
+                        className={`pointer-events-auto bg-white flex flex-col overflow-hidden ${
+                            isCompactLayout
+                                ? "relative z-20 h-full w-full bg-gray-50"
+                                : "fixed bottom-0 left-0 top-0 z-40 w-[min(92vw,520px)] rounded-r-2xl border-r border-neutral-200 shadow-xl"
+                        } ${isAccessLocked && !showAccessPaywall ? "pointer-events-none select-none" : ""}`}
+                        initial={isCompactLayout ? { opacity: 0, y: 8 } : { x: -16, opacity: 0 }}
+                        animate={{ x: 0, opacity: 1 }}
+                        exit={isCompactLayout ? { opacity: 0, y: 8 } : { x: -16, opacity: 0 }}
+                        transition={{ duration: 0.18, ease: "easeOut" }}
+                    >
+                        {isAccessLocked && !showAccessPaywall ? (
+                            <AccessLockBadge
+                                onClick={() => setShowAccessPaywall(true)}
+                                label="Unlock"
+                                hint="Click to unlock"
+                                center
+                                className="rounded-none"
+                            />
+                        ) : null}
+
+                        {/* Panel header */}
+                        <div className={`flex items-center justify-between px-4 py-3 ${isAccessLocked && !showAccessPaywall ? "blur-[1.5px] opacity-70 pointer-events-none select-none" : ""}`} style={{ backgroundColor: "rgba(245, 95, 42, 0.08)" }}>
                                 <div>
                                 <div className="text-sm font-semibold text-[#f55f2a]">
                                     {sidePanelMode === "style" && "🎨 Styles"}
@@ -5092,7 +5116,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                             </div>
 
                             {isCompactLayout && (
-                                <div className="border-b border-neutral-200 bg-white px-4 py-3">
+                                <div className={`border-b border-neutral-200 bg-white px-4 py-3 ${isAccessLocked && !showAccessPaywall ? "blur-[1.5px] opacity-70 pointer-events-none select-none" : ""}`}>
                                     <div className="flex items-center gap-2 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
                                         <button
                                             type="button"
@@ -5164,8 +5188,8 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                             <div
                                 className={
                                     sidePanelMode === "revision-chat"
-                                        ? "min-h-0 flex-1 overflow-hidden"
-                                        : `min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-6 ${isCompactLayout ? "pb-36" : ""}`
+                                        ? `min-h-0 flex-1 overflow-hidden ${isAccessLocked && !showAccessPaywall ? "blur-[1.5px] opacity-70 pointer-events-none select-none" : ""}`
+                                        : `min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-6 ${isCompactLayout ? "pb-36" : ""} ${isAccessLocked && !showAccessPaywall ? "blur-[1.5px] opacity-70 pointer-events-none select-none" : ""}`
                                 }
                             >
                                 {/* STYLE MODE BODY */}
@@ -6643,11 +6667,6 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                 >
                                                     <Images className="h-4 w-4" />
                                                     <span>Images</span>
-                                                    {shouldLockImagesTab ? (
-                                                        <span className="inline-flex items-center rounded-full border border-neutral-300 bg-white px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-neutral-500">
-                                                            Pro
-                                                        </span>
-                                                    ) : null}
                                                 </button>
                                             </div>
                                         </div>

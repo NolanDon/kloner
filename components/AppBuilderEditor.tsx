@@ -2369,9 +2369,10 @@ export default function AppBuilderEditor({
     const appBuilderAiMessagesSentRef = useRef<number>(0);
     const appBuilderViewSwitchesRef = useRef<number>(0);
     const previousViewModeRef = useRef<LeftViewMode>("ai");
-    const [showAppBuilderTrialPrompt, setShowAppBuilderTrialPrompt] = useState(false);
-    const showAccessPaywall = accessLocked;
-    const appBuilderTrialShownThisOpenRef = useRef(false);
+    const [hasCompletedBuilderTour, setHasCompletedBuilderTour] = useState(false);
+    const [hasDismissedAccessPaywall, setHasDismissedAccessPaywall] = useState(false);
+    const shouldRunBuilderTour = isDev && !isVisualEditorMode && showTour;
+    const showAccessPaywall = accessLocked && hasCompletedBuilderTour && !hasDismissedAccessPaywall;
     const pendingShareResumeRef = useRef(false);
     const previewActionThrottleRef = useRef<{ refreshAt: number; rebuildAt: number; saveAt: number }>({
         refreshAt: 0,
@@ -2697,47 +2698,6 @@ export default function AppBuilderEditor({
             effectiveDeployBanner.detail &&
             dismissedDeployBannerFingerprint !== effectiveDeployBanner.fingerprint,
     );
-
-    useEffect(() => {
-        appBuilderTrialShownThisOpenRef.current = false;
-        setShowAppBuilderTrialPrompt(false);
-    }, [appId]);
-
-    useEffect(() => {
-        const forceTrialPromptInDev = process.env.NODE_ENV !== "production";
-        if (!trialPromptEnabled) return;
-        if (!forceTrialPromptInDev && !trialPromptSessionEligible) return;
-        if (showAppBuilderTrialPrompt) return;
-        if (appBuilderTrialShownThisOpenRef.current) return;
-
-        const appLoaded = Boolean(app && !loading && !error);
-        if (!appLoaded) return;
-
-        const previewReady = previewMode !== "webcontainer" ? true : isWebPreviewReady;
-        if (!previewReady) return;
-        if (autoPreviewError || previewError) return;
-
-        const timer = window.setTimeout(() => {
-            setShowAppBuilderTrialPrompt(true);
-            appBuilderTrialShownThisOpenRef.current = true;
-            onTrialPromptShown?.(appId);
-        }, APP_BUILDER_TRIAL_DWELL_MS);
-
-        return () => window.clearTimeout(timer);
-    }, [
-        trialPromptEnabled,
-        trialPromptSessionEligible,
-        showAppBuilderTrialPrompt,
-        app,
-        loading,
-        error,
-        previewMode,
-        isWebPreviewReady,
-        autoPreviewError,
-        previewError,
-        onTrialPromptShown,
-        appId,
-    ]);
 
     useEffect(() => {
         stagedImagesRef.current = stagedImages;
@@ -8321,24 +8281,29 @@ export default function AppBuilderEditor({
                     </div>
                 ) : null}
 
-                {isDev && !isVisualEditorMode && showTour ? (
-                    <AppBuilderEditorTour startToken={builderTourStartToken} />
+                {shouldRunBuilderTour ? (
+                    <AppBuilderEditorTour
+                        startToken={builderTourStartToken}
+                        onEnd={() => {
+                            setHasCompletedBuilderTour(true);
+                        }}
+                    />
                 ) : null}
 
                 <WebsitePrePaywall
                     open={showAccessPaywall}
                     onClose={() => {
-                        void onClose?.();
+                        setHasDismissedAccessPaywall(true);
                     }}
                     onStartCheckout={() => {
                         onRequestDeployCheckout?.();
                     }}
                     checkoutBusy={trialCheckoutBusy}
                     zIndexClassName="z-[9999999999]"
-                    dismissible={false}
                     title="Start your 7-day free trial to unlock the editor"
                     description="You can see the website in the background, but editing is locked until you subscribe."
                     primaryLabel={TRIAL_CTA_LABEL}
+                    secondaryLabel="No thanks, continue with limited features"
                     footerNote="Cancel anytime before renewal."
                 />
 
@@ -8356,16 +8321,6 @@ export default function AppBuilderEditor({
                     benefits={upgradePaywallCopy.benefits}
                     primaryLabel={upgradePaywallCopy.primaryLabel}
                     footerNote={upgradePaywallCopy.footerNote}
-                />
-
-                <WebsitePrePaywall
-                    open={showAppBuilderTrialPrompt}
-                    onClose={() => setShowAppBuilderTrialPrompt(false)}
-                    onStartCheckout={() => {
-                        onTrialPromptStartCheckout?.(appId);
-                    }}
-                    checkoutBusy={trialCheckoutBusy}
-                    zIndexClassName="z-[20000]"
                 />
 
                 {vercelConnectOpen && (

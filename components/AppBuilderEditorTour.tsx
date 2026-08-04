@@ -112,7 +112,15 @@ function isChatIntroTarget(target: string | undefined) {
     return target === "[data-tour-chat-panel]" || target === "[data-tour-mobile-prompt]";
 }
 
-export function AppBuilderEditorTour({ startToken, enabled = true }: { startToken: number; enabled?: boolean }) {
+export function AppBuilderEditorTour({
+    startToken,
+    enabled = true,
+    onEnd,
+}: {
+    startToken: number;
+    enabled?: boolean;
+    onEnd?: () => void;
+}) {
     const [running, setRunning] = useState(false);
     const [index, setIndex] = useState(0);
     const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
@@ -185,6 +193,7 @@ export function AppBuilderEditorTour({ startToken, enabled = true }: { startToke
         setIndex(0);
         clearHighlight();
         markTourSeen();
+        onEnd?.();
     };
 
     useEffect(() => {
@@ -280,6 +289,13 @@ export function AppBuilderEditorTour({ startToken, enabled = true }: { startToke
                     <div className="mt-4 flex items-center justify-between gap-3">
                         <div className="text-xs text-black/50 mr-2">{index + 1}/{steps.length}</div>
                         <div className="flex items-center gap-2">
+                            <button
+                                type="button"
+                                onClick={finish}
+                                className="rounded-full border border-neutral-200 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-600 hover:bg-neutral-50"
+                            >
+                                Skip
+                            </button>
                             {index > 0 ? (
                                 <button
                                     type="button"

@@ -3911,7 +3911,7 @@ export default function PreviewPage(): JSX.Element {
     const [renderTrialSessionEligible, setRenderTrialSessionEligible] = useState(false);
     const [appBuilderTrialSessionEligible, setAppBuilderTrialSessionEligible] = useState(false);
     const [exitOfferClaimed, setExitOfferClaimed] = useState(false);
-    const [showWebsitePrePaywall, setShowWebsitePrePaywall] = useState(false);
+    const [, setShowWebsitePrePaywall] = useState(false);
     const [showTrialSuccessCelebration, setShowTrialSuccessCelebration] = useState(false);
     const [showDeploySuccessConfetti, setShowDeploySuccessConfetti] = useState(false);
     const [showTopupSuccessConfetti, setShowTopupSuccessConfetti] = useState(false);
@@ -4210,6 +4210,26 @@ export default function PreviewPage(): JSX.Element {
         blocked?: boolean;
     }>>([]);
     const pendingCreatedAppLaunchRequestedRef = useRef<string | null>(null);
+    const isAppReadyForEditor = useCallback((app: any | null | undefined): boolean => {
+        if (!app || typeof app !== "object") return false;
+
+        const status = String((app as any)?.status || (app as any)?.generationStatus || (app as any)?.generation?.status || "").toLowerCase();
+        const generationStage = String((app as any)?.generation?.stage || "").toLowerCase();
+        const files = (app as any)?.files;
+        const fileCount = Number((app as any)?.fileCount ?? (app as any)?.filesCount ?? 0);
+        const hasFiles =
+            Boolean(files && typeof files === "object" && !Array.isArray(files) && Object.keys(files).length > 0) ||
+            (Number.isFinite(fileCount) && fileCount > 0);
+        const terminalStatus = ["error", "failed", "blocked", "cancelled", "canceled"];
+        const terminalGenerationStage = ["error", "failed"];
+        const isTerminal =
+            terminalStatus.includes(status) ||
+            terminalGenerationStage.includes(generationStage);
+
+        // For URL-generated apps, the presence of a non-empty file tree is the real signal
+        // that the editor can open safely. Status fields can lag behind or stay transitional.
+        return hasFiles && !isTerminal;
+    }, []);
     const draftPromotionInFlightRef = useRef<Record<string, true>>({});
     const promoteDraftToAppRef = useRef<((draft: {
         draftId: string;
@@ -4444,8 +4464,7 @@ export default function PreviewPage(): JSX.Element {
 
         setAppWizardBusy(false);
         setAppWizardError(null);
-        setShowWebsitePrePaywall(true);
-        return false;
+        return true;
     }, [refreshUserTierNow]);
 
     // ───────── web app wizard (new) ─────────
@@ -6100,11 +6119,9 @@ export default function PreviewPage(): JSX.Element {
                 finalRenderId = undefined; // No render for URL mode
             }
 
-            const shouldShowPendingAppUi = mode !== "url" || !opts?.openAppBuilderImmediately;
-            const pendingCreatedAppId = shouldShowPendingAppUi
-                ? createPermanentAppId()
-                : "";
-            const draftAppId = opts?.draftAppId || (shouldShowPendingAppUi ? createPermanentAppId() : "");
+            const shouldShowPendingAppUi = true;
+            const pendingCreatedAppId = createPermanentAppId();
+            const draftAppId = opts?.draftAppId || createPermanentAppId();
 
             if (shouldShowPendingAppUi) {
                 setPendingCreatedApp({
@@ -6502,10 +6519,6 @@ export default function PreviewPage(): JSX.Element {
                     });
                 }
             }
-            if (shouldOpenAppBuilderImmediately) {
-                openAppBuilderDirectly(appId);
-            }
-
             // No agent application for new modes, as they are full generations
 
             return appId as string;
@@ -6561,7 +6574,7 @@ export default function PreviewPage(): JSX.Element {
             push(message, "err");
             return null;
         }
-    }, [user, router, push, activeRenderId, openAppBuilderWithCookieGate, openAppBuilderDirectly, requestAppBuilderCookieConsent, appWizardOpen, stripeStatus, setDraftApps, setPendingDraftApps]);
+    }, [user, router, push, activeRenderId, openAppBuilderWithCookieGate, requestAppBuilderCookieConsent, appWizardOpen, stripeStatus, setDraftApps, setPendingDraftApps]);
 
     useEffect(() => {
         if (!pendingCreatedApp) {
@@ -6569,7 +6582,7 @@ export default function PreviewPage(): JSX.Element {
             return;
         }
 
-        if (showWebsitePrePaywall || (userTier === "free" && stripeStatus !== "trialing")) {
+        if (userTier === "free" && stripeStatus !== "trialing") {
             pendingCreatedAppLaunchRequestedRef.current = null;
             if (appBuilderOpen) {
                 setAppBuilderOpen(false);
@@ -6585,8 +6598,9 @@ export default function PreviewPage(): JSX.Element {
             return;
         }
 
-        const pendingAppExists = apps.some((app) => app.id === pendingCreatedApp.id);
-        if (!pendingAppExists) return;
+        const pendingApp = apps.find((app) => app.id === pendingCreatedApp.id) || null;
+        if (!pendingApp) return;
+        if (!isAppReadyForEditor(pendingApp)) return;
 
         if (appBuilderOpen && currentAppId === pendingCreatedApp.id) {
             pendingCreatedAppLaunchRequestedRef.current = null;
@@ -6612,9 +6626,9 @@ export default function PreviewPage(): JSX.Element {
         pendingAppBuilderAppId,
         pendingCreatedApp,
         blockedUrlGenerationAppId,
-        showWebsitePrePaywall,
         userTier,
         stripeStatus,
+        isAppReadyForEditor,
     ]);
 
     useEffect(() => {
@@ -12555,28 +12569,18 @@ export default function PreviewPage(): JSX.Element {
     }
 
     function showWebsiteExitOfferPaywall() {
-        if (exitOfferDisabled) {
-            setShowCreditsPaywall(null);
-            setShowProPaywall(false);
-            setShowAppExitOffer(false);
-            setShowExitOffer(false);
-            setExitOfferReason(null);
-            setAppExitOfferReason(null);
-            setAppWizardOpen(false);
-            setAppWizardBusy(false);
-            setAppWizardError(null);
-            setShowWebsitePrePaywall(true);
-            return;
-        }
-
         setShowCreditsPaywall(null);
         setShowProPaywall(false);
         setShowAppExitOffer(false);
         setShowExitOffer(false);
+        setExitOfferReason(null);
+        setAppExitOfferReason(null);
         setAppWizardOpen(false);
         setAppWizardBusy(false);
         setAppWizardError(null);
-        setShowWebsitePrePaywall(true);
+        if (exitOfferDisabled) {
+            return;
+        }
     }
 
     function dismissWebsitePrePaywall() {
@@ -14883,21 +14887,6 @@ export default function PreviewPage(): JSX.Element {
                                 </div>
                             </div>
                         </div>
-                    )
-                }
-
-                {
-                    showWebsitePrePaywall && (
-                        <WebsitePrePaywall
-                            open={showWebsitePrePaywall}
-                            onClose={dismissWebsitePrePaywall}
-                            onStartCheckout={() => {
-                                setShowWebsitePrePaywall(false);
-                                void startProCheckout();
-                            }}
-                            checkoutBusy={checkoutBusy}
-                            zIndexClassName="z-[12049]"
-                        />
                     )
                 }
 

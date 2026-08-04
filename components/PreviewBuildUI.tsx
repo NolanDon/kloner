@@ -36,7 +36,12 @@ export default function PreviewBuildUI({ userId, appId, code }: PreviewBuildUIPr
       if (doc.exists()) {
         setPreviewData(doc.data() as PreviewData);
       } else {
-        setPreviewData({ status: 'error', error: 'Preview not found' });
+        setPreviewData({
+          status: 'processing',
+          uiTitle: 'Preparing preview...',
+          uiMessage: 'Your preview files are still settling. Please wait a moment.',
+          uiStage: 'preparing_files',
+        });
       }
       setLoading(false);
     }, (error) => {

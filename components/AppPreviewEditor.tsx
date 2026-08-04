@@ -11,7 +11,7 @@ import WebsitePrePaywall from "./WebsitePrePaywall";
 import { useModal } from "@/components/ui/ModalContext";
 import { pickPreferredHtmlPath } from "@/src/lib/htmlEntrypoint";
 import { useHtmlDiscoveryFallbackGate } from "@/src/lib/htmlDiscoveryGate";
-import { TOUR_KEY as PREVIEW_TOUR_STORAGE_KEY } from "./PreviewEditorTour";
+import { hasSeenPreviewTour, PreviewEditorTour, TOUR_KEY as PREVIEW_TOUR_STORAGE_KEY } from "./PreviewEditorTour";
 import { ensureUserImageStorageRoom, IMAGE_STORAGE_LIMIT_BYTES, loadUserImageStorageUsage, uploadUserImageToFirebase } from "@/src/lib/imageStorage";
 import { getResponsiveUiScale } from "@/src/lib/uiScale";
 
@@ -788,7 +788,6 @@ import type { UserTier } from "@/src/lib/credits";
 import { Camera, Check, ChevronDown, ChevronLeft, ChevronRight, Code2, Eye, EyeOff, FileText, Images, Loader2, Maximize2, MessageSquare, Minimize2, Monitor, Palette, Pencil, Pipette, Redo2, Rocket, RotateCcw, RotateCw, SlidersHorizontal, Smartphone, Tablet, Trash2Icon, Undo2, X } from "lucide-react";
 import { compressImageForUpload } from "@/src/lib/clientImageCompression";
 import { EditorSessionCounters, EditorSessionMetrics, EditorSessionUser, ExportAnalyticsUser, recordEditorSessionAnalytics, recordExportAnalytics } from "./analytics";
-import { hasSeenPreviewTour, PreviewEditorTour } from "./PreviewEditorTour";
 import { injectEditableOverlay } from "@/src/lib/klonerIframeRuntime";
 import { MetaSettings, UploadedAsset } from "./MetaSettings";
 import { AiImageLibraryPanel } from "./AiImageLibraryPanel";
@@ -1300,9 +1299,9 @@ function AppPreviewEditorCore({
     const [closePrompt, setClosePrompt] = useState(false);
     const [exportPrompt, setExportPrompt] = useState(false);
     const [showDeployUpgradePaywall, setShowDeployUpgradePaywall] = useState(false);
-    const showAccessPaywall = accessLocked && !isAdmin;
     const shouldShowTour = typeof showTour === "boolean" ? showTour : true;
     const [hasCompletedPreviewTour, setHasCompletedPreviewTour] = useState(() => hasSeenPreviewTour());
+    const [hasDismissedAccessPaywall, setHasDismissedAccessPaywall] = useState(false);
     const [controlsCollapsed, setControlsCollapsed] = useState<boolean>(false);
     const [sidePanelMode, setSidePanelMode] = useState<
         "style" | "meta" | "code" | "ai-library" | "revision-chat"
@@ -1433,7 +1432,11 @@ function AppPreviewEditorCore({
 
     const [isDraggingPreview, setIsDraggingPreview] = useState(false);
     const shouldRunPreviewTour = !isCompactLayout && isDevCodeMode && shouldShowTour;
-    const shouldShowAccessPaywall = showAccessPaywall && (!shouldRunPreviewTour || hasCompletedPreviewTour);
+    const shouldShowAccessPaywall =
+        accessLocked &&
+        !isAdmin &&
+        (!shouldRunPreviewTour || hasCompletedPreviewTour) &&
+        !hasDismissedAccessPaywall;
 
     // 1) Per-session counters
     const sessionCountersRef = useRef<EditorSessionCounters>({
@@ -5031,17 +5034,17 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
             <WebsitePrePaywall
                 open={shouldShowAccessPaywall}
                 onClose={() => {
-                    void onClose?.();
+                    setHasDismissedAccessPaywall(true);
                 }}
                 onStartCheckout={() => {
                     void onRequestDeployCheckout?.();
                 }}
                 checkoutBusy={exporting}
                 zIndexClassName="z-[9999999999]"
-                dismissible={false}
                 title="Start your 7-day free trial to unlock the editor"
                 description="You can see the website in the background, but editing is locked until you subscribe."
                 primaryLabel={TRIAL_CTA_LABEL}
+                secondaryLabel="No thanks, continue with limited features"
                 footerNote="Cancel anytime before renewal."
             />
 
@@ -5049,7 +5052,9 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                 <PreviewEditorTour
                     startToken={previewTourStartToken}
                     autoStart
-                    onEnd={() => setHasCompletedPreviewTour(true)}
+                    onEnd={() => {
+                        setHasCompletedPreviewTour(true);
+                    }}
                 />
             ) : null}
 
@@ -6966,13 +6971,14 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                         setShowDeployUpgradePaywall(false);
                         onRequestDeployCheckout?.();
                     }}
-                    checkoutBusy={exporting}
-                    zIndexClassName="z-[30001]"
-                    title="Upgrade to publish"
-                    description="Publish your website live from the editor. Upgrade to unlock one-click deploy and higher monthly credits."
-                    primaryLabel={TRIAL_CTA_LABEL}
-                    footerNote="Cancel anytime before renewal."
-                />
+                checkoutBusy={exporting}
+                zIndexClassName="z-[30001]"
+                title="Upgrade to publish"
+                description="Publish your website live from the editor. Upgrade to unlock one-click deploy and higher monthly credits."
+                primaryLabel={TRIAL_CTA_LABEL}
+                secondaryLabel=""
+                footerNote="Cancel anytime before renewal."
+            />
 
                 {exportPrompt && (
                     <div className="fixed inset-0 z-[30000] flex items-center justify-center bg-black/40">

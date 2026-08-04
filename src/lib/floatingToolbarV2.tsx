@@ -20,6 +20,7 @@ import {
     Type,
     Palette,
 } from "lucide-react";
+import AccessLockBadge from "@/components/editor/AccessLockBadge";
 import type { SelectionMeta } from "@/components/editor/PreviewEditorV2";
 
 type FloatingBlockToolbarProps = {
@@ -32,6 +33,8 @@ type FloatingBlockToolbarProps = {
     dockedOpen?: boolean;
     onDockedToggle?: () => void;
     showDockToggle?: boolean;
+    locked?: boolean;
+    onLockedClick?: () => void;
 };
 
 type ToolbarPos = { top: number; left: number } | null;
@@ -322,9 +325,44 @@ function BlockToolbar({
         }
     }, [selectionMeta, callApi]);
 
+    const MAX_NAV_HREF_LENGTH = 2048;
+
+    const sanitizeNavHref = (value: string): string | null => {
+        const trimmed = String(value || "").trim().slice(0, MAX_NAV_HREF_LENGTH);
+        if (!trimmed) return "";
+
+        if (trimmed.startsWith("#")) {
+            return /^#[A-Za-z0-9._~/-]{1,128}$/.test(trimmed) ? trimmed : null;
+        }
+
+        if (trimmed.startsWith("/")) {
+            if (trimmed.startsWith("//")) return null;
+            return /^\/(?!\/)[A-Za-z0-9._~\-\/]*(?:[?#][A-Za-z0-9._~\-\/?=&%+,:@]*)?$/.test(trimmed)
+                ? trimmed
+                : null;
+        }
+
+        return null;
+    };
+
     const commitNavHref = (value: string) => {
-        const trimmed = (value || "").trim();
-        callApi("blockSetHref", trimmed);
+        const sanitized = sanitizeNavHref(value);
+        if (sanitized === null) {
+            try {
+                const info = callApi("blockGetHref") as BlockHrefInfo;
+                if (info && typeof info === "object") {
+                    setHasNavLink(!!info.hasLink);
+                    setNavHref(info.href || "");
+                }
+            } catch {
+                // ignore stale selection state
+            }
+            return;
+        }
+
+        callApi("blockSetHref", sanitized);
+        setNavHref(sanitized);
+        setHasNavLink(Boolean(sanitized));
     };
 
     const handleNavInputChange = (e: React.ChangeEvent<HTMLInputElement>) => setNavHref(e.target.value);
@@ -1014,6 +1052,8 @@ export function FloatingBlockToolbar({
     dockedOpen = false,
     onDockedToggle,
     showDockToggle = true,
+    locked = false,
+    onLockedClick,
 }: FloatingBlockToolbarProps) {
     const [toolbarPos, setToolbarPos] = useState<ToolbarPos>(null);
     const toolbarPosRef = useRef<ToolbarPos>(null);
@@ -1137,11 +1177,13 @@ export function FloatingBlockToolbar({
 
     const isDocked = docked;
     const isDockedOpen = dockedOpen;
+    const shouldRenderDockedShell = isDocked && (locked || showDockToggle || isDockedOpen || !!selectionMeta);
 
-    if (!selectionMeta || !selectionMeta.has || !(selectionMeta as any).rect) return null;
+    if (!isDocked && (!selectionMeta || !selectionMeta.has || !(selectionMeta as any).rect)) return null;
+    if (isDocked && !shouldRenderDockedShell) return null;
 
     if (isDocked) {
-        const dockedSelectionMeta = selectionMeta || ({ has: false } as SelectionMeta);
+        const dockedSelectionMeta = selectionMeta || ({ has: false, tagName: "DIV" } as SelectionMeta);
         const effectiveDockedOpen = showDockToggle ? isDockedOpen : true;
         const dockedStyle: React.CSSProperties = {
             top: dockedBounds?.top ?? 0,
@@ -1156,7 +1198,9 @@ export function FloatingBlockToolbar({
         return (
             <aside
                 id="kloner-right-sidebar"
-                className="pointer-events-auto fixed right-0 z-[25000] overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-xl"
+                className={`fixed right-0 z-[25000] overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-xl ${
+                    locked ? "pointer-events-none select-none" : "pointer-events-auto"
+                }`}
                 style={dockedStyle}
             >
                 {showDockToggle ? (
@@ -1176,15 +1220,26 @@ export function FloatingBlockToolbar({
                         </span>
                     </button>
                 ) : null}
-                {effectiveDockedOpen ? (
-                    <BlockToolbar
-                        style={{ width: "100%", minHeight: "100%" }}
-                        callApi={callApi}
-                        selectionMeta={dockedSelectionMeta}
-                        onDragStart={handleDragStart}
-                        docked
+                {locked ? (
+                    <AccessLockBadge
+                        onClick={onLockedClick || (() => {})}
+                        label="Unlock"
+                        hint="Unlock editing"
+                        center
+                        className="rounded-[inherit]"
                     />
                 ) : null}
+                <div className={`${locked ? "blur-[1.5px] opacity-70 pointer-events-none select-none" : ""}`}>
+                    {effectiveDockedOpen ? (
+                        <BlockToolbar
+                            style={{ width: "100%", minHeight: "100%" }}
+                            callApi={callApi}
+                            selectionMeta={dockedSelectionMeta}
+                            onDragStart={handleDragStart}
+                            docked
+                        />
+                    ) : null}
+                </div>
             </aside>
         );
     }
@@ -1273,7 +1328,12 @@ export function FloatingBlockToolbar({
 
     return (
         <div style={baseStyle}>
-            <BlockToolbar style={{}} callApi={callApi} selectionMeta={selectionMeta} onDragStart={handleDragStart} />
+            <BlockToolbar
+                style={{}}
+                callApi={callApi}
+                selectionMeta={selectionMeta as SelectionMeta}
+                onDragStart={handleDragStart}
+            />
         </div>
     );
 }
