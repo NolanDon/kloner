@@ -2105,7 +2105,12 @@ export default function AppBuilderEditor({
     const isVisualEditorMode = viewMode === "custom" || viewMode === "images";
     const filteredCodeFileTree = useMemo(() => filterFileTree(fileTree, codeFileSearch), [codeFileSearch, fileTree]);
     const codeFileSearchActive = Boolean(codeFileSearch.trim());
-    const activeTabGlowClass = "border-[#F55F2A] ring-2 ring-[#F55F2A]/45 mx-1";
+    const viewModeTabBaseClass =
+        "relative inline-flex flex-shrink-0 items-center justify-center gap-1.5 overflow-hidden rounded-[1.15rem] border px-3 sm:px-4 py-2 text-xs font-semibold transition-all duration-200";
+    const viewModeTabIdleClass =
+        "border-neutral-200 bg-white/85 text-gray-700 shadow-[0_1px_0_rgba(255,255,255,0.75)] hover:-translate-y-0.5 hover:border-neutral-300 hover:bg-white";
+    const viewModeTabActiveClass =
+        "border-[#f55f2a]/20 bg-[#f55f2a] text-white shadow-[0_14px_28px_rgba(245,95,42,0.24)]";
     const canUsePremiumImagesTab = userTier === "pro" || userTier === "agency";
     const shouldLockImagesTab = !authLoading && !canUsePremiumImagesTab;
 
@@ -2243,10 +2248,6 @@ export default function AppBuilderEditor({
     const requestViewModeChange = useCallback(async (nextMode: LeftViewMode) => {
         // Prevent multiple simultaneous mode switches
         if (isModeSwitching) return;
-        if (nextMode === "images" && shouldLockImagesTab) {
-            openFreePlanUpgradePaywall();
-            return;
-        }
         
         const leavingVisual = (viewMode === "custom" || viewMode === "images") && !(nextMode === "custom" || nextMode === "images");
         const enteringVisual = !(viewMode === "custom" || viewMode === "images") && (nextMode === "custom" || nextMode === "images");
@@ -2337,7 +2338,7 @@ export default function AppBuilderEditor({
             setViewMode(nextMode);
             setIsModeSwitching(false);
         }
-    }, [fetchAndHydrateAppFiles, openFreePlanUpgradePaywall, showAlert, shouldLockImagesTab, viewMode, isModeSwitching]);
+    }, [fetchAndHydrateAppFiles, showAlert, viewMode, isModeSwitching]);
 
     const [previewError, setPreviewError] = useState<string | null>(null);
     const [protectedPreviewUrl, setProtectedPreviewUrl] = useState<string | null>(null);
@@ -7010,25 +7011,6 @@ export default function AppBuilderEditor({
                                 </button>
                             ) : null}
 
-                            {isDev ? (
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        if (viewMode !== "ai") {
-                                            void requestViewModeChange("ai");
-                                        }
-                                        setTopupModalTrigger((prev) => prev + 1);
-                                    }}
-                                    className="inline-flex shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-full border border-neutral-300 bg-white px-2.5 py-2 text-xs font-semibold text-neutral-700 hover:bg-neutral-50 lg:px-3"
-                                    title="Top up AI credits"
-                                    aria-label="Top up credits"
-                                >
-                                    <span className="hidden md:inline lg:hidden">Top up</span>
-                                    <span className="hidden lg:inline">Top up credits</span>
-                                    <DevOnlyIconBadge title="Development-only billing quick action" />
-                                </button>
-                            ) : null}
-
                             {lastDeployLiveUrl ? (
                                 <button
                                     onClick={() => window.open(lastDeployLiveUrl, "_blank", "noopener,noreferrer")}
@@ -7265,94 +7247,98 @@ export default function AppBuilderEditor({
                                     : ""
                             }`}
                         >
-                            <div className="flex gap-2 overflow-x-auto overflow-y-visible scrollbar-hide min-w-0 py-1">
-                                <button
+                            <div className="inline-flex w-fit gap-2 overflow-x-auto overflow-y-visible scrollbar-hide min-w-0 rounded-[1.5rem] border border-neutral-200 bg-white/70 p-1 shadow-[0_10px_30px_rgba(15,23,42,0.04)] backdrop-blur">
+                                <motion.button
                                     onClick={() => { void requestViewModeChange("ai"); }}
                                     disabled={isModeSwitching}
                                     data-tour-chat-tab
-                                    className={`px-3 sm:px-4 py-2 text-xs font-semibold rounded-full flex items-center justify-center gap-1.5 transition-colors flex-shrink-0 ${
+                                    whileHover={{ y: -1 }}
+                                    whileTap={{ scale: 0.98 }}
+                                    className={`${viewModeTabBaseClass} ${
                                         viewMode === "ai"
-                                            ? `text-neutral-900 border border-neutral-300 shadow-sm ${activeTabGlowClass}`
-                                            : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50"
-                                    } ${isModeSwitching ? "opacity-60 cursor-not-allowed" : ""}`}
+                                            ? viewModeTabActiveClass
+                                            : viewModeTabIdleClass
+                                    } ${isModeSwitching ? "cursor-not-allowed opacity-60" : ""}`}
                                     title="Chat"
                                 >
                                     {isModeSwitching && viewMode !== "ai" ? (
                                         <Loader2 className="h-4 w-4 animate-spin" />
                                     ) : (
-                                        <MessageSquare className="h-4 w-4" />
+                                        <MessageSquare className="relative z-10 h-4 w-4" />
                                     )}
-                                    Chat
-                                </button>
+                                    <span className="relative z-10">Chat</span>
+                                </motion.button>
                                 {!IS_PRODUCTION ? (
-                                    <button
+                                    <motion.button
                                         onClick={() => { void requestViewModeChange("code"); }}
                                         disabled={isModeSwitching}
-                                        className={`px-3 sm:px-4 py-2 text-xs font-semibold rounded-full flex items-center justify-center gap-1.5 transition-colors flex-shrink-0 ${
+                                        whileHover={{ y: -1 }}
+                                        whileTap={{ scale: 0.98 }}
+                                        className={`${viewModeTabBaseClass} ${
                                             viewMode === "code"
-                                                ? `bg-neutral-100 text-neutral-900 border border-neutral-300 shadow-sm ${activeTabGlowClass}`
-                                                : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50"
-                                        } ${isModeSwitching ? "opacity-60 cursor-not-allowed" : ""}`}
+                                                ? viewModeTabActiveClass
+                                                : viewModeTabIdleClass
+                                            } ${isModeSwitching ? "cursor-not-allowed opacity-60" : ""}`}
                                         title="Code"
                                     >
                                         {isModeSwitching && viewMode !== "code" ? (
                                             <Loader2 className="h-4 w-4 animate-spin" />
                                         ) : (
-                                            <Code className="h-4 w-4" />
+                                            <Code className="relative z-10 h-4 w-4" />
                                         )}
-                                        Code
+                                        <span className="relative z-10">Code</span>
                                         <DevOnlyIconBadge title="Development-only code tab" />
-                                    </button>
+                                    </motion.button>
                                 ) : null}
                                 {/* {!IS_PRODUCTION ? ( */}
-                                <button
+                                <motion.button
                                         onClick={() => {
                                             if (isMobile) {
                                                 showDesktopOnlyToast();
-                                                return;
-                                            }
-                                            if (shouldLockImagesTab) {
-                                                openFreePlanUpgradePaywall();
                                                 return;
                                             }
                                             void requestViewModeChange("images");
                                         }}
                                         disabled={isModeSwitching}
                                         data-tour-images-tab
-                                        className={`hidden lg:inline-flex px-3 sm:px-4 py-2 text-xs font-semibold rounded-full items-center justify-center gap-1.5 transition-colors flex-shrink-0 ${
+                                        whileHover={{ y: -1 }}
+                                        whileTap={{ scale: 0.98 }}
+                                        className={`${viewModeTabBaseClass} hidden lg:inline-flex ${
                                             viewMode === "images"
-                                                ? `bg-neutral-100 text-neutral-900 border border-neutral-300 shadow-sm ${activeTabGlowClass}`
-                                                : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50"
-                                        } ${(isModeSwitching) ? "opacity-60 cursor-not-allowed" : ""}`}
+                                                ? viewModeTabActiveClass
+                                                : viewModeTabIdleClass
+                                        } ${isModeSwitching ? "cursor-not-allowed opacity-60" : ""}`}
                                         title={shouldLockImagesTab ? "Images are available on Pro and Agency plans" : "Images"}
                                     >
                                         {isModeSwitching && viewMode !== "images" ? (
                                             <Loader2 className="h-4 w-4 animate-spin" />
                                         ) : (
-                                            <Images className="h-4 w-4" />
+                                            <Images className="relative z-10 h-4 w-4" />
                                         )}
-                                        <span>Images</span>
-                                    </button>
+                                        <span className="relative z-10">Images</span>
+                                    </motion.button>
                                 {/* ) : null} */}
                                 {/* {!IS_PRODUCTION ? ( */}
-                                    <button
+                                    <motion.button
                                         onClick={() => { if (isMobile) { showDesktopOnlyToast(); return; } void requestViewModeChange("custom"); }}
                                         disabled={isModeSwitching}
                                         data-tour-custom-tab
-                                        className={`hidden lg:inline-flex px-3 sm:px-4 py-2 text-xs font-semibold rounded-full items-center justify-center gap-1.5 transition-colors flex-shrink-0 ${
+                                        whileHover={{ y: -1 }}
+                                        whileTap={{ scale: 0.98 }}
+                                        className={`${viewModeTabBaseClass} hidden lg:inline-flex ${
                                             viewMode === "custom"
-                                                ? `bg-neutral-100 text-neutral-900 border border-neutral-300 shadow-sm ${activeTabGlowClass}`
-                                                : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50"
-                                            } ${isModeSwitching ? "opacity-60 cursor-not-allowed" : ""}`}
+                                                ? viewModeTabActiveClass
+                                                : viewModeTabIdleClass
+                                            } ${isModeSwitching ? "cursor-not-allowed opacity-60" : ""}`}
                                         title="Custom"
                                     >
                                         {isModeSwitching && viewMode !== "custom" ? (
                                             <Loader2 className="h-4 w-4 animate-spin" />
                                         ) : (
-                                            <Paintbrush className="h-4 w-4" />
+                                            <Paintbrush className="relative z-10 h-4 w-4" />
                                         )}
-                                        Custom
-                                    </button>
+                                        <span className="relative z-10">Custom</span>
+                                    </motion.button>
                                 {/* ) : null} */}
                             </div>
 
@@ -8186,24 +8172,6 @@ export default function AppBuilderEditor({
 
                                 {isDev ? (
                                     <button
-                                        type="button"
-                                        onClick={() => {
-                                            setMobileControlsOpen(false);
-                                            if (viewMode !== "ai") {
-                                                void requestViewModeChange("ai");
-                                            }
-                                            setTopupModalTrigger((prev) => prev + 1);
-                                        }}
-                                        className="w-full inline-flex items-center justify-center gap-2 rounded-full px-4 py-2 text-sm font-semibold border border-neutral-300 bg-white text-neutral-800"
-                                        title="Top up AI credits"
-                                    >
-                                        <span>Top up credits</span>
-                                        <DevOnlyIconBadge title="Development-only billing quick action" />
-                                    </button>
-                                ) : null}
-
-                                {isDev ? (
-                                    <button
                                         onClick={() => {
                                             setMobileControlsOpen(false);
                                             void handleSharePreview();
@@ -8277,8 +8245,8 @@ export default function AppBuilderEditor({
                     }}
                     checkoutBusy={trialCheckoutBusy}
                     zIndexClassName="z-[9999999999]"
-                    title="Start your 7-day free trial to unlock the editor"
-                    description="You can see the website in the background, but editing is locked until you subscribe."
+                    title="Unlock the full editing experience"
+                    description="Upgrade to unlock editing, keep your momentum, and turn your changes into a live website."
                     primaryLabel={TRIAL_CTA_LABEL}
                     secondaryLabel="No thanks, continue with limited features"
                     footerNote="Cancel anytime before renewal."

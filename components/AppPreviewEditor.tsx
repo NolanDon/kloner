@@ -149,6 +149,24 @@ const PREVIEW_RIGHT_SIDEBAR_KEY = "kloner:preview-right-sidebar-collapsed";
 const PREVIEW_SIDEBAR_OPEN_WIDTH = 360;
 const PREVIEW_SIDEBAR_COLLAPSED_WIDTH = 56;
 
+function PanelLockOverlay({ label = "Unlock", onClick }: { label?: string; onClick?: () => void }) {
+    return (
+        <button
+            type="button"
+            className="absolute inset-0 z-30 flex items-center justify-center rounded-[inherit] bg-white/20 backdrop-blur-[2px]"
+            aria-label="Unlock"
+            onClick={onClick}
+        >
+            <span className="inline-flex items-center gap-2 rounded-full border border-neutral-200 bg-white/92 px-4 py-2 text-sm font-semibold text-neutral-800 shadow-lg">
+                <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-[rgba(245,95,42,0.12)] text-[#f55f2a]">
+                    <Lock className="h-4 w-4" />
+                </span>
+                <span>{label}</span>
+            </span>
+        </button>
+    );
+}
+
 export type SelectionMeta = {
     has: boolean;
     tagName?: string;
@@ -785,7 +803,7 @@ import type { RenderDoc } from "@/app/dashboard/view/DashboardView";
 import { useAuth } from "@/src/hooks/useAuth";
 import { TRIAL_CTA_LABEL } from "@/src/lib/billingAccess";
 import type { UserTier } from "@/src/lib/credits";
-import { Camera, Check, ChevronDown, ChevronLeft, ChevronRight, Code2, Eye, EyeOff, FileText, Images, Loader2, Maximize2, MessageSquare, Minimize2, Monitor, Palette, Pencil, Pipette, Redo2, Rocket, RotateCcw, RotateCw, SlidersHorizontal, Smartphone, Tablet, Trash2Icon, Undo2, X } from "lucide-react";
+import { Camera, Check, ChevronDown, ChevronLeft, ChevronRight, Code2, Eye, EyeOff, FileText, Images, Lock, Loader2, Maximize2, MessageSquare, Minimize2, Monitor, Palette, Pencil, Pipette, Redo2, Rocket, RotateCcw, RotateCw, SlidersHorizontal, Smartphone, Tablet, Trash2Icon, Undo2, X } from "lucide-react";
 import { compressImageForUpload } from "@/src/lib/clientImageCompression";
 import { EditorSessionCounters, EditorSessionMetrics, EditorSessionUser, ExportAnalyticsUser, recordEditorSessionAnalytics, recordExportAnalytics } from "./analytics";
 import { injectEditableOverlay } from "@/src/lib/klonerIframeRuntime";
@@ -1299,9 +1317,10 @@ function AppPreviewEditorCore({
     const [closePrompt, setClosePrompt] = useState(false);
     const [exportPrompt, setExportPrompt] = useState(false);
     const [showDeployUpgradePaywall, setShowDeployUpgradePaywall] = useState(false);
+    const [showAccessUpgradePaywall, setShowAccessUpgradePaywall] = useState(false);
+    const [accessPaywallContext, setAccessPaywallContext] = useState<"panel" | "images" | "toolbar">("panel");
     const shouldShowTour = typeof showTour === "boolean" ? showTour : true;
     const [hasCompletedPreviewTour, setHasCompletedPreviewTour] = useState(false);
-    const [hasDismissedAccessPaywall, setHasDismissedAccessPaywall] = useState(false);
     const [controlsCollapsed, setControlsCollapsed] = useState<boolean>(false);
     const [sidePanelMode, setSidePanelMode] = useState<
         "style" | "meta" | "code" | "ai-library" | "revision-chat"
@@ -1313,6 +1332,21 @@ function AppPreviewEditorCore({
     const [prefetchedAiHistoryLoading, setPrefetchedAiHistoryLoading] = useState<boolean>(false);
     const canUsePremiumImagesTab = userTier === "pro" || userTier === "agency";
     const shouldLockImagesTab = !authLoading && !canUsePremiumImagesTab;
+    const accessPaywallTitle = useMemo(() => {
+        switch (accessPaywallContext) {
+            case "images":
+                return "Unlock Images";
+            case "toolbar":
+                return "Unlock the full editing experience";
+            default:
+                return "Unlock the full editing experience";
+        }
+    }, [accessPaywallContext]);
+
+    const openAccessPaywall = useCallback((context: "panel" | "images" | "toolbar") => {
+        setAccessPaywallContext(context);
+        setShowAccessUpgradePaywall(true);
+    }, []);
 
     function normalizeAiEditCreatedAt(raw: any): string {
         if (!raw) return "";
@@ -1432,12 +1466,11 @@ function AppPreviewEditorCore({
 
     const [isDraggingPreview, setIsDraggingPreview] = useState(false);
     const shouldRunPreviewTour = !isCompactLayout && isDevCodeMode && shouldShowTour;
-    const shouldShowAccessPaywall =
+    const shouldLockPreviewPanels =
         accessLocked &&
         !isAdmin &&
-        !isCompactLayout &&
-        (!shouldRunPreviewTour || hasCompletedPreviewTour) &&
-        !hasDismissedAccessPaywall;
+        !authLoading &&
+        (!shouldRunPreviewTour || hasCompletedPreviewTour);
 
     // 1) Per-session counters
     const sessionCountersRef = useRef<EditorSessionCounters>({
@@ -4614,10 +4647,6 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
 
     const openSidePanelMode = useCallback(
         (nextMode: "style" | "meta" | "code" | "ai-library" | "revision-chat") => {
-            if (nextMode === "ai-library" && shouldLockImagesTab) {
-                setShowDeployUpgradePaywall(true);
-                return;
-            }
             const resolvedMode = nextMode === "revision-chat" ? "style" : nextMode;
             setSidePanelMode(resolvedMode);
             setSidebarHidden(false);
@@ -4633,7 +4662,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                 setMobileTab("panel");
             }
         },
-        [handleModeClick, isCompactLayout, isDevCodeMode, mode, shouldLockImagesTab],
+        [handleModeClick, isCompactLayout, isDevCodeMode, mode],
     );
 
     const openScreenshotMode = useCallback(() => {
@@ -4671,12 +4700,11 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
     const iframeWrapperRef = useRef<HTMLDivElement | null>(null);
     const filesHydrationCompletionTimerRef = useRef<number | null>(null);
     const filesHydrationLoaderHideTimerRef = useRef<number | null>(null);
-    const isSidebarOpen = isCompactLayout ? mobileTab === "panel" : !sidebarHidden;
+    const isSidebarOpen = shouldLockPreviewPanels || (isCompactLayout ? mobileTab === "panel" : !sidebarHidden);
     const showSidebarPanel = isCompactLayout ? mobileTab === "panel" : true;
     const shouldShowFilesHydrationLoader =
         (filesHydrationLoaderMounted || filesHydrationCompletionHold) &&
         (hasActiveFilesHydrationProgress || !isFilesHydrated || !isPreviewReady) &&
-        !shouldShowAccessPaywall &&
         mode !== "screenshot";
     const [filesHydrationAnchorRect, setFilesHydrationAnchorRect] = useState<{
         top: number;
@@ -5032,23 +5060,6 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
             tabIndex={-1}
             className="h-full w-full bg-white flex flex-col"
         >
-            <WebsitePrePaywall
-                open={shouldShowAccessPaywall}
-                onClose={() => {
-                    setHasDismissedAccessPaywall(true);
-                }}
-                onStartCheckout={() => {
-                    void onRequestDeployCheckout?.();
-                }}
-                checkoutBusy={exporting}
-                zIndexClassName="z-[9999999999]"
-                title="Start your 7-day free trial to unlock the editor"
-                description="You can see the website in the background, but editing is locked until you subscribe."
-                primaryLabel={TRIAL_CTA_LABEL}
-                secondaryLabel="No thanks, continue with limited features"
-                footerNote="Cancel anytime before renewal."
-            />
-
             {shouldRunPreviewTour ? (
                 <PreviewEditorTour
                     startToken={previewTourStartToken}
@@ -5386,11 +5397,15 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
 
                             {/* Panel body */}
                             <div
-                                className={`min-h-0 flex-1 overflow-y-auto px-2 py-5 ${
+                                className={`relative min-h-0 flex-1 overflow-y-auto px-2 py-5 ${
                                     isCompactLayout ? "pb-36" : "pb-44"
                                 } ${!isCompactLayout && !isSidebarOpen ? "pointer-events-none select-none opacity-0" : "opacity-100"}`}
                                 aria-hidden={!isCompactLayout && !isSidebarOpen}
                             >
+                                {shouldLockPreviewPanels ? (
+                                    <PanelLockOverlay label="Unlock" onClick={() => openAccessPaywall("panel")} />
+                                ) : null}
+                                <div className={shouldLockPreviewPanels ? "pointer-events-none select-none blur-[2px] opacity-50" : ""}>
                                 {/* STYLE MODE BODY */}
                                 {(isCompactLayout || isSidebarOpen) && !controlsCollapsed && sidePanelMode === "style" && (
                                     <>
@@ -5906,16 +5921,26 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                 )}
 
                                 {(isCompactLayout || isSidebarOpen) && sidePanelMode === "ai-library" && (
-                                    <AiImageLibraryPanel
-                                        iframeRef={iframeRef}
-                                        user={user}
-                                        renderId={draftId ?? null}
-                                        selectionMeta={selectionMeta}
-                                        isVercelConnected={Boolean(isVercelConnected)}
-                                        onConnectVercel={onConnectVercel}
-                                        hasVercelProject={hasVercelProject}
-                                        onPrepareVercelProject={onPrepareVercelProject}
-                                    />
+                                    <div className="relative">
+                                        <div className={shouldLockImagesTab ? "pointer-events-none select-none blur-[2px] opacity-50" : ""}>
+                                            <AiImageLibraryPanel
+                                                iframeRef={iframeRef}
+                                                user={user}
+                                                renderId={draftId ?? null}
+                                                selectionMeta={selectionMeta}
+                                                isVercelConnected={Boolean(isVercelConnected)}
+                                                onConnectVercel={onConnectVercel}
+                                                hasVercelProject={hasVercelProject}
+                                                onPrepareVercelProject={onPrepareVercelProject}
+                                            />
+                                        </div>
+                                        {shouldLockImagesTab ? (
+                                            <PanelLockOverlay
+                                                label="Unlock"
+                                                onClick={() => openAccessPaywall("images")}
+                                            />
+                                        ) : null}
+                                    </div>
                                 )}
 
                                 {(isCompactLayout || isSidebarOpen) && sidePanelMode === "meta" && (
@@ -5927,6 +5952,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                         onSaveMeta={handleSaveMetaForCurrentPage}
                                     />
                                 )}
+                                </div>
 
                             </div>
                         </motion.aside>
@@ -6857,7 +6883,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                     )}
                 </div>
 
-                {!aiEditing && !isCompactLayout && !shouldShowAccessPaywall && typeof document !== "undefined" ? (
+                {!aiEditing && !isCompactLayout && typeof document !== "undefined" ? (
                     createPortal(
                 <FloatingBlockToolbar
                             iframeRef={iframeRef}
@@ -6865,9 +6891,11 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                             selectionMeta={selectionMeta}
                             uiScale={0}
                             docked
-                            dockedOpen={showRightSidebarToggle ? (!rightSidebarHidden || shouldRunPreviewTour) : true}
+                            dockedOpen={shouldLockPreviewPanels || (showRightSidebarToggle ? (!rightSidebarHidden || shouldRunPreviewTour) : true)}
                             onDockedToggle={() => setRightSidebarHidden((current) => !current)}
                             showDockToggle={showRightSidebarToggle}
+                            locked={shouldLockPreviewPanels}
+                            onLockedClick={() => openAccessPaywall("toolbar")}
                         />,
                         document.body,
                     )
@@ -6964,6 +6992,22 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                         document.body,
                     )
                     : null}
+
+                <WebsitePrePaywall
+                    open={showAccessUpgradePaywall}
+                    onClose={() => setShowAccessUpgradePaywall(false)}
+                    onStartCheckout={() => {
+                        setShowAccessUpgradePaywall(false);
+                        void onRequestDeployCheckout?.();
+                    }}
+                    checkoutBusy={exporting}
+                    zIndexClassName="z-[30000]"
+                    title={accessPaywallTitle}
+                    description="Upgrade to unlock editing, keep your momentum, and turn your changes into a live website."
+                    primaryLabel={TRIAL_CTA_LABEL}
+                    secondaryLabel="No thanks, continue with limited features"
+                    footerNote="Cancel anytime before renewal."
+                />
 
                 <WebsitePrePaywall
                     open={showDeployUpgradePaywall}

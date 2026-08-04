@@ -49,7 +49,7 @@ export function WebsitePrePaywall({
         "Subscriptions starting at only $4.99/wk.",
     ],
     primaryLabel = TRIAL_CTA_LABEL,
-    secondaryLabel = "No thanks, I don't want this website",
+    secondaryLabel = "No thanks, continue with limited features",
     footerNote = "Cancel anytime before renewal.",
 }: WebsitePrePaywallProps) {
     useEffect(() => {
