@@ -13,8 +13,8 @@ const DEFAULT_EXIT_CODE = "DEPLOY40";
 
 function resolveRecoveryPriceId(isProd: boolean): string | null {
     return isProd
-        ? process.env.STRIPE_PRICE_BASIC_PROD || process.env.STRIPE_PRICE_PRO_PROD
-        : process.env.STRIPE_PRICE_BASIC_TEST || process.env.STRIPE_PRICE_PRO_TEST;
+        ? process.env.STRIPE_PRICE_BASIC_PROD || process.env.STRIPE_PRICE_PRO_PROD || null
+        : process.env.STRIPE_PRICE_BASIC_TEST || process.env.STRIPE_PRICE_PRO_TEST || null;
 }
 
 function pickExitPromoId(isProd: boolean) {
