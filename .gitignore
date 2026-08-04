@@ -16,3 +16,4 @@ certificates
 .gitignore
 .github/prompts/backend-embedding-sanitization.prompt.md
 next-env.d.ts
+.env.example

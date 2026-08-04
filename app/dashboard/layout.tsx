@@ -9,6 +9,7 @@ import {
 } from "firebase/auth";
 import { auth, db } from "@/lib/firebase";
 import { resetAuthClientCaches } from "@/lib/auth-client";
+import { checkSignupBlocklist } from "@/lib/signupBlocklistClient";
 import { collection, onSnapshot, DocumentData } from "firebase/firestore";
 import Link from "next/link";
 import Image from "next/image";
@@ -686,6 +687,26 @@ export default function AppShellLayout({ children }: { children: ReactNode }) {
         const off = onAuthStateChanged(auth, async (u) => {
             if (!u) {
                 router.replace("/login?next=/dashboard");
+                return;
+            }
+
+            const blocked = await checkSignupBlocklist(u.email).catch(() => ({ blocked: false, reason: null }));
+            if (blocked.blocked) {
+                try {
+                    await fetch("/api/auth/session", {
+                        method: "DELETE",
+                        credentials: "include",
+                    });
+                } catch {
+                    // ignore
+                }
+                resetAuthClientCaches();
+                try {
+                    await signOut(auth);
+                } catch {
+                    // ignore
+                }
+                router.replace(`/login?reason=blocked${blocked.reason ? `&message=${encodeURIComponent(blocked.reason)}` : ""}`);
                 return;
             }
 

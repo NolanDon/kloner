@@ -20,9 +20,11 @@ import {
     sendPasswordResetEmail,
     getIdToken,
     getAdditionalUserInfo,
+    signOut,
     type User,
 } from "firebase/auth";
-import { bootstrapServerSession, ensureSessionAndCsrf as ensureSessionAndCsrfImpl } from "@/lib/auth-client";
+import { bootstrapServerSession, ensureSessionAndCsrf as ensureSessionAndCsrfImpl, resetAuthClientCaches } from "@/lib/auth-client";
+import { checkSignupBlocklist } from "@/lib/signupBlocklistClient";
 import type { FirebaseError } from "firebase/app";
 import {
     collection,
@@ -96,31 +98,6 @@ function normalizeError(e: unknown): string {
     }
     if (e instanceof Error) return e.message;
     return "Request failed.";
-}
-
-async function checkSignupBlocklist(email?: string | null): Promise<{ blocked: boolean; reason: string | null }> {
-    try {
-        const res = await fetch("/api/private/signup-blocklist", {
-            method: "POST",
-            headers: {
-                "content-type": "application/json",
-            },
-            body: JSON.stringify({ email: email || null }),
-            credentials: "include",
-        });
-
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) {
-            return { blocked: false, reason: null };
-        }
-
-        return {
-            blocked: !!data?.blocked,
-            reason: typeof data?.reason === "string" && data.reason.trim() ? data.reason.trim() : null,
-        };
-    } catch {
-        return { blocked: false, reason: null };
-    }
 }
 
 async function ensureBestAuthPersistence(): Promise<void> {
@@ -429,6 +406,15 @@ export default function LoginPage(): JSX.Element {
         setResetSuccess("");
     }, [search]);
 
+    useEffect(() => {
+        const reason = (search.get("reason") || "").trim().toLowerCase();
+        if (reason !== "blocked") return;
+        setMode("signin");
+        setLoading(false);
+        setErr(search.get("message")?.trim() || "This account is blocked.");
+        setResetSuccess("");
+    }, [search]);
+
     // Initialize pendingUrl/pendingPrompt from query or localStorage
     useEffect(() => {
         let initial = search.get("u") || "";
@@ -491,6 +477,28 @@ export default function LoginPage(): JSX.Element {
         const unsub = onAuthStateChanged(auth, async (u) => {
             if (!u) return;
             try {
+                const blocked = await checkSignupBlocklist(u.email).catch(() => ({ blocked: false, reason: null }));
+                if (blocked.blocked) {
+                    try {
+                        await fetch("/api/auth/session", {
+                            method: "DELETE",
+                            credentials: "include",
+                        });
+                    } catch {
+                        // ignore
+                    }
+                    resetAuthClientCaches();
+                    try {
+                        await signOut(auth);
+                    } catch {
+                        // ignore
+                    }
+                    setErr(blocked.reason || "This account is blocked.");
+                    setLoading(false);
+                    router.replace("/login?reason=blocked");
+                    return;
+                }
+
                 await setSessionCookie();
 
                 const pendingP = pendingPrompt?.trim();
