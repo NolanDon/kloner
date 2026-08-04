@@ -6918,24 +6918,6 @@ export default function AppBuilderEditor({
                                     ) : null}
 
                                     {isDev ? (
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                setTabletControlsOpen(false);
-                                                if (viewMode !== "ai") {
-                                                    void requestViewModeChange("ai");
-                                                }
-                                                setTopupModalTrigger((prev) => prev + 1);
-                                            }}
-                                            className="flex w-full items-center gap-2 border-b border-neutral-100 px-4 py-3 text-left text-sm font-semibold text-neutral-800 hover:bg-neutral-50"
-                                            title="Top up AI credits"
-                                        >
-                                            <span>Top up credits</span>
-                                            <DevOnlyIconBadge title="Development-only billing quick action" />
-                                        </button>
-                                    ) : null}
-
-                                    {isDev ? (
                                         <div className="border-b border-neutral-100 px-4 py-3 text-sm">
                                             <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-neutral-500">Current file</div>
                                             <div className="mt-1 truncate font-medium text-neutral-800">{currentFile || "(none)"}</div>
@@ -7341,7 +7323,7 @@ export default function AppBuilderEditor({
                                             viewMode === "images"
                                                 ? `bg-neutral-100 text-neutral-900 border border-neutral-300 shadow-sm ${activeTabGlowClass}`
                                                 : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50"
-                                        } ${(isModeSwitching || shouldLockImagesTab) ? "opacity-60 cursor-not-allowed" : ""}`}
+                                        } ${(isModeSwitching) ? "opacity-60 cursor-not-allowed" : ""}`}
                                         title={shouldLockImagesTab ? "Images are available on Pro and Agency plans" : "Images"}
                                     >
                                         {isModeSwitching && viewMode !== "images" ? (
@@ -7350,11 +7332,6 @@ export default function AppBuilderEditor({
                                             <Images className="h-4 w-4" />
                                         )}
                                         <span>Images</span>
-                                        {shouldLockImagesTab ? (
-                                            <span className="inline-flex items-center rounded-full border border-neutral-300 bg-white px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-neutral-500">
-                                                Pro
-                                            </span>
-                                        ) : null}
                                     </button>
                                 {/* ) : null} */}
                                 {/* {!IS_PRODUCTION ? ( */}

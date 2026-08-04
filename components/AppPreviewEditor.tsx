@@ -11,7 +11,7 @@ import WebsitePrePaywall from "./WebsitePrePaywall";
 import { useModal } from "@/components/ui/ModalContext";
 import { pickPreferredHtmlPath } from "@/src/lib/htmlEntrypoint";
 import { useHtmlDiscoveryFallbackGate } from "@/src/lib/htmlDiscoveryGate";
-import { hasSeenPreviewTour, PreviewEditorTour, TOUR_KEY as PREVIEW_TOUR_STORAGE_KEY } from "./PreviewEditorTour";
+import { PreviewEditorTour, TOUR_KEY as PREVIEW_TOUR_STORAGE_KEY } from "./PreviewEditorTour";
 import { ensureUserImageStorageRoom, IMAGE_STORAGE_LIMIT_BYTES, loadUserImageStorageUsage, uploadUserImageToFirebase } from "@/src/lib/imageStorage";
 import { getResponsiveUiScale } from "@/src/lib/uiScale";
 
@@ -1300,7 +1300,7 @@ function AppPreviewEditorCore({
     const [exportPrompt, setExportPrompt] = useState(false);
     const [showDeployUpgradePaywall, setShowDeployUpgradePaywall] = useState(false);
     const shouldShowTour = typeof showTour === "boolean" ? showTour : true;
-    const [hasCompletedPreviewTour, setHasCompletedPreviewTour] = useState(() => hasSeenPreviewTour());
+    const [hasCompletedPreviewTour, setHasCompletedPreviewTour] = useState(false);
     const [hasDismissedAccessPaywall, setHasDismissedAccessPaywall] = useState(false);
     const [controlsCollapsed, setControlsCollapsed] = useState<boolean>(false);
     const [sidePanelMode, setSidePanelMode] = useState<
@@ -1435,6 +1435,7 @@ function AppPreviewEditorCore({
     const shouldShowAccessPaywall =
         accessLocked &&
         !isAdmin &&
+        !isCompactLayout &&
         (!shouldRunPreviewTour || hasCompletedPreviewTour) &&
         !hasDismissedAccessPaywall;
 

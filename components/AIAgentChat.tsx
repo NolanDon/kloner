@@ -3232,7 +3232,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                 id: `error_${Date.now()}`,
                 role: "assistant",
                 content:
-                    `You have used all AI edit credits for this month.\nAdd credits: ${topup}`,
+                    `You have used all AI edit credits for this month. Click below to topup.\n ${topup}`,
                 timestamp: new Date(),
                 type: "text",
             };
