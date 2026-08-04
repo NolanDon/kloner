@@ -81,16 +81,18 @@ function resolveCheckoutPriceId(plan: string, isProd: boolean): string | null {
     const normalizedPlan = String(plan || "").trim().toLowerCase();
     if (normalizedPlan === "agency") {
         return isProd
-            ? process.env.STRIPE_PRICE_AGENCY_PROD || process.env.STRIPE_PRICE_PRO_AGENCY
-            : process.env.STRIPE_PRICE_AGENCY_TEST;
+            ? process.env.STRIPE_PRICE_AGENCY_PROD || process.env.STRIPE_PRICE_PRO_AGENCY || null
+            : process.env.STRIPE_PRICE_AGENCY_TEST || null;
     }
 
     if (normalizedPlan === "pro" || normalizedPlan === "basic") {
         return isProd
             ? process.env.STRIPE_PRICE_BASIC_PROD ||
-                  process.env.STRIPE_PRICE_PRO_PROD
+                  process.env.STRIPE_PRICE_PRO_PROD ||
+                  null
             : process.env.STRIPE_PRICE_BASIC_TEST ||
-                  process.env.STRIPE_PRICE_PRO_TEST;
+                  process.env.STRIPE_PRICE_PRO_TEST ||
+                  null;
     }
 
     return null;
