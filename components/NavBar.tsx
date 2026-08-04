@@ -98,8 +98,8 @@ export default function NavBar(): JSX.Element {
   const baseNav: NavItem[] = br?.nav ?? [];
 
   const extraNav: NavItem[] = [
-    { label: "Tools", href: "/tools" },
-    { label: "Community", href: "/community-builds" },
+    // { label: "Tools", href: "/tools" },
+    // { label: "Community", href: "/community-builds" },
     { label: "Docs", href: "/dashboard/docs" },
     { label: "Blog", href: "/blog" },
     { label: "Pricing", href: "/price" },

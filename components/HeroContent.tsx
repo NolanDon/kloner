@@ -143,7 +143,7 @@ export default function HeroContent({
         </form>
 
         <div className="mt-[clamp(1rem,3.8vh,3rem)] flex justify-center">
-          <a
+          {/* <a
             href="/community-builds"
             className="group inline-flex items-center gap-2 text-white/80 hover:text-white transition-all"
           >
@@ -151,7 +151,7 @@ export default function HeroContent({
               Explore community clones
             </span>
             <ArrowRightSquare className="h-4 w-4 transition-transform group-hover:translate-x-1" />
-          </a>
+          </a> */}
         </div>
       </motion.div>
     </div>

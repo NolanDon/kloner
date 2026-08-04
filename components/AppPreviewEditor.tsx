@@ -146,7 +146,7 @@ const ACCENT = "#f55f2a";
 const SAVE_NUDGE_KEY = "kloner_save_nudge_seen";
 const PREVIEW_SIDEBAR_KEY = "kloner:preview-sidebar-collapsed";
 const PREVIEW_RIGHT_SIDEBAR_KEY = "kloner:preview-right-sidebar-collapsed";
-const PREVIEW_SIDEBAR_OPEN_WIDTH = 360;
+const PREVIEW_SIDEBAR_OPEN_WIDTH = 300;
 const PREVIEW_SIDEBAR_COLLAPSED_WIDTH = 56;
 
 function PanelLockOverlay({ label = "Unlock", onClick }: { label?: string; onClick?: () => void }) {
@@ -5416,11 +5416,11 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                     <>
                                         {mode === "preview" && (
                                             <div
-                                                className="mt-1 text-sm leading-6"
+                                                className="mt-1 text-[11px] leading-5"
                                                 id="kloner-selection-style"
                                             >
                                                 <div className="mb-3 flex items-center justify-between border-b border-neutral-200 pb-1.5">
-                                                    <div className="text-sm font-semibold text-neutral-800">
+                                                    <div className="text-[11px] font-semibold text-neutral-800">
                                                         {selectionMeta.has
                                                             ? selectionMeta.tagName || "Element"
                                                             : "Select element to style"}
@@ -5430,15 +5430,15 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                     </div>
                                                 </div>
 
-                                                <div className="max-h-64 space-y-4 overflow-y-auto pr-1 text-sm leading-6 lg:max-h-none">
+                                                <div className="max-h-64 space-y-4 overflow-y-auto pr-1 text-[11px] leading-5 lg:max-h-none">
                                                     <div className="space-y-4">
-                                                        <div className="text-[13px] font-medium text-neutral-800">
+                                                        <div className="text-[11px] font-medium text-neutral-800">
                                                             {themeColorSectionLabel}
                                                         </div>
 
                                                         <div>
                                                             <div className="mb-2 border-b border-neutral-200 pb-1">
-                                                                <div className="inline-flex items-center gap-2 text-sm font-semibold text-neutral-800">
+                                                                <div className="inline-flex items-center gap-2 text-[11px] font-semibold text-neutral-800">
                                                                     <Palette className="h-4 w-4 text-neutral-500" />
                                                                     Text
                                                                 </div>
@@ -5489,7 +5489,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
 
                                                         <div>
                                                             <div className="mb-2 border-b border-neutral-200 pb-1">
-                                                                <div className="inline-flex items-center gap-2 text-sm font-semibold text-neutral-800">
+                                                                <div className="inline-flex items-center gap-2 text-[11px] font-semibold text-neutral-800">
                                                                     <Palette className="h-4 w-4 text-neutral-500" />
                                                                     Background
                                                                 </div>
@@ -5559,13 +5559,13 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                     {/* Font */}
                                                     <div>
                                                         <div className="mb-3 border-b border-neutral-200 pb-1">
-                                                            <div className="inline-flex items-center gap-2 text-sm font-semibold text-neutral-800">
+                                                            <div className="inline-flex items-center gap-2 text-[11px] font-semibold text-neutral-800">
                                                                 <SlidersHorizontal className="h-4 w-4 text-neutral-500" />
                                                                 Font
                                                             </div>
                                                         </div>
                                                         <select
-                                                            className="w-full rounded border border-neutral-300 bg-white px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-neutral-400 disabled:opacity-50"
+                                                            className="w-full rounded border border-neutral-300 bg-white px-3 py-2 text-[11px] shadow-sm focus:outline-none focus:ring-1 focus:ring-neutral-400 disabled:opacity-50"
                                                             disabled={closing}
                                                             onChange={(e) => {
                                                                 const opt = FONT_OPTIONS.find(
@@ -5597,7 +5597,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                     {/* Size & headings */}
                                                     <div>
                                                         <div className="mb-3 border-b border-neutral-200 pb-1">
-                                                            <div className="inline-flex items-center gap-2 text-sm font-semibold text-neutral-800">
+                                                            <div className="inline-flex items-center gap-2 text-[11px] font-semibold text-neutral-800">
                                                                 <SlidersHorizontal className="h-4 w-4 text-neutral-500" />
                                                                 Size
                                                             </div>
@@ -5625,7 +5625,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                     {/* Text align */}
                                                     <div>
                                                         <div className="mb-3 border-b border-neutral-200 pb-1">
-                                                            <div className="inline-flex items-center gap-2 text-sm font-semibold text-neutral-800">
+                                                            <div className="inline-flex items-center gap-2 text-[11px] font-semibold text-neutral-800">
                                                                 <SlidersHorizontal className="h-4 w-4 text-neutral-500" />
                                                                 Align
                                                             </div>
@@ -5657,7 +5657,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                     {/* Weight & transform */}
                                                     <div>
                                                         <div className="mb-3 border-b border-neutral-200 pb-1">
-                                                            <div className="inline-flex items-center gap-2 text-sm font-semibold text-neutral-800">
+                                                            <div className="inline-flex items-center gap-2 text-[11px] font-semibold text-neutral-800">
                                                                 <SlidersHorizontal className="h-4 w-4 text-neutral-500" />
                                                                 Weight
                                                             </div>
@@ -5735,7 +5735,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                     {/* Text transform */}
                                                     <div>
                                                         <div className="mb-3 border-b border-neutral-200 pb-1">
-                                                            <div className="inline-flex items-center gap-2 text-sm font-semibold text-neutral-800">
+                                                            <div className="inline-flex items-center gap-2 text-[11px] font-semibold text-neutral-800">
                                                                 <SlidersHorizontal className="h-4 w-4 text-neutral-500" />
                                                                 Transform
                                                             </div>
@@ -5773,7 +5773,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                     {/* Spacing */}
                                                     <div>
                                                         <div className="mb-3 border-b border-neutral-200 pb-1">
-                                                            <div className="inline-flex items-center gap-2 text-sm font-semibold text-neutral-800">
+                                                            <div className="inline-flex items-center gap-2 text-[11px] font-semibold text-neutral-800">
                                                                 <SlidersHorizontal className="h-4 w-4 text-neutral-500" />
                                                                 Spacing
                                                             </div>
@@ -5825,7 +5825,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                     {/* Layout */}
                                                     <div>
                                                         <div className="mb-3 border-b border-neutral-200 pb-1">
-                                                            <div className="inline-flex items-center gap-2 text-sm font-semibold text-neutral-800">
+                                                            <div className="inline-flex items-center gap-2 text-[11px] font-semibold text-neutral-800">
                                                                 <SlidersHorizontal className="h-4 w-4 text-neutral-500" />
                                                                 Layout
                                                             </div>

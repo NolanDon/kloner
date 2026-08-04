@@ -516,7 +516,7 @@ function BlockToolbar({
         label: string;
     }) => (
         <div className="mb-2 border-b border-neutral-200 pb-1">
-            <div className="inline-flex items-center gap-2 text-sm font-semibold text-neutral-800">
+            <div className="inline-flex items-center gap-2 text-[11px] font-semibold text-neutral-800">
                 <Icon className="h-4 w-4 text-neutral-500" />
                 <span>{label}</span>
             </div>
@@ -1067,7 +1067,7 @@ export function FloatingBlockToolbar({
 
     const PANEL_W = 260;
     const PANEL_H = 520;
-    const DOCKED_SIDEBAR_OPEN_WIDTH = 360;
+    const DOCKED_SIDEBAR_OPEN_WIDTH = 200;
     const DOCKED_SIDEBAR_COLLAPSED_WIDTH = 56;
 
     useEffect(() => {
