@@ -4234,27 +4234,6 @@ export default function PreviewPage(): JSX.Element {
         blocked?: boolean;
     }>>([]);
     const pendingCreatedAppLaunchRequestedRef = useRef<string | null>(null);
-    const appBuilderReadinessWaitersRef = useRef<Record<string, Promise<boolean>>>({});
-    const isAppReadyForEditor = useCallback((app: any | null | undefined): boolean => {
-        if (!app || typeof app !== "object") return false;
-
-        const status = String((app as any)?.status || (app as any)?.generationStatus || (app as any)?.generation?.status || "").toLowerCase();
-        const generationStage = String((app as any)?.generation?.stage || "").toLowerCase();
-        const files = (app as any)?.files;
-        const fileCount = Number((app as any)?.fileCount ?? (app as any)?.filesCount ?? 0);
-        const hasFiles =
-            Boolean(files && typeof files === "object" && !Array.isArray(files) && Object.keys(files).length > 0) ||
-            (Number.isFinite(fileCount) && fileCount > 0);
-        const terminalStatus = ["error", "failed", "blocked", "cancelled", "canceled"];
-        const terminalGenerationStage = ["error", "failed"];
-        const isTerminal =
-            terminalStatus.includes(status) ||
-            terminalGenerationStage.includes(generationStage);
-
-        // For URL-generated apps, the presence of a non-empty file tree is the real signal
-        // that the editor can open safely. Status fields can lag behind or stay transitional.
-        return hasFiles && !isTerminal;
-    }, []);
     const draftPromotionInFlightRef = useRef<Record<string, true>>({});
     const promoteDraftToAppRef = useRef<((draft: {
         draftId: string;
@@ -4293,110 +4272,9 @@ export default function PreviewPage(): JSX.Element {
         return true;
     }, []);
 
-    const waitForAppBuilderReadiness = useCallback(async (args: {
-        appId: string | null;
-        initialHint?: AppBuilderReadinessHint | null;
-    }): Promise<boolean> => {
-        const nextId = typeof args.appId === "string" ? args.appId.trim() : "";
-        if (!nextId) return false;
-
-        const existingWaiter = appBuilderReadinessWaitersRef.current[nextId];
-        if (existingWaiter) {
-            return existingWaiter;
-        }
-
-        const waiterPromise = (async () => {
-            const hint = args.initialHint || null;
-            if (hint?.readyForEditor === true || hint?.openable === true) {
-                return true;
-            }
-
-            const filesUrl = hint?.filesUrl || `/api/app-builder/${encodeURIComponent(nextId)}/files`;
-            const scopeUrl = hint?.scopeUrl || `/api/app-builder/${encodeURIComponent(nextId)}/scope`;
-            const start = Date.now();
-            const maxWaitMs = 2 * 60 * 1000;
-            const maxAttempts = 36;
-            let delayMs = Math.max(500, hint?.nextPollAfterMs || 1000);
-            let attempt = 0;
-
-            const readResponseBody = async (res: Response) => {
-                try {
-                    return await res.json();
-                } catch {
-                    return null;
-                }
-            };
-
-            while (Date.now() - start < maxWaitMs && attempt < maxAttempts) {
-                attempt += 1;
-
-                const [filesRes, scopeRes] = await Promise.all([
-                    fetch(filesUrl, {
-                        method: "GET",
-                        credentials: "include",
-                        cache: "no-store",
-                    }),
-                    fetch(scopeUrl, {
-                        method: "GET",
-                        credentials: "include",
-                        cache: "no-store",
-                    }),
-                ]);
-
-                const [filesBody, scopeBody] = await Promise.all([
-                    readResponseBody(filesRes),
-                    readResponseBody(scopeRes),
-                ]);
-
-                if (filesRes.status === 200 && scopeRes.status === 200) {
-                    return true;
-                }
-
-                const first422 = filesRes.status === 422 ? filesBody : scopeRes.status === 422 ? scopeBody : null;
-                if (first422) {
-                    throw new Error(
-                        String(first422?.error || first422?.message || first422?.detail || "This app is not ready yet.")
-                    );
-                }
-
-                const first404 = filesRes.status === 404 ? filesBody : scopeRes.status === 404 ? scopeBody : null;
-                if (first404) {
-                    throw new Error(
-                        String(first404?.error || first404?.message || "App not found")
-                    );
-                }
-
-                const retryableStatus = [filesRes.status, scopeRes.status].some((status) => status === 202 || status === 409);
-                if (!retryableStatus) {
-                    const fallbackMessage =
-                        String(filesBody?.error || filesBody?.message || scopeBody?.error || scopeBody?.message || "This app is still preparing.");
-                    if (filesRes.ok && scopeRes.ok) {
-                        return true;
-                    }
-                    if (attempt >= maxAttempts || Date.now() - start >= maxWaitMs) {
-                        throw new Error(fallbackMessage);
-                    }
-                }
-
-                await sleep(delayMs);
-                delayMs = Math.min(5000, Math.max(delayMs * 1.35, 500));
-            }
-
-            throw new Error("This app is still preparing. Please try again in a moment.");
-        })();
-
-        appBuilderReadinessWaitersRef.current[nextId] = waiterPromise;
-        return waiterPromise.finally(() => {
-            if (appBuilderReadinessWaitersRef.current[nextId] === waiterPromise) {
-                delete appBuilderReadinessWaitersRef.current[nextId];
-            }
-        });
-    }, []);
-
-    const openAppBuilderWithCookieGate = useCallback(async (appId: string | null, initialViewMode: "ai" | "custom" = "ai", initialHint?: AppBuilderReadinessHint | null) => {
+    const openAppBuilderWithCookieGate = useCallback(async (appId: string | null, initialViewMode: "ai" | "custom" = "ai") => {
         const nextId = typeof appId === "string" ? appId.trim() : "";
         if (!nextId) return;
-        if (appBuilderOpen && currentAppId === nextId) return;
         if (blockedUrlGenerationAppId && nextId === blockedUrlGenerationAppId) {
             setAppBuilderOpen(false);
             setPendingAppBuilderAppId(null);
@@ -4415,24 +4293,11 @@ export default function PreviewPage(): JSX.Element {
             );
             return;
         }
-        try {
-            const ready = await waitForAppBuilderReadiness({ appId: nextId, initialHint: initialHint || null });
-            if (!ready) {
-                throw new Error("This app is still preparing. Please try again in a moment.");
-            }
-            setAppBuilderInitialViewMode(isMobileViewport ? "ai" : initialViewMode);
-            setCurrentAppId(nextId);
-            setPendingAppBuilderAppId(null);
-            setAppBuilderOpen(true);
-        } catch (error: any) {
-            const message = String(error?.message || "This app is still preparing. Please try again in a moment.");
-            setAppBuilderOpen(false);
-            setPendingAppBuilderAppId(null);
-            setCurrentAppId(null);
-            setAppBuilderInitialViewMode("ai");
-            setErr(message);
-        }
-    }, [appBuilderOpen, blockedUrlGenerationAppId, currentAppId, isMobileViewport, isTrialAccessRevoked, setErr, waitForAppBuilderReadiness]);
+        setAppBuilderInitialViewMode(isMobileViewport ? "ai" : initialViewMode);
+        setCurrentAppId(nextId);
+        setPendingAppBuilderAppId(null);
+        setAppBuilderOpen(true);
+    }, [blockedUrlGenerationAppId, isMobileViewport, isTrialAccessRevoked, showAlert]);
 
     const openAppBuilderPreviewFirstWithCookieGate = useCallback((appId: string | null) => {
         void openAppBuilderWithCookieGate(appId, isMobileViewport ? "ai" : "custom");
@@ -5980,15 +5845,6 @@ export default function PreviewPage(): JSX.Element {
 
     type UrlGenerationResponse = UrlGenerationAcceptedResponse | UrlGenerationTerminalResponse;
 
-    type AppBuilderReadinessHint = {
-        readyForEditor: boolean | null;
-        openable: boolean | null;
-        editorState: string | null;
-        nextPollAfterMs: number | null;
-        filesUrl: string | null;
-        scopeUrl: string | null;
-    };
-
     function isBlockedUrlScanSignal(...parts: Array<unknown>): boolean {
         const text = parts
             .map((part) => String(part || "").trim())
@@ -6195,57 +6051,6 @@ export default function PreviewPage(): JSX.Element {
         };
     }
 
-    function parseAppBuilderReadinessHint(data: any): AppBuilderReadinessHint {
-        const responseData: any = data || {};
-        const promotion = responseData?.promotion && typeof responseData.promotion === "object" ? responseData.promotion : null;
-        const contract = responseData?.contract && typeof responseData.contract === "object" ? responseData.contract : null;
-        const poll = promotion?.poll && typeof promotion.poll === "object" ? promotion.poll : null;
-
-        const resolveBool = (...values: Array<unknown>): boolean | null => {
-            for (const value of values) {
-                if (typeof value === "boolean") return value;
-                if (typeof value === "string") {
-                    const normalized = value.trim().toLowerCase();
-                    if (normalized === "true") return true;
-                    if (normalized === "false") return false;
-                    if (["ready", "open", "openable", "available", "complete", "completed"].includes(normalized)) return true;
-                    if (["processing", "queued", "pending", "booting", "building", "error", "failed"].includes(normalized)) return false;
-                }
-            }
-            return null;
-        };
-
-        const editorState = typeof responseData?.editorState === "string" && responseData.editorState.trim()
-            ? responseData.editorState.trim()
-            : null;
-        const nextPollAfterMs = typeof responseData?.nextPollAfterMs === "number" && Number.isFinite(responseData.nextPollAfterMs)
-            ? Math.max(0, Math.floor(responseData.nextPollAfterMs))
-            : null;
-
-        return {
-            readyForEditor: resolveBool(
-                responseData?.readyForEditor,
-                promotion?.readyForEditor,
-                contract?.readyForEditor,
-                responseData?.openable,
-                promotion?.openable,
-                contract?.openable,
-            ),
-            openable: resolveBool(
-                responseData?.openable,
-                promotion?.openable,
-                contract?.openable,
-                responseData?.readyForEditor,
-                promotion?.readyForEditor,
-                contract?.readyForEditor,
-            ),
-            editorState,
-            nextPollAfterMs,
-            filesUrl: typeof poll?.filesUrl === "string" && poll.filesUrl.trim() ? poll.filesUrl.trim() : null,
-            scopeUrl: typeof poll?.scopeUrl === "string" && poll.scopeUrl.trim() ? poll.scopeUrl.trim() : null,
-        };
-    }
-
     function sleep(ms: number): Promise<void> {
         return new Promise((resolve) => window.setTimeout(resolve, ms));
     }
@@ -6414,7 +6219,6 @@ export default function PreviewPage(): JSX.Element {
                 if (shouldTreatAsSuccess) {
                     setUrlGenerationErrorDetails("");
                     const acceptedAny = parsed as any;
-                    const readinessHint = parseAppBuilderReadinessHint(data);
                     const archiveGenerationFormat = typeof data?.generationFormat === "string" && data.generationFormat === "html" ? "html" : "nextjs";
                     const archiveWarnings = Array.isArray(data?.warnings) ? data.warnings : [];
                     const resolvedAppId = acceptedAny?.kind === "accepted" && acceptedAny?.appId
@@ -6470,7 +6274,7 @@ export default function PreviewPage(): JSX.Element {
 
                     appId = resolvedAppId || pendingCreatedAppId || fallbackJobId || fallbackRequestId || appName;
                     if (resolvedAppId) {
-                        void openAppBuilderWithCookieGate(resolvedAppId, isMobileViewport ? "ai" : "custom", readinessHint);
+                        void openAppBuilderWithCookieGate(resolvedAppId, isMobileViewport ? "ai" : "custom");
                     }
                 } else {
                     const shouldPersistRescanWarning =
@@ -6835,10 +6639,6 @@ export default function PreviewPage(): JSX.Element {
             return;
         }
 
-        const pendingApp = apps.find((app) => app.id === pendingCreatedApp.id) || null;
-        if (!pendingApp) return;
-        if (!isAppReadyForEditor(pendingApp)) return;
-
         if (appBuilderOpen && currentAppId === pendingCreatedApp.id) {
             pendingCreatedAppLaunchRequestedRef.current = null;
             setPendingCreatedApp(null);
@@ -6865,7 +6665,6 @@ export default function PreviewPage(): JSX.Element {
         blockedUrlGenerationAppId,
         userTier,
         stripeStatus,
-        isAppReadyForEditor,
     ]);
 
     useEffect(() => {
