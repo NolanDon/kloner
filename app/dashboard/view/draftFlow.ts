@@ -328,6 +328,8 @@ export async function submitDashboardUrlDraft({
     setDraftApps,
     setPendingDraftApps,
     onDraftReady,
+    isGenerationInFlight,
+    setGenerationInFlight,
 }: {
     rawUrl: string;
     canUseScreenshotCredit: () => boolean;
@@ -340,6 +342,8 @@ export async function submitDashboardUrlDraft({
     setDraftApps: Setter<DashboardDraftCard[]>;
     setPendingDraftApps: Setter<Record<string, boolean>>;
     onDraftReady?: (draft: DashboardDraftCard) => void | Promise<void>;
+    isGenerationInFlight?: (canonicalUrl: string) => boolean;
+    setGenerationInFlight?: (canonicalUrl: string | null) => void;
 }): Promise<boolean> {
     // Clear any previous error/info as soon as a new submission begins
     setErr("");
@@ -361,7 +365,12 @@ export async function submitDashboardUrlDraft({
     }
 
     const canonical = normUrl(normalized);
+    if (isGenerationInFlight?.(canonical)) {
+        setWebsiteSubmissionPendingUrl((current) => (current === canonical ? current : current));
+        return false;
+    }
     setWebsiteSubmissionPendingUrl(canonical);
+    setGenerationInFlight?.(canonical);
 
     const draftCreatedAt = Date.now();
     const draftDocId = `draft_${draftCreatedAt}_${Math.random().toString(36).slice(2, 11)}`;
@@ -597,5 +606,7 @@ export async function submitDashboardUrlDraft({
         });
         setWebsiteSubmissionPendingUrl((current) => (current === canonical ? null : current));
         throw error;
+    } finally {
+        setGenerationInFlight?.(null);
     }
 }

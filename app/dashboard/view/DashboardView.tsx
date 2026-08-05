@@ -3208,7 +3208,7 @@ function AppCard({
                     ) : null
                 ) : null}
 
-        <div className={`mt-2 grid w-full gap-0.5 sm:mt-3 sm:gap-1 ${isDraftCard ? "grid-cols-4" : "grid-cols-3"}`}>
+        <div className={`mt-2 grid w-full gap-0.5 sm:mt-3 sm:gap-1 ${isDraftCard ? "grid-cols-4" : "grid-cols-4"}`}>
                     {isDraftCard ? (
                         <>
                             <div
@@ -3294,6 +3294,28 @@ function AppCard({
                         </>
                     ) : (
                         <>
+                            <div
+                                className="relative flex justify-center transition-all duration-500 ease-out md:translate-y-3 md:scale-90 md:opacity-0 md:pointer-events-none md:blur-[1px] md:group-hover:translate-y-0 md:group-hover:scale-100 md:group-hover:opacity-100 md:group-hover:pointer-events-auto md:group-hover:blur-0"
+                                style={{ transitionDelay: "0ms" }}
+                            >
+                                <span className="pointer-events-none absolute -bottom-6 left-1/2 -translate-x-1/2 whitespace-nowrap text-[10px] font-medium text-neutral-800 opacity-100 transition-opacity duration-150 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
+                                    Edit
+                                </span>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        if (disableActions || isPendingCreation || accessLocked || isBrokenDraftCard) return;
+                                        onCustomize(app.id);
+                                    }}
+                                    disabled={isDeleting || accessLocked || disableActions || isBrokenDraftCard || isPendingCreation}
+                                    className="inline-flex h-8 w-8 items-center justify-center rounded-2xl border border-neutral-300 bg-white text-neutral-700 shadow-sm transition-all duration-300 ease-out hover:border-[#f55f2a] hover:bg-[#f55f2a] hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+                                    title={accessLocked ? "Trial access was cancelled, so this app is locked in the dashboard" : suppressLivePromotionIssue ? "Open app editor" : appIssue?.message || "Open app editor"}
+                                    aria-label={suppressLivePromotionIssue ? "Open app editor" : appIssue?.message || "Open app editor"}
+                                >
+                                    <BrushIcon className="h-3.5 w-3.5" />
+                                </button>
+                            </div>
+
                             <div
                                 className="relative flex justify-center transition-all duration-500 ease-out md:translate-y-3 md:scale-90 md:opacity-0 md:pointer-events-none md:blur-[1px] md:group-hover:translate-y-0 md:group-hover:scale-100 md:group-hover:opacity-100 md:group-hover:pointer-events-auto md:group-hover:blur-0"
                                 style={{ transitionDelay: "0ms" }}
@@ -4238,6 +4260,7 @@ export default function PreviewPage(): JSX.Element {
     const serverDraftKeysRef = useRef<Set<string>>(new Set());
     const draftsApiLoadInFlightRef = useRef(false);
     const pendingUrlGenerationAppIdRef = useRef<string | null>(null);
+    const urlGenerationInFlightRef = useRef<string | null>(null);
     const buildFromCollectionRef = useRef<((storageKeys: string[]) => Promise<void>) | null>(null);
     const previousEditorOpenRef = useRef(false);
     const previousAppBuilderOpenRef = useRef(false);
@@ -4257,10 +4280,14 @@ export default function PreviewPage(): JSX.Element {
         return true;
     }, []);
 
-    const openAppBuilderWithCookieGate = useCallback(async (appId: string | null, initialViewMode: "ai" | "custom" = "ai") => {
+    const openAppBuilderWithCookieGate = useCallback(async (
+        appId: string | null,
+        initialViewMode: "ai" | "custom" = "ai",
+        opts?: { bypassBlockedUrlGenerationGuard?: boolean },
+    ) => {
         const nextId = typeof appId === "string" ? appId.trim() : "";
         if (!nextId) return;
-        if (blockedUrlGenerationAppId && nextId === blockedUrlGenerationAppId) {
+        if (!opts?.bypassBlockedUrlGenerationGuard && blockedUrlGenerationAppId && nextId === blockedUrlGenerationAppId) {
             setAppBuilderOpen(false);
             setPendingAppBuilderAppId(null);
             setCurrentAppId(null);
@@ -4286,6 +4313,12 @@ export default function PreviewPage(): JSX.Element {
 
     const openAppBuilderPreviewFirstWithCookieGate = useCallback((appId: string | null) => {
         void openAppBuilderWithCookieGate(appId, isMobileViewport ? "ai" : "custom");
+    }, [isMobileViewport, openAppBuilderWithCookieGate]);
+
+    const openAppBuilderFromDashboardCard = useCallback((appId: string | null) => {
+        void openAppBuilderWithCookieGate(appId, isMobileViewport ? "ai" : "custom", {
+            bypassBlockedUrlGenerationGuard: true,
+        });
     }, [isMobileViewport, openAppBuilderWithCookieGate]);
 
     const openAppBuilderDirectly = useCallback((appId: string | null) => {
@@ -7609,6 +7642,10 @@ export default function PreviewPage(): JSX.Element {
             setWebsiteSubmissionPendingUrl,
             setDraftApps,
             setPendingDraftApps,
+            isGenerationInFlight: (canonicalUrl: string) => urlGenerationInFlightRef.current === canonicalUrl,
+            setGenerationInFlight: (canonicalUrl: string | null) => {
+                urlGenerationInFlightRef.current = canonicalUrl;
+            },
             onDraftReady: async (draft) => {
                 await promoteDraftToAppRef.current?.({
                     ...draft,
@@ -7944,33 +7981,42 @@ export default function PreviewPage(): JSX.Element {
             let archiveReady = await readArchiveSnapshot();
 
             if (!isReusableArchiveSnapshot(archiveReady)) {
-                const generateRes = await fetch("/api/private/generate", {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                        ...(csrf ? { "x-csrf": csrf } : {}),
-                    },
-                    credentials: "include",
-                    body: JSON.stringify({ url: normalized }),
-                });
-                const generatePayload: any = await generateRes.json().catch(() => ({}));
+                const generationAlreadyInFlight = urlGenerationInFlightRef.current === normalized;
 
-                if (!generateRes.ok && generateRes.status !== 202) {
-                    const errorMessage =
-                        String(generatePayload?.userMessage || generatePayload?.message || generatePayload?.error || "").trim() ||
-                        `Failed to queue URL scan (HTTP ${generateRes.status})`;
-                    updateScanState({
-                        phase: "error",
-                        status: "error",
-                        lastError: errorMessage,
-                        lastErrorCode: typeof generatePayload?.code === "string" ? generatePayload.code : String(generatePayload?.reason || generateRes.status),
-                        retry: typeof generatePayload?.retryable === "boolean" ? generatePayload.retryable : null,
-                        warningCode: typeof generatePayload?.warningCode === "string" ? generatePayload.warningCode : null,
-                        warningMessage: typeof generatePayload?.warningMessage === "string" ? generatePayload.warningMessage : null,
-                        warningAction: typeof generatePayload?.warningAction === "string" ? generatePayload.warningAction : null,
-                        updatedAt: Date.now(),
-                    });
-                    throw new Error(errorMessage);
+                if (!generationAlreadyInFlight) {
+                    urlGenerationInFlightRef.current = normalized;
+                    try {
+                        const generateRes = await fetch("/api/private/generate", {
+                            method: "POST",
+                            headers: {
+                                "Content-Type": "application/json",
+                                ...(csrf ? { "x-csrf": csrf } : {}),
+                            },
+                            credentials: "include",
+                            body: JSON.stringify({ url: normalized }),
+                        });
+                        const generatePayload: any = await generateRes.json().catch(() => ({}));
+
+                        if (!generateRes.ok && generateRes.status !== 202) {
+                            const errorMessage =
+                                String(generatePayload?.userMessage || generatePayload?.message || generatePayload?.error || "").trim() ||
+                                `Failed to queue URL scan (HTTP ${generateRes.status})`;
+                            updateScanState({
+                                phase: "error",
+                                status: "error",
+                                lastError: errorMessage,
+                                lastErrorCode: typeof generatePayload?.code === "string" ? generatePayload.code : String(generatePayload?.reason || generateRes.status),
+                                retry: typeof generatePayload?.retryable === "boolean" ? generatePayload.retryable : null,
+                                warningCode: typeof generatePayload?.warningCode === "string" ? generatePayload.warningCode : null,
+                                warningMessage: typeof generatePayload?.warningMessage === "string" ? generatePayload.warningMessage : null,
+                                warningAction: typeof generatePayload?.warningAction === "string" ? generatePayload.warningAction : null,
+                                updatedAt: Date.now(),
+                            });
+                            throw new Error(errorMessage);
+                        }
+                    } finally {
+                        urlGenerationInFlightRef.current = null;
+                    }
                 }
 
                 archiveReady = await pollForArchiveReadiness();
@@ -13226,7 +13272,7 @@ export default function PreviewPage(): JSX.Element {
                                     disableActions={isTrialAccessRevoked || websiteSubmitBusy}
                                     accessLocked={isTrialAccessRevoked}
                                     onCustomize={(appId) => {
-                                        openAppBuilderPreviewFirstWithCookieGate(appId);
+                                        openAppBuilderFromDashboardCard(appId);
                                     }}
                                     onArchive={handleArchiveApp}
                                     onRename={handleRenameAppCard}
