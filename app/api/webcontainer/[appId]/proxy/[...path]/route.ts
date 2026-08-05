@@ -99,7 +99,7 @@ export async function GET(
         let rewrittenHtml = text
           .replace(/(<[^>]*\s(?:src|href|action|formaction|data-src|data-href)\s*=\s*["'])(http:\/\/localhost:\d+\/[^"']*)/g, `$1${proxyBase}/$2`.replace(/http:\/\/localhost:\d+\//, ''))
           .replace(/(<[^>]*\s(?:src|href|action|formaction|data-src|data-href)\s*=\s*["'])(https:\/\/localhost:\d+\/[^"']*)/g, `$1${proxyBase}/$2`.replace(/https:\/\/localhost:\d+\//, ''))
-          // Keep Next.js root-relative asset URLs inside the proxy scope.
+          // Keep Next.js and Vercel security root-relative asset URLs inside the proxy scope.
           .replace(/(<[^>]*\s(?:src|href|action|formaction|data-src|data-href)\s*=\s*["'])\/_next\//g, `$1${proxyBase}/_next/`);
         
         // Add a shim script early in <head> (externalized to avoid CSP inline-script reports)

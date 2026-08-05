@@ -3045,11 +3045,11 @@ function AppCard({
                                     </button>
                                 ) : null}
                             </div>
-                            {draftIssue ? (
+                            {draftIssueIsBlocked ? (
                                 <span className="group/issue absolute -right-2 -top-2 z-30">
                                     <span
-                                        className={`inline-flex h-9 w-9 items-center justify-center rounded-full border shadow-sm ${draftIssueIsBlocked ? "border-red-600 bg-red-600 text-white" : draftIssueIsPromotionProgress ? "border-neutral-200 bg-white text-neutral-500" : "border-amber-200 bg-white text-amber-700"}`}
-                                        title={draftIssueDetails || draftIssueSummary}
+                                        className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-red-600 bg-red-600 text-white shadow-sm"
+                                        title={draftIssueDetails || blockedDraftDescription}
                                     >
                                         <AlertTriangle className="h-5 w-5" />
                                     </span>
@@ -3096,18 +3096,6 @@ function AppCard({
                                 ) : null}
                             </button>
 
-                            {isDraftCard && appIssue && !suppressLivePromotionIssue ? (
-                                <span
-                                    className={`absolute -right-1 -top-1 inline-flex h-8 w-8 items-center justify-center rounded-full border bg-white shadow-sm ${appIssueIsBlocked ? "border-red-200 text-red-600" : "border-amber-200 text-amber-700"}`}
-                                    title={appIssue.message || (appIssueIsBlocked ? "Site blocked" : "Scan issue")}
-                                >
-                                    {appIssueIsBlocked ? (
-                                        <AlertTriangle className="h-4 w-4" />
-                                    ) : (
-                                        <MessageCircleWarning className="h-4 w-4" />
-                                    )}
-                                </span>
-                            ) : null}
                         </div>
                         {isPendingCompleted && pendingRetryable ? (
                             <button

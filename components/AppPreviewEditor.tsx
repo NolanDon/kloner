@@ -137,6 +137,7 @@ type Props = {
     deployLocked?: boolean;
     accessLocked?: boolean;
     showTour?: boolean;
+    previewOpenToken?: number;
     onRequestDeployCheckout?: () => void;
     showRightSidebarToggle?: boolean;
 };
@@ -156,7 +157,7 @@ function PanelLockOverlay({ label = "Unlock", onClick }: { label?: string; onCli
             aria-label="Unlock"
             onClick={onClick}
         >
-            <span className="inline-flex items-center gap-2 rounded-full border border-neutral-200 bg-white/92 px-4 py-2 text-sm font-semibold text-neutral-800 shadow-lg">
+            <span className="inline-flex items-center gap-2 rounded-full border bg-white border-neutral-200 bg-white/92 px-4 py-2 text-sm font-semibold text-neutral-800 shadow-lg">
                 <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-[rgba(245,95,42,0.12)] text-[#f55f2a]">
                     <Lock className="h-4 w-4" />
                 </span>
@@ -1393,6 +1394,7 @@ function AppPreviewEditorCore({
     deployLocked = false,
     accessLocked = false,
     showTour,
+    previewOpenToken = 0,
     onRequestDeployCheckout,
     showRightSidebarToggle = true,
 }: Props) {
@@ -1415,6 +1417,7 @@ function AppPreviewEditorCore({
     const [accessPaywallContext, setAccessPaywallContext] = useState<"panel" | "images" | "toolbar">("panel");
     const shouldShowTour = typeof showTour === "boolean" ? showTour : true;
     const [hasCompletedPreviewTour, setHasCompletedPreviewTour] = useState(false);
+    const lastAutoPaywallOpenTokenRef = useRef<number>(0);
     const [controlsCollapsed, setControlsCollapsed] = useState<boolean>(false);
     const [sidePanelMode, setSidePanelMode] = useState<
         "style" | "meta" | "code" | "ai-library" | "revision-chat"
@@ -1441,6 +1444,18 @@ function AppPreviewEditorCore({
         setAccessPaywallContext(context);
         setShowAccessUpgradePaywall(true);
     }, []);
+
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+        if (!previewOpenToken) return;
+        if (lastAutoPaywallOpenTokenRef.current === previewOpenToken) return;
+        if (authLoading) return;
+
+        if (!shouldShowTour && accessLocked && !isAdmin && !authLoading) {
+            lastAutoPaywallOpenTokenRef.current = previewOpenToken;
+            openAccessPaywall("panel");
+        }
+    }, [accessLocked, authLoading, isAdmin, openAccessPaywall, previewOpenToken, shouldShowTour]);
 
     const handlePreviewTourEnd = useCallback(() => {
         setHasCompletedPreviewTour(true);
@@ -6527,7 +6542,6 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                     <div className="mx-auto h-6 max-w-xs flex-1 rounded-full bg-neutral-800/90 text-[12px] text-neutral-400 px-3 flex items-center">
                                                         preview.kloner
                                                     </div>
-
                                                     <div id="kloner-quick-undo" className="flex items-center gap-1.5">
                                                         <button
                                                             type="button"
@@ -7256,6 +7270,7 @@ type AppSourcePreviewEditorProps = {
     deployLocked?: boolean;
     accessLocked?: boolean;
     showTour?: boolean;
+    previewOpenToken?: number;
     onRequestDeployCheckout?: () => void;
     showRightSidebarToggle?: boolean;
 };
@@ -7309,6 +7324,7 @@ export default function AppPreviewEditor({
     isPreviewReady,
     deployLocked = false,
     accessLocked = false,
+    previewOpenToken,
     onRequestDeployCheckout,
     showRightSidebarToggle = true,
 }: AppSourcePreviewEditorProps) {
@@ -7551,6 +7567,7 @@ export default function AppPreviewEditor({
                     isPreviewReady={isPreviewReady}
                     deployLocked={deployLocked}
                     accessLocked={accessLocked}
+                    previewOpenToken={previewOpenToken}
                     onRequestDeployCheckout={onRequestDeployCheckout}
                     showRightSidebarToggle={showRightSidebarToggle}
                     appName={appName}

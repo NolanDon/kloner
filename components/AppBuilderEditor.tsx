@@ -2397,6 +2397,7 @@ export default function AppBuilderEditor({
     const [autoPreviewAttempt, setAutoPreviewAttempt] = useState<number>(0);
     const [autoPreviewBypassUnsupported, setAutoPreviewBypassUnsupported] = useState(false);
     const [previewMode, setPreviewMode] = useState<PreviewMode>("webcontainer");
+    const [previewOpenToken, setPreviewOpenToken] = useState(0);
     const [vercelConnectOpen, setVercelConnectOpen] = useState(false);
     const [vercelConnectOpening, setVercelConnectOpening] = useState(false);
     const [vercelConnectFlow, setVercelConnectFlow] = useState<VercelOAuthFlow>("preview");
@@ -2410,6 +2411,7 @@ export default function AppBuilderEditor({
     const [hasDismissedAccessPaywall, setHasDismissedAccessPaywall] = useState(false);
     const shouldRunBuilderTour = isDev && !isVisualEditorMode && showTour;
     const showAccessPaywall = accessLocked && hasCompletedBuilderTour && !hasDismissedAccessPaywall;
+    const previousVisualEditorModeRef = useRef<boolean | null>(null);
     const pendingShareResumeRef = useRef(false);
     const previewActionThrottleRef = useRef<{ refreshAt: number; rebuildAt: number; saveAt: number }>({
         refreshAt: 0,
@@ -2421,6 +2423,14 @@ export default function AppBuilderEditor({
         [autoPreviewError, previewError, previewIssue, previewIssueDiagnostics, previewIssueFailure],
     );
     const canFixPreviewIssueWithAi = previewIssueFixDecision.eligible;
+
+    useEffect(() => {
+        const wasVisual = previousVisualEditorModeRef.current;
+        if (isVisualEditorMode && !wasVisual) {
+            setPreviewOpenToken((token) => token + 1);
+        }
+        previousVisualEditorModeRef.current = isVisualEditorMode;
+    }, [isVisualEditorMode]);
 
     useEffect(() => {
         const shouldShowLoader =
@@ -7738,6 +7748,7 @@ export default function AppBuilderEditor({
                                                 hasVercelProject={Boolean(app?.vercelProjectId?.trim())}
                                                 onPrepareVercelProject={runVercelDeployLive}
                                                 onLiveHtml={handleVisualEditorLiveHtml}
+                                                previewOpenToken={previewOpenToken}
                                                 registerBeforeExitFlush={(fn) => {
                                                     previewEditorFlushRef.current = fn;
                                                 }}
