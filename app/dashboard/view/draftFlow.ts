@@ -260,6 +260,62 @@ export function normalizeDashboardDraftRecords(drafts: any[]): DashboardDraftCar
         }) as DashboardDraftCard[];
 }
 
+export function shouldSuppressCompletedDraftIssue(
+    source: any,
+    issue?: {
+        blocked?: boolean;
+        retryable?: boolean;
+        code?: string | null;
+        message?: string | null;
+        details?: string | null;
+        action?: string | null;
+    } | null,
+): boolean {
+    if (!source || typeof source !== "object") return false;
+
+    const draftId = String(source.draftId || source.id || "").trim();
+    if (!draftId) return false;
+
+    const status = String(source.status || source.generationStatus || source?.generation?.status || "").trim().toLowerCase();
+    const archiveReady = Boolean(
+        String(source.archiveZipPath || source.archiveZipUrl || source.zipPath || source.zipUrl || "").trim(),
+    );
+    const completedLike = Boolean(
+        source.completed === true ||
+        source.pendingCompleted === true ||
+        status === "ready" ||
+        (archiveReady && !["processing", "queued", "pending", "booting", "in_progress"].includes(status))
+    );
+
+    if (!completedLike || !archiveReady) return false;
+    if (!issue) return true;
+
+    if (issue.blocked || issue.retryable) return false;
+
+    const text = [
+        issue.code,
+        issue.message,
+        issue.details,
+        issue.action,
+    ]
+        .map((value) => String(value || "").trim())
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+
+    if (!text) return true;
+
+    return !(
+        text.includes("rescan") ||
+        text.includes("blocked") ||
+        text.includes("blacklist") ||
+        text.includes("forbidden") ||
+        text.includes("not allowed") ||
+        text.includes("failed") ||
+        text.includes("error")
+    );
+}
+
 export async function submitDashboardUrlDraft({
     rawUrl,
     canUseScreenshotCredit,
@@ -398,9 +454,87 @@ export async function submitDashboardUrlDraft({
                 );
                 setErr(blockedMessage);
             } else {
-                // Any other error — remove the optimistic draft entirely
-                setDraftApps((prev) => prev.filter((item) => item.draftId !== draftDocId));
                 const fallbackMsg = errorBody?.userMessage || errorBody?.message || errorBody?.error || "Failed to scan this URL. Please try again.";
+                const issueCode = typeof errorBody?.code === "string" && errorBody.code.trim()
+                    ? errorBody.code.trim()
+                    : "SCAN_FAILED";
+                const issueDetails = errorBody?.upstreamBody ?? errorBody?.details ?? errorBody?.debugDetails ?? null;
+
+                // Keep the ghost draft visible and convert it into an explicit scan failure
+                // so the dashboard can render the error state instead of dropping the card.
+                setDraftApps((prev) =>
+                    prev.map((item) =>
+                        item.draftId === draftDocId
+                            ? {
+                                  ...item,
+                                  blocked: false,
+                                  retryable: true,
+                                  completed: false,
+                                  pendingCompleted: false,
+                                  warningCode: issueCode,
+                                  warningMessage: String(fallbackMsg),
+                                  warningAction: null,
+                                  errorCode: issueCode,
+                                  errorMessage: String(fallbackMsg),
+                                  errorReason: typeof issueDetails === "string" && issueDetails.trim()
+                                      ? issueDetails.trim()
+                                      : String(fallbackMsg),
+                                  userMessage: String(fallbackMsg),
+                                  details: issueDetails,
+                                  warnings: [
+                                      {
+                                          code: issueCode,
+                                          message: String(fallbackMsg),
+                                          severity: "error",
+                                      },
+                                  ],
+                              }
+                            : item,
+                    ),
+                );
+
+                try {
+                    await fetchImpl("/api/private/kloner-draft", {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                        },
+                        credentials: "include",
+                        body: JSON.stringify({
+                            action: "upsert",
+                            draftId: draftDocId,
+                            draft: {
+                                id: draftAppId,
+                                name: draftName,
+                                createdAt: draftCreatedAt,
+                                sourceUrl: normalized,
+                                retryable: true,
+                                completed: false,
+                                warningCode: issueCode,
+                                warningMessage: String(fallbackMsg),
+                                warningAction: null,
+                                errorCode: issueCode,
+                                errorMessage: String(fallbackMsg),
+                                errorReason: typeof issueDetails === "string" && issueDetails.trim()
+                                    ? issueDetails.trim()
+                                    : String(fallbackMsg),
+                                userMessage: String(fallbackMsg),
+                                details: issueDetails,
+                                warnings: [
+                                    {
+                                        code: issueCode,
+                                        message: String(fallbackMsg),
+                                        severity: "error",
+                                    },
+                                ],
+                                blocked: false,
+                            },
+                        }),
+                    });
+                } catch (draftError) {
+                    console.warn("[drafts] failed to persist scan issue", draftError);
+                }
+
                 setErr(String(fallbackMsg));
             }
 

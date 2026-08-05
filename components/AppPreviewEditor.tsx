@@ -13,7 +13,6 @@ import { pickPreferredHtmlPath } from "@/src/lib/htmlEntrypoint";
 import { useHtmlDiscoveryFallbackGate } from "@/src/lib/htmlDiscoveryGate";
 import { PreviewEditorTour, TOUR_KEY as PREVIEW_TOUR_STORAGE_KEY } from "./PreviewEditorTour";
 import { ensureUserImageStorageRoom, IMAGE_STORAGE_LIMIT_BYTES, loadUserImageStorageUsage, uploadUserImageToFirebase } from "@/src/lib/imageStorage";
-import { getResponsiveUiScale } from "@/src/lib/uiScale";
 
 export type Device = "desktop" | "tablet" | "mobile";
 export type ViewMode = "code" | "preview" | "screenshot";
@@ -566,6 +565,101 @@ function resolveStylesheetFromSourceFiles(
     }
 
     return null;
+}
+
+function resolveScriptFromSourceFiles(
+    src: string,
+    currentHtmlPath: string | undefined,
+    sourceFiles: { [path: string]: { content: string; lastModified: number } } | undefined,
+    baseHref?: string,
+): string | null {
+    if (!sourceFiles) return null;
+    const rawSrc = String(src || "").trim();
+    if (!rawSrc) return null;
+    if (/^(?:#|data:|blob:|javascript:|mailto:|tel:|\/\/)/i.test(rawSrc)) {
+        return null;
+    }
+
+    let normalizedSrc = rawSrc.split("#")[0] || "";
+    normalizedSrc = normalizedSrc.split("?")[0] || "";
+
+    if (/^https?:\/\//i.test(normalizedSrc)) {
+        try {
+            const parsed = new URL(normalizedSrc);
+            const baseParsed = baseHref ? new URL(baseHref) : null;
+            const isLocalHost = /^(?:localhost|127\.0\.0\.1)$/i.test(parsed.hostname);
+            const sameOrigin = Boolean(baseParsed && parsed.origin === baseParsed.origin);
+            if (!isLocalHost && !sameOrigin) return null;
+            normalizedSrc = parsed.pathname || "/";
+        } catch {
+            return null;
+        }
+    }
+
+    const scriptPath = normalizePathLike(normalizedSrc.replace(/^\/+/, ""));
+    if (!scriptPath) return null;
+
+    const candidates: string[] = [];
+    const addCandidate = (candidatePath: string) => {
+        const normalized = normalizePathLike(candidatePath);
+        if (!normalized) return;
+        if (!candidates.includes(normalized)) candidates.push(normalized);
+    };
+
+    addCandidate(scriptPath);
+    addCandidate(`public/${scriptPath}`);
+
+    const current = normalizePathLike(String(currentHtmlPath || "").replace(/^\/+/, ""));
+    if (current) {
+        const slash = current.lastIndexOf("/");
+        const dir = slash >= 0 ? current.slice(0, slash) : "";
+        const resolvedFromCurrent = normalizePathLike(`${dir}/${normalizedSrc}`);
+        addCandidate(resolvedFromCurrent);
+        addCandidate(`public/${resolvedFromCurrent}`);
+    }
+
+    for (const key of candidates) {
+        const hit = sourceFiles[key];
+        if (hit && typeof hit.content === "string") return hit.content;
+    }
+
+    return null;
+}
+
+function inlineLocalScriptSourcesInHtml(
+    html: string,
+    currentHtmlPath: string | undefined,
+    sourceFiles: { [path: string]: { content: string; lastModified: number } } | undefined,
+    baseHref?: string,
+): string {
+    if (!html || !sourceFiles || typeof window === "undefined") return html;
+
+    try {
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, "text/html");
+        const scripts = Array.from(doc.querySelectorAll<HTMLScriptElement>("script[src]"));
+        let changed = false;
+
+        scripts.forEach((script) => {
+            const src = script.getAttribute("src") || "";
+            const resolved = resolveScriptFromSourceFiles(src, currentHtmlPath, sourceFiles, baseHref);
+            if (resolved == null) return;
+
+            const inlineScript = doc.createElement("script");
+            Array.from(script.attributes).forEach((attr) => {
+                if (attr.name.toLowerCase() === "src") return;
+                inlineScript.setAttribute(attr.name, attr.value);
+            });
+            inlineScript.textContent = resolved;
+            script.replaceWith(inlineScript);
+            changed = true;
+        });
+
+        if (!changed) return html;
+        return "<!doctype html>\n" + doc.documentElement.outerHTML;
+    } catch {
+        return html;
+    }
 }
 
 export function applySeoMetaToHtml(html: string, meta: SeoMetaMap): string {
@@ -2229,9 +2323,9 @@ function AppPreviewEditorCore({
 
     const [uiScale, setUiScale] = useState<number>(() => {
         if (typeof sharedUiScale === "number") return sharedUiScale;
-        if (typeof window === "undefined") return 0.6;
+        if (typeof window === "undefined") return 0.55;
         const v = Number(localStorage.getItem("kloner:uiScale"));
-        return Number.isFinite(v) && v >= 0.5 && v <= 1.25 ? v : getResponsiveUiScale(window.innerWidth)
+        return Number.isFinite(v) && v >= 0.5 && v <= 1.25 ? v : 0.55
     });
 
     useEffect(() => {
@@ -3000,6 +3094,12 @@ function AppPreviewEditorCore({
             const safeHref = href.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
             return `<style data-kloner-inline-href="${safeHref}">\n${css}\n</style>`;
         });
+
+        // Inline local script assets that are present in the project file tree.
+        // This keeps captured sites working when their runtime depends on local
+        // bundle files such as `_next/static/chunks/*.js`, without exposing
+        // external scripts or changing the live preview runner.
+        base = inlineLocalScriptSourcesInHtml(base, currentHtmlPath, sourceFiles, baseHref);
 
         // IMPORTANT: keep global header/footer always visible across routes
         base = hoistGlobalHeaderFooter(base);
@@ -5004,6 +5104,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
 
     const iframeNode = (
         <iframe
+            key={`${currentPageKey}:${currentHtmlPath || "single"}`}
             ref={iframeRef}
             className="w-full h-[70vh] sm:h-[80vh] border-0"
             title="KlonerPreview"

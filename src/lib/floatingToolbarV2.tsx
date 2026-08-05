@@ -538,15 +538,22 @@ function BlockToolbar({
                 <div className="sm:hidden border-b border-neutral-200">
                     <div className="px-2 py-2">
                         <div className="flex items-center gap-2">
-                            <div
-                                className="inline-flex items-center gap-2 rounded-xl border border-neutral-200 bg-neutral-50 px-2 py-1.5 cursor-move select-none"
-                                onMouseDown={onDragStart}
-                            >
-                                <Move className="h-4 w-4 text-neutral-600" />
-                                <span className="text-[11px] font-semibold text-neutral-700">{tagName.toLowerCase()}</span>
-                            </div>
+                            {!docked ? (
+                                <div
+                                    className="inline-flex items-center gap-2 rounded-xl border border-neutral-200 bg-neutral-50 px-2 py-1.5 cursor-move select-none"
+                                    onMouseDown={onDragStart}
+                                >
+                                    <Move className="h-4 w-4 text-neutral-600" />
+                                    <span className="text-[11px] font-semibold text-neutral-700">{tagName.toLowerCase()}</span>
+                                </div>
+                            ) : (
+                                <div className="inline-flex items-center gap-2 rounded-xl border border-neutral-200 bg-neutral-50 px-2 py-1.5 select-none">
+                                    <span className="text-[11px] font-semibold text-neutral-700">{tagName.toLowerCase()}</span>
+                                </div>
+                            )}
 
-                            <div className="ml-auto flex items-center gap-1">
+                            {!docked ? (
+                                <div className="ml-auto flex items-center gap-1">
                                 <MobileActionBtn title="Add image" onClick={() => callApi("imgInsert")}>
                                     <ImageIcon className="h-4 w-4" />
                                 </MobileActionBtn>
@@ -560,10 +567,11 @@ function BlockToolbar({
                                     title="Deselect block"
                                     onClick={() => callApi("clear")}
                                     onMouseDown={(e) => e.stopPropagation()}
-                                >
-                                    <span className="text-[18px] leading-none">×</span>
-                                </button>
-                            </div>
+                                    >
+                                        <span className="text-[18px] leading-none">×</span>
+                                    </button>
+                                </div>
+                            ) : null}
                         </div>
 
                         {showLinkSection ? (
@@ -608,16 +616,20 @@ function BlockToolbar({
                 {/* DESKTOP */}
                 <div className="hidden sm:block">
                     <div
-                        className="flex items-center justify-between border-b border-neutral-200 px-2 py-1.5 cursor-move select-none"
-                        onMouseDown={onDragStart}
+                        className={`flex items-center justify-between border-b border-neutral-200 px-2 py-1.5 ${
+                            docked ? "" : "cursor-move select-none"
+                        }`}
+                        onMouseDown={docked ? undefined : onDragStart}
                     >
                         <div className="flex items-center gap-1.5 min-w-0">
-                            <div className="flex h-7 w-7 items-center justify-center rounded-xl border border-neutral-200 bg-neutral-50 text-neutral-500">
-                                <Move className="h-3.5 w-3.5" />
-                            </div>
+                            {!docked ? (
+                                <div className="flex h-7 w-7 items-center justify-center rounded-xl border border-neutral-200 bg-neutral-50 text-neutral-500">
+                                    <Move className="h-3.5 w-3.5" />
+                                </div>
+                            ) : null}
 
                             <div className="min-w-0 leading-tight">
-                                <div className="text-sm font-semibold text-neutral-800">
+                                <div className="text-[11px] font-semibold text-neutral-800">
                                     Selected
                                 </div>
                                 <div className="text-xs font-medium text-neutral-500 truncate">
@@ -626,9 +638,11 @@ function BlockToolbar({
                             </div>
                         </div>
 
-                        <IconBtn title="Deselect block" onClick={() => callApi("clear")}>
-                            <span className="text-[14px] leading-none">×</span>
-                        </IconBtn>
+                        {!docked ? (
+                            <IconBtn title="Deselect block" onClick={() => callApi("clear")}>
+                                <span className="text-[14px] leading-none">×</span>
+                            </IconBtn>
+                        ) : null}
                     </div>
 
                     {/* Link editor (only if link exists) */}

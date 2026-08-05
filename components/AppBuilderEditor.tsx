@@ -3582,13 +3582,14 @@ export default function AppBuilderEditor({
         }
     }, [appId]);
 
-    // Proactively issue scope cookie once per app open to reduce first-write 403s.
+    // Proactively issue scope cookie once the app has loaded to reduce first-write 403s
+    // without poking the scope endpoint for appIds that are still materializing.
     useEffect(() => {
-        if (!appId) return;
+        if (!appId || !app) return;
         if (scopeBootstrappedForAppIdRef.current === appId) return;
         scopeBootstrappedForAppIdRef.current = appId;
         void bootstrapAppScope();
-    }, [appId, bootstrapAppScope]);
+    }, [app, appId, bootstrapAppScope]);
 
     const previewSrc = useMemo(() => {
         const base = (app?.previewUrl || "").trim();
@@ -4686,9 +4687,19 @@ export default function AppBuilderEditor({
 
         let didCancel = false;
         const controller = new AbortController();
-        const isDraftPromotionAppId = String(appId || "").startsWith("draftapp_");
-        let retriedDraftPromotion404 = false;
-        let retryTimer: ReturnType<typeof setTimeout> | ReturnType<typeof window.setTimeout> | null = null;
+        const normalizedAppId = String(appId || "").trim();
+        const isDraftPromotionAppId = normalizedAppId.startsWith("draftapp_");
+        const isFreshUrlGeneratedApp =
+            isDraftPromotionAppId ||
+            normalizedAppId.startsWith("app_") ||
+            agentWelcomeContext?.source === "url";
+        const readResponseJson = async (res: Response) => {
+            try {
+                return await res.json();
+            } catch {
+                return null;
+            }
+        };
 
         const loadApp = async () => {
             try {
@@ -4707,7 +4718,7 @@ export default function AppBuilderEditor({
 
                     const authHeaders = await getOptionalAuthHeaders(forceRefreshToken);
 
-                    return fetch(`/api/app-builder/${appId}/files`, {
+                    return fetch('/api/app-builder/' + encodeURIComponent(appId) + '/files', {
                         method: "GET",
                         credentials: "include",
                         cache: "no-store",
@@ -4716,99 +4727,138 @@ export default function AppBuilderEditor({
                     });
                 };
 
-                let res = await fetchFiles(false);
-                if (res.status === 401) {
-                    res = await fetchFiles(true);
-                }
+                let attempt = 0;
+                let delayMs = 750;
+                const maxAttempts = 36;
 
-                if (res.status === 401 || res.status === 403) {
-                    clearFilesHydrationTimer();
-                    await handleSessionExpired("app_builder_load_unauthorized");
-                    return;
-                }
+                while (!didCancel && attempt < maxAttempts) {
+                    attempt += 1;
 
-                if (!res.ok) {
-                    if (res.status === 404) {
-                        if (isDraftPromotionAppId) {
-                            if (!retriedDraftPromotion404) {
-                                retriedDraftPromotion404 = true;
-                                retryTimer = setTimeout(() => {
-                                    retryTimer = null;
-                                    if (!didCancel) {
-                                        void loadApp();
-                                    }
-                                }, 400);
-                                return;
-                            }
-                        }
-                        console.error("App not found, closing editor");
-                        onMissingAppRef.current?.(String(appId || "").trim());
-                        onCloseRef.current?.();
+                    let res = await fetchFiles(false);
+                    if (res.status === 401) {
+                        res = await fetchFiles(true);
+                    }
+
+                    if (res.status === 401 || res.status === 403) {
+                        clearFilesHydrationTimer();
+                        await handleSessionExpired("app_builder_load_unauthorized");
                         return;
                     }
-                    throw new Error(`Failed to load app: ${res.status} ${res.statusText}`);
-                }
-                const data = await res.json();
-                if (didCancel) return;
-                const rawApp = data as AppData;
-                setFilesHydrated(false);
-                setIsPreviewBootReady(false);
-                setApp(rawApp);
-                setFilesHydrationProgress(1);
-                await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
-                const liveUrl = typeof rawApp?.productionUrl === "string" ? rawApp.productionUrl.trim() : "";
-                setLastDeployLiveUrl(liveUrl || null);
-                const previewShareUrl = typeof rawApp?.previewUrl === "string" ? rawApp.previewUrl.trim() : "";
-                setLastSharePreviewUrl(previewShareUrl || null);
-                buildFileTree(rawApp.files);
-                if (!didCancel) setLoading(false);
 
-                void (async () => {
-                    try {
-                        advanceFilesHydrationProgress(22);
+                    const data = await readResponseJson(res);
+
+                    if (res.status === 200) {
+                        if (didCancel) return;
+                        const rawApp = data as AppData;
+                        setFilesHydrated(false);
+                        setIsPreviewBootReady(false);
+                        setApp(rawApp);
+                        setFilesHydrationProgress(1);
                         await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
-                        const bootApp = await hydratePrimaryHtmlFileForApp(rawApp, {
-                            onProgress: (progress) => {
-                                setFilesHydrationProgress(Math.max(0, Math.min(100, Math.round(22 + (progress * 0.78)))));
-                            },
+                        const liveUrl = typeof rawApp?.productionUrl === "string" ? rawApp.productionUrl.trim() : "";
+                        setLastDeployLiveUrl(liveUrl || null);
+                        const previewShareUrl = typeof rawApp?.previewUrl === "string" ? rawApp.previewUrl.trim() : "";
+                        setLastSharePreviewUrl(previewShareUrl || null);
+                        buildFileTree(rawApp.files);
+                        if (!didCancel) setLoading(false);
+
+                        void (async () => {
+                            try {
+                                advanceFilesHydrationProgress(22);
+                                await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+                                const bootApp = await hydratePrimaryHtmlFileForApp(rawApp, {
+                                    onProgress: (progress) => {
+                                        setFilesHydrationProgress(Math.max(0, Math.min(100, Math.round(22 + (progress * 0.78)))));
+                                    },
+                                });
+                                if (didCancel) return;
+                                setApp(bootApp);
+                                buildFileTree(bootApp.files);
+                                setIsPreviewBootReady(true);
+                                setFilesHydrationProgress(100);
+                            } catch (hydrationErr) {
+                                if (didCancel) return;
+                                console.warn("[app-builder] primary preview file hydration failed", hydrationErr);
+                                setIsPreviewBootReady(true);
+                                setFilesHydrationProgress(100);
+                            }
+
+                            const backgroundHydrationPromise = (async (): Promise<AppData | null> => {
+                                try {
+                                    const hydratedData = await hydrateHtmlFilesForApp(rawApp);
+                                    if (didCancel) return null;
+                                    setApp(hydratedData);
+                                    buildFileTree(hydratedData.files);
+                                    setFilesHydrated(true);
+                                    return hydratedData;
+                                } catch (hydrationErr) {
+                                    if (didCancel) return null;
+                                    console.warn("[app-builder] background file hydration failed", hydrationErr);
+                                    setFilesHydrated(true);
+                                    return null;
+                                }
+                            })();
+
+                            filesHydrationInFlightRef.current = backgroundHydrationPromise;
+                            try {
+                                await backgroundHydrationPromise;
+                            } finally {
+                                if (filesHydrationInFlightRef.current === backgroundHydrationPromise) {
+                                    filesHydrationInFlightRef.current = null;
+                                }
+                            }
+                        })();
+                        return;
+                    }
+
+                    if (res.status === 202 || res.status === 409) {
+                        const nextDelay = typeof data?.nextPollAfterMs === "number" && Number.isFinite(data.nextPollAfterMs)
+                            ? Math.max(400, Math.min(5000, Math.floor(data.nextPollAfterMs)))
+                            : delayMs;
+                        await sleep(nextDelay);
+                        delayMs = Math.min(5000, Math.max(500, Math.floor(delayMs * 1.35)));
+                        continue;
+                    }
+
+                    if (res.status === 422) {
+                        const message = String(data?.error || data?.message || data?.detail || "This app is not ready yet.");
+                        console.error("App preparation failed while loading editor", {
+                            appId: normalizedAppId,
+                            freshUrlGeneratedApp: isFreshUrlGeneratedApp,
+                            status: 422,
+                            message,
                         });
-                        if (didCancel) return;
-                        setApp(bootApp);
-                        buildFileTree(bootApp.files);
+                        clearFilesHydrationTimer();
+                        setError(message);
+                        setFilesHydrated(true);
                         setIsPreviewBootReady(true);
-                        setFilesHydrationProgress(100);
-                    } catch (hydrationErr) {
-                        if (didCancel) return;
-                        console.warn("[app-builder] primary preview file hydration failed", hydrationErr);
-                        setIsPreviewBootReady(true);
-                        setFilesHydrationProgress(100);
+                        return;
                     }
 
-                    const backgroundHydrationPromise = (async (): Promise<AppData | null> => {
-                        try {
-                            const hydratedData = await hydrateHtmlFilesForApp(rawApp);
-                            if (didCancel) return null;
-                            setApp(hydratedData);
-                            buildFileTree(hydratedData.files);
-                            setFilesHydrated(true);
-                            return hydratedData;
-                        } catch (hydrationErr) {
-                            if (didCancel) return null;
-                            console.warn("[app-builder] background file hydration failed", hydrationErr);
-                            setFilesHydrated(true);
-                            return null;
-                        }
-                    })();
-
-                    filesHydrationInFlightRef.current = backgroundHydrationPromise;
-                    try {
-                        await backgroundHydrationPromise;
-                    } finally {
-                        if (filesHydrationInFlightRef.current === backgroundHydrationPromise) {
-                            filesHydrationInFlightRef.current = null;
-                        }
+                    if (res.status === 404) {
+                        const message = String(data?.error || data?.message || "App not found");
+                        console.error("App not found while loading editor", {
+                            appId: normalizedAppId,
+                            freshUrlGeneratedApp: isFreshUrlGeneratedApp,
+                            status: 404,
+                        });
+                        clearFilesHydrationTimer();
+                        setError(message);
+                        setFilesHydrated(true);
+                        setIsPreviewBootReady(true);
+                        return;
                     }
-                })();
+
+                    if (!res.ok) {
+                        throw new Error("Failed to load app: " + res.status + " " + res.statusText);
+                    }
+                }
+
+                if (!didCancel) {
+                    setError("This app is still preparing. Please try again in a moment.");
+                    setFilesHydrated(true);
+                    setIsPreviewBootReady(true);
+                }
             } catch (err: any) {
                 if (didCancel) return;
                 if (err?.name === "AbortError") return;
@@ -4825,7 +4875,7 @@ export default function AppBuilderEditor({
                 setFilesHydrated(true);
                 setIsPreviewBootReady(true);
             } finally {
-                if (!didCancel && retryTimer === null) setLoading(false);
+                if (!didCancel) setLoading(false);
             }
         };
 
@@ -4833,7 +4883,6 @@ export default function AppBuilderEditor({
         return () => {
             didCancel = true;
             controller.abort();
-            if (retryTimer) window.clearTimeout(retryTimer);
         };
     }, [appId, authLoading, handleSessionExpired, user]);
 
