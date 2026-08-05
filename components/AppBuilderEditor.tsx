@@ -1407,6 +1407,7 @@ function getEditorLanguageForPath(path: string | null): string {
 
 export default function AppBuilderEditor({
     appId,
+    initialAppData = null,
     initialViewMode,
     onCanonicalAppIdResolved,
     onClose,
@@ -1426,6 +1427,7 @@ export default function AppBuilderEditor({
     deployIssue = null,
 }: {
     appId: string;
+    initialAppData?: AppData | null;
     initialViewMode?: LeftViewMode;
     onCanonicalAppIdResolved?: (canonicalAppId: string) => void;
     onClose: () => void;
@@ -1847,10 +1849,11 @@ export default function AppBuilderEditor({
             }
         }, [showAlert, showConfirm, supabaseConnected, supabaseProjectName, supabaseProjectRef, user?.uid, verifySupabaseConnection]);
 
-    const [app, setApp] = useState<AppData | null>(null);
+    const hasInitialAppData = Boolean(initialAppData && initialAppData.id === appId);
+    const [app, setApp] = useState<AppData | null>(() => (hasInitialAppData ? initialAppData : null));
     const projectFramework = useMemo(() => detectProjectFramework(app?.files || null), [app?.files]);
-    const [loading, setLoading] = useState(true);
-    const [filesHydrated, setFilesHydrated] = useState(false);
+    const [loading, setLoading] = useState(() => !hasInitialAppData);
+    const [filesHydrated, setFilesHydrated] = useState(() => hasInitialAppData);
     const [isPreviewBootReady, setIsPreviewBootReady] = useState(false);
     const [filesHydrationProgress, setFilesHydrationProgress] = useState(0);
     const [filesHydrationCompletionHold, setFilesHydrationCompletionHold] = useState(false);
@@ -1861,6 +1864,31 @@ export default function AppBuilderEditor({
     const [previewHydrationLoaderVisible, setPreviewHydrationLoaderVisible] = useState(false);
     const previewHydrationLoaderHideTimerRef = useRef<number | null>(null);
     const [error, setError] = useState<string | null>(null);
+
+    const buildFileTree = useCallback((files: AppData["files"]) => {
+        const tree: FileNode[] = [];
+        const paths = Object.keys(files);
+
+        paths.forEach((path) => {
+            const parts = path.split("/");
+            let current = tree;
+
+            parts.forEach((part, index) => {
+                let node = current.find((n) => n.name === part);
+                if (!node) {
+                    node = {
+                        name: part,
+                        type: index === parts.length - 1 ? "file" : "folder",
+                        children: index === parts.length - 1 ? undefined : [],
+                    };
+                    current.push(node);
+                }
+                if (node.children) current = node.children;
+            });
+        });
+
+        setFileTree(tree);
+    }, []);
 
     const onCloseRef = useRef(onClose);
     useEffect(() => {
@@ -2374,7 +2402,7 @@ export default function AppBuilderEditor({
             setViewMode(nextMode);
             setIsModeSwitching(false);
         }
-    }, [fetchAndHydrateAppFiles, showAlert, viewMode, isModeSwitching]);
+    }, [buildFileTree, fetchAndHydrateAppFiles, showAlert, viewMode, isModeSwitching]);
 
     const [previewError, setPreviewError] = useState<string | null>(null);
     const [protectedPreviewUrl, setProtectedPreviewUrl] = useState<string | null>(null);
@@ -4730,6 +4758,17 @@ export default function AppBuilderEditor({
     // Load app data
     useEffect(() => {
         if (authLoading) return;
+        if (hasInitialAppData) {
+            setApp(initialAppData);
+            setFilesHydrated(true);
+            setIsPreviewBootReady(true);
+            setFilesHydrationProgress(100);
+            setLoading(false);
+            setLastDeployLiveUrl(typeof initialAppData?.productionUrl === "string" ? initialAppData.productionUrl.trim() || null : null);
+            setLastSharePreviewUrl(typeof initialAppData?.previewUrl === "string" ? initialAppData.previewUrl.trim() || null : null);
+            setDeployBannerFromApp(buildDeployErrorBannerFromApp(initialAppData));
+            return;
+        }
 
         let didCancel = false;
         const controller = new AbortController();
@@ -4929,7 +4968,7 @@ export default function AppBuilderEditor({
             didCancel = true;
             controller.abort();
         };
-    }, [appId, authLoading, handleSessionExpired, user]);
+    }, [appId, authLoading, buildFileTree, hasInitialAppData, handleSessionExpired, initialAppData, user]);
 
     // Firebase real-time listener for instant UI updates when files change
     useEffect(() => {
@@ -5141,7 +5180,7 @@ export default function AppBuilderEditor({
                 console.warn("Firebase listener unsubscribe error:", err);
             }
         };
-    }, [appId, loading, previewMode, user?.uid, queuePreviewApply, queuePreviewReloadFromFirebase, handleSessionExpired]);
+    }, [appId, buildFileTree, loading, previewMode, user?.uid, queuePreviewApply, queuePreviewReloadFromFirebase, handleSessionExpired]);
 
     const generationJobId = useMemo(() => asTrimmedString(app?.generation?.jobId), [app?.generation?.jobId]);
 
@@ -5246,30 +5285,10 @@ export default function AppBuilderEditor({
         };
     }, [isResizing]);
 
-    const buildFileTree = (files: AppData["files"]) => {
-        const tree: FileNode[] = [];
-        const paths = Object.keys(files);
-
-        paths.forEach((path) => {
-            const parts = path.split("/");
-            let current = tree;
-
-            parts.forEach((part, index) => {
-                let node = current.find((n) => n.name === part);
-                if (!node) {
-                    node = {
-                        name: part,
-                        type: index === parts.length - 1 ? "file" : "folder",
-                        children: index === parts.length - 1 ? undefined : [],
-                    };
-                    current.push(node);
-                }
-                if (node.children) current = node.children;
-            });
-        });
-
-        setFileTree(tree);
-    };
+    useEffect(() => {
+        if (!hasInitialAppData || !initialAppData) return;
+        buildFileTree(initialAppData.files);
+    }, [buildFileTree, hasInitialAppData, initialAppData]);
 
     const handleFileSelect = (path: string) => {
         if (app?.files[path]) {
@@ -5344,7 +5363,7 @@ export default function AppBuilderEditor({
                 else setCode("");
             }
         },
-        [currentFile, queuePreviewApply]
+        [buildFileTree, currentFile, queuePreviewApply]
     );
 
     // If we used a placeholder preview while generating, rebuild the machine with the real files
@@ -6112,7 +6131,7 @@ export default function AppBuilderEditor({
                 }
             }
         },
-        [app?.files, applyPreviewChangesNow, currentFile, saveFileToServer, restartLocalPreview],
+        [app?.files, applyPreviewChangesNow, buildFileTree, currentFile, saveFileToServer, restartLocalPreview],
     );
 
     const handleVisualEditorLiveHtml = useCallback((html: string) => {

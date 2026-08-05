@@ -144,7 +144,7 @@ const URL_SCAN_RETRY_BACKOFF_SEQUENCE_MS = [10_000, 20_000, 40_000, 90_000, 180_
 const AUTOQUEUE_DEDUPE_STORAGE_KEY = "dashboardViewAutoQueueDedupeV1";
 const AUTOQUEUE_DEDUPE_TTL_MS = 2 * 60 * 1000;
 const DRAFT_PENDING_MISSING_TTL_MS = 20_000;
-const DRAFT_EDIT_BUTTON_LOCK_MS = 5_000;
+const DRAFT_EDIT_BUTTON_LOCK_MS = 45_000;
 const DRAFT_PROMOTION_SCAN_STORAGE_KEY = "dashboardViewDraftPromotionScanStateV1";
 const URL_ADD_SUCCESS_MESSAGE = "Your URL has been successfully added!";
 const APP_WIZARD_PROMPT_MAX_CHARS = 2000;
@@ -2808,12 +2808,18 @@ function AppCard({
         : rawAppDisplayName.replace(/^Clone of\s+/i, "").trim() || rawAppDisplayName;
     const [isEditingName, setIsEditingName] = useState(false);
     const [nameDraft, setNameDraft] = useState(appDisplayName);
-    const canEditName = !isDraftCard;
+    const canEditName = false;
+    const [appViewLaunchBusy, setAppViewLaunchBusy] = useState(false);
+    const [appViewLockActive, setAppViewLockActive] = useState(false);
+    const appViewUnlockTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const appViewClickGuardRef = useRef(false);
     const [draftEditLaunchBusy, setDraftEditLaunchBusy] = useState(false);
     const [draftEditLockActive, setDraftEditLockActive] = useState(false);
     const draftEditUnlockTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const draftEditClickGuardRef = useRef(false);
     const [draftThumbnailErrored, setDraftThumbnailErrored] = useState(false);
+    const appViewIsBusy = appViewLaunchBusy || appViewLockActive;
+    const draftEditIsBusy = draftEditLaunchBusy || draftEditLockActive;
 
     const draftScanStatus = String(draftPromotionScanState?.status || "").trim().toLowerCase();
     const draftArchiveProgressPct = typeof draftPromotionScanState?.crawlProgressProgress === "number"
@@ -2878,6 +2884,50 @@ function AppCard({
         }, Math.max(0, durationMs));
     }, [clearDraftEditUnlockTimer]);
 
+    const clearAppViewUnlockTimer = useCallback(() => {
+        if (!appViewUnlockTimerRef.current) return;
+        clearTimeout(appViewUnlockTimerRef.current);
+        appViewUnlockTimerRef.current = null;
+    }, []);
+
+    const activateAppViewLock = useCallback((durationMs: number) => {
+        clearAppViewUnlockTimer();
+        setAppViewLockActive(true);
+        appViewUnlockTimerRef.current = setTimeout(() => {
+            appViewUnlockTimerRef.current = null;
+            setAppViewLockActive(false);
+            setAppViewLaunchBusy(false);
+        }, Math.max(0, durationMs));
+    }, [clearAppViewUnlockTimer]);
+
+    const handleAppView = useCallback(() => {
+        if (appViewClickGuardRef.current) return;
+        if (disableActions || appViewLaunchBusy || appViewLockActive || isPendingCreation || accessLocked || isBrokenDraftCard) return;
+
+        appViewClickGuardRef.current = true;
+        setAppViewLaunchBusy(true);
+        activateAppViewLock(DRAFT_EDIT_BUTTON_LOCK_MS);
+        try {
+            onCustomize(app.id);
+        } catch {
+            clearAppViewUnlockTimer();
+            setAppViewLockActive(false);
+            setAppViewLaunchBusy(false);
+        } finally {
+            appViewClickGuardRef.current = false;
+        }
+    }, [
+        accessLocked,
+        activateAppViewLock,
+        app.id,
+        appViewLaunchBusy,
+        appViewLockActive,
+        disableActions,
+        isBrokenDraftCard,
+        isPendingCreation,
+        onCustomize,
+    ]);
+
     const handleDraftEdit = useCallback(async () => {
         if (draftEditClickGuardRef.current) return;
         if (disableActions || draftEditLaunchBusy || draftEditLockActive) return;
@@ -2895,9 +2945,12 @@ function AppCard({
                 sourceUrl: (app as any)?.sourceUrl || null,
                 skipPreviewCreditGate: !draftIssue,
             }));
+        } catch {
+            clearDraftEditUnlockTimer();
+            setDraftEditLockActive(false);
+            setDraftEditLaunchBusy(false);
         } finally {
             draftEditClickGuardRef.current = false;
-            setDraftEditLaunchBusy(false);
         }
     }, [
         activateDraftEditLock,
@@ -2959,8 +3012,17 @@ function AppCard({
         if (!isDraftCard || !appBuilderNavigated) return;
         clearDraftEditUnlockTimer();
         setDraftEditLockActive(false);
+        setDraftEditLaunchBusy(false);
         draftEditClickGuardRef.current = false;
     }, [appBuilderNavigated, clearDraftEditUnlockTimer, isDraftCard]);
+
+    useEffect(() => {
+        if (isDraftCard || !appBuilderNavigated) return;
+        clearAppViewUnlockTimer();
+        setAppViewLockActive(false);
+        appViewClickGuardRef.current = false;
+        setAppViewLaunchBusy(false);
+    }, [appBuilderNavigated, clearAppViewUnlockTimer, isDraftCard]);
 
     useEffect(() => {
         setDraftThumbnailErrored(false);
@@ -2970,8 +3032,10 @@ function AppCard({
         return () => {
             clearDraftEditUnlockTimer();
             draftEditClickGuardRef.current = false;
+            clearAppViewUnlockTimer();
+            appViewClickGuardRef.current = false;
         };
-    }, [clearDraftEditUnlockTimer]);
+    }, [clearAppViewUnlockTimer, clearDraftEditUnlockTimer]);
 
     if (isDraftRetryLoading) {
         return (
@@ -3033,14 +3097,18 @@ function AppCard({
                                     <button
                                         type="button"
                                         onClick={() => void handleDraftEdit()}
-                                        disabled={isDeleting || disableActions || draftEditLaunchBusy || draftEditLockActive || !onPromoteDraft}
+                                        disabled={isDeleting || disableActions || draftEditIsBusy || !onPromoteDraft}
                                         className="absolute inset-0 z-20 grid place-items-center rounded-[2.75rem] border border-neutral-200 bg-transparent text-neutral-800 opacity-0 backdrop-blur-[1px] transition-all duration-200 hover:bg-transparent group-hover/draft-icon:opacity-100 group-focus-visible/draft-icon:opacity-100 group-hover/draft-icon:scale-[1.015] group-focus-visible/draft-icon:scale-[1.015]"
-                                        aria-label="Edit draft"
-                                        title={draftIssueIsBlocked ? blockedDraftDescription : "Edit draft"}
+                                        aria-label={draftEditIsBusy ? "Opening draft" : "View draft"}
+                                        title={draftIssueIsBlocked ? blockedDraftDescription : draftEditIsBusy ? "Opening draft" : "View draft"}
                                     >
                                         <div className="inline-flex items-center gap-2 rounded-full bg-transparent px-3 py-1.5 text-sm font-semibold text-neutral-800 shadow-none transition-all duration-200 group-hover/draft-icon:scale-[1.08] group-focus-visible/draft-icon:scale-[1.08] hover:bg-transparent">
-                                            <BrushIcon className="h-4 w-4 transition-transform duration-200 group-hover/draft-icon:rotate-[-10deg] group-focus-visible/draft-icon:rotate-[-10deg]" />
-                                            <span>Edit</span>
+                                            {draftEditIsBusy ? (
+                                                <Loader2 className="h-4 w-4 animate-spin" />
+                                            ) : (
+                                                <BrushIcon className="h-4 w-4 transition-transform duration-200 group-hover/draft-icon:rotate-[-10deg] group-focus-visible/draft-icon:rotate-[-10deg]" />
+                                            )}
+                                            <span>{draftEditIsBusy ? "Opening…" : "View"}</span>
                                         </div>
                                     </button>
                                 ) : null}
@@ -3076,22 +3144,26 @@ function AppCard({
                             <button
                                 type="button"
                                 onClick={() => {
-                                    if (disableActions || isBrokenDraftCard) return;
-                                    onCustomize(app.id);
+                                    if (disableActions || isBrokenDraftCard || appViewIsBusy) return;
+                                    handleAppView();
                                 }}
-                                disabled={isDeleting || accessLocked || disableActions || isBrokenDraftCard}
-                                className="group/icon relative grid h-36 w-36 place-items-center rounded-[2.6rem] bg-gradient-to-br from-[#f55f2a] via-[#ff6f3d] to-[#ff986e] text-[48px] font-black text-white shadow-[0_10px_20px_rgba(245,95,42,0.10)] transition-all duration-300 ease-out hover:scale-[1.14] disabled:cursor-not-allowed disabled:opacity-60"
+                                disabled={isDeleting || accessLocked || disableActions || isBrokenDraftCard || appViewIsBusy}
+                                className="group/icon relative grid h-40 w-40 place-items-center rounded-[2.75rem] bg-gradient-to-br from-[#f55f2a] via-[#ff6f3d] to-[#ff986e] text-[48px] font-black text-white shadow-[0_10px_20px_rgba(245,95,42,0.10)] transition-all duration-300 ease-out hover:scale-[1.14] disabled:cursor-not-allowed disabled:opacity-60"
                                 style={{ fontFamily: "ui-rounded, 'SF Pro Rounded', 'Avenir Next Rounded', 'Trebuchet MS', sans-serif" }}
-                                title={accessLocked ? "Trial access was cancelled, so this app is locked in the dashboard" : suppressLivePromotionIssue ? "Open app editor" : appIssue?.message || "Open app editor"}
-                                aria-label={suppressLivePromotionIssue ? "Open app editor" : appIssue?.message || "Open app editor"}
+                                title={accessLocked ? "Trial access was cancelled, so this app is locked in the dashboard" : appViewIsBusy ? "Opening app" : suppressLivePromotionIssue ? "View app" : appIssue?.message || "View app"}
+                                aria-label={appViewIsBusy ? "Opening app" : suppressLivePromotionIssue ? "View app" : appIssue?.message || "View app"}
                             >
                                 <span className="transition-opacity duration-150 group-hover/icon:opacity-0 group-focus-visible/icon:opacity-0">
                                     {appBadgeLabel}
                                 </span>
                                 {!isBrokenDraftCard ? (
-                                    <span className="pointer-events-none absolute inset-0 flex items-center justify-center gap-2 rounded-[2.6rem] bg-transparent text-[18px] font-semibold tracking-normal opacity-0 transition-opacity duration-150 group-hover/icon:opacity-100 group-focus-visible/icon:opacity-100 text-white">
-                                        <BrushIcon className="h-5 w-5 shrink-0 transition-transform duration-200 group-hover/icon:rotate-[-10deg] group-focus-visible/icon:rotate-[-10deg]" />
-                                        <span className="text-white">Edit</span>
+                                        <span className="pointer-events-none absolute inset-0 flex items-center justify-center gap-2 rounded-[2.75rem] bg-transparent text-[18px] font-semibold tracking-normal opacity-0 transition-opacity duration-150 group-hover/icon:opacity-100 group-focus-visible/icon:opacity-100 text-white">
+                                        {appViewIsBusy ? (
+                                            <Loader2 className="h-5 w-5 shrink-0 animate-spin text-white" />
+                                        ) : (
+                                            <BrushIcon className="h-5 w-5 shrink-0 transition-transform duration-200 group-hover/icon:rotate-[-10deg] group-focus-visible/icon:rotate-[-10deg]" />
+                                        )}
+                                        <span className="text-white">{appViewIsBusy ? "Opening…" : "View"}</span>
                                     </span>
                                 ) : null}
                             </button>
@@ -3176,18 +3248,6 @@ function AppCard({
                             >
                                 {appDisplayName || "App"}
                             </div>
-                            {canEditName ? (
-                                <button
-                                    type="button"
-                                    onClick={() => setIsEditingName(true)}
-                                    disabled={disableActions || isPendingCreation}
-                                    className="absolute right-0 inline-flex h-7 w-7 items-center justify-center rounded-full border border-neutral-200 bg-white/80 text-neutral-700 opacity-0 shadow-sm backdrop-blur-md transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-white hover:text-neutral-900 hover:shadow-[0_10px_24px_rgba(15,23,42,0.12)] group-hover/rename:opacity-100 group-hover/rename:pointer-events-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f55f2a]/30 disabled:cursor-not-allowed disabled:opacity-50"
-                                    aria-label="Edit website name"
-                                    title="Edit name"
-                                >
-                                    <Edit2 className="h-3.5 w-3.5" />
-                                </button>
-                            ) : null}
                         </div>
                     )}
                 </div>
@@ -3208,30 +3268,12 @@ function AppCard({
                     ) : null
                 ) : null}
 
-        <div className={`mt-2 grid w-full gap-0.5 sm:mt-3 sm:gap-1 ${isDraftCard ? "grid-cols-4" : "grid-cols-4"}`}>
+        <div className="mt-2 grid w-full grid-cols-3 gap-0.5 sm:mt-3 sm:gap-1">
                     {isDraftCard ? (
                         <>
                             <div
                                 className="relative flex justify-center transition-all duration-500 ease-out md:translate-y-3 md:scale-90 md:opacity-0 md:pointer-events-none md:blur-[1px] md:group-hover:translate-y-0 md:group-hover:scale-100 md:group-hover:opacity-100 md:group-hover:pointer-events-auto md:group-hover:blur-0"
                                 style={{ transitionDelay: "0ms" }}
-                            >
-                                <span className="pointer-events-none absolute -bottom-6 left-1/2 -translate-x-1/2 whitespace-nowrap text-[10px] font-medium text-neutral-800 opacity-100 transition-opacity duration-150 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
-                                    Deploy
-                                </span>
-                                <button
-                                    type="button"
-                                    disabled
-                                    aria-label="Deploy draft"
-                                    title="Deploy is unavailable for drafts"
-                                    className="inline-flex h-8 w-8 cursor-not-allowed items-center justify-center rounded-2xl border border-neutral-200 bg-white text-neutral-400 shadow-sm opacity-60"
-                                >
-                                    <Rocket className="h-3.5 w-3.5" />
-                                </button>
-                            </div>
-
-                            <div
-                                className="relative flex justify-center transition-all duration-500 ease-out md:translate-y-3 md:scale-90 md:opacity-0 md:pointer-events-none md:blur-[1px] md:group-hover:translate-y-0 md:group-hover:scale-100 md:group-hover:opacity-100 md:group-hover:pointer-events-auto md:group-hover:blur-0"
-                                style={{ transitionDelay: "120ms" }}
                             >
                                 <span className="pointer-events-none absolute -bottom-6 left-1/2 -translate-x-1/2 whitespace-nowrap text-[10px] font-medium text-neutral-800 opacity-100 transition-opacity duration-150 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
                                     Archive
@@ -3249,20 +3291,20 @@ function AppCard({
 
                             <div
                                 className="relative flex justify-center transition-all duration-500 ease-out md:translate-y-3 md:scale-90 md:opacity-0 md:pointer-events-none md:blur-[1px] md:group-hover:translate-y-0 md:group-hover:scale-100 md:group-hover:opacity-100 md:group-hover:pointer-events-auto md:group-hover:blur-0"
-                                style={{ transitionDelay: "180ms" }}
+                                style={{ transitionDelay: "120ms" }}
                             >
                                 <span className="pointer-events-none absolute -bottom-6 left-1/2 -translate-x-1/2 whitespace-nowrap text-[10px] font-medium text-neutral-800 opacity-100 transition-opacity duration-150 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
-                                    Edit
+                                    {draftEditIsBusy ? "Opening…" : "View"}
                                 </span>
                                 <button
                                     type="button"
                                     onClick={() => void handleDraftEdit()}
-                                    disabled={isDeleting || disableActions || draftEditLaunchBusy || draftEditLockActive || !onPromoteDraft}
-                                    aria-label="Edit draft"
-                                    title={draftIssueIsBlocked ? blockedDraftDescription : "Edit draft"}
+                                    disabled={isDeleting || disableActions || draftEditIsBusy || !onPromoteDraft}
+                                    aria-label={draftEditIsBusy ? "Opening draft" : "View draft"}
+                                    title={draftIssueIsBlocked ? blockedDraftDescription : draftEditIsBusy ? "Opening draft" : "View draft"}
                                     className="inline-flex h-8 w-8 items-center justify-center rounded-2xl border border-neutral-300 bg-white text-neutral-700 shadow-sm transition-all duration-300 ease-out hover:border-[#f55f2a] hover:bg-[#f55f2a] hover:text-white disabled:pointer-events-none disabled:opacity-60"
                                 >
-                                    <BrushIcon className="h-3.5 w-3.5" />
+                                    {draftEditIsBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <BrushIcon className="h-3.5 w-3.5" />}
                                 </button>
                             </div>
 
@@ -3299,73 +3341,26 @@ function AppCard({
                                 style={{ transitionDelay: "0ms" }}
                             >
                                 <span className="pointer-events-none absolute -bottom-6 left-1/2 -translate-x-1/2 whitespace-nowrap text-[10px] font-medium text-neutral-800 opacity-100 transition-opacity duration-150 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
-                                    Edit
+                                    {appViewIsBusy ? "Opening…" : "View"}
                                 </span>
                                 <button
                                     type="button"
                                     onClick={() => {
-                                        if (disableActions || isPendingCreation || accessLocked || isBrokenDraftCard) return;
-                                        onCustomize(app.id);
+                                        if (disableActions || isPendingCreation || accessLocked || isBrokenDraftCard || appViewIsBusy) return;
+                                        handleAppView();
                                     }}
-                                    disabled={isDeleting || accessLocked || disableActions || isBrokenDraftCard || isPendingCreation}
+                                    disabled={isDeleting || accessLocked || disableActions || isBrokenDraftCard || isPendingCreation || appViewIsBusy}
                                     className="inline-flex h-8 w-8 items-center justify-center rounded-2xl border border-neutral-300 bg-white text-neutral-700 shadow-sm transition-all duration-300 ease-out hover:border-[#f55f2a] hover:bg-[#f55f2a] hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
-                                    title={accessLocked ? "Trial access was cancelled, so this app is locked in the dashboard" : suppressLivePromotionIssue ? "Open app editor" : appIssue?.message || "Open app editor"}
-                                    aria-label={suppressLivePromotionIssue ? "Open app editor" : appIssue?.message || "Open app editor"}
+                                    title={accessLocked ? "Trial access was cancelled, so this app is locked in the dashboard" : appViewIsBusy ? "Opening app" : suppressLivePromotionIssue ? "View app" : appIssue?.message || "View app"}
+                                    aria-label={appViewIsBusy ? "Opening app" : suppressLivePromotionIssue ? "View app" : appIssue?.message || "View app"}
                                 >
-                                    <BrushIcon className="h-3.5 w-3.5" />
+                                    {appViewIsBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <BrushIcon className="h-3.5 w-3.5" />}
                                 </button>
                             </div>
 
                             <div
                                 className="relative flex justify-center transition-all duration-500 ease-out md:translate-y-3 md:scale-90 md:opacity-0 md:pointer-events-none md:blur-[1px] md:group-hover:translate-y-0 md:group-hover:scale-100 md:group-hover:opacity-100 md:group-hover:pointer-events-auto md:group-hover:blur-0"
                                 style={{ transitionDelay: "0ms" }}
-                            >
-                                <span className="pointer-events-none absolute -bottom-6 left-1/2 -translate-x-1/2 whitespace-nowrap text-[10px] font-medium text-neutral-800 opacity-100 transition-opacity duration-150 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
-                                    {isDeployedFlag ? "View site" : "Deploy"}
-                                </span>
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        if (disableActions || isPendingCreation) return;
-                                        if (isDeployedFlag) {
-                                            if (deployedSiteUrl) {
-                                                window.open(deployedSiteUrl, "_blank", "noopener,noreferrer");
-                                                return;
-                                            }
-                                            router.push("/dashboard/deployments");
-                                            return;
-                                        }
-                                        onDeploy({ id: app.id, name: app.name });
-                                    }}
-                                    disabled={isDeleting || isArchiving || accessLocked || disableActions || isPendingCreation}
-                                    className={`inline-flex h-8 w-8 items-center justify-center rounded-2xl border text-neutral-800 shadow-sm transition-all duration-300 ease-out disabled:opacity-60 ${isDeployedFlag
-                                        ? "border-emerald-200 bg-emerald-500 text-white hover:bg-green-700"
-                                        : "border-transparent bg-accent text-white hover:bg-accent/90"
-                                        }`}
-                                    title={
-                                        isPendingCreation
-                                            ? "This app is still being created"
-                                            : accessLocked
-                                                ? "Trial access was cancelled, so this app is locked in the dashboard"
-                                                : isDeployedFlag
-                                                    ? deployedSiteUrl
-                                                        ? "Open deployed site"
-                                                        : "View and manage deployments"
-                                                    : "Deploy this app to Vercel"
-                                    }
-                                    aria-label={isDeployedFlag ? "View site" : "Deploy app"}
-                                >
-                                    {isDeployedFlag ? (
-                                        <ExternalLink className="h-3.5 w-3.5 shrink-0" />
-                                    ) : (
-                                        <Rocket className="h-3.5 w-3.5 shrink-0 transform transition-transform duration-150 group-hover:-translate-y-0.5" />
-                                    )}
-                                </button>
-                            </div>
-
-                            <div
-                                className="relative flex justify-center transition-all duration-500 ease-out md:translate-y-3 md:scale-90 md:opacity-0 md:pointer-events-none md:blur-[1px] md:group-hover:translate-y-0 md:group-hover:scale-100 md:group-hover:opacity-100 md:group-hover:pointer-events-auto md:group-hover:blur-0"
-                                style={{ transitionDelay: "120ms" }}
                             >
                                 <span className="pointer-events-none absolute -bottom-6 left-1/2 -translate-x-1/2 whitespace-nowrap text-[10px] font-medium text-neutral-800 opacity-100 transition-opacity duration-150 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
                                     Archive
@@ -4295,21 +4290,17 @@ export default function PreviewPage(): JSX.Element {
             return;
         }
         if (isTrialAccessRevoked) {
-            setAppBuilderOpen(false);
-            setPendingAppBuilderAppId(null);
-            setCurrentAppId(null);
-            setAppBuilderInitialViewMode("ai");
             void showAlert(
                 "Your trial was cancelled, so existing projects are locked in the dashboard.",
                 "Access locked",
             );
             return;
         }
-        setAppBuilderInitialViewMode(isMobileViewport ? "ai" : initialViewMode);
-        setCurrentAppId(nextId);
-        setPendingAppBuilderAppId(null);
-        setAppBuilderOpen(true);
-    }, [blockedUrlGenerationAppId, isMobileViewport, isTrialAccessRevoked, showAlert]);
+        const nextViewMode = isMobileViewport ? "ai" : initialViewMode;
+        const qs = new URLSearchParams();
+        qs.set("view", nextViewMode);
+        router.push(`/app-builder/${encodeURIComponent(nextId)}?${qs.toString()}`, { scroll: false });
+    }, [blockedUrlGenerationAppId, isMobileViewport, isTrialAccessRevoked, router, showAlert]);
 
     const openAppBuilderPreviewFirstWithCookieGate = useCallback((appId: string | null) => {
         void openAppBuilderWithCookieGate(appId, isMobileViewport ? "ai" : "custom");
@@ -4325,10 +4316,6 @@ export default function PreviewPage(): JSX.Element {
         const nextId = typeof appId === "string" ? appId.trim() : "";
         if (!nextId) return;
         if (blockedUrlGenerationAppId && nextId === blockedUrlGenerationAppId) {
-            setAppBuilderOpen(false);
-            setPendingAppBuilderAppId(null);
-            setCurrentAppId(null);
-            setAppBuilderInitialViewMode("ai");
             return;
         }
         if (isTrialAccessRevoked) {
@@ -4336,15 +4323,13 @@ export default function PreviewPage(): JSX.Element {
                 "Your trial was cancelled, so existing projects are locked in the dashboard.",
                 "Access locked",
             );
-            setAppBuilderInitialViewMode("ai");
             return;
         }
 
-        setAppBuilderInitialViewMode(isMobileViewport ? "ai" : "custom");
-        setCurrentAppId(nextId);
-        setPendingAppBuilderAppId(null);
-        setAppBuilderOpen(true);
-    }, [blockedUrlGenerationAppId, isMobileViewport, isTrialAccessRevoked, showAlert]);
+        const qs = new URLSearchParams();
+        qs.set("view", isMobileViewport ? "ai" : "custom");
+        router.push(`/app-builder/${encodeURIComponent(nextId)}?${qs.toString()}`, { scroll: false });
+    }, [blockedUrlGenerationAppId, isMobileViewport, isTrialAccessRevoked, router, showAlert]);
 
     // ───────── app deploy wizard (first deploy) ─────────
     const [appDeployWizardOpen, setAppDeployWizardOpen] = useState(false);
