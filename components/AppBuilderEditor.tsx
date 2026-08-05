@@ -26,7 +26,7 @@ import { useModal } from "@/components/ui/ModalContext";
 import { compressImageForUpload } from "@/src/lib/clientImageCompression";
 import { sanitizeImageName } from "./helpers";
 import { recordAppBuilderSessionAnalytics } from "@/components/analytics";
-import { motion } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import { detectProjectFramework, shouldPreserveRuntimeScripts } from "@/src/lib/projectFramework";
 import { normalizePreviewApplyResponse } from "@/src/lib/appEmbeddingsClient";
 import { getResponsiveUiScale } from "@/src/lib/uiScale";
@@ -1935,39 +1935,75 @@ export default function AppBuilderEditor({
 
                 const authHeaders = await getOptionalAuthHeaders(forceRefreshToken);
                 advanceFilesHydrationProgress(20);
-                const res = await fetch(`/api/app-builder/${appId}/files`, {
-                    method: "GET",
-                    credentials: "include",
-                    cache: "no-store",
-                    signal: opts?.signal || undefined,
-                    headers: authHeaders,
-                });
-                advanceFilesHydrationProgress(48);
+                let attempt = 0;
+                let delayMs = 500;
+                const maxAttempts = 24;
+                let lastNotFound: { status: number; message: string } | null = null;
 
-                if (res.status === 401 || res.status === 403) {
-                    await handleSessionExpired("app_builder_load_unauthorized");
+                while (attempt < maxAttempts && runId === filesHydrationRunIdRef.current) {
+                    attempt += 1;
+                    const res = await fetch(`/api/app-builder/${appId}/files`, {
+                        method: "GET",
+                        credentials: "include",
+                        cache: "no-store",
+                        signal: opts?.signal || undefined,
+                        headers: authHeaders,
+                    });
+                    advanceFilesHydrationProgress(48);
+
+                    if (res.status === 401 || res.status === 403) {
+                        await handleSessionExpired("app_builder_load_unauthorized");
+                        return null;
+                    }
+
+                    const data = await (async () => {
+                        try {
+                            return await res.json();
+                        } catch {
+                            return null;
+                        }
+                    })();
+
+                    if (res.status === 200) {
+                        advanceFilesHydrationProgress(62);
+                        if (runId !== filesHydrationRunIdRef.current) return null;
+                        clearFilesHydrationTimer();
+                        const hydratedData = await hydrateHtmlFilesForApp(data as AppData, {
+                            onProgress: (progress) => {
+                                setFilesHydrationProgress(Math.max(0, Math.min(100, Math.round(62 + (progress * 0.38)))));
+                            },
+                        });
+                        return hydratedData;
+                    }
+
+                    if (res.status === 422) {
+                        throw new Error(String(data?.error || data?.message || data?.detail || "This app is not ready yet."));
+                    }
+
+                    if (res.status === 404 || res.status === 202 || res.status === 409) {
+                        lastNotFound = {
+                            status: res.status,
+                            message: String(data?.error || data?.message || "This app is still syncing its files."),
+                        };
+                        await sleep(Math.min(5000, delayMs));
+                        delayMs = Math.min(5000, Math.max(500, Math.floor(delayMs * 1.35)));
+                        continue;
+                    }
+
+                    if (!res.ok) {
+                        throw new Error(`Failed to load app: ${res.status} ${res.statusText}`);
+                    }
+                }
+
+                if (lastNotFound) {
+                    console.warn("App files are still syncing while hydrating editor", {
+                        appId,
+                        status: lastNotFound.status,
+                    });
                     return null;
                 }
 
-                if (!res.ok) {
-                    if (res.status === 404) {
-                        console.error("App not found while loading editor", { appId });
-                        clearFilesHydrationTimer();
-                        return null;
-                    }
-                    throw new Error(`Failed to load app: ${res.status} ${res.statusText}`);
-                }
-
-                const data = await res.json();
-                advanceFilesHydrationProgress(62);
-                if (runId !== filesHydrationRunIdRef.current) return null;
-                clearFilesHydrationTimer();
-                const hydratedData = await hydrateHtmlFilesForApp(data as AppData, {
-                    onProgress: (progress) => {
-                        setFilesHydrationProgress(Math.max(0, Math.min(100, Math.round(62 + (progress * 0.38)))));
-                    },
-                });
-                return hydratedData;
+                return null;
             })();
 
             filesHydrationInFlightRef.current = runPromise;
@@ -4836,17 +4872,16 @@ export default function AppBuilderEditor({
                     }
 
                     if (res.status === 404) {
-                        const message = String(data?.error || data?.message || "App not found");
-                        console.error("App not found while loading editor", {
+                        const message = String(data?.error || data?.message || "This app is still syncing its files.");
+                        console.warn("App files are not ready yet while loading editor", {
                             appId: normalizedAppId,
                             freshUrlGeneratedApp: isFreshUrlGeneratedApp,
                             status: 404,
+                            attempt,
                         });
-                        clearFilesHydrationTimer();
-                        setError(message);
-                        setFilesHydrated(true);
-                        setIsPreviewBootReady(true);
-                        return;
+                        await sleep(delayMs);
+                        delayMs = Math.min(5000, Math.max(500, Math.floor(delayMs * 1.35)));
+                        continue;
                     }
 
                     if (!res.ok) {
@@ -4855,7 +4890,7 @@ export default function AppBuilderEditor({
                 }
 
                 if (!didCancel) {
-                    setError("This app is still preparing. Please try again in a moment.");
+                    setError("This app is still syncing its files. We’ll keep trying to load it.");
                     setFilesHydrated(true);
                     setIsPreviewBootReady(true);
                 }
@@ -6689,12 +6724,6 @@ export default function AppBuilderEditor({
     const showLeftPanel = !isMobile || mobileTab === "prompt";
     const showRightPanel = !isMobile || mobileTab === "app";
 
-    if (loading) {
-        return (
-            <KlonerLoader />
-        );
-    }
-
     if (error) {
         return (
             <div
@@ -6756,15 +6785,7 @@ export default function AppBuilderEditor({
         );
     }
 
-    if (!app) {
-        return (
-            <div className="fixed inset-0 z-[16000] bg-black/70 backdrop-blur-sm flex items-center justify-center">
-                <div className="bg-white rounded-lg p-8">
-                    <div className="text-center">App not found</div>
-                </div>
-            </div>
-        );
-    }
+    if (!app) return null;
 
     if (activeGeneration.status === "error" && !dismissedGenerationError) {
         return (
@@ -6846,8 +6867,21 @@ export default function AppBuilderEditor({
     return (
         <div className="fixed inset-0 z-[16000] bg-black/70 backdrop-blur-sm">
             {isGenerationProcessing && previewMode !== "webcontainer" ? (
-                <div className="fixed inset-0 z-[17000] bg-black/70 backdrop-blur-sm flex items-center justify-center">
-                    <div className="bg-white rounded-lg p-8 max-w-md">
+                <motion.div
+                    key="generation-processing"
+                    className="fixed inset-0 z-[17000] bg-black/70 backdrop-blur-sm flex items-center justify-center"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.22, ease: "easeOut" }}
+                >
+                    <motion.div
+                        className="bg-white rounded-2xl p-8 max-w-md shadow-[0_28px_80px_rgba(15,23,42,0.22)]"
+                        initial={{ opacity: 0, y: 10, scale: 0.985 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: 8, scale: 0.985 }}
+                        transition={{ duration: 0.22, ease: "easeOut" }}
+                    >
                         <div className="text-center">
                             <KlonerLoader />
                             <div className="mt-4 text-sm text-gray-600">
@@ -6878,10 +6912,20 @@ export default function AppBuilderEditor({
                                 </div>
                             ) : null}
                         </div>
-                    </div>
-                </div>
+                    </motion.div>
+                </motion.div>
             ) : null}
-            <div className="h-full w-full bg-white flex flex-col">
+            <motion.div
+                key="app-builder-shell"
+                className={`h-full w-full bg-white flex flex-col ${loading ? "pointer-events-none" : ""}`}
+                initial={false}
+                animate={{
+                    opacity: loading ? 0 : 1,
+                    y: loading ? 6 : 0,
+                    scale: loading ? 0.995 : 1,
+                }}
+                transition={{ duration: 0.24, ease: "easeOut" }}
+            >
                 {/* Header */}
                 <div className="relative z-30 flex flex-nowrap items-center justify-between gap-2 overflow-visible border-b bg-gray-50 p-2.5 sm:p-4">
                     <div className="relative z-20 flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
@@ -7653,68 +7697,84 @@ export default function AppBuilderEditor({
                             </div>
 
                             <div className={isVisualEditorMode ? "relative h-full flex flex-col" : "hidden"}>
-                                {app ? (
-                                    <div className="relative h-full min-h-[420px] flex-1">
-                                        <AppPreviewEditor
-                                            appId={appId}
-                                            files={app?.files || {}}
-                                            initialPath={currentFile}
-                                            onApplyHtml={handleApplyCustomHtml}
-                                            onSelectPath={handleFileSelect}
-                                            currentHtmlPath={currentFile || undefined}
-                                            htmlEntryHints={(app as any)?.htmlEditIndex}
-                                            preserveRuntimeScripts={shouldPreserveRuntimeScripts(projectFramework)}
-                                            onSelectHtmlPath={handleFileSelect}
-                                            editableHtmlPaths={Object.keys(app?.files || {})
-                                                .filter((path) => /\.html?$/i.test(path))
-                                                .sort((a, b) => a.localeCompare(b))}
-                                            onClose={() => { void requestViewModeChange("ai"); }}
-                                            appName={app?.name}
-                                            onRenameSuccess={(newName) => setApp(prev => prev ? { ...prev, name: newName } : null)}
-                                            baseHref={(protectedPreviewUrl || app?.previewUrl || previewSrc || undefined)}
-                                            viewMode={viewMode}
-                                            onChangeViewMode={(mode) => { void requestViewModeChange(mode); }}
-                                            isProduction={IS_PRODUCTION}
-                                            onSidebarVisibilityChange={setIsCustomSidebarOpen}
-                                            sharedUiScale={customPreviewScale}
-                                            onSharedUiScaleChange={setCustomPreviewScale}
-                                            preferredSidePanelMode={viewMode === "images" ? "ai-library" : "style"}
-                                            isVercelConnected={isVercelConnected}
-                                            onConnectVercel={async () => {
-                                                await ensureFreshVercelConnection("images");
-                                            }}
-                                            hasVercelProject={Boolean(app?.vercelProjectId?.trim())}
-                                            onPrepareVercelProject={runVercelDeployLive}
-                                            onLiveHtml={handleVisualEditorLiveHtml}
-                                            registerBeforeExitFlush={(fn) => {
-                                                previewEditorFlushRef.current = fn;
-                                            }}
-                                            onTakeBuilderTour={handleTakeBuilderTour}
-                                            isFilesHydrated={isPreviewBootReady}
-                                            filesHydrationProgress={filesHydrationProgress}
-                                            isPreviewReady={previewMode !== "webcontainer" ? true : isPreviewBootReady}
-                                            deployLocked={deployLocked}
-                                            accessLocked={accessLocked}
-                                            showTour={showTour}
-                                            onRequestDeployCheckout={onRequestDeployCheckout}
-                                            showRightSidebarToggle={false}
-                                        />
-                                    </div>
-                                ) : (
-                                    <div className="flex h-full min-h-[420px] items-center justify-center bg-white">
-                                        <div className="flex flex-col items-center gap-4 rounded-2xl border border-neutral-200 bg-white px-6 py-8 shadow-sm">
-                                            <KlonerLoader />
-                                            <div className="text-center">
-                                                <div className="text-sm font-semibold text-neutral-900">
-                                                    Preparing preview
-                                                </div>
-                                                <div className="mt-1 text-sm text-neutral-600">
-                                                    Loading your files before Custom and Images can render.
+                                <AnimatePresence mode="wait" initial={false}>
+                                    {app ? (
+                                        <motion.div
+                                            key={`preview-editor-${appId}`}
+                                            className="relative h-full min-h-[420px] flex-1"
+                                            initial={{ opacity: 0, y: 8 }}
+                                            animate={{ opacity: 1, y: 0 }}
+                                            exit={{ opacity: 0, y: 8 }}
+                                            transition={{ duration: 0.24, ease: "easeOut" }}
+                                        >
+                                            <AppPreviewEditor
+                                                appId={appId}
+                                                files={app?.files || {}}
+                                                initialPath={currentFile}
+                                                onApplyHtml={handleApplyCustomHtml}
+                                                onSelectPath={handleFileSelect}
+                                                currentHtmlPath={currentFile || undefined}
+                                                htmlEntryHints={(app as any)?.htmlEditIndex}
+                                                preserveRuntimeScripts={shouldPreserveRuntimeScripts(projectFramework)}
+                                                onSelectHtmlPath={handleFileSelect}
+                                                editableHtmlPaths={Object.keys(app?.files || {})
+                                                    .filter((path) => /\.html?$/i.test(path))
+                                                    .sort((a, b) => a.localeCompare(b))}
+                                                onClose={() => { void requestViewModeChange("ai"); }}
+                                                appName={app?.name}
+                                                onRenameSuccess={(newName) => setApp(prev => prev ? { ...prev, name: newName } : null)}
+                                                baseHref={(protectedPreviewUrl || app?.previewUrl || previewSrc || undefined)}
+                                                viewMode={viewMode}
+                                                onChangeViewMode={(mode) => { void requestViewModeChange(mode); }}
+                                                isProduction={IS_PRODUCTION}
+                                                onSidebarVisibilityChange={setIsCustomSidebarOpen}
+                                                sharedUiScale={customPreviewScale}
+                                                onSharedUiScaleChange={setCustomPreviewScale}
+                                                preferredSidePanelMode={viewMode === "images" ? "ai-library" : "style"}
+                                                isVercelConnected={isVercelConnected}
+                                                onConnectVercel={async () => {
+                                                    await ensureFreshVercelConnection("images");
+                                                }}
+                                                hasVercelProject={Boolean(app?.vercelProjectId?.trim())}
+                                                onPrepareVercelProject={runVercelDeployLive}
+                                                onLiveHtml={handleVisualEditorLiveHtml}
+                                                registerBeforeExitFlush={(fn) => {
+                                                    previewEditorFlushRef.current = fn;
+                                                }}
+                                                onTakeBuilderTour={handleTakeBuilderTour}
+                                                isFilesHydrated={isPreviewBootReady}
+                                                filesHydrationProgress={filesHydrationProgress}
+                                                isPreviewReady={previewMode !== "webcontainer" ? true : isPreviewBootReady}
+                                                deployLocked={deployLocked}
+                                                accessLocked={accessLocked}
+                                                showTour={showTour}
+                                                onRequestDeployCheckout={onRequestDeployCheckout}
+                                                showRightSidebarToggle={false}
+                                            />
+                                        </motion.div>
+                                    ) : (
+                                        <motion.div
+                                            key="preview-loading"
+                                            className="flex h-full min-h-[420px] items-center justify-center bg-white"
+                                            initial={{ opacity: 0, y: 8 }}
+                                            animate={{ opacity: 1, y: 0 }}
+                                            exit={{ opacity: 0, y: 8 }}
+                                            transition={{ duration: 0.24, ease: "easeOut" }}
+                                        >
+                                            <div className="flex flex-col items-center gap-4 rounded-2xl border border-neutral-200 bg-white px-6 py-8 shadow-sm">
+                                                <KlonerLoader />
+                                                <div className="text-center">
+                                                    <div className="text-sm font-semibold text-neutral-900">
+                                                        Preparing preview
+                                                    </div>
+                                                    <div className="mt-1 text-sm text-neutral-600">
+                                                        Loading your files before Custom and Images can render.
+                                                    </div>
                                                 </div>
                                             </div>
-                                        </div>
-                                    </div>
-                                )}
+                                        </motion.div>
+                                    )}
+                                </AnimatePresence>
                             </div>
                         </div>
                     </div>
@@ -8412,7 +8472,7 @@ export default function AppBuilderEditor({
                     </div>
                 )}
 
-            </div>
+            </motion.div>
         </div>
     );
 }

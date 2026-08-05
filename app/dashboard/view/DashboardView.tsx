@@ -4173,7 +4173,6 @@ export default function PreviewPage(): JSX.Element {
 
     const [appBuilderOpen, setAppBuilderOpen] = useState(false);
     const [currentAppId, setCurrentAppId] = useState<string | null>(null);
-    const [appBuilderLaunchLoading, setAppBuilderLaunchLoading] = useState(false);
     const [appBuilderInitialViewMode, setAppBuilderInitialViewMode] = useState<"ai" | "custom">("ai");
     const [isMobileViewport, setIsMobileViewport] = useState<boolean>(() => {
         if (typeof window === "undefined") return false;
@@ -4250,8 +4249,6 @@ export default function PreviewPage(): JSX.Element {
     const suppressedPromotedDraftsRef = useRef<Record<string, boolean>>({});
     const serverDraftKeysRef = useRef<Set<string>>(new Set());
     const draftsApiLoadInFlightRef = useRef(false);
-    const appBuilderLaunchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const appBuilderLaunchThrottleRef = useRef<{ appId: string; until: number } | null>(null);
     const pendingUrlGenerationAppIdRef = useRef<string | null>(null);
     const buildFromCollectionRef = useRef<((storageKeys: string[]) => Promise<void>) | null>(null);
     const previousEditorOpenRef = useRef(false);
@@ -4327,48 +4324,6 @@ export default function PreviewPage(): JSX.Element {
         setPendingAppBuilderAppId(null);
         setAppBuilderOpen(true);
     }, [blockedUrlGenerationAppId, isMobileViewport, isTrialAccessRevoked, showAlert]);
-
-    const openAppBuilderWithLaunchLoader = useCallback((appId: string | null) => {
-        const nextId = typeof appId === "string" ? appId.trim() : "";
-        if (!nextId) return;
-        if (appBuilderLaunchLoading) return;
-
-        const now = Date.now();
-        const throttle = appBuilderLaunchThrottleRef.current;
-        if (throttle && throttle.appId === nextId && throttle.until > now) {
-            return;
-        }
-        appBuilderLaunchThrottleRef.current = { appId: nextId, until: now + 2500 };
-
-        if (appBuilderLaunchTimeoutRef.current) {
-            clearTimeout(appBuilderLaunchTimeoutRef.current);
-            appBuilderLaunchTimeoutRef.current = null;
-        }
-
-        setAppBuilderOpen(false);
-        setCurrentAppId(null);
-        setAppBuilderLaunchLoading(true);
-
-        appBuilderLaunchTimeoutRef.current = setTimeout(() => {
-            appBuilderLaunchTimeoutRef.current = null;
-            void (async () => {
-                try {
-                    await openAppBuilderWithCookieGate(nextId);
-                } finally {
-                    setAppBuilderLaunchLoading(false);
-                }
-            })();
-        }, 500);
-    }, [appBuilderLaunchLoading, openAppBuilderWithCookieGate]);
-
-    useEffect(() => {
-        return () => {
-            if (appBuilderLaunchTimeoutRef.current) {
-                clearTimeout(appBuilderLaunchTimeoutRef.current);
-                appBuilderLaunchTimeoutRef.current = null;
-            }
-        };
-    }, []);
 
     // ───────── app deploy wizard (first deploy) ─────────
     const [appDeployWizardOpen, setAppDeployWizardOpen] = useState(false);
@@ -6274,7 +6229,7 @@ export default function PreviewPage(): JSX.Element {
 
                     appId = resolvedAppId || pendingCreatedAppId || fallbackJobId || fallbackRequestId || appName;
                     if (resolvedAppId) {
-                        void openAppBuilderWithCookieGate(resolvedAppId, isMobileViewport ? "ai" : "custom");
+                        void openAppBuilderPreviewFirstWithCookieGate(resolvedAppId);
                     }
                 } else {
                     const shouldPersistRescanWarning =
@@ -6647,7 +6602,7 @@ export default function PreviewPage(): JSX.Element {
 
         if (pendingCreatedAppLaunchRequestedRef.current !== pendingCreatedApp.id) {
             pendingCreatedAppLaunchRequestedRef.current = pendingCreatedApp.id;
-            void openAppBuilderWithCookieGate(pendingCreatedApp.id);
+            void openAppBuilderPreviewFirstWithCookieGate(pendingCreatedApp.id);
             return;
         }
 
@@ -13407,44 +13362,53 @@ export default function PreviewPage(): JSX.Element {
                 )}
 
                 {/* app builder overlay */}
-                {appBuilderOpen && currentAppId && (
-                    <AppBuilderEditor
-                        appId={currentAppId}
-                        initialViewMode={appBuilderInitialViewMode}
-                        onCanonicalAppIdResolved={(canonicalAppId: string) => {
-                            const next = String(canonicalAppId || "").trim();
-                            if (!next || next === currentAppId) return;
-                            setCurrentAppId(next);
-                        }}
-                        onClose={() => {
-                            setAppBuilderOpen(false);
-                            setCurrentAppId(null);
-                            setAppBuilderInitialViewMode("ai");
-                        }}
-                        onDeploy={(app) => openAppDeployWizard(app)}
-                        deployLocked={userTier === "free"}
-                        accessLocked={isFreeTierNotTrialing}
-                        showTour={isTourEligible}
-                        onRequestDeployCheckout={() => {
-                            void startProCheckoutForAppDeploy({ returnAppId: currentAppId });
-                        }}
-                        agentWelcomeContext={agentWelcomeContextByAppId[currentAppId]}
-                        trialPromptEnabled={isFreeTierNotTrialing && !firstGenerationTrialPromptShown}
-                        trialPromptSessionEligible={appBuilderTrialSessionEligible && !firstGenerationTrialPromptShown}
-                        trialCheckoutBusy={checkoutBusy}
-                        onTrialPromptShown={() => {
-                            setFirstGenerationTrialPromptShown(true);
-                            void markFirstGenerationTrialPromptAsShown("kloner_app");
-                        }}
-                        onTrialPromptStartCheckout={(appId) => {
-                            void startProCheckoutForAppDeploy({ returnAppId: appId });
-                        }}
-                        previewDebugScenario={previewDebugScenario}
-                        deployIssue={appBuilderDeployIssue}
-                    />
-                )}
-
-                {appBuilderLaunchLoading ? <KlonerLoader /> : null}
+                <AnimatePresence initial={false} mode="wait">
+                    {appBuilderOpen && currentAppId && (
+                        <motion.div
+                            key={currentAppId}
+                            className="fixed inset-0 z-[18000]"
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            transition={{ duration: 0.22, ease: "easeOut" }}
+                        >
+                            <AppBuilderEditor
+                                appId={currentAppId}
+                                initialViewMode={appBuilderInitialViewMode}
+                                onCanonicalAppIdResolved={(canonicalAppId: string) => {
+                                    const next = String(canonicalAppId || "").trim();
+                                    if (!next || next === currentAppId) return;
+                                    setCurrentAppId(next);
+                                }}
+                                onClose={() => {
+                                    setAppBuilderOpen(false);
+                                    setCurrentAppId(null);
+                                    setAppBuilderInitialViewMode("ai");
+                                }}
+                                onDeploy={(app) => openAppDeployWizard(app)}
+                                deployLocked={userTier === "free"}
+                                accessLocked={isFreeTierNotTrialing}
+                                showTour={isTourEligible}
+                                onRequestDeployCheckout={() => {
+                                    void startProCheckoutForAppDeploy({ returnAppId: currentAppId });
+                                }}
+                                agentWelcomeContext={agentWelcomeContextByAppId[currentAppId]}
+                                trialPromptEnabled={isFreeTierNotTrialing && !firstGenerationTrialPromptShown}
+                                trialPromptSessionEligible={appBuilderTrialSessionEligible && !firstGenerationTrialPromptShown}
+                                trialCheckoutBusy={checkoutBusy}
+                                onTrialPromptShown={() => {
+                                    setFirstGenerationTrialPromptShown(true);
+                                    void markFirstGenerationTrialPromptAsShown("kloner_app");
+                                }}
+                                onTrialPromptStartCheckout={(appId) => {
+                                    void startProCheckoutForAppDeploy({ returnAppId: appId });
+                                }}
+                                previewDebugScenario={previewDebugScenario}
+                                deployIssue={appBuilderDeployIssue}
+                            />
+                        </motion.div>
+                    )}
+                </AnimatePresence>
 
                 {/* web app wizard */}
                 <AnimatePresence>
