@@ -2336,10 +2336,8 @@ export default function NavBar() {
     if (!message) return null;
 
     return (
-      <div className="mt-6 w-full max-w-2xl px-6 py-2 text-left">
-        <div className="text-sm text-black/60">
-          <span>{message}</span>
-        </div>
+      <div className="text-sm font-semibold leading-5 tracking-[-0.01em] text-neutral-900">
+        {message}
       </div>
     );
   };
@@ -5757,13 +5755,13 @@ export default function NavBar() {
         <div className="relative w-full h-full">
           {showApplyRefreshingOverlay ? (
             <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/85 backdrop-blur-[1px]">
-              <div className="text-center max-w-md">
-                <div className="kloner-dots" aria-hidden="true"><span className="kloner-dot" /><span className="kloner-dot" /><span className="kloner-dot" /></div>
+              <div className="w-full max-w-[320px] rounded-2xl border border-neutral-200 bg-white px-6 py-8 text-center shadow-sm">
                 {renderLiveStatusLine({
                   uiStage: 'applying_changes',
                   uiMessage: 'Refreshing app with new changes…',
                   updatedAt: Date.now(),
                 })}
+                <div className="kloner-dots" aria-hidden="true"><span className="kloner-dot" /><span className="kloner-dot" /><span className="kloner-dot" /></div>
               </div>
             </div>
           ) : null}
@@ -6315,11 +6313,10 @@ export default function NavBar() {
         </div>
       ) : (
         <div className="flex-1 flex items-center justify-center">
-          <div className="text-center max-w-md">
+          <div className="w-full max-w-[320px] rounded-2xl border border-neutral-200 bg-white px-6 py-8 text-center shadow-sm">
             {isPolling && !terminalPreviewStatus ? (
-              // Simple, clean polling state with 3-dot loader
-              <div className="space-y-4">
-                <div className="kloner-dots" aria-hidden="true"><span className="kloner-dot" /><span className="kloner-dot" /><span className="kloner-dot" /></div>
+              // Simple, clean polling state with compact card loader
+              <div>
                 {renderLiveStatusLine(
                   currentStatusData
                     ? { ...currentStatusData, updatedAt: currentStatusData?.updatedAt ?? Date.now() }
@@ -6344,6 +6341,7 @@ export default function NavBar() {
                           updatedAt: Date.now(),
                         }
                 )}
+                <div className="kloner-dots" aria-hidden="true"><span className="kloner-dot" /><span className="kloner-dot" /><span className="kloner-dot" /></div>
                 {renderBuildChecklist(currentStatusData)}
                 {pollNetworkWarning ? (
                   <div className="mx-auto mt-3 max-w-xl rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-left text-xs text-amber-900">
@@ -6354,13 +6352,13 @@ export default function NavBar() {
             ) : (
               // Initial loading state
               <>
-                <div className="kloner-dots" aria-hidden="true"><span className="kloner-dot" /><span className="kloner-dot" /><span className="kloner-dot" /></div>
                 {renderLiveStatusLine({
                   uiStage: connectingToExisting ? 'reconnecting' : 'starting_app',
                   uiTitle: connectingToExisting ? 'Connecting to existing machine' : 'Starting your app',
                   uiMessage: connectingToExisting ? 'Reconnecting to your saved session' : 'Setting up your environment',
                   updatedAt: Date.now(),
                 })}
+                <div className="kloner-dots" aria-hidden="true"><span className="kloner-dot" /><span className="kloner-dot" /><span className="kloner-dot" /></div>
               </>
             )}
           </div>

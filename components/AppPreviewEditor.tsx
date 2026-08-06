@@ -5029,14 +5029,14 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                     aria-live="polite"
                     aria-busy="true"
                 >
-                    <div className="flex flex-col items-center justify-center text-center">
+                    <div className="w-full max-w-[320px] rounded-2xl border border-neutral-200 bg-white px-6 py-8 text-center shadow-sm">
+                        <div className="text-sm font-semibold leading-5 tracking-[-0.01em] text-neutral-900">
+                            Hydrating files
+                        </div>
                         <div className="kloner-dots" aria-hidden="true">
                             <span className="kloner-dot" />
                             <span className="kloner-dot" />
                             <span className="kloner-dot" />
-                        </div>
-                        <div className="mt-4 text-sm font-medium text-neutral-700">
-                            Hydrating files
                         </div>
                     </div>
                 </div>
@@ -5053,14 +5053,14 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                     aria-live="polite"
                     aria-busy="true"
                 >
-                    <div className="flex flex-col items-center justify-center text-center">
+                    <div className="w-full max-w-[320px] rounded-2xl border border-neutral-200 bg-white px-6 py-8 text-center shadow-sm">
+                        <div className="text-sm font-semibold leading-5 tracking-[-0.01em] text-neutral-900">
+                            Hydrating files
+                        </div>
                         <div className="kloner-dots" aria-hidden="true">
                             <span className="kloner-dot" />
                             <span className="kloner-dot" />
                             <span className="kloner-dot" />
-                        </div>
-                        <div className="mt-4 text-sm font-medium text-neutral-700">
-                            Hydrating files
                         </div>
                     </div>
                 </div>
@@ -7453,17 +7453,21 @@ export default function AppPreviewEditor({
     const fallbackSecondaryButtonClass =
         "inline-flex items-center rounded-full border border-neutral-200 bg-white px-4 py-2 text-xs font-semibold text-neutral-800 transition hover:bg-neutral-50";
 
-    if (debugHydrationLoaderOpen || (!htmlPaths.length && !isHtmlDiscoveryFallbackReady)) {
+    if (
+        isFilesStillHydrating ||
+        debugHydrationLoaderOpen ||
+        (!htmlPaths.length && !isHtmlDiscoveryFallbackReady)
+    ) {
         return (
             <div className="pointer-events-none fixed inset-0 z-[22050] flex items-center justify-center px-4">
-                <div className="flex flex-col items-center justify-center text-center">
+                <div className="w-full max-w-[320px] rounded-2xl border border-neutral-200 bg-white px-6 py-8 text-center shadow-sm">
+                    <div className="text-sm font-semibold leading-5 tracking-[-0.01em] text-neutral-900">
+                        Loading project
+                    </div>
                     <div className="kloner-dots" aria-hidden="true">
                         <span className="kloner-dot" />
                         <span className="kloner-dot" />
                         <span className="kloner-dot" />
-                    </div>
-                    <div className="mt-4 text-sm font-medium text-neutral-700">
-                        Loading project
                     </div>
                 </div>
             </div>

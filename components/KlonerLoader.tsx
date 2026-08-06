@@ -77,67 +77,15 @@ export function HydrationDotsLoader({
     className = "",
 }: HydrationDotsLoaderProps) {
     return (
-        <div className={className}>
-            <div
-                className="rounded-[28px] p-[1px]"
-                style={{
-                    backgroundImage: "linear-gradient(90deg, rgba(255,141,33,0.35), rgba(255,141,33,0.85), rgba(255,141,33,0.35))",
-                    backgroundSize: "220% 220%",
-                    animation: "kloner-accent-move 2.8s linear infinite",
-                }}
-            >
-                <div className="flex items-center gap-2.5 rounded-2xl bg-white px-3.5 py-1.5 text-[15px] text-neutral-900 shadow-[0_10px_30px_rgba(0,0,0,0.10)] ring-[0.5] ring-black/5 backdrop-blur">
-                    <span
-                        className="bg-clip-text text-transparent font-semibold tracking-tight"
-                        style={{
-                            backgroundImage: "linear-gradient(90deg, rgba(255,141,33,0.6), rgba(255,141,33,1), rgba(255,141,33,0.6))",
-                            backgroundSize: "220% 220%",
-                            animation: "kloner-accent-move 2.8s linear infinite",
-                        }}
-                    >
-                        {label}
-                    </span>
-                    <span className="inline-flex items-center gap-1 leading-none" aria-hidden="true">
-                        <span className="h-1.5 w-1.5 rounded-full bg-[#FF8D21] kloner-dot" />
-                        <span
-                            className="h-1.5 w-1.5 rounded-full bg-[#FF8D21] kloner-dot"
-                            style={{ opacity: 0.75, animationDelay: "0.15s" }}
-                        />
-                        <span
-                            className="h-1.5 w-1.5 rounded-full bg-[#FF8D21] kloner-dot"
-                            style={{ opacity: 0.45, animationDelay: "0.30s" }}
-                        />
-                    </span>
-                    <style jsx>{`
-                        @keyframes kloner-accent-move {
-                            0% {
-                                background-position: 0% 50%;
-                            }
-                            50% {
-                                background-position: 100% 50%;
-                            }
-                            100% {
-                                background-position: 0% 50%;
-                            }
-                        }
-
-                        @keyframes klonerDots {
-                            0%,
-                            80%,
-                            100% {
-                                transform: translateY(0);
-                                opacity: 0.25;
-                            }
-                            40% {
-                                transform: translateY(-3px);
-                                opacity: 1;
-                            }
-                        }
-
-                        .kloner-dot {
-                            animation: klonerDots 0.9s ease-in-out infinite;
-                        }
-                    `}</style>
+        <div className={`w-full max-w-[320px] rounded-2xl border border-neutral-200 bg-white px-6 py-8 shadow-sm ${className}`}>
+            <div className="flex flex-col items-center text-center">
+                <div className="text-sm font-semibold leading-5 tracking-[-0.01em] text-neutral-900">
+                    {label}
+                </div>
+                <div className="kloner-dots" aria-hidden="true">
+                    <span className="kloner-dot" />
+                    <span className="kloner-dot" />
+                    <span className="kloner-dot" />
                 </div>
             </div>
         </div>
@@ -184,13 +132,13 @@ export default function KlonerLoader({
 
     if (inline) {
         return (
-            <div className="mt-2 sm:mt-3 mb-4 mx-2 sm:mx-3 md:mx-4 rounded-2xl bg-white p-5 sm:p-6 grid place-items-center min-h-[160px] shadow-sm">
+            <div className="mt-2 sm:mt-3 mb-4 mx-2 sm:mx-3 md:mx-4 rounded-2xl border border-neutral-200 bg-white px-6 py-8 shadow-sm grid place-items-center">
                 {showMilestones ? (
                     <div className="w-full max-w-md">
                         <MilestoneProgress progress={progress} milestones={milestones} />
                         {(label || sublabel) ? (
                             <div className="mt-4 text-center">
-                                {label ? <div className="text-sm font-semibold text-neutral-900">{label}</div> : null}
+                                {label ? <div className="text-sm font-semibold leading-5 tracking-[-0.01em] text-neutral-900">{label}</div> : null}
                                 {sublabel ? <div className="mt-1 text-xs leading-5 text-neutral-500">{sublabel}</div> : null}
                             </div>
                         ) : null}

@@ -58,13 +58,14 @@ body {
     .kloner-dots {
         display: inline-flex;
         align-items: center;
-        gap: 4px;
+        gap: 10px;
         line-height: 1;
+        margin-top: 12px;
     }
 
     .kloner-dot {
-        width: 6px;
-        height: 6px;
+        width: 8px;
+        height: 8px;
         border-radius: 9999px;
         background: #FF8D21;
         animation: klonerDots 0.9s ease-in-out infinite;
@@ -262,18 +263,18 @@ body {
 /* 3-dot loader (matches the tracksite-hub preview loader exactly) */
 .kloner-dots {
     display: flex;
-    gap: 6px;
+    gap: 10px;
     align-items: center;
     justify-content: center;
-    margin: 0 0 12px 0;
+    margin: 12px 0 0 0;
 }
 
 .kloner-dot {
-    width: 6px;
-    height: 6px;
-    border-radius: 999px;
-    background: rgba(255, 141, 33, 0.25);
-    animation: kloner-dot-bounce 1.05s infinite ease-in-out;
+    width: 8px;
+    height: 8px;
+    border-radius: 9999px;
+    background: #FF8D21;
+    animation: kloner-dot-bounce 0.9s infinite ease-in-out;
 }
 
 .kloner-dot:nth-child(2) {
@@ -293,8 +294,7 @@ body {
     }
 
     40% {
-        transform: translateY(-6px);
+        transform: translateY(-3px);
         opacity: 1;
-        background: #FF8D21;
     }
 }

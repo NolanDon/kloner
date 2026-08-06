@@ -97,9 +97,15 @@ export default function PreviewBuildUI({ userId, appId, code }: PreviewBuildUIPr
   if (loading) {
     return (
       <div className="flex-1 flex items-center justify-center">
-        <div className="text-center space-y-4">
-          <div className="kloner-dots" aria-hidden="true"><span className="kloner-dot" /><span className="kloner-dot" /><span className="kloner-dot" /></div>
-          <p className="text-gray-600">Loading preview...</p>
+        <div className="w-full max-w-[320px] rounded-2xl border border-neutral-200 bg-white px-6 py-8 shadow-sm text-center">
+          <div className="text-sm font-semibold leading-5 tracking-[-0.01em] text-neutral-900">
+            Loading preview...
+          </div>
+          <div className="kloner-dots" aria-hidden="true">
+            <span className="kloner-dot" />
+            <span className="kloner-dot" />
+            <span className="kloner-dot" />
+          </div>
         </div>
       </div>
     );
@@ -199,34 +205,32 @@ export default function PreviewBuildUI({ userId, appId, code }: PreviewBuildUIPr
 
   return (
     <div className="flex-1 flex items-center justify-center">
-      <div className="text-center max-w-md space-y-6">
-        <div className="space-y-4">
-          <div className="kloner-dots" aria-hidden="true"><span className="kloner-dot" /><span className="kloner-dot" /><span className="kloner-dot" /></div>
-
-          <div className="space-y-2">
-            <h3 className="text-xl font-medium text-gray-900">
-              {previewData.uiTitle || 'Building your app...'}
-            </h3>
-            <p className="text-gray-600">
-              {previewData.uiMessage || 'This may take a few minutes'}
-            </p>
+      <div className="w-full max-w-[320px] rounded-2xl border border-neutral-200 bg-white px-6 py-8 shadow-sm text-center">
+        <div className="text-sm font-semibold leading-5 tracking-[-0.01em] text-neutral-900">
+          {previewData.uiTitle || 'Building your app...'}
+        </div>
+        <div className="kloner-dots" aria-hidden="true">
+          <span className="kloner-dot" />
+          <span className="kloner-dot" />
+          <span className="kloner-dot" />
+        </div>
+        <p className="mt-3 text-sm font-semibold leading-5 tracking-[-0.01em] text-neutral-900">
+          {previewData.uiMessage || 'This may take a few minutes'}
+        </p>
+        <div className="mt-4 space-y-3">
+          <div className="w-full bg-gray-200 rounded-full h-2">
+            {isIndeterminate ? (
+              <div className="h-2 bg-accent rounded-full animate-pulse" style={{ width: '60%' }}></div>
+            ) : (
+              <div
+                className="h-2 bg-accent rounded-full transition-all duration-300"
+                style={{ width: `${progress}%` }}
+              ></div>
+            )}
           </div>
-
-          <div className="space-y-3">
-            <div className="w-full bg-gray-200 rounded-full h-2">
-              {isIndeterminate ? (
-                <div className="h-2 bg-accent rounded-full animate-pulse" style={{ width: '60%' }}></div>
-              ) : (
-                <div
-                  className="h-2 bg-accent rounded-full transition-all duration-300"
-                  style={{ width: `${progress}%` }}
-                ></div>
-              )}
-            </div>
-            <p className="text-sm text-gray-500">
-              {getProgressLabel(previewData)}
-            </p>
-          </div>
+          <p className="text-sm text-gray-500">
+            {getProgressLabel(previewData)}
+          </p>
         </div>
       </div>
     </div>

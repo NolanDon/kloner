@@ -742,9 +742,9 @@ function humanizePageLabel(path: string): string {
         .join(" / ") || path;
 }
 
-function pageFileToPreviewPath(path: string): string {
-    const normalized = String(path || "").replace(/^src\//, "").trim();
-    if (!normalized) return "/";
+    function pageFileToPreviewPath(path: string): string {
+        const normalized = String(path || "").replace(/^src\//, "").trim();
+        if (!normalized) return "/";
 
     if (/^app\/page\.[^.]+$/i.test(normalized) || /^pages\/index\.[^.]+$/i.test(normalized)) {
         return "/";
@@ -1850,11 +1850,15 @@ export default function AppBuilderEditor({
         }, [showAlert, showConfirm, supabaseConnected, supabaseProjectName, supabaseProjectRef, user?.uid, verifySupabaseConnection]);
 
     const hasInitialAppData = Boolean(initialAppData && initialAppData.id === appId);
+    const initialAppGenerationState = hasInitialAppData ? normalizeGenerationState(initialAppData as any) : null;
+    const shouldHydrateInitialAppData =
+        Boolean(hasInitialAppData) &&
+        (isGenerationInProgress(initialAppGenerationState) || Object.keys(initialAppData?.files || {}).length === 0);
     const [app, setApp] = useState<AppData | null>(() => (hasInitialAppData ? initialAppData : null));
     const projectFramework = useMemo(() => detectProjectFramework(app?.files || null), [app?.files]);
-    const [loading, setLoading] = useState(() => !hasInitialAppData);
-    const [filesHydrated, setFilesHydrated] = useState(() => hasInitialAppData);
-    const [isPreviewBootReady, setIsPreviewBootReady] = useState(false);
+    const [loading, setLoading] = useState(() => !hasInitialAppData || shouldHydrateInitialAppData);
+    const [filesHydrated, setFilesHydrated] = useState(() => hasInitialAppData && !shouldHydrateInitialAppData);
+    const [isPreviewBootReady, setIsPreviewBootReady] = useState(() => hasInitialAppData && !shouldHydrateInitialAppData);
     const [filesHydrationProgress, setFilesHydrationProgress] = useState(0);
     const [filesHydrationCompletionHold, setFilesHydrationCompletionHold] = useState(false);
     const [isFilesHydrationActive, setIsFilesHydrationActive] = useState(false);
@@ -2460,6 +2464,8 @@ export default function AppBuilderEditor({
     const showAccessPaywall =
         shouldLockBuilderEditor &&
         !authLoading &&
+        !loading &&
+        isPreviewBootReady &&
         (!shouldRunBuilderTour || hasCompletedBuilderTour);
     const previousVisualEditorModeRef = useRef<boolean | null>(null);
     const pendingShareResumeRef = useRef(false);
@@ -2547,14 +2553,14 @@ export default function AppBuilderEditor({
                     aria-live="polite"
                     aria-busy="true"
                 >
-                    <div className="flex flex-col items-center justify-center text-center">
+                    <div className="w-full max-w-[320px] rounded-2xl border border-neutral-200 bg-white px-6 py-8 text-center shadow-sm">
+                        <div className="text-sm font-semibold leading-5 tracking-[-0.01em] text-neutral-900">
+                            Hydrating files
+                        </div>
                         <div className="kloner-dots" aria-hidden="true">
                             <span className="kloner-dot" />
                             <span className="kloner-dot" />
                             <span className="kloner-dot" />
-                        </div>
-                        <div className="mt-4 text-sm font-medium text-neutral-700">
-                            Hydrating files
                         </div>
                     </div>
                 </div>
@@ -2571,14 +2577,14 @@ export default function AppBuilderEditor({
                     aria-live="polite"
                     aria-busy="true"
                 >
-                    <div className="flex flex-col items-center justify-center text-center">
+                    <div className="w-full max-w-[320px] rounded-2xl border border-neutral-200 bg-white px-6 py-8 text-center shadow-sm">
+                        <div className="text-sm font-semibold leading-5 tracking-[-0.01em] text-neutral-900">
+                            Hydrating files
+                        </div>
                         <div className="kloner-dots" aria-hidden="true">
                             <span className="kloner-dot" />
                             <span className="kloner-dot" />
                             <span className="kloner-dot" />
-                        </div>
-                        <div className="mt-4 text-sm font-medium text-neutral-700">
-                            Hydrating files
                         </div>
                     </div>
                 </div>
@@ -3317,8 +3323,6 @@ export default function AppBuilderEditor({
     const getHasUnsavedChanges = useCallback((): boolean => {
         if (!appId) return false;
 
-        // If an autosave is pending, treat as unsaved.
-        if (autoSaveTimeoutRef.current) return true;
         if (isSaving) return true;
 
         const cur = currentFileRef.current;
@@ -3557,7 +3561,6 @@ export default function AppBuilderEditor({
     }, [hideModal, showAlert]);
     const [leftPanelWidth, setLeftPanelWidth] = useState(500); // Default wider AI chat panel
     const [isResizing, setIsResizing] = useState(false);
-    const autoSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
     const restartDebounceRef = useRef<NodeJS.Timeout | null>(null);
     const restartInFlightRef = useRef(false);
     const restartQueuedRef = useRef(false);
@@ -4782,7 +4785,7 @@ export default function AppBuilderEditor({
     // Load app data
     useEffect(() => {
         if (authLoading) return;
-        if (hasInitialAppData) {
+        if (hasInitialAppData && !shouldHydrateInitialAppData) {
             setApp(initialAppData);
             setFilesHydrated(true);
             setIsPreviewBootReady(true);
@@ -5012,6 +5015,7 @@ export default function AppBuilderEditor({
         hasInitialAppData,
         handleSessionExpired,
         initialAppData,
+        shouldHydrateInitialAppData,
         user,
     ]);
 
@@ -5352,14 +5356,6 @@ export default function AppBuilderEditor({
     const handleCodeChange = (value: string | undefined) => {
         const newCode = value || "";
         setCode(newCode);
-
-        // Auto-save after a delay
-        if (autoSaveTimeoutRef.current) {
-            clearTimeout(autoSaveTimeoutRef.current);
-        }
-        autoSaveTimeoutRef.current = setTimeout(() => {
-            handleSave(false);
-        }, 1000);
     };
 
     const handleFilesReplaceFromServer = useCallback(
@@ -5614,22 +5610,6 @@ export default function AppBuilderEditor({
                 ? rewriteFirebaseStorageUrlsInHtml(content)
                 : content;
 
-            const getCsrfToken = async (): Promise<string | null> => {
-                try {
-                    const res = await fetch("/api/auth/csrf", {
-                        method: "POST",
-                        headers: { "content-type": "application/json" },
-                        credentials: "include",
-                        cache: "no-store",
-                    });
-                    if (!res.ok) return null;
-                    const data = await res.json().catch(() => null);
-                    return data?.csrf || null;
-                } catch {
-                    return null;
-                }
-            };
-
             const postUpdate = async (csrf: string | null) => {
                 const res = await fetch(`/api/app-builder/${appId}/update-file`, {
                     method: "POST",
@@ -5647,6 +5627,22 @@ export default function AppBuilderEditor({
 
             // Always fetch a fresh CSRF token so the header matches the cookie.
             // (Relying on an existing cookie can drift and cause 403s.)
+            const getCsrfToken = async (): Promise<string | null> => {
+                try {
+                    const res = await fetch("/api/auth/csrf", {
+                        method: "POST",
+                        headers: { "content-type": "application/json" },
+                        credentials: "include",
+                        cache: "no-store",
+                    });
+                    if (!res.ok) return null;
+                    const data = await res.json().catch(() => null);
+                    return data?.csrf || null;
+                } catch {
+                    return null;
+                }
+            };
+
             let csrf = await getCsrfToken();
             let { res, data } = await postUpdate(csrf);
 

@@ -3,9 +3,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAdminDb } from "../../../_lib/auth";
 import { requireSessionAndMaybeCsrf } from "../../../_lib/route-guard";
 import { assertAppBuilderScope } from "../../../_lib/appBuilderScope";
+import {
+    buildAppBuilderFileStoragePath,
+    writeStorageText,
+} from "../../../_lib/htmlStorage";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+const INLINE_FIRESTORE_LIMIT_BYTES = 900_000;
 
 function isEnvPath(path: string): boolean {
     const lower = String(path || "").toLowerCase();
@@ -52,6 +58,10 @@ function normalizeJsTsConfig(path: string, content: string): { ok: true; content
     return { ok: true, content: JSON.stringify(parsed, null, 2) + "\n" };
 }
 
+function usesShardedFileStorage(data: any): boolean {
+    return data?.fileStorageMode === "sharded" || Boolean(data?.fileManifest) || Boolean(data?.fileStorageCollection);
+}
+
 export async function POST(
     req: NextRequest,
     { params }: any
@@ -96,10 +106,25 @@ export async function POST(
             return NextResponse.json({ error: "App data not found" }, { status: 404 });
         }
 
-        const nextFiles = { ...(data?.files || {}) };
-        nextFiles[sanitizedPath] = { content: normalized.content, lastModified: Date.now() };
+        const usesShardedFiles = usesShardedFileStorage(data);
+        const contentBytes = Buffer.byteLength(normalized.content, "utf8");
+        const shouldUseStorage = contentBytes > INLINE_FIRESTORE_LIMIT_BYTES;
+        const storagePath = shouldUseStorage
+            ? buildAppBuilderFileStoragePath({
+                uid,
+                appId,
+                filePath: sanitizedPath,
+            })
+            : "";
 
-        const usesShardedFiles = data?.fileStorageMode === "sharded" || Boolean(data?.fileManifest) || Boolean(data?.fileStorageCollection);
+        if (shouldUseStorage) {
+            await writeStorageText({
+                storagePath,
+                content: normalized.content,
+                contentType: /\.html?$/i.test(sanitizedPath) ? "text/html; charset=utf-8" : "text/plain; charset=utf-8",
+            });
+        }
+
         if (usesShardedFiles) {
             const collectionName = typeof data?.fileStorageCollection === "string" && data.fileStorageCollection.trim()
                 ? data.fileStorageCollection.trim()
@@ -112,10 +137,11 @@ export async function POST(
             const payload = {
                 ...existingData,
                 path: sanitizedPath,
-                content: normalized.content,
+                content: shouldUseStorage ? "" : normalized.content,
                 encoding: "utf8",
-                inline: typeof existingData?.inline === "boolean" ? existingData.inline : true,
+                inline: shouldUseStorage ? false : (typeof existingData?.inline === "boolean" ? existingData.inline : true),
                 kind: typeof existingData?.kind === "string" ? existingData.kind : "text",
+                ...(shouldUseStorage ? { storagePath } : {}),
                 lastModified: Date.now(),
                 updatedAt: new Date(),
             };
@@ -125,12 +151,25 @@ export async function POST(
             } else {
                 await blobCol.add(payload);
             }
-        }
 
-        await docRef.update({
-            files: nextFiles,
-            updatedAt: new Date(),
-        });
+            await docRef.update({
+                updatedAt: new Date(),
+            });
+        } else {
+            const nextFiles = { ...(data?.files || {}) };
+            nextFiles[sanitizedPath] = shouldUseStorage
+                ? {
+                    content: "",
+                    lastModified: Date.now(),
+                    storagePath,
+                }
+                : { content: normalized.content, lastModified: Date.now() };
+
+            await docRef.update({
+                files: nextFiles,
+                updatedAt: new Date(),
+            });
+        }
 
         return NextResponse.json({ success: true });
         },

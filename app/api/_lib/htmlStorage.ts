@@ -1,4 +1,5 @@
 import admin from "firebase-admin";
+import crypto from "node:crypto";
 import type { Bucket } from "@google-cloud/storage";
 
 export type AppBuilderFileRecord = { content: string; lastModified: number };
@@ -70,6 +71,48 @@ function getBucket(): Bucket {
 
 function isHtmlPath(path: string): boolean {
     return /\.(html?|xhtml)$/i.test(String(path || ""));
+}
+
+function sanitizeStorageSegment(value: string): string {
+    return String(value || "")
+        .trim()
+        .replace(/[^a-zA-Z0-9._-]+/g, "-")
+        .replace(/-+/g, "-")
+        .replace(/^-|-$/g, "")
+        .slice(0, 80) || "file";
+}
+
+export function buildAppBuilderFileStoragePath(params: {
+    uid: string;
+    appId: string;
+    filePath: string;
+}): string {
+    const uid = sanitizeStorageSegment(params.uid);
+    const appId = sanitizeStorageSegment(params.appId);
+    const filePath = String(params.filePath || "").trim();
+    const fileName = sanitizeStorageSegment(filePath.split("/").pop() || filePath);
+    const digest = crypto.createHash("sha256").update(`${params.uid}:${params.appId}:${filePath}`).digest("hex").slice(0, 24);
+    return `kloner_app_files/${uid}/${appId}/${digest}-${fileName}`;
+}
+
+export async function writeStorageText(params: {
+    storagePath: string;
+    content: string;
+    contentType?: string;
+}): Promise<void> {
+    const storagePath = String(params.storagePath || "").trim();
+    if (!storagePath) {
+        throw new Error("Missing storage path");
+    }
+
+    const bucket = getBucket();
+    await bucket.file(storagePath).save(Buffer.from(String(params.content || ""), "utf8"), {
+        resumable: false,
+        contentType: params.contentType || "text/plain; charset=utf-8",
+        metadata: {
+            cacheControl: "private, max-age=0, no-cache, no-store, must-revalidate",
+        },
+    });
 }
 
 function isLikelyHtmlPathHint(value: string): boolean {
@@ -235,22 +278,12 @@ function collectManifestEntries(value: unknown, out: AppBuilderManifestEntry[], 
     }
 }
 
-function collectManifestPaths(value: unknown, out: Set<string>, limit = 2000) {
-    const entries: AppBuilderManifestEntry[] = [];
-    collectManifestEntries(value, entries, limit);
-
-    for (const entry of entries) {
-        const path = getEntryPath(entry);
-        if (path) out.add(path.replace(/^\/+/, ""));
-    }
-}
-
 function extractLastModified(record: unknown): number {
     if (!isPlainObject(record)) return Date.now();
     return toTimestamp(record.lastModified || record.updatedAt || record.createdAt);
 }
 
-function normalizeInlineFiles(files: AppBuilderFiles | Record<string, unknown> | undefined | null): AppBuilderFiles {
+async function normalizeInlineFiles(files: AppBuilderFiles | Record<string, unknown> | undefined | null): Promise<AppBuilderFiles> {
     const out: AppBuilderFiles = {};
     for (const [path, value] of Object.entries((files || {}) as Record<string, unknown>)) {
         if (typeof value === "string") {
@@ -261,7 +294,11 @@ function normalizeInlineFiles(files: AppBuilderFiles | Record<string, unknown> |
         if (!isPlainObject(value)) continue;
         const record = value as Record<string, unknown>;
         const encoding = getEntryEncoding(record);
-        const content = extractRecordText(record, encoding);
+        const storagePath = getEntryStoragePath(record);
+        let content = extractRecordText(record, encoding);
+        if (!content && storagePath) {
+            content = (await readStorageText(storagePath, encoding)) || "";
+        }
         const lastModified = extractLastModified(record);
 
         out[path] = {
@@ -503,7 +540,7 @@ export async function hydrateAppBuilderFiles(params: {
     htmlStoragePath?: string | null;
     htmlEditIndex?: unknown;
 }): Promise<AppBuilderFiles> {
-    const inlineFiles = normalizeInlineFiles(params.files);
+    const inlineFiles = await normalizeInlineFiles(params.files);
     const nextFiles: AppBuilderFiles = { ...inlineFiles };
 
     const manifestEntries: AppBuilderManifestEntry[] = [];
@@ -583,7 +620,7 @@ export async function hydrateAppBuilderFilesByPaths(params: {
     htmlEditIndex?: unknown;
     paths?: string[];
 }): Promise<AppBuilderFiles> {
-    const inlineFiles = normalizeInlineFiles(params.files);
+    const inlineFiles = await normalizeInlineFiles(params.files);
     const requestedPaths = Array.from(
         new Set(
             (params.paths || [])

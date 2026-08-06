@@ -6307,6 +6307,11 @@ export default function PreviewPage(): JSX.Element {
                 });
             }
 
+            if (mode === "url") {
+                // Hide the transient generated-app card while the launch is in flight.
+                pendingCreatedAppLaunchRequestedRef.current = pendingCreatedAppId;
+            }
+
             let appId: string;
             if (mode === "url" && url) {
                 // Use the new URL generation endpoint
@@ -6848,8 +6853,18 @@ export default function PreviewPage(): JSX.Element {
         const suppressPendingCreatedAppCard =
             ((aqFromQuery === "1" || aqFromQuery === "true") || (startFromQuery === "1" || startFromQuery === "true")) &&
             !(retryFromQuery === "1" || retryFromQuery === "true");
+        const pendingLaunchId = pendingCreatedAppLaunchRequestedRef.current;
+        const isPendingCreatedAppLaunchSuppressed =
+            Boolean(pendingCreatedApp?.id) &&
+            pendingLaunchId === pendingCreatedApp?.id &&
+            !pendingCreatedApp?.completed;
 
-        if (!suppressPendingCreatedAppCard && pendingCreatedApp && !merged.some((app) => app.id === pendingCreatedApp.id)) {
+        if (
+            !suppressPendingCreatedAppCard &&
+            !isPendingCreatedAppLaunchSuppressed &&
+            pendingCreatedApp &&
+            !merged.some((app) => app.id === pendingCreatedApp.id)
+        ) {
             merged.push({
                 id: pendingCreatedApp.id,
                 name: pendingCreatedApp.name,
@@ -6920,7 +6935,7 @@ export default function PreviewPage(): JSX.Element {
                     : 0;
             return rightTime - leftTime;
         });
-    }, [apps, draftApps, pendingCreatedApp, pendingCreatedAppCompleted, search, showArchivedApps]);
+    }, [appBuilderOpen, apps, currentAppId, draftApps, pendingAppBuilderAppId, pendingCreatedApp, pendingCreatedAppCompleted, search, showArchivedApps]);
 
     const draftThumbnailLookup = useMemo(() => {
         const lookup = new Map<string, string>();
@@ -8340,27 +8355,6 @@ export default function PreviewPage(): JSX.Element {
     useEffect(() => {
         promoteDraftToAppRef.current = promoteDraftToApp;
     }, [promoteDraftToApp]);
-
-    useEffect(() => {
-        if (!user?.uid || draftAppsLoading || !draftAppsInitialLoadComplete) return;
-
-        const draftById = new Map(
-            draftApps.map((draft) => [String(draft.draftId || draft.id || "").trim(), draft] as const)
-        );
-
-        for (const state of Object.values(draftPromotionScanByDraftId)) {
-            if (!isDraftPromotionScanPending(state)) continue;
-            if (draftPromotionInFlightRef.current[state.draftId]) continue;
-
-            const draft = draftById.get(state.draftId);
-            if (!draft?.sourceUrl) continue;
-
-            void promoteDraftToAppRef.current?.({
-                ...draft,
-                skipPreviewCreditGate: true,
-            });
-        }
-    }, [draftApps, draftAppsInitialLoadComplete, draftAppsLoading, draftPromotionScanByDraftId, user?.uid]);
 
     const [urlMenuOpen, setUrlMenuOpen] = useState(false);
     const urlMenuRef = useRef<HTMLDivElement | null>(null);
