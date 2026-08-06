@@ -9,7 +9,7 @@ export default function Loading() {
                         <span className="kloner-dot" style={{ animationDelay: "0.30s", opacity: 0.45 }} />
                     </div>
                     <div className="mt-4 text-sm font-medium text-neutral-700">
-                        Loading app
+                        Loading workspace
                     </div>
                 </div>
             </div>

@@ -2455,9 +2455,8 @@ export default function AppBuilderEditor({
     const appBuilderViewSwitchesRef = useRef<number>(0);
     const previousViewModeRef = useRef<LeftViewMode>("ai");
     const [hasCompletedBuilderTour, setHasCompletedBuilderTour] = useState(false);
-    const [hasDismissedAccessPaywall, setHasDismissedAccessPaywall] = useState(false);
     const shouldRunBuilderTour = isDev && !isVisualEditorMode && showTour;
-    const showAccessPaywall = accessLocked && hasCompletedBuilderTour && !hasDismissedAccessPaywall;
+    const showAccessPaywall = accessLocked && hasCompletedBuilderTour;
     const previousVisualEditorModeRef = useRef<boolean | null>(null);
     const pendingShareResumeRef = useRef(false);
     const previewActionThrottleRef = useRef<{ refreshAt: number; rebuildAt: number; saveAt: number }>({
@@ -7814,7 +7813,7 @@ export default function AppBuilderEditor({
                                                     previewEditorFlushRef.current = fn;
                                                 }}
                                                 onTakeBuilderTour={handleTakeBuilderTour}
-                                                isFilesHydrated={isPreviewBootReady}
+                                                isFilesHydrated={filesHydrated}
                                                 filesHydrationProgress={filesHydrationProgress}
                                                 isPreviewReady={previewMode !== "webcontainer" ? true : isPreviewBootReady}
                                                 isFilesHydrationActive={isFilesHydrationActive}
@@ -8419,9 +8418,7 @@ export default function AppBuilderEditor({
 
                 <WebsitePrePaywall
                     open={showAccessPaywall}
-                    onClose={() => {
-                        setHasDismissedAccessPaywall(true);
-                    }}
+                    onClose={onClose}
                     onStartCheckout={() => {
                         onRequestDeployCheckout?.();
                     }}
@@ -8430,8 +8427,9 @@ export default function AppBuilderEditor({
                     title="Unlock the full editing experience"
                     description="Upgrade to unlock editing, keep your momentum, and turn your changes into a live website."
                     primaryLabel={TRIAL_CTA_LABEL}
-                    secondaryLabel="No thanks, continue with limited features"
+                    secondaryLabel="No, I don't want this website"
                     footerNote="Cancel anytime before renewal."
+                    dismissible={false}
                 />
 
                 <WebsitePrePaywall

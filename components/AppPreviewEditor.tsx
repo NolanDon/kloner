@@ -7064,7 +7064,9 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
 
                 <WebsitePrePaywall
                     open={showAccessUpgradePaywall}
-                    onClose={() => setShowAccessUpgradePaywall(false)}
+                    onClose={() => {
+                        void onClose();
+                    }}
                     onStartCheckout={() => {
                         setShowAccessUpgradePaywall(false);
                         void onRequestDeployCheckout?.();
@@ -7074,8 +7076,9 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                     title={accessPaywallTitle}
                     description="Upgrade to unlock editing, keep your momentum, and turn your changes into a live website."
                     primaryLabel={TRIAL_CTA_LABEL}
-                    secondaryLabel="No thanks, continue with limited features"
+                    secondaryLabel="No, I don't want this website"
                     footerNote="Cancel anytime before renewal."
+                    dismissible={false}
                 />
 
                 <WebsitePrePaywall

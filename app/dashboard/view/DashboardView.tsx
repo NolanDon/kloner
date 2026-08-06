@@ -777,15 +777,19 @@ function extractUrlRescanWarning(source: any): UrlRescanWarningState | null {
     ];
     const action = actionCandidates.map((value) => String(value || "").trim()).find(Boolean) || null;
     const normalizedAction = action ? action.toLowerCase() : "";
+    const archiveNeedsRescan = archiveHealth?.needsRescan;
 
     const needsRescan =
-        archiveHealth?.needsRescan === true ||
+        archiveNeedsRescan === true ||
         source.needsRescan === true ||
         source.rescanRequired === true ||
-        normalizedCode === "archive_rescan_required" ||
-        normalizedCode === "rescan_url" ||
-        normalizedAction.includes("rescan") ||
-        normalizedCode.includes("rescan");
+        ((archiveNeedsRescan !== false) &&
+            (
+                normalizedCode === "archive_rescan_required" ||
+                normalizedCode === "rescan_url" ||
+                normalizedAction.includes("rescan") ||
+                normalizedCode.includes("rescan")
+            ));
 
     const messageCandidates = [
         warning?.message,
@@ -821,6 +825,7 @@ function extractUrlRescanWarning(source: any): UrlRescanWarningState | null {
                     ? archiveHealth.retryable
                     : null;
 
+    if (archiveHealth?.status === "healthy" && archiveNeedsRescan !== true) return null;
     if (!needsRescan && !message && !details) return null;
 
     return {
@@ -1624,12 +1629,7 @@ function MiniDashboardEntry({
 
                 {error ? <div className="mt-2 text-sm text-red-700">{error}</div> : null}
 
-                {captureIssueNotice && !dismissedCaptureIssueNotice ? (
-                    <AmberIssueBanner
-                        message={captureIssueNotice}
-                        onDismiss={() => setDismissedCaptureIssueNotice(true)}
-                    />
-                ) : showQueuedScanStatus ? (
+                {showQueuedScanStatus ? (
                     <div className="mt-4 inline-flex items-center gap-2 text-xs text-neutral-600">
                         <Loader2 className="h-3.5 w-3.5 animate-spin" />
                         {captureStatus === "queued"
@@ -6016,14 +6016,18 @@ export default function PreviewPage(): JSX.Element {
         const userMessage = typeof responseData.userMessage === "string" && responseData.userMessage.trim() ? responseData.userMessage.trim() : null;
         const retryable = typeof responseData.retryable === "boolean" ? responseData.retryable : null;
         const isPreviewCreditsExhausted = code === "PREVIEW_CREDITS_EXHAUSTED" || errorReason === "preview_credits_exhausted";
+        const archiveNeedsRescan = responseData.archiveHealth?.needsRescan;
         const rescanRequired = Boolean(
-            responseData.archiveHealth?.needsRescan === true ||
+            archiveNeedsRescan === true ||
             responseData.needsRescan === true ||
             responseData.rescanRequired === true ||
-            (typeof warningAction === "string" && warningAction.toLowerCase().includes("rescan")) ||
-            (typeof warningCode === "string" && /rescan/.test(warningCode.toLowerCase())) ||
-            code === "ARCHIVE_RESCAN_REQUIRED" ||
-            code === "RESCAN_URL"
+            ((archiveNeedsRescan !== false) &&
+                (
+                    (typeof warningAction === "string" && warningAction.toLowerCase().includes("rescan")) ||
+                    (typeof warningCode === "string" && /rescan/.test(warningCode.toLowerCase())) ||
+                    code === "ARCHIVE_RESCAN_REQUIRED" ||
+                    code === "RESCAN_URL"
+                ))
         );
 
         const buildRouteMismatchDetails = () => {
@@ -6045,7 +6049,6 @@ export default function PreviewPage(): JSX.Element {
 
         const buildServerMessage = () => {
             if (typeof responseData.error === "string" && responseData.error.trim()) return responseData.error.trim();
-            if (typeof responseData.message === "string" && responseData.message.trim()) return responseData.message.trim();
             return "Something went wrong while generating this URL. Please retry.";
         };
 
@@ -9164,13 +9167,8 @@ export default function PreviewPage(): JSX.Element {
             return;
         }
 
-        setCaptureIssueNotice("Issue detected while scanning this URL.");
-        setHideCaptureQueueStatus(true);
-        const timeoutId = window.setTimeout(() => {
-            setCaptureIssueNotice("");
-        }, CAPTURE_ISSUE_NOTICE_MS);
-
-        return () => window.clearTimeout(timeoutId);
+        setCaptureIssueNotice("");
+        setHideCaptureQueueStatus(false);
     }, [err, captureStatus]);
 
     useEffect(() => {
@@ -13299,89 +13297,37 @@ export default function PreviewPage(): JSX.Element {
                 </section>
 
                 {/* Step 1: URL selection */}
-                {showActiveUrlIssueWarning && activeUrlDoc?.url ? (
-                    activeUrlIssueIsBlocked ? (
-                        <RedIssueBanner
-                            message={activeUrlRescanWarning?.message || "This domain is blocked for site cloning. Please use a different URL."}
-                            onDismiss={() => {
-                                const canonical = activeUrlIssueHref || "";
-                                setDismissedUrlIssueCanonical(canonical);
-                                markUrlIssueDismissed(canonical);
-                            }}
-                            details={activeUrlIssueDetails}
-                        />
-                    ) : (
-                        <RedIssueBanner
-                            message={activeUrlRescanWarning?.message || "Scan issue detected on this URL."}
-                            onDismiss={() => {
-                                const canonical = activeUrlIssueHref || "";
-                                setDismissedUrlIssueCanonical(canonical);
-                                markUrlIssueDismissed(canonical);
-                            }}
-                            details={activeUrlIssueDetails}
-                        />
-                    )
+                {err ? (
+                    <RedIssueBanner
+                        message={err}
+                        onDismiss={() => setErr("")}
+                        details={urlGenerationErrorDetails ? (
+                            <pre className="whitespace-pre-wrap break-words font-mono text-[11px] leading-5 text-red-900/90">
+                                {urlGenerationErrorDetails}
+                            </pre>
+                        ) : safeErrorUrl ? (
+                            <div className="flex flex-wrap items-center gap-2">
+                                <span
+                                    className="inline-flex max-w-full items-center rounded-md border border-red-200 bg-white px-2 py-1 font-mono text-[11px] text-red-800"
+                                    title={safeErrorUrl}
+                                >
+                                    {truncateMiddle(safeErrorUrl, 76)}
+                                </span>
+                                <a
+                                    href={safeErrorUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer nofollow"
+                                    className="inline-flex items-center gap-1 rounded-md border border-red-200 bg-white px-2.5 py-1 text-xs font-semibold text-red-700 transition hover:bg-red-100"
+                                    title="Open URL in a new tab"
+                                >
+                                    <span>Open URL</span>
+                                    <ExternalLink className="h-3 w-3" />
+                                </a>
+                            </div>
+                        ) : null}
+                    />
                 ) : null}
 
-                {err && isUrlProcessingError && !showActiveUrlIssueWarning ? (
-                    <RedIssueBanner
-                        message={err}
-                        onDismiss={() => setErr("")}
-                        details={urlGenerationErrorDetails ? (
-                            <pre className="whitespace-pre-wrap break-words font-mono text-[11px] leading-5 text-red-900/90">
-                                {urlGenerationErrorDetails}
-                            </pre>
-                        ) : safeErrorUrl ? (
-                            <div className="flex flex-wrap items-center gap-2">
-                                <span
-                                    className="inline-flex max-w-full items-center rounded-md border border-red-200 bg-white px-2 py-1 font-mono text-[11px] text-red-800"
-                                    title={safeErrorUrl}
-                                >
-                                    {truncateMiddle(safeErrorUrl, 76)}
-                                </span>
-                                <a
-                                    href={safeErrorUrl}
-                                    target="_blank"
-                                    rel="noopener noreferrer nofollow"
-                                    className="inline-flex items-center gap-1 rounded-md border border-red-200 bg-white px-2.5 py-1 text-xs font-semibold text-red-700 transition hover:bg-red-100"
-                                    title="Open URL in a new tab"
-                                >
-                                    <span>Open URL</span>
-                                    <ExternalLink className="h-3 w-3" />
-                                </a>
-                            </div>
-                        ) : null}
-                    />
-                ) : err && !showActiveUrlIssueWarning && !(showUrlAccessInError && activeUrlCannotGenerate) ? (
-                    <RedIssueBanner
-                        message={err}
-                        onDismiss={() => setErr("")}
-                        details={urlGenerationErrorDetails ? (
-                            <pre className="whitespace-pre-wrap break-words font-mono text-[11px] leading-5 text-red-900/90">
-                                {urlGenerationErrorDetails}
-                            </pre>
-                        ) : safeErrorUrl ? (
-                            <div className="flex flex-wrap items-center gap-2">
-                                <span
-                                    className="inline-flex max-w-full items-center rounded-md border border-red-200 bg-white px-2 py-1 font-mono text-[11px] text-red-800"
-                                    title={safeErrorUrl}
-                                >
-                                    {truncateMiddle(safeErrorUrl, 76)}
-                                </span>
-                                <a
-                                    href={safeErrorUrl}
-                                    target="_blank"
-                                    rel="noopener noreferrer nofollow"
-                                    className="inline-flex items-center gap-1 rounded-md border border-red-200 bg-white px-2.5 py-1 text-xs font-semibold text-red-700 transition hover:bg-red-100"
-                                    title="Open URL in a new tab"
-                                >
-                                    <span>Open URL</span>
-                                    <ExternalLink className="h-3 w-3" />
-                                </a>
-                            </div>
-                        ) : null}
-                    />
-                ) : null}
                 <section ref={createWebsitesSectionRef} className="mt-10 rounded-3xl border border-neutral-200 bg-white/70 px-4 py-5 sm:px-5 sm:py-6 shadow-sm">
                     <div className="mb-3 flex items-center gap-3">
                         <div className="inline-flex items-center gap-2 rounded-full border border-neutral-200 bg-white/80 px-3 py-1.5 text-xs sm:text-sm text-neutral-700 shadow-sm">

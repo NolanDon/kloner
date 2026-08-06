@@ -295,7 +295,10 @@ export async function POST(req: NextRequest) {
       if (appResponse.status >= 200 && appResponse.status < 300) {
         const appData = (appResponse.json || {}) as any;
         const acceptedAppId = typeof appData.appId === "string" ? appData.appId.trim() : requestedAppId;
-        const acceptedJobId = typeof appData.jobId === "string" ? appData.jobId.trim() : "";
+        const acceptedJobId =
+          typeof appData.jobId === "string" && appData.jobId.trim()
+            ? appData.jobId.trim()
+            : appResponse.reqId || requestedAppId;
         const isTerminalFailure =
           appData?.accepted === false ||
           appData?.code === "ARCHIVE_ZIP_MISSING" ||
