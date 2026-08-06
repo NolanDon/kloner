@@ -2336,7 +2336,7 @@ export default function NavBar() {
     if (!message) return null;
 
     return (
-      <div className="text-sm font-medium leading-5 tracking-[-0.01em] text-neutral-900">
+      <div className="text-sm leading-5 tracking-[-0.01em] text-neutral-900">
         {message}
       </div>
     );

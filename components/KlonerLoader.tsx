@@ -43,10 +43,10 @@ export function MilestoneProgress({
 
     return (
         <div className={className}>
-            <div className="text-center text-4xl font-semibold tracking-tight text-neutral-900 sm:text-5xl">
+            <div className="text-center text-4xl tracking-tight text-neutral-900 sm:text-5xl">
                 {current}%
             </div>
-            <div className="mt-1 text-center text-[11px] font-semibold uppercase tracking-[0.22em] text-neutral-500">
+            <div className="mt-1 text-center text-[11px] uppercase tracking-[0.22em] text-neutral-500">
                 {current >= 100 ? "complete" : "loading"}
             </div>
             <div className="relative mt-8 w-full py-2">
@@ -90,7 +90,7 @@ export function HydrationDotsLoader({
                 <span className="kloner-dot" />
                 <span className="kloner-dot" />
             </div>
-            <div className="mt-3 text-sm font-medium leading-5 tracking-[-0.01em] text-neutral-900">
+            <div className="mt-3 text-sm leading-5 tracking-[-0.01em] text-neutral-900">
                 {label}
             </div>
         </div>
@@ -114,7 +114,7 @@ export function WorkspaceLoadingPanel({
                 <span className="kloner-dot" />
                 <span className="kloner-dot" />
             </div>
-            <div className="mt-3 text-sm font-medium leading-5 tracking-[-0.01em] text-neutral-900">
+            <div className="mt-3 text-sm leading-5 tracking-[-0.01em] text-neutral-900">
                 {title}
             </div>
         </motion.div>
@@ -183,7 +183,7 @@ export default function KlonerLoader({
                         <MilestoneProgress progress={progress} milestones={milestones} />
                         {(label || sublabel) ? (
                             <div className="mt-4 text-center">
-                                {label ? <div className="text-sm font-semibold leading-5 tracking-[-0.01em] text-neutral-900">{label}</div> : null}
+                                {label ? <div className="text-sm leading-5 tracking-[-0.01em] text-neutral-900">{label}</div> : null}
                                 {sublabel ? <div className="mt-1 text-xs leading-5 text-neutral-500">{sublabel}</div> : null}
                             </div>
                         ) : null}
@@ -193,7 +193,7 @@ export default function KlonerLoader({
                         {spinner}
                         {(label || sublabel) ? (
                             <div className="mt-3 text-center">
-                                {label ? <div className="text-sm font-semibold text-neutral-900">{label}</div> : null}
+                                {label ? <div className="text-sm text-neutral-900">{label}</div> : null}
                                 {sublabel ? <div className="mt-1 text-xs leading-5 text-neutral-500">{sublabel}</div> : null}
                             </div>
                         ) : null}

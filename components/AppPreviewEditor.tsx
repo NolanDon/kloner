@@ -6883,7 +6883,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                     {/* inner content */}
                                     <div className="flex items-center gap-2.5 rounded-2xl bg-white px-3.5 py-1.5 text-[15px] text-neutral-900 shadow-[0_10px_30px_rgba(0,0,0,0.10)] ring-[0.5] ring-black/5 backdrop-blur">
                                         <span
-                                            className="bg-clip-text text-transparent font-semibold tracking-tight"
+                                            className="bg-clip-text text-transparent font-normal tracking-tight"
                                             style={{
                                                 backgroundImage:
                                                     "linear-gradient(90deg, rgba(255,141,33,0.6), rgba(255,141,33,1), rgba(255,141,33,0.6))",
