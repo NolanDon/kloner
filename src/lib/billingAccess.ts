@@ -35,7 +35,7 @@ export const BASIC_MONTHLY_PRICE_USD = Math.max(
 
 export const FREE_PREVIEW_MONTHLY_CREDITS = Math.max(
     0,
-    readIntEnv("NEXT_PUBLIC_FREE_PREVIEW_CREDITS", 30),
+    readIntEnv("NEXT_PUBLIC_FREE_PREVIEW_CREDITS", 90),
 );
 
 export const FREE_EDIT_MONTHLY_CREDITS = Math.max(
