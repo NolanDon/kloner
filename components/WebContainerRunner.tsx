@@ -2336,7 +2336,7 @@ export default function NavBar() {
     if (!message) return null;
 
     return (
-      <div className="text-sm font-semibold leading-5 tracking-[-0.01em] text-neutral-900">
+      <div className="text-sm font-medium leading-5 tracking-[-0.01em] text-neutral-900">
         {message}
       </div>
     );
@@ -6312,36 +6312,37 @@ export default function NavBar() {
           })()}
         </div>
       ) : (
-        <div className="flex-1 flex items-center justify-center">
-          <div className="w-full max-w-[320px] rounded-2xl border border-neutral-200 bg-white px-6 py-8 text-center shadow-sm">
+        <div className="flex-1 flex items-center justify-center px-4">
+          <div className="w-full max-w-[320px] text-center">
             {isPolling && !terminalPreviewStatus ? (
-              // Simple, clean polling state with compact card loader
-              <div>
-                {renderLiveStatusLine(
-                  currentStatusData
-                    ? { ...currentStatusData, updatedAt: currentStatusData?.updatedAt ?? Date.now() }
-                    : pollingRetryCountRef.current === 0
-                      ? {
-                        uiStage: 'building_app',
-                        uiTitle: 'Building your app',
-                        uiMessage: 'This can take a minute or two',
-                        updatedAt: Date.now(),
-                      }
-                      : pollingRetryCountRef.current < maxPollingRetries
-                        ? {
-                          uiStage: 'still_building',
-                          uiTitle: 'Still building',
-                          uiMessage: 'Checking progress…',
-                          updatedAt: Date.now(),
-                        }
-                        : {
-                          uiStage: 'connection_timeout',
-                          uiTitle: 'Connection timeout',
-                          uiMessage: 'Unable to verify build status',
-                          updatedAt: Date.now(),
-                        }
-                )}
+              <div className="flex flex-col items-center">
                 <div className="kloner-dots" aria-hidden="true"><span className="kloner-dot" /><span className="kloner-dot" /><span className="kloner-dot" /></div>
+                <div className="mt-3">
+                  {renderLiveStatusLine(
+                    currentStatusData
+                      ? { ...currentStatusData, updatedAt: currentStatusData?.updatedAt ?? Date.now() }
+                      : pollingRetryCountRef.current === 0
+                        ? {
+                          uiStage: 'building_app',
+                          uiTitle: 'Building your app',
+                          uiMessage: 'This can take a minute or two',
+                          updatedAt: Date.now(),
+                        }
+                        : pollingRetryCountRef.current < maxPollingRetries
+                          ? {
+                            uiStage: 'still_building',
+                            uiTitle: 'Still building',
+                            uiMessage: 'Checking progress…',
+                            updatedAt: Date.now(),
+                          }
+                          : {
+                            uiStage: 'connection_timeout',
+                            uiTitle: 'Connection timeout',
+                            uiMessage: 'Unable to verify build status',
+                            updatedAt: Date.now(),
+                          }
+                  )}
+                </div>
                 {renderBuildChecklist(currentStatusData)}
                 {pollNetworkWarning ? (
                   <div className="mx-auto mt-3 max-w-xl rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-left text-xs text-amber-900">
@@ -6351,15 +6352,17 @@ export default function NavBar() {
               </div>
             ) : (
               // Initial loading state
-              <>
+              <div className="flex flex-col items-center">
+                <div className="kloner-dots" aria-hidden="true"><span className="kloner-dot" /><span className="kloner-dot" /><span className="kloner-dot" /></div>
+                <div className="mt-3">
                 {renderLiveStatusLine({
                   uiStage: connectingToExisting ? 'reconnecting' : 'starting_app',
                   uiTitle: connectingToExisting ? 'Connecting to existing machine' : 'Starting your app',
                   uiMessage: connectingToExisting ? 'Reconnecting to your saved session' : 'Setting up your environment',
                   updatedAt: Date.now(),
                 })}
-                <div className="kloner-dots" aria-hidden="true"><span className="kloner-dot" /><span className="kloner-dot" /><span className="kloner-dot" /></div>
-              </>
+                </div>
+              </div>
             )}
           </div>
         </div>

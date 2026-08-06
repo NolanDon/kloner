@@ -258,12 +258,12 @@ function renderTextWithLinks(text: string): React.ReactNode {
     const cleaned = stripMarkdownBold(text || "");
 
     // Linkify full URLs + the key in-app routes we intentionally surface.
-    const linkRe = /(https?:\/\/[^\s)\]]+|\/price(?:#topup)?)/g;
+    const linkRe = /(https?:\/\/[^\s)\]]+|\/(?:price|topup)(?:#topup)?)/g;
     const parts = cleaned.split(linkRe);
 
     return parts.map((part, idx) => {
         const isUrl = /^https?:\/\//i.test(part);
-        const isPricePath = part === "/price" || part === "/price#topup";
+        const isPricePath = part === "/price" || part === "/topup";
 
         if (!isUrl && !isPricePath) {
             return <span key={idx}>{part}</span>;
@@ -273,7 +273,7 @@ function renderTextWithLinks(text: string): React.ReactNode {
 
         // Make in-app pricing links look like CTAs (not raw URLs).
         if (isPricePath) {
-            const isTopup = part === "/price#topup";
+            const isTopup = part === "/topup";
             const label = isTopup ? "Add credits" : "View pricing";
             const classes = isTopup
                 ? "inline-flex items-center justify-center rounded-full bg-[#FF8D21] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#D96E11]"
@@ -3226,7 +3226,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
 
         // If we can see the remaining balance and it's insufficient, block early.
         if (!isFreeCompileFixMode && typeof aiCreditsRemaining === "number" && aiCreditsRemaining < AI_EDIT_COST) {
-            const topup = "/price#topup";
+            const topup = "/topup";
             const errorMessage: Message = {
                 id: `error_${Date.now()}`,
                 role: "assistant",
@@ -4944,7 +4944,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                                         type="button"
                                         onClick={() => {
                                             setTopupModalOpen(false);
-                                            window.location.href = "/price#topup";
+                                            window.location.href = "/topup";
                                         }}
                                         className="w-full px-4 py-3 text-sm underline text-neutral-900"
                                     >

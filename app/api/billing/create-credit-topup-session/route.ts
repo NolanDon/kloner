@@ -3,33 +3,12 @@ import { getStripe } from "@/lib/stripe";
 import { assertCsrf, getAdminAuth, getAdminDb, verifySession } from "@/app/api/_lib/auth";
 import { linkCustomerToUid } from "@/app/api/_lib/billing";
 import { captureCriticalEvent, captureException } from "@/lib/observability";
+import { getTopupCatalogConfig, resolveTopupPreset } from "@/src/lib/topupCatalog";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const stripe = getStripe();
-
-const STRATEGIC_MIN_UNIT_PRICE_CENTS = 8;
-const DEFAULT_UNIT_PRICE_CENTS = 10;
-
-function readIntEnv(name: string, fallback: number): number {
-    const raw = process.env[name];
-    const n = raw ? Number.parseInt(raw, 10) : NaN;
-    return Number.isFinite(n) ? n : fallback;
-}
-
-function getTopUpConfig() {
-    const currency = (process.env.STRIPE_AI_EDIT_TOPUP_CURRENCY || "usd").toLowerCase();
-    const unitPriceCents = Math.max(
-        STRATEGIC_MIN_UNIT_PRICE_CENTS,
-        readIntEnv("STRIPE_AI_EDIT_CREDIT_UNIT_PRICE_CENTS", DEFAULT_UNIT_PRICE_CENTS),
-    );
-    const minCredits = readIntEnv("STRIPE_AI_EDIT_TOPUP_MIN_CREDITS", 50);
-    const maxCredits = readIntEnv("STRIPE_AI_EDIT_TOPUP_MAX_CREDITS", 5000);
-    const stepCredits = readIntEnv("STRIPE_AI_EDIT_TOPUP_STEP_CREDITS", 50);
-
-    return { currency, unitPriceCents, minCredits, maxCredits, stepCredits };
-}
 
 function normalizeCredits(input: unknown): number | null {
     const n = typeof input === "number" ? input : typeof input === "string" ? Number(input) : NaN;
@@ -80,25 +59,41 @@ async function handler(req: NextRequest, uid: string) {
 
     const body = await req.json().catch(() => ({} as any));
 
-    const creditsRaw = normalizeCredits(body?.credits);
+    const { currency, unitPriceCents, minCredits, maxCredits, stepCredits } = getTopupCatalogConfig();
+
+    const presetId = typeof body?.presetId === "string" ? body.presetId : null;
+    const preset = resolveTopupPreset(presetId);
+    const creditsRaw = preset ? preset.credits : normalizeCredits(body?.credits);
+
     if (!creditsRaw) {
         return NextResponse.json({ error: "Missing or invalid credits" }, { status: 400 });
     }
 
-    const { currency, unitPriceCents, minCredits, maxCredits, stepCredits } = getTopUpConfig();
+    if (presetId && !preset) {
+        return NextResponse.json({ error: "Unknown top-up package" }, { status: 400 });
+    }
 
-    if (creditsRaw < minCredits || creditsRaw > maxCredits) {
+    if (preset && !preset.available) {
         return NextResponse.json(
-            { error: `Credits must be between ${minCredits} and ${maxCredits}.` },
-            { status: 400 },
+            { error: `Stripe price is not configured for package "${preset.label}".` },
+            { status: 500 },
         );
     }
 
-    if (stepCredits > 1 && creditsRaw % stepCredits !== 0) {
-        return NextResponse.json(
-            { error: `Credits must be in increments of ${stepCredits}.` },
-            { status: 400 },
-        );
+    if (!preset) {
+        if (creditsRaw < minCredits || creditsRaw > maxCredits) {
+            return NextResponse.json(
+                { error: `Credits must be between ${minCredits} and ${maxCredits}.` },
+                { status: 400 },
+            );
+        }
+
+        if (stepCredits > 1 && creditsRaw % stepCredits !== 0) {
+            return NextResponse.json(
+                { error: `Credits must be in increments of ${stepCredits}.` },
+                { status: 400 },
+            );
+        }
     }
 
     const userRef = db.collection("kloner_users").doc(uid);
@@ -130,7 +125,7 @@ async function handler(req: NextRequest, uid: string) {
     }
 
     const origin = new URL(req.url).origin;
-    const nextPath = normalizeNextPath(body?.next) || "/price#topup";
+    const nextPath = normalizeNextPath(body?.next) || "/topup";
 
     const successUrlObj = new URL(nextPath, origin);
     successUrlObj.searchParams.set("topup", "success");
@@ -157,25 +152,39 @@ async function handler(req: NextRequest, uid: string) {
                     request_three_d_secure: "any",
                 },
             },
-            line_items: [
-                {
-                    price_data: {
-                        currency,
-                        unit_amount: unitPriceCents,
-                        product_data: {
-                            name: `AI credit top-up (${creditsRaw} credits)`,
-                            description: "Adds AI edit credits to your account (does not change your monthly plan limits).",
-                        },
-                    },
-                    quantity: creditsRaw,
-                },
-            ],
+            line_items: preset
+                ? [
+                      {
+                          price: preset.priceId as string,
+                          quantity: 1,
+                      },
+                  ]
+                : [
+                      {
+                          price_data: {
+                              currency,
+                              unit_amount: unitPriceCents,
+                              product_data: {
+                                  name: `AI credit top-up (${creditsRaw} credits)`,
+                                  description:
+                                      "Adds AI edit credits to your account (does not change your monthly plan limits).",
+                              },
+                          },
+                          quantity: creditsRaw,
+                      },
+                  ],
             metadata: {
                 type: "ai_credit_topup",
                 firebaseUid: uid,
                 aiEditCredits: String(creditsRaw),
                 unitPriceCents: String(unitPriceCents),
                 currency,
+                ...(preset
+                    ? {
+                          topupPresetId: preset.id,
+                          topupPresetPriceId: preset.priceId as string,
+                      }
+                    : {}),
             },
         });
 

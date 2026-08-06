@@ -616,7 +616,7 @@ async function reserveAiEditCreditsInline(opts: {
                 message:
                     tier === "free"
                         ? `You have used all AI edit credits for this month. Upgrade to get more credits: ${upgradeUrl || "/price"}`
-                        : `You have used all AI edit credits for this month. Top up credits: ${topupUrl || "/price#topup"} (or upgrade: ${upgradeUrl || "/price"})`,
+                        : `You have used all AI edit credits for this month. Top up credits: ${topupUrl || "/topup"} (or upgrade: ${upgradeUrl || "/price"})`,
                 remaining: Math.max(startRemaining, 0),
                 limit,
                 periodEnd: endDate,
@@ -1470,7 +1470,7 @@ async function handlePost(req: NextRequest) {
         try {
             const origin = new URL(req.url).origin;
             const upgradeUrl = new URL("/price", origin).toString();
-            const topupUrl = new URL("/price#topup", origin).toString();
+            const topupUrl = new URL("/topup", origin).toString();
 
             const r = await reserveAiEditCreditsInline({
                 db,

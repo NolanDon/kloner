@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useState } from 'react';
-import { doc, onSnapshot, DocumentData } from 'firebase/firestore';
+import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import { WorkspaceLoadingPanel } from '@/components/KlonerLoader';
 
 interface PreviewBuildUIProps {
   userId: string;
@@ -97,16 +98,7 @@ export default function PreviewBuildUI({ userId, appId, code }: PreviewBuildUIPr
   if (loading) {
     return (
       <div className="flex-1 flex items-center justify-center">
-        <div className="w-full max-w-[320px] rounded-2xl border border-neutral-200 bg-white px-6 py-8 shadow-sm text-center">
-          <div className="text-sm font-semibold leading-5 tracking-[-0.01em] text-neutral-900">
-            Loading preview...
-          </div>
-          <div className="kloner-dots" aria-hidden="true">
-            <span className="kloner-dot" />
-            <span className="kloner-dot" />
-            <span className="kloner-dot" />
-          </div>
-        </div>
+        <WorkspaceLoadingPanel title="Loading preview..." />
       </div>
     );
   }
@@ -205,8 +197,8 @@ export default function PreviewBuildUI({ userId, appId, code }: PreviewBuildUIPr
 
   return (
     <div className="flex-1 flex items-center justify-center">
-      <div className="w-full max-w-[320px] rounded-2xl border border-neutral-200 bg-white px-6 py-8 shadow-sm text-center">
-        <div className="text-sm font-semibold leading-5 tracking-[-0.01em] text-neutral-900">
+      <div className="w-full max-w-[320px] text-center">
+        <div className="text-sm font-medium leading-5 tracking-[-0.01em] text-neutral-900">
           {previewData.uiTitle || 'Building your app...'}
         </div>
         <div className="kloner-dots" aria-hidden="true">
@@ -214,7 +206,7 @@ export default function PreviewBuildUI({ userId, appId, code }: PreviewBuildUIPr
           <span className="kloner-dot" />
           <span className="kloner-dot" />
         </div>
-        <p className="mt-3 text-sm font-semibold leading-5 tracking-[-0.01em] text-neutral-900">
+        <p className="mt-3 text-sm font-medium leading-5 tracking-[-0.01em] text-neutral-900">
           {previewData.uiMessage || 'This may take a few minutes'}
         </p>
         <div className="mt-4 space-y-3">

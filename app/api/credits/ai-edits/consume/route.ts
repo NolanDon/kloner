@@ -253,7 +253,7 @@ export async function POST(req: NextRequest) {
         if (!ok) {
             const origin = new URL(req.url).origin;
             const upgradeUrl = new URL("/price", origin).toString();
-            const topupUrl = new URL("/price#topup", origin).toString();
+            const topupUrl = new URL("/topup", origin).toString();
 
             await captureCriticalEvent({
                 source: "vercel",

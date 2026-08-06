@@ -90,7 +90,7 @@ export function HydrationDotsLoader({
                 <span className="kloner-dot" />
                 <span className="kloner-dot" />
             </div>
-            <div className="mt-4 text-sm leading-5 tracking-[-0.01em] text-neutral-900">
+            <div className="mt-3 text-sm font-medium leading-5 tracking-[-0.01em] text-neutral-900">
                 {label}
             </div>
         </div>
@@ -114,7 +114,7 @@ export function WorkspaceLoadingPanel({
                 <span className="kloner-dot" />
                 <span className="kloner-dot" />
             </div>
-            <div className="mt-4 text-sm leading-5 tracking-[-0.01em] text-neutral-900">
+            <div className="mt-3 text-sm font-medium leading-5 tracking-[-0.01em] text-neutral-900">
                 {title}
             </div>
         </motion.div>
