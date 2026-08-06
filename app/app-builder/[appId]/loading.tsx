@@ -9,7 +9,7 @@ export default function Loading() {
                         <span className="kloner-dot" />
                     </div>
                     <div className="mt-4 text-sm leading-5 tracking-[-0.01em] text-neutral-900">
-                        Loading workspace
+                        Loading your workspace
                     </div>
                 </div>
             </div>

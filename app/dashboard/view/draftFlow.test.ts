@@ -1,5 +1,7 @@
 import {
+    buildTimedOutDraftIssueState,
     isPersistedDraftPendingState,
+    isTimedOutDraftLoadingState,
     normalizeDashboardDraftRecord,
     normalizeDashboardDraftRecords,
     resolveDashboardDraftThumbnailUrl,
@@ -84,6 +86,33 @@ describe("dashboard draft flow", () => {
                 archiveZipUrl: "https://cdn.example.com/archive.zip",
             }),
         ).toBe(false);
+    });
+
+    it("keeps a fresh draft loader active before the timeout window elapses", () => {
+        const now = 1_000_000;
+        expect(
+            isTimedOutDraftLoadingState({
+                status: "processing",
+                createdAt: now - (5 * 60 * 1000),
+                updatedAt: now - (5 * 60 * 1000),
+            }, now),
+        ).toBe(false);
+    });
+
+    it("times out a draft loader once it has been stuck long enough", () => {
+        const now = 1_000_000;
+        expect(
+            isTimedOutDraftLoadingState({
+                status: "processing",
+                createdAt: now - (10 * 60 * 1000) - 1,
+                updatedAt: now - (10 * 60 * 1000) - 1,
+            }, now),
+        ).toBe(true);
+        expect(buildTimedOutDraftIssueState()).toMatchObject({
+            code: "DRAFT_SCAN_TIMEOUT",
+            blocked: false,
+            retryable: false,
+        });
     });
 
     it("normalizes draft API payloads into newest-first dashboard records", () => {

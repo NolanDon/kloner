@@ -34,6 +34,8 @@ export type DashboardDraftCard = {
 
 type Setter<T> = (next: T | ((prev: T) => T)) => void;
 
+export const DRAFT_LOADING_TIMEOUT_MS = 10 * 60 * 1000;
+
 export type DashboardDraftThumbnailLookup =
     | Map<string, string | null>
     | Record<string, string | null | undefined>
@@ -58,6 +60,91 @@ function readThumbnailLookup(
         : lookup[canonicalUrl];
 
     return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function toMillis(value: any): number {
+    if (!value) return 0;
+    if (value instanceof Date) return value.getTime();
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+    if (typeof value?.toMillis === "function") {
+        const millis = value.toMillis();
+        return typeof millis === "number" && Number.isFinite(millis) ? millis : 0;
+    }
+
+    const parsed = Date.parse(String(value));
+    return Number.isFinite(parsed) ? parsed : 0;
+}
+
+export function isTimedOutDraftLoadingState(
+    draft: {
+        status?: string | null;
+        createdAt?: any;
+        updatedAt?: any;
+        completed?: boolean;
+        pendingCompleted?: boolean;
+        archiveZipPath?: string | null;
+        archiveZipUrl?: string | null;
+        warningCode?: string | null;
+        warningMessage?: string | null;
+        warningAction?: string | null;
+        errorCode?: string | null;
+        errorMessage?: string | null;
+        errorReason?: string | null;
+        userMessage?: string | null;
+        blocked?: boolean;
+        retryable?: boolean;
+    } | null | undefined,
+    nowMs = Date.now(),
+): boolean {
+    if (!draft || typeof draft !== "object") return false;
+
+    const status = String(draft.status || "").trim().toLowerCase();
+    const isLoadingState = [
+        "processing",
+        "in_progress",
+        "queued",
+        "pending",
+        "booting",
+    ].includes(status);
+    if (!isLoadingState) return false;
+
+    if (draft.completed === true || draft.pendingCompleted === true) return false;
+    if (String(draft.archiveZipPath || draft.archiveZipUrl || "").trim()) return false;
+    if (draft.blocked || draft.retryable) return false;
+    if (
+        draft.warningCode ||
+        draft.warningMessage ||
+        draft.warningAction ||
+        draft.errorCode ||
+        draft.errorMessage ||
+        draft.errorReason ||
+        draft.userMessage
+    ) {
+        return false;
+    }
+
+    const startedAt = toMillis(draft.updatedAt) || toMillis(draft.createdAt);
+    if (!startedAt) return false;
+
+    return nowMs - startedAt >= DRAFT_LOADING_TIMEOUT_MS;
+}
+
+export function buildTimedOutDraftIssueState(): {
+    code: string;
+    message: string;
+    details: string;
+    action: string;
+    retryable: boolean;
+    blocked: boolean;
+} {
+    return {
+        code: "DRAFT_SCAN_TIMEOUT",
+        message: "This draft scan timed out. Delete it and scan again.",
+        details: "This draft stayed in a loading state too long and was not picked up.",
+        action: "Delete draft",
+        retryable: false,
+        blocked: false,
+    };
 }
 
 export function resolveDashboardDraftThumbnailUrl(

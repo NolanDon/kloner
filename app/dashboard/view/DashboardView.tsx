@@ -106,8 +106,10 @@ import TrialSuccessCelebration from "../../../components/TrialSuccessCelebration
 import SuccessConfetti from "../../../components/tools/SuccessConfetti";
 import KlonerLoader from "@/components/KlonerLoader";
 import {
+    buildTimedOutDraftIssueState,
     normalizeDashboardDraftRecords,
     resolveDashboardDraftThumbnailUrl,
+    isTimedOutDraftLoadingState,
     shouldSuppressCompletedDraftIssue,
     submitDashboardUrlDraft,
 } from "./draftFlow";
@@ -2897,7 +2899,16 @@ function AppCard({
 
         return issue;
     }, [draftPromotionScanState, isDraftCard]);
-    const draftIssue = isDraftCard ? (appIssue || draftPromotionScanIssue) : null;
+    const draftLoadingTimedOut = useMemo(() => {
+        if (!isDraftCard) return false;
+        return isTimedOutDraftLoadingState({
+            ...app,
+            status: draftPromotionScanState?.status ?? (app as any)?.status ?? null,
+            updatedAt: draftPromotionScanState?.updatedAt ?? (app as any)?.updatedAt ?? (app as any)?.createdAt ?? null,
+        });
+    }, [app, draftPromotionScanState?.status, draftPromotionScanState?.updatedAt, isDraftCard]);
+    const draftTimeoutIssue = draftLoadingTimedOut ? buildTimedOutDraftIssueState() : null;
+    const draftIssue = isDraftCard ? (appIssue || draftPromotionScanIssue || draftTimeoutIssue) : null;
     const draftIssueIsBlocked = Boolean(draftIssue?.blocked);
     const draftIssueIsAccessGate = Boolean(
         draftIssue &&
@@ -2974,8 +2985,8 @@ function AppCard({
         draftLifecycleStatus === "processing" &&
         (draftRecommendedAction === "wait" || !draftRecommendedAction),
     );
-    const isDraftRetryLoading = isDraftCard && (isPendingCreation || draftPromotionScanPending || draftIssueIsPromotionProgress);
-    const isDraftFreshLoading = isDraftCard && (isPendingCreation || draftPromotionScanPending) && !draftIssue;
+    const isDraftRetryLoading = isDraftCard && !draftLoadingTimedOut && (isPendingCreation || draftPromotionScanPending || draftIssueIsPromotionProgress);
+    const isDraftFreshLoading = isDraftCard && !draftLoadingTimedOut && (isPendingCreation || draftPromotionScanPending) && !draftIssue;
     const isBrokenDraftCard = isDraftCard && Boolean(draftIssue);
     const rawAppDisplayName = String(app.name || app.id.slice(0, 10)).trim();
     const draftThumbnailUrl = typeof (app as any)?.thumbnailUrl === "string" && String((app as any)?.thumbnailUrl).trim()
@@ -6881,48 +6892,9 @@ export default function PreviewPage(): JSX.Element {
             return Boolean(app && typeof app === "object" && app.archived === true);
         };
 
-        const getCanonicalKey = (app: any): string => {
-            const source = validateAndNormalizePublicHttpUrl(String(app?.sourceUrl || app?.url || ""));
-            if (source) return `src:${normUrl(source)}`;
-            return `id:${String(app?.id || app?.draftId || "").trim()}`;
-        };
+        const visible = merged.filter((app) => !shouldHideArchivedApp(app));
 
-        const getAppPriority = (app: any): number => {
-            const isDraft = Boolean(app?.draftId);
-            const hasIssue = Boolean(
-                app?.blocked ||
-                app?.warningCode ||
-                app?.warningMessage ||
-                app?.warningAction ||
-                app?.errorCode ||
-                app?.errorMessage ||
-                app?.errorReason ||
-                app?.userMessage ||
-                (Array.isArray(app?.warnings) && app.warnings.length > 0),
-            );
-            const completed = Boolean(app?.completed || app?.pendingCompleted);
-            const createdAt = typeof app?.createdAt === "number" && Number.isFinite(app.createdAt) ? app.createdAt : 0;
-            const updatedAt = typeof app?.updatedAt === "number" && Number.isFinite(app.updatedAt) ? app.updatedAt : createdAt;
-
-            return (
-                (isDraft ? 0 : 1_000_000_000) +
-                (completed ? 100_000_000 : 0) +
-                (hasIssue ? -10_000_000 : 10_000_000) +
-                updatedAt
-            );
-        };
-
-        const deduped = new Map<string, any>();
-        for (const app of merged) {
-            if (shouldHideArchivedApp(app)) continue;
-            const key = getCanonicalKey(app);
-            const current = deduped.get(key);
-            if (!current || getAppPriority(app) >= getAppPriority(current)) {
-                deduped.set(key, app);
-            }
-        }
-
-        return Array.from(deduped.values()).sort((left, right) => {
+        return visible.sort((left, right) => {
             const leftTime = typeof left?.updatedAt === "number"
                 ? left.updatedAt
                 : typeof left?.createdAt === "number"
