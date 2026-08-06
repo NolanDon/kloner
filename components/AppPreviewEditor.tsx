@@ -159,12 +159,12 @@ function PanelLockOverlay({ label = "Unlock", onClick }: { label?: string; onCli
             aria-label="Unlock"
             onClick={onClick}
         >
-            <span className="inline-flex items-center gap-2 rounded-full border bg-white border-neutral-200 bg-white/92 px-4 py-2 text-sm font-semibold text-neutral-800 shadow-lg">
+            {/* <span className="inline-flex items-center gap-2 rounded-full border bg-white border-neutral-200 bg-white/92 px-4 py-2 text-sm font-semibold text-neutral-800 shadow-lg">
                 <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-[rgba(255,141,33,0.12)] text-[#FF8D21]">
                     <Lock className="h-4 w-4" />
                 </span>
                 <span>{label}</span>
-            </span>
+            </span> */}
         </button>
     );
 }
