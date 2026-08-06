@@ -7077,7 +7077,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                     onClose={() => setShowDeployUpgradePaywall(false)}
                     onStartCheckout={() => {
                         setShowDeployUpgradePaywall(false);
-                        onRequestDeployCheckout?.();
+                        void onRequestDeployCheckout?.();
                     }}
                 checkoutBusy={exporting}
                 zIndexClassName="z-[30001]"

@@ -1472,6 +1472,7 @@ export default function AppBuilderEditor({
     const imageInputRef = useRef<HTMLInputElement | null>(null);
     const [faviconUploading, setFaviconUploading] = useState(false);
     const [faviconUrl, setFaviconUrl] = useState<string | null>(null);
+    const [localTrialCheckoutBusy, setLocalTrialCheckoutBusy] = useState(false);
     const [supabaseConnected, setSupabaseConnected] = useState<boolean | null>(null);
     const [supabaseProjectName, setSupabaseProjectName] = useState<string | null>(null);
     const [supabaseProjectRef, setSupabaseProjectRef] = useState<string | null>(null);
@@ -3736,6 +3737,76 @@ export default function AppBuilderEditor({
             return null;
         }
     }, []);
+
+    const startLocalTrialCheckout = useCallback(async () => {
+        if (trialCheckoutBusy || localTrialCheckoutBusy) return;
+        if (typeof window === "undefined") return;
+
+        setLocalTrialCheckoutBusy(true);
+        try {
+            const csrfRes = await fetch("/api/auth/csrf", {
+                method: "POST",
+                headers: { "content-type": "application/json" },
+                credentials: "include",
+                cache: "no-store",
+            });
+
+            if (csrfRes.status === 401) {
+                const next = encodeURIComponent(window.location.pathname + window.location.search);
+                window.location.href = `/login?next=${next}`;
+                return;
+            }
+
+            const csrfData = csrfRes.ok ? await csrfRes.json().catch(() => null) : null;
+            const csrf = csrfData?.csrf ?? null;
+
+            const res = await fetch("/api/billing/create-checkout-session", {
+                method: "POST",
+                headers: {
+                    "content-type": "application/json",
+                    ...(csrf ? { "x-csrf": csrf } : {}),
+                },
+                credentials: "include",
+                cache: "no-store",
+                body: JSON.stringify({
+                    plan: "pro",
+                    returnAppId: appId,
+                    returnStep: 3,
+                }),
+            });
+
+            if (res.status === 401) {
+                const next = encodeURIComponent(window.location.pathname + window.location.search);
+                window.location.href = `/login?next=${next}`;
+                return;
+            }
+
+            const data = await res.json().catch(() => ({} as any));
+            if (!res.ok || !data?.url) {
+                void showAlert(data?.error || "Unable to start checkout.", "Checkout Error");
+                return;
+            }
+
+            window.location.href = data.url;
+        } catch (err) {
+            console.error("startLocalTrialCheckout failed", err);
+            void showAlert(
+                "Checkout is taking too long. Please try again in a few seconds.",
+                "Checkout Error",
+            );
+        } finally {
+            setLocalTrialCheckoutBusy(false);
+        }
+    }, [appId, localTrialCheckoutBusy, showAlert, trialCheckoutBusy]);
+
+    const requestDeployCheckout = useCallback(() => {
+        if (onRequestDeployCheckout) {
+            onRequestDeployCheckout();
+            return;
+        }
+
+        void startLocalTrialCheckout();
+    }, [onRequestDeployCheckout, startLocalTrialCheckout]);
 
     const restartLocalPreview = useCallback(async (forceFresh: boolean = false) => {
         if (isPreviewBuilding) return;
@@ -8380,9 +8451,9 @@ export default function AppBuilderEditor({
                     open={showAccessPaywall}
                     onClose={onClose}
                     onStartCheckout={() => {
-                        onRequestDeployCheckout?.();
+                        requestDeployCheckout();
                     }}
-                    checkoutBusy={trialCheckoutBusy}
+                    checkoutBusy={trialCheckoutBusy || localTrialCheckoutBusy}
                     zIndexClassName="z-[9999999999]"
                     title="Unlock the full editing experience"
                     description="Upgrade to unlock editing, keep your momentum, and turn your changes into a live website."
@@ -8397,9 +8468,9 @@ export default function AppBuilderEditor({
                     onClose={() => setShowDeployUpgradePaywall(false)}
                     onStartCheckout={() => {
                         setShowDeployUpgradePaywall(false);
-                        onRequestDeployCheckout?.();
+                        requestDeployCheckout();
                     }}
-                    checkoutBusy={trialCheckoutBusy}
+                    checkoutBusy={trialCheckoutBusy || localTrialCheckoutBusy}
                     zIndexClassName="z-[20001]"
                     title={upgradePaywallCopy.title}
                     description={upgradePaywallCopy.description}

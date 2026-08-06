@@ -43,7 +43,7 @@ const GROUPS: Group[] = [
         items: [
             {
                 q: 'Do I need a card to try the preview?',
-                a: 'No. Preview is free without a card. You pay only when you export.'
+                a: 'We offer free trials so you can see your preview before deciding to pay.'
             },
             {
                 q: 'What’s included in Pro?',
