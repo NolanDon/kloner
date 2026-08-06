@@ -2456,7 +2456,11 @@ export default function AppBuilderEditor({
     const previousViewModeRef = useRef<LeftViewMode>("ai");
     const [hasCompletedBuilderTour, setHasCompletedBuilderTour] = useState(false);
     const shouldRunBuilderTour = isDev && !isVisualEditorMode && showTour;
-    const showAccessPaywall = accessLocked && hasCompletedBuilderTour;
+    const shouldLockBuilderEditor = accessLocked || userTier === "free";
+    const showAccessPaywall =
+        shouldLockBuilderEditor &&
+        !authLoading &&
+        (!shouldRunBuilderTour || hasCompletedBuilderTour);
     const previousVisualEditorModeRef = useRef<boolean | null>(null);
     const pendingShareResumeRef = useRef(false);
     const previewActionThrottleRef = useRef<{ refreshAt: number; rebuildAt: number; saveAt: number }>({

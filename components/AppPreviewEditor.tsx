@@ -1453,18 +1453,26 @@ function AppPreviewEditorCore({
         if (lastAutoPaywallOpenTokenRef.current === previewOpenToken) return;
         if (authLoading) return;
 
-        if (!shouldShowTour && accessLocked && !isAdmin && !authLoading) {
+        if (!shouldShowTour && (accessLocked || userTier === "free") && !isAdmin && !authLoading) {
             lastAutoPaywallOpenTokenRef.current = previewOpenToken;
             openAccessPaywall("panel");
         }
-    }, [accessLocked, authLoading, isAdmin, openAccessPaywall, previewOpenToken, shouldShowTour]);
+    }, [accessLocked, authLoading, isAdmin, openAccessPaywall, previewOpenToken, shouldShowTour, userTier]);
+
+    useEffect(() => {
+        if (authLoading) return;
+        if (!(accessLocked || userTier === "free") || isAdmin) return;
+        if (shouldShowTour && !hasCompletedPreviewTour) return;
+        if (showAccessUpgradePaywall) return;
+        openAccessPaywall("panel");
+    }, [accessLocked, authLoading, hasCompletedPreviewTour, isAdmin, openAccessPaywall, shouldShowTour, showAccessUpgradePaywall, userTier]);
 
     const handlePreviewTourEnd = useCallback(() => {
         setHasCompletedPreviewTour(true);
-        if (accessLocked && !isAdmin) {
+        if ((accessLocked || userTier === "free") && !isAdmin) {
             openAccessPaywall("panel");
         }
-    }, [accessLocked, isAdmin, openAccessPaywall]);
+    }, [accessLocked, isAdmin, openAccessPaywall, userTier]);
 
     function normalizeAiEditCreatedAt(raw: any): string {
         if (!raw) return "";
@@ -1585,7 +1593,7 @@ function AppPreviewEditorCore({
     const [isDraggingPreview, setIsDraggingPreview] = useState(false);
     const shouldRunPreviewTour = !isCompactLayout && isDevCodeMode && shouldShowTour;
     const shouldLockPreviewPanels =
-        accessLocked &&
+        (accessLocked || userTier === "free") &&
         !isAdmin &&
         !authLoading &&
         (!shouldRunPreviewTour || hasCompletedPreviewTour);

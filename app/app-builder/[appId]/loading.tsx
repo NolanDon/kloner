@@ -8,7 +8,7 @@ export default function Loading() {
                         <span className="kloner-dot" style={{ animationDelay: "0.15s", opacity: 0.75 }} />
                         <span className="kloner-dot" style={{ animationDelay: "0.30s", opacity: 0.45 }} />
                     </div>
-                    <div className="mt-4 text-sm font-medium text-neutral-700">
+                    <div className="mt-4 text-sm text-neutral-700">
                         Loading workspace
                     </div>
                 </div>
