@@ -72,7 +72,7 @@ export default function UrlOverlay({ open, onClose }: UrlOverlayProps) {
 
         const user = auth.currentUser;
         if (user) {
-            router.push(`/dashboard/view?u=${encodeURIComponent(normalized)}&start=1`);
+            router.replace(`/dashboard/view?u=${encodeURIComponent(normalized)}&focusUrl=1`);
             onClose();
             return;
         }

@@ -34,7 +34,7 @@ export default function HeroContent({
     setError(null);
 
     if (user) {
-      router.push(`/dashboard/view?u=${encodeURIComponent(normalized)}&start=1`);
+      router.replace(`/dashboard/view?u=${encodeURIComponent(normalized)}&focusUrl=1`);
       return;
     }
 

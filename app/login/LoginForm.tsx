@@ -527,13 +527,13 @@ export default function LoginPage(): JSX.Element {
                             // ignore
                         }
 
-                        // Send the user to the consolidated dashboard view and let it
-                        // own the same clone flow as manual dashboard submissions.
                         const cleaned = validateAndNormalizePublicHttpUrl(pending);
                         if (cleaned) {
-                            router.replace(
-                                `/dashboard/view?u=${encodeURIComponent(cleaned)}&aq=1`,
-                            );
+                            const nextPath =
+                                mode === "signin"
+                                    ? `/dashboard/view?u=${encodeURIComponent(cleaned)}&focusUrl=1`
+                                    : `/dashboard/view?u=${encodeURIComponent(cleaned)}&aq=1`;
+                            router.replace(nextPath);
                             return;
                         }
 

@@ -12456,7 +12456,12 @@ export default function PreviewPage(): JSX.Element {
 
     const forceTrialPromptInDev = process.env.NODE_ENV !== "production";
     const isFreeTierNotTrialing = userTier === "free" && stripeStatus !== "trialing";
-    const isTourEligible = true;
+    const isPaidOrTrialingTier =
+        stripeStatus === "trialing" ||
+        userTier === "pro" ||
+        userTier === "agency" ||
+        userTier === "enterprise";
+    const isTourEligible = !loading && isPaidOrTrialingTier;
 
     useEffect(() => {
         const wasOpen = previousEditorOpenRef.current;
@@ -12766,6 +12771,20 @@ export default function PreviewPage(): JSX.Element {
         "close" | "back" | "nav" | "outside" | "esc" | null
     >(null);
     const [focusMiniUrlInputNonce, setFocusMiniUrlInputNonce] = useState(0);
+
+    useEffect(() => {
+        if (search.get("focusUrl") !== "1") return;
+        setFocusMiniUrlInputNonce((n) => n + 1);
+
+        try {
+            const params = new URLSearchParams(search.toString());
+            params.delete("focusUrl");
+            const qs = params.toString();
+            router.replace(qs ? `/dashboard/view?${qs}` : "/dashboard/view", { scroll: false });
+        } catch {
+            // ignore URL cleanup failures
+        }
+    }, [router, search]);
 
     // ✅ rehydrate when key changes (user/render changes)
     useEffect(() => {
