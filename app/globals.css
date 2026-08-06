@@ -55,6 +55,21 @@ body {
 /* #FF8D21 */
 
 @layer utilities {
+    .kloner-dots {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        line-height: 1;
+    }
+
+    .kloner-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 9999px;
+        background: #FF8D21;
+        animation: klonerDots 0.9s ease-in-out infinite;
+    }
+
     .anchor-highlight {
         animation: anchor-pulse 1s ease-out;
     }
@@ -92,6 +107,19 @@ body {
         100% {
             box-shadow: 0 0 0 10px rgba(255, 141, 33, 0);
             background-color: transparent;
+        }
+    }
+
+    @keyframes klonerDots {
+        0%,
+        80%,
+        100% {
+            transform: translateY(0);
+            opacity: 0.25;
+        }
+        40% {
+            transform: translateY(-3px);
+            opacity: 1;
         }
     }
 

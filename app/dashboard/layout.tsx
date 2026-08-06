@@ -10,7 +10,7 @@ import {
 import { auth, db } from "@/lib/firebase";
 import { resetAuthClientCaches } from "@/lib/auth-client";
 import { checkSignupBlocklist } from "@/lib/signupBlocklistClient";
-import { collection, onSnapshot, DocumentData } from "firebase/firestore";
+import { collection, doc, onSnapshot, DocumentData } from "firebase/firestore";
 import Link from "next/link";
 import Image from "next/image";
 import logo from "@/public/images/orange_logo.png";
@@ -23,18 +23,17 @@ import {
     BookText,
     Settings as SettingsIcon,
     LogOut,
-    Hammer,
     Archive,
-    Rocket,
     Headphones,
     BarChart3,
     CreditCard,
     Users,
     ShieldCheck,
-    Sparkles,
     Monitor,
+    Crown,
 } from "lucide-react";
 import KlonerLoader from "@/components/KlonerLoader";
+import { type UserTier } from "@/src/lib/credits";
 
 const ACCENT = "#FF8D21";
 
@@ -281,6 +280,31 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
     );
 }
 
+function PlanBlock({
+    planLabel,
+    billingState,
+    userTier,
+}: {
+    planLabel: string;
+    billingState: "free" | "active" | "trialing" | "trial_cancelled";
+    userTier: UserTier | "unknown";
+}) {
+    if (userTier === "unknown") return null;
+
+    const badgeLabel = billingState === "trialing" ? "trialing" : planLabel;
+
+    return (
+        <div className="border-b border-neutral-200 px-4 py-4">
+            <div className="inline-flex w-fit items-center gap-1 rounded-full border border-[rgba(255,141,33,0.45)] bg-white px-3 py-1">
+                <Crown className="h-3.5 w-3.5 text-[#FF8D21]" />
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-[#FF8D21]">
+                    {badgeLabel}
+                </span>
+            </div>
+        </div>
+    );
+}
+
 function AccountBlock() {
     const router = useRouter();
     const [user, setUser] = useState<FirebaseUser | null>(null);
@@ -350,10 +374,16 @@ function SidebarShell({
     isAdmin,
     isSupportAgent,
     supportUnreadCount,
+    planLabel,
+    billingState,
+    userTier,
 }: {
     isAdmin: boolean;
     isSupportAgent: boolean;
     supportUnreadCount: number;
+    planLabel: string;
+    billingState: "free" | "active" | "trialing" | "trial_cancelled";
+    userTier: UserTier | "unknown";
 }) {
     const pathname = usePathname();
     const navSections = useMemo(
@@ -380,6 +410,12 @@ function SidebarShell({
                     </div>
                 </Link>
             </div>
+
+            <PlanBlock
+                planLabel={planLabel}
+                billingState={billingState}
+                userTier={userTier}
+            />
 
             <nav className="flex-1 p-3 text-sm overflow-y-auto">
                 {navSections.map((section) => (
@@ -682,6 +718,8 @@ export default function AppShellLayout({ children }: { children: ReactNode }) {
     const [isAdmin, setIsAdmin] = useState(false);
     const [isSupportAgent, setIsSupportAgent] = useState(false);
     const [supportUnreadCount, setSupportUnreadCount] = useState(0);
+    const [userTier, setUserTier] = useState<UserTier | "unknown">("unknown");
+    const [billingState, setBillingState] = useState<"free" | "active" | "trialing" | "trial_cancelled">("free");
 
     useEffect(() => {
         const off = onAuthStateChanged(auth, async (u) => {
@@ -724,6 +762,57 @@ export default function AppShellLayout({ children }: { children: ReactNode }) {
         });
         return () => off();
     }, [router]);
+
+    useEffect(() => {
+        if (!ready) return;
+
+        let cancelled = false;
+
+        (async () => {
+            try {
+                const res = await fetch("/api/billing/tier", {
+                    method: "GET",
+                    credentials: "include",
+                    cache: "no-store",
+                });
+
+                if (!res.ok) return;
+
+                const data = await res.json().catch(() => null);
+                if (cancelled || !data) return;
+
+                setUserTier(
+                    data?.tier === "pro" || data?.tier === "agency" || data?.tier === "enterprise"
+                        ? data.tier
+                        : "free",
+                );
+                setBillingState(
+                    typeof data?.billingState === "string" && data.billingState.trim()
+                        ? (data.billingState.trim().toLowerCase() as "free" | "active" | "trialing" | "trial_cancelled")
+                        : "free",
+                );
+            } catch {
+                if (!cancelled) {
+                    setUserTier("free");
+                    setBillingState("free");
+                }
+            }
+        })();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [ready]);
+
+    const planLabel = userTier === "unknown"
+        ? "Detecting plan…"
+        : userTier === "free"
+            ? "Free plan"
+            : userTier === "pro"
+                ? "Pro plan"
+                : userTier === "agency"
+                    ? "Agency plan"
+                    : "Enterprise plan";
 
     // unread count listener for support inbox (only for support/admin)
     useEffect(() => {
@@ -773,6 +862,9 @@ export default function AppShellLayout({ children }: { children: ReactNode }) {
                         isAdmin={isAdmin}
                         isSupportAgent={isSupportAgent}
                         supportUnreadCount={supportUnreadCount}
+                        planLabel={planLabel}
+                        billingState={billingState}
+                        userTier={userTier}
                     />
                 </aside>
 

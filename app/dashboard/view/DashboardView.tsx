@@ -1380,7 +1380,6 @@ function RedIssueBanner({ message, onDismiss, details }: RedIssueBannerProps) {
 
 type MiniDashboardEntryProps = {
     onSubmitUrl: (rawUrl: string) => void;
-    planLabel?: string;
     stripeStatus?: string | null;
     stripeCancelAtPeriodEnd?: boolean;
     billingState?: "free" | "active" | "trialing" | "trial_cancelled";
@@ -1404,7 +1403,6 @@ type MiniDashboardEntryProps = {
 
 function MiniDashboardEntry({
     onSubmitUrl,
-    planLabel,
     stripeStatus,
     stripeCancelAtPeriodEnd = false,
     billingState = "free",
@@ -1449,20 +1447,9 @@ function MiniDashboardEntry({
         inputRef.current?.select?.();
     }, [focusUrlInputNonce]);
 
-    const isActiveTrial = billingState === "trialing";
-    const isTrialCancellationPending = billingState === "trial_cancelled";
-    const badgeLabel = isActiveTrial ? "trialing" : planLabel;
-
     useEffect(() => {
         setDismissedCaptureIssueNotice(false);
     }, [captureIssueNotice]);
-    const badgeClassName = isActiveTrial
-        ? "inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2 py-1"
-        : "inline-flex items-center gap-1 rounded-full border border-accent bg-accent-50 px-2 py-1";
-    const badgeIconClassName = isActiveTrial ? "h-2.5 w-2.5 text-blue-600" : "h-2.5 w-2.5 text-accent";
-    const badgeTextClassName = isActiveTrial
-        ? "text-[9px] font-semibold uppercase tracking-wide text-blue-700"
-        : "text-[9px] font-semibold uppercase tracking-wide text-accent";
     const showQueuedScanStatus =
         !hideCaptureQueueStatus &&
         (busy || pressingSubmit || creationBusy || queueActive);
@@ -1526,59 +1513,6 @@ function MiniDashboardEntry({
                         >
                             Dashboard
                         </h2>
-                        {userTier !== "unknown" && badgeLabel ? (
-                            <div className="inline-flex items-center">
-                                    <div className={badgeClassName}>
-                                        <Crown className={badgeIconClassName} />
-                                        <span className={badgeTextClassName}>
-                                            {badgeLabel}
-                                        </span>
-                                    </div>
-                                {onManagePlan ? (
-                                    <span className="ml-3 inline-flex shrink-0">
-                                        <button
-                                            type="button"
-                                            onClick={onManagePlan}
-                                            title={
-                                                isTrialCancellationPending
-                                                    ? "Resume subscription"
-                                                    : userTier === "free"
-                                                        ? "Upgrade plan"
-                                                        : "Manage plan"
-                                            }
-                                            aria-label={
-                                                isTrialCancellationPending
-                                                    ? "Resume subscription"
-                                                    : userTier === "free"
-                                                        ? "Upgrade plan"
-                                                        : "Manage plan"
-                                            }
-                                            className={
-                                                isTrialCancellationPending
-                                                    ? "inline-flex items-center gap-1.5 rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-[11px] font-semibold text-blue-700 shadow-[0_12px_32px_rgba(59,130,246,0.16)] ring-1 ring-[rgba(59,130,246,0.14)] transition hover:bg-blue-100 hover:shadow-[0_14px_36px_rgba(59,130,246,0.2)] active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-[rgba(59,130,246,0.28)] focus:ring-offset-2"
-                                                    : userTier === "free"
-                                                        ? "inline-flex items-center gap-1.5 rounded-full border border-[rgba(255,141,33,0.45)] bg-[#FF8D21] px-3 py-1.5 text-[11px] font-semibold text-white shadow-[0_12px_32px_rgba(255,141,33,0.24)] ring-1 ring-[rgba(255,141,33,0.18)] transition hover:bg-[#D96E11] hover:shadow-[0_14px_36px_rgba(255,141,33,0.3)] active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-[rgba(255,141,33,0.28)] focus:ring-offset-2"
-                                                    : "group inline-flex items-center justify-center rounded-md p-1 transition-all duration-150 hover:bg-white/10 hover:scale-[1.06] active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-[#C6F44D]/60 focus:ring-offset-2 focus:ring-offset-transparent"
-                                            }
-                                        >
-                                            {isTrialCancellationPending ? (
-                                                <>
-                                                    <CheckCircle2 className="h-3.5 w-3.5" />
-                                                    <span>Renew subscription</span>
-                                                </>
-                                            ) : userTier === "free" ? (
-                                                <>
-                                                    <Crown className="h-3.5 w-3.5" />
-                                                    <span>Upgrade</span>
-                                                </>
-                                            ) : (
-                                                <Edit2 className="h-3 w-3 opacity-80 transition-opacity group-hover:opacity-100" />
-                                            )}
-                                        </button>
-                                    </span>
-                                ) : null}
-                            </div>
-                        ) : null}
                     </div>
 
                     <div className={"my-4 flex flex-wrap gap-2 " + (isCompact ? "text-[11px]" : "text-xs")}>
@@ -12616,17 +12550,6 @@ export default function PreviewPage(): JSX.Element {
         [user, forceTrialPromptInDev],
     );
 
-    const planLabel =
-        userTier === "unknown"
-            ? "Detecting plan…"
-            : userTier === "free"
-                ? "Free plan"
-                : userTier === "pro"
-                    ? "Pro plan"
-                    : userTier === "agency"
-                        ? "Agency plan"
-                        : "Enterprise plan";
-
     const showUrlAccessInError = useMemo(() => {
         if (!err) return false;
         return /not able to process this url|url failed to process/i.test(err);
@@ -13351,7 +13274,6 @@ export default function PreviewPage(): JSX.Element {
                 <section className="mb-10">
                     <MiniDashboardEntry
                         onSubmitUrl={submitMiniUrlWithDuplicateConfirm}
-                        planLabel={planLabel}
                         stripeStatus={stripeStatus}
                         stripeCancelAtPeriodEnd={stripeCancelAtPeriodEnd}
                         billingState={billingState}
