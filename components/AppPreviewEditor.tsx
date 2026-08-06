@@ -9,6 +9,7 @@ import { motion, AnimatePresence, useDragControls } from "framer-motion";
 import Image from 'next/image'
 import WebsitePrePaywall from "./WebsitePrePaywall";
 import { useModal } from "@/components/ui/ModalContext";
+import { WorkspaceLoadingPanel } from "./KlonerLoader";
 import { pickPreferredHtmlPath } from "@/src/lib/htmlEntrypoint";
 import { useHtmlDiscoveryFallbackGate } from "@/src/lib/htmlDiscoveryGate";
 import { PreviewEditorTour, TOUR_KEY as PREVIEW_TOUR_STORAGE_KEY } from "./PreviewEditorTour";
@@ -5029,16 +5030,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                     aria-live="polite"
                     aria-busy="true"
                 >
-                    <div className="w-full max-w-[320px] rounded-2xl border border-neutral-200 bg-white px-6 py-8 text-center shadow-sm">
-                        <div className="text-sm font-semibold leading-5 tracking-[-0.01em] text-neutral-900">
-                            Hydrating files
-                        </div>
-                        <div className="kloner-dots" aria-hidden="true">
-                            <span className="kloner-dot" />
-                            <span className="kloner-dot" />
-                            <span className="kloner-dot" />
-                        </div>
-                    </div>
+                    <WorkspaceLoadingPanel title="Loading project files" />
                 </div>
             ) : (
                 <div
@@ -5053,16 +5045,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                     aria-live="polite"
                     aria-busy="true"
                 >
-                    <div className="w-full max-w-[320px] rounded-2xl border border-neutral-200 bg-white px-6 py-8 text-center shadow-sm">
-                        <div className="text-sm font-semibold leading-5 tracking-[-0.01em] text-neutral-900">
-                            Hydrating files
-                        </div>
-                        <div className="kloner-dots" aria-hidden="true">
-                            <span className="kloner-dot" />
-                            <span className="kloner-dot" />
-                            <span className="kloner-dot" />
-                        </div>
-                    </div>
+                    <WorkspaceLoadingPanel title="Loading project files" />
                 </div>
             ),
             document.body,
@@ -7459,17 +7442,10 @@ export default function AppPreviewEditor({
         (!htmlPaths.length && !isHtmlDiscoveryFallbackReady)
     ) {
         return (
-            <div className="pointer-events-none fixed inset-0 z-[22050] flex items-center justify-center px-4">
-                <div className="w-full max-w-[320px] rounded-2xl border border-neutral-200 bg-white px-6 py-8 text-center shadow-sm">
-                    <div className="text-sm font-semibold leading-5 tracking-[-0.01em] text-neutral-900">
-                        Loading project
-                    </div>
-                    <div className="kloner-dots" aria-hidden="true">
-                        <span className="kloner-dot" />
-                        <span className="kloner-dot" />
-                        <span className="kloner-dot" />
-                    </div>
-                </div>
+            <div className="pointer-events-none fixed inset-0 z-[22050] grid place-items-center px-4">
+                <WorkspaceLoadingPanel
+                    title={isFilesStillHydrating ? "Loading project files" : "Preparing preview"}
+                />
             </div>
         );
     }

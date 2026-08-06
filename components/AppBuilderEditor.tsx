@@ -11,7 +11,7 @@ import { AppBuilderEditorTour } from "./AppBuilderEditorTour";
 import { TOUR_KEY as BUILDER_TOUR_STORAGE_KEY } from "./AppBuilderEditorTour";
 import AppPreviewEditor from "./AppPreviewEditor";
 import WebsitePrePaywall from "./WebsitePrePaywall";
-import KlonerLoader from "./KlonerLoader";
+import KlonerLoader, { WorkspaceLoadingPanel, WorkspaceLoadingScreen } from "./KlonerLoader";
 import WebContainerRunner from "./WebContainerRunner";
 import { bootstrapServerSession, ensureSessionAndCsrf, resetAuthClientCaches } from "@/lib/auth-client";
 import { useVercelIntegration } from "@/src/hooks/useVercelIntegration";
@@ -2553,16 +2553,7 @@ export default function AppBuilderEditor({
                     aria-live="polite"
                     aria-busy="true"
                 >
-                    <div className="w-full max-w-[320px] rounded-2xl border border-neutral-200 bg-white px-6 py-8 text-center shadow-sm">
-                        <div className="text-sm font-semibold leading-5 tracking-[-0.01em] text-neutral-900">
-                            Hydrating files
-                        </div>
-                        <div className="kloner-dots" aria-hidden="true">
-                            <span className="kloner-dot" />
-                            <span className="kloner-dot" />
-                            <span className="kloner-dot" />
-                        </div>
-                    </div>
+                    <WorkspaceLoadingPanel title="Loading project files" />
                 </div>
             ) : (
                 <div
@@ -2577,16 +2568,7 @@ export default function AppBuilderEditor({
                     aria-live="polite"
                     aria-busy="true"
                 >
-                    <div className="w-full max-w-[320px] rounded-2xl border border-neutral-200 bg-white px-6 py-8 text-center shadow-sm">
-                        <div className="text-sm font-semibold leading-5 tracking-[-0.01em] text-neutral-900">
-                            Hydrating files
-                        </div>
-                        <div className="kloner-dots" aria-hidden="true">
-                            <span className="kloner-dot" />
-                            <span className="kloner-dot" />
-                            <span className="kloner-dot" />
-                        </div>
-                    </div>
+                    <WorkspaceLoadingPanel title="Loading project files" />
                 </div>
             ),
             document.body,
@@ -3110,6 +3092,13 @@ export default function AppBuilderEditor({
 
     const activeGeneration = useMemo(() => normalizeGenerationState(app), [app]);
     const isGenerationProcessing = isGenerationInProgress(activeGeneration);
+    const workspaceLoadingCopy = loading
+        ? isGenerationProcessing
+            ? (activeGeneration.title || "Generating your app…")
+            : !filesHydrated
+                ? (isFilesHydrationActive ? "Loading project files" : "Loading your workspace")
+                : "Preparing preview"
+        : null;
     const activeEmbedding = useMemo(() => normalizeEmbeddingState(app), [app]);
     const isEmbeddingProcessing = /pending|processing|backfilling|warming|indexing/i.test(String(activeEmbedding.status || ""));
 
@@ -6934,55 +6923,26 @@ export default function AppBuilderEditor({
         );
     }
 
+    if (workspaceLoadingCopy) {
+        return (
+            <WorkspaceLoadingScreen
+                title={workspaceLoadingCopy}
+            />
+        );
+    }
+
     return (
-        <div className="fixed inset-0 z-[16000] bg-black/70 backdrop-blur-sm">
+        <div className="fixed inset-0 z-[16000]">
             {isGenerationProcessing && previewMode !== "webcontainer" ? (
                 <motion.div
                     key="generation-processing"
-                    className="fixed inset-0 z-[17000] bg-black/70 backdrop-blur-sm flex items-center justify-center"
+                    className="fixed inset-0 z-[17000] flex items-center justify-center px-4"
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
                     transition={{ duration: 0.22, ease: "easeOut" }}
                 >
-                    <motion.div
-                        className="bg-white rounded-2xl p-8 max-w-md shadow-[0_28px_80px_rgba(15,23,42,0.22)]"
-                        initial={{ opacity: 0, y: 10, scale: 0.985 }}
-                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                        exit={{ opacity: 0, y: 8, scale: 0.985 }}
-                        transition={{ duration: 0.22, ease: "easeOut" }}
-                    >
-                        <div className="text-center">
-                            <KlonerLoader />
-                            <div className="mt-4 text-sm text-gray-600">
-                                {activeGeneration.title || "Generating your app…"}
-                            </div>
-
-                            <div className="mt-2 text-xs font-semibold uppercase tracking-[0.18em] text-[#FF8D21]">
-                                {formatGenerationStageLabel(activeGeneration.stage) || formatGenerationStageLabel(activeGeneration.status)}
-                            </div>
-
-                            <div className="mt-3 text-sm text-gray-600">
-                                {activeGeneration.message || "Working through the generation pipeline…"}
-                            </div>
-
-                            {typeof activeGeneration.progress === "number" ? (
-                                <div className="mt-4">
-                                    <div className="text-xs font-semibold text-gray-700">
-                                        Progress: {Math.max(0, Math.min(100, Math.round(activeGeneration.progress)))}%
-                                    </div>
-                                    <div className="mt-2 h-2 w-full rounded-full bg-gray-200 overflow-hidden">
-                                        <div
-                                            className="h-full bg-[#FF8D21]"
-                                            style={{
-                                                width: `${Math.max(0, Math.min(100, Math.round(activeGeneration.progress)))}%`,
-                                            }}
-                                        />
-                                    </div>
-                                </div>
-                            ) : null}
-                        </div>
-                    </motion.div>
+                    <WorkspaceLoadingPanel title={activeGeneration.title || "Generating your app…"} />
                 </motion.div>
             ) : null}
             <motion.div

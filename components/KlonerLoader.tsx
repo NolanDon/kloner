@@ -1,3 +1,5 @@
+"use client";
+
 import { motion } from "framer-motion";
 
 const ACCENT = "#FF8D21";
@@ -14,6 +16,11 @@ type KlonerLoaderProps = {
 
 type HydrationDotsLoaderProps = {
     label?: string;
+    className?: string;
+};
+
+type WorkspaceLoadingPanelProps = {
+    title: string;
     className?: string;
 };
 
@@ -77,17 +84,55 @@ export function HydrationDotsLoader({
     className = "",
 }: HydrationDotsLoaderProps) {
     return (
-        <div className={`w-full max-w-[320px] rounded-2xl border border-neutral-200 bg-white px-6 py-8 shadow-sm ${className}`}>
-            <div className="flex flex-col items-center text-center">
-                <div className="text-sm font-semibold leading-5 tracking-[-0.01em] text-neutral-900">
-                    {label}
-                </div>
-                <div className="kloner-dots" aria-hidden="true">
-                    <span className="kloner-dot" />
-                    <span className="kloner-dot" />
-                    <span className="kloner-dot" />
-                </div>
+        <div className={`flex flex-col items-center text-center ${className}`}>
+            <div className="kloner-dots" aria-hidden="true">
+                <span className="kloner-dot" />
+                <span className="kloner-dot" />
+                <span className="kloner-dot" />
             </div>
+            <div className="mt-4 text-sm leading-5 tracking-[-0.01em] text-neutral-900">
+                {label}
+            </div>
+        </div>
+    );
+}
+
+export function WorkspaceLoadingPanel({
+    title,
+    className = "",
+}: WorkspaceLoadingPanelProps) {
+    return (
+        <motion.div
+            className={`flex flex-col items-center text-center ${className}`}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 8 }}
+            transition={{ duration: 0.22, ease: "easeOut" }}
+        >
+            <div className="kloner-dots" aria-hidden="true">
+                <span className="kloner-dot" />
+                <span className="kloner-dot" />
+                <span className="kloner-dot" />
+            </div>
+            <div className="mt-4 text-sm leading-5 tracking-[-0.01em] text-neutral-900">
+                {title}
+            </div>
+        </motion.div>
+    );
+}
+
+export function WorkspaceLoadingScreen({
+    title,
+    className = "",
+}: WorkspaceLoadingPanelProps) {
+    return (
+        <div
+            className={`fixed inset-0 z-[9999] grid place-items-center px-4 ${className}`}
+            role="status"
+            aria-live="polite"
+            aria-busy="true"
+        >
+            <WorkspaceLoadingPanel title={title} />
         </div>
     );
 }
@@ -132,7 +177,7 @@ export default function KlonerLoader({
 
     if (inline) {
         return (
-            <div className="mt-2 sm:mt-3 mb-4 mx-2 sm:mx-3 md:mx-4 rounded-2xl border border-neutral-200 bg-white px-6 py-8 shadow-sm grid place-items-center">
+            <div className="mt-2 sm:mt-3 mb-4 mx-2 sm:mx-3 md:mx-4 min-h-[160px] rounded-2xl border border-neutral-200 bg-white px-6 py-8 shadow-sm grid place-items-center">
                 {showMilestones ? (
                     <div className="w-full max-w-md">
                         <MilestoneProgress progress={progress} milestones={milestones} />
