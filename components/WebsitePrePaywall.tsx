@@ -90,7 +90,7 @@ export function WebsitePrePaywall({
 
             <div className="absolute inset-0 flex items-start justify-center overflow-y-auto px-4 py-6 sm:items-center sm:px-6 sm:py-8">
                 <motion.div
-                    className="relative w-full max-w-2xl overflow-hidden rounded-[32px] border border-neutral-200 bg-white shadow-[0_30px_120px_rgba(0,0,0,0.24)]"
+                    className="relative w-full max-w-xl overflow-hidden rounded-[32px] border border-neutral-200 bg-white shadow-[0_30px_120px_rgba(0,0,0,0.24)]"
                     initial={{ opacity: 0, y: 14, scale: 0.985 }}
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     exit={{ opacity: 0, y: 10, scale: 0.985 }}
@@ -134,7 +134,7 @@ export function WebsitePrePaywall({
                             </div>
 
                             <div className="mt-7 flex flex-col gap-4">
-                                <p className="text-[11px] text-neutral-500 sm:text-xs">
+                                <p className="text-center text-[11px] text-neutral-500 sm:text-xs">
                                     {footerNote}
                                 </p>
 
