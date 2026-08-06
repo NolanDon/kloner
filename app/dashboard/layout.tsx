@@ -36,7 +36,7 @@ import {
 } from "lucide-react";
 import KlonerLoader from "@/components/KlonerLoader";
 
-const ACCENT = "#f55f2a";
+const ACCENT = "#FF8D21";
 
 type NavItemConfig = {
     href: string;

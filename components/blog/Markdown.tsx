@@ -60,7 +60,7 @@ export default function Markdown({ markdown }: Props) {
                 href={url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-[#f55f2a] hover:underline"
+                className="text-[#FF8D21] hover:underline"
                 {...props}
               >
                 {children}
@@ -69,7 +69,7 @@ export default function Markdown({ markdown }: Props) {
           }
 
           return (
-            <Link href={url} className="text-[#f55f2a] hover:underline" {...(props as any)}>
+            <Link href={url} className="text-[#FF8D21] hover:underline" {...(props as any)}>
               {children}
             </Link>
           );

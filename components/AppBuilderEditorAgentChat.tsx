@@ -953,7 +953,7 @@ function renderTextWithLinks(text: string): React.ReactNode {
             const isTopup = part === "/price#topup";
             const label = isTopup ? "Add credits" : "View pricing";
             const classes = isTopup
-                ? "inline-flex items-center justify-center gap-1.5 rounded-full bg-[#F55F2A] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#e35625]"
+                ? "inline-flex items-center justify-center gap-1.5 rounded-full bg-[#FF8D21] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#D96E11]"
                 : "inline-flex items-center justify-center rounded-full border border-black/10 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-900 hover:bg-neutral-50";
 
             return (
@@ -6954,7 +6954,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                         </div>
                         <div className="mt-3 space-y-2">
                             {restorePoints.length === 0 ? (
-                                <div className="min-w-0 rounded-lg border border-dashed border-[#F55F2A]/20 bg-[#FFF8F5] px-3 py-2 text-xs text-neutral-600">
+                                <div className="min-w-0 rounded-lg border border-dashed border-[#FF8D21]/20 bg-[#FFF8F5] px-3 py-2 text-xs text-neutral-600">
                                     No timeline checkpoints yet. A restore point is created automatically before AI applies edits.
                                 </div>
                             ) : (
@@ -7046,13 +7046,13 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
             ) : null}
 
             {/* Messages */}
-            <div className="flex-1 min-h-0 overflow-y-auto px-4 py-5 space-y-4 bg-[radial-gradient(circle_at_top,_rgba(245,95,42,0.10),_transparent_36%),linear-gradient(180deg,rgba(255,250,247,0.96),rgba(255,255,255,1))]">
+            <div className="flex-1 min-h-0 overflow-y-auto px-4 py-5 space-y-4 bg-[radial-gradient(circle_at_top,_rgba(255,141,33,0.10),_transparent_36%),linear-gradient(180deg,rgba(255,250,247,0.96),rgba(255,255,255,1))]">
                 {showInitialChatLoader ? (
                     <div className="flex min-h-[220px] items-center justify-center px-4 py-10">
-                        <div className="w-full max-w-sm rounded-3xl border border-[#F55F2A]/15 bg-white/90 px-5 py-5 text-left shadow-[0_16px_40px_rgba(15,23,42,0.08)] backdrop-blur-sm">
+                        <div className="w-full max-w-sm rounded-3xl border border-[#FF8D21]/15 bg-white/90 px-5 py-5 text-left shadow-[0_16px_40px_rgba(15,23,42,0.08)] backdrop-blur-sm">
                             <div className="flex items-center gap-3">
-                                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,rgba(245,95,42,0.12),rgba(245,95,42,0.04))] text-[#f55f2a]">
-                                    <div className="h-5 w-5 animate-spin rounded-full border-2 border-[#f55f2a]/20 border-t-[#f55f2a]" />
+                                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,rgba(255,141,33,0.12),rgba(255,141,33,0.04))] text-[#FF8D21]">
+                                    <div className="h-5 w-5 animate-spin rounded-full border-2 border-[#FF8D21]/20 border-t-[#FF8D21]" />
                                 </div>
                                 <div className="min-w-0">
                                     <div className="text-sm font-semibold text-neutral-900">Loading chat</div>
@@ -7062,7 +7062,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                         </div>
                     </div>
                 ) : showChatEmptyState ? (
-                    <div className="rounded-2xl border border-dashed border-[#F55F2A]/20 bg-white/80 px-4 py-10 text-center text-sm text-neutral-500 shadow-[0_10px_24px_rgba(15,23,42,0.05)]">
+                    <div className="rounded-2xl border border-dashed border-[#FF8D21]/20 bg-white/80 px-4 py-10 text-center text-sm text-neutral-500 shadow-[0_10px_24px_rgba(15,23,42,0.05)]">
                         No messages yet. Start by typing what you want to change.
                     </div>
                 ) : null}
@@ -7113,8 +7113,8 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
 
                         <div
                             className={`relative max-w-[82%] rounded-[1.35rem] px-4 py-3 shadow-[0_12px_28px_rgba(15,23,42,0.08)] ${message.role === "user"
-                                ? "border border-[#F55F2A]/20 bg-[linear-gradient(135deg,#F55F2A_0%,#FF8A5C_100%)] text-white"
-                                : "border border-[#F55F2A]/14 bg-[linear-gradient(180deg,rgba(255,251,248,0.98),rgba(255,255,255,0.95))] text-neutral-900"
+                                ? "border border-[#FF8D21]/20 bg-[linear-gradient(135deg,#FF8D21_0%,#FF8A5C_100%)] text-white"
+                                : "border border-[#FF8D21]/14 bg-[linear-gradient(180deg,rgba(255,251,248,0.98),rgba(255,255,255,0.95))] text-neutral-900"
                                 }`}
                         >
                             {!(message.role === "assistant" && message.id === editPlanStatusMessageId && isActiveStatusBubble) ? (
@@ -7223,7 +7223,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
 
                                             void sendMessage({ forcedInput: prompt, allowWhenChatDisabled: true });
                                         }}
-                                        className="inline-flex items-center rounded-full bg-[#F55F2A] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#E04E1B] disabled:opacity-50"
+                                        className="inline-flex items-center rounded-full bg-[#FF8D21] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#D96E11] disabled:opacity-50"
                                     >
                                         Continue request
                                     </button>
@@ -7278,7 +7278,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                                 setShowSupabaseAdvanced(false);
                                                 setShowSupabaseSetup(true);
                                             }}
-                                            className="inline-flex items-center rounded-full bg-[#F55F2A] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#E04E1B] disabled:opacity-50"
+                                            className="inline-flex items-center rounded-full bg-[#FF8D21] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#D96E11] disabled:opacity-50"
                                         >
                                             Connect Supabase
                                         </button>
@@ -7380,7 +7380,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                                             type="button"
                                                             disabled={!point.restorable || isUndoBusy || isRestoreBusy}
                                                             onClick={() => void revertChatRestorePoint(point.restorePointId)}
-                                                            className="rounded-full bg-[#F55F2A] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#E04E1B] disabled:cursor-not-allowed disabled:opacity-50"
+                                                            className="rounded-full bg-[#FF8D21] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#D96E11] disabled:cursor-not-allowed disabled:opacity-50"
                                                         >
                                                             {isUndoBusy ? "Undoing..." : "Undo"}
                                                         </button>
@@ -7577,7 +7577,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                                             key={entry.path}
                                                             type="button"
                                                             onClick={() => setActiveRestorePointPreview({ restorePointId: message.restorePointId!, path: entry.path })}
-                                                            className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-left shadow-sm transition hover:border-[#F55F2A]/25 hover:bg-neutral-50 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#F55F2A]/30"
+                                                            className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-left shadow-sm transition hover:border-[#FF8D21]/25 hover:bg-neutral-50 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#FF8D21]/30"
                                                         >
                                                             <div className="flex items-center justify-between gap-3">
                                                                 <div className="min-w-0 text-sm font-semibold text-neutral-900 truncate">{entry.path}</div>
@@ -7722,7 +7722,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                 )}
                 {showIntroTyping && messages.length > 0 ? (
                     <div className="flex justify-start">
-                        <div className="rounded-[1.35rem] border border-[#F55F2A]/14 bg-[linear-gradient(180deg,rgba(255,251,248,0.98),rgba(255,255,255,0.95))] px-4 py-2 text-sm text-neutral-700 shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
+                        <div className="rounded-[1.35rem] border border-[#FF8D21]/14 bg-[linear-gradient(180deg,rgba(255,251,248,0.98),rgba(255,255,255,0.95))] px-4 py-2 text-sm text-neutral-700 shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
                             typing...
                         </div>
                     </div>
@@ -7787,7 +7787,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                 <div className="px-4 py-3 border-t bg-black/5 rounded-lg flex-shrink-0">
                     <div className="flex items-center justify-between mb-3">
                         <div className="flex items-center gap-2">
-                            <Database className="w-4 h-4 text-[#F55F2A]" />
+                            <Database className="w-4 h-4 text-[#FF8D21]" />
                             <span className="font-medium text-gray-900">Connect a Database</span>
                         </div>
                         <button
@@ -7880,7 +7880,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                             <div className="flex gap-3">
                                 <button
                                     onClick={handleCreateSupabaseProject}
-                                    className="flex-1 bg-[#F55F2A] text-white py-2 px-4 rounded-full hover:bg-[#E04E1B] text-sm transition-colors"
+                                    className="flex-1 bg-[#FF8D21] text-white py-2 px-4 rounded-full hover:bg-[#D96E11] text-sm transition-colors"
                                 >
                                     Create
                                 </button>
@@ -7917,7 +7917,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                             value={existingSupabaseProjectRef}
                                             onChange={(e) => setExistingSupabaseProjectRef(e.target.value)}
                                             placeholder="abcdefghijklmnopqrst  or  https://abcdefghijklmnopqrst.supabase.co"
-                                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#F55F2A]"
+                                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#FF8D21]"
                                         />
                                         <p className="text-xs text-gray-500 mt-1">
                                             In the URL: <span className="font-mono">https://&lt;project-ref&gt;.supabase.co</span>
@@ -7931,7 +7931,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                             value={existingSupabaseAnonKey}
                                             onChange={(e) => setExistingSupabaseAnonKey(e.target.value)}
                                             placeholder="eyJhbGciOi..."
-                                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#F55F2A]"
+                                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#FF8D21]"
                                         />
                                         <p className="text-xs text-gray-500 mt-1">
                                             Supabase Dashboard → Settings → API → Project API keys
@@ -7945,7 +7945,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                             value={existingSupabaseServiceRoleKey}
                                             onChange={(e) => setExistingSupabaseServiceRoleKey(e.target.value)}
                                             placeholder="eyJhbGciOi..."
-                                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#F55F2A]"
+                                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#FF8D21]"
                                         />
                                         <p className="text-xs text-gray-500 mt-1">
                                             Only if you need server-side admin access. Keep this secret.
@@ -8318,7 +8318,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                 </div>
 
                 {typeof aiCreditsRemaining === "number" && aiCreditsRemaining <= 0 ? (
-                    <div className="mb-3 rounded-2xl border border-[#f55f2a]/20 bg-[#f55f2a]/8 px-4 py-3 shadow-sm">
+                    <div className="mb-3 rounded-2xl border border-[#FF8D21]/20 bg-[#FF8D21]/8 px-4 py-3 shadow-sm">
                         <div className="text-sm font-semibold text-neutral-900">You’ve hit the limit on your free plan</div>
                         <p className="mt-1 text-xs leading-5 text-neutral-600">
                             You’ve used all of your free AI edit credits. Upgrade to keep building inside the editor.
@@ -8326,7 +8326,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                         <button
                             type="button"
                             onClick={() => onRequestUpgradePaywall?.()}
-                            className="mt-3 inline-flex items-center justify-center rounded-full bg-[#f55f2a] px-4 py-2 text-xs font-semibold text-white shadow-[0_10px_24px_rgba(245,95,42,0.18)] transition hover:bg-[#e95420]"
+                            className="mt-3 inline-flex items-center justify-center rounded-full bg-[#FF8D21] px-4 py-2 text-xs font-semibold text-white shadow-[0_10px_24px_rgba(255,141,33,0.18)] transition hover:bg-[#D96E11]"
                         >
                             Upgrade now
                         </button>
@@ -8657,7 +8657,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                                 {selectedRequestPage?.path || currentFile || "Current visible page"}
                                             </div>
                                         </div>
-                                        {requestPageOverrides.length === 0 ? <Check className="mt-0.5 h-4 w-4 shrink-0 text-[#F55F2A]" aria-hidden="true" /> : null}
+                                        {requestPageOverrides.length === 0 ? <Check className="mt-0.5 h-4 w-4 shrink-0 text-[#FF8D21]" aria-hidden="true" /> : null}
                                     </button>
 
                                     {filteredRequestPageOptions.map((page) => {
@@ -8683,7 +8683,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                                     <div className="font-semibold">{page.label}</div>
                                                     <div className="mt-0.5 truncate text-[11px] text-neutral-500">{page.path}</div>
                                                 </div>
-                                                {active ? <Check className="mt-0.5 h-4 w-4 shrink-0 text-[#F55F2A]" aria-hidden="true" /> : null}
+                                                {active ? <Check className="mt-0.5 h-4 w-4 shrink-0 text-[#FF8D21]" aria-hidden="true" /> : null}
                                             </button>
                                         );
                                     })}
@@ -8745,7 +8745,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                     </div>
                 ) : null}
 
-                <div className="flex items-stretch overflow-hidden rounded-[1.35rem] border border-[#F55F2A]/18 bg-white shadow-[0_12px_30px_rgba(15,23,42,0.08)]">
+                <div className="flex items-stretch overflow-hidden rounded-[1.35rem] border border-[#FF8D21]/18 bg-white shadow-[0_12px_30px_rgba(15,23,42,0.08)]">
                     <textarea
                         ref={inputRef}
                         value={input}
@@ -8785,7 +8785,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                             void sendMessage();
                         }}
                         disabled={!input.trim() || isLoading || chatDisabled}
-                        className="flex w-16 items-center justify-center border-l border-[#F55F2A]/12 bg-[linear-gradient(180deg,rgba(245,95,42,0.98),rgba(233,94,50,0.96))] text-white transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
+                        className="flex w-16 items-center justify-center border-l border-[#FF8D21]/12 bg-[linear-gradient(180deg,rgba(255,141,33,0.98),rgba(234,168,120,0.96))] text-white transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
                         aria-label="Send message"
                     >
                         <Send className="h-6 w-6" />

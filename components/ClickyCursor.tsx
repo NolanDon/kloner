@@ -54,7 +54,7 @@ export const ClickyCursor = ({
                     top: 0,
                     width: 5 * s,
                     height: 5 * s,
-                    background: "var(--accent, #f55f2a)",
+                    background: "var(--accent, #FF8D21)",
                     transform: `translate(${tipX}px, ${tipY}px)`,
                     filter: "blur(1px)",
                 }}
@@ -62,10 +62,10 @@ export const ClickyCursor = ({
                     opacity: [0, 0.2, 1, 0],
                     scale: [0.7, 0.9, 1.9, 2.2],
                     boxShadow: [
-                        "0 0 0px rgba(245,95,42,0)",
-                        "0 0 8px rgba(245,95,42,0.25)",
-                        "0 0 14px rgba(245,95,42,0.35)",
-                        "0 0 0px rgba(245,95,42,0)",
+                        "0 0 0px rgba(255,141,33,0)",
+                        "0 0 8px rgba(255,141,33,0.25)",
+                        "0 0 14px rgba(255,141,33,0.35)",
+                        "0 0 0px rgba(255,141,33,0)",
                     ],
                 }}
                 transition={{ duration: 3.6, times: [0, 0.62, 0.78, 0.98], repeat: Infinity, repeatDelay: 1.2, ease: "easeOut" }}

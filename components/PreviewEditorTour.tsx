@@ -285,7 +285,7 @@ export function PreviewEditorTour({ startToken = 0, autoStart = true, onEnd }: P
         box.style.width = `${Math.max(rect.width + padding * 2, 32)}px`;
         box.style.height = `${Math.max(rect.height + padding * 2, 24)}px`;
         box.style.borderRadius = "6px";
-        box.style.boxShadow = "0 14px 32px rgba(0,0,0,0.22), 0 0 0 6px rgba(245,95,42,0.08)";
+        box.style.boxShadow = "0 14px 32px rgba(0,0,0,0.22), 0 0 0 6px rgba(255,141,33,0.08)";
         box.style.zIndex = "999998";
     };
 

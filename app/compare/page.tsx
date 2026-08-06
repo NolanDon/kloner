@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import NavBar from "@/components/NavBar";
 import Footer from "@/components/Footer";
 
-const ACCENT = "#f55f2a";
+const ACCENT = "#FF8D21";
 
 export const metadata: Metadata = {
     title: "Compare",

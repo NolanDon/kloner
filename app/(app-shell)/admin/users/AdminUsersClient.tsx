@@ -16,7 +16,7 @@ import {
     UserRound,
 } from "lucide-react";
 
-const ACCENT = "#f55f2a";
+const ACCENT = "#FF8D21";
 const PAGE_SIZE = 20;
 const CLIENT_RESULTS_CACHE_TTL_MS = 30_000;
 

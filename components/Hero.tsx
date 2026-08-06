@@ -16,7 +16,7 @@ export default function Hero() {
           {/* BACKGROUND */}
           <div className="absolute inset-0 overflow-hidden">
             <Image
-              src="/images/hero_bg.jpg"
+              src="/images/hero_bg.png"
               alt=""
               aria-hidden="true"
               width={2400}

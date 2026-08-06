@@ -268,7 +268,7 @@ export function MiniToolbar({
             )}
 
             {/* EXTREMELY COMPACT MAIN TOOLBAR */}
-            <div className="inline-flex items-center rounded-lg border border-[rgba(245,95,42,0.28)] bg-white p-1.5 text-[10px] font-semibold text-neutral-800 shadow-[0_10px_28px_rgba(15,23,42,0.12)]">
+            <div className="inline-flex items-center rounded-lg border border-[rgba(255,141,33,0.28)] bg-white p-1.5 text-[10px] font-semibold text-neutral-800 shadow-[0_10px_28px_rgba(15,23,42,0.12)]">
                 <div className="grid grid-cols-3 grid-rows-3 gap-1">
                     <div />
                     <button

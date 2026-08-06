@@ -41,7 +41,7 @@ import Image from "next/image";
 import { validateAndNormalizePublicHttpUrl } from "@/src/lib/publicHttpUrl";
 import { ArrowLeft } from "lucide-react";
 
-const ACCENT = "#f55f2a";
+const ACCENT = "#FF8D21";
 const POLICY_ACCEPTANCE_VERSION = "2026-05-20";
 
 // Backwards-compatible export: many parts of the app import this helper.
@@ -681,7 +681,7 @@ export default function LoginPage(): JSX.Element {
     };
 
     return (
-        <main className="min-h-[100dvh] overflow-hidden bg-[radial-gradient(circle_at_top_left,_rgba(245,95,42,0.12),_transparent_36%),radial-gradient(circle_at_bottom_right,_rgba(15,23,42,0.08),_transparent_30%),linear-gradient(180deg,_#fffaf6_0%,_#fff_58%,_#fff7f1_100%)] text-black">
+        <main className="min-h-[100dvh] overflow-hidden bg-[radial-gradient(circle_at_top_left,_rgba(255,141,33,0.12),_transparent_36%),radial-gradient(circle_at_bottom_right,_rgba(15,23,42,0.08),_transparent_30%),linear-gradient(180deg,_#fffaf6_0%,_#fff_58%,_#fff7f1_100%)] text-black">
             <Link href="/" className="absolute left-4 top-4 z-20 hidden items-center justify-center transition hover:opacity-90 sm:inline-flex sm:left-6 sm:top-6">
                 <Image src="/images/orange_logo.png" alt="Kloner home" width={144} height={144} className="h-20 w-20 object-contain sm:h-20 sm:w-20 lg:h-24 lg:w-24" priority />
             </Link>
@@ -789,7 +789,7 @@ export default function LoginPage(): JSX.Element {
                                         autoComplete="email"
                                         value={email}
                                         onChange={(e) => setEmail(e.target.value)}
-                                        className="w-full rounded-2xl border border-neutral-200 bg-white px-3 py-3 text-sm outline-none transition focus:border-[#f55f2a] focus:ring-2 focus:ring-[#f55f2a]/15"
+                                        className="w-full rounded-2xl border border-neutral-200 bg-white px-3 py-3 text-sm outline-none transition focus:border-[#FF8D21] focus:ring-2 focus:ring-[#FF8D21]/15"
                                         placeholder="you@example.com"
                                     />
                                 </div>
@@ -806,7 +806,7 @@ export default function LoginPage(): JSX.Element {
                                             }
                                             value={pw}
                                             onChange={(e) => setPw(e.target.value)}
-                                            className="w-full rounded-2xl border border-neutral-200 bg-white px-3 py-3 text-sm outline-none transition focus:border-[#f55f2a] focus:ring-2 focus:ring-[#f55f2a]/15"
+                                            className="w-full rounded-2xl border border-neutral-200 bg-white px-3 py-3 text-sm outline-none transition focus:border-[#FF8D21] focus:ring-2 focus:ring-[#FF8D21]/15"
                                             placeholder={
                                                 mode === "signin"
                                                     ? "Your password"
@@ -831,7 +831,7 @@ export default function LoginPage(): JSX.Element {
                                                 type="checkbox"
                                                 checked={acceptedTerms}
                                                 onChange={(e) => setAcceptedTerms(e.target.checked)}
-                                                className={`mt-0.5 h-3.5 w-3.5 rounded ${termsAcceptanceError ? "border-red-400 text-[#f55f2a] focus:ring-red-300" : "border-neutral-300"}`}
+                                                className={`mt-0.5 h-3.5 w-3.5 rounded ${termsAcceptanceError ? "border-red-400 text-[#FF8D21] focus:ring-red-300" : "border-neutral-300"}`}
                                             />
                                             <span className={termsAcceptanceError ? "text-red-800" : ""}>
                                                 I have read and agree to the{" "}
@@ -966,7 +966,7 @@ export default function LoginPage(): JSX.Element {
                 <div className="relative order-2 min-h-[28rem] overflow-hidden border-b border-black/5 bg-neutral-950 text-white lg:min-h-[100dvh] lg:border-b-0 lg:border-l">
                     <div className="absolute inset-0">
                         <Image
-                            src="/images/hero_bg.jpg"
+                            src="/images/hero_bg.png"
                             alt="Abstract Kloner hero artwork"
                             fill
                             priority

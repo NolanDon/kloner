@@ -13,7 +13,7 @@ function buttonClass(active = false) {
   return [
     "rounded-full border px-4 py-2 text-sm transition",
     active
-      ? "border-[#f55f2a] bg-[#f55f2a] text-white"
+      ? "border-[#FF8D21] bg-[#FF8D21] text-white"
       : "border-neutral-200 bg-white text-neutral-700 hover:border-neutral-300 hover:bg-neutral-50",
   ].join(" ");
 }
@@ -260,11 +260,11 @@ function ToolPromoModal({
 
           <div className="flex-1 overflow-y-auto px-4 pb-4 pt-10 sm:px-8 sm:pb-5 sm:pt-8">
             <div className="flex flex-col items-center text-center website-paywall-feature" style={{ animationDelay: "40ms" }}>
-              <div className="mb-2 inline-flex h-10 w-10 items-center justify-center rounded-full border border-amber-100 bg-amber-50 text-[#f55f2a] sm:h-12 sm:w-12">
+              <div className="mb-2 inline-flex h-10 w-10 items-center justify-center rounded-full border border-amber-100 bg-amber-50 text-[#FF8D21] sm:h-12 sm:w-12">
                 <CheckCircle2 className="h-5 w-5 sm:h-6 sm:w-6" />
               </div>
 
-              <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#f55f2a] sm:text-xs sm:tracking-[0.24em]">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#FF8D21] sm:text-xs sm:tracking-[0.24em]">
                 Try Kloner
               </p>
               <h3 className="mt-2 max-w-xl text-[1.55rem] font-normal leading-tight tracking-tight text-neutral-900 sm:text-4xl">
@@ -319,7 +319,7 @@ function ToolPromoModal({
                 href={KLONER_POPUP_HREF}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex w-full min-w-0 items-center justify-center rounded-full bg-[#f55f2a] px-7 py-3.5 text-base font-semibold text-white shadow-[0_16px_36px_rgba(245,95,42,0.24)] transition hover:bg-[#f3602c] hover:shadow-[0_20px_42px_rgba(245,95,42,0.28)] sm:min-w-[200px]"
+                className="inline-flex w-full min-w-0 items-center justify-center rounded-full bg-[#FF8D21] px-7 py-3.5 text-base font-semibold text-white shadow-[0_16px_36px_rgba(255,141,33,0.24)] transition hover:bg-[#D96E11] hover:shadow-[0_20px_42px_rgba(255,141,33,0.28)] sm:min-w-[200px]"
               >
                 Try Kloner
               </a>
@@ -412,7 +412,7 @@ export function QrCodeTool() {
         <button
           type="button"
           onClick={() => triggerDownload(qrDataUrl, `${downloadName || "qr-code"}.png`)}
-          className="rounded-full bg-[#f55f2a] px-3 py-1.5 text-sm font-medium text-white"
+          className="rounded-full bg-[#FF8D21] px-3 py-1.5 text-sm font-medium text-white"
         >
           Download PNG first
         </button>
@@ -444,7 +444,7 @@ export function QrCodeTool() {
               value={text}
               onChange={(event) => setText(event.target.value)}
               rows={5}
-              className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#f55f2a]"
+              className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#FF8D21]"
               placeholder={mode === "url" ? "https://example.com" : "Type text to encode"}
             />
           </label>
@@ -455,7 +455,7 @@ export function QrCodeTool() {
               <input
                 value={ssid}
                 onChange={(event) => setSsid(event.target.value)}
-                className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#f55f2a]"
+                className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#FF8D21]"
               />
             </label>
             <label className="block space-y-2">
@@ -464,7 +464,7 @@ export function QrCodeTool() {
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
                 type="text"
-                className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#f55f2a]"
+                className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#FF8D21]"
               />
             </label>
             <label className="block space-y-2">
@@ -472,7 +472,7 @@ export function QrCodeTool() {
               <select
                 value={security}
                 onChange={(event) => setSecurity(event.target.value)}
-                className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#f55f2a]"
+                className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#FF8D21]"
               >
                 <option value="WPA">WPA / WPA2</option>
                 <option value="WEP">WEP</option>
@@ -503,7 +503,7 @@ export function QrCodeTool() {
                   setPromoMessage("Your QR code is ready to scan and share.");
                   setPromoOpen(true);
                 }}
-                className="rounded-full bg-[#f55f2a] px-4 py-2 text-sm font-medium text-white"
+                className="rounded-full bg-[#FF8D21] px-4 py-2 text-sm font-medium text-white"
               >
                 Download PNG
               </button>
@@ -575,11 +575,11 @@ export function PercentageCalculatorTool() {
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="block space-y-2">
           <span className="text-sm font-medium text-neutral-700">Starting number</span>
-          <input value={start} onChange={(event) => setStart(event.target.value)} type="number" className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#f55f2a]" />
+          <input value={start} onChange={(event) => setStart(event.target.value)} type="number" className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#FF8D21]" />
         </label>
         <label className="block space-y-2">
           <span className="text-sm font-medium text-neutral-700">Ending number</span>
-          <input value={end} onChange={(event) => setEnd(event.target.value)} type="number" className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#f55f2a]" />
+          <input value={end} onChange={(event) => setEnd(event.target.value)} type="number" className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#FF8D21]" />
         </label>
       </div>
 
@@ -603,7 +603,7 @@ export function PercentageCalculatorTool() {
               setPromoMessage("Your calculation is ready to paste.");
               setPromoOpen(true);
             }}
-            className="rounded-full bg-[#f55f2a] px-4 py-2 text-sm font-medium text-white"
+            className="rounded-full bg-[#FF8D21] px-4 py-2 text-sm font-medium text-white"
           >
             Copy results
           </button>
@@ -687,7 +687,7 @@ export function AgeCalculatorTool() {
             type="number"
             min={1900}
             max={maxYear}
-            className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#f55f2a]"
+            className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#FF8D21]"
           />
         </label>
 
@@ -696,7 +696,7 @@ export function AgeCalculatorTool() {
           <select
             value={month}
             onChange={(event) => setMonth(Number(event.target.value))}
-            className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#f55f2a]"
+            className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#FF8D21]"
           >
             {[
               "January",
@@ -724,7 +724,7 @@ export function AgeCalculatorTool() {
           <select
             value={day}
             onChange={(event) => setDay(Number(event.target.value))}
-            className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#f55f2a]"
+            className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#FF8D21]"
           >
             {Array.from({ length: daysInSelectedMonth }, (_, index) => index + 1).map((value) => (
               <option key={value} value={value}>
@@ -761,7 +761,7 @@ export function AgeCalculatorTool() {
               setPromoMessage("Your age result is ready to paste.");
               setPromoOpen(true);
             }}
-            className="rounded-full bg-[#f55f2a] px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+            className="rounded-full bg-[#FF8D21] px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
           >
             Copy age
           </button>
@@ -804,7 +804,7 @@ export function JsonFormatterTool() {
           value={rawJson}
           onChange={(event) => setRawJson(event.target.value)}
           rows={13}
-          className="w-full rounded-[1.5rem] border border-neutral-200 bg-white px-4 py-3 font-mono text-sm outline-none focus:border-[#f55f2a]"
+          className="w-full rounded-[1.5rem] border border-neutral-200 bg-white px-4 py-3 font-mono text-sm outline-none focus:border-[#FF8D21]"
         />
         <div className="flex flex-wrap gap-2">
           <button
@@ -818,7 +818,7 @@ export function JsonFormatterTool() {
               setPromoOpen(true);
               window.setTimeout(() => setCopied(false), 1200);
             }}
-            className="rounded-full bg-[#f55f2a] px-4 py-2 text-sm font-medium text-white"
+            className="rounded-full bg-[#FF8D21] px-4 py-2 text-sm font-medium text-white"
           >
             {copied ? "Copied" : "Copy formatted JSON"}
           </button>
@@ -890,7 +890,7 @@ export function PasswordGeneratorTool() {
       </div>
       <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">Strength score {strength}/5</div>
       <div className="h-2 rounded-full bg-neutral-200">
-        <div className="h-2 rounded-full bg-[#f55f2a]" style={{ width: `${Math.min((strength / 5) * 100, 100)}%` }} />
+        <div className="h-2 rounded-full bg-[#FF8D21]" style={{ width: `${Math.min((strength / 5) * 100, 100)}%` }} />
       </div>
     </div>
   );
@@ -902,7 +902,7 @@ export function PasswordGeneratorTool() {
         <div className="grid gap-4 sm:grid-cols-3">
           <label className="block space-y-2 sm:col-span-1">
             <span className="text-sm font-medium text-neutral-700">Length</span>
-            <input value={length} onChange={(event) => setLength(Number(event.target.value))} type="number" min={8} max={64} className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#f55f2a]" />
+            <input value={length} onChange={(event) => setLength(Number(event.target.value))} type="number" min={8} max={64} className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#FF8D21]" />
           </label>
           <label className="flex items-center gap-3 rounded-2xl border border-neutral-200 px-4 py-3 text-sm text-neutral-700">
             <input checked={includeNumbers} onChange={(event) => setIncludeNumbers(event.target.checked)} type="checkbox" />
@@ -917,7 +917,7 @@ export function PasswordGeneratorTool() {
           setPassword(buildPassword());
           setPromoHeadline("Password generated.");
           setPromoMessage("Your new password is ready to copy.");
-        }} className="rounded-full bg-[#f55f2a] px-4 py-2 text-sm font-medium text-white">
+        }} className="rounded-full bg-[#FF8D21] px-4 py-2 text-sm font-medium text-white">
           Generate password
         </button>
       </div>
@@ -934,13 +934,13 @@ export function PasswordGeneratorTool() {
               setPromoMessage("Your password is ready to paste.");
               setPromoOpen(true);
             }}
-            className="rounded-full border border-neutral-200 bg-white px-3 py-1.5 text-sm text-neutral-700 transition hover:border-[#f55f2a] hover:text-[#f55f2a]"
+            className="rounded-full border border-neutral-200 bg-white px-3 py-1.5 text-sm text-neutral-700 transition hover:border-[#FF8D21] hover:text-[#FF8D21]"
           >
             Copy
           </button>
         </div>
         <div className="mt-4 h-2 rounded-full bg-neutral-200">
-          <div className="h-2 rounded-full bg-[#f55f2a]" style={{ width: `${Math.min((strength / 5) * 100, 100)}%` }} />
+          <div className="h-2 rounded-full bg-[#FF8D21]" style={{ width: `${Math.min((strength / 5) * 100, 100)}%` }} />
         </div>
         <div className="mt-2 text-xs uppercase tracking-[0.18em] text-neutral-500">Strength score {strength}/5</div>
       </div>
@@ -1050,7 +1050,7 @@ export function ImageResizerTool() {
         <div>Output size: <span className="font-medium text-neutral-900">{resultSize || "—"}</span></div>
         <div className="sm:col-span-2">Output dimensions: <span className="font-medium text-neutral-900">{dimensions ? `${dimensions.width} × ${dimensions.height}` : "—"}</span></div>
       </div>
-      <button type="button" onClick={() => triggerDownload(resultUrl, `resized-${file?.name || "image"}`)} className="rounded-full bg-[#f55f2a] px-4 py-2 text-sm font-medium text-white">
+      <button type="button" onClick={() => triggerDownload(resultUrl, `resized-${file?.name || "image"}`)} className="rounded-full bg-[#FF8D21] px-4 py-2 text-sm font-medium text-white">
         Download result first
       </button>
     </div>
@@ -1064,12 +1064,12 @@ export function ImageResizerTool() {
           type="file"
           accept="image/*"
           onChange={(event) => setFile(event.target.files?.[0] ?? null)}
-          className="block w-full text-sm text-neutral-700 file:mr-4 file:rounded-full file:border-0 file:bg-[#f55f2a] file:px-4 file:py-2 file:text-sm file:font-medium file:text-white"
+          className="block w-full text-sm text-neutral-700 file:mr-4 file:rounded-full file:border-0 file:bg-[#FF8D21] file:px-4 file:py-2 file:text-sm file:font-medium file:text-white"
         />
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="block space-y-2">
             <span className="text-sm font-medium text-neutral-700">Width</span>
-            <input value={width} onChange={(event) => setWidth(Number(event.target.value) || 1)} type="number" min={1} className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#f55f2a]" />
+            <input value={width} onChange={(event) => setWidth(Number(event.target.value) || 1)} type="number" min={1} className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#FF8D21]" />
           </label>
           <label className="block space-y-2">
             <span className="text-sm font-medium text-neutral-700">Height</span>
@@ -1079,12 +1079,12 @@ export function ImageResizerTool() {
               type="number"
               min={1}
               disabled={maintainAspectRatio}
-              className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#f55f2a] disabled:bg-neutral-100 disabled:text-neutral-500"
+              className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#FF8D21] disabled:bg-neutral-100 disabled:text-neutral-500"
             />
           </label>
           <label className="block space-y-2 sm:col-span-2">
             <span className="text-sm font-medium text-neutral-700">Format</span>
-            <select value={format} onChange={(event) => setFormat(event.target.value as typeof format)} className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#f55f2a]">
+            <select value={format} onChange={(event) => setFormat(event.target.value as typeof format)} className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#FF8D21]">
               <option value="image/webp">WebP</option>
               <option value="image/jpeg">JPEG</option>
               <option value="image/png">PNG</option>
@@ -1102,7 +1102,7 @@ export function ImageResizerTool() {
         <p className="text-xs text-neutral-500">
           When aspect ratio is locked, height is calculated automatically from width.
         </p>
-        <button type="button" onClick={processFile} disabled={!file} className="rounded-full bg-[#f55f2a] px-4 py-2 text-sm font-medium text-white disabled:opacity-50">
+        <button type="button" onClick={processFile} disabled={!file} className="rounded-full bg-[#FF8D21] px-4 py-2 text-sm font-medium text-white disabled:opacity-50">
           Resize image
         </button>
       </div>
@@ -1121,7 +1121,7 @@ export function ImageResizerTool() {
               setPromoHeadline("Image downloaded.");
               setPromoMessage("Your resized image is ready to use.");
               setPromoOpen(true);
-            }} className="inline-flex rounded-full bg-[#f55f2a] px-4 py-2 text-sm font-medium text-white">
+            }} className="inline-flex rounded-full bg-[#FF8D21] px-4 py-2 text-sm font-medium text-white">
               Download result
             </button>
           </div>
@@ -1164,7 +1164,7 @@ export function TextCaseConverterTool() {
         value={text}
         onChange={(event) => setText(event.target.value)}
         rows={8}
-        className="w-full rounded-[1.5rem] border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#f55f2a]"
+        className="w-full rounded-[1.5rem] border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#FF8D21]"
       />
       <div className="grid gap-3">
         {variants.map((variant) => (
@@ -1229,7 +1229,7 @@ export function UsernameGeneratorTool() {
   const promoPreview = (
     <div className="grid gap-2 sm:grid-cols-2">
       {results.map((item) => (
-        <button key={item} type="button" onClick={() => copyToClipboard(item)} className="rounded-[1.25rem] border border-neutral-200 bg-neutral-50 px-4 py-3 text-left text-sm text-neutral-800 hover:border-[#f55f2a]">
+        <button key={item} type="button" onClick={() => copyToClipboard(item)} className="rounded-[1.25rem] border border-neutral-200 bg-neutral-50 px-4 py-3 text-left text-sm text-neutral-800 hover:border-[#FF8D21]">
           {item}
         </button>
       ))}
@@ -1242,16 +1242,16 @@ export function UsernameGeneratorTool() {
       <div className="space-y-4">
         <label className="block space-y-2">
           <span className="text-sm font-medium text-neutral-700">Seed keyword</span>
-          <input value={seed} onChange={(event) => setSeed(event.target.value)} className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#f55f2a]" />
+          <input value={seed} onChange={(event) => setSeed(event.target.value)} className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#FF8D21]" />
         </label>
         <div className="grid gap-3 sm:grid-cols-3">
           <label className="block space-y-2">
             <span className="text-sm font-medium text-neutral-700">Count</span>
-            <input value={count} onChange={(event) => setCount(Number(event.target.value))} type="number" min={3} max={20} className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#f55f2a]" />
+            <input value={count} onChange={(event) => setCount(Number(event.target.value))} type="number" min={3} max={20} className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#FF8D21]" />
           </label>
           <label className="block space-y-2 sm:col-span-2">
             <span className="text-sm font-medium text-neutral-700">Style</span>
-            <select value={style} onChange={(event) => setStyle(event.target.value as keyof typeof STYLES)} className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#f55f2a]">
+            <select value={style} onChange={(event) => setStyle(event.target.value as keyof typeof STYLES)} className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#FF8D21]">
               <option value="cool">Cool</option>
               <option value="pro">Professional</option>
               <option value="gamer">Gaming</option>
@@ -1266,7 +1266,7 @@ export function UsernameGeneratorTool() {
           setResults(buildUsernames());
           setPromoHeadline("Usernames generated.");
           setPromoMessage("Your username set is ready to copy.");
-        }} className="rounded-full bg-[#f55f2a] px-4 py-2 text-sm font-medium text-white">
+        }} className="rounded-full bg-[#FF8D21] px-4 py-2 text-sm font-medium text-white">
           Generate usernames
         </button>
       </div>
@@ -1278,7 +1278,7 @@ export function UsernameGeneratorTool() {
             setPromoHeadline("Username copied.");
             setPromoMessage("Your selected username is ready to paste.");
             setPromoOpen(true);
-          }} className="rounded-[1.25rem] border border-neutral-200 bg-neutral-50 px-4 py-3 text-left text-sm text-neutral-800 hover:border-[#f55f2a]">
+          }} className="rounded-[1.25rem] border border-neutral-200 bg-neutral-50 px-4 py-3 text-left text-sm text-neutral-800 hover:border-[#FF8D21]">
             {item}
           </button>
         ))}
@@ -1288,7 +1288,7 @@ export function UsernameGeneratorTool() {
 }
 
 export function ColorPickerTool() {
-  const [hex, setHex] = useState("#f55f2a");
+  const [hex, setHex] = useState("#FF8D21");
   const rgb = useMemo(() => hexToRgb(hex), [hex]);
   const [r, setR] = useState(rgb.r);
   const [g, setG] = useState(rgb.g);
@@ -1338,7 +1338,7 @@ export function ColorPickerTool() {
           ].map((item) => (
             <label key={item.label} className="block space-y-2">
               <span className="text-sm font-medium text-neutral-700">{item.label}</span>
-              <input type="number" min={0} max={255} value={item.value} onChange={(event) => item.set(Number(event.target.value))} className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#f55f2a]" />
+              <input type="number" min={0} max={255} value={item.value} onChange={(event) => item.set(Number(event.target.value))} className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#FF8D21]" />
             </label>
           ))}
         </div>
@@ -1437,17 +1437,17 @@ export function TimeZoneConverterTool() {
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="block space-y-2 sm:col-span-2">
           <span className="text-sm font-medium text-neutral-700">Source date and time</span>
-          <input value={sourceTime} onChange={(event) => setSourceTime(event.target.value)} type="datetime-local" className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#f55f2a]" />
+          <input value={sourceTime} onChange={(event) => setSourceTime(event.target.value)} type="datetime-local" className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#FF8D21]" />
         </label>
         <label className="block space-y-2">
           <span className="text-sm font-medium text-neutral-700">From</span>
-          <select value={sourceZone} onChange={(event) => setSourceZone(event.target.value)} className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#f55f2a]">
+          <select value={sourceZone} onChange={(event) => setSourceZone(event.target.value)} className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#FF8D21]">
             {TIMEZONES.map(([label, value]) => <option key={value} value={value}>{label} ({value})</option>)}
           </select>
         </label>
         <label className="block space-y-2">
           <span className="text-sm font-medium text-neutral-700">To</span>
-          <select value={targetZone} onChange={(event) => setTargetZone(event.target.value)} className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#f55f2a]">
+          <select value={targetZone} onChange={(event) => setTargetZone(event.target.value)} className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#FF8D21]">
             {TIMEZONES.map(([label, value]) => <option key={value} value={value}>{label} ({value})</option>)}
           </select>
         </label>
@@ -1471,7 +1471,7 @@ export function TimeZoneConverterTool() {
               setPromoMessage("Your converted time is ready to paste.");
               setPromoOpen(true);
             }}
-            className="rounded-full bg-[#f55f2a] px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+            className="rounded-full bg-[#FF8D21] px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
           >
             Copy converted time
           </button>

@@ -29,7 +29,7 @@ type SignupPayload = {
 };
 
 function buildSupportHtml(p: Required<SignupPayload>) {
-  const accent = "#f55f2a";
+  const accent = "#FF8D21";
   const muted = "#4b5563";
 
   return `

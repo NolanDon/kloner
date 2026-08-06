@@ -51,7 +51,7 @@ import {
 } from "@/components/helpers";
 import type { RenderDoc } from "../view/DashboardView";
 
-const ACCENT = "#f55f2a";
+const ACCENT = "#FF8D21";
 
 export type DeploymentDoc = {
     vercelDeploymentId: string;
@@ -1195,7 +1195,7 @@ export default function DeploymentsPage(): JSX.Element {
                                             <div className="flex w-full items-center justify-center pt-8">
                                                 <div className="relative">
                                                     <div
-                                                        className="relative grid h-36 w-36 place-items-center rounded-[2.6rem] bg-gradient-to-br from-[#f55f2a] via-[#ff6f3d] to-[#ff986e] text-[48px] font-black text-white shadow-[0_10px_20px_rgba(245,95,42,0.10)]"
+                                                        className="relative grid h-36 w-36 place-items-center rounded-[2.6rem] bg-gradient-to-br from-[#FF8D21] via-[#f1ba7b] to-[#f9d9b8] text-[48px] font-black text-white shadow-[0_10px_20px_rgba(255,141,33,0.10)]"
                                                         style={{ fontFamily: "ui-rounded, 'SF Pro Rounded', 'Avenir Next Rounded', 'Trebuchet MS', sans-serif" }}
                                                         title={displayName}
                                                     >
@@ -1587,7 +1587,7 @@ export default function DeploymentsPage(): JSX.Element {
                                                                                 backgroundColor:
                                                                                     ACCENT,
                                                                                 boxShadow:
-                                                                                    "0 10px 30px rgba(245,95,42,0.40)",
+                                                                                    "0 10px 30px rgba(255,141,33,0.40)",
                                                                             }}
                                                                         >
                                                                             {isEditorLoading ? (

@@ -749,11 +749,11 @@ function ListToolShell({
             <div className="space-y-4">
               <label className="block space-y-2">
                 <span className="text-sm font-medium text-neutral-700">{seedLabel}</span>
-                <input value={seed} onChange={(event) => setSeed(event.target.value)} placeholder={seedPlaceholder} className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#f55f2a]" />
+                <input value={seed} onChange={(event) => setSeed(event.target.value)} placeholder={seedPlaceholder} className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#FF8D21]" />
               </label>
               <label className="block space-y-2">
                 <span className="text-sm font-medium text-neutral-700">{countLabel}</span>
-                <input value={count} onChange={(event) => setCount(Math.max(minCount, Math.min(maxCount, Number(event.target.value))))} type="number" min={minCount} max={maxCount} className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#f55f2a]" />
+                <input value={count} onChange={(event) => setCount(Math.max(minCount, Math.min(maxCount, Number(event.target.value))))} type="number" min={minCount} max={maxCount} className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#FF8D21]" />
               </label>
               <button
                 type="button"
@@ -761,7 +761,7 @@ function ListToolShell({
                   setResults(generate(seed, count));
                   notifyToolSuccess(headline, summary);
                 }}
-                className="rounded-full bg-[#f55f2a] px-4 py-2 text-sm font-medium text-white"
+                className="rounded-full bg-[#FF8D21] px-4 py-2 text-sm font-medium text-white"
               >
                 {actionLabel}
               </button>
@@ -779,7 +779,7 @@ function ListToolShell({
         <GenericPanel title={resultLabel}>
           <div className="grid gap-2">
             {results.map((item) => (
-              <button key={item} type="button" onClick={async () => copyToClipboard(item)} className="rounded-2xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-left text-sm text-neutral-800 transition hover:border-[#f55f2a] hover:bg-white">
+              <button key={item} type="button" onClick={async () => copyToClipboard(item)} className="rounded-2xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-left text-sm text-neutral-800 transition hover:border-[#FF8D21] hover:bg-white">
                 {renderItem ? renderItem(item) : item}
               </button>
             ))}
@@ -810,7 +810,7 @@ function PreformattedToolShell({ tool, headline, summary, seedLabel, defaultSeed
           <div className="space-y-4">
             <label className="block space-y-2">
               <span className="text-sm font-medium text-neutral-700">{seedLabel}</span>
-              <input value={seed} onChange={(event) => setSeed(event.target.value)} className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#f55f2a]" />
+              <input value={seed} onChange={(event) => setSeed(event.target.value)} className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#FF8D21]" />
             </label>
             <button
               type="button"
@@ -818,7 +818,7 @@ function PreformattedToolShell({ tool, headline, summary, seedLabel, defaultSeed
                 setResults(generator(seed));
                 notifyToolSuccess(headline, summary);
               }}
-              className="rounded-full bg-[#f55f2a] px-4 py-2 text-sm font-medium text-white"
+              className="rounded-full bg-[#FF8D21] px-4 py-2 text-sm font-medium text-white"
             >
               {actionLabel}
             </button>
@@ -851,8 +851,8 @@ function SecretSantaTool({ tool }: { tool: ToolConfig }) {
       left={
         <GenericPanel title="Participants">
           <div className="space-y-4">
-            <textarea value={namesText} onChange={(event) => setNamesText(event.target.value)} rows={10} className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#f55f2a]" />
-            <button type="button" onClick={() => setPairs(makeSecretSantaPairs(namesText.split(/\n+/)))} className="rounded-full bg-[#f55f2a] px-4 py-2 text-sm font-medium text-white">Generate pairings</button>
+            <textarea value={namesText} onChange={(event) => setNamesText(event.target.value)} rows={10} className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#FF8D21]" />
+            <button type="button" onClick={() => setPairs(makeSecretSantaPairs(namesText.split(/\n+/)))} className="rounded-full bg-[#FF8D21] px-4 py-2 text-sm font-medium text-white">Generate pairings</button>
             <CopyRow value={pairs.join("\n")} />
           </div>
         </GenericPanel>
@@ -886,8 +886,8 @@ function BingoCardTool({ tool }: { tool: ToolConfig }) {
       left={
         <GenericPanel title="Word Bank">
           <div className="space-y-4">
-            <textarea value={wordsText} onChange={(event) => setWordsText(event.target.value)} rows={12} className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#f55f2a]" />
-            <button type="button" onClick={() => setCard(makeBingoCard(wordsText.split(/\n+/)))} className="rounded-full bg-[#f55f2a] px-4 py-2 text-sm font-medium text-white">Generate card</button>
+            <textarea value={wordsText} onChange={(event) => setWordsText(event.target.value)} rows={12} className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#FF8D21]" />
+            <button type="button" onClick={() => setCard(makeBingoCard(wordsText.split(/\n+/)))} className="rounded-full bg-[#FF8D21] px-4 py-2 text-sm font-medium text-white">Generate card</button>
             <CopyRow value={card.join("\n")} />
           </div>
         </GenericPanel>
@@ -896,7 +896,7 @@ function BingoCardTool({ tool }: { tool: ToolConfig }) {
         <GenericPanel title="Card">
           <div className="grid grid-cols-5 gap-2">
             {card.map((item, index) => (
-              <div key={`${item}-${index}`} className={`flex min-h-[4.5rem] items-center justify-center rounded-2xl border px-3 py-3 text-center text-xs font-medium uppercase tracking-[0.12em] ${item === "FREE" ? "border-[#f55f2a] bg-[#fff4ef] text-[#f55f2a]" : "border-neutral-200 bg-neutral-50 text-neutral-800"}`}>
+              <div key={`${item}-${index}`} className={`flex min-h-[4.5rem] items-center justify-center rounded-2xl border px-3 py-3 text-center text-xs font-medium uppercase tracking-[0.12em] ${item === "FREE" ? "border-[#FF8D21] bg-[#fff4ef] text-[#FF8D21]" : "border-neutral-200 bg-neutral-50 text-neutral-800"}`}>
                 {item}
               </div>
             ))}
@@ -919,7 +919,7 @@ function TruthTableTool({ tool }: { tool: ToolConfig }) {
       left={
         <GenericPanel title="Operation">
           <div className="space-y-4">
-            <select value={operation} onChange={(event) => setOperation(event.target.value)} className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#f55f2a]">
+            <select value={operation} onChange={(event) => setOperation(event.target.value)} className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#FF8D21]">
               <option value="AND">AND</option>
               <option value="OR">OR</option>
               <option value="XOR">XOR</option>
@@ -958,9 +958,9 @@ function FakeDataTool({ tool }: { tool: ToolConfig }) {
           <div className="space-y-4">
             <label className="block space-y-2">
               <span className="text-sm font-medium text-neutral-700">Rows</span>
-              <input type="number" min={3} max={20} value={count} onChange={(event) => setCount(Math.max(3, Math.min(20, Number(event.target.value))))} className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#f55f2a]" />
+              <input type="number" min={3} max={20} value={count} onChange={(event) => setCount(Math.max(3, Math.min(20, Number(event.target.value))))} className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#FF8D21]" />
             </label>
-            <button type="button" onClick={() => setRows(makeRandomRows(count))} className="rounded-full bg-[#f55f2a] px-4 py-2 text-sm font-medium text-white">Generate data</button>
+            <button type="button" onClick={() => setRows(makeRandomRows(count))} className="rounded-full bg-[#FF8D21] px-4 py-2 text-sm font-medium text-white">Generate data</button>
             <CopyRow value={rows.join("\n")} />
           </div>
         </GenericPanel>
@@ -1014,7 +1014,7 @@ function MlaCitationTool({ tool }: { tool: ToolConfig }) {
             {[{ label: "Author", value: author, set: setAuthor }, { label: "Title", value: title, set: setTitle }, { label: "Source", value: source, set: setSource }, { label: "Year", value: year, set: setYear }].map((field) => (
               <label key={field.label} className="block space-y-2">
                 <span className="text-sm font-medium text-neutral-700">{field.label}</span>
-                <input value={field.value} onChange={(event) => field.set(event.target.value)} className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#f55f2a]" />
+                <input value={field.value} onChange={(event) => field.set(event.target.value)} className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#FF8D21]" />
               </label>
             ))}
             <CopyRow value={citation} />
@@ -1044,9 +1044,9 @@ function SequenceTool({ tool }: { tool: ToolConfig }) {
       left={
         <GenericPanel title="Controls">
           <div className="grid gap-3 sm:grid-cols-3">
-            <label className="block space-y-2"><span className="text-sm font-medium text-neutral-700">Start</span><input type="number" value={start} onChange={(event) => setStart(Number(event.target.value))} className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#f55f2a]" /></label>
-            <label className="block space-y-2"><span className="text-sm font-medium text-neutral-700">Step</span><input type="number" value={step} onChange={(event) => setStep(Number(event.target.value))} className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#f55f2a]" /></label>
-            <label className="block space-y-2"><span className="text-sm font-medium text-neutral-700">Count</span><input type="number" min={3} max={30} value={count} onChange={(event) => setCount(Math.max(3, Math.min(30, Number(event.target.value))))} className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#f55f2a]" /></label>
+            <label className="block space-y-2"><span className="text-sm font-medium text-neutral-700">Start</span><input type="number" value={start} onChange={(event) => setStart(Number(event.target.value))} className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#FF8D21]" /></label>
+            <label className="block space-y-2"><span className="text-sm font-medium text-neutral-700">Step</span><input type="number" value={step} onChange={(event) => setStep(Number(event.target.value))} className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#FF8D21]" /></label>
+            <label className="block space-y-2"><span className="text-sm font-medium text-neutral-700">Count</span><input type="number" min={3} max={30} value={count} onChange={(event) => setCount(Math.max(3, Math.min(30, Number(event.target.value))))} className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#FF8D21]" /></label>
           </div>
           <div className="mt-4"><CopyRow value={results.join(", ")} /></div>
         </GenericPanel>
@@ -1071,7 +1071,7 @@ function TextTransformTool({ tool }: { tool: ToolConfig }) {
       tool={tool}
       headline={tool.slug === "fancy-text-generator" ? "Fancy text is ready" : "Glitch text is ready"}
       summary={tool.slug === "fancy-text-generator" ? "Turn plain text into a few stylized text variations." : "Create a glitched text effect for short phrases."}
-      left={<GenericPanel title="Text"><textarea value={text} onChange={(event) => setText(event.target.value)} rows={6} className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#f55f2a]" /><div className="mt-4"><CopyRow value={variants.join("\n")} /></div></GenericPanel>}
+      left={<GenericPanel title="Text"><textarea value={text} onChange={(event) => setText(event.target.value)} rows={6} className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#FF8D21]" /><div className="mt-4"><CopyRow value={variants.join("\n")} /></div></GenericPanel>}
       right={<GenericPanel title="Variants"><div className="grid gap-2">{variants.map((variant) => <div key={variant} className="rounded-2xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm text-neutral-800">{variant}</div>)}</div></GenericPanel>}
     />
   );
@@ -1174,11 +1174,11 @@ function ToolPromoModal(_props: {
 
           <div className="flex-1 overflow-y-auto px-4 pb-4 pt-10 sm:px-8 sm:pb-5 sm:pt-8">
             <div className="flex flex-col items-center text-center">
-              <div className="mb-2 inline-flex h-10 w-10 items-center justify-center rounded-full border border-amber-100 bg-amber-50 text-[#f55f2a] sm:h-12 sm:w-12">
+              <div className="mb-2 inline-flex h-10 w-10 items-center justify-center rounded-full border border-amber-100 bg-amber-50 text-[#FF8D21] sm:h-12 sm:w-12">
                 <CheckCircle2 className="h-5 w-5 sm:h-6 sm:w-6" />
               </div>
 
-              <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#f55f2a] sm:text-xs sm:tracking-[0.24em]">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#FF8D21] sm:text-xs sm:tracking-[0.24em]">
                 Try Kloner
               </p>
               <h3 className="mt-2 max-w-xl text-[1.55rem] font-normal leading-tight tracking-tight text-neutral-900 sm:text-4xl">
@@ -1233,7 +1233,7 @@ function ToolPromoModal(_props: {
                 href={KLONER_POPUP_HREF}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex w-full min-w-0 items-center justify-center rounded-full bg-[#f55f2a] px-7 py-3.5 text-base font-semibold text-white shadow-[0_16px_36px_rgba(245,95,42,0.24)] transition hover:bg-[#f3602c] hover:shadow-[0_20px_42px_rgba(245,95,42,0.28)] sm:min-w-[200px]"
+                className="inline-flex w-full min-w-0 items-center justify-center rounded-full bg-[#FF8D21] px-7 py-3.5 text-base font-semibold text-white shadow-[0_16px_36px_rgba(255,141,33,0.24)] transition hover:bg-[#D96E11] hover:shadow-[0_20px_42px_rgba(255,141,33,0.28)] sm:min-w-[200px]"
               >
                 Try Kloner
               </a>
@@ -1300,7 +1300,7 @@ function ToolShell({
         <div className="space-y-4">{left}</div>
         <div className="space-y-4">{right}</div>
         <div className="lg:col-span-2 flex justify-end">
-          <button type="button" onClick={() => setPromoOpen(true)} className={`rounded-full px-4 py-2 text-sm transition ${nextStepHighlighted ? "bg-[#f55f2a] text-white shadow-[0_16px_36px_rgba(245,95,42,0.24)]" : "border border-neutral-200 text-neutral-700 hover:border-[#f55f2a] hover:text-[#f55f2a]"}`}>
+          <button type="button" onClick={() => setPromoOpen(true)} className={`rounded-full px-4 py-2 text-sm transition ${nextStepHighlighted ? "bg-[#FF8D21] text-white shadow-[0_16px_36px_rgba(255,141,33,0.24)]" : "border border-neutral-200 text-neutral-700 hover:border-[#FF8D21] hover:text-[#FF8D21]"}`}>
             See next step
           </button>
         </div>
@@ -1322,7 +1322,7 @@ function CopyRow({ value, onCopied }: { value: string; onCopied?: () => void }) 
   }
 
   return (
-    <button type="button" onClick={async () => { await copyToClipboard(value); setCopied(true); setNextStepHighlighted(true); announceSuccess("Copied to clipboard", "Your result is ready to paste."); window.setTimeout(() => setCopied(false), 1200); onCopied?.(); }} className={`inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-sm transition ${copied ? "border border-[#f55f2a] bg-[#f55f2a] text-white shadow-[0_12px_28px_rgba(245,95,42,0.18)]" : "border border-neutral-200 bg-white text-neutral-700 hover:border-[#f55f2a] hover:text-[#f55f2a]"}`}>
+    <button type="button" onClick={async () => { await copyToClipboard(value); setCopied(true); setNextStepHighlighted(true); announceSuccess("Copied to clipboard", "Your result is ready to paste."); window.setTimeout(() => setCopied(false), 1200); onCopied?.(); }} className={`inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-sm transition ${copied ? "border border-[#FF8D21] bg-[#FF8D21] text-white shadow-[0_12px_28px_rgba(255,141,33,0.18)]" : "border border-neutral-200 bg-white text-neutral-700 hover:border-[#FF8D21] hover:text-[#FF8D21]"}`}>
       <Copy className="h-3.5 w-3.5" />
       {copied ? "Copied" : "Copy"}
     </button>
@@ -1386,7 +1386,7 @@ function RandomNumberTool({ tool }: { tool: ToolConfig }) {
                     setMax(preset.max);
                     regenerate(preset.min, preset.max, count, unique);
                   }}
-                  className="rounded-full border border-neutral-200 bg-white px-3 py-1.5 text-sm text-neutral-700 transition hover:border-[#f55f2a] hover:text-[#f55f2a]"
+                  className="rounded-full border border-neutral-200 bg-white px-3 py-1.5 text-sm text-neutral-700 transition hover:border-[#FF8D21] hover:text-[#FF8D21]"
                 >
                   {preset.label}
                 </button>
@@ -1396,23 +1396,23 @@ function RandomNumberTool({ tool }: { tool: ToolConfig }) {
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="block space-y-2">
                 <span className="text-sm font-medium text-neutral-700">Minimum</span>
-                <input value={min} onChange={(event) => setMin(Number(event.target.value))} type="number" className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#f55f2a]" />
+                <input value={min} onChange={(event) => setMin(Number(event.target.value))} type="number" className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#FF8D21]" />
               </label>
               <label className="block space-y-2">
                 <span className="text-sm font-medium text-neutral-700">Maximum</span>
-                <input value={max} onChange={(event) => setMax(Number(event.target.value))} type="number" className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#f55f2a]" />
+                <input value={max} onChange={(event) => setMax(Number(event.target.value))} type="number" className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#FF8D21]" />
               </label>
               <label className="block space-y-2">
                 <span className="text-sm font-medium text-neutral-700">Count</span>
-                <input value={count} onChange={(event) => setCount(Math.max(1, Math.min(200, Number(event.target.value))))} type="number" min={1} max={200} className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#f55f2a]" />
+                <input value={count} onChange={(event) => setCount(Math.max(1, Math.min(200, Number(event.target.value))))} type="number" min={1} max={200} className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#FF8D21]" />
               </label>
               <label className="flex items-center gap-3 rounded-2xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm text-neutral-700">
-                <input type="checkbox" checked={unique} onChange={(event) => setUnique(event.target.checked)} className="h-4 w-4 accent-[#f55f2a]" />
+                <input type="checkbox" checked={unique} onChange={(event) => setUnique(event.target.checked)} className="h-4 w-4 accent-[#FF8D21]" />
                 Unique values
               </label>
             </div>
 
-            <button type="button" onClick={() => regenerate()} className="rounded-full bg-[#f55f2a] px-4 py-2 text-sm font-medium text-white">
+            <button type="button" onClick={() => regenerate()} className="rounded-full bg-[#FF8D21] px-4 py-2 text-sm font-medium text-white">
               Generate numbers
             </button>
 
@@ -1470,7 +1470,7 @@ function RandomWordTool({ tool }: { tool: ToolConfig }) {
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="block space-y-2">
                 <span className="text-sm font-medium text-neutral-700">Theme</span>
-                <select value={theme} onChange={(event) => setTheme(event.target.value as keyof typeof WORD_THEMES)} className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#f55f2a]">
+                <select value={theme} onChange={(event) => setTheme(event.target.value as keyof typeof WORD_THEMES)} className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#FF8D21]">
                   <option value="neutral">Neutral</option>
                   <option value="creative">Creative</option>
                   <option value="nature">Nature</option>
@@ -1480,7 +1480,7 @@ function RandomWordTool({ tool }: { tool: ToolConfig }) {
               </label>
               <label className="block space-y-2">
                 <span className="text-sm font-medium text-neutral-700">Style</span>
-                <select value={style} onChange={(event) => setStyle(event.target.value as "mixed" | "title" | "upper")} className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#f55f2a]">
+                <select value={style} onChange={(event) => setStyle(event.target.value as "mixed" | "title" | "upper")} className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#FF8D21]">
                   <option value="title">Title case</option>
                   <option value="mixed">Mixed phrases</option>
                   <option value="upper">Uppercase</option>
@@ -1488,11 +1488,11 @@ function RandomWordTool({ tool }: { tool: ToolConfig }) {
               </label>
               <label className="block space-y-2 sm:col-span-2">
                 <span className="text-sm font-medium text-neutral-700">Count</span>
-                <input value={count} onChange={(event) => setCount(Math.max(1, Math.min(200, Number(event.target.value))))} type="number" min={1} max={200} className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#f55f2a]" />
+                <input value={count} onChange={(event) => setCount(Math.max(1, Math.min(200, Number(event.target.value))))} type="number" min={1} max={200} className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#FF8D21]" />
               </label>
             </div>
 
-            <button type="button" onClick={() => regenerate()} className="rounded-full bg-[#f55f2a] px-4 py-2 text-sm font-medium text-white">
+            <button type="button" onClick={() => regenerate()} className="rounded-full bg-[#FF8D21] px-4 py-2 text-sm font-medium text-white">
               Generate words
             </button>
 
@@ -1511,7 +1511,7 @@ function RandomWordTool({ tool }: { tool: ToolConfig }) {
                   await copyToClipboard(word);
                   notifyToolSuccess("Copied word", "The selected idea is ready to paste.");
                 }}
-                className="rounded-2xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-left text-sm text-neutral-800 transition hover:border-[#f55f2a] hover:bg-white"
+                className="rounded-2xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-left text-sm text-neutral-800 transition hover:border-[#FF8D21] hover:bg-white"
               >
                 {word}
               </button>
@@ -1525,7 +1525,7 @@ function RandomWordTool({ tool }: { tool: ToolConfig }) {
 
 function FaviconGeneratorTool({ tool }: { tool: ToolConfig }) {
   const [label, setLabel] = useState("K");
-  const [background, setBackground] = useState("#f55f2a");
+  const [background, setBackground] = useState("#FF8D21");
   const [foreground, setForeground] = useState("#ffffff");
   const [shape, setShape] = useState<"square" | "rounded" | "circle">("rounded");
   const [promoOpen, setPromoOpen] = useState(false);
@@ -1554,7 +1554,7 @@ function FaviconGeneratorTool({ tool }: { tool: ToolConfig }) {
         <div className="rounded-2xl border border-neutral-200 bg-white p-3">Shape: <span className="font-semibold text-neutral-900">{shape}</span></div>
       </div>
       <div className="flex flex-wrap gap-2">
-        <button type="button" onClick={() => downloadText(svg, "favicon.svg", "image/svg+xml")} className="rounded-full bg-[#f55f2a] px-4 py-2 text-sm font-medium text-white">Download SVG</button>
+        <button type="button" onClick={() => downloadText(svg, "favicon.svg", "image/svg+xml")} className="rounded-full bg-[#FF8D21] px-4 py-2 text-sm font-medium text-white">Download SVG</button>
         <button type="button" onClick={async () => { await copyToClipboard(svg); setPromoHeadline("Favicon copied."); setPromoMessage("Your SVG favicon is ready to paste."); setPromoOpen(true); }} className="rounded-full border border-neutral-200 px-4 py-2 text-sm text-neutral-700">Copy SVG</button>
       </div>
     </div>
@@ -1575,7 +1575,7 @@ function FaviconGeneratorTool({ tool }: { tool: ToolConfig }) {
                 onChange={(event) => setLabel(event.target.value.slice(0, 2))}
                 maxLength={2}
                 placeholder="K"
-                className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm uppercase outline-none focus:border-[#f55f2a]"
+                className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm uppercase outline-none focus:border-[#FF8D21]"
               />
               <p className="text-xs leading-5 text-neutral-500">Use 1 or 2 characters. This becomes the visible favicon mark.</p>
             </label>
@@ -1603,7 +1603,7 @@ function FaviconGeneratorTool({ tool }: { tool: ToolConfig }) {
 
             <label className="block space-y-2">
               <span className="text-sm font-medium text-neutral-700">Shape</span>
-              <select value={shape} onChange={(event) => setShape(event.target.value as "square" | "rounded" | "circle")} className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#f55f2a]">
+              <select value={shape} onChange={(event) => setShape(event.target.value as "square" | "rounded" | "circle")} className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#FF8D21]">
                 <option value="square">Square</option>
                 <option value="rounded">Rounded</option>
                 <option value="circle">Circle</option>
@@ -1614,7 +1614,7 @@ function FaviconGeneratorTool({ tool }: { tool: ToolConfig }) {
               <span className="text-sm font-medium text-neutral-700">Quick presets</span>
               <div className="flex flex-wrap gap-2">
                 {[
-                  { label: "K", background: "#f55f2a", foreground: "#ffffff", shape: "rounded" as const },
+                  { label: "K", background: "#FF8D21", foreground: "#ffffff", shape: "rounded" as const },
                   { label: "KL", background: "#111827", foreground: "#ffffff", shape: "circle" as const },
                   { label: "A", background: "#0f766e", foreground: "#ecfeff", shape: "square" as const },
                   { label: "AI", background: "#1d4ed8", foreground: "#ffffff", shape: "rounded" as const },
@@ -1628,7 +1628,7 @@ function FaviconGeneratorTool({ tool }: { tool: ToolConfig }) {
                       setForeground(preset.foreground);
                       setShape(preset.shape);
                     }}
-                    className="rounded-full border border-neutral-200 bg-white px-3 py-1.5 text-sm text-neutral-700 transition hover:border-[#f55f2a] hover:text-[#f55f2a]"
+                    className="rounded-full border border-neutral-200 bg-white px-3 py-1.5 text-sm text-neutral-700 transition hover:border-[#FF8D21] hover:text-[#FF8D21]"
                   >
                     {preset.label}
                   </button>
@@ -1641,7 +1641,7 @@ function FaviconGeneratorTool({ tool }: { tool: ToolConfig }) {
                 type="button"
                 onClick={() => {
                   setLabel("K");
-                  setBackground("#f55f2a");
+                  setBackground("#FF8D21");
                   setForeground("#ffffff");
                   setShape("rounded");
                 }}
@@ -1656,7 +1656,7 @@ function FaviconGeneratorTool({ tool }: { tool: ToolConfig }) {
                   setPromoMessage("Your favicon is ready to download.");
                   setPromoOpen(true);
                 }}
-                className="rounded-full bg-[#f55f2a] px-4 py-2 text-sm font-medium text-white"
+                className="rounded-full bg-[#FF8D21] px-4 py-2 text-sm font-medium text-white"
               >
                 Generate favicon
               </button>
@@ -2152,7 +2152,7 @@ function RenderGeneratedTool({ tool }: { tool: ToolConfig }) {
         return {
           headline: "Random numbers are ready",
           summary: "A quick set of numbers is ready to copy.",
-          left: <GenericPanel title="Generate"><button type="button" onClick={() => setCopyValue(makeRandomNumbers(8, 1, 100).join(", "))} className="rounded-full bg-[#f55f2a] px-4 py-2 text-sm font-medium text-white">Generate numbers</button></GenericPanel>,
+          left: <GenericPanel title="Generate"><button type="button" onClick={() => setCopyValue(makeRandomNumbers(8, 1, 100).join(", "))} className="rounded-full bg-[#FF8D21] px-4 py-2 text-sm font-medium text-white">Generate numbers</button></GenericPanel>,
           right: <GenericPanel title="Result"><div className="flex flex-wrap gap-2">{result.map((number, index) => <span key={`${number}-${index}`} className="rounded-full border border-neutral-200 bg-neutral-50 px-3 py-2 font-mono text-sm text-neutral-900">{number}</span>)}</div><div className="mt-4 flex gap-2"><CopyRow value={result.join(", ")} onCopied={() => setCopyValue(result.join(", "))} /></div></GenericPanel>,
         };
       }
@@ -2161,7 +2161,7 @@ function RenderGeneratedTool({ tool }: { tool: ToolConfig }) {
         return {
           headline: "Random words are ready",
           summary: "Quick word ideas are ready to copy.",
-          left: <GenericPanel title="Generate"><button type="button" onClick={() => setCopyValue(makeRandomWordsToolCopy("creative", 10))} className="rounded-full bg-[#f55f2a] px-4 py-2 text-sm font-medium text-white">Generate words</button></GenericPanel>,
+          left: <GenericPanel title="Generate"><button type="button" onClick={() => setCopyValue(makeRandomWordsToolCopy("creative", 10))} className="rounded-full bg-[#FF8D21] px-4 py-2 text-sm font-medium text-white">Generate words</button></GenericPanel>,
           right: <GenericPanel title="Result"><TextListResult items={result} /><div className="mt-4"><CopyRow value={result.join(" ")} onCopied={() => setCopyValue(result.join(" "))} /></div></GenericPanel>,
         };
       }
@@ -2170,7 +2170,7 @@ function RenderGeneratedTool({ tool }: { tool: ToolConfig }) {
         return {
           headline: "Lorem ipsum is ready",
           summary: "Placeholder copy is ready to paste.",
-          left: <GenericPanel title="Generate"><button type="button" onClick={() => setCopyValue(makeLorem(3, 3))} className="rounded-full bg-[#f55f2a] px-4 py-2 text-sm font-medium text-white">Generate copy</button></GenericPanel>,
+          left: <GenericPanel title="Generate"><button type="button" onClick={() => setCopyValue(makeLorem(3, 3))} className="rounded-full bg-[#FF8D21] px-4 py-2 text-sm font-medium text-white">Generate copy</button></GenericPanel>,
           right: <GenericPanel title="Result"><pre className="whitespace-pre-wrap text-sm leading-6 text-neutral-800">{result}</pre><div className="mt-4"><CopyRow value={result} onCopied={() => setCopyValue(result)} /></div></GenericPanel>,
         };
       }

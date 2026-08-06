@@ -17,20 +17,20 @@ type Metric = {
 const metrics: Metric[] = [
   {
     value: '01',
-    title: 'Save time starting projects',
+    title: 'Save time',
     metric: 'avg 40 hrs',
     text: 'Start from templates instead of blank pages and cut the heavy setup work.',
   },
   {
     value: '02',
-    title: 'Save money on platform fees',
+    title: 'Save money',
     metric: 'avg $1000',
     text: 'Ship polished sites without paying premium platform fees for every project.',
   },
   {
     value: '03',
     title: 'Boost your output',
-    metric: 'avg 160 hrs',
+    metric: '',
     text: 'Handle five roles from one place, without extra overhead.',
     roles: ['Designer', 'Marketer', 'Frontend dev', 'Backend dev', 'Product dev'],
   },
@@ -45,10 +45,10 @@ function CardIcon({ kind }: { kind: 'time' | 'money' | 'output' }) {
 
 function TeamMap({ roles }: { roles: string[] }) {
   return (
-    <div className="mt-4 flex w-full items-center justify-center gap-2.5 overflow-hidden whitespace-nowrap">
-      <div className="flex shrink-0 items-center gap-2 text-[11px] font-semibold text-[rgba(245,95,42,1)] sm:text-[12px]">
-        <UserRound className="h-4 w-4 shrink-0 text-[rgba(245,95,42,1)] sm:h-5 sm:w-5" />
-        <span className="text-[14px]">Kloner User</span>
+    <div className="mt-4 flex w-full items-center justify-start gap-2.5 overflow-hidden whitespace-nowrap">
+      <div className="flex shrink-0 items-center gap-2 text-[11px] font-semibold text-[rgba(255,141,33,1)] sm:text-[12px]">
+        <UserRound className="h-4 w-4 shrink-0 text-[rgba(255,141,33,1)] sm:h-5 sm:w-5" />
+        <span className="text-[14px]">1x Kloner User</span>
       </div>
 
       <span className="shrink-0 text-[11px] font-semibold text-neutral-500 sm:text-[12px]">
@@ -78,7 +78,7 @@ function MetricText({ metric }: { metric: string }) {
   const rest = metric.slice(4);
   return (
     <span>
-      <span className="text-[0.3em] font-semibold uppercase tracking-[0.22em] text-[rgba(245,95,42,1)] align-baseline mr-1.5">
+      <span className="text-[0.3em] font-semibold uppercase tracking-[0.22em] text-[rgba(255,141,33,1)] align-baseline mr-1.5">
         avg
       </span>
       <span>{rest}</span>
@@ -92,9 +92,9 @@ function MetricCard({ r, i }: { r: Metric; i: number }) {
 
   return (
     <SectionReveal delay={i * 0.04}>
-      <div className="flex h-full w-full max-w-[520px] flex-col justify-start space-y-5 rounded-2xl border border-black/10 bg-white p-5 shadow-md min-h-[270px] md:justify-between md:min-h-[270px]">
+      <div className="flex h-full w-full max-w-[520px] flex-col justify-start space-y-5 rounded-2xl border border-black/10 bg-white p-5 shadow-md min-h-[200px] md:justify-between md:min-h-[200px]">
         <div className="flex items-center gap-2 mt-1 min-w-0">
-          <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[rgba(245,95,42,0.18)] bg-[rgba(245,95,42,0.08)] text-[rgba(245,95,42,1)]">
+          <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[rgba(255,141,33,0.18)] bg-[rgba(255,141,33,0.08)] text-[rgba(255,141,33,1)]">
             <CardIcon kind={kind} />
           </span>
           <h3 className="min-w-0 text-left text-xl leading-tight text-black/80 sm:text-2xl md:text-[28px]">
@@ -103,7 +103,7 @@ function MetricCard({ r, i }: { r: Metric; i: number }) {
         </div>
 
         <div className="space-y-5 pt-1">
-          <div className={`${metricSizeClass} max-w-full break-words text-center font-semibold tracking-tight text-black/80`}>
+          <div className={`${metricSizeClass} max-w-full break-words font-semibold tracking-tight text-black/80`}>
             <MetricText metric={r.metric} />
             {r.roles ? <TeamMap roles={r.roles} /> : null}
           </div>
@@ -124,7 +124,7 @@ export default function Stories() {
           <h2 className="mt-1 flex flex-wrap items-center justify-start gap-x-3 gap-y-1 text-base text-neutral-600 sm:text-lg">
             <span className="block text-[16px] uppercase tracking-[0.1em] text-neutral-500">
               Join
-              <span className="mx-1 text-[rgba(245,95,42,1)]">5,000+</span>
+              <span className="mx-1 text-[rgba(255,141,33,1)]">5,000+</span>
               Kloner members shipping sites in minutes
             </span>
             <span className="relative inline-block h-[72px] w-[72px] sm:h-[92px] sm:w-[92px]">

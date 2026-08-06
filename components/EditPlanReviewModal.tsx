@@ -154,7 +154,7 @@ export default function EditPlanReviewModal({ open, plan, applying = false, appl
                         type="button"
                         onClick={onConfirm}
                         disabled={!canConfirm}
-                        className="inline-flex items-center justify-center rounded-full bg-[#f55f2a] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#e14f1c] disabled:cursor-not-allowed disabled:opacity-50"
+                        className="inline-flex items-center justify-center rounded-full bg-[#FF8D21] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#D96E11] disabled:cursor-not-allowed disabled:opacity-50"
                     >
                         {applying ? "Applying…" : needsMoreContext ? "Need more context" : "Apply changes"}
                     </button>

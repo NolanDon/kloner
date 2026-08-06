@@ -52,7 +52,7 @@ body {
     @apply inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold bg-black/5 border border-black/10 text-black/70;
 }
 
-/* #f55f2a */
+/* #FF8D21 */
 
 @layer utilities {
     .anchor-highlight {
@@ -85,12 +85,12 @@ body {
 
     @keyframes anchor-pulse {
         0% {
-            box-shadow: 0 0 0 0 rgba(245, 95, 42, 0.7);
-            background-color: rgba(245, 95, 42, 0.03);
+            box-shadow: 0 0 0 0 rgba(255, 141, 33, 0.7);
+            background-color: rgba(255, 141, 33, 0.03);
         }
 
         100% {
-            box-shadow: 0 0 0 10px rgba(245, 95, 42, 0);
+            box-shadow: 0 0 0 10px rgba(255, 141, 33, 0);
             background-color: transparent;
         }
     }
@@ -166,7 +166,7 @@ body {
 [data-kloner-ai-editing],
 .kloner-ai-editing {
     position: relative;
-    box-shadow: 0 0 0 0 rgba(245, 95, 42, 0.25);
+    box-shadow: 0 0 0 0 rgba(255, 141, 33, 0.25);
     animation: kloner-ai-editing-glow 1.2s ease-out infinite;
 }
 
@@ -177,7 +177,7 @@ body {
     top: -6px;
     right: -6px;
     font-size: 11px;
-    color: #f97316;
+    color: #f3b27c;
     text-shadow:
         0 0 8px rgba(251, 191, 36, 0.8),
         0 0 16px rgba(251, 191, 36, 0.7);
@@ -186,16 +186,16 @@ body {
 
 @keyframes kloner-ai-editing-glow {
     0% {
-        box-shadow: 0 0 0 0 rgba(245, 95, 42, 0.35);
+        box-shadow: 0 0 0 0 rgba(255, 141, 33, 0.35);
         transform: translateZ(0);
     }
 
     60% {
-        box-shadow: 0 0 0 8px rgba(245, 95, 42, 0);
+        box-shadow: 0 0 0 8px rgba(255, 141, 33, 0);
     }
 
     100% {
-        box-shadow: 0 0 0 0 rgba(245, 95, 42, 0);
+        box-shadow: 0 0 0 0 rgba(255, 141, 33, 0);
     }
 }
 
@@ -223,7 +223,7 @@ body {
 
 @keyframes kloner-ai-updated-flash {
     0% {
-        background-color: rgba(245, 95, 42, 0.12);
+        background-color: rgba(255, 141, 33, 0.12);
     }
 
     100% {
@@ -244,7 +244,7 @@ body {
     width: 6px;
     height: 6px;
     border-radius: 999px;
-    background: rgba(245, 95, 42, 0.25);
+    background: rgba(255, 141, 33, 0.25);
     animation: kloner-dot-bounce 1.05s infinite ease-in-out;
 }
 
@@ -267,6 +267,6 @@ body {
     40% {
         transform: translateY(-6px);
         opacity: 1;
-        background: #F55F2A;
+        background: #FF8D21;
     }
 }

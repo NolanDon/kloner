@@ -72,7 +72,7 @@ import {
     ExternalLink,
     Copy,
     ArrowUpRight,
-    ArrowRightSquare,
+    ArrowRight,
     Plus,
     CrownIcon,
     Edit2,
@@ -122,7 +122,7 @@ import { recordAppBuilderSessionAnalytics, recordDeployAnalytics } from "@/compo
 const VERCEL_INTEGRATION_SLUG =
     process.env.NEXT_PUBLIC_VERCEL_INTEGRATION_SLUG || "kloner";
 
-const ACCENT = "#f55f2a";
+const ACCENT = "#FF8D21";
 const DEPLOY_RETRY_BASE_DELAY_MS = 1500;
 const DEPLOY_RETRY_MAX_DELAY_MS = 30000;
 
@@ -164,7 +164,19 @@ type DraftPromotionScanState = {
     draftId: string;
     sourceUrl: string;
     phase: "scanning" | "warning" | "ready" | "generating" | "error";
+    contractVersion?: string | null;
+    requestId?: string | null;
+    appId?: string | null;
+    uid?: string | null;
+    url?: string | null;
     status: string | null;
+    stage?: string | null;
+    progress?: number | null;
+    progressPercent?: number | null;
+    progressLabel?: string | null;
+    message?: string | null;
+    error?: string | null;
+    finished?: boolean | null;
     zipPath: string | null;
     zipUrl: string | null;
     archiveHealth: any | null;
@@ -180,6 +192,189 @@ type DraftPromotionScanState = {
     crawlProgressProgress: number | null;
     updatedAt: number;
 };
+
+type ScanProgressUiState = {
+    contractVersion: string | null;
+    requestId: string | null;
+    jobId?: string | null;
+    appId: string | null;
+    uid: string | null;
+    url: string | null;
+    status: string | null;
+    stage: string | null;
+    progress: number | null;
+    progressPercent: number | null;
+    progressLabel: string | null;
+    message: string | null;
+    error: string | null;
+    finished: boolean;
+};
+
+const SCAN_STAGE_LABELS: Record<string, string> = {
+    starting: "Starting scan…",
+    fetching_page: "Fetching page…",
+    gathering_assets: "Gathering assets…",
+    parsing_structure: "Parsing structure…",
+    stitching_files: "Stitching files…",
+    finalizing: "Finalizing…",
+    ready: "Ready",
+    error: "Error",
+};
+
+function normalizeProgressPercent(value: unknown): number | null {
+    if (typeof value !== "number" || !Number.isFinite(value)) return null;
+    const next = value <= 1 ? value * 100 : value;
+    return Math.max(0, Math.min(100, Math.round(next)));
+}
+
+function toTimestampMs(value: unknown): number | null {
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+    if (typeof value === "string" && value.trim()) {
+        const parsed = Date.parse(value);
+        return Number.isFinite(parsed) ? parsed : null;
+    }
+    if (value && typeof value === "object" && typeof (value as any).toMillis === "function") {
+        const next = (value as any).toMillis();
+        return typeof next === "number" && Number.isFinite(next) ? next : null;
+    }
+    return null;
+}
+
+function normalizeScanStageLabel(stage: string | null | undefined, progressLabel: string | null | undefined, status: string | null | undefined, finished: boolean, error: string | null | undefined): string | null {
+    const explicit = String(progressLabel || "").trim();
+    if (explicit) return explicit;
+
+    const normalizedStage = String(stage || "").trim().toLowerCase();
+    if (normalizedStage && SCAN_STAGE_LABELS[normalizedStage]) {
+        return SCAN_STAGE_LABELS[normalizedStage];
+    }
+
+    const normalizedStatus = String(status || "").trim().toLowerCase();
+    if (normalizedStatus === "ready" || finished) return "Ready";
+    if (normalizedStatus === "error") return String(error || "").trim() || "Error";
+    return null;
+}
+
+function extractScanProgressUi(source: any): ScanProgressUiState | null {
+    if (!source || typeof source !== "object") return null;
+
+    const progressEnvelope =
+        source.crawlProgress && typeof source.crawlProgress === "object"
+            ? source.crawlProgress
+            : source.progress && typeof source.progress === "object" && !Array.isArray(source.progress)
+                ? source.progress
+                : null;
+
+    const contractVersion = String(source.contractVersion || progressEnvelope?.contractVersion || "").trim() || null;
+    const requestId = String(source.requestId || progressEnvelope?.requestId || "").trim() || null;
+    const jobId = String(source.jobId || progressEnvelope?.jobId || "").trim() || null;
+    const appId = String(source.appId || progressEnvelope?.appId || "").trim() || null;
+    const uid = String(source.uid || progressEnvelope?.uid || "").trim() || null;
+    const url = String(source.url || progressEnvelope?.url || "").trim() || null;
+    const status = String(source.status || progressEnvelope?.status || "").trim() || null;
+    const stage = String(source.stage || source.uiStage || progressEnvelope?.stage || progressEnvelope?.uiStage || "").trim() || null;
+    const progress = normalizeProgressPercent(source.progress ?? progressEnvelope?.progress);
+    const progressPercent = normalizeProgressPercent(source.progressPercent ?? progressEnvelope?.progressPercent ?? progress);
+    const message = String(source.message || source.uiMessage || progressEnvelope?.message || progressEnvelope?.uiMessage || "").trim() || null;
+    const error = String(source.error || source.uiError || progressEnvelope?.error || progressEnvelope?.uiError || "").trim() || null;
+    const finished = Boolean(source.finished === true || progressEnvelope?.finished === true || status === "ready" || status === "error" || stage === "ready" || stage === "error");
+    const progressLabel = normalizeScanStageLabel(stage, source.progressLabel ?? progressEnvelope?.progressLabel ?? null, status, finished, error)
+        || message
+        || null;
+
+    if (
+        !contractVersion &&
+        !requestId &&
+        !jobId &&
+        !appId &&
+        !uid &&
+        !url &&
+        !status &&
+        !stage &&
+        progress === null &&
+        progressPercent === null &&
+        !progressLabel &&
+        !message &&
+        !error &&
+        !finished
+    ) {
+        return null;
+    }
+
+    return {
+        contractVersion,
+        requestId,
+        jobId,
+        appId,
+        uid,
+        url,
+        status,
+        stage,
+        progress,
+        progressPercent,
+        progressLabel,
+        message,
+        error,
+        finished,
+    };
+}
+
+function matchesScanJob(source: any, job: ScanProgressUiState | null | undefined): boolean {
+    if (!job) return true;
+    if (!source || typeof source !== "object") return false;
+
+    const sourceRequestId = String(source.requestId || "").trim() || null;
+    const sourceJobId = String(source.jobId || "").trim() || null;
+    const sourceAppId = String(source.appId || "").trim() || null;
+    const sourceUid = String(source.uid || "").trim() || null;
+    const sourceUrl = String(source.url || "").trim() || null;
+
+    if (job.requestId && sourceRequestId !== job.requestId) return false;
+    if (job.jobId && sourceJobId !== job.jobId) return false;
+    if (job.appId && sourceAppId !== job.appId) return false;
+    if (job.uid && sourceUid !== job.uid) return false;
+    if (job.url && sourceUrl && normUrl(sourceUrl) !== normUrl(job.url)) return false;
+    if (job.url && !sourceUrl) return false;
+
+    return true;
+}
+
+function compareUrlDocRecency(a: any, b: any): number {
+    const aTime = toTimestampMs(a?.updatedAt) ?? toTimestampMs(a?.createdAt) ?? 0;
+    const bTime = toTimestampMs(b?.updatedAt) ?? toTimestampMs(b?.createdAt) ?? 0;
+    if (aTime !== bTime) return bTime - aTime;
+
+    const aId = String(a?.id || "");
+    const bId = String(b?.id || "");
+    return bId.localeCompare(aId);
+}
+
+function pickActiveUrlDoc<T extends { id: string; url?: string | null; updatedAt?: any; createdAt?: any }>(
+    docs: T[],
+    activeJob: ScanProgressUiState | null | undefined,
+    targetUrl: string | null | undefined,
+): T | null {
+    const validDocs = docs.filter((doc) => !!validateAndNormalizePublicHttpUrl(String(doc?.url || "")));
+    if (!validDocs.length) return null;
+
+    if (activeJob) {
+        const matched = validDocs
+            .filter((doc) => matchesScanJob(doc, activeJob))
+            .sort(compareUrlDocRecency);
+        if (matched.length) return matched[0];
+        return null;
+    }
+
+    const normalizedTarget = validateAndNormalizePublicHttpUrl(String(targetUrl || ""));
+    if (normalizedTarget) {
+        const targetDocs = validDocs
+            .filter((doc) => normUrl(String(doc.url || "")) === normUrl(normalizedTarget))
+            .sort(compareUrlDocRecency);
+        if (targetDocs.length) return targetDocs[0];
+    }
+
+    return [...validDocs].sort(compareUrlDocRecency)[0] ?? null;
+}
 
 function getDraftPromotionScanStorageKey(uid: string): string {
     return `${DRAFT_PROMOTION_SCAN_STORAGE_KEY}:${uid || "anonymous"}`;
@@ -216,11 +411,40 @@ function writeDraftPromotionScanStateMap(uid: string, map: Record<string, DraftP
 }
 
 function normalizeDraftPromotionScanState(draftId: string, sourceUrl: string, patch: Partial<DraftPromotionScanState>): DraftPromotionScanState {
+    const legacyPatch = patch as Partial<DraftPromotionScanState> & {
+        crawlProgressStage?: string | null;
+        crawlProgressMessage?: string | null;
+        crawlProgressProgress?: number | null;
+    };
+    const progressUi = extractScanProgressUi({
+        ...patch,
+        stage: patch.stage || legacyPatch.crawlProgressStage || null,
+        progressPercent: patch.progressPercent ?? legacyPatch.crawlProgressProgress ?? null,
+        progressLabel: patch.progressLabel || legacyPatch.crawlProgressMessage || null,
+        message: patch.message || legacyPatch.crawlProgressMessage || null,
+        error: patch.error || patch.lastError || null,
+        finished: patch.finished ?? null,
+        url: patch.url || sourceUrl,
+        appId: patch.appId || draftId,
+        requestId: patch.requestId || null,
+    });
     return {
         draftId,
         sourceUrl,
         phase: patch.phase || "scanning",
+        contractVersion: progressUi?.contractVersion || null,
+        requestId: progressUi?.requestId || null,
+        appId: progressUi?.appId || draftId,
+        uid: progressUi?.uid || null,
+        url: progressUi?.url || sourceUrl,
         status: typeof patch.status === "string" ? patch.status : null,
+        stage: progressUi?.stage || null,
+        progress: progressUi?.progress ?? null,
+        progressPercent: progressUi?.progressPercent ?? null,
+        progressLabel: progressUi?.progressLabel || null,
+        message: progressUi?.message || null,
+        error: progressUi?.error || null,
+        finished: progressUi?.finished ?? null,
         zipPath: typeof patch.zipPath === "string" && patch.zipPath.trim() ? patch.zipPath.trim() : null,
         zipUrl: typeof patch.zipUrl === "string" && patch.zipUrl.trim() ? patch.zipUrl.trim() : null,
         archiveHealth: patch.archiveHealth ?? null,
@@ -236,6 +460,18 @@ function normalizeDraftPromotionScanState(draftId: string, sourceUrl: string, pa
         crawlProgressProgress: typeof patch.crawlProgressProgress === "number" && Number.isFinite(patch.crawlProgressProgress) ? patch.crawlProgressProgress : null,
         updatedAt: typeof patch.updatedAt === "number" && Number.isFinite(patch.updatedAt) ? patch.updatedAt : Date.now(),
     };
+}
+
+function isTerminalReadyScanProgress(snapshot: ScanProgressUiState | null | undefined): boolean {
+    if (!snapshot) return false;
+
+    const progressPercent = normalizeProgressPercent(snapshot.progressPercent ?? snapshot.progress);
+    return Boolean(
+        snapshot.finished === true &&
+        String(snapshot.status || "").trim().toLowerCase() === "ready" &&
+        progressPercent === 100 &&
+        String(snapshot.progressLabel || "").trim() === "Ready"
+    );
 }
 
 function isDraftPromotionScanPending(state?: DraftPromotionScanState | null): boolean {
@@ -1163,6 +1399,7 @@ type MiniDashboardEntryProps = {
     hideCaptureQueueStatus?: boolean;
     creationBusy?: boolean;
     queueActive?: boolean;
+    focusUrlInputNonce?: number;
 };
 
 function MiniDashboardEntry({
@@ -1186,6 +1423,7 @@ function MiniDashboardEntry({
     hideCaptureQueueStatus = false,
     creationBusy = false,
     queueActive = false,
+    focusUrlInputNonce = 0,
 }: MiniDashboardEntryProps) {
     const isCompact = size === "compact";
     const [url, setUrl] = useState("");
@@ -1204,6 +1442,12 @@ function MiniDashboardEntry({
             }
         };
     }, []);
+
+    useEffect(() => {
+        if (!focusUrlInputNonce) return;
+        inputRef.current?.focus();
+        inputRef.current?.select?.();
+    }, [focusUrlInputNonce]);
 
     const isActiveTrial = billingState === "trialing";
     const isTrialCancellationPending = billingState === "trial_cancelled";
@@ -1313,7 +1557,7 @@ function MiniDashboardEntry({
                                                 isTrialCancellationPending
                                                     ? "inline-flex items-center gap-1.5 rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-[11px] font-semibold text-blue-700 shadow-[0_12px_32px_rgba(59,130,246,0.16)] ring-1 ring-[rgba(59,130,246,0.14)] transition hover:bg-blue-100 hover:shadow-[0_14px_36px_rgba(59,130,246,0.2)] active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-[rgba(59,130,246,0.28)] focus:ring-offset-2"
                                                     : userTier === "free"
-                                                        ? "inline-flex items-center gap-1.5 rounded-full border border-[rgba(245,95,42,0.45)] bg-[#f55f2a] px-3 py-1.5 text-[11px] font-semibold text-white shadow-[0_12px_32px_rgba(245,95,42,0.24)] ring-1 ring-[rgba(245,95,42,0.18)] transition hover:bg-[#f3602c] hover:shadow-[0_14px_36px_rgba(245,95,42,0.3)] active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-[rgba(245,95,42,0.28)] focus:ring-offset-2"
+                                                        ? "inline-flex items-center gap-1.5 rounded-full border border-[rgba(255,141,33,0.45)] bg-[#FF8D21] px-3 py-1.5 text-[11px] font-semibold text-white shadow-[0_12px_32px_rgba(255,141,33,0.24)] ring-1 ring-[rgba(255,141,33,0.18)] transition hover:bg-[#D96E11] hover:shadow-[0_14px_36px_rgba(255,141,33,0.3)] active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-[rgba(255,141,33,0.28)] focus:ring-offset-2"
                                                     : "group inline-flex items-center justify-center rounded-md p-1 transition-all duration-150 hover:bg-white/10 hover:scale-[1.06] active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-[#C6F44D]/60 focus:ring-offset-2 focus:ring-offset-transparent"
                                             }
                                         >
@@ -1436,7 +1680,7 @@ function MiniDashboardEntry({
                             </>
                         ) : (
                             <>
-                                <ArrowRightSquare className="h-4 w-4 md:hidden" />
+                                <ArrowRight className="h-4 w-4 md:hidden" />
                                 <span className="hidden md:inline">Clone</span>
                                 <span className="sr-only">Clone</span>
                             </>
@@ -1993,12 +2237,12 @@ function RenderCardInner({
                 // ✅ community rebuild/remix: clearer but still clean
                 isCommunityBuild && !isArchivedFlag
                     ? [
-                        "border-[rgba(245,95,42,0.65)]",
-                        "ring-2 ring-[rgba(245,95,42,0.20)]",
-                        "shadow-[0_18px_44px_rgba(245,95,42,0.14)]",
-                        "bg-[linear-gradient(180deg,rgba(245,95,42,0.06),rgba(255,255,255,0.0))]",
+                        "border-[rgba(255,141,33,0.65)]",
+                        "ring-2 ring-[rgba(255,141,33,0.20)]",
+                        "shadow-[0_18px_44px_rgba(255,141,33,0.14)]",
+                        "bg-[linear-gradient(180deg,rgba(255,141,33,0.06),rgba(255,255,255,0.0))]",
                         "after:pointer-events-none after:absolute after:-inset-[1px] after:rounded-[0.85rem] after:content-['']",
-                        "after:ring-1 after:ring-[rgba(245,95,42,0.22)]",
+                        "after:ring-1 after:ring-[rgba(255,141,33,0.22)]",
                     ].join(" ")
                     : "",
             ].join(" ")}
@@ -2721,7 +2965,6 @@ function AppCard({
     }, [draftPromotionScanState, isDraftCard]);
     const draftIssue = isDraftCard ? (appIssue || draftPromotionScanIssue) : null;
     const draftIssueIsBlocked = Boolean(draftIssue?.blocked);
-    const draftIssueIsRetryable = Boolean(draftIssue && !draftIssueIsBlocked && draftIssue.retryable);
     const draftIssueIsAccessGate = Boolean(
         draftIssue &&
         isDraftEditAccessGateMessage(
@@ -2736,6 +2979,7 @@ function AppCard({
                 .join(" "),
         ),
     );
+    const draftIssueNeedsWarning = Boolean(draftIssue && !draftIssueIsAccessGate);
     const pendingIssueIsBlocked = Boolean(pendingIssue?.blocked);
     const pendingIssueIsRetryable = Boolean(pendingIssue && !pendingIssueIsBlocked && pendingIssue.retryable);
     const issueLooksLikePromotionProgress = Boolean(
@@ -2798,7 +3042,7 @@ function AppCard({
     );
     const isDraftRetryLoading = isDraftCard && (isPendingCreation || draftPromotionScanPending || draftIssueIsPromotionProgress);
     const isDraftFreshLoading = isDraftCard && (isPendingCreation || draftPromotionScanPending) && !draftIssue;
-    const isBrokenDraftCard = isDraftCard && Boolean(draftIssue || draftIssueIsRetryable);
+    const isBrokenDraftCard = isDraftCard && Boolean(draftIssue);
     const rawAppDisplayName = String(app.name || app.id.slice(0, 10)).trim();
     const draftThumbnailUrl = typeof (app as any)?.thumbnailUrl === "string" && String((app as any)?.thumbnailUrl).trim()
         ? String((app as any)?.thumbnailUrl).trim()
@@ -2822,19 +3066,11 @@ function AppCard({
     const draftEditIsBusy = draftEditLaunchBusy || draftEditLockActive;
 
     const draftScanStatus = String(draftPromotionScanState?.status || "").trim().toLowerCase();
-    const draftArchiveProgressPct = typeof draftPromotionScanState?.crawlProgressProgress === "number"
-        ? Math.max(
-            0,
-            Math.min(
-                100,
-                Math.round(
-                    draftPromotionScanState.crawlProgressProgress <= 1
-                        ? draftPromotionScanState.crawlProgressProgress * 100
-                        : draftPromotionScanState.crawlProgressProgress
-                )
-            )
-        )
-        : null;
+    const draftArchiveProgressPct = normalizeProgressPercent(
+        draftPromotionScanState?.progressPercent ??
+        draftPromotionScanState?.crawlProgressProgress ??
+        draftPromotionScanState?.progress,
+    );
     const draftDevArchiveRingClass = "";
     const blockedDraftDescription = "Domain blocked for site cloning";
     const draftIssueDetails = draftIssue
@@ -2855,7 +3091,6 @@ function AppCard({
             const looksGenericProgress = /generation started|check back later|processing your url|creating site/i.test(raw);
             if (!looksGenericProgress) return raw;
 
-            if (draftIssueIsRetryable) return "This draft needs a retry.";
             return "This draft has an issue.";
         })()
         : "";
@@ -3060,10 +3295,10 @@ function AppCard({
                                 </span>
                             </span> */}
                             <div
-                                className={`group/draft-icon relative grid h-40 w-40 place-items-center overflow-hidden rounded-[2.75rem] border border-neutral-200 bg-neutral-100 text-neutral-500 shadow-[0_10px_20px_rgba(15,23,42,0.06)] transition-all duration-300 ease-out ${draftIssueIsBlocked ? "cursor-not-allowed opacity-70" : "hover:scale-[1.12] hover:shadow-[0_14px_26px_rgba(15,23,42,0.08)]"} ${draftDevArchiveRingClass}`}
-                                style={{ fontFamily: "ui-rounded, 'SF Pro Rounded', 'Avenir Next Rounded', 'Trebuchet MS', sans-serif" }}
-                                title={appDisplayName || "Draft"}
-                            >
+                className={`group/draft-icon relative grid h-40 w-40 place-items-center overflow-hidden rounded-[2.75rem] border border-neutral-200 bg-neutral-100 text-neutral-500 shadow-[0_10px_20px_rgba(15,23,42,0.06)] transition-all duration-300 ease-out ${draftIssueNeedsWarning ? "cursor-not-allowed opacity-70" : "hover:scale-[1.12] hover:shadow-[0_14px_26px_rgba(15,23,42,0.08)]"} ${draftDevArchiveRingClass}`}
+                style={{ fontFamily: "ui-rounded, 'SF Pro Rounded', 'Avenir Next Rounded', 'Trebuchet MS', sans-serif" }}
+                title={appDisplayName || "Draft"}
+            >
                                 {draftThumbnailUrl && !draftThumbnailErrored ? (
                                     <>
                                         <img
@@ -3076,24 +3311,17 @@ function AppCard({
                                         <div className="pointer-events-none absolute inset-0 z-0 bg-gradient-to-b from-white/10 via-transparent to-black/10" />
                                     </>
                                 ) : (
-                                    <span className="transition-opacity duration-150 group-hover/draft-icon:opacity-0 group-focus-visible/draft-icon:opacity-0">
+                                    <span
+                                        className={
+                                            draftIssueNeedsWarning
+                                                ? "transition-opacity duration-150"
+                                                : "transition-opacity duration-150 group-hover/draft-icon:opacity-0 group-focus-visible/draft-icon:opacity-0"
+                                        }
+                                    >
                                         <LayoutGrid className="h-14 w-14" />
                                     </span>
                                 )}
-                                {draftIssueIsRetryable && onRetryPendingCreation ? (
-                                    <button
-                                        type="button"
-                                        onClick={onRetryPendingCreation}
-                                        className="absolute inset-0 z-20 grid place-items-center rounded-[2.75rem] border border-neutral-200 bg-transparent text-neutral-800 opacity-0 backdrop-blur-[1px] transition-all duration-200 hover:bg-transparent group-hover/draft-icon:opacity-100 group-focus-visible/draft-icon:opacity-100 group-hover/draft-icon:scale-[1.015] group-focus-visible/draft-icon:scale-[1.015]"
-                                        aria-label="Retry draft"
-                                        title="Retry draft"
-                                    >
-                                        <div className="inline-flex items-center gap-2 rounded-full bg-transparent px-3 py-1.5 text-sm font-semibold text-neutral-800 shadow-none transition-all duration-200 group-hover/draft-icon:scale-[1.08] group-focus-visible/draft-icon:scale-[1.08] hover:bg-transparent">
-                                            <RotateCcw className="h-4 w-4 transition-transform duration-200 group-hover/draft-icon:rotate-[-45deg] group-focus-visible/draft-icon:rotate-[-45deg]" />
-                                            <span>Retry</span>
-                                        </div>
-                                    </button>
-                                ) : !draftIssue || draftIssueIsAccessGate ? (
+                                {!draftIssue || draftIssueIsAccessGate ? (
                                     <button
                                         type="button"
                                         onClick={() => void handleDraftEdit()}
@@ -3113,7 +3341,7 @@ function AppCard({
                                     </button>
                                 ) : null}
                             </div>
-                            {draftIssueIsBlocked ? (
+                            {draftIssueNeedsWarning ? (
                                 <span className="group/issue absolute -right-2 -top-2 z-30">
                                     <span
                                         className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-red-600 bg-red-600 text-white shadow-sm"
@@ -3148,7 +3376,7 @@ function AppCard({
                                     handleAppView();
                                 }}
                                 disabled={isDeleting || accessLocked || disableActions || isBrokenDraftCard || appViewIsBusy}
-                                className="group/icon relative grid h-40 w-40 place-items-center rounded-[2.75rem] bg-gradient-to-br from-[#f55f2a] via-[#ff6f3d] to-[#ff986e] text-[48px] font-black text-white shadow-[0_10px_20px_rgba(245,95,42,0.10)] transition-all duration-300 ease-out hover:scale-[1.14] disabled:cursor-not-allowed disabled:opacity-60"
+                                className="group/icon relative grid h-40 w-40 place-items-center rounded-[2.75rem] bg-[#FF8D21] text-[48px] font-black text-white shadow-[0_10px_20px_rgba(255,141,33,0.10)] transition-all duration-300 ease-out hover:scale-[1.14] disabled:cursor-not-allowed disabled:opacity-60"
                                 style={{ fontFamily: "ui-rounded, 'SF Pro Rounded', 'Avenir Next Rounded', 'Trebuchet MS', sans-serif" }}
                                 title={accessLocked ? "Trial access was cancelled, so this app is locked in the dashboard" : appViewIsBusy ? "Opening app" : suppressLivePromotionIssue ? "View app" : appIssue?.message || "View app"}
                                 aria-label={appViewIsBusy ? "Opening app" : suppressLivePromotionIssue ? "View app" : appIssue?.message || "View app"}
@@ -3255,7 +3483,7 @@ function AppCard({
                 {isPendingCreation ? (
                     !isPendingCompleted ? (
                         pendingRetryable ? (
-                            <div className="inline-flex items-center gap-1.5 rounded-2xl border border-[rgba(245,95,42,0.18)] bg-[rgba(245,95,42,0.08)] px-3.5 py-2 text-[11px] font-semibold text-[#a9441e]">
+                            <div className="inline-flex items-center gap-1.5 rounded-2xl border border-[rgba(255,141,33,0.18)] bg-[rgba(255,141,33,0.08)] px-3.5 py-2 text-[11px] font-semibold text-[#c86f1f]">
                                 <AlertTriangle className="h-3.5 w-3.5" />
                                 Retry scan
                             </div>
@@ -3298,11 +3526,20 @@ function AppCard({
                                 </span>
                                 <button
                                     type="button"
-                                    onClick={() => void handleDraftEdit()}
-                                    disabled={isDeleting || disableActions || draftEditIsBusy || !onPromoteDraft}
+                                    onClick={() => {
+                                        if (draftIssueNeedsWarning) return;
+                                        void handleDraftEdit();
+                                    }}
+                                    disabled={isDeleting || disableActions || draftEditIsBusy || !onPromoteDraft || draftIssueNeedsWarning}
                                     aria-label={draftEditIsBusy ? "Opening draft" : "View draft"}
-                                    title={draftIssueIsBlocked ? blockedDraftDescription : draftEditIsBusy ? "Opening draft" : "View draft"}
-                                    className="inline-flex h-8 w-8 items-center justify-center rounded-2xl border border-neutral-300 bg-white text-neutral-700 shadow-sm transition-all duration-300 ease-out hover:border-[#f55f2a] hover:bg-[#f55f2a] hover:text-white disabled:pointer-events-none disabled:opacity-60"
+                                    title={
+                                        draftIssueNeedsWarning
+                                            ? draftIssueDetails || blockedDraftDescription
+                                            : draftEditIsBusy
+                                                ? "Opening draft"
+                                                : "View draft"
+                                    }
+                                    className="inline-flex h-8 w-8 items-center justify-center rounded-2xl border border-neutral-300 bg-white text-neutral-700 shadow-sm transition-all duration-300 ease-out hover:border-[#FF8D21] hover:bg-[#FF8D21] hover:text-white disabled:cursor-not-allowed disabled:pointer-events-none disabled:opacity-60"
                                 >
                                     {draftEditIsBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <BrushIcon className="h-3.5 w-3.5" />}
                                 </button>
@@ -3350,7 +3587,7 @@ function AppCard({
                                         handleAppView();
                                     }}
                                     disabled={isDeleting || accessLocked || disableActions || isBrokenDraftCard || isPendingCreation || appViewIsBusy}
-                                    className="inline-flex h-8 w-8 items-center justify-center rounded-2xl border border-neutral-300 bg-white text-neutral-700 shadow-sm transition-all duration-300 ease-out hover:border-[#f55f2a] hover:bg-[#f55f2a] hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+                                    className="inline-flex h-8 w-8 items-center justify-center rounded-2xl border border-neutral-300 bg-white text-neutral-700 shadow-sm transition-all duration-300 ease-out hover:border-[#FF8D21] hover:bg-[#FF8D21] hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
                                     title={accessLocked ? "Trial access was cancelled, so this app is locked in the dashboard" : appViewIsBusy ? "Opening app" : suppressLivePromotionIssue ? "View app" : appIssue?.message || "View app"}
                                     aria-label={appViewIsBusy ? "Opening app" : suppressLivePromotionIssue ? "View app" : appIssue?.message || "View app"}
                                 >
@@ -3398,11 +3635,15 @@ function AppCard({
                                         onDelete(app.id);
                                     }}
                                     disabled={isDeleting || disableActions || isPendingCreation}
-                                    aria-label="Delete app"
-                                    title="Delete"
-                                    className="inline-flex h-8 w-8 items-center justify-center rounded-2xl border border-neutral-300 bg-white text-neutral-700 shadow-sm transition-all duration-300 ease-out hover:border-red-500 hover:bg-red-600 hover:text-white disabled:pointer-events-none disabled:opacity-60"
+                                    aria-label={isDeleting ? "Deleting app" : "Delete app"}
+                                    title={isDeleting ? "Deleting app" : "Delete"}
+                                    className={`inline-flex h-8 w-8 items-center justify-center rounded-2xl border shadow-sm transition-all duration-300 ease-out disabled:pointer-events-none disabled:opacity-70 ${
+                                        isDeleting
+                                            ? "border-red-500 bg-red-600 text-white"
+                                            : "border-neutral-300 bg-white text-neutral-700 hover:border-red-500 hover:bg-red-600 hover:text-white"
+                                    }`}
                                 >
-                                    <Trash2 className="h-3.5 w-3.5" />
+                                    {isDeleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
                                 </button>
                             </div>
                         </>
@@ -3555,7 +3796,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
         <>
             <div
                 className={`relative w-full overflow-hidden rounded-xl border bg-white transition-shadow ${highlight
-                    ? "border-[rgba(245,95,42,0.45)] ring-1 ring-[rgba(245,95,42,0.30)] shadow-[0_24px_80px_rgba(245,95,42,0.20)] animate-[ghost-generate-pulse_2.8s_ease-in-out_infinite]"
+                    ? "border-[rgba(255,141,33,0.45)] ring-1 ring-[rgba(255,141,33,0.30)] shadow-[0_24px_80px_rgba(255,141,33,0.20)] animate-[ghost-generate-pulse_2.8s_ease-in-out_infinite]"
                     : "border-neutral-200 shadow-sm hover:shadow-md"
                     }`}
             >
@@ -3564,7 +3805,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                     onClick={handleClick}
                     disabled={generationPending}
                     aria-disabled={effectiveLocked}
-                    className={`group flex aspect-square w-full flex-col items-center justify-center rounded-lg border-2 bg-white px-5 py-6 text-center transition ${effectiveLocked ? "opacity-70 cursor-wait" : "cursor-pointer"} ${highlight ? "border-[rgba(245,95,42,0.45)] bg-[rgba(245,95,42,0.08)] hover:border-[rgba(245,95,42,0.70)]" : "border-neutral-300 hover:border-neutral-400"}`}
+                    className={`group flex aspect-square w-full flex-col items-center justify-center rounded-lg border-2 bg-white px-5 py-6 text-center transition ${effectiveLocked ? "opacity-70 cursor-wait" : "cursor-pointer"} ${highlight ? "border-[rgba(255,141,33,0.45)] bg-[rgba(255,141,33,0.08)] hover:border-[rgba(255,141,33,0.70)]" : "border-neutral-300 hover:border-neutral-400"}`}
                     aria-label="Generate a new website or app"
                 >
                     <div
@@ -3717,7 +3958,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                                 onClick={() => setSelectedGenerationType("html")}
                                                 disabled={effectiveLocked || !canGenerateHtmlFromUrl}
                                                 className={`relative w-full overflow-hidden rounded-xl border p-4 text-left shadow-sm transition disabled:opacity-60 disabled:cursor-not-allowed ${selectedGenerationType === "html"
-                                                    ? "border-[rgba(245,95,42,0.65)] bg-[linear-gradient(180deg,rgba(245,95,42,0.06),rgba(255,255,255,0))]"
+                                                    ? "border-[rgba(255,141,33,0.65)] bg-[linear-gradient(180deg,rgba(255,141,33,0.06),rgba(255,255,255,0))]"
                                                     : "border-neutral-200 bg-white hover:bg-neutral-50 hover:border-neutral-300"
                                                     }`}
                                             >
@@ -3779,7 +4020,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                                 onClick={() => setSelectedGenerationType("nextjs")}
                                                 disabled={effectiveLocked}
                                                 className={`relative w-full overflow-hidden rounded-xl border p-4 text-left shadow-sm transition disabled:opacity-60 disabled:cursor-not-allowed ${selectedGenerationType === "nextjs"
-                                                    ? "border-[rgba(245,95,42,0.65)] bg-[linear-gradient(180deg,rgba(245,95,42,0.06),rgba(255,255,255,0))]"
+                                                    ? "border-[rgba(255,141,33,0.65)] bg-[linear-gradient(180deg,rgba(255,141,33,0.06),rgba(255,255,255,0))]"
                                                     : "border-neutral-200 bg-white hover:bg-neutral-50 hover:border-neutral-300"
                                                     }`}
                                             >
@@ -3988,13 +4229,11 @@ export default function PreviewPage(): JSX.Element {
     async function handleDeleteApp(appId: string) {
         if (!user) return;
 
-        if (!isDev) {
-            const ok = await showConfirm(
-                "Delete this app? This action cannot be undone.",
-                "Delete App"
-            );
-            if (!ok) return;
-        }
+        const ok = await showConfirm(
+            "Delete this app? This action cannot be undone.",
+            "Delete App"
+        );
+        if (!ok) return;
 
         setDeletingApp((prev) => ({ ...prev, [appId]: true }));
         try {
@@ -4214,7 +4453,6 @@ export default function PreviewPage(): JSX.Element {
     const [draftAppsLoading, setDraftAppsLoading] = useState(true);
     const [draftAppsInitialLoadComplete, setDraftAppsInitialLoadComplete] = useState(false);
     const [pendingDraftApps, setPendingDraftApps] = useState<Record<string, boolean>>({});
-    const [retryingDraftApps, setRetryingDraftApps] = useState<Record<string, boolean>>({});
     const [suppressedPromotedDrafts, setSuppressedPromotedDrafts] = useState<Record<string, boolean>>({});
     const [draftPromotionScanByDraftId, setDraftPromotionScanByDraftId] = useState<Record<string, DraftPromotionScanState>>({});
     const [draftApps, setDraftApps] = useState<Array<{
@@ -4828,7 +5066,6 @@ export default function PreviewPage(): JSX.Element {
                         draftsSnapshotDisabledRef.current = true;
                         setDraftAppsLoading(false);
                         setPendingDraftApps({});
-                        setRetryingDraftApps({});
                         serverDraftKeysRef.current = new Set();
                         return;
                     }
@@ -6020,7 +6257,7 @@ export default function PreviewPage(): JSX.Element {
         mode: "clone" | "url",
         renderId?: string,
         url?: string,
-        opts?: { screenshotKeys?: string[]; zipUrl?: string; zipPath?: string; onError?: (message: string) => void; skipCookieConsent?: boolean; skipGenerationTierCheck?: boolean; openAppBuilderImmediately?: boolean; generationFormat?: "nextjs" | "html"; draftDocId?: string; draftAppId?: string; draftCreatedAt?: number },
+        opts?: { screenshotKeys?: string[]; zipUrl?: string; zipPath?: string; onError?: (message: string) => void; skipCookieConsent?: boolean; skipGenerationTierCheck?: boolean; openAppBuilderImmediately?: boolean; generationFormat?: "nextjs" | "html"; draftDocId?: string; draftAppId?: string; draftCreatedAt?: number; suppressPendingCreatedAppUi?: boolean },
     ) => {
         if (!user) return;
 
@@ -6118,7 +6355,7 @@ export default function PreviewPage(): JSX.Element {
                 finalRenderId = undefined; // No render for URL mode
             }
 
-            const shouldShowPendingAppUi = true;
+            const shouldShowPendingAppUi = !opts?.suppressPendingCreatedAppUi;
             const pendingCreatedAppId = createPermanentAppId();
             const draftAppId = opts?.draftAppId || createPermanentAppId();
 
@@ -7755,7 +7992,20 @@ export default function PreviewPage(): JSX.Element {
         };
 
         const parseArchiveSnapshotFromUrlDoc = (urlDoc: any): {
+            contractVersion: string | null;
+            requestId: string | null;
+            jobId: string | null;
+            appId: string | null;
+            uid: string | null;
+            url: string | null;
             status: string | null;
+            stage: string | null;
+            progress: number | null;
+            progressPercent: number | null;
+            progressLabel: string | null;
+            message: string | null;
+            error: string | null;
+            finished: boolean | null;
             zipPath: string | null;
             zipUrl: string | null;
             archiveHealth: any | null;
@@ -7769,27 +8019,52 @@ export default function PreviewPage(): JSX.Element {
             crawlProgressStage: string | null;
             crawlProgressMessage: string | null;
             crawlProgressProgress: number | null;
+            updatedAtMs: number | null;
         } => {
-            const status = String(urlDoc.status || "").trim().toLowerCase() || null;
-            const zipPath = String(urlDoc.zipPath || "").trim() || null;
-            const zipUrl = String(urlDoc.zipUrl || "").trim() || null;
-            const archiveHealth = urlDoc.archiveHealth && typeof urlDoc.archiveHealth === "object" ? urlDoc.archiveHealth : null;
-            const warning = urlDoc.warning && typeof urlDoc.warning === "object" ? urlDoc.warning : null;
+        const scanProgress = extractScanProgressUi(urlDoc);
+        const status = scanProgress?.status || String(urlDoc.status || "").trim().toLowerCase() || null;
+        const stage = scanProgress?.stage || String(urlDoc.stage || "").trim().toLowerCase() || null;
+        const zipPath = String(urlDoc.zipPath || "").trim() || null;
+        const zipUrl = String(urlDoc.zipUrl || "").trim() || null;
+        const updatedAtMs = toTimestampMs(urlDoc.updatedAt);
+        const archiveHealth = urlDoc.archiveHealth && typeof urlDoc.archiveHealth === "object" ? urlDoc.archiveHealth : null;
+        const warning = urlDoc.warning && typeof urlDoc.warning === "object" ? urlDoc.warning : null;
             const warningCode = typeof urlDoc.warningCode === "string" && urlDoc.warningCode.trim() ? urlDoc.warningCode.trim() : (typeof archiveHealth?.warningCode === "string" ? archiveHealth.warningCode : null);
-            const warningMessage = typeof urlDoc.warningMessage === "string" && urlDoc.warningMessage.trim() ? urlDoc.warningMessage.trim() : (typeof archiveHealth?.warningMessage === "string" ? archiveHealth.warningMessage : null);
-            const warningAction = typeof urlDoc.warningAction === "string" && urlDoc.warningAction.trim() ? urlDoc.warningAction.trim() : (typeof archiveHealth?.warningAction === "string" ? archiveHealth.warningAction : null);
-            const lastError = typeof urlDoc.lastError === "string" && urlDoc.lastError.trim() ? urlDoc.lastError.trim() : null;
-            const lastErrorCode = typeof urlDoc.lastErrorCode === "string" && urlDoc.lastErrorCode.trim() ? urlDoc.lastErrorCode.trim() : null;
-            const retry = typeof urlDoc.retry === "boolean" ? urlDoc.retry : null;
-            const crawlProgress = urlDoc.crawlProgress && typeof urlDoc.crawlProgress === "object" ? urlDoc.crawlProgress : null;
-            const crawlProgressStage = typeof crawlProgress?.stage === "string" && crawlProgress.stage.trim() ? crawlProgress.stage.trim() : null;
-            const crawlProgressMessage = typeof crawlProgress?.message === "string" && crawlProgress.message.trim() ? crawlProgress.message.trim() : null;
-            const crawlProgressProgress = typeof crawlProgress?.progress === "number" && Number.isFinite(crawlProgress.progress) ? crawlProgress.progress : null;
+        const warningMessage = typeof urlDoc.warningMessage === "string" && urlDoc.warningMessage.trim() ? urlDoc.warningMessage.trim() : (typeof archiveHealth?.warningMessage === "string" ? archiveHealth.warningMessage : null);
+        const warningAction = typeof urlDoc.warningAction === "string" && urlDoc.warningAction.trim() ? urlDoc.warningAction.trim() : (typeof archiveHealth?.warningAction === "string" ? archiveHealth.warningAction : null);
+        const lastError = typeof urlDoc.lastError === "string" && urlDoc.lastError.trim() ? urlDoc.lastError.trim() : null;
+        const lastErrorCode = typeof urlDoc.lastErrorCode === "string" && urlDoc.lastErrorCode.trim() ? urlDoc.lastErrorCode.trim() : null;
+        const retry = typeof urlDoc.retry === "boolean" ? urlDoc.retry : null;
+        const crawlProgress = urlDoc.crawlProgress && typeof urlDoc.crawlProgress === "object" ? urlDoc.crawlProgress : null;
+        const crawlProgressStage =
+            scanProgress?.stage ||
+            (typeof crawlProgress?.stage === "string" && crawlProgress.stage.trim() ? crawlProgress.stage.trim() : null);
+        const crawlProgressMessage =
+            scanProgress?.progressLabel ||
+            scanProgress?.message ||
+            (typeof crawlProgress?.message === "string" && crawlProgress.message.trim() ? crawlProgress.message.trim() : null);
+        const crawlProgressProgress =
+            scanProgress?.progressPercent ??
+            scanProgress?.progress ??
+            (typeof crawlProgress?.progress === "number" && Number.isFinite(crawlProgress.progress) ? crawlProgress.progress : null);
 
-            return {
-                status,
-                zipPath,
-                zipUrl,
+        return {
+            contractVersion: scanProgress?.contractVersion || String(urlDoc.contractVersion || "").trim() || null,
+            requestId: scanProgress?.requestId || String(urlDoc.requestId || "").trim() || null,
+            jobId: scanProgress?.jobId || String(urlDoc.jobId || "").trim() || null,
+            appId: scanProgress?.appId || String(urlDoc.appId || "").trim() || null,
+            uid: scanProgress?.uid || String(urlDoc.uid || "").trim() || null,
+            url: scanProgress?.url || String(urlDoc.url || "").trim() || null,
+            status,
+            stage,
+            progress: scanProgress?.progress ?? crawlProgressProgress ?? null,
+            progressPercent: scanProgress?.progressPercent ?? crawlProgressProgress ?? null,
+            progressLabel: scanProgress?.progressLabel || crawlProgressMessage || null,
+            message: scanProgress?.message || crawlProgressMessage || null,
+            error: scanProgress?.error || String(urlDoc.error || "").trim() || null,
+            finished: typeof scanProgress?.finished === "boolean" ? scanProgress.finished : (typeof urlDoc.finished === "boolean" ? urlDoc.finished : null),
+            zipPath,
+            zipUrl,
                 archiveHealth,
                 warning,
                 warningCode,
@@ -7801,6 +8076,7 @@ export default function PreviewPage(): JSX.Element {
                 crawlProgressStage,
                 crawlProgressMessage,
                 crawlProgressProgress,
+                updatedAtMs,
             };
         };
 
@@ -7819,6 +8095,7 @@ export default function PreviewPage(): JSX.Element {
             crawlProgressStage: string | null;
             crawlProgressMessage: string | null;
             crawlProgressProgress: number | null;
+            updatedAtMs: number | null;
         } | null> => {
             const snapshot = await getDocs(query(
                 collection(db, "kloner_users", user!.uid, "kloner_urls"),
@@ -7827,6 +8104,7 @@ export default function PreviewPage(): JSX.Element {
             ));
             if (snapshot.empty) return null;
             const urlDoc = (snapshot.docs[0].data() || {}) as any;
+            if (!matchesScanJob(urlDoc, activeUrlScanJobRef.current)) return null;
             return parseArchiveSnapshotFromUrlDoc(urlDoc);
         };
 
@@ -7836,6 +8114,7 @@ export default function PreviewPage(): JSX.Element {
             archiveHealth: any | null;
             warningCode: string | null;
             warningAction: string | null;
+            updatedAtMs: number | null;
         } | null): boolean => {
             if (!snapshot?.zipPath) return false;
             const readyLikeStatus = snapshot.status === "ready" || snapshot.status === "warning";
@@ -7865,9 +8144,10 @@ export default function PreviewPage(): JSX.Element {
             crawlProgressStage: string | null;
             crawlProgressMessage: string | null;
             crawlProgressProgress: number | null;
+            updatedAtMs: number | null;
         }> => {
             const startAt = Date.now();
-            const timeoutMs = 120_000;
+            const timeoutMs = 240_000;
             const pollIntervalMs = 2_000;
 
             while (Date.now() - startAt < timeoutMs) {
@@ -7890,11 +8170,32 @@ export default function PreviewPage(): JSX.Element {
                 }
 
                 const urlDoc = (snapshot.docs[0].data() || {}) as any;
+                if (!matchesScanJob(urlDoc, activeUrlScanJobRef.current)) {
+                    updateScanState({
+                        phase: "scanning",
+                        status: "queued",
+                        crawlProgressMessage: "Starting scan…",
+                        crawlProgressProgress: 0,
+                        updatedAt: Date.now(),
+                    });
+                    await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+                    continue;
+                }
                 const nextSnapshot = parseArchiveSnapshotFromUrlDoc(urlDoc);
+                const updatedAtMs = nextSnapshot.updatedAtMs;
+                const isFreshTerminalReady =
+                    nextSnapshot.finished === true &&
+                    nextSnapshot.status === "ready" &&
+                    Boolean(nextSnapshot.zipPath) &&
+                    updatedAtMs !== null &&
+                    updatedAtMs >= startAt;
+                const isFreshTerminalError =
+                    nextSnapshot.finished === true &&
+                    nextSnapshot.status === "error";
 
                 updateScanState({
-                    phase: (nextSnapshot.status === "ready" || nextSnapshot.status === "warning") && nextSnapshot.zipPath
-                        ? (nextSnapshot.status === "warning" ? "warning" : "ready")
+                    phase: isFreshTerminalReady
+                        ? "ready"
                         : "scanning",
                     status: nextSnapshot.status,
                     zipPath: nextSnapshot.zipPath,
@@ -7923,17 +8224,17 @@ export default function PreviewPage(): JSX.Element {
                     nextSnapshot.status === "pending" ||
                     nextSnapshot.status === "booting" ||
                     nextSnapshot.status === "processing";
-                if (isPendingStatus || !nextSnapshot.zipPath) {
-                    await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
-                    continue;
+                if (isFreshTerminalError) {
+                    throw new Error(nextSnapshot.error || nextSnapshot.lastError || nextSnapshot.warningMessage || "Archive scan failed.");
                 }
 
-                if ((nextSnapshot.status === "ready" || nextSnapshot.status === "warning") && nextSnapshot.zipPath) {
+                if (isFreshTerminalReady) {
                     return nextSnapshot;
                 }
 
-                if (nextSnapshot.status === "error" || nextSnapshot.status === "stale") {
-                    throw new Error(nextSnapshot.lastError || nextSnapshot.warningMessage || "Archive scan failed.");
+                if (isPendingStatus || !nextSnapshot.zipPath) {
+                    await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+                    continue;
                 }
 
                 await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
@@ -8022,6 +8323,7 @@ export default function PreviewPage(): JSX.Element {
                 draftDocId: draftKey,
                 draftAppId: draft.id,
                 draftCreatedAt: draft.createdAt,
+                suppressPendingCreatedAppUi: true,
                 zipPath: archiveReady.zipPath || undefined,
                 zipUrl: archiveReady.zipUrl || undefined,
             });
@@ -8148,6 +8450,22 @@ export default function PreviewPage(): JSX.Element {
     const captureBlockedFailureForUrlRef = useRef<string>("");
     const [captureTerminalFailureUrl, setCaptureTerminalFailureUrl] = useState<string>("");
     const [captureIssueDetails, setCaptureIssueDetails] = useState<string>("");
+    const [activeUrlScanJob, setActiveUrlScanJob] = useState<ScanProgressUiState | null>(null);
+    const activeUrlScanJobRef = useRef<ScanProgressUiState | null>(null);
+    const activeUrlScanJobIdentityKey = useMemo(() => {
+        if (!activeUrlScanJob) return "";
+        return [
+            activeUrlScanJob.requestId || "",
+            activeUrlScanJob.jobId || "",
+            activeUrlScanJob.appId || "",
+            activeUrlScanJob.uid || "",
+            activeUrlScanJob.url || "",
+        ].join("|");
+    }, [activeUrlScanJob]);
+
+    useEffect(() => {
+        activeUrlScanJobRef.current = activeUrlScanJob;
+    }, [activeUrlScanJob]);
 
     const markUrlCaptureTerminalError = useCallback(
         async (uid: string, rawUrl: string, lastError: string, nextStatus: "error" | "stale" = "error") => {
@@ -8358,6 +8676,23 @@ export default function PreviewPage(): JSX.Element {
             setCaptureTerminalFailureUrl("");
             setUrlGenerationHealthWarning(null);
             setErr("");
+            const pendingLocalRequestId = `pending:${startRequestKey}:${Date.now()}`;
+            setActiveUrlScanJob({
+                contractVersion: "v2",
+                requestId: pendingLocalRequestId,
+                jobId: null,
+                appId: null,
+                uid: user.uid,
+                url: target,
+                status: "starting",
+                stage: "starting",
+                progress: 0,
+                progressPercent: 0,
+                progressLabel: "Starting scan…",
+                message: "Starting scan…",
+                error: null,
+                finished: false,
+            });
             clearCaptureStalledAlertSent(normUrl(target));
             if (shouldClearStartParam) clearStartQueryParam();
 
@@ -8433,22 +8768,48 @@ export default function PreviewPage(): JSX.Element {
                         credentials: "include",
                         body: JSON.stringify({ url: target }),
                     });
-                    shouldMarkHandled = res.ok;
-                    if (res.ok) {
-                        generateSucceededRef.current = startRequestKey;
-                        setCaptureTerminalFailureUrl("");
-                        setHideCaptureQueueStatus(true);
-                        captureLockMinUntilRef.current = 0;
-                        setCaptureLockUrl(null);
-                        captureLockStartedAtRef.current = 0;
+                        const payload: any = await res.clone().json().catch(() => ({} as any));
+                        shouldMarkHandled = res.ok;
+                        if (res.ok) {
+                            const backendRequestId = typeof payload?.requestId === "string" && payload.requestId.trim()
+                                ? payload.requestId.trim()
+                                : pendingLocalRequestId;
+                            const backendJobId = typeof payload?.jobId === "string" && payload.jobId.trim()
+                                ? payload.jobId.trim()
+                                : null;
+                            // POST /generate is enqueue-only. Ignore any progress-like fields here so
+                            // the popup cannot jump to Ready before polling confirms the backend state.
+                            setActiveUrlScanJob({
+                                contractVersion: "v2",
+                                requestId: backendRequestId,
+                                jobId: backendJobId,
+                                appId: typeof payload?.appId === "string" ? payload.appId : target,
+                                uid: typeof payload?.uid === "string" ? payload.uid : user.uid,
+                                url: typeof payload?.url === "string" ? payload.url : target,
+                                status: "starting",
+                                stage: "starting",
+                                progress: 0,
+                                progressPercent: 0,
+                                progressLabel: "Starting scan…",
+                                message: "Starting scan…",
+                                error: null,
+                                finished: false,
+                            });
+                            generateSucceededRef.current = startRequestKey;
+                            setCaptureTerminalFailureUrl("");
+                            setHideCaptureQueueStatus(false);
+                        captureLockMinUntilRef.current = Date.now() + 60_000;
+                        setCaptureLockUrl(target);
+                        captureLockStartedAtRef.current = Date.now();
+                        setInfo((current) => current || "Starting scan…");
                     }
 
                     if (cancelled) return;
 
                     if (!res.ok) {
+                        setActiveUrlScanJob(null);
                         generateAbortedRef.current = startRequestKey;
                         setCaptureTerminalFailureUrl(normUrl(target));
-                        const payload = await res.clone().json().catch(() => ({} as any));
                         const creditLimitResponse = isScreenshotCreditLimitResponse(res.status, payload);
 
                         const serverError =
@@ -8516,6 +8877,7 @@ export default function PreviewPage(): JSX.Element {
                         if (creditLimitResponse) {
                             setShowCreditsPaywall("screenshot");
                         }
+                        setActiveUrlScanJob(null);
 
                         void markUrlCaptureTerminalError(
                             user.uid,
@@ -8557,6 +8919,7 @@ export default function PreviewPage(): JSX.Element {
                     }
                 } catch (e: any) {
                     generateAbortedRef.current = startRequestKey;
+                    setActiveUrlScanJob(null);
                     setCaptureTerminalFailureUrl(normUrl(target));
                     setCaptureIssueDetails("The request failed before the backend could return a response. Please try again.");
                     setInfo("");
@@ -8672,9 +9035,30 @@ export default function PreviewPage(): JSX.Element {
     }, [docData]);
 
     const activeUrlStatus = useMemo<UrlStatusUi | null>(() => {
-        if (!docData) return null;
-        return normalizeUrlStatus(docData.status, shotMetaCount, docData.updatedAt, (docData as any)?.lastError);
-    }, [docData, shotMetaCount]);
+        const sourceCandidate: any = docData
+            ? {
+                status: docData.status,
+                screenshotPaths: docData.screenshotPaths,
+                screenshots: docData.screenshots,
+                archiveMode: docData.archiveMode,
+                zipPath: docData.zipPath,
+                zipUrl: docData.zipUrl,
+                zipPageCount: docData.zipPageCount,
+                updatedAt: docData.updatedAt,
+                lastError: (docData as any)?.lastError,
+                requestId: (docData as any)?.requestId || null,
+                jobId: (docData as any)?.jobId || null,
+                appId: (docData as any)?.appId || null,
+                uid: (docData as any)?.uid || null,
+                url: (docData as any)?.url || activeUrlDoc?.url || null,
+            }
+            : activeUrlScanJob || null;
+
+        if (!sourceCandidate) return null;
+
+        const source = matchesScanJob(sourceCandidate, activeUrlScanJob) ? sourceCandidate : activeUrlScanJob || sourceCandidate;
+        return normalizeUrlStatus(source?.status, shotMetaCount, source?.updatedAt, source?.lastError);
+    }, [docData, shotMetaCount, activeUrlScanJob]);
 
     const lockMatches = useMemo(() => {
         return !!targetUrl && (startLockRequested || captureLockUrl === targetUrl);
@@ -8701,12 +9085,16 @@ export default function PreviewPage(): JSX.Element {
         // If we are in an in-flight capture, don't let an "unknown" doc status remove the UX lock.
         if (lockMatches) {
             const stable = activeUrlStatus;
+            const startedAt = captureLockStartedAtRef.current || 0;
+            const selectedUpdatedAtMs = toTimestampMs(docData?.updatedAt);
+            const isFreshUpdate = selectedUpdatedAtMs !== null && startedAt > 0 && selectedUpdatedAtMs >= startedAt;
 
             // When a fresh scan was explicitly requested (start=1), an old "stale" or "error" doc
             // should not surface as an error immediately — treat it as "queued" until the new
             // /generate call either succeeds or fails.
             if (startRequested && !err && !hasAbortedStartForTarget) {
                 if (stable === "stale" || stable === "error") return "queued";
+                if (stable === "ready" && !isFreshUpdate) return shotMetaCount > 0 ? "processing" : "queued";
             }
 
             if (stable === "ready" || stable === "error" || stable === "stale") return stable;
@@ -9080,16 +9468,8 @@ export default function PreviewPage(): JSX.Element {
     }, []);
 
     const activeUrlDoc = useMemo(() => {
-        if (!urls.length) return null;
-
-        const valid = urls.filter((u) => !!validateAndNormalizePublicHttpUrl(u.url));
-        if (targetUrl) {
-            const match = valid.find((u) => normUrl(u.url) === normUrl(targetUrl));
-            if (match) return match;
-        }
-
-        return valid[0] ?? null;
-    }, [urls, targetUrl]);
+        return pickActiveUrlDoc(urls, activeUrlScanJob, targetUrl);
+    }, [urls, targetUrl, activeUrlScanJob, activeUrlScanJobIdentityKey]);
 
     const orderedUrls = useMemo(() => {
         // Keep invalid URLs visible in the menu so they can be deleted.
@@ -9102,12 +9482,12 @@ export default function PreviewPage(): JSX.Element {
     const activeUrlStatusUi = useMemo<UrlStatusUi | null>(() => {
         if (!activeUrlDoc) return null;
 
-        const normalizedActive = validateAndNormalizePublicHttpUrl(String(activeUrlDoc.url || ""));
+        const normalizedActive = validateAndNormalizePublicHttpUrl(String(activeUrlDoc?.url || ""));
         const activeCanonical = normalizedActive ? normUrl(normalizedActive) : "";
         const targetCanonical = targetUrl ? normUrl(targetUrl) : "";
         const isSelectedTarget = !!activeCanonical && !!targetCanonical && activeCanonical === targetCanonical;
 
-        const source: any = isSelectedTarget && docData
+        const sourceCandidate: any = isSelectedTarget && docData
             ? {
                 status: docData.status,
                 screenshotPaths: docData.screenshotPaths,
@@ -9120,10 +9500,15 @@ export default function PreviewPage(): JSX.Element {
                 lastError: (docData as any)?.lastError,
             }
             : activeUrlDoc;
+        const source = matchesScanJob(sourceCandidate, activeUrlScanJob) ? sourceCandidate : activeUrlScanJob || sourceCandidate;
 
         const shotCount = getUrlArtifactCount(source);
+        const sourceProgress = extractScanProgressUi(source);
 
         let statusUi = normalizeUrlStatus(source?.status, shotCount, source?.updatedAt, source?.lastError);
+        if (statusUi === "ready" && !isTerminalReadyScanProgress(sourceProgress)) {
+            statusUi = shotCount > 0 ? "processing" : "queued";
+        }
         if (isSelectedTarget && startRequested && !err && (statusUi === "error" || statusUi === "stale")) {
             statusUi = shotCount > 0 ? "processing" : "queued";
         }
@@ -9131,25 +9516,27 @@ export default function PreviewPage(): JSX.Element {
             statusUi = "error";
         }
         return statusUi;
-    }, [activeUrlDoc, targetUrl, docData, captureTerminalFailureUrl, startRequested, err]);
+    }, [activeUrlDoc, targetUrl, docData, captureTerminalFailureUrl, startRequested, err, activeUrlScanJob]);
 
     const activeUrlBackendWarning = useMemo(() => {
-        if (!activeUrlDoc) return null;
+        if (!activeUrlDoc && !activeUrlScanJob) return null;
 
-        const normalizedActive = validateAndNormalizePublicHttpUrl(String(activeUrlDoc.url || ""));
+        const normalizedActive = validateAndNormalizePublicHttpUrl(String(activeUrlDoc?.url || ""));
         const activeCanonical = normalizedActive ? normUrl(normalizedActive) : "";
         const targetCanonical = targetUrl ? normUrl(targetUrl) : "";
         const isSelectedTarget = !!activeCanonical && !!targetCanonical && activeCanonical === targetCanonical;
 
-        const source: any = isSelectedTarget && docData
+        const sourceCandidate: any = isSelectedTarget && docData
             ? {
                 ...activeUrlDoc,
                 ...docData,
             }
-            : activeUrlDoc;
+            : (activeUrlDoc || activeUrlScanJob || null);
+        if (!sourceCandidate) return null;
+        const source = matchesScanJob(sourceCandidate, activeUrlScanJob) ? sourceCandidate : activeUrlScanJob || sourceCandidate;
 
         return extractUrlRescanWarning(source);
-    }, [activeUrlDoc, targetUrl, docData]);
+    }, [activeUrlDoc, targetUrl, docData, activeUrlScanJob]);
 
     const activeUrlCannotGenerate =
         activeUrlStatusUi === "error" ||
@@ -9604,6 +9991,7 @@ export default function PreviewPage(): JSX.Element {
     /* ───────── url doc + screenshots ───────── */
 
     const lastDocShotsKeyRef = useRef<string>("");
+    const lastActiveUrlDocIdRef = useRef<string>("");
     const prevUrlDocContextRef = useRef<{ uid: string; targetUrl: string }>({ uid: "", targetUrl: "" });
     const urlRescanBackfillKeyRef = useRef<string>("");
 
@@ -9688,43 +10076,70 @@ export default function PreviewPage(): JSX.Element {
                     where("url", "==", targetUrl)
                 );
                 const snap = await getDocs(qy);
+                const selectUrlDoc = (docs: typeof snap.docs): QueryDocumentSnapshot<DocumentData> | null => {
+                    const candidates = docs
+                        .map((d) => ({
+                            id: d.id,
+                            ...(d.data() as UrlDoc),
+                        }))
+                        .filter((doc) => !!validateAndNormalizePublicHttpUrl(String(doc.url || "")));
+                    const selected = pickActiveUrlDoc(candidates, activeUrlScanJobRef.current, targetUrl);
+                    if (!selected) return null;
+                    return docs.find((d) => d.id === selected.id) ?? null;
+                };
 
-                if (snap.empty) {
-                    setLoading(false);
-                    return;
-                }
+                const selectedInitial = selectUrlDoc(snap.docs);
 
-                const first = snap.docs[0];
-                setDocSnap(first);
+                if (selectedInitial) {
+                    setDocSnap(selectedInitial);
 
-                const initial = (first.data() || {}) as UrlDoc;
-                setDocData(initial);
-                if (isArchiveBackedUrlDoc(initial)) {
-                    const initialArchiveSource = String(initial.zipUrl || initial.zipPath || "").trim();
-                    if (initialArchiveSource) {
-                        const resolved = /^https?:\/\//i.test(initialArchiveSource)
-                            ? initialArchiveSource
-                            : await resolveStorageUrl(initialArchiveSource);
-                        setArchiveDownloadUrl(resolved || initialArchiveSource);
+                    const initial = (selectedInitial.data() || {}) as UrlDoc;
+                    setDocData(initial);
+                    if (isArchiveBackedUrlDoc(initial)) {
+                        const initialArchiveSource = String(initial.zipUrl || initial.zipPath || "").trim();
+                        if (initialArchiveSource) {
+                            const resolved = /^https?:\/\//i.test(initialArchiveSource)
+                                ? initialArchiveSource
+                                : await resolveStorageUrl(initialArchiveSource);
+                            setArchiveDownloadUrl(resolved || initialArchiveSource);
+                        }
                     }
+
+                    lastActiveUrlDocIdRef.current = selectedInitial.id;
+                    lastDocShotsKeyRef.current = JSON.stringify({
+                        paths: initial.screenshotPaths || [],
+                        prefix: initial.screenshotsPrefix || "",
+                        keys: Array.isArray(initial.screenshots)
+                            ? initial.screenshots
+                                .map((s: any) => (typeof s?.key === "string" ? s.key : ""))
+                                .filter((k: string) => !!k)
+                            : [],
+                    });
+
+                    await loadShotsForDoc(user, targetUrl, initial).catch(() => null);
+                } else {
+                    setDocSnap(null);
+                    setDocData(null);
+                    setArchiveDownloadUrl("");
+                    lastActiveUrlDocIdRef.current = "";
+                    lastDocShotsKeyRef.current = "";
                 }
-
-                lastDocShotsKeyRef.current = JSON.stringify({
-                    paths: initial.screenshotPaths || [],
-                    prefix: initial.screenshotsPrefix || "",
-                    keys: Array.isArray(initial.screenshots)
-                        ? initial.screenshots
-                            .map((s: any) => (typeof s?.key === "string" ? s.key : ""))
-                            .filter((k: string) => !!k)
-                        : [],
-                });
-
-                await loadShotsForDoc(user, targetUrl, initial).catch(() => null);
 
                 unsubUrlDoc = onSnapshot(
-                    first.ref,
-                    async (fresh) => {
-                        const data = (fresh.data() || {}) as UrlDoc;
+                    qy,
+                    async (freshSnap) => {
+                        const selected = selectUrlDoc(freshSnap.docs);
+                        if (!selected) {
+                            setDocSnap(null);
+                            setDocData(null);
+                            setArchiveDownloadUrl("");
+                            lastActiveUrlDocIdRef.current = "";
+                            lastDocShotsKeyRef.current = "";
+                            return;
+                        }
+
+                        const data = (selected.data() || {}) as UrlDoc;
+                        setDocSnap(selected);
                         setDocData(data);
                         if (isArchiveBackedUrlDoc(data)) {
                             const archiveSource = String(data.zipUrl || data.zipPath || "").trim();
@@ -9749,8 +10164,10 @@ export default function PreviewPage(): JSX.Element {
                         });
 
                         if (
+                            selected.id !== lastActiveUrlDocIdRef.current ||
                             currentKey !== lastDocShotsKeyRef.current
                         ) {
+                            lastActiveUrlDocIdRef.current = selected.id;
                             lastDocShotsKeyRef.current = currentKey;
                             await loadShotsForDoc(user, targetUrl, data).catch(() => null);
                         }
@@ -9777,7 +10194,7 @@ export default function PreviewPage(): JSX.Element {
         return () => {
             unsubUrlDoc?.();
         };
-    }, [user, targetUrl, urlDocReloadNonce, handleSessionExpired, snapshotRetryNonce]);
+    }, [user, targetUrl, urlDocReloadNonce, handleSessionExpired, snapshotRetryNonce, activeUrlScanJobIdentityKey]);
 
     /* ───────── renders (editable previews) ───────── */
 
@@ -10316,118 +10733,6 @@ export default function PreviewPage(): JSX.Element {
         },
         [canUseScreenshotCredit, db, push, retryBackoffByUrl, router, user]
     );
-
-    const retryDraftCreation = useCallback(async (draft: {
-        draftId: string;
-        id: string;
-        name: string;
-        createdAt: any;
-        sourceUrl?: string | null;
-    }) => {
-        setRetryingDraftApps((prev) => ({ ...prev, [draft.draftId]: true }));
-
-        const rawUrl = draft.sourceUrl || targetUrl || activeUrlDoc?.url || "";
-        const normalized = validateAndNormalizePublicHttpUrl(rawUrl);
-        if (!normalized) {
-            setErr("That saved URL looks invalid. Delete it from the list to continue.");
-            setRetryingDraftApps((prev) => {
-                const next = { ...prev };
-                delete next[draft.draftId];
-                return next;
-            });
-            return;
-        }
-
-        setDraftApps((prev) => prev.map((item) => {
-            if (item.draftId !== draft.draftId) return item;
-            return {
-                ...item,
-                retryable: false,
-                completed: false,
-                warningCode: null,
-                warningMessage: null,
-                warningAction: null,
-                errorCode: null,
-                errorMessage: null,
-                errorReason: null,
-                userMessage: null,
-                details: null,
-                warnings: [],
-                blocked: false,
-                updatedAt: Date.now(),
-            };
-        }));
-
-        setDraftPromotionScanByDraftId((prev) => {
-            if (!prev[draft.draftId]) return prev;
-            const next = { ...prev };
-            delete next[draft.draftId];
-            return next;
-        });
-
-        const currentUid = user?.uid;
-        if (currentUid) {
-            const stored = readDraftPromotionScanStateMap(currentUid);
-            if (stored[draft.draftId]) {
-                delete stored[draft.draftId];
-                writeDraftPromotionScanStateMap(currentUid, stored);
-            }
-        }
-
-        try {
-            await fetch("/api/private/kloner-draft", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                credentials: "include",
-                body: JSON.stringify({
-                    action: "upsert",
-                    draftId: draft.draftId,
-                    clearIssue: true,
-                    draft: {
-                        id: draft.id,
-                        name: draft.name,
-                        createdAt: typeof draft.createdAt === "number" ? draft.createdAt : Date.now(),
-                        sourceUrl: normalized,
-                        retryable: false,
-                        completed: false,
-                    },
-                }),
-            });
-        } catch (err) {
-            console.warn("[firestore] draft retry clear failed", err);
-        }
-
-        try {
-            await retryTrackedUrl(normalized);
-        } finally {
-            setRetryingDraftApps((prev) => {
-                if (!prev[draft.draftId]) return prev;
-                const next = { ...prev };
-                delete next[draft.draftId];
-                return next;
-            });
-        }
-    }, [activeUrlDoc?.url, retryTrackedUrl, targetUrl, user]);
-
-    useEffect(() => {
-        if (!Object.keys(retryingDraftApps).length) return;
-
-        setRetryingDraftApps((prev) => {
-            let changed = false;
-            const next = { ...prev };
-
-            for (const draftId of Object.keys(prev)) {
-                const draft = draftApps.find((item) => item.draftId === draftId || item.id === draftId);
-                const seenOnServer = serverDraftKeysRef.current.has(draftId);
-                if (!draft || !seenOnServer || Boolean(draft.completed)) {
-                    delete next[draftId];
-                    changed = true;
-                }
-            }
-
-            return changed ? next : prev;
-        });
-    }, [draftApps, retryingDraftApps]);
 
     useEffect(() => {
         if (!activeUrlIssueHref) return;
@@ -12573,6 +12878,7 @@ export default function PreviewPage(): JSX.Element {
     const [appExitOfferReason, setAppExitOfferReason] = useState<
         "close" | "back" | "nav" | "outside" | "esc" | null
     >(null);
+    const [focusMiniUrlInputNonce, setFocusMiniUrlInputNonce] = useState(0);
 
     // ✅ rehydrate when key changes (user/render changes)
     useEffect(() => {
@@ -12857,7 +13163,7 @@ export default function PreviewPage(): JSX.Element {
                                 >
                                     <div className="flex shrink-0 items-start justify-between gap-3">
                                         <div>
-                                            <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#f55f2a]">
+                                            <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#FF8D21]">
                                                 Dev only
                                             </div>
                                             <h3 className="mt-1 text-base font-semibold text-neutral-900">
@@ -12915,7 +13221,7 @@ export default function PreviewPage(): JSX.Element {
                                         className="flex w-full items-center justify-between rounded-2xl border border-neutral-200 bg-white px-3 py-2.5 text-left text-sm font-medium text-neutral-800 transition hover:bg-neutral-50"
                                     >
                                         <span>Show trial celebration</span>
-                                        <Sparkles className="h-4 w-4 text-[#f55f2a]" />
+                                        <Sparkles className="h-4 w-4 text-[#FF8D21]" />
                                     </button>
 
                                     <button
@@ -12948,7 +13254,7 @@ export default function PreviewPage(): JSX.Element {
                                         className="flex w-full items-center justify-between rounded-2xl border border-neutral-200 bg-white px-3 py-2.5 text-left text-sm font-medium text-neutral-800 transition hover:bg-neutral-50"
                                     >
                                         <span>Open deploy paywall</span>
-                                        <Rocket className="h-4 w-4 text-[#f55f2a]" />
+                                        <Rocket className="h-4 w-4 text-[#FF8D21]" />
                                     </button>
 
                                     <button
@@ -12960,7 +13266,7 @@ export default function PreviewPage(): JSX.Element {
                                         className="flex w-full items-center justify-between rounded-2xl border border-neutral-200 bg-white px-3 py-2.5 text-left text-sm font-medium text-neutral-800 transition hover:bg-neutral-50"
                                     >
                                         <span>Show top up celebration</span>
-                                        <Sparkles className="h-4 w-4 text-[#f55f2a]" />
+                                        <Sparkles className="h-4 w-4 text-[#FF8D21]" />
                                     </button>
 
                                     <button
@@ -13026,7 +13332,7 @@ export default function PreviewPage(): JSX.Element {
             {checkoutBusy ? (
                 <div className="fixed inset-0 z-[13000] flex items-center justify-center bg-white/70 px-4 backdrop-blur-md">
                     <div className="w-full max-w-sm rounded-[28px] border border-neutral-200 bg-white px-6 py-6 text-center text-neutral-900 shadow-[0_24px_80px_rgba(15,23,42,0.16)]">
-                        <div className="mt-4 flex items-center justify-center gap-2 text-[#f55f2a]">
+                        <div className="mt-4 flex items-center justify-center gap-2 text-[#FF8D21]">
                             <Loader2 className="h-4 w-4 animate-spin" />
                             <p className="text-sm font-semibold">Opening secure Stripe checkout...</p>
                         </div>
@@ -13066,6 +13372,7 @@ export default function PreviewPage(): JSX.Element {
                         hideCaptureQueueStatus={hideCaptureQueueStatus}
                         creationBusy={isAppCreationPending || websiteSubmitBusy}
                         queueActive={captureLocked || retryRescanPending}
+                        focusUrlInputNonce={focusMiniUrlInputNonce}
                     />
                 </section>
 
@@ -13221,12 +13528,21 @@ export default function PreviewPage(): JSX.Element {
                             <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full border border-neutral-200 bg-neutral-50 text-neutral-400 shadow-sm">
                                 <Hammer className="h-5 w-5" />
                             </div>
-                            <div className="mt-3 text-sm font-semibold text-neutral-900">
+                            <div className="mt-3 text-[15px] font-medium tracking-tight text-neutral-900 sm:text-base">
                                 No websites yet
                             </div>
-                            <div className="mt-1 text-xs leading-5 text-neutral-500">
+                            <div className="mt-1 text-sm leading-6 text-neutral-600">
                                 Your first website will show up here after you add one above.
                             </div>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setFocusMiniUrlInputNonce((n) => n + 1);
+                                }}
+                                className="mt-4 inline-flex items-center justify-center rounded-full border border-neutral-200 bg-white px-4 py-2 text-sm font-semibold text-neutral-900 shadow-sm transition hover:border-neutral-300 hover:bg-neutral-50 focus:outline-none focus:ring-2 focus:ring-[rgba(255,141,33,0.24)] focus:ring-offset-2"
+                            >
+                                Add website
+                            </button>
                         </div>
                     ) : null}
 
@@ -13239,7 +13555,6 @@ export default function PreviewPage(): JSX.Element {
                                 (() => {
                                     const draftKey = String((app as any).draftId || app.id || "").trim();
                                     const draftPending = Boolean(draftKey && pendingDraftApps[draftKey]);
-                                    const draftRetrying = Boolean(draftKey && retryingDraftApps[draftKey]);
                                     const draftPromotionScanState = draftKey ? (draftPromotionScanByDraftId[draftKey] || null) : null;
                                     const draftScanPending = isDraftPromotionScanPending(draftPromotionScanState);
                                     return (
@@ -13248,11 +13563,11 @@ export default function PreviewPage(): JSX.Element {
                                     app={app}
                                     isDeleting={!!deletingDraftApp[(app as any).draftId || app.id]}
                                     isArchiving={!!archivingApp[app.id]}
-                                    isPendingCreation={draftPending || draftRetrying || draftScanPending}
+                                    isPendingCreation={draftPending || draftScanPending}
                                     pendingRetryable={false}
                                     pendingStale={false}
-                                    onRetryPendingCreation={() => void retryDraftCreation(app as any)}
-                                    onRetryAppIssue={(issueApp) => retryTrackedUrl(String(issueApp?.url || issueApp?.sourceUrl || ""))}
+                                    onRetryPendingCreation={undefined}
+                                    onRetryAppIssue={undefined}
                                     onClearPendingCreation={undefined}
                                     disableActions={isTrialAccessRevoked || websiteSubmitBusy}
                                     accessLocked={isTrialAccessRevoked}
@@ -13501,7 +13816,7 @@ export default function PreviewPage(): JSX.Element {
                                                         setAppWizardShotsUrl((prev) => (prev || targetUrl || ""));
                                                     }}
                                                     className={`relative w-full rounded-xl border p-4 pb-14 text-left transition ${appWizardSource === "website"
-                                                        ? "border-[#f55f2a] bg-[#f55f2a]/5"
+                                                        ? "border-[#FF8D21] bg-[#FF8D21]/5"
                                                         : "border-neutral-200 bg-white hover:bg-neutral-50"
                                                         }`}
                                                 >
@@ -13522,7 +13837,7 @@ export default function PreviewPage(): JSX.Element {
                                                                 setAppWizardError(null);
                                                             }}
                                                             placeholder="https://example.com"
-                                                            className="w-full rounded-lg border border-neutral-200 bg-white px-2.5 py-2 text-xs text-neutral-800 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-[#f55f2a]/20"
+                                                            className="w-full rounded-lg border border-neutral-200 bg-white px-2.5 py-2 text-xs text-neutral-800 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-[#FF8D21]/20"
                                                         />
                                                         <div className="mt-1 text-[11px] leading-4 text-neutral-500">
                                                             Paste any public URL. If we already scanned it, the existing screenshots will be attached automatically.
@@ -13888,7 +14203,7 @@ export default function PreviewPage(): JSX.Element {
                                                         {appDeployWizardError ? (
                                                             <AlertTriangle className="h-5 w-5 text-amber-600" />
                                                         ) : appDeployWizardBusy ? (
-                                                            <div className="h-4 w-4 animate-spin rounded-full border-2 border-neutral-300 border-t-[rgba(245,95,42,0.95)]" />
+                                                            <div className="h-4 w-4 animate-spin rounded-full border-2 border-neutral-300 border-t-[rgba(255,141,33,0.95)]" />
                                                         ) : appDeployWizardLiveUrl ? (
                                                             <span className="text-base">🎉</span>
                                                         ) : (
@@ -14218,7 +14533,7 @@ export default function PreviewPage(): JSX.Element {
                                                                 placeholder="e.g. kloner-landing, client-site-01"
                                                                 className={`mt-0.5 w-full rounded-full border px-3 py-2 text-sm text-neutral-900 placeholder:text-neutral-400 focus:outline-none focus:ring-2 ${deployWizardError
                                                                     ? "border-red-500 focus:ring-red-500"
-                                                                    : "border-neutral-300 focus:ring-[rgba(245,95,42,0.6)] focus:border-transparent"
+                                                                    : "border-neutral-300 focus:ring-[rgba(255,141,33,0.6)] focus:border-transparent"
                                                                     }`}
                                                             />
                                                             <span className="text-[11px] text-neutral-600">
@@ -14365,7 +14680,7 @@ export default function PreviewPage(): JSX.Element {
                                                             {deployWizardError ? (
                                                                 <AlertTriangle className="h-5 w-5 text-amber-600" />
                                                             ) : deployWizardBusy ? (
-                                                                <div className="h-4 w-4 animate-spin rounded-full border-2 border-neutral-300 border-t-[rgba(245,95,42,0.95)]" />
+                                                                <div className="h-4 w-4 animate-spin rounded-full border-2 border-neutral-300 border-t-[rgba(255,141,33,0.95)]" />
                                                             ) : (
                                                                 <CheckCircle2 className="h-5 w-5 text-emerald-500" />
                                                             )}
@@ -14623,12 +14938,12 @@ export default function PreviewPage(): JSX.Element {
                                                                                 </div>
 
                                                                                 <div className="mt-3 flex justify-center items-baseline gap-2 text-center">
-                                                                                    <span className="text-[24px] font-bold leading-none text-[#f55f2a] sm:text-[28px]">40% off</span>
+                                                                                    <span className="text-[24px] font-bold leading-none text-[#FF8D21] sm:text-[28px]">40% off</span>
                                                                                     <span className="text-[12px] font-medium text-neutral-600 sm:text-[13px]">your first month</span>
                                                                                 </div>
                                                                                 <div className="mt-3 flex justify-center">
-                                                                                    <div className="inline-flex items-center gap-2 rounded-full border border-[#f55f2a33] bg-[#f55f2a10] px-3 py-1.5 text-[12px] font-semibold text-[#c2410c]">
-                                                                                        <span className="inline-flex h-2 w-2 rounded-full bg-[#f55f2a]" />
+                                                                                    <div className="inline-flex items-center gap-2 rounded-full border border-[#FF8D2133] bg-[#FF8D2110] px-3 py-1.5 text-[12px] font-semibold text-[#c86f1f]">
+                                                                                        <span className="inline-flex h-2 w-2 rounded-full bg-[#FF8D21]" />
                                                                                         Offer expires in {step5Time.mm}:{step5Time.ss}
                                                                                     </div>
                                                                                 </div>
@@ -14662,7 +14977,7 @@ export default function PreviewPage(): JSX.Element {
                                                                                     <div className="rounded-2xl px-0 py-1">
                                                                                         <div className="flex items-baseline justify-between gap-3">
                                                                                             <p className="text-sm font-semibold text-neutral-900">Save time on setup</p>
-                                                                                            <p className="text-[12px] font-semibold text-[rgba(245,95,42,1)]">avg 40 hrs</p>
+                                                                                            <p className="text-[12px] font-semibold text-[rgba(255,141,33,1)]">avg 40 hrs</p>
                                                                                         </div>
                                                                                         <p className="mt-1 text-[12px] leading-relaxed text-neutral-600 sm:text-[13px]">
                                                                                             Start from templates instead of blank pages and cut the heavy setup work.
@@ -14672,7 +14987,7 @@ export default function PreviewPage(): JSX.Element {
                                                                                     <div className="rounded-2xl px-0 py-1">
                                                                                         <div className="flex items-baseline justify-between gap-3">
                                                                                             <p className="text-sm font-semibold text-neutral-900">Save money on builds</p>
-                                                                                            <p className="text-[12px] font-semibold text-[rgba(245,95,42,1)]">avg $1000</p>
+                                                                                            <p className="text-[12px] font-semibold text-[rgba(255,141,33,1)]">avg $1000</p>
                                                                                         </div>
                                                                                         <p className="mt-1 text-[12px] leading-relaxed text-neutral-600 sm:text-[13px]">
                                                                                             Ship polished sites without paying premium platform fees for every project.
@@ -14682,7 +14997,7 @@ export default function PreviewPage(): JSX.Element {
                                                                                     <div className="rounded-2xl px-0 py-1">
                                                                                         <div className="flex items-baseline justify-between gap-3">
                                                                                             <p className="text-sm font-semibold text-neutral-900">Boost your output</p>
-                                                                                            <p className="text-[12px] font-semibold text-[rgba(245,95,42,1)]">avg 160 hrs</p>
+                                                                                            {/* <p className="text-[12px] font-semibold text-[rgba(255,141,33,1)]">avg 160 hrs</p> */}
                                                                                         </div>
                                                                                         <p className="mt-1 text-[12px] leading-relaxed text-neutral-600 sm:text-[13px]">
                                                                                             Handle five roles from one place, without extra overhead.
@@ -14792,11 +15107,11 @@ export default function PreviewPage(): JSX.Element {
                 @keyframes dashboard-create-plus-pulse {
                     0%, 100% {
                         transform: scale(1);
-                        box-shadow: 0 0 0 0 rgba(245, 95, 42, 0.14), 0 14px 36px rgba(245, 95, 42, 0.28);
+                        box-shadow: 0 0 0 0 rgba(255, 141, 33, 0.14), 0 14px 36px rgba(255, 141, 33, 0.28);
                     }
                     50% {
                         transform: scale(1.16);
-                        box-shadow: 0 0 0 14px rgba(245, 95, 42, 0.05), 0 20px 50px rgba(245, 95, 42, 0.36);
+                        box-shadow: 0 0 0 14px rgba(255, 141, 33, 0.05), 0 20px 50px rgba(255, 141, 33, 0.36);
                     }
                 }
                 .dashboard-create-plus-pulse {
@@ -14805,10 +15120,10 @@ export default function PreviewPage(): JSX.Element {
                 }
                 @keyframes ghost-generate-pulse {
                     0%, 100% {
-                        box-shadow: 0 24px 80px rgba(245, 95, 42, 0.20);
+                        box-shadow: 0 24px 80px rgba(255, 141, 33, 0.20);
                     }
                     50% {
-                        box-shadow: 0 30px 95px rgba(245, 95, 42, 0.28);
+                        box-shadow: 0 30px 95px rgba(255, 141, 33, 0.28);
                     }
                 }
             `}</style>
@@ -14899,7 +15214,19 @@ export default function PreviewPage(): JSX.Element {
                             }
                             description={
                                 showCreditsPaywall === "screenshot"
-                                    ? "You have used all monthly screenshot credits. Upgrade to capture more pages and monitor more sites."
+                                    ? (
+                                        <>
+                                            You have used all monthly screenshot credits.{" "}
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowCreditsPaywall("screenshot")}
+                                                className="font-bold underline underline-offset-4 decoration-current"
+                                            >
+                                                Upgrade
+                                            </button>{" "}
+                                            to capture more pages and monitor more sites.
+                                        </>
+                                    )
                                     : showCreditsPaywall === "preview"
                                         ? "You have used all monthly generation credits. Upgrade to websites and unlock one-click deploy."
                                         : "Publish your website live from the editor. Upgrade to unlock one-click deploy and higher monthly credits."
@@ -14915,7 +15242,7 @@ export default function PreviewPage(): JSX.Element {
                     showRecoveryCheckoutLoader ? (
                         <div className="fixed inset-0 z-[13000] flex items-center justify-center bg-white/70 px-4 backdrop-blur-md">
                             <div className="w-full max-w-sm rounded-[28px] border border-neutral-200 bg-white px-6 py-6 text-center text-neutral-900 shadow-[0_24px_80px_rgba(15,23,42,0.16)]">
-                                <div className="mt-4 flex items-center justify-center gap-2 text-[#f55f2a]">
+                                <div className="mt-4 flex items-center justify-center gap-2 text-[#FF8D21]">
                                     <Loader2 className="h-4 w-4 animate-spin" />
                                     <p className="text-sm font-semibold">Opening secure Stripe checkout...</p>
                                 </div>

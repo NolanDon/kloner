@@ -124,11 +124,11 @@ export default function HeroContent({
               <button
                 type="submit"
                 disabled={!url || !!error}
-                className="inline-flex min-h-[48px] w-12 shrink-0 items-center justify-center rounded-full bg-[#f26522] text-white transition-all active:scale-95 hover:bg-[#ff7a3d] disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto sm:px-5"
+                className="inline-flex min-h-[48px] w-12 shrink-0 items-center justify-center rounded-full bg-[#FF8D21] text-white transition-all active:scale-95 hover:bg-[#D96E11] disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto sm:px-5"
                 aria-label="Clone website from URL"
               >
                 <ArrowRightSquare className="h-5 w-5 sm:hidden" aria-hidden />
-                <span className="hidden text-sm font-semibold sm:inline sm:text-base">Clone</span>
+                <span className="hidden text-sm sm:inline sm:text-base">Clone</span>
               </button>
             </div>
           </div>

@@ -4,7 +4,7 @@ import NavBar from "@/components/NavBar";
 import Footer from "@/components/Footer";
 import { useState } from "react";
 
-const ACCENT = "#f55f2a";
+const ACCENT = "#FF8D21";
 
 export default function ContactClient(): JSX.Element {
   const [busy, setBusy] = useState(false);

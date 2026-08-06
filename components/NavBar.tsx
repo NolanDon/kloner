@@ -29,7 +29,7 @@ import Image from "next/image";
 import logo from "@/public/images/logo.png";
 import { useUrlOverlay } from "@/components/UrlOverlayProvider";
 
-const ACCENT = "#f55f2a";
+const ACCENT = "#FF8D21";
 
 type NavItem = { label: string; href: string };
 type BrandShape = { nav: NavItem[]; cta: { href: string } };
@@ -403,7 +403,7 @@ export default function NavBar(): JSX.Element {
                           setMOpen(false);
                           openUrlOverlay();
                         }}
-                        className="inline-flex items-center justify-center gap-2 rounded-2xl border border-[#F55F2A] bg-[#F55F2A] px-3 py-3 text-sm font-semibold text-white hover:bg-[#E04E1B]"
+                        className="inline-flex items-center justify-center gap-2 rounded-2xl border border-[#FF8D21] bg-[#FF8D21] px-3 py-3 text-sm font-semibold text-white hover:bg-[#D96E11]"
                       >
                         <ScanSearch className="h-4 w-4" />
                         Start project
@@ -559,7 +559,7 @@ function MegaPanel({ active }: { active: NavItem | null }): JSX.Element {
           <AnimatedPromoCard />
           <div className="p-4">
             <div className="text-xs text-neutral-500">Clone any site</div>
-            <div className="mt-1 text-sm">Drop a link or describe it. Customize. Deploy.</div>
+            <div className="mt-1 text-sm">Drop a link. Customize. Deploy.</div>
           </div>
         </Link>
 

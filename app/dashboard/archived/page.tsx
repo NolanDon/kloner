@@ -96,7 +96,7 @@ function ArchiveCard({ r, onUnarchive, onDiscard, isDeleting }: ArchiveCardProps
                 <button
                     type="button"
                     onClick={() => onUnarchive(r.id)}
-                    className="shrink-0 rounded-md border border-amber-500 bg-amber-50 px-3 py-1 text-xs font-medium text-amber-900 hover:bg-amber-100"
+                    className="shrink-0 rounded-md border border-neutral-500 px-3 py-1 text-xs font-medium text-neutral-500"
                     title="Move this preview back to your main dashboard"
                     disabled={isDeleting}
                 >
@@ -137,16 +137,16 @@ function ArchivedAppCard({
                 aria-label="Delete app"
                 title="Delete this app"
                 className={[
-                    "absolute -right-3 -top-3 z-40 inline-flex h-6 w-6 items-center justify-center rounded-full border shadow-sm",
+                    "absolute right-2 top-2 z-40 inline-flex h-6 w-6 items-center justify-center rounded-full border shadow-sm",
                     "transition-all duration-150",
                     "bg-white/85 border-neutral-200 text-neutral-400",
-                    "hover:bg-red-600 hover:border-red-600 hover:text-white hover:shadow-md hover:scale-[1.04]",
+                    "bg-red-600 border-red-600 hover:text-white hover:shadow-md hover:scale-[1.04]",
                     "active:scale-[0.98]",
                     "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300 focus-visible:ring-offset-2",
                     "disabled:opacity-60 disabled:pointer-events-none",
                 ].join(" ")}
             >
-                <DeleteIcon className="h-3.5 w-3.5 transition-colors" />
+                <DeleteIcon className="h-3.5 w-3.5 text-red-600 transition-colors" />
             </button>
 
             <div className="relative grid h-40 w-full place-items-center bg-gradient-to-br from-neutral-50 to-neutral-100">
@@ -175,7 +175,7 @@ function ArchivedAppCard({
                 <button
                     type="button"
                     onClick={() => onUnarchive(app.id)}
-                    className="shrink-0 rounded-md border border-amber-500 bg-amber-50 px-3 py-1 text-xs font-medium text-amber-900 hover:bg-amber-100"
+                    className="shrink-0 rounded-full px-3 py-1 text-xs text-white bg-accent hover:bg-accent/90"
                     title="Move this app back to your main dashboard"
                     disabled={isDeleting}
                 >
@@ -385,9 +385,7 @@ export default function ArchivedPage() {
                     {loading ? (
                         <div className="mt-6 text-sm text-neutral-500">Loading…</div>
                     ) : renders.length === 0 ? (
-                        <div className="mt-6 text-sm text-neutral-500">
-                            No archived previews yet.
-                        </div>
+                        <div></div>
                     ) : (
                         <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                             {renders.map((r) => {

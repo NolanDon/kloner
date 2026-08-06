@@ -52,8 +52,8 @@ export default function BlogIndexPage() {
                   className={[
                     "group relative overflow-hidden rounded-2xl border border-black/10 bg-white p-6 shadow-sm",
                     "transition duration-200 hover:-translate-y-0.5 hover:shadow-md",
-                    "hover:border-[rgba(245,95,42,0.35)]",
-                    "focus:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(245,95,42,0.25)] focus-visible:ring-offset-2",
+                    "hover:border-[rgba(255,141,33,0.35)]",
+                    "focus:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(255,141,33,0.25)] focus-visible:ring-offset-2",
                   ].join(" ")}
                 >
                   <div
@@ -61,7 +61,7 @@ export default function BlogIndexPage() {
                     aria-hidden
                     style={{
                       background:
-                        "radial-gradient(1200px circle at 30% -20%, rgba(245,95,42,0.14), transparent 55%)",
+                        "radial-gradient(1200px circle at 30% -20%, rgba(255,141,33,0.14), transparent 55%)",
                     }}
                   />
 
@@ -76,7 +76,7 @@ export default function BlogIndexPage() {
                         </span>
                       </div>
 
-                      <span className="text-[11px] font-semibold text-[rgba(245,95,42,1)]">
+                      <span className="text-[11px] font-semibold text-[rgba(255,141,33,1)]">
                         Read →
                       </span>
                     </div>
@@ -90,7 +90,7 @@ export default function BlogIndexPage() {
                       {p.tags.slice(0, 4).map((t) => (
                         <span
                           key={`${p.slug}-${t}`}
-                          className="rounded-full border border-[rgba(245,95,42,0.22)] bg-[rgba(245,95,42,0.08)] px-2.5 py-1 text-[11px] font-medium text-[rgba(245,95,42,1)]"
+                          className="rounded-full border border-[rgba(255,141,33,0.22)] bg-[rgba(255,141,33,0.08)] px-2.5 py-1 text-[11px] font-medium text-[rgba(255,141,33,1)]"
                         >
                           {t}
                         </span>

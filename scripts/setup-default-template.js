@@ -83,8 +83,8 @@ export function getSupabaseBrowserClient() {
   --text: rgba(255, 255, 255, 0.92);
   --muted: rgba(255, 255, 255, 0.68);
   --muted2: rgba(255, 255, 255, 0.52);
-  --accent: #f55f2a;
-  --accent2: #ff7a45;
+  --accent: #FF8D21;
+  --accent2: #D96E11;
   --shadow: 0 18px 55px rgba(0,0,0,0.45);
   --radius: 18px;
 }
@@ -96,7 +96,7 @@ body {
   margin: 0;
   color: var(--text);
   background:
-    radial-gradient(1000px 600px at 20% 10%, rgba(245, 95, 42, 0.22), transparent 55%),
+    radial-gradient(1000px 600px at 20% 10%, rgba(255, 141, 33, 0.22), transparent 55%),
     radial-gradient(900px 500px at 85% 30%, rgba(124, 58, 237, 0.18), transparent 55%),
     linear-gradient(180deg, var(--bg0), var(--bg1));
   font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
@@ -142,7 +142,7 @@ a { color: inherit; }
   height: 12px;
   border-radius: 999px;
   background: linear-gradient(135deg, var(--accent), var(--accent2));
-  box-shadow: 0 0 0 6px rgba(245, 95, 42, 0.14);
+  box-shadow: 0 0 0 6px rgba(255, 141, 33, 0.14);
 }
 
 .kloner-meta {
@@ -201,8 +201,8 @@ a { color: inherit; }
 .btn:active { transform: translateY(0px); }
 
 .btn-primary {
-  border-color: rgba(245, 95, 42, 0.55);
-  background: linear-gradient(135deg, rgba(245, 95, 42, 0.95), rgba(255, 122, 69, 0.9));
+  border-color: rgba(255, 141, 33, 0.55);
+  background: linear-gradient(135deg, rgba(255, 141, 33, 0.95), rgba(255, 122, 69, 0.9));
   color: rgba(0,0,0,0.86);
 }
 
@@ -249,8 +249,8 @@ a { color: inherit; }
   align-items: center;
   justify-content: center;
   border-radius: 999px;
-  background: rgba(245, 95, 42, 0.16);
-  border: 1px solid rgba(245, 95, 42, 0.35);
+  background: rgba(255, 141, 33, 0.16);
+  border: 1px solid rgba(255, 141, 33, 0.35);
   color: rgba(255,255,255,0.88);
   font-size: 12px;
   font-weight: 700;

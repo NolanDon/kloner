@@ -272,7 +272,7 @@ export function AppBuilderEditorTour({
 
             <div
                 ref={highlightRef}
-                className="absolute hidden border-2 border-[#f55f2a] shadow-[0_14px_30px_rgba(245,95,42,0.28)]"
+                className="absolute hidden border-2 border-[#FF8D21] shadow-[0_14px_30px_rgba(255,141,33,0.28)]"
                 aria-hidden="true"
             />
 

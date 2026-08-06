@@ -92,7 +92,7 @@ export function AnimatedCreditCard() {
             <motion.div
                 ref={ref}
                 className="
-                    relative select-none flex h-full w-[72vw] max-w-[300px] flex-col overflow-hidden rounded-xl md:max-w-[320px] md:rounded-[20px] shadow-[0_26px_70px_-18px_rgba(245,95,42,0.38),0_18px_42px_-18px_rgba(253,186,116,0.28)] ring-1 ring-white/20 will-change-transform cursor-pointer"
+                    relative select-none flex h-full w-[72vw] max-w-[300px] flex-col overflow-hidden rounded-xl md:max-w-[320px] md:rounded-[20px] shadow-[0_26px_70px_-18px_rgba(255,141,33,0.38),0_18px_42px_-18px_rgba(253,186,116,0.28)] ring-1 ring-white/20 will-change-transform cursor-pointer"
                 style={{
                     transformStyle: "preserve-3d",
                     rotateX: finalRotX,
@@ -104,7 +104,7 @@ export function AnimatedCreditCard() {
                 <div
                     className="
             absolute inset-0
-                    bg-[linear-gradient(135deg,#ffd28a_0%,#ffb347_32%,#f97316_63%,#2b160d_100%)]
+                    bg-[linear-gradient(135deg,#ffd28a_0%,#ffb347_32%,#f3b27c_63%,#2b160d_100%)]
           "
                 />
 

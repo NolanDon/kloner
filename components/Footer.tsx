@@ -111,7 +111,7 @@ export default function Footer() {
               "
               style={{
                 backgroundImage:
-                  "linear-gradient(90deg, #7a2e18 0%, #d44b1c 30%, #ff6f3d 60%, #ffb36b 100%)",
+                  "linear-gradient(90deg, #a86f49 0%, #df9d64 30%, #f1ba7b 60%, #f8dcba 100%)",
                 backgroundSize: "100% 100%",
                 backgroundRepeat: "no-repeat",
               }}
@@ -259,7 +259,7 @@ function FooterSection({
                 <Chevron />
                 <FooterLink item={item} />
                 {note && note.atIndex === i ? (
-                  <span className="ml-2 text-[11px] md:text-[11px] text-[#ff6f3d] whitespace-nowrap">
+                  <span className="ml-2 text-[11px] md:text-[11px] text-[#f1ba7b] whitespace-nowrap">
                     [{note.text}]
                   </span>
                 ) : null}
@@ -276,7 +276,7 @@ function Chevron() {
   return (
     <svg
       viewBox="0 0 24 24"
-      className="mt-[2px] h-4 w-4 text-[#ff6f3d] shrink-0"
+      className="mt-[2px] h-4 w-4 text-[#f1ba7b] shrink-0"
       stroke="currentColor"
       fill="none"
       strokeWidth="2.2"

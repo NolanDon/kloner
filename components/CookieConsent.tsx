@@ -9,12 +9,12 @@ const CONSENT_STORAGE_KEY = "kloner.cookieConsent.v1";
 const GA_ID = "G-FVKJJK0379";
 const NON_ESSENTIAL_COOKIE_NAMES = ["_ga", "_gid", "_gat", "_gcl_au", "kl_aff_ref", "kl_aff_code"];
 
-export type CookieConsentStatus = "unknown" | "accepted" | "rejected";
+export type CookieConsentStatus = "unknown" | "accepted" | "necessary";
 
 type CookieConsentContextValue = {
     status: CookieConsentStatus;
     acceptNecessaryCookies: () => void;
-    rejectNecessaryCookies: () => void;
+    acceptNecessaryOnlyCookies: () => void;
     openCookieSettings: () => void;
 };
 
@@ -25,7 +25,7 @@ function readStoredConsent(): CookieConsentStatus {
     try {
         const raw = window.localStorage.getItem(CONSENT_STORAGE_KEY);
         if (raw === "accepted") return "accepted";
-        if (raw === "rejected") return "rejected";
+        if (raw === "necessary" || raw === "rejected") return "necessary";
     } catch {
         // ignore storage failures
     }
@@ -93,10 +93,10 @@ export function CookieConsentProvider({ children }: { children: React.ReactNode 
         setStatus("accepted");
     };
 
-    const rejectNecessaryCookies = () => {
-        persistConsent("rejected");
+    const acceptNecessaryOnlyCookies = () => {
+        persistConsent("necessary");
         clearNonEssentialTrackingState();
-        setStatus("rejected");
+        setStatus("necessary");
     };
 
     const openCookieSettings = () => {
@@ -111,7 +111,7 @@ export function CookieConsentProvider({ children }: { children: React.ReactNode 
     };
 
     const value = useMemo(
-        () => ({ status, acceptNecessaryCookies, rejectNecessaryCookies, openCookieSettings }),
+        () => ({ status, acceptNecessaryCookies, acceptNecessaryOnlyCookies, openCookieSettings }),
         [status],
     );
 
@@ -127,7 +127,7 @@ export function useCookieConsent() {
 }
 
 export function CookieConsentBanner() {
-    const { status, acceptNecessaryCookies, rejectNecessaryCookies } = useCookieConsent();
+    const { status, acceptNecessaryCookies, acceptNecessaryOnlyCookies } = useCookieConsent();
     const [isMounted, setIsMounted] = useState(false);
 
     useEffect(() => {
@@ -145,10 +145,10 @@ export function CookieConsentBanner() {
                         Cookie check
                     </div>
                     <div className="mt-1 text-sm font-semibold text-neutral-900">
-                        Necessary cookies keep login, previews, and routing working.
+                        Essential cookies keep login, previews, routing, and app scope working.
                     </div>
                     <div className="mt-1 text-sm text-neutral-600">
-                        Analytics and affiliate cookies stay off unless you accept. Rejecting limits some features.
+                        Analytics and affiliate cookies stay off unless you allow them. You can continue with essential cookies only.
                     </div>
                 </div>
 
@@ -156,16 +156,16 @@ export function CookieConsentBanner() {
                     <button
                         type="button"
                         onClick={acceptNecessaryCookies}
-                        className="rounded-full bg-[#f55f2a] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:opacity-95"
+                        className="rounded-full bg-[#FF8D21] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:opacity-95"
                     >
-                        Accept necessary cookies
+                        Accept all cookies
                     </button>
                     <button
                         type="button"
-                        onClick={rejectNecessaryCookies}
+                        onClick={acceptNecessaryOnlyCookies}
                         className="text-sm font-medium text-neutral-600 underline decoration-neutral-400 underline-offset-4 transition hover:text-neutral-900"
                     >
-                        Reject
+                        No, just essential
                     </button>
                 </div>
             </div>

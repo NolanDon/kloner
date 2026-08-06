@@ -17,7 +17,7 @@
     color: #171717;
     margin-bottom: 8px;
     padding-bottom: 2px;
-    border-bottom: 2px solid #F55F2A;
+    border-bottom: 2px solid #FF8D21;
     display: inline-block;
     letter-spacing: -0.01em;
 }
@@ -38,7 +38,7 @@
 }
 
 .driver-popover-navigation-btns button {
-    background-color: #F55F2A;
+    background-color: #FF8D21;
     color: #fff;
     border: none;
     border-radius: 8px;
@@ -52,19 +52,19 @@
 }
 
 .driver-popover-navigation-btns button:hover {
-    background-color: #e04d1a;
+    background-color: #e09a61;
     transform: translateY(-1px) scale(1.03);
 }
 
 .driver-popover-prev-btn {
     background-color: #fff !important;
-    color: #F55F2A !important;
-    border: 1px solid #F55F2A !important;
+    color: #FF8D21 !important;
+    border: 1px solid #FF8D21 !important;
 }
 
 .driver-popover-prev-btn:hover {
     background-color: #fff5f0 !important;
-    color: #e04d1a !important;
+    color: #e09a61 !important;
 }
 
 .driver-popover-close-btn {

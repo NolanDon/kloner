@@ -67,7 +67,7 @@ export function installKlonerIframeApi(
     :root {
       --amber-50:#FFFBEB;
       --amber-200:#FDE68A;
-      --amber-700:#B45309;
+      --amber-700:#9f6f45;
       --rose-50:#FFF1F2;
       --rose-200:#FECDD3;
       --rose-700:#BE123C;

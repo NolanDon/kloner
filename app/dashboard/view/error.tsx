@@ -46,7 +46,7 @@ export default function DashboardViewError({
                 <button
                     type="button"
                     onClick={() => reset()}
-                    className="rounded-lg bg-[#f55f2a] px-4 py-2 text-sm font-semibold text-white hover:opacity-95"
+                    className="rounded-lg bg-[#FF8D21] px-4 py-2 text-sm font-semibold text-white hover:opacity-95"
                 >
                     Retry
                 </button>

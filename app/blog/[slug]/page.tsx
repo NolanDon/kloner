@@ -125,8 +125,8 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
                     href={`/blog/${p.slug}`}
                     className={[
                       "group rounded-2xl border border-black/10 bg-white px-4 py-3 shadow-sm",
-                      "transition hover:-translate-y-0.5 hover:shadow-md hover:border-[rgba(245,95,42,0.35)]",
-                      "focus:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(245,95,42,0.25)] focus-visible:ring-offset-2",
+                      "transition hover:-translate-y-0.5 hover:shadow-md hover:border-[rgba(255,141,33,0.35)]",
+                      "focus:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(255,141,33,0.25)] focus-visible:ring-offset-2",
                     ].join(" ")}
                   >
                     <div className="text-sm font-semibold text-neutral-900">{p.title}</div>

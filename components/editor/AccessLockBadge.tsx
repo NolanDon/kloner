@@ -35,7 +35,7 @@ export function AccessLockBadge({
                 title={hint}
                 aria-label={hint}
             >
-                <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-[rgba(245,95,42,0.12)] text-[#f55f2a]">
+                <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-[rgba(255,141,33,0.12)] text-[#FF8D21]">
                     <Lock className="h-3.5 w-3.5" />
                 </span>
                 <span className="flex min-w-0 flex-col items-start leading-tight">

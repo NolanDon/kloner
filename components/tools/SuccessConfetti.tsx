@@ -122,7 +122,7 @@ export default function SuccessConfetti({ open, title, message, onDismiss }: Suc
               </div>
 
               <div>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#f55f2a]">Success</p>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#FF8D21]">Success</p>
                 <h3 className="mt-1 text-base font-semibold text-neutral-900">{title}</h3>
                 <p className="mt-1 text-sm leading-6 text-neutral-600">{message}</p>
               </div>

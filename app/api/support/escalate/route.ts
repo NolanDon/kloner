@@ -28,7 +28,7 @@ function buildEscalationHtml(args: {
     lastMessage?: string | null;
     whenIso: string;
 }) {
-    const accent = "#f55f2a";
+    const accent = "#FF8D21";
     const dark = "#111827";
     const muted = "#6b7280";
 

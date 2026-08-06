@@ -62,7 +62,7 @@ export default function ParallaxTypeHero({
                 <div className="absolute -inset-[6vh]">
                     <div className="relative h-full w-full">
                         <Image
-                            src="/images/hero_bg.jpg"
+                            src="/images/hero_bg.png"
                             alt="Hero background"
                             fill
                             priority={false}

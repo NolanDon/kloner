@@ -23,7 +23,7 @@ import { ensureSessionAndCsrf } from "@/lib/auth-client";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import { useModal } from "@/components/ui/ModalContext";
 
-const ACCENT = "#f55f2a";
+const ACCENT = "#FF8D21";
 const VERCEL_INTEGRATION_SLUG =
     process.env.NEXT_PUBLIC_VERCEL_INTEGRATION_SLUG || "kloner";
 const IS_DEV = process.env.NODE_ENV !== "production";
@@ -1151,7 +1151,7 @@ export default function SettingsPage(): JSX.Element {
         tier === "agency"
             ? "bg-violet-50 text-violet-700 border-violet-200"
             : tier === "pro"
-                ? "bg-[rgba(245,95,42,0.08)] text-[rgba(245,95,42,1)] border-[rgba(245,95,42,0.4)]"
+                ? "bg-[rgba(255,141,33,0.08)] text-[rgba(255,141,33,1)] border-[rgba(255,141,33,0.4)]"
                 : "bg-neutral-100 text-neutral-600 border-neutral-200";
 
     const stripeStatusLabel = billingState === "trial_cancelled" ? "free" : stripeStatus ?? "no active subscription";
@@ -1567,7 +1567,7 @@ export default function SettingsPage(): JSX.Element {
                                             href="https://vercel.com/docs/vercel-blob/server-upload"
                                             target="_blank"
                                             rel="noreferrer"
-                                            className="mt-2 inline-flex text-xs font-medium text-[rgba(245,95,42,1)] hover:underline"
+                                            className="mt-2 inline-flex text-xs font-medium text-[rgba(255,141,33,1)] hover:underline"
                                         >
                                             View setup guide
                                         </a>
@@ -1579,7 +1579,7 @@ export default function SettingsPage(): JSX.Element {
                                             value={vercelBlobTokenDraft}
                                             onChange={(e) => setVercelBlobTokenDraft(e.target.value)}
                                             placeholder="vercel_blob_rw_..."
-                                            className="mt-2 w-full rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm text-neutral-900 placeholder:text-neutral-400 focus:border-[rgba(245,95,42,0.55)] focus:outline-none focus:ring-2 focus:ring-[rgba(245,95,42,0.18)]"
+                                            className="mt-2 w-full rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm text-neutral-900 placeholder:text-neutral-400 focus:border-[rgba(255,141,33,0.55)] focus:outline-none focus:ring-2 focus:ring-[rgba(255,141,33,0.18)]"
                                         />
 
                                         <div className="mt-2 flex flex-wrap items-center gap-2">

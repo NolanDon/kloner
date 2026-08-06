@@ -1,5 +1,5 @@
 import { db } from "@/lib/firebase";
-import { doc, runTransaction, serverTimestamp, collection, addDoc } from "firebase/firestore";
+import { doc, runTransaction, serverTimestamp, collection, addDoc, setDoc, increment, arrayUnion } from "firebase/firestore";
 
 export type ExportAnalyticsUser = {
     uid?: string;
@@ -306,82 +306,23 @@ export async function recordEditorSessionAnalytics(
 
         const now = serverTimestamp();
 
-        // 1) Aggregate doc
-        await runTransaction(db, async (tx) => {
-            const snap = await tx.get(editorRef);
-            const data = (snap.data() || {}) as Record<string, any>;
-
-            const prevSessionCount =
-                typeof data.editorSessionCount === "number"
-                    ? data.editorSessionCount
-                    : 0;
-
-            const prevTotalMs =
-                typeof data.editorSessionTotalMs === "number"
-                    ? data.editorSessionTotalMs
-                    : 0;
-
-            const prevTotalMinutes =
-                typeof data.editorSessionTotalMinutes === "number"
-                    ? data.editorSessionTotalMinutes
-                    : 0;
-
-            const safeNum = (v: any) =>
-                typeof v === "number" && Number.isFinite(v) ? v : 0;
-
-            const prevTotals = {
-                editorSaveTotal: safeNum(data.editorSaveTotal),
-                editorExportTotal: safeNum(data.editorExportTotal),
-                editorAutosaveTotal: safeNum(data.editorAutosaveTotal),
-                editorPageSwitchTotal: safeNum(data.editorPageSwitchTotal),
-                editorDeviceSwitchTotal: safeNum(data.editorDeviceSwitchTotal),
-                editorModeSwitchTotal: safeNum(data.editorModeSwitchTotal),
-                editorArchiveTotal: safeNum(data.editorArchiveTotal),
-                editorRestoreTotal: safeNum(data.editorRestoreTotal),
-                editorHistoryRestoreTotal: safeNum(data.editorHistoryRestoreTotal),
-
-                // NEW totals
-                editorHistoryClearTotal: safeNum(data.editorHistoryClearTotal),
-                editorHistoryDeleteTotal: safeNum(data.editorHistoryDeleteTotal),
-
-                editorAiEditTotal: safeNum(data.editorAiEditTotal),
-                editorAiApplyTotal: safeNum(data.editorAiApplyTotal),
-                editorAiMiniToolbarTotal: safeNum(data.editorAiMiniToolbarTotal),
-            };
-
-            const totalsPatch = {
-                editorSaveTotal: prevTotals.editorSaveTotal + c.save,
-                editorExportTotal: prevTotals.editorExportTotal + c.export,
-                editorAutosaveTotal: prevTotals.editorAutosaveTotal + c.autosave,
-                editorPageSwitchTotal: prevTotals.editorPageSwitchTotal + c.pageSwitch,
-                editorDeviceSwitchTotal: prevTotals.editorDeviceSwitchTotal + c.deviceSwitch,
-                editorModeSwitchTotal: prevTotals.editorModeSwitchTotal + c.modeSwitch,
-                editorArchiveTotal: prevTotals.editorArchiveTotal + c.archive,
-                editorRestoreTotal: prevTotals.editorRestoreTotal + c.restore,
-                editorHistoryRestoreTotal: prevTotals.editorHistoryRestoreTotal + c.historyRestore,
-
-                // NEW totals patch
-                editorHistoryClearTotal: prevTotals.editorHistoryClearTotal + c.historyClear,
-                editorHistoryDeleteTotal: prevTotals.editorHistoryDeleteTotal + c.historyDelete,
-
-                editorAiEditTotal: prevTotals.editorAiEditTotal + c.aiEdit,
-                editorAiApplyTotal: prevTotals.editorAiApplyTotal + c.aiApply,
-                editorAiMiniToolbarTotal: prevTotals.editorAiMiniToolbarTotal + c.aiMiniToolbar,
-            };
-
-            const basePatch = {
+        // Best-effort aggregate doc write. Avoid transaction reads here so editor navigation
+        // can't trip over Firestore watch state during route transitions.
+        await setDoc(
+            editorRef,
+            {
                 updatedAt: now,
                 endedAt: now,
 
                 durationMs: safeDurationMs,
-                editorSessionTotalMs: prevTotalMs + safeDurationMs,
+                editorSessionTotalMs: increment(safeDurationMs),
 
                 durationMinutes,
-                editorSessionTotalMinutes: prevTotalMinutes + durationMinutes,
+                editorSessionTotalMinutes: increment(durationMinutes),
 
                 reason,
 
-                editorSessionCount: prevSessionCount + 1,
+                editorSessionCount: increment(1),
 
                 saveCount: c.save,
                 exportCount: c.export,
@@ -406,34 +347,23 @@ export async function recordEditorSessionAnalytics(
                 lastSessionEndedAt: now,
                 lastSessionDurationMinutes: durationMinutes,
 
-                ...totalsPatch,
-            };
-
-            if (!snap.exists()) {
-                tx.set(
-                    editorRef,
-                    {
-                        createdAt: now,
-                        ...basePatch,
-                    },
-                    { merge: true },
-                );
-            } else {
-                tx.set(editorRef, basePatch, { merge: true });
-            }
-
-            const userRef = doc(db, "kloner_users", uid);
-            tx.set(
-                userRef,
-                {
-                    lastVisitAt: now,
-                    lastSessionEndedAt: now,
-                    lastSessionDurationMinutes: durationMinutes,
-                    lastSessionReason: reason,
-                },
-                { merge: true },
-            );
-        });
+                editorSaveTotal: increment(c.save),
+                editorExportTotal: increment(c.export),
+                editorAutosaveTotal: increment(c.autosave),
+                editorPageSwitchTotal: increment(c.pageSwitch),
+                editorDeviceSwitchTotal: increment(c.deviceSwitch),
+                editorModeSwitchTotal: increment(c.modeSwitch),
+                editorArchiveTotal: increment(c.archive),
+                editorRestoreTotal: increment(c.restore),
+                editorHistoryRestoreTotal: increment(c.historyRestore),
+                editorHistoryClearTotal: increment(c.historyClear),
+                editorHistoryDeleteTotal: increment(c.historyDelete),
+                editorAiEditTotal: increment(c.aiEdit),
+                editorAiApplyTotal: increment(c.aiApply),
+                editorAiMiniToolbarTotal: increment(c.aiMiniToolbar),
+            },
+            { merge: true },
+        );
 
         // 2) Append-only per-session document
         try {
@@ -534,75 +464,44 @@ export async function recordAppBuilderSessionAnalytics(
 
         const now = serverTimestamp();
 
-        await runTransaction(db, async (tx) => {
-            const snap = await tx.get(appBuilderRef);
-            const data = (snap.data() || {}) as Record<string, any>;
-
-            const safeNum = (v: any) =>
-                typeof v === "number" && Number.isFinite(v) ? v : 0;
-
-            const prevSessionCount = safeNum(data.appBuilderSessionCount);
-            const prevTotalMs = safeNum(data.appBuilderSessionTotalMs);
-            const prevTotalMinutes = safeNum(data.appBuilderSessionTotalMinutes);
-            const prevAiTotal = safeNum(data.appBuilderAiUserMessageTotal);
-            const prevViewSwitchTotal = safeNum(data.appBuilderViewSwitchTotal);
-            const prevSessionsWithSupabase = safeNum(data.appBuilderSessionsWithSupabaseCount);
-            const prevSessionsWithVercel = safeNum(data.appBuilderSessionsWithVercelCount);
-            const prevSessionsWithStripe = safeNum(data.appBuilderSessionsWithStripeCount);
-
-            const nextSessionCount = prevSessionCount + 1;
-            const nextTotalMs = prevTotalMs + safeDurationMs;
-            const nextTotalMinutes = prevTotalMinutes + durationMinutes;
-            const nextAvgMinutes = nextSessionCount > 0 ? Math.round((nextTotalMinutes / nextSessionCount) * 10) / 10 : 0;
-
-            const basePatch = {
+        await setDoc(
+            appBuilderRef,
+            {
                 updatedAt: now,
                 appBuilderLastSessionEndedAt: now,
                 appBuilderLastSessionReason: reason,
                 appBuilderLastSessionDurationMs: safeDurationMs,
                 appBuilderLastSessionDurationMinutes: durationMinutes,
 
-                appBuilderSessionCount: nextSessionCount,
-                appBuilderSessionTotalMs: nextTotalMs,
-                appBuilderSessionTotalMinutes: nextTotalMinutes,
-                appBuilderAvgSessionMinutes: nextAvgMinutes,
+                appBuilderSessionCount: increment(1),
+                appBuilderSessionTotalMs: increment(safeDurationMs),
+                appBuilderSessionTotalMinutes: increment(durationMinutes),
 
                 appBuilderAiUserMessageCount: c.aiUserMessagesSent,
                 appBuilderViewSwitchCount: c.viewSwitchCount,
 
-                appBuilderAiUserMessageTotal: prevAiTotal + c.aiUserMessagesSent,
-                appBuilderViewSwitchTotal: prevViewSwitchTotal + c.viewSwitchCount,
+                appBuilderAiUserMessageTotal: increment(c.aiUserMessagesSent),
+                appBuilderViewSwitchTotal: increment(c.viewSwitchCount),
 
                 appBuilderLastAppId: appId,
                 appBuilderLastSupabaseConnected: integrationSnapshot.supabaseConnected,
                 appBuilderLastVercelConnected: integrationSnapshot.vercelConnected,
                 appBuilderLastStripeConfigured: integrationSnapshot.stripeConfigured,
 
-                appBuilderSessionsWithSupabaseCount:
-                    prevSessionsWithSupabase + (integrationSnapshot.supabaseConnected ? 1 : 0),
-                appBuilderSessionsWithVercelCount:
-                    prevSessionsWithVercel + (integrationSnapshot.vercelConnected ? 1 : 0),
-                appBuilderSessionsWithStripeCount:
-                    prevSessionsWithStripe + (integrationSnapshot.stripeConfigured ? 1 : 0),
-
-                appBuilderAppIdsTouched: Array.from(
-                    new Set([...(Array.isArray(data.appBuilderAppIdsTouched) ? data.appBuilderAppIdsTouched : []), appId]),
+                appBuilderSessionsWithSupabaseCount: increment(
+                    integrationSnapshot.supabaseConnected ? 1 : 0,
                 ),
-            };
+                appBuilderSessionsWithVercelCount: increment(
+                    integrationSnapshot.vercelConnected ? 1 : 0,
+                ),
+                appBuilderSessionsWithStripeCount: increment(
+                    integrationSnapshot.stripeConfigured ? 1 : 0,
+                ),
 
-            if (!snap.exists()) {
-                tx.set(
-                    appBuilderRef,
-                    {
-                        createdAt: now,
-                        ...basePatch,
-                    },
-                    { merge: true },
-                );
-            } else {
-                tx.set(appBuilderRef, basePatch, { merge: true });
-            }
-        });
+                appBuilderAppIdsTouched: arrayUnion(appId),
+            },
+            { merge: true },
+        );
 
         try {
             const sessionsCol = collection(

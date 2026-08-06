@@ -215,7 +215,7 @@ export default function PreviewDashboard({
                     <button
                         type="button"
                         onClick={openUrlOverlay}
-                        className="group inline-flex items-center rounded-full bg-accent px-4 py-2 text-sm text-white mt-5 whitespace-nowrap transition-[padding] duration-200 ease-out"
+                        className="group inline-flex items-center rounded-full bg-[#FF8D21] px-4 py-2 text-sm text-white mt-5 whitespace-nowrap transition-[padding] duration-200 ease-out hover:bg-[#D96E11]"
                     >
                         <span>Get started</span>
 
@@ -295,7 +295,7 @@ export default function PreviewDashboard({
                                                     <motion.button
                                                         type="button"
                                                         disabled
-                                                        className="absolute inset-y-2 right-2 h-auto w-10 rounded-full bg-[#f26522] text-white px-0 inline-flex items-center justify-center gap-2 disabled:cursor-not-allowed disabled:opacity-70 sm:static sm:h-full sm:w-auto sm:inset-y-auto sm:px-10"
+                                                        className="absolute inset-y-2 right-2 h-auto w-10 rounded-full bg-[#FF8D21] text-white px-0 inline-flex items-center justify-center gap-2 disabled:cursor-not-allowed disabled:opacity-70 sm:static sm:h-full sm:w-auto sm:inset-y-auto sm:px-10"
                                                         animate={{
                                                             scale: phase === "highlight" ? 0.94 : 1,
                                                             y: phase === "highlight" ? 1 : 0,
@@ -343,7 +343,7 @@ export default function PreviewDashboard({
                                                             "inline-flex h-8 w-8 md:w-auto items-center justify-center gap-1.5 rounded-full px-0 md:px-3 py-1 text-[13px] font-semibold text-white transition disabled:cursor-not-allowed disabled:opacity-70",
                                                             isDeployedState
                                                                 ? "border border-emerald-600 bg-emerald-600"
-                                                                : "border border-[#f55f2a] bg-[#f55f2a]",
+                                                                : "border border-[#FF8D21] bg-[#FF8D21]",
                                                         ].join(" ")}
                                                         animate={{
                                                             scale: phase === "success" ? 0.94 : 1,
@@ -408,7 +408,7 @@ function InlineKlonerLoader() {
                 <motion.span
                     className="absolute inset-0 rounded-full border-2 border-t-transparent"
                     style={{
-                        borderColor: "#f55f2a",
+                        borderColor: "#FF8D21",
                         borderTopColor: "transparent",
                     }}
                     initial={{ rotate: 0 }}

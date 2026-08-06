@@ -11,7 +11,7 @@ import { BASIC_MONTHLY_PRICE_USD, STRIPE_TRIAL_DAYS, TRIAL_CTA_LABEL } from "@/s
 import { Check, Loader2 } from "lucide-react";
 import SuccessConfetti from "@/components/tools/SuccessConfetti";
 
-const ACCENT = "#f55f2a";
+const ACCENT = "#FF8D21";
 const AI_EDIT_CREDIT_COST = 3;
 const RECOVERY_PENDING_KEY_PREFIX = "kloner.billing.recovery.pending:";
 const TRIAL_ENABLED = STRIPE_TRIAL_DAYS > 0;
@@ -137,7 +137,7 @@ function Bullet({ children }: { children: React.ReactNode }) {
         <li className="flex gap-2">
             <span
                 className="mt-0.5 inline-flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full"
-                style={{ backgroundColor: "rgba(245,95,42,0.10)" }}
+                style={{ backgroundColor: "rgba(255,141,33,0.10)" }}
                 aria-hidden="true"
             >
                 <Check className="h-3.5 w-3.5" style={{ color: ACCENT }} />
@@ -616,7 +616,7 @@ export default function PriceClient(): JSX.Element {
             {checkoutOverlayVisible ? (
                 <div className="fixed inset-0 z-[13000] flex items-center justify-center bg-black/55 px-4 backdrop-blur-sm">
                     <div className="flex flex-col items-center gap-3 rounded-3xl border border-white/10 bg-neutral-950/95 px-6 py-5 text-center text-white shadow-[0_20px_80px_rgba(0,0,0,0.45)]">
-                        <Loader2 className="h-6 w-6 animate-spin text-[#f55f2a]" />
+                        <Loader2 className="h-6 w-6 animate-spin text-[#FF8D21]" />
                         <div>
                             <p className="text-sm font-semibold">Opening secure Stripe checkout...</p>
                             <p className="mt-1 text-xs text-neutral-300">Please wait while we prepare your session.</p>
@@ -681,7 +681,7 @@ export default function PriceClient(): JSX.Element {
                                           { label: "Support", value: "Community" },
                                       ];
                             const headerClass = isPro
-                                ? "bg-gradient-to-r from-[#f55f2a] via-[#ff7a38] to-[#ff9b4f] text-white"
+                                ? "bg-gradient-to-r from-[#FF8D21] via-[#f5c78f] to-[#f8d8b0] text-white"
                                 : isAgency
                                     ? "bg-gradient-to-r from-[#fff0e3] via-[#fff7f0] to-[#ffe0c6] text-neutral-900"
                                     : "bg-gradient-to-r from-[#fffaf6] via-[#fff2e8] to-[#fffaf3] text-neutral-900";
@@ -689,12 +689,12 @@ export default function PriceClient(): JSX.Element {
                                 ? "border-white/20 bg-white/15 text-white"
                                 : "border-neutral-200 bg-white/70 text-neutral-700";
                             const cardClass = isPro
-                                ? "relative z-10 border-[rgba(245,95,42,0.35)] shadow-[0_22px_52px_rgba(245,95,42,0.14)] md:-translate-y-2 md:scale-[1.03]"
+                                ? "relative z-10 border-[rgba(255,141,33,0.35)] shadow-[0_22px_52px_rgba(255,141,33,0.14)] md:-translate-y-2 md:scale-[1.03]"
                                 : "border-neutral-200 shadow-[0_16px_36px_rgba(15,23,42,0.07)]";
                             const buttonClass = isPro
-                                ? "border border-[rgba(245,95,42,0.2)] bg-[#f55f2a] text-white shadow-[0_16px_30px_rgba(245,95,42,0.22)] hover:bg-[#f3602c]"
+                                ? "border border-[rgba(255,141,33,0.2)] bg-[#FF8D21] text-white shadow-[0_16px_30px_rgba(255,141,33,0.22)] hover:bg-[#D96E11]"
                                 : isAgency
-                                    ? "border border-[rgba(245,95,42,0.18)] bg-[#ffefe4] text-[#9a3412] hover:bg-[#ffe3cf]"
+                                    ? "border border-[rgba(255,141,33,0.18)] bg-[#ffefe4] text-[#c86f1f] hover:bg-[#ffe3cf]"
                                     : "border border-neutral-300 bg-white text-neutral-900 hover:bg-neutral-50";
 
                             return (
@@ -733,7 +733,7 @@ export default function PriceClient(): JSX.Element {
                                             </div>
 
                                             {isPro ? (
-                                                <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[rgba(245,95,42,1)]">
+                                                <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[rgba(255,141,33,1)]">
                                                     {TRIAL_ENABLED ? "7-day free trial" : "Billed immediately"}
                                                 </span>
                                             ) : null}
@@ -818,7 +818,7 @@ export default function PriceClient(): JSX.Element {
                             ) : null}
 
                             {userTier === "pro" || userTier === "agency" ? (
-                                <span className="inline-flex items-center rounded-full border border-[rgba(245,95,42,0.35)] bg-white px-3 py-1 text-[11px] font-semibold text-[rgba(245,95,42,1)]">
+                                <span className="inline-flex items-center rounded-full border border-[rgba(255,141,33,0.35)] bg-white px-3 py-1 text-[11px] font-semibold text-[rgba(255,141,33,1)]">
                                     {userTier === "pro" ? "Pro" : "Agency"} detected
                                 </span>
                             ) : null}

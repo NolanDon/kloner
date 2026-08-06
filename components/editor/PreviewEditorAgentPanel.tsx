@@ -630,7 +630,7 @@ export default function PreviewEditorAgentPanel(props: PreviewEditorAgentPanelPr
                             return (
                                 <div key={s.id} className="space-y-10">
                                     <div className="flex flex-col items-end gap-1">
-                                        <div className="max-w-[80%] rounded-2xl bg-[var(--accent,#f55f2a)] px-3 py-1.5 text-white shadow-sm">
+                                        <div className="max-w-[80%] rounded-2xl bg-[var(--accent,#FF8D21)] px-3 py-1.5 text-white shadow-sm">
                                             <div className="text-[16px]">{s.prompt}</div>
                                         </div>
                                         <div className="pr-2 text-[10px] text-neutral-400">{formatCreatedAt(s.createdAt)}</div>
@@ -668,7 +668,7 @@ export default function PreviewEditorAgentPanel(props: PreviewEditorAgentPanelPr
                         <span
                             className="bg-clip-text text-transparent"
                             style={{
-                                backgroundImage: "linear-gradient(90deg,#4f46e5,#ec4899,#f97316)",
+                                backgroundImage: "linear-gradient(90deg,#4f46e5,#ec4899,#f3b27c)",
                                 backgroundSize: "200% 200%",
                                 animation: "kloner-ai-gradient-move 3s linear infinite",
                             }}
@@ -709,7 +709,7 @@ export default function PreviewEditorAgentPanel(props: PreviewEditorAgentPanelPr
                             disabled={generateDisabled}
                             className={`inline-flex h-9 w-9 items-center justify-center rounded-full text-[13px] font-semibold transition ${generateDisabled
                                 ? "cursor-not-allowed bg-neutral-200 text-neutral-500"
-                                : "bg-[var(--accent,#f55f2a)] text-white shadow-sm hover:brightness-110 active:brightness-95"
+                                : "bg-[var(--accent,#FF8D21)] text-white shadow-sm hover:brightness-110 active:brightness-95"
                                 }`}
                             title={
                                 generateDisabled

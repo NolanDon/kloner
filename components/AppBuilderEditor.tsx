@@ -1857,8 +1857,10 @@ export default function AppBuilderEditor({
     const [isPreviewBootReady, setIsPreviewBootReady] = useState(false);
     const [filesHydrationProgress, setFilesHydrationProgress] = useState(0);
     const [filesHydrationCompletionHold, setFilesHydrationCompletionHold] = useState(false);
+    const [isFilesHydrationActive, setIsFilesHydrationActive] = useState(false);
     const filesHydrationRunIdRef = useRef(0);
     const filesHydrationInFlightRef = useRef<Promise<AppData | null> | null>(null);
+    const filesHydrationActiveCountRef = useRef(0);
     const filesHydrationCompletionTimerRef = useRef<number | null>(null);
     const [previewHydrationLoaderMounted, setPreviewHydrationLoaderMounted] = useState(true);
     const [previewHydrationLoaderVisible, setPreviewHydrationLoaderVisible] = useState(false);
@@ -1933,6 +1935,18 @@ export default function AppBuilderEditor({
         }
     }, []);
 
+    const beginFilesHydrationActivity = useCallback(() => {
+        filesHydrationActiveCountRef.current += 1;
+        setIsFilesHydrationActive(true);
+    }, []);
+
+    const endFilesHydrationActivity = useCallback(() => {
+        filesHydrationActiveCountRef.current = Math.max(0, filesHydrationActiveCountRef.current - 1);
+        if (filesHydrationActiveCountRef.current === 0) {
+            setIsFilesHydrationActive(false);
+        }
+    }, []);
+
     const advanceFilesHydrationProgress = useCallback((nextProgress: number) => {
         setFilesHydrationProgress((prev) => Math.max(prev || 0, Math.max(0, Math.min(100, Math.round(nextProgress)))));
     }, []);
@@ -1950,88 +1964,93 @@ export default function AppBuilderEditor({
 
             const forceRefreshToken = Boolean(opts?.forceRefreshToken);
             const runPromise = (async () => {
-                const runId = ++filesHydrationRunIdRef.current;
-                setFilesHydrationProgress(1);
-                advanceFilesHydrationProgress(6);
-                await bootstrapServerSession({
-                    forceRefresh: forceRefreshToken,
-                    minIntervalMs: forceRefreshToken ? 0 : 10 * 60 * 1000,
-                    timeoutMs: 12_000,
-                    reason: "app_builder_load",
-                }).catch(() => false);
-                advanceFilesHydrationProgress(14);
+                beginFilesHydrationActivity();
+                try {
+                    const runId = ++filesHydrationRunIdRef.current;
+                    setFilesHydrationProgress(1);
+                    advanceFilesHydrationProgress(6);
+                    await bootstrapServerSession({
+                        forceRefresh: forceRefreshToken,
+                        minIntervalMs: forceRefreshToken ? 0 : 10 * 60 * 1000,
+                        timeoutMs: 12_000,
+                        reason: "app_builder_load",
+                    }).catch(() => false);
+                    advanceFilesHydrationProgress(14);
 
-                const authHeaders = await getOptionalAuthHeaders(forceRefreshToken);
-                advanceFilesHydrationProgress(20);
-                let attempt = 0;
-                let delayMs = 500;
-                const maxAttempts = 24;
-                let lastNotFound: { status: number; message: string } | null = null;
+                    const authHeaders = await getOptionalAuthHeaders(forceRefreshToken);
+                    advanceFilesHydrationProgress(20);
+                    let attempt = 0;
+                    let delayMs = 500;
+                    const maxAttempts = 24;
+                    let lastNotFound: { status: number; message: string } | null = null;
 
-                while (attempt < maxAttempts && runId === filesHydrationRunIdRef.current) {
-                    attempt += 1;
-                    const res = await fetch(`/api/app-builder/${appId}/files`, {
-                        method: "GET",
-                        credentials: "include",
-                        cache: "no-store",
-                        signal: opts?.signal || undefined,
-                        headers: authHeaders,
-                    });
-                    advanceFilesHydrationProgress(48);
+                    while (attempt < maxAttempts && runId === filesHydrationRunIdRef.current) {
+                        attempt += 1;
+                        const res = await fetch(`/api/app-builder/${appId}/files`, {
+                            method: "GET",
+                            credentials: "include",
+                            cache: "no-store",
+                            signal: opts?.signal || undefined,
+                            headers: authHeaders,
+                        });
+                        advanceFilesHydrationProgress(48);
 
-                    if (res.status === 401 || res.status === 403) {
-                        await handleSessionExpired("app_builder_load_unauthorized");
+                        if (res.status === 401 || res.status === 403) {
+                            await handleSessionExpired("app_builder_load_unauthorized");
+                            return null;
+                        }
+
+                        const data = await (async () => {
+                            try {
+                                return await res.json();
+                            } catch {
+                                return null;
+                            }
+                        })();
+
+                        if (res.status === 200) {
+                            advanceFilesHydrationProgress(62);
+                            if (runId !== filesHydrationRunIdRef.current) return null;
+                            clearFilesHydrationTimer();
+                            const hydratedData = await hydrateHtmlFilesForApp(data as AppData, {
+                                onProgress: (progress) => {
+                                    setFilesHydrationProgress(Math.max(0, Math.min(100, Math.round(62 + (progress * 0.38)))));
+                                },
+                            });
+                            return hydratedData;
+                        }
+
+                        if (res.status === 422) {
+                            throw new Error(String(data?.error || data?.message || data?.detail || "This app is not ready yet."));
+                        }
+
+                        if (res.status === 404 || res.status === 202 || res.status === 409) {
+                            lastNotFound = {
+                                status: res.status,
+                                message: String(data?.error || data?.message || "This app is still syncing its files."),
+                            };
+                            await sleep(Math.min(5000, delayMs));
+                            delayMs = Math.min(5000, Math.max(500, Math.floor(delayMs * 1.35)));
+                            continue;
+                        }
+
+                        if (!res.ok) {
+                            throw new Error(`Failed to load app: ${res.status} ${res.statusText}`);
+                        }
+                    }
+
+                    if (lastNotFound) {
+                        console.warn("App files are still syncing while hydrating editor", {
+                            appId,
+                            status: lastNotFound.status,
+                        });
                         return null;
                     }
 
-                    const data = await (async () => {
-                        try {
-                            return await res.json();
-                        } catch {
-                            return null;
-                        }
-                    })();
-
-                    if (res.status === 200) {
-                        advanceFilesHydrationProgress(62);
-                        if (runId !== filesHydrationRunIdRef.current) return null;
-                        clearFilesHydrationTimer();
-                        const hydratedData = await hydrateHtmlFilesForApp(data as AppData, {
-                            onProgress: (progress) => {
-                                setFilesHydrationProgress(Math.max(0, Math.min(100, Math.round(62 + (progress * 0.38)))));
-                            },
-                        });
-                        return hydratedData;
-                    }
-
-                    if (res.status === 422) {
-                        throw new Error(String(data?.error || data?.message || data?.detail || "This app is not ready yet."));
-                    }
-
-                    if (res.status === 404 || res.status === 202 || res.status === 409) {
-                        lastNotFound = {
-                            status: res.status,
-                            message: String(data?.error || data?.message || "This app is still syncing its files."),
-                        };
-                        await sleep(Math.min(5000, delayMs));
-                        delayMs = Math.min(5000, Math.max(500, Math.floor(delayMs * 1.35)));
-                        continue;
-                    }
-
-                    if (!res.ok) {
-                        throw new Error(`Failed to load app: ${res.status} ${res.statusText}`);
-                    }
-                }
-
-                if (lastNotFound) {
-                    console.warn("App files are still syncing while hydrating editor", {
-                        appId,
-                        status: lastNotFound.status,
-                    });
                     return null;
+                } finally {
+                    endFilesHydrationActivity();
                 }
-
-                return null;
             })();
 
             filesHydrationInFlightRef.current = runPromise;
@@ -2043,7 +2062,7 @@ export default function AppBuilderEditor({
                 }
             }
         },
-        [appId, clearFilesHydrationTimer, handleSessionExpired, user],
+        [advanceFilesHydrationProgress, appId, beginFilesHydrationActivity, clearFilesHydrationTimer, endFilesHydrationActivity, handleSessionExpired, user],
     );
 
     const [currentFile, setCurrentFile] = useState<string | null>(null);
@@ -2174,7 +2193,7 @@ export default function AppBuilderEditor({
     const viewModeTabIdleClass =
         "border-neutral-200 bg-white/85 text-gray-700 shadow-[0_1px_0_rgba(255,255,255,0.75)] hover:-translate-y-0.5 hover:border-neutral-300 hover:bg-white";
     const viewModeTabActiveClass =
-        "border-[#f55f2a]/20 bg-[#f55f2a] text-white shadow-[0_14px_28px_rgba(245,95,42,0.24)]";
+        "border-[#FF8D21]/20 bg-[#FF8D21] text-white shadow-[0_14px_28px_rgba(255,141,33,0.24)]";
     const canUsePremiumImagesTab = userTier === "pro" || userTier === "agency";
     const shouldLockImagesTab = !authLoading && !canUsePremiumImagesTab;
 
@@ -2809,7 +2828,9 @@ export default function AppBuilderEditor({
                         !!(app?.productionUrl && String(app.productionUrl).trim()),
                     stripeConfigured: appHasStripeConfig(app?.files),
                 },
-            );
+            ).catch((err) => {
+                console.error("AppBuilderEditor session analytics flush failed", err);
+            });
         };
     }, [appId, app?.files, app?.productionUrl, app?.vercelProjectId, supabaseConnected, user]);
 
@@ -4787,11 +4808,15 @@ export default function AppBuilderEditor({
         };
 
         const loadApp = async () => {
+            let filesHydrationActivityStarted = false;
             try {
                 if (!user?.uid) {
                     await handleSessionExpired("app_builder_missing_user");
                     return;
                 }
+
+                beginFilesHydrationActivity();
+                filesHydrationActivityStarted = true;
 
                 const fetchFiles = async (forceRefreshToken: boolean) => {
                     await bootstrapServerSession({
@@ -4847,7 +4872,7 @@ export default function AppBuilderEditor({
                         buildFileTree(rawApp.files);
                         if (!didCancel) setLoading(false);
 
-                        void (async () => {
+                        await (async () => {
                             try {
                                 advanceFilesHydrationProgress(22);
                                 await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
@@ -4959,6 +4984,9 @@ export default function AppBuilderEditor({
                 setFilesHydrated(true);
                 setIsPreviewBootReady(true);
             } finally {
+                if (filesHydrationActivityStarted) {
+                    endFilesHydrationActivity();
+                }
                 if (!didCancel) setLoading(false);
             }
         };
@@ -4968,7 +4996,21 @@ export default function AppBuilderEditor({
             didCancel = true;
             controller.abort();
         };
-    }, [appId, authLoading, buildFileTree, hasInitialAppData, handleSessionExpired, initialAppData, user]);
+    }, [
+        advanceFilesHydrationProgress,
+        agentWelcomeContext?.source,
+        appId,
+        authLoading,
+        beginFilesHydrationActivity,
+        buildFileTree,
+        clearFilesHydrationTimer,
+        endFilesHydrationActivity,
+        getOptionalAuthHeaders,
+        hasInitialAppData,
+        handleSessionExpired,
+        initialAppData,
+        user,
+    ]);
 
     // Firebase real-time listener for instant UI updates when files change
     useEffect(() => {
@@ -6804,7 +6846,7 @@ export default function AppBuilderEditor({
                         <button
                             type="button"
                             onClick={() => window.location.reload()}
-                            className="px-4 py-2 text-sm font-medium text-white bg-[#f55f2a] rounded-lg"
+                            className="px-4 py-2 text-sm font-medium text-white bg-[#FF8D21] rounded-lg"
                         >
                             Retry
                         </button>
@@ -6829,7 +6871,7 @@ export default function AppBuilderEditor({
                         <X className="h-4 w-4" />
                     </button>
 
-                    <div className="border-b border-neutral-200 bg-[linear-gradient(180deg,rgba(245,95,42,0.10),rgba(255,255,255,1))] px-5 py-4 sm:px-6">
+                    <div className="border-b border-neutral-200 bg-[linear-gradient(180deg,rgba(255,141,33,0.10),rgba(255,255,255,1))] px-5 py-4 sm:px-6">
                         <div className="mt-3 text-[22px] font-semibold tracking-[-0.02em] text-neutral-950">
                             Generation failed
                         </div>
@@ -6917,7 +6959,7 @@ export default function AppBuilderEditor({
                                 {activeGeneration.title || "Generating your app…"}
                             </div>
 
-                            <div className="mt-2 text-xs font-semibold uppercase tracking-[0.18em] text-[#F55F2A]">
+                            <div className="mt-2 text-xs font-semibold uppercase tracking-[0.18em] text-[#FF8D21]">
                                 {formatGenerationStageLabel(activeGeneration.stage) || formatGenerationStageLabel(activeGeneration.status)}
                             </div>
 
@@ -6932,7 +6974,7 @@ export default function AppBuilderEditor({
                                     </div>
                                     <div className="mt-2 h-2 w-full rounded-full bg-gray-200 overflow-hidden">
                                         <div
-                                            className="h-full bg-[#F55F2A]"
+                                            className="h-full bg-[#FF8D21]"
                                             style={{
                                                 width: `${Math.max(0, Math.min(100, Math.round(activeGeneration.progress)))}%`,
                                             }}
@@ -7316,7 +7358,7 @@ export default function AppBuilderEditor({
                                     onClick={handleDeploy}
                                     disabled={isDeploying}
                                     data-tour-deploy
-                                    className="inline-flex h-8 items-center gap-1.5 rounded-full border border-[#f55f2a] bg-[#f55f2a] px-2 py-1 text-[12px] font-semibold text-white shadow-md transition hover:opacity-90 disabled:opacity-60 xl:px-3 xl:text-[13px]"
+                                    className="inline-flex h-8 items-center gap-1.5 rounded-full border border-[#FF8D21] bg-[#FF8D21] px-2 py-1 text-[12px] font-semibold text-white shadow-md transition hover:opacity-90 disabled:opacity-60 xl:px-3 xl:text-[13px]"
                                     title="Deploy"
                                     aria-label="Deploy"
                                 >
@@ -7509,7 +7551,7 @@ export default function AppBuilderEditor({
                                                     value={codeFileSearch}
                                                     onChange={(e) => setCodeFileSearch(e.target.value)}
                                                     placeholder="Search files"
-                                                    className="w-full rounded-full border border-gray-300 bg-white/95 py-1.5 pl-9 pr-9 text-xs text-gray-800 outline-none transition focus:border-[#F55F2A] focus:ring-2 focus:ring-[#F55F2A]/20"
+                                                    className="w-full rounded-full border border-gray-300 bg-white/95 py-1.5 pl-9 pr-9 text-xs text-gray-800 outline-none transition focus:border-[#FF8D21] focus:ring-2 focus:ring-[#FF8D21]/20"
                                                 />
                                                 {codeFileSearchActive ? (
                                                     <button
@@ -7571,7 +7613,7 @@ export default function AppBuilderEditor({
                                             <button
                                                 type="button"
                                                 onClick={() => void undoLastImageInsert()}
-                                                className="text-xs font-semibold text-[#F55F2A] hover:text-[#E04E1B]"
+                                                className="text-xs font-semibold text-[#FF8D21] hover:text-[#e09b63]"
                                             >
                                                 Undo last insert
                                             </button>
@@ -7591,7 +7633,7 @@ export default function AppBuilderEditor({
                                         <button
                                             type="button"
                                             onClick={handlePickImages}
-                                            className="inline-flex items-center gap-2 rounded-full bg-[#F55F2A] px-3 py-2 text-xs font-semibold text-white hover:bg-[#E04E1B]"
+                                            className="inline-flex items-center gap-2 rounded-full bg-[#FF8D21] px-3 py-2 text-xs font-semibold text-white hover:bg-[#D96E11]"
                                         >
                                             <Upload className="w-3.5 h-3.5" />
                                             Upload
@@ -7609,7 +7651,7 @@ export default function AppBuilderEditor({
                                             <button
                                                 type="button"
                                                 onClick={() => window.open(faviconUrl, "_blank", "noopener,noreferrer")}
-                                                className="text-[11px] font-semibold text-[#F55F2A] hover:text-[#E04E1B]"
+                                                className="text-[11px] font-semibold text-[#FF8D21] hover:text-[#e09b63]"
                                                 title="Open current favicon"
                                             >
                                                 View favicon
@@ -7704,7 +7746,7 @@ export default function AppBuilderEditor({
                                                                     ? "bg-emerald-100 text-emerald-700"
                                                                     : item.status === "uploading"
                                                                       ? "bg-neutral-200 text-neutral-600"
-                                                                      : "bg-[#F55F2A] text-white hover:bg-[#E04E1B]"
+                                                                      : "bg-[#FF8D21] text-white hover:bg-[#D96E11]"
                                                             }`}
                                                             title={item.status === "applied" ? "Applied" : "Apply image"}
                                                             aria-label={item.status === "applied" ? "Applied" : "Apply image"}
@@ -7775,6 +7817,7 @@ export default function AppBuilderEditor({
                                                 isFilesHydrated={isPreviewBootReady}
                                                 filesHydrationProgress={filesHydrationProgress}
                                                 isPreviewReady={previewMode !== "webcontainer" ? true : isPreviewBootReady}
+                                                isFilesHydrationActive={isFilesHydrationActive}
                                                 deployLocked={deployLocked}
                                                 accessLocked={accessLocked}
                                                 showTour={showTour}
@@ -7850,7 +7893,7 @@ export default function AppBuilderEditor({
                                             <button
                                                 type="button"
                                                 onClick={handleDeployBannerFixRequest}
-                                                className="inline-flex w-full items-center justify-center gap-1.5 rounded-full bg-[#f55f2a] px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-[#e14f1c] sm:w-auto"
+                                                className="inline-flex w-full items-center justify-center gap-1.5 rounded-full bg-[#FF8D21] px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-[#D96E11] sm:w-auto"
                                             >
                                                 {effectiveDeployBanner.fixAction === "connect_vercel" ? "Connect Vercel" : "Fix with AI"}
                                             </button>
@@ -7977,7 +8020,7 @@ export default function AppBuilderEditor({
                                         />
                                     </div>
                                 ) : (
-                                    <div ref={previewHydrationAnchorRef} className="relative h-full w-full bg-[radial-gradient(circle_at_top,rgba(245,95,42,0.08),transparent_42%),linear-gradient(180deg,rgba(255,255,255,0.98),rgba(250,250,250,1))]">
+                                    <div ref={previewHydrationAnchorRef} className="relative h-full w-full bg-[radial-gradient(circle_at_top,rgba(255,141,33,0.08),transparent_42%),linear-gradient(180deg,rgba(255,255,255,0.98),rgba(250,250,250,1))]">
                                     </div>
                                 )
                             ) : previewSrc ? (
@@ -7989,9 +8032,9 @@ export default function AppBuilderEditor({
                                     referrerPolicy="no-referrer"
                                 />
                             ) : (
-                                <div className="h-full w-full bg-[radial-gradient(circle_at_top,rgba(245,95,42,0.08),transparent_42%),linear-gradient(180deg,rgba(255,255,255,0.98),rgba(250,250,250,1))] flex items-center justify-center px-4">
+                                <div className="h-full w-full bg-[radial-gradient(circle_at_top,rgba(255,141,33,0.08),transparent_42%),linear-gradient(180deg,rgba(255,255,255,0.98),rgba(250,250,250,1))] flex items-center justify-center px-4">
                                     <div className="w-full max-w-md rounded-[28px] border border-neutral-200 bg-white/95 p-6 text-center shadow-[0_24px_70px_rgba(15,23,42,0.08)] backdrop-blur-sm">
-                                        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-[rgba(245,95,42,0.10)] text-[#f55f2a] ring-1 ring-[rgba(245,95,42,0.16)]">
+                                        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-[rgba(255,141,33,0.10)] text-[#FF8D21] ring-1 ring-[rgba(255,141,33,0.16)]">
                                             <Monitor className="h-7 w-7" />
                                         </div>
                                         <div className="inline-flex items-center rounded-full border border-neutral-200 bg-neutral-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-neutral-600">
@@ -8014,7 +8057,7 @@ export default function AppBuilderEditor({
 
                                         <div className="mt-5 flex flex-wrap items-center justify-center gap-2 text-[11px] font-medium text-neutral-500">
                                             <span className="inline-flex items-center gap-1.5 rounded-full border border-neutral-200 bg-neutral-50 px-3 py-1">
-                                                <Loader2 className="h-3.5 w-3.5 animate-spin text-[#f55f2a]" />
+                                                <Loader2 className="h-3.5 w-3.5 animate-spin text-[#FF8D21]" />
                                                 Waiting on the preview machine
                                             </span>
                                             <span className="inline-flex items-center rounded-full border border-neutral-200 bg-white px-3 py-1">
@@ -8084,7 +8127,7 @@ export default function AppBuilderEditor({
                                                     autoPreviewPhase === "enabling-bypass" ||
                                                     autoPreviewPhase === "loading"
                                                 }
-                                                className="px-4 py-2 bg-[#F55F2A] text-xs font-semibold text-white rounded-full hover:bg-[#E04E1B] disabled:opacity-50"
+                                                className="px-4 py-2 bg-[#FF8D21] text-xs font-semibold text-white rounded-full hover:bg-[#D96E11] disabled:opacity-50"
                                             >
                                                 {autoPreviewBypassUnsupported && protectedPreviewUrl
                                                     ? "Open preview"
@@ -8145,7 +8188,7 @@ export default function AppBuilderEditor({
                             }}
                             className={`inline-flex items-center justify-center gap-2 rounded-full px-4 py-2 text-sm font-semibold border transition-colors ${
                                 mobileTab === "app"
-                                    ? "bg-[#F55F2A] text-white border-[#F55F2A]"
+                                    ? "bg-[#FF8D21] text-white border-[#FF8D21]"
                                     : "bg-white text-neutral-800 border-neutral-300"
                             }`}
                             title="App"
@@ -8164,7 +8207,7 @@ export default function AppBuilderEditor({
                             }}
                             className={`inline-flex items-center justify-center gap-2 rounded-full px-4 py-2 text-sm font-semibold border transition-colors ${
                                 mobileTab === "prompt"
-                                    ? "bg-[#F55F2A] text-white border-[#F55F2A]"
+                                    ? "bg-[#FF8D21] text-white border-[#FF8D21]"
                                     : "bg-white text-neutral-800 border-neutral-300"
                             }`}
                             title="Prompt"
@@ -8229,7 +8272,7 @@ export default function AppBuilderEditor({
                                                 void handleSave(true);
                                             }}
                                             disabled={isSaving}
-                                            className="inline-flex items-center justify-center gap-2 rounded-full px-4 py-2 text-sm font-semibold bg-[#F55F2A] text-white disabled:opacity-60"
+                                            className="inline-flex items-center justify-center gap-2 rounded-full px-4 py-2 text-sm font-semibold bg-[#FF8D21] text-white disabled:opacity-60"
                                             title="Save"
                                         >
                                             <Upload className="h-4 w-4" />
@@ -8469,7 +8512,7 @@ export default function AppBuilderEditor({
                                             startVercelOAuthForPreview();
                                         }}
                                         disabled={isVercelChecking || vercelConnectOpening}
-                                        className="inline-flex h-12 w-full items-center justify-center gap-2 whitespace-nowrap rounded-full bg-[#F55F2A] px-5 text-sm font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                                        className="inline-flex h-12 w-full items-center justify-center gap-2 whitespace-nowrap rounded-full bg-[#FF8D21] px-5 text-sm font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
                                     >
                                         {(isVercelChecking || vercelConnectOpening) ? (
                                             <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white/50 border-t-white" />

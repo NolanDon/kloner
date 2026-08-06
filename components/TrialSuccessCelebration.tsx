@@ -122,7 +122,7 @@ export default function TrialSuccessCelebration({ open, onDismiss }: TrialSucces
                                 <CheckCircle2 className="h-6 w-6" />
                             </div>
 
-                            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#f55f2a]">
+                            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#FF8D21]">
                                 Welcome
                             </p>
                             <h3 className="mt-2 text-3xl font-normal tracking-tight text-neutral-900 sm:text-4xl">
@@ -147,7 +147,7 @@ export default function TrialSuccessCelebration({ open, onDismiss }: TrialSucces
                                         handleDismiss();
                                     }}
                                     onClick={handleDismiss}
-                                    className="inline-flex items-center justify-center rounded-full bg-[#f55f2a] px-5 py-3 text-sm font-semibold text-white shadow-[0_16px_36px_rgba(245,95,42,0.24)] transition hover:bg-[#f3602c]"
+                                    className="inline-flex items-center justify-center rounded-full bg-[#FF8D21] px-5 py-3 text-sm font-semibold text-white shadow-[0_16px_36px_rgba(255,141,33,0.24)] transition hover:bg-[#D96E11]"
                                 >
                                     Let&apos;s go!
                                 </button>

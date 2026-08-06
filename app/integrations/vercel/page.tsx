@@ -5,7 +5,7 @@ import NavBar from "@/components/NavBar";
 import { Rocket, MonitorSmartphone, Wand2, ArrowRight, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 
-const ACCENT = "#f55f2a";
+const ACCENT = "#FF8D21";
 
 export default function KlonerVercelLanding() {
     return (

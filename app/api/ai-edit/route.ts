@@ -172,7 +172,7 @@ function buildAbuseAlertHtml(payload: {
     windowMinutes: number;
     lastEventAtMs: number;
 }) {
-    const accent = "#f55f2a";
+    const accent = "#FF8D21";
     const dark = "#111827";
     const muted = "#6b7280";
 

@@ -134,6 +134,7 @@ type Props = {
     isFilesHydrated?: boolean;
     filesHydrationProgress?: number | null;
     isPreviewReady?: boolean;
+    isFilesHydrationActive?: boolean;
     deployLocked?: boolean;
     accessLocked?: boolean;
     showTour?: boolean;
@@ -142,7 +143,7 @@ type Props = {
     showRightSidebarToggle?: boolean;
 };
 
-const ACCENT = "#f55f2a";
+const ACCENT = "#FF8D21";
 const SAVE_NUDGE_KEY = "kloner_save_nudge_seen";
 const PREVIEW_SIDEBAR_KEY = "kloner:preview-sidebar-collapsed";
 const PREVIEW_RIGHT_SIDEBAR_KEY = "kloner:preview-right-sidebar-collapsed";
@@ -158,7 +159,7 @@ function PanelLockOverlay({ label = "Unlock", onClick }: { label?: string; onCli
             onClick={onClick}
         >
             <span className="inline-flex items-center gap-2 rounded-full border bg-white border-neutral-200 bg-white/92 px-4 py-2 text-sm font-semibold text-neutral-800 shadow-lg">
-                <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-[rgba(245,95,42,0.12)] text-[#f55f2a]">
+                <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-[rgba(255,141,33,0.12)] text-[#FF8D21]">
                     <Lock className="h-4 w-4" />
                 </span>
                 <span>{label}</span>
@@ -439,9 +440,9 @@ const TEXT_COLOR_SWATCHES = [
     "#6b7280",
     "#9ca3af",
     "#e5e7eb",
-    "#f55f2a",
-    "#f97316",
-    "#ea580c",
+    "#FF8D21",
+    "#f3b27c",
+    "#e09b63",
     "#ef4444",
     "#dc2626",
     "#e11d48",
@@ -456,8 +457,8 @@ const TEXT_COLOR_SWATCHES = [
     "#6366f1",
     "#8b5cf6",
     "#a855f7",
-    "#f59e0b",
-    "#d97706",
+    "#f6cc9b",
+    "#c89256",
     "#ffffff",
 ];
 
@@ -1391,6 +1392,7 @@ function AppPreviewEditorCore({
     isFilesHydrated = true,
     filesHydrationProgress = null,
     isPreviewReady = true,
+    isFilesHydrationActive = false,
     deployLocked = false,
     accessLocked = false,
     showTour,
@@ -1710,7 +1712,9 @@ function AppPreviewEditorCore({
             }
 
             // fire-and-forget; must not block navigation
-            void recordEditorSessionAnalytics(u, durationMs, reason, counters);
+            void recordEditorSessionAnalytics(u, durationMs, reason, counters).catch((err) => {
+                console.error("AppPreviewEditor session analytics flush failed", err);
+            });
         };
 
         const handleBeforeUnload = () => flushSession("beforeunload");
@@ -2326,7 +2330,7 @@ function AppPreviewEditorCore({
             "#f8fafc",
             "#e2e8f0",
             "#111827",
-            "#f55f2a",
+            "#FF8D21",
             "#0ea5e9",
             "#22c55e",
             "#a855f7",
@@ -4809,25 +4813,10 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
         }
     }, [sidePanelMode]);
 
-    const [filesHydrationCompletionHold, setFilesHydrationCompletionHold] = useState(false);
-    const hasActiveFilesHydrationProgress =
-        typeof filesHydrationProgress === "number" &&
-        Number.isFinite(filesHydrationProgress) &&
-        filesHydrationProgress > 0 &&
-        filesHydrationProgress < 100;
-    const [filesHydrationLoaderMounted, setFilesHydrationLoaderMounted] = useState(
-        () => !isFilesHydrated || !isPreviewReady || hasActiveFilesHydrationProgress,
-    );
-    const [filesHydrationLoaderVisible, setFilesHydrationLoaderVisible] = useState(false);
     const iframeWrapperRef = useRef<HTMLDivElement | null>(null);
-    const filesHydrationCompletionTimerRef = useRef<number | null>(null);
-    const filesHydrationLoaderHideTimerRef = useRef<number | null>(null);
     const isSidebarOpen = shouldLockPreviewPanels || (isCompactLayout ? mobileTab === "panel" : !sidebarHidden);
     const showSidebarPanel = isCompactLayout ? mobileTab === "panel" : true;
-    const shouldShowFilesHydrationLoader =
-        (filesHydrationLoaderMounted || filesHydrationCompletionHold) &&
-        (hasActiveFilesHydrationProgress || !isFilesHydrated || !isPreviewReady) &&
-        mode !== "screenshot";
+    const shouldShowFilesHydrationLoader = isFilesHydrationActive && mode !== "screenshot";
     const [filesHydrationAnchorRect, setFilesHydrationAnchorRect] = useState<{
         top: number;
         left: number;
@@ -4871,47 +4860,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
             window.removeEventListener("scroll", handleChange, true);
             observer?.disconnect();
         };
-    }, [shouldShowFilesHydrationLoader, mode, isFilesHydrated, isPreviewReady]);
-
-    useEffect(() => {
-        const shouldShowLoader =
-            (mode !== "screenshot" &&
-                (hasActiveFilesHydrationProgress || !isFilesHydrated || !isPreviewReady)) ||
-            filesHydrationCompletionHold;
-
-        if (!shouldShowLoader) {
-            if (filesHydrationCompletionTimerRef.current !== null) {
-                window.clearTimeout(filesHydrationCompletionTimerRef.current);
-                filesHydrationCompletionTimerRef.current = null;
-            }
-            setFilesHydrationCompletionHold(false);
-            if (filesHydrationLoaderHideTimerRef.current !== null) {
-                window.clearTimeout(filesHydrationLoaderHideTimerRef.current);
-                filesHydrationLoaderHideTimerRef.current = null;
-            }
-            setFilesHydrationLoaderVisible(false);
-            filesHydrationLoaderHideTimerRef.current = window.setTimeout(() => {
-                setFilesHydrationLoaderMounted(false);
-                filesHydrationLoaderHideTimerRef.current = null;
-            }, 240);
-            return;
-        }
-
-        if (filesHydrationLoaderHideTimerRef.current !== null) {
-            window.clearTimeout(filesHydrationLoaderHideTimerRef.current);
-            filesHydrationLoaderHideTimerRef.current = null;
-        }
-        setFilesHydrationLoaderMounted(true);
-        requestAnimationFrame(() => setFilesHydrationLoaderVisible(true));
-
-        if (isFilesHydrated && isPreviewReady) {
-            setFilesHydrationCompletionHold(true);
-            filesHydrationCompletionTimerRef.current = window.setTimeout(() => {
-                setFilesHydrationCompletionHold(false);
-                filesHydrationCompletionTimerRef.current = null;
-            }, 450);
-        }
-    }, [filesHydrationCompletionHold, hasActiveFilesHydrationProgress, isFilesHydrated, isPreviewReady, mode]);
+    }, [shouldShowFilesHydrationLoader]);
 
     const clearPreviewImageHydrationWatchers = useCallback(() => {
         if (previewImageHydrationTimeoutRef.current) {
@@ -5067,7 +5016,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
         ? createPortal(
             isCompactLayout || !filesHydrationAnchorRect ? (
                 <div
-                    className={`pointer-events-none fixed inset-0 z-[22050] flex items-center justify-center px-4 transition-opacity duration-300 ease-out ${filesHydrationLoaderVisible ? "opacity-100" : "opacity-0"}`}
+                    className="pointer-events-none fixed inset-0 z-[22050] flex items-center justify-center px-4"
                     role="status"
                     aria-live="polite"
                     aria-busy="true"
@@ -5085,7 +5034,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                 </div>
             ) : (
                 <div
-                    className={`pointer-events-none fixed z-[22050] flex items-center justify-center px-4 transition-opacity duration-300 ease-out ${filesHydrationLoaderVisible ? "opacity-100" : "opacity-0"}`}
+                    className="pointer-events-none fixed z-[22050] flex items-center justify-center px-4"
                     style={{
                         top: filesHydrationAnchorRect.top,
                         left: filesHydrationAnchorRect.left,
@@ -5112,7 +5061,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
         )
         : null;
 
-    const previewHydrationSurfaceClassName = filesHydrationLoaderVisible
+    const previewHydrationSurfaceClassName = shouldShowFilesHydrationLoader
         ? "opacity-40 blur-sm saturate-75 transition-[opacity,filter] duration-300 ease-out"
         : "opacity-100 transition-[opacity,filter] duration-300 ease-out";
 
@@ -5232,10 +5181,10 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                 }}
                                 disabled={exporting}
                                 data-tour-deploy
-                                className={`inline-flex h-9 shrink-0 items-center gap-2 rounded-full border border-[#f55f2a] bg-[#f55f2a] px-3 text-sm font-semibold text-white shadow-md transition ${
+                                className={`inline-flex h-9 shrink-0 items-center gap-2 rounded-full border border-[#FF8D21] bg-[#FF8D21] px-3 text-sm font-semibold text-white shadow-md transition ${
                                     exporting
                                         ? "cursor-not-allowed opacity-60"
-                                        : "hover:bg-[#e54f1a]"
+                                        : "hover:bg-[#e19d67]"
                                 }`}
                                 title="Deploy"
                                 aria-label="Deploy"
@@ -5348,12 +5297,12 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                                         void handlePageSwitch(entry.id);
                                                                         setIsPageDropdownOpen(false);
                                                                     }}
-                                                                    className={`flex w-full items-center justify-between px-4 py-2 text-left text-sm transition-colors hover:bg-orange-50 hover:text-[#F55F2A] ${
-                                                                        isActive ? "bg-orange-50/70 text-[#F55F2A]" : "text-neutral-700"
+                                                                    className={`flex w-full items-center justify-between px-4 py-2 text-left text-sm transition-colors hover:bg-orange-50 hover:text-[#FF8D21] ${
+                                                                        isActive ? "bg-orange-50/70 text-[#FF8D21]" : "text-neutral-700"
                                                                     }`}
                                                                 >
                                                                     <span className="truncate lowercase">{entry.label}</span>
-                                                                    {isActive ? <span className="ml-3 shrink-0 h-2 w-2 rounded-full bg-[#F55F2A]" aria-hidden="true" /> : null}
+                                                                    {isActive ? <span className="ml-3 shrink-0 h-2 w-2 rounded-full bg-[#FF8D21]" aria-hidden="true" /> : null}
                                                                 </button>
                                                             );
                                                         })
@@ -5368,12 +5317,12 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                                         onSelectHtmlPath?.(path);
                                                                         setIsPageDropdownOpen(false);
                                                                     }}
-                                                                    className={`flex w-full items-center justify-between px-4 py-2 text-left text-sm transition-colors hover:bg-orange-50 hover:text-[#F55F2A] ${
-                                                                        isActive ? "bg-orange-50/70 text-[#F55F2A]" : "text-neutral-700"
+                                                                    className={`flex w-full items-center justify-between px-4 py-2 text-left text-sm transition-colors hover:bg-orange-50 hover:text-[#FF8D21] ${
+                                                                        isActive ? "bg-orange-50/70 text-[#FF8D21]" : "text-neutral-700"
                                                                     }`}
                                                                 >
                                                                     <span className="truncate lowercase">{label}</span>
-                                                                    {isActive ? <span className="ml-3 shrink-0 h-2 w-2 rounded-full bg-[#F55F2A]" aria-hidden="true" /> : null}
+                                                                    {isActive ? <span className="ml-3 shrink-0 h-2 w-2 rounded-full bg-[#FF8D21]" aria-hidden="true" /> : null}
                                                                 </button>
                                                             );
                                                         })}
@@ -5402,7 +5351,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                     type="button"
                                     onClick={() => handleDeviceChange("desktop")}
                                     className={`flex h-5 w-5 items-center justify-center rounded-full transition-colors lg:h-6 lg:w-6 ${
-                                        device === "desktop" ? "bg-[#f55f2a] text-white" : "bg-white text-neutral-600 hover:bg-neutral-100"
+                                        device === "desktop" ? "bg-[#FF8D21] text-white" : "bg-white text-neutral-600 hover:bg-neutral-100"
                                     }`}
                                     title="Desktop"
                                 >
@@ -5413,7 +5362,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                     type="button"
                                     onClick={() => handleDeviceChange("tablet")}
                                     className={`flex h-5 w-5 items-center justify-center rounded-full transition-colors lg:h-6 lg:w-6 ${
-                                        device === "tablet" ? "bg-[#f55f2a] text-white" : "bg-white text-neutral-600 hover:bg-neutral-100"
+                                        device === "tablet" ? "bg-[#FF8D21] text-white" : "bg-white text-neutral-600 hover:bg-neutral-100"
                                     }`}
                                     title="Tablet"
                                 >
@@ -5424,7 +5373,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                     type="button"
                                     onClick={() => handleDeviceChange("mobile")}
                                     className={`flex h-5 w-5 items-center justify-center rounded-full transition-colors lg:h-6 lg:w-6 ${
-                                        device === "mobile" ? "bg-[#f55f2a] text-white" : "bg-white text-neutral-600 hover:bg-neutral-100"
+                                        device === "mobile" ? "bg-[#FF8D21] text-white" : "bg-white text-neutral-600 hover:bg-neutral-100"
                                     }`}
                                     title="Mobile"
                                 >
@@ -5580,7 +5529,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                                     className="relative inline-flex h-8 w-8 cursor-pointer items-center justify-center overflow-hidden rounded border border-black/10 shadow-sm"
                                                                     style={{
                                                                         background:
-                                                                            "conic-gradient(from 180deg at 50% 50%, #ff3b30, #ff9500, #ffcc00, #34c759, #0a84ff, #5e5ce6, #bf5af2, #ff2d55, #ff3b30)",
+                                                                            "conic-gradient(from 180deg at 50% 50%, #ff3b30, #f6c693, #ffcc00, #34c759, #0a84ff, #5e5ce6, #bf5af2, #ff2d55, #ff3b30)",
                                                                     }}
                                                                     title="Pick custom text color"
                                                                 >
@@ -5648,7 +5597,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                                     className="relative inline-flex h-8 w-8 cursor-pointer items-center justify-center overflow-hidden rounded border border-black/10 shadow-sm"
                                                                     style={{
                                                                         background:
-                                                                            "conic-gradient(from 180deg at 50% 50%, #ff3b30, #ff9500, #ffcc00, #34c759, #0a84ff, #5e5ce6, #bf5af2, #ff2d55, #ff3b30)",
+                                                                            "conic-gradient(from 180deg at 50% 50%, #ff3b30, #f6c693, #ffcc00, #34c759, #0a84ff, #5e5ce6, #bf5af2, #ff2d55, #ff3b30)",
                                                                     }}
                                                                     title="Pick custom background color"
                                                                 >
@@ -6030,7 +5979,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                         </div>
                                         <div className="min-h-0 flex-1">
                                             <textarea
-                                                className="h-[60vh] w-full resize-none rounded-xl border border-neutral-200 bg-white p-4 font-mono text-sm leading-6 text-neutral-900 shadow-sm outline-none placeholder:text-neutral-400 focus:border-[#f55f2a] focus:ring-2 focus:ring-[#f55f2a]/20 disabled:opacity-60"
+                                                className="h-[60vh] w-full resize-none rounded-xl border border-neutral-200 bg-white p-4 font-mono text-sm leading-6 text-neutral-900 shadow-sm outline-none placeholder:text-neutral-400 focus:border-[#FF8D21] focus:ring-2 focus:ring-[#FF8D21]/20 disabled:opacity-60"
                                                 value={htmlDraft}
                                                 onChange={(e) => setHtmlDraft(e.target.value)}
                                                 spellCheck={false}
@@ -6705,7 +6654,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                     }}
                                     className={`inline-flex items-center justify-center gap-2 rounded-full border px-4 py-2.5 text-sm font-semibold transition-colors ${
                                         mobileTab === "preview"
-                                            ? "border-[#f55f2a] bg-[#f55f2a] text-white"
+                                            ? "border-[#FF8D21] bg-[#FF8D21] text-white"
                                             : "border-neutral-300 bg-white text-neutral-800"
                                     }`}
                                 >
@@ -6723,7 +6672,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                     }}
                                     className={`inline-flex items-center justify-center gap-2 rounded-full border px-4 py-2.5 text-sm font-semibold transition-colors ${
                                         mobileTab === "panel"
-                                            ? "border-[#f55f2a] bg-[#f55f2a] text-white"
+                                            ? "border-[#FF8D21] bg-[#FF8D21] text-white"
                                             : "border-neutral-300 bg-white text-neutral-800"
                                     }`}
                                 >
@@ -6817,7 +6766,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                     }}
                                                     className={`inline-flex items-center justify-center gap-2 rounded-full border px-4 py-2.5 text-sm font-semibold ${
                                                         mode === "preview"
-                                                            ? "border-[#f55f2a] bg-[#f55f2a] text-white"
+                                                            ? "border-[#FF8D21] bg-[#FF8D21] text-white"
                                                             : "border-neutral-300 bg-white text-neutral-800"
                                                     }`}
                                                 >
@@ -6835,7 +6784,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                     onClick={() => openSidePanelMode("style")}
                                                     className={`inline-flex items-center justify-center gap-2 rounded-full border px-4 py-2.5 text-sm font-semibold ${
                                                         sidePanelMode === "style"
-                                                            ? "border-[#f55f2a] bg-[#f55f2a] text-white"
+                                                            ? "border-[#FF8D21] bg-[#FF8D21] text-white"
                                                             : "border-neutral-300 bg-white text-neutral-800"
                                                     }`}
                                                 >
@@ -6848,7 +6797,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                     onClick={() => openSidePanelMode("ai-library")}
                                                     className={`inline-flex items-center justify-center gap-2 rounded-full border px-4 py-2.5 text-sm font-semibold ${
                                                         sidePanelMode === "ai-library"
-                                                            ? "border-[#f55f2a] bg-[#f55f2a] text-white"
+                                                            ? "border-[#FF8D21] bg-[#FF8D21] text-white"
                                                             : "border-neutral-300 bg-white text-neutral-800"
                                                     } ${shouldLockImagesTab ? "opacity-70" : ""}`}
                                                     title={shouldLockImagesTab ? "Images are available on Pro and Agency plans" : "Images"}
@@ -6875,7 +6824,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                     }}
                                                     className={`inline-flex items-center justify-center gap-2 rounded-full border px-3 py-2.5 text-sm font-semibold ${
                                                         device === "desktop"
-                                                            ? "border-[#f55f2a] bg-[#f55f2a] text-white"
+                                                            ? "border-[#FF8D21] bg-[#FF8D21] text-white"
                                                             : "border-neutral-300 bg-white text-neutral-800"
                                                     }`}
                                                 >
@@ -6890,7 +6839,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                     }}
                                                     className={`inline-flex items-center justify-center gap-2 rounded-full border px-3 py-2.5 text-sm font-semibold ${
                                                         device === "tablet"
-                                                            ? "border-[#f55f2a] bg-[#f55f2a] text-white"
+                                                            ? "border-[#FF8D21] bg-[#FF8D21] text-white"
                                                             : "border-neutral-300 bg-white text-neutral-800"
                                                     }`}
                                                 >
@@ -6905,7 +6854,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                     }}
                                                     className={`inline-flex items-center justify-center gap-2 rounded-full border px-3 py-2.5 text-sm font-semibold ${
                                                         device === "mobile"
-                                                            ? "border-[#f55f2a] bg-[#f55f2a] text-white"
+                                                            ? "border-[#FF8D21] bg-[#FF8D21] text-white"
                                                             : "border-neutral-300 bg-white text-neutral-800"
                                                     }`}
                                                 >
@@ -6935,7 +6884,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                     className="inline-flex rounded-2xl p-[3px] shadow-sm"
                                     style={{
                                         // use ONLY your accent (and tints) for the moving border
-                                        backgroundImage: "linear-gradient(90deg, rgba(245,95,42,0.35), rgba(245,95,42,0.85), rgba(245,95,42,0.35))",
+                                        backgroundImage: "linear-gradient(90deg, rgba(255,141,33,0.35), rgba(255,141,33,0.85), rgba(255,141,33,0.35))",
                                         backgroundSize: "220% 220%",
                                         animation: "kloner-accent-move 2.8s linear infinite",
                                     }}
@@ -6946,7 +6895,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                             className="bg-clip-text text-transparent font-semibold tracking-tight"
                                             style={{
                                                 backgroundImage:
-                                                    "linear-gradient(90deg, rgba(245,95,42,0.6), rgba(245,95,42,1), rgba(245,95,42,0.6))",
+                                                    "linear-gradient(90deg, rgba(255,141,33,0.6), rgba(255,141,33,1), rgba(255,141,33,0.6))",
                                                 backgroundSize: "220% 220%",
                                                 animation: "kloner-accent-move 2.8s linear infinite",
                                             }}
@@ -6954,13 +6903,13 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                             Applying AI edit…
                                         </span>
                                         <span className="inline-flex items-center gap-1 leading-none" aria-hidden="true">
-                                            <span className="h-1.5 w-1.5 rounded-full bg-[#f55f2a] kloner-dot" />
+                                            <span className="h-1.5 w-1.5 rounded-full bg-[#FF8D21] kloner-dot" />
                                             <span
-                                                className="h-1.5 w-1.5 rounded-full bg-[#f55f2a] kloner-dot"
+                                                className="h-1.5 w-1.5 rounded-full bg-[#FF8D21] kloner-dot"
                                                 style={{ opacity: 0.75, animationDelay: "0.15s" }}
                                             />
                                             <span
-                                                className="h-1.5 w-1.5 rounded-full bg-[#f55f2a] kloner-dot"
+                                                className="h-1.5 w-1.5 rounded-full bg-[#FF8D21] kloner-dot"
                                                 style={{ opacity: 0.45, animationDelay: "0.30s" }}
                                             />
                                         </span>
@@ -7267,6 +7216,7 @@ type AppSourcePreviewEditorProps = {
     isFilesHydrated?: boolean;
     filesHydrationProgress?: number | null;
     isPreviewReady?: boolean;
+    isFilesHydrationActive?: boolean;
     deployLocked?: boolean;
     accessLocked?: boolean;
     showTour?: boolean;
@@ -7322,6 +7272,7 @@ export default function AppPreviewEditor({
     isFilesHydrated,
     filesHydrationProgress,
     isPreviewReady,
+    isFilesHydrationActive,
     deployLocked = false,
     accessLocked = false,
     previewOpenToken,
@@ -7482,6 +7433,15 @@ export default function AppPreviewEditor({
         [onChangeViewMode, onClose],
     );
 
+    const fallbackShellClass =
+        "w-full max-w-[560px] overflow-hidden rounded-[28px] border border-neutral-200 bg-white shadow-[0_30px_100px_rgba(15,23,42,0.22)]";
+    const fallbackAccent = "#FF8D21";
+    const fallbackBackdrop = "bg-neutral-950/65";
+    const fallbackPrimaryButtonClass =
+        "inline-flex items-center rounded-full px-4 py-2 text-xs font-semibold text-white transition hover:brightness-95";
+    const fallbackSecondaryButtonClass =
+        "inline-flex items-center rounded-full border border-neutral-200 bg-white px-4 py-2 text-xs font-semibold text-neutral-800 transition hover:bg-neutral-50";
+
     if (debugHydrationLoaderOpen || (!htmlPaths.length && !isHtmlDiscoveryFallbackReady)) {
         return (
             <div className="pointer-events-none fixed inset-0 z-[22050] flex items-center justify-center px-4">
@@ -7501,24 +7461,31 @@ export default function AppPreviewEditor({
 
     if (!htmlPaths.length) {
         return (
-            <div className="h-full overflow-auto p-4">
-                <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
-                    <div className="font-medium text-amber-950">
-                        We could not load an editable file for this project yet.
-                    </div>
-                    <div className="mt-2 text-amber-900/80">
-                        The files may still be settling, or this project may need a fresh rescan from the dashboard.
-                    </div>
-                    <div className="mt-4 flex flex-wrap items-center gap-3">
-                        <Link
-                            href="/dashboard/view"
-                            className="inline-flex items-center rounded-full bg-amber-950 px-4 py-2 text-xs font-semibold text-white transition hover:bg-amber-900"
-                        >
-                            Open dashboard
-                        </Link>
-                        {/* <span className="text-xs text-amber-900/70">
-                            If the issue keeps happening, rescan the project there and reopen the editor.
-                        </span> */}
+            <div className="fixed inset-0 z-[22060] flex items-center justify-center px-4">
+                <div className={`absolute inset-0 ${fallbackBackdrop}`} />
+                <div className={`relative ${fallbackShellClass}`}>
+                    <div className="p-6 sm:p-7">
+                        <div className="inline-flex items-center rounded-full border border-[#FF8D2133] bg-[#FF8D2110] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#C86F1F]">
+                            Something went wrong
+                        </div>
+                        <div className="mt-4 text-[22px] font-semibold tracking-tight text-neutral-900">
+                            We could not load an editable file for this project yet.
+                        </div>
+                        <div className="mt-3 text-sm leading-6 text-neutral-600">
+                            The files may still be settling, or this project may need a fresh rescan from the dashboard.
+                        </div>
+                        <div className="mt-6 flex flex-wrap items-center gap-3">
+                            <Link
+                                href="/dashboard/view"
+                                className={fallbackPrimaryButtonClass}
+                                style={{ backgroundColor: fallbackAccent }}
+                            >
+                                Open dashboard
+                            </Link>
+                            <span className="text-xs text-neutral-500">
+                                Rescan there, then reopen the editor.
+                            </span>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -7527,9 +7494,34 @@ export default function AppPreviewEditor({
 
     if (!activeHtmlPath || !files[activeHtmlPath]) {
         return (
-            <div className="h-full overflow-auto p-4">
-                <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-                    The selected HTML file is unavailable. Pick another HTML file.
+            <div className="fixed inset-0 z-[22060] flex items-center justify-center px-4">
+                <div className={`absolute inset-0 ${fallbackBackdrop}`} />
+                <div className={`${fallbackShellClass} relative max-w-[480px]`}>
+                    <div className="h-1.5 w-full" style={{ backgroundColor: fallbackAccent }} />
+                    <div className="p-6 sm:p-7">
+                        <div className="text-sm font-semibold text-neutral-900">
+                            The selected HTML file is unavailable.
+                        </div>
+                        <div className="mt-2 text-sm leading-6 text-neutral-600">
+                            Pick another HTML file from the list, or go back to the dashboard if the project still needs a scan.
+                        </div>
+                        <div className="mt-5 flex flex-wrap items-center gap-3">
+                            <button
+                                type="button"
+                                onClick={() => onClose?.()}
+                                className={fallbackSecondaryButtonClass}
+                            >
+                                Close editor
+                            </button>
+                            <Link
+                                href="/dashboard/view"
+                                className={fallbackPrimaryButtonClass}
+                                style={{ backgroundColor: fallbackAccent }}
+                            >
+                                Open dashboard
+                            </Link>
+                        </div>
+                    </div>
                 </div>
             </div>
         );
@@ -7565,6 +7557,7 @@ export default function AppPreviewEditor({
                     isFilesHydrated={isFilesHydrated}
                     filesHydrationProgress={filesHydrationProgress}
                     isPreviewReady={isPreviewReady}
+                    isFilesHydrationActive={isFilesHydrationActive}
                     deployLocked={deployLocked}
                     accessLocked={accessLocked}
                     previewOpenToken={previewOpenToken}

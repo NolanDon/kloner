@@ -129,7 +129,7 @@ export default function PreviewBuildUI({ userId, appId, code }: PreviewBuildUIPr
             <p className="text-gray-600 mb-4">{previewData.error || 'An unknown error occurred'}</p>
             <button
               onClick={() => window.location.reload()}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-accent text-white rounded-lg hover:bg-[#e54f1a] transition-colors"
+              className="inline-flex items-center gap-2 px-4 py-2 bg-accent text-white rounded-lg hover:bg-[#e19d67] transition-colors"
             >
               Try Again
             </button>
@@ -180,7 +180,7 @@ export default function PreviewBuildUI({ userId, appId, code }: PreviewBuildUIPr
                       setIframeRetries(0);
                       setIframeError(false);
                     }}
-                    className="inline-flex items-center gap-2 px-4 py-2 bg-accent text-white rounded-lg hover:bg-[#e54f1a] transition-colors"
+                    className="inline-flex items-center gap-2 px-4 py-2 bg-accent text-white rounded-lg hover:bg-[#e19d67] transition-colors"
                   >
                     Retry
                   </button>

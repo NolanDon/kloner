@@ -12,7 +12,7 @@ function UrlInputModal() {
     <div className="w-full h-40 md:h-56 rounded-2xl border border-black/10 bg-white shadow-md p-4 md:p-5 min-h-60">
       <div className="text-xs text-neutral-500 mb-2 flex items-center gap-2">
         <span className="inline-block h-2.5 w-2.5 rounded-full bg-emerald-500" />
-        <span>Drop a link or describe it</span>
+        <span>Drop a link</span>
       </div>
       <div className="rounded-xl ring-1 ring-neutral-200 bg-neutral-50 px-3 py-3 text-sm text-neutral-700 flex items-center gap-2">
         <span className="text-neutral-400">URL:</span>
@@ -192,11 +192,11 @@ function EditBlocksModal() {
             </div>
 
             <div className="flex items-start gap-2">
-              <div className="mt-0.5 h-6 w-6 rounded-full bg-[rgba(245,95,42,1)] text-white grid place-items-center text-[11px] font-semibold">
+              <div className="mt-0.5 h-6 w-6 rounded-full bg-[rgba(255,141,33,1)] text-white grid place-items-center text-[11px] font-semibold">
                 K
               </div>
-              <div className="flex-1 rounded-xl bg-white border border-[rgba(245,95,42,0.22)] px-3 py-2">
-                <div className="text-[11px] font-semibold text-[rgba(245,95,42,1)]">Kloner Agent</div>
+              <div className="flex-1 rounded-xl bg-white border border-[rgba(255,141,33,0.22)] px-3 py-2">
+                <div className="text-[11px] font-semibold text-[rgba(255,141,33,1)]">Kloner Agent</div>
                 <div className="text-sm text-neutral-800 leading-5">
                   Done. I tightened the headline, generated a pricing section, and wired the primary CTA to your signup flow.
                 </div>
@@ -227,11 +227,11 @@ function EditBlocksModal() {
             </div>
 
             <div className="flex items-start gap-2">
-              <div className="mt-0.5 h-6 w-6 rounded-full bg-[rgba(245,95,42,1)] text-white grid place-items-center text-[11px] font-semibold">
+              <div className="mt-0.5 h-6 w-6 rounded-full bg-[rgba(255,141,33,1)] text-white grid place-items-center text-[11px] font-semibold">
                 K
               </div>
-              <div className="flex-1 rounded-xl bg-white border border-[rgba(245,95,42,0.22)] px-3 py-2">
-                <div className="text-[11px] font-semibold text-[rgba(245,95,42,1)]">Kloner Agent</div>
+              <div className="flex-1 rounded-xl bg-white border border-[rgba(255,141,33,0.22)] px-3 py-2">
+                <div className="text-[11px] font-semibold text-[rgba(255,141,33,1)]">Kloner Agent</div>
                 <div className="text-sm text-neutral-800 leading-5">
                   Added login, a simple DB model, and updated the UI spacing/typography for a cleaner look.
                 </div>

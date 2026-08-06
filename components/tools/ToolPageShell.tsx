@@ -21,7 +21,7 @@ export function ToolPageShell({
             <div className="mb-4 flex items-center gap-3">
               <Link
                 href="/tools"
-                className="inline-flex items-center gap-2 rounded-full border border-[#f55f2a] bg-[#f55f2a] px-4 py-2 text-sm font-medium text-white transition duration-200 hover:-translate-y-0.5 hover:bg-[#f3602c]"
+                className="inline-flex items-center gap-2 rounded-full border border-[#FF8D21] bg-[#FF8D21] px-4 py-2 text-sm font-medium text-white transition duration-200 hover:-translate-y-0.5 hover:bg-[#D96E11]"
               >
                 <span aria-hidden>←</span>
                 Back to tools
@@ -36,13 +36,13 @@ export function ToolPageShell({
                 {tool.intro}
               </p>
               <div className="mt-4 flex flex-wrap gap-3 text-sm text-neutral-600">
-                <a href="https://kloner.app" className="font-medium text-[#f55f2a] underline underline-offset-4 decoration-2 hover:decoration-[#f55f2a]">
+                <a href="https://kloner.app" className="font-medium text-[#FF8D21] underline underline-offset-4 decoration-2 hover:decoration-[#FF8D21]">
                   build tools like this
                 </a>
-                <a href="https://kloner.app" className="font-medium text-[#f55f2a] underline underline-offset-4 decoration-2 hover:decoration-[#f55f2a]">
+                <a href="https://kloner.app" className="font-medium text-[#FF8D21] underline underline-offset-4 decoration-2 hover:decoration-[#FF8D21]">
                   create your own tools
                 </a>
-                <a href="https://kloner.app" className="font-medium text-[#f55f2a] underline underline-offset-4 decoration-2 hover:decoration-[#f55f2a]">
+                <a href="https://kloner.app" className="font-medium text-[#FF8D21] underline underline-offset-4 decoration-2 hover:decoration-[#FF8D21]">
                   launch apps faster
                 </a>
               </div>
@@ -96,7 +96,7 @@ export function ToolPageShell({
             <h2 className="text-2xl font-semibold tracking-tight text-neutral-950">Related tools</h2>
             <div className="grid gap-3 sm:grid-cols-3">
               {related.map((item) => (
-                <Link key={item.slug} href={`/tools/${item.slug}`} className="group rounded-[1.5rem] border border-neutral-200 bg-white p-4 text-sm text-neutral-700 shadow-[0_12px_34px_rgba(15,23,42,0.06)] transition duration-300 ease-out hover:-translate-y-1 hover:scale-[1.02] hover:border-[#f55f2a] hover:shadow-[0_24px_60px_rgba(245,95,42,0.14)]">
+                <Link key={item.slug} href={`/tools/${item.slug}`} className="group rounded-[1.5rem] border border-neutral-200 bg-white p-4 text-sm text-neutral-700 shadow-[0_12px_34px_rgba(15,23,42,0.06)] transition duration-300 ease-out hover:-translate-y-1 hover:scale-[1.02] hover:border-[#FF8D21] hover:shadow-[0_24px_60px_rgba(255,141,33,0.14)]">
                   <div className="font-medium text-neutral-950">{item.title}</div>
                   <div className="mt-2 text-xs uppercase tracking-[0.16em] text-neutral-500">{item.keyword}</div>
                 </Link>

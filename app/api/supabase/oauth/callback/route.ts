@@ -54,10 +54,10 @@ function renderOauthResultHtml(params: {
       .replace(/'/g, "&#039;");
 
   const payload = params.payload || {};
-  const accent = "#F55F2A";
+  const accent = "#FF8D21";
   const danger = "#ef4444";
   const iconBg = params.ok ? accent : danger;
-  const iconShadow = params.ok ? "rgba(245,95,42,0.45)" : "rgba(239,68,68,0.45)";
+  const iconShadow = params.ok ? "rgba(255,141,33,0.45)" : "rgba(239,68,68,0.45)";
 
   return `<!doctype html>
 <html lang="en">
@@ -166,7 +166,7 @@ function renderOauthProvisioningHtml(params: {
       .replace(/\"/g, "&quot;")
       .replace(/'/g, "&#039;");
 
-  const accent = "#F55F2A";
+  const accent = "#FF8D21";
 
   return `<!doctype html>
 <html lang="en">
@@ -183,7 +183,7 @@ function renderOauthProvisioningHtml(params: {
       @media (min-width: 640px) { .card { padding: 30px; } }
       .kicker { font-size: 11px; font-weight: 700; letter-spacing: 0.25em; text-transform: uppercase; color: rgba(161,161,170,0.95); margin: 0 0 12px; }
       .iconRow { display: flex; justify-content: center; margin-bottom: 14px; }
-      .logo { width: 56px; height: 56px; border-radius: 9999px; box-shadow: 0 12px 30px rgba(245,95,42,0.25); object-fit: contain; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.10); padding: 10px; }
+      .logo { width: 56px; height: 56px; border-radius: 9999px; box-shadow: 0 12px 30px rgba(255,141,33,0.25); object-fit: contain; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.10); padding: 10px; }
       .title { margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.02em; text-align: center; }
       .sub { margin: 10px 0 0; color: rgba(228,228,231,0.92); font-size: 14px; line-height: 1.55; text-align: center; }
       details { display: none; margin-top: 16px; }

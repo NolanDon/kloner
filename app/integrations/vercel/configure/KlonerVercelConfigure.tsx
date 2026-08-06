@@ -5,7 +5,7 @@ import { useState } from "react";
 import { ToggleLeft, ToggleRight, Save, Info } from "lucide-react";
 import NavBar from "@/components/NavBar";
 
-const ACCENT = "#f55f2a";
+const ACCENT = "#FF8D21";
 
 export default function KlonerVercelConfigure() {
     const search = useSearchParams();

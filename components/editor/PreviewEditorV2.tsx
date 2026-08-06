@@ -80,7 +80,7 @@ type Props = {
     onRequestDeployCheckout?: () => Promise<void> | void;
 };
 
-const ACCENT = "#f55f2a";
+const ACCENT = "#FF8D21";
 const SAVE_NUDGE_KEY = "kloner_save_nudge_seen";
 
 export type SelectionMeta = {
@@ -355,9 +355,9 @@ const TEXT_COLOR_SWATCHES = [
     "#6b7280",
     "#9ca3af",
     "#e5e7eb",
-    "#f55f2a",
-    "#f97316",
-    "#ea580c",
+    "#FF8D21",
+    "#f3b27c",
+    "#e09b63",
     "#ef4444",
     "#dc2626",
     "#e11d48",
@@ -372,8 +372,8 @@ const TEXT_COLOR_SWATCHES = [
     "#6366f1",
     "#8b5cf6",
     "#a855f7",
-    "#f59e0b",
-    "#d97706",
+    "#f6cc9b",
+    "#c89256",
     "#ffffff",
 ];
 
@@ -1371,7 +1371,9 @@ export default function PreviewEditorV2({
             }
 
             // fire-and-forget; must not block navigation
-            void recordEditorSessionAnalytics(u, durationMs, reason, counters);
+            void recordEditorSessionAnalytics(u, durationMs, reason, counters).catch((err) => {
+                console.error("PreviewEditorV2 session analytics flush failed", err);
+            });
         };
 
         const handleBeforeUnload = () => flushSession("beforeunload");
@@ -1940,7 +1942,7 @@ export default function PreviewEditorV2({
                     "#f8fafc",
                     "#e2e8f0",
                     "#111827",
-                    "#f55f2a",
+                    "#FF8D21",
                     "#0ea5e9",
                     "#22c55e",
                     "#a855f7",
@@ -4704,10 +4706,10 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                 }}
                                 disabled={exporting}
                                 data-tour-deploy
-                                className={`inline-flex h-9 shrink-0 items-center gap-2 rounded-full border border-[#f55f2a] bg-[#f55f2a] px-3 text-sm font-semibold text-white shadow-md transition ${
+                                className={`inline-flex h-9 shrink-0 items-center gap-2 rounded-full border border-[#FF8D21] bg-[#FF8D21] px-3 text-sm font-semibold text-white shadow-md transition ${
                                     exporting
                                         ? "cursor-not-allowed opacity-60"
-                                        : "hover:bg-[#e54f1a]"
+                                        : "hover:bg-[#e19d67]"
                                 }`}
                                 title="Deploy"
                                 aria-label="Deploy"
@@ -4759,15 +4761,15 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                             onClick={() => setExportPrompt(true)}
                             disabled={exporting}
                             data-tour-deploy
-                            className={`inline-flex h-8 items-center gap-1.5 rounded-full border border-[#f55f2a] bg-[#f55f2a] px-3 py-1 text-[13px] font-semibold text-white shadow-md transition ${
+                            className={`inline-flex h-8 items-center gap-1.5 rounded-full border border-[#FF8D21] bg-[#FF8D21] px-3 py-1 text-[13px] font-semibold text-white shadow-md transition ${
                                 exporting
                                     ? "cursor-not-allowed opacity-60"
-                                    : "hover:bg-[#e54f1a] hover:shadow-lg"
+                                    : "hover:bg-[#e19d67] hover:shadow-lg"
                             }`}
                             style={{
                                 boxShadow: exporting 
                                     ? "0 4px 6px -1px rgba(0, 0, 0, 0.1)" 
-                                    : "0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 0 8px rgba(245, 95, 42, 0.3)"
+                                    : "0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 0 8px rgba(255, 141, 33, 0.3)"
                             }}
                             title="Deploy"
                             aria-label="Deploy"
@@ -4828,7 +4830,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                 onClick={() => handleModeClick("preview")}
                                 className={`inline-flex h-6 w-6 items-center justify-center rounded-full transition-colors ${
                                     mode === "preview"
-                                        ? "bg-[#f55f2a] text-white"
+                                        ? "bg-[#FF8D21] text-white"
                                         : "bg-white text-neutral-600 hover:bg-neutral-100"
                                 }`}
                                 title="Preview"
@@ -4846,7 +4848,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                 }}
                                 className={`inline-flex h-6 w-6 items-center justify-center rounded-full transition-colors ${
                                     mode === "screenshot"
-                                        ? "bg-[#f55f2a] text-white"
+                                        ? "bg-[#FF8D21] text-white"
                                         : "bg-white text-neutral-600 hover:bg-neutral-100"
                                 }`}
                                 title="Screenshot"
@@ -4865,7 +4867,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                 }}
                                 className={`inline-flex h-6 w-6 items-center justify-center rounded-full transition-colors ${
                                     mode === "code"
-                                        ? "bg-[#f55f2a] text-white"
+                                        ? "bg-[#FF8D21] text-white"
                                         : "bg-white text-neutral-600 hover:bg-neutral-100"
                                 } ${isAccessLocked && !showAccessPaywall ? "blur-[1.5px] opacity-70" : ""}`}
                                 title="Code"
@@ -4892,7 +4894,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                 }}
                                 className={`inline-flex h-6 w-6 items-center justify-center rounded-full transition-colors ${
                                     !sidebarHidden && sidePanelMode === "style" && mode === "preview"
-                                        ? "bg-[#f55f2a] text-white"
+                                        ? "bg-[#FF8D21] text-white"
                                         : "bg-white text-neutral-600 hover:bg-neutral-100"
                                 }`}
                                 title="Styles"
@@ -4915,7 +4917,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                 }}
                                 className={`inline-flex h-6 w-6 items-center justify-center rounded-full transition-colors ${
                                     !sidebarHidden && sidePanelMode === "meta"
-                                        ? "bg-[#f55f2a] text-white"
+                                        ? "bg-[#FF8D21] text-white"
                                         : "bg-white text-neutral-600 hover:bg-neutral-100"
                                 }`}
                                 title="SEO / Meta"
@@ -4940,7 +4942,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                 }}
                                 className={`inline-flex h-6 w-6 items-center justify-center rounded-full transition-colors ${
                                     !sidebarHidden && sidePanelMode === "revision-chat"
-                                        ? "bg-[#f55f2a] text-white"
+                                        ? "bg-[#FF8D21] text-white"
                                         : "bg-white text-neutral-600 hover:bg-neutral-100"
                                 } ${isAccessLocked && !showAccessPaywall ? "cursor-not-allowed opacity-60" : ""}`}
                                 title="AI edits"
@@ -4968,7 +4970,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                 }}
                                 className={`inline-flex h-6 w-6 items-center justify-center rounded-full transition-colors ${
                                     !sidebarHidden && sidePanelMode === "ai-library"
-                                        ? "bg-[#f55f2a] text-white"
+                                        ? "bg-[#FF8D21] text-white"
                                         : "bg-white text-neutral-600 hover:bg-neutral-100"
                                 } ${shouldLockImagesTab || (isAccessLocked && !showAccessPaywall) ? "cursor-not-allowed opacity-60" : ""}`}
                                 title={shouldLockImagesTab ? "Images are available on Pro and Agency plans" : "AI images"}
@@ -4989,7 +4991,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                 whileTap={{ scale: 0.96 }}
                                 className={`flex h-6 w-6 items-center justify-center rounded-full transition-colors ${
                                     device === "desktop"
-                                        ? "bg-[#f55f2a] text-white"
+                                        ? "bg-[#FF8D21] text-white"
                                         : "bg-white text-neutral-600 hover:bg-neutral-100"
                                 }`}
                                 title="Desktop"
@@ -5005,7 +5007,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                 whileTap={{ scale: 0.96 }}
                                 className={`flex h-6 w-6 items-center justify-center rounded-full transition-colors ${
                                     device === "tablet"
-                                        ? "bg-[#f55f2a] text-white"
+                                        ? "bg-[#FF8D21] text-white"
                                         : "bg-white text-neutral-600 hover:bg-neutral-100"
                                 }`}
                                 title="Tablet"
@@ -5021,7 +5023,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                 whileTap={{ scale: 0.96 }}
                                 className={`flex h-6 w-6 items-center justify-center rounded-full transition-colors ${
                                     device === "mobile"
-                                        ? "bg-[#f55f2a] text-white"
+                                        ? "bg-[#FF8D21] text-white"
                                         : "bg-white text-neutral-600 hover:bg-neutral-100"
                                 }`}
                                 title="Mobile"
@@ -5070,9 +5072,9 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                         ) : null}
 
                         {/* Panel header */}
-                        <div className={`flex items-center justify-between px-4 py-3 ${isAccessLocked && !showAccessPaywall ? "blur-[1.5px] opacity-70 pointer-events-none select-none" : ""}`} style={{ backgroundColor: "rgba(245, 95, 42, 0.08)" }}>
+                        <div className={`flex items-center justify-between px-4 py-3 ${isAccessLocked && !showAccessPaywall ? "blur-[1.5px] opacity-70 pointer-events-none select-none" : ""}`} style={{ backgroundColor: "rgba(255, 141, 33, 0.08)" }}>
                                 <div>
-                                <div className="text-sm font-semibold text-[#f55f2a]">
+                                <div className="text-sm font-semibold text-[#FF8D21]">
                                     {sidePanelMode === "style" && "🎨 Styles"}
                                     {sidePanelMode === "meta" && "🔍 SEO / Meta"}
                                     {sidePanelMode === "ai-library" && "🖼️ AI Images"}
@@ -5123,7 +5125,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                             onClick={() => openSidePanelMode("revision-chat")}
                                             className={`shrink-0 inline-flex items-center gap-2 rounded-full border px-3 py-2 text-xs font-semibold transition-colors ${
                                                 sidePanelMode === "revision-chat"
-                                                    ? "border-[#f55f2a] bg-[#f55f2a] text-white"
+                                                    ? "border-[#FF8D21] bg-[#FF8D21] text-white"
                                                     : "border-neutral-300 bg-white text-neutral-700"
                                             }`}
                                         >
@@ -5135,7 +5137,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                             onClick={() => openSidePanelMode("style")}
                                             className={`shrink-0 inline-flex items-center gap-2 rounded-full border px-3 py-2 text-xs font-semibold transition-colors ${
                                                 sidePanelMode === "style"
-                                                    ? "border-[#f55f2a] bg-[#f55f2a] text-white"
+                                                    ? "border-[#FF8D21] bg-[#FF8D21] text-white"
                                                     : "border-neutral-300 bg-white text-neutral-700"
                                             }`}
                                         >
@@ -5147,7 +5149,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                             onClick={() => openSidePanelMode("meta")}
                                             className={`shrink-0 inline-flex items-center gap-2 rounded-full border px-3 py-2 text-xs font-semibold transition-colors ${
                                                 sidePanelMode === "meta"
-                                                    ? "border-[#f55f2a] bg-[#f55f2a] text-white"
+                                                    ? "border-[#FF8D21] bg-[#FF8D21] text-white"
                                                     : "border-neutral-300 bg-white text-neutral-700"
                                             }`}
                                         >
@@ -5159,7 +5161,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                             onClick={() => openSidePanelMode("ai-library")}
                                             className={`shrink-0 inline-flex items-center gap-2 rounded-full border px-3 py-2 text-xs font-semibold transition-colors ${
                                                 sidePanelMode === "ai-library"
-                                                    ? "border-[#f55f2a] bg-[#f55f2a] text-white"
+                                                    ? "border-[#FF8D21] bg-[#FF8D21] text-white"
                                                     : "border-neutral-300 bg-white text-neutral-700"
                                             }`}
                                         >
@@ -5172,7 +5174,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                 onClick={() => openSidePanelMode("code")}
                                                 className={`shrink-0 inline-flex items-center gap-2 rounded-full border px-3 py-2 text-xs font-semibold transition-colors ${
                                                     sidePanelMode === "code"
-                                                        ? "border-[#f55f2a] bg-[#f55f2a] text-white"
+                                                        ? "border-[#FF8D21] bg-[#FF8D21] text-white"
                                                         : "border-neutral-300 bg-white text-neutral-700"
                                                 }`}
                                             >
@@ -5757,7 +5759,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                         </div>
                                         <div className="min-h-0 flex-1">
                                             <textarea
-                                                className="h-[60vh] w-full resize-none rounded-xl border border-neutral-200 bg-white p-4 font-mono text-sm leading-6 text-neutral-900 shadow-sm outline-none placeholder:text-neutral-400 focus:border-[#f55f2a] focus:ring-2 focus:ring-[#f55f2a]/20 disabled:opacity-60"
+                                                className="h-[60vh] w-full resize-none rounded-xl border border-neutral-200 bg-white p-4 font-mono text-sm leading-6 text-neutral-900 shadow-sm outline-none placeholder:text-neutral-400 focus:border-[#FF8D21] focus:ring-2 focus:ring-[#FF8D21]/20 disabled:opacity-60"
                                                 value={htmlDraft}
                                                 onChange={(e) => setHtmlDraft(e.target.value)}
                                                 spellCheck={false}
@@ -6413,7 +6415,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                     }}
                                     className={`inline-flex items-center justify-center gap-2 rounded-full border px-4 py-2.5 text-sm font-semibold transition-colors ${
                                         mobileTab === "preview"
-                                            ? "border-[#f55f2a] bg-[#f55f2a] text-white"
+                                            ? "border-[#FF8D21] bg-[#FF8D21] text-white"
                                             : "border-neutral-300 bg-white text-neutral-800"
                                     }`}
                                 >
@@ -6431,7 +6433,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                     }}
                                     className={`inline-flex items-center justify-center gap-2 rounded-full border px-4 py-2.5 text-sm font-semibold transition-colors ${
                                         mobileTab === "panel"
-                                            ? "border-[#f55f2a] bg-[#f55f2a] text-white"
+                                            ? "border-[#FF8D21] bg-[#FF8D21] text-white"
                                             : "border-neutral-300 bg-white text-neutral-800"
                                     }`}
                                 >
@@ -6484,7 +6486,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                         <div className="hidden lg:block mb-3" style={{ marginLeft: !sidebarHidden ? "540px" : "20px", marginRight: "20px" }} id="kloner-apply-changes">
                             {/* V2 Badge above Apply button */}
                             <div className="flex items-center justify-between mb-2">
-                                <div className="inline-flex items-center gap-1 rounded-full bg-[#f55f2a] px-2 py-1 text-[10px] font-semibold text-white shadow-md">
+                                <div className="inline-flex items-center gap-1 rounded-full bg-[#FF8D21] px-2 py-1 text-[10px] font-semibold text-white shadow-md">
                                     V2
                                 </div>
                                 {/* UI scale controls */}
@@ -6580,7 +6582,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                     }}
                                                     className={`inline-flex items-center justify-center gap-2 rounded-full border px-4 py-2.5 text-sm font-semibold ${
                                                         mode === "preview"
-                                                            ? "border-[#f55f2a] bg-[#f55f2a] text-white"
+                                                            ? "border-[#FF8D21] bg-[#FF8D21] text-white"
                                                             : "border-neutral-300 bg-white text-neutral-800"
                                                     }`}
                                                 >
@@ -6592,7 +6594,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                     onClick={openScreenshotMode}
                                                     className={`inline-flex items-center justify-center gap-2 rounded-full border px-4 py-2.5 text-sm font-semibold ${
                                                         mode === "screenshot"
-                                                            ? "border-[#f55f2a] bg-[#f55f2a] text-white"
+                                                            ? "border-[#FF8D21] bg-[#FF8D21] text-white"
                                                             : "border-neutral-300 bg-white text-neutral-800"
                                                     }`}
                                                 >
@@ -6605,7 +6607,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                         onClick={() => openSidePanelMode("code")}
                                                         className={`col-span-2 inline-flex items-center justify-center gap-2 rounded-full border px-4 py-2.5 text-sm font-semibold ${
                                                             mode === "code"
-                                                                ? "border-[#f55f2a] bg-[#f55f2a] text-white"
+                                                                ? "border-[#FF8D21] bg-[#FF8D21] text-white"
                                                                 : "border-neutral-300 bg-white text-neutral-800"
                                                         }`}
                                                     >
@@ -6624,7 +6626,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                     onClick={() => openSidePanelMode("revision-chat")}
                                                     className={`inline-flex items-center justify-center gap-2 rounded-full border px-4 py-2.5 text-sm font-semibold ${
                                                         sidePanelMode === "revision-chat"
-                                                            ? "border-[#f55f2a] bg-[#f55f2a] text-white"
+                                                            ? "border-[#FF8D21] bg-[#FF8D21] text-white"
                                                             : "border-neutral-300 bg-white text-neutral-800"
                                                     }`}
                                                 >
@@ -6636,7 +6638,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                     onClick={() => openSidePanelMode("style")}
                                                     className={`inline-flex items-center justify-center gap-2 rounded-full border px-4 py-2.5 text-sm font-semibold ${
                                                         sidePanelMode === "style"
-                                                            ? "border-[#f55f2a] bg-[#f55f2a] text-white"
+                                                            ? "border-[#FF8D21] bg-[#FF8D21] text-white"
                                                             : "border-neutral-300 bg-white text-neutral-800"
                                                     }`}
                                                 >
@@ -6648,7 +6650,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                     onClick={() => openSidePanelMode("meta")}
                                                     className={`inline-flex items-center justify-center gap-2 rounded-full border px-4 py-2.5 text-sm font-semibold ${
                                                         sidePanelMode === "meta"
-                                                            ? "border-[#f55f2a] bg-[#f55f2a] text-white"
+                                                            ? "border-[#FF8D21] bg-[#FF8D21] text-white"
                                                             : "border-neutral-300 bg-white text-neutral-800"
                                                     }`}
                                                 >
@@ -6660,7 +6662,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                     onClick={() => openSidePanelMode("ai-library")}
                                                     className={`inline-flex items-center justify-center gap-2 rounded-full border px-4 py-2.5 text-sm font-semibold ${
                                                         sidePanelMode === "ai-library"
-                                                            ? "border-[#f55f2a] bg-[#f55f2a] text-white"
+                                                            ? "border-[#FF8D21] bg-[#FF8D21] text-white"
                                                             : "border-neutral-300 bg-white text-neutral-800"
                                                     } ${shouldLockImagesTab ? "opacity-70" : ""}`}
                                                     title={shouldLockImagesTab ? "Images are available on Pro and Agency plans" : "Images"}
@@ -6682,7 +6684,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                     }}
                                                     className={`inline-flex items-center justify-center gap-2 rounded-full border px-3 py-2.5 text-sm font-semibold ${
                                                         device === "desktop"
-                                                            ? "border-[#f55f2a] bg-[#f55f2a] text-white"
+                                                            ? "border-[#FF8D21] bg-[#FF8D21] text-white"
                                                             : "border-neutral-300 bg-white text-neutral-800"
                                                     }`}
                                                 >
@@ -6697,7 +6699,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                     }}
                                                     className={`inline-flex items-center justify-center gap-2 rounded-full border px-3 py-2.5 text-sm font-semibold ${
                                                         device === "tablet"
-                                                            ? "border-[#f55f2a] bg-[#f55f2a] text-white"
+                                                            ? "border-[#FF8D21] bg-[#FF8D21] text-white"
                                                             : "border-neutral-300 bg-white text-neutral-800"
                                                     }`}
                                                 >
@@ -6712,7 +6714,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                                     }}
                                                     className={`inline-flex items-center justify-center gap-2 rounded-full border px-3 py-2.5 text-sm font-semibold ${
                                                         device === "mobile"
-                                                            ? "border-[#f55f2a] bg-[#f55f2a] text-white"
+                                                            ? "border-[#FF8D21] bg-[#FF8D21] text-white"
                                                             : "border-neutral-300 bg-white text-neutral-800"
                                                     }`}
                                                 >
@@ -6742,7 +6744,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                     className="inline-flex rounded-2xl p-[3px] shadow-sm"
                                     style={{
                                         // use ONLY your accent (and tints) for the moving border
-                                        backgroundImage: "linear-gradient(90deg, rgba(245,95,42,0.35), rgba(245,95,42,0.85), rgba(245,95,42,0.35))",
+                                        backgroundImage: "linear-gradient(90deg, rgba(255,141,33,0.35), rgba(255,141,33,0.85), rgba(255,141,33,0.35))",
                                         backgroundSize: "220% 220%",
                                         animation: "kloner-accent-move 2.8s linear infinite",
                                     }}
@@ -6753,7 +6755,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                             className="bg-clip-text text-transparent font-semibold tracking-tight"
                                             style={{
                                                 backgroundImage:
-                                                    "linear-gradient(90deg, rgba(245,95,42,0.6), rgba(245,95,42,1), rgba(245,95,42,0.6))",
+                                                    "linear-gradient(90deg, rgba(255,141,33,0.6), rgba(255,141,33,1), rgba(255,141,33,0.6))",
                                                 backgroundSize: "220% 220%",
                                                 animation: "kloner-accent-move 2.8s linear infinite",
                                             }}
@@ -6761,13 +6763,13 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                             Applying AI edit…
                                         </span>
                                         <span className="inline-flex items-center gap-1 leading-none" aria-hidden="true">
-                                            <span className="h-1.5 w-1.5 rounded-full bg-[#f55f2a] kloner-dot" />
+                                            <span className="h-1.5 w-1.5 rounded-full bg-[#FF8D21] kloner-dot" />
                                             <span
-                                                className="h-1.5 w-1.5 rounded-full bg-[#f55f2a] kloner-dot"
+                                                className="h-1.5 w-1.5 rounded-full bg-[#FF8D21] kloner-dot"
                                                 style={{ opacity: 0.75, animationDelay: "0.15s" }}
                                             />
                                             <span
-                                                className="h-1.5 w-1.5 rounded-full bg-[#f55f2a] kloner-dot"
+                                                className="h-1.5 w-1.5 rounded-full bg-[#FF8D21] kloner-dot"
                                                 style={{ opacity: 0.45, animationDelay: "0.30s" }}
                                             />
                                         </span>

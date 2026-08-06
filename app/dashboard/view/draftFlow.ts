@@ -167,12 +167,6 @@ export function normalizeDashboardDraftRecord(draft: any): DashboardDraftCard | 
         draft.userMessage ||
         (Array.isArray(draft.warnings) && draft.warnings.length > 0)
     );
-    const completed =
-        status === "ready"
-            ? true
-            : status === "processing"
-                ? false
-                : Boolean(draft.completed) || (!hasIssuePayload && Boolean(sourceUrl));
 
     const details = draft?.details && typeof draft.details === "object" ? draft.details : null;
     const archiveZipPath = [
@@ -217,6 +211,18 @@ export function normalizeDashboardDraftRecord(draft: any): DashboardDraftCard | 
         draft?.recommendedAction,
         details?.recommendedAction,
     ].find((value) => typeof value === "string" && value.trim()) as string | undefined;
+    const archiveReady = Boolean(archiveZipPath || archiveZipUrl);
+    const completed = typeof draft.completed === "boolean"
+        ? draft.completed
+        : typeof draft.pendingCompleted === "boolean"
+            ? draft.pendingCompleted
+            : status === "ready"
+                ? true
+                : status === "warning"
+                    ? archiveReady
+                    : status === "processing" || status === "in_progress" || status === "queued" || status === "pending" || status === "booting"
+                        ? false
+                        : archiveReady && !hasIssuePayload;
 
     return {
         draftId,
@@ -584,18 +590,18 @@ export async function submitDashboardUrlDraft({
             console.warn("[drafts] failed to persist new draft", draftError);
         }
 
-        setPendingDraftApps((prev) => {
-            const next = { ...prev };
-            delete next[draftDocId];
-            return next;
-        });
-
         setErr("");
         setInfo("");
         try {
             await onDraftReady?.(readyDraft);
         } catch (readyDraftError) {
             console.warn("[drafts] failed to auto-promote ready draft", readyDraftError);
+        } finally {
+            setPendingDraftApps((prev) => {
+                const next = { ...prev };
+                delete next[draftDocId];
+                return next;
+            });
         }
         return true;
     } catch (error) {

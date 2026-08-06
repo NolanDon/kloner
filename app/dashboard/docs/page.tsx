@@ -14,7 +14,7 @@ import Footer from "@/components/Footer";
 import { HashScrollHighlighter } from "./HashScrollHighlighter";
 import { RightQuickNav } from "./RightQuickNav";
 
-const ACCENT = "#f55f2a";
+const ACCENT = "#FF8D21";
 
 const SECTION_Y = "py-14 sm:py-16";
 const SECTION_SCROLL = "scroll-mt-[110px]";
@@ -684,7 +684,7 @@ function FeatureCard(props: {
     return (
         <article className="flex h-full flex-col rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
             <div className="flex items-start gap-3">
-                <div className="rounded-full p-2 shrink-0" style={{ backgroundColor: "rgba(245,95,42,0.08)" }}>
+                <div className="rounded-full p-2 shrink-0" style={{ backgroundColor: "rgba(255,141,33,0.08)" }}>
                     <div className="rounded-full bg-white p-1 shadow-sm" style={{ color: ACCENT }}>
                         {props.icon}
                     </div>
@@ -749,7 +749,7 @@ function DemoCreditPill({ label, used, total }: { label: string; used: number; t
                     className="h-full rounded-full"
                     style={{
                         width: `${pct}%`,
-                        background: `linear-gradient(90deg, ${ACCENT}, #f97316)`,
+                        background: `linear-gradient(90deg, ${ACCENT}, #f3b27c)`,
                     }}
                 />
             </div>
@@ -857,7 +857,7 @@ function LibraryCard(props: {
             <div className="mb-2 flex items-center gap-2">
                 <div
                     className="inline-flex h-7 w-7 items-center justify-center rounded-full"
-                    style={{ backgroundColor: "rgba(245,95,42,0.08)", color: ACCENT }}
+                    style={{ backgroundColor: "rgba(255,141,33,0.08)", color: ACCENT }}
                 >
                     {props.icon}
                 </div>

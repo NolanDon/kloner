@@ -564,7 +564,7 @@ export default function CommunityBuildsClient() {
                                     <div className="text-[10px] uppercase tracking-[0.22em] text-black/45">
                                         1. Preview
                                     </div>
-                                    <div className="mt-3 inline-flex items-center gap-1 rounded-full bg-[rgba(245,95,42,0.95)] px-4 py-1.5 text-sm font-medium text-white shadow-sm">
+                                    <div className="mt-3 inline-flex items-center gap-1 rounded-full bg-[rgba(255,141,33,0.95)] px-4 py-1.5 text-sm font-medium text-white shadow-sm">
                                         <span>See preview</span>
                                         <Eye className="h-4 w-4" />
                                     </div>
@@ -630,7 +630,7 @@ export default function CommunityBuildsClient() {
                                             onClick={() => handleOpenPreview(item)}
                                             className="absolute inset-0 flex flex-col items-center justify-center gap-2 px-4 text-white font-medium text-sm transition bg-black/40 backdrop-blur-sm opacity-0 group-hover:opacity-100"
                                         >
-                                            <div className="flex flex-inline items-end gap-1 rounded-full bg-[rgba(245,95,42,0.95)] px-4 py-1.5 text-white text-sm shadow-sm hover:bg-[rgba(215,75,22,1)] transition">
+                                            <div className="flex flex-inline items-end gap-1 rounded-full bg-[rgba(255,141,33,0.95)] px-4 py-1.5 text-white text-sm shadow-sm hover:bg-[rgba(231,163,108,1)] transition">
                                                 <span>See preview</span>
                                                 <Eye className="h-4 w-4" />
                                             </div>
@@ -680,7 +680,7 @@ export default function CommunityBuildsClient() {
                                         type="button"
                                         onClick={handleBackToCommunity}
                                         aria-label="Back to community"
-                                        className="inline-flex items-center justify-center py-2 px-3 rounded-full bg-accent text-white shadow-md transition hover:bg-[rgba(215,75,22,1)]"
+                                        className="inline-flex items-center justify-center py-2 px-3 rounded-full bg-accent text-white shadow-md transition hover:bg-[rgba(231,163,108,1)]"
                                     >
                                         <MoveLeftIcon className="h-4 w-4" />
                                         <p className="mx-1 text-[11px]">Back</p>
@@ -704,7 +704,7 @@ export default function CommunityBuildsClient() {
                                                 className={[
                                                     "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 transition",
                                                     previewBuild.likedByMe
-                                                        ? "border-[rgba(245,95,42,0.35)] bg-[rgba(245,95,42,0.10)] text-[rgba(145,54,14,0.98)]"
+                                                        ? "border-[rgba(255,141,33,0.35)] bg-[rgba(255,141,33,0.10)] text-[rgba(145,54,14,0.98)]"
                                                         : "border-black/10 bg-white text-black/60 hover:bg-black/[0.03]",
                                                     likeBusyId === previewBuild.id
                                                         ? "opacity-60 pointer-events-none"
@@ -761,7 +761,7 @@ export default function CommunityBuildsClient() {
                                                     setPreviewPageIndex((i) => Math.max(0, i - 1))
                                                 }
                                                 disabled={previewPageIndex === 0}
-                                                className="absolute left-6 top-1/2 z-10 flex h-16 w-16 -translate-y-1/2 items-center justify-center rounded-full bg-[rgba(245,95,42,1)] text-white shadow-lg hover:bg-[rgba(215,75,22,1)] disabled:opacity-40"
+                                                className="absolute left-6 top-1/2 z-10 flex h-16 w-16 -translate-y-1/2 items-center justify-center rounded-full bg-[rgba(255,141,33,1)] text-white shadow-lg hover:bg-[rgba(231,163,108,1)] disabled:opacity-40"
                                             >
                                                 <ChevronLeft className="h-10 w-10" strokeWidth={2.5} />
                                             </button>
@@ -775,7 +775,7 @@ export default function CommunityBuildsClient() {
                                                     )
                                                 }
                                                 disabled={previewPageIndex === totalPages - 1}
-                                                className="absolute right-7 top-1/2 z-10 flex h-16 w-16 -translate-y-1/2 items-center justify-center rounded-full bg-[rgba(245,95,42,1)] text-white shadow-lg hover:bg-[rgba(215,75,22,1)] disabled:opacity-40"
+                                                className="absolute right-7 top-1/2 z-10 flex h-16 w-16 -translate-y-1/2 items-center justify-center rounded-full bg-[rgba(255,141,33,1)] text-white shadow-lg hover:bg-[rgba(231,163,108,1)] disabled:opacity-40"
                                             >
                                                 <ChevronRight className="h-10 w-10" strokeWidth={2.5} />
                                             </button>

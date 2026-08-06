@@ -1,6 +1,6 @@
 import { motion } from "framer-motion";
 
-const ACCENT = "#f55f2a";
+const ACCENT = "#FF8D21";
 
 type KlonerLoaderProps = {
     inline?: boolean;
@@ -46,7 +46,7 @@ export function MilestoneProgress({
                 <div className="absolute left-[7%] right-[7%] top-1/2 -translate-y-1/2" aria-hidden="true">
                     <div className="h-[2px] w-full rounded-full bg-neutral-200" />
                     <div
-                        className="absolute left-0 top-0 h-[2px] rounded-full bg-[#f55f2a] transition-[width] duration-300 ease-out"
+                        className="absolute left-0 top-0 h-[2px] rounded-full bg-[#FF8D21] transition-[width] duration-300 ease-out"
                         style={{ width: `${current}%` }}
                     />
                 </div>
@@ -58,7 +58,7 @@ export function MilestoneProgress({
                                 <span
                                     className={`relative z-10 h-4 w-4 rounded-full border-2 transition-all ${
                                         reached
-                                            ? "border-[#f55f2a] bg-[#f55f2a] shadow-[0_0_0_5px_rgba(245,95,42,0.12)]"
+                                            ? "border-[#FF8D21] bg-[#FF8D21] shadow-[0_0_0_5px_rgba(255,141,33,0.12)]"
                                             : "border-neutral-300 bg-white"
                                     }`}
                                     aria-hidden="true"
@@ -81,7 +81,7 @@ export function HydrationDotsLoader({
             <div
                 className="rounded-[28px] p-[1px]"
                 style={{
-                    backgroundImage: "linear-gradient(90deg, rgba(245,95,42,0.35), rgba(245,95,42,0.85), rgba(245,95,42,0.35))",
+                    backgroundImage: "linear-gradient(90deg, rgba(255,141,33,0.35), rgba(255,141,33,0.85), rgba(255,141,33,0.35))",
                     backgroundSize: "220% 220%",
                     animation: "kloner-accent-move 2.8s linear infinite",
                 }}
@@ -90,7 +90,7 @@ export function HydrationDotsLoader({
                     <span
                         className="bg-clip-text text-transparent font-semibold tracking-tight"
                         style={{
-                            backgroundImage: "linear-gradient(90deg, rgba(245,95,42,0.6), rgba(245,95,42,1), rgba(245,95,42,0.6))",
+                            backgroundImage: "linear-gradient(90deg, rgba(255,141,33,0.6), rgba(255,141,33,1), rgba(255,141,33,0.6))",
                             backgroundSize: "220% 220%",
                             animation: "kloner-accent-move 2.8s linear infinite",
                         }}
@@ -98,13 +98,13 @@ export function HydrationDotsLoader({
                         {label}
                     </span>
                     <span className="inline-flex items-center gap-1 leading-none" aria-hidden="true">
-                        <span className="h-1.5 w-1.5 rounded-full bg-[#f55f2a] kloner-dot" />
+                        <span className="h-1.5 w-1.5 rounded-full bg-[#FF8D21] kloner-dot" />
                         <span
-                            className="h-1.5 w-1.5 rounded-full bg-[#f55f2a] kloner-dot"
+                            className="h-1.5 w-1.5 rounded-full bg-[#FF8D21] kloner-dot"
                             style={{ opacity: 0.75, animationDelay: "0.15s" }}
                         />
                         <span
-                            className="h-1.5 w-1.5 rounded-full bg-[#f55f2a] kloner-dot"
+                            className="h-1.5 w-1.5 rounded-full bg-[#FF8D21] kloner-dot"
                             style={{ opacity: 0.45, animationDelay: "0.30s" }}
                         />
                     </span>

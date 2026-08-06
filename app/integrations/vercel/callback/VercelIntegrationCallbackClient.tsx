@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 
-const ACCENT = "#f55f2a";
+const ACCENT = "#FF8D21";
 
 function getCookieValue(name: string): string | null {
     if (typeof document === "undefined") return null;

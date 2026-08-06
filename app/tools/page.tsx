@@ -40,7 +40,7 @@ export default function ToolsHubPage() {
         <div
           className="pointer-events-none absolute left-1/2 top-4 h-72 w-72 -translate-x-1/2 rounded-full opacity-40 blur-3xl"
           aria-hidden
-          style={{ background: "radial-gradient(circle, rgba(245,95,42,0.18), transparent 70%)" }}
+          style={{ background: "radial-gradient(circle, rgba(255,141,33,0.18), transparent 70%)" }}
         />
         <div
           className="pointer-events-none absolute right-[-6rem] top-28 h-64 w-64 rounded-full opacity-30 blur-3xl"
@@ -49,7 +49,7 @@ export default function ToolsHubPage() {
         />
         <div className="mx-auto max-w-6xl">
           <header className="mb-10 max-w-4xl website-paywall-feature" style={{ animationDelay: "20ms" }}>
-            <div className="inline-flex items-center gap-2 rounded-full bg-accent text-neutral-50 px-3 py-1 text-[11px] mb-4 shadow-[0_12px_24px_rgba(245,95,42,0.16)]">
+            <div className="inline-flex items-center gap-2 rounded-full bg-accent text-neutral-50 px-3 py-1 text-[11px] mb-4 shadow-[0_12px_24px_rgba(255,141,33,0.16)]">
               <span>Kloner · Tools</span>
             </div>
 
@@ -58,7 +58,7 @@ export default function ToolsHubPage() {
                 Simple tools in one place, built for quick wins
               </h1>
               <p className="mt-1 max-w-2xl text-sm text-neutral-600">
-                A small collection of quick utilities, all in one crawlable hub. If you want to build tools like this, you can use <a href="https://kloner.app" className="text-[#f55f2a] font-medium">kloner.app</a> to launch apps faster and create your own.
+                A small collection of quick utilities, all in one crawlable hub. If you want to build tools like this, you can use <a href="https://kloner.app" className="text-[#FF8D21] font-medium">kloner.app</a> to launch apps faster and create your own.
               </p>
               <div className="mt-4 flex flex-wrap gap-2">
                 {[
@@ -84,7 +84,7 @@ export default function ToolsHubPage() {
               <Link
                 key={tool.href}
                 href={tool.href}
-                className="group relative overflow-hidden rounded-[2rem] border border-neutral-200 bg-white p-5 shadow-[0_16px_36px_rgba(15,23,42,0.07)] transition duration-300 ease-out hover:-translate-y-2 hover:scale-[1.035] focus:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(245,95,42,0.25)] focus-visible:ring-offset-2 website-paywall-feature"
+                className="group relative overflow-hidden rounded-[2rem] border border-neutral-200 bg-white p-5 shadow-[0_16px_36px_rgba(15,23,42,0.07)] transition duration-300 ease-out hover:-translate-y-2 hover:scale-[1.035] focus:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(255,141,33,0.25)] focus-visible:ring-offset-2 website-paywall-feature"
                 style={{ animationDelay: `${100 + index * 38}ms` }}
               >
                 <div
@@ -106,7 +106,7 @@ export default function ToolsHubPage() {
                       {tool.badge}
                     </div>
                   </div>
-                  <div className="mt-4 text-lg font-semibold text-neutral-950 transition group-hover:text-[#f55f2a]">
+                  <div className="mt-4 text-lg font-semibold text-neutral-950 transition group-hover:text-[#FF8D21]">
                     {tool.label}
                   </div>
                   <p className="mt-2 text-sm leading-6 text-neutral-600">{tool.description}</p>

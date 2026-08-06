@@ -10,7 +10,7 @@ import { motion } from "framer-motion";
 
 type GateState = "loading" | "allowed" | "denied";
 
-const ACCENT = "#f55f2a";
+const ACCENT = "#FF8D21";
 
 type AiChatAuditEntry = {
     appId: string;

@@ -5735,7 +5735,7 @@ export default function NavBar() {
                       });
                     }}
                     disabled={isFixWithAiCoolingDown}
-                    className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-xs bg-accent text-white hover:bg-[#e54f1a] transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-xs bg-accent text-white hover:bg-[#e19d67] transition-colors disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     Fix with AI
                   </button>
@@ -5918,7 +5918,7 @@ export default function NavBar() {
                   <button
                     type="button"
                     onClick={() => hardReloadPreview('external_preview_reload')}
-                    className="inline-flex items-center rounded-full bg-accent px-4 py-2 text-xs font-semibold text-white hover:bg-[#e54f1a]"
+                    className="inline-flex items-center rounded-full bg-accent px-4 py-2 text-xs font-semibold text-white hover:bg-[#e19d67]"
                   >
                     Restart preview session
                   </button>

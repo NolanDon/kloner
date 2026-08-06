@@ -108,7 +108,7 @@ describe("dashboard draft flow", () => {
 
         expect(records).toHaveLength(2);
         expect(records[0]?.draftId).toBe("draft-new");
-        expect(records[0]?.pendingCompleted).toBe(true);
+        expect(records[0]?.pendingCompleted).toBe(false);
         expect(records[1]?.draftId).toBe("draft-old");
     });
 

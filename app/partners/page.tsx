@@ -36,19 +36,19 @@ export default function PartnersPage(): JSX.Element {
                             <div className="mt-4 flex flex-wrap gap-2">
                                 <a
                                     href="#creators"
-                                    className="inline-flex items-center rounded-full border border-neutral-200 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-800 shadow-sm hover:border-[rgba(245,95,42,0.35)]"
+                                    className="inline-flex items-center rounded-full border border-neutral-200 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-800 shadow-sm hover:border-[rgba(255,141,33,0.35)]"
                                 >
                                     Creators
                                 </a>
                                 <a
                                     href="#affiliates"
-                                    className="inline-flex items-center rounded-full border border-neutral-200 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-800 shadow-sm hover:border-[rgba(245,95,42,0.35)]"
+                                    className="inline-flex items-center rounded-full border border-neutral-200 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-800 shadow-sm hover:border-[rgba(255,141,33,0.35)]"
                                 >
                                     Affiliates
                                 </a>
                                 <a
                                     href="#business"
-                                    className="inline-flex items-center rounded-full border border-neutral-200 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-800 shadow-sm hover:border-[rgba(245,95,42,0.35)]"
+                                    className="inline-flex items-center rounded-full border border-neutral-200 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-800 shadow-sm hover:border-[rgba(255,141,33,0.35)]"
                                 >
                                     Agencies & businesses
                                 </a>
@@ -95,13 +95,13 @@ export default function PartnersPage(): JSX.Element {
                             <div className="mt-3 flex flex-wrap items-center gap-3">
                                 <Link
                                     href="/contact"
-                                    className="inline-flex items-center rounded-full border border-[rgba(245,95,42,0.22)] bg-[rgba(245,95,42,0.08)] px-3 py-1.5 text-xs font-semibold text-[rgba(245,95,42,1)]"
+                                    className="inline-flex items-center rounded-full border border-[rgba(255,141,33,0.22)] bg-[rgba(255,141,33,0.08)] px-3 py-1.5 text-xs font-semibold text-[rgba(255,141,33,1)]"
                                 >
                                     Talk to us about custom usage
                                 </Link>
                                 <Link
                                     href="/login?mode=signup"
-                                    className="inline-flex items-center rounded-full border border-neutral-200 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-800 shadow-sm hover:border-[rgba(245,95,42,0.35)]"
+                                    className="inline-flex items-center rounded-full border border-neutral-200 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-800 shadow-sm hover:border-[rgba(255,141,33,0.35)]"
                                 >
                                     Create an account
                                 </Link>

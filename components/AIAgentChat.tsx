@@ -276,7 +276,7 @@ function renderTextWithLinks(text: string): React.ReactNode {
             const isTopup = part === "/price#topup";
             const label = isTopup ? "Add credits" : "View pricing";
             const classes = isTopup
-                ? "inline-flex items-center justify-center rounded-full bg-[#F55F2A] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#e35625]"
+                ? "inline-flex items-center justify-center rounded-full bg-[#FF8D21] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#D96E11]"
                 : "inline-flex items-center justify-center rounded-full border border-black/10 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-900 hover:bg-neutral-50";
 
             return (
@@ -3866,7 +3866,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                                     ))}
                                 </div>
                             ) : (
-                                <div className="min-w-0 flex-1 rounded-lg border border-dashed border-[#F55F2A]/20 bg-[#FFF8F5] px-3 py-2 text-xs text-neutral-600">
+                                <div className="min-w-0 flex-1 rounded-lg border border-dashed border-[#FF8D21]/20 bg-[#FFF8F5] px-3 py-2 text-xs text-neutral-600">
                                     No restore points yet. The editor will create one automatically before applying AI edits.
                                 </div>
                             )}
@@ -3969,7 +3969,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
 
                                             void sendMessage({ forcedInput: prompt, allowWhenChatDisabled: true });
                                         }}
-                                        className="inline-flex items-center rounded-full bg-[#F55F2A] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#E04E1B] disabled:opacity-50"
+                                        className="inline-flex items-center rounded-full bg-[#FF8D21] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#D96E11] disabled:opacity-50"
                                     >
                                         Continue request
                                     </button>
@@ -4024,7 +4024,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                                                 setShowSupabaseAdvanced(false);
                                                 setShowSupabaseSetup(true);
                                             }}
-                                            className="inline-flex items-center rounded-full bg-[#F55F2A] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#E04E1B] disabled:opacity-50"
+                                            className="inline-flex items-center rounded-full bg-[#FF8D21] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#D96E11] disabled:opacity-50"
                                         >
                                             Connect Supabase
                                         </button>
@@ -4332,7 +4332,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                 <div className="px-4 py-3 border-t bg-black/5 rounded-lg flex-shrink-0">
                     <div className="flex items-center justify-between mb-3">
                         <div className="flex items-center gap-2">
-                            <Database className="w-4 h-4 text-[#F55F2A]" />
+                            <Database className="w-4 h-4 text-[#FF8D21]" />
                             <span className="font-medium text-gray-900">Connect a Database</span>
                         </div>
                         <button
@@ -4425,7 +4425,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                             <div className="flex gap-3">
                                 <button
                                     onClick={handleCreateSupabaseProject}
-                                    className="flex-1 bg-[#F55F2A] text-white py-2 px-4 rounded-full hover:bg-[#E04E1B] text-sm transition-colors"
+                                    className="flex-1 bg-[#FF8D21] text-white py-2 px-4 rounded-full hover:bg-[#D96E11] text-sm transition-colors"
                                 >
                                     Create New Database
                                 </button>
@@ -4462,7 +4462,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                                             value={existingSupabaseProjectRef}
                                             onChange={(e) => setExistingSupabaseProjectRef(e.target.value)}
                                             placeholder="abcdefghijklmnopqrst  or  https://abcdefghijklmnopqrst.supabase.co"
-                                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#F55F2A]"
+                                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#FF8D21]"
                                         />
                                         <p className="text-xs text-gray-500 mt-1">
                                             In the URL: <span className="font-mono">https://&lt;project-ref&gt;.supabase.co</span>
@@ -4476,7 +4476,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                                             value={existingSupabaseAnonKey}
                                             onChange={(e) => setExistingSupabaseAnonKey(e.target.value)}
                                             placeholder="eyJhbGciOi..."
-                                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#F55F2A]"
+                                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#FF8D21]"
                                         />
                                         <p className="text-xs text-gray-500 mt-1">
                                             Supabase Dashboard → Settings → API → Project API keys
@@ -4490,7 +4490,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                                             value={existingSupabaseServiceRoleKey}
                                             onChange={(e) => setExistingSupabaseServiceRoleKey(e.target.value)}
                                             placeholder="eyJhbGciOi..."
-                                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#F55F2A]"
+                                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#FF8D21]"
                                         />
                                         <p className="text-xs text-gray-500 mt-1">
                                             Only if you need server-side admin access. Keep this secret.

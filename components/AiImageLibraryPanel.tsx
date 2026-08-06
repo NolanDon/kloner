@@ -408,7 +408,7 @@ function StorageSetupModal({
                                                 }
                                             }}
                                             disabled={preparingProject}
-                                            className="inline-flex items-center justify-center rounded-full bg-[#f55f2a] px-4 py-1.5 text-[12px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+                                            className="inline-flex items-center justify-center rounded-full bg-[#FF8D21] px-4 py-1.5 text-[12px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
                                         >
                                             {preparingProject ? "Deploying…" : "Deploy"}
                                         </button>
@@ -457,7 +457,7 @@ function StorageSetupModal({
                                             autoComplete="off"
                                             spellCheck={false}
                                             placeholder="Paste token here"
-                                            className="w-full rounded-xl border border-neutral-300 px-3 py-2 text-sm text-neutral-900 outline-none focus:border-[#f55f2a] focus:ring-2 focus:ring-[#f55f2a]/20"
+                                            className="w-full rounded-xl border border-neutral-300 px-3 py-2 text-sm text-neutral-900 outline-none focus:border-[#FF8D21] focus:ring-2 focus:ring-[#FF8D21]/20"
                                         />
                                     </div>
                                     <div className="flex flex-wrap items-center gap-2">
@@ -474,7 +474,7 @@ function StorageSetupModal({
                                             <button
                                                 type="button"
                                                 onClick={onConnectVercel}
-                                                className="inline-flex items-center justify-center rounded-full bg-[#f55f2a] px-4 py-1.5 text-[12px] font-semibold text-white"
+                                                className="inline-flex items-center justify-center rounded-full bg-[#FF8D21] px-4 py-1.5 text-[12px] font-semibold text-white"
                                             >
                                                 Connect Vercel
                                             </button>
@@ -501,7 +501,7 @@ function StorageSetupModal({
                                                     }
                                                 }}
                                                 disabled={saving || !token.trim()}
-                                                className="inline-flex items-center justify-center rounded-full bg-[#f55f2a] px-4 py-1.5 text-[12px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+                                                className="inline-flex items-center justify-center rounded-full bg-[#FF8D21] px-4 py-1.5 text-[12px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
                                             >
                                                 {saving ? "Saving…" : "Save"}
                                             </button>
@@ -969,7 +969,7 @@ export function AiImageLibraryPanel({
                 </div>
                 <div className="mt-3 h-2 overflow-hidden rounded-full bg-neutral-100">
                     <div
-                        className={`h-full rounded-full ${storageLimitReached ? "bg-rose-500" : "bg-[#f55f2a]"}`}
+                        className={`h-full rounded-full ${storageLimitReached ? "bg-rose-500" : "bg-[#FF8D21]"}`}
                         style={{ width: `${storageUsagePercent}%` }}
                     />
                 </div>
@@ -995,7 +995,7 @@ export function AiImageLibraryPanel({
                                 ref={(node) => {
                                     pageImageRefs.current[item.key] = node;
                                 }}
-                                className={`group overflow-hidden rounded-2xl border bg-white shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_14px_32px_rgba(15,23,42,0.10)] ${selectedPageImage(item) ? "border-[#f55f2a] ring-2 ring-[#f55f2a]/25" : "border-neutral-200 hover:border-[#f55f2a]/50"}`}
+                                className={`group overflow-hidden rounded-2xl border bg-white shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_14px_32px_rgba(15,23,42,0.10)] ${selectedPageImage(item) ? "border-[#FF8D21] ring-2 ring-[#FF8D21]/25" : "border-neutral-200 hover:border-[#FF8D21]/50"}`}
                             >
                                 <div className="grid gap-3 p-2.5 sm:grid-cols-[112px_minmax(0,1fr)] sm:items-stretch">
                                     <div className="relative h-24 overflow-hidden rounded-xl bg-neutral-100 sm:h-full sm:min-h-[110px]">
@@ -1033,7 +1033,7 @@ export function AiImageLibraryPanel({
                                                 type="button"
                                                 onClick={() => void openReplaceDialog(item)}
                                                 disabled={!storageReady || storageUsageLoading}
-                                                className="inline-flex w-full items-center justify-center gap-1.5 rounded-full border border-neutral-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-neutral-700 transition hover:border-[#f55f2a] hover:text-[#f55f2a] disabled:cursor-not-allowed disabled:opacity-45"
+                                                className="inline-flex w-full items-center justify-center gap-1.5 rounded-full border border-neutral-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-neutral-700 transition hover:border-[#FF8D21] hover:text-[#FF8D21] disabled:cursor-not-allowed disabled:opacity-45"
                                                 title={storageLimitReached ? "Storage is full" : "Replace this image"}
                                             >
                                                 <ArrowUpRight className="h-3.5 w-3.5" />
@@ -1085,7 +1085,7 @@ export function AiImageLibraryPanel({
                                     draggable
                                     onDragStart={(e) => handleDragStart(e, item)}
                                     onClick={() => handleInsert(item)}
-                                    className="group relative flex flex-col overflow-hidden rounded-2xl border border-neutral-200 bg-neutral-50 text-left shadow-sm transition duration-200 hover:z-10 hover:-translate-y-0.5 hover:border-[#f55f2a]/60 hover:bg-white hover:shadow-[0_14px_30px_rgba(15,23,42,0.10)]"
+                                    className="group relative flex flex-col overflow-hidden rounded-2xl border border-neutral-200 bg-neutral-50 text-left shadow-sm transition duration-200 hover:z-10 hover:-translate-y-0.5 hover:border-[#FF8D21]/60 hover:bg-white hover:shadow-[0_14px_30px_rgba(15,23,42,0.10)]"
                                 >
                                     <div className="relative aspect-[4/3] w-full max-h-28 overflow-hidden bg-neutral-900/5">
                                         {imageAvailability[item.path] === "error" ? (
@@ -1105,7 +1105,7 @@ export function AiImageLibraryPanel({
                                             />
                                         )}
 
-                                        <div className="pointer-events-none absolute inset-0 rounded-2xl ring-2 ring-[#f55f2a] opacity-0 transition-opacity group-hover:opacity-100" />
+                                        <div className="pointer-events-none absolute inset-0 rounded-2xl ring-2 ring-[#FF8D21] opacity-0 transition-opacity group-hover:opacity-100" />
 
                                         <div className="pointer-events-none absolute inset-x-1 bottom-1 flex justify-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
                                             <span className="rounded-full border border-white/80 bg-white/90 px-2 py-1 text-[10px] font-medium text-neutral-800 shadow-sm">

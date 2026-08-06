@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import Image from "next/image";
 import { motion } from "framer-motion";
 import { useEffect } from "react";
@@ -16,7 +17,7 @@ type WebsitePrePaywallProps = {
     zIndexClassName?: string;
     dismissible?: boolean;
     title?: string;
-    description?: string;
+    description?: ReactNode;
     benefits?: string[];
     primaryLabel?: string;
     secondaryLabel?: string;
@@ -140,7 +141,7 @@ export function WebsitePrePaywall({
                                 <button
                                     type="button"
                                     onClick={onStartCheckout}
-                                    className="inline-flex flex-1 items-center justify-center rounded-full bg-[#f55f2a] px-5 py-4 text-[17px] font-semibold tracking-tight text-white shadow-[0_18px_44px_rgba(245,95,42,0.24)] transition hover:translate-y-[-1px] hover:bg-[#f3602c] sm:px-6 sm:py-5 sm:text-[20px]"
+                                    className="inline-flex flex-1 items-center justify-center rounded-full bg-[#FF8D21] px-5 py-4 text-[17px] font-semibold tracking-tight text-white shadow-[0_18px_44px_rgba(255,141,33,0.24)] transition hover:translate-y-[-1px] hover:bg-[#D96E11] sm:px-6 sm:py-5 sm:text-[20px]"
                                     disabled={checkoutBusy}
                                 >
                                     {checkoutBusy ? "Redirecting to Stripe…" : primaryLabel}
@@ -161,7 +162,7 @@ export function WebsitePrePaywall({
                             <div className="mt-8 border-t border-neutral-200 pt-6">
                                 <div className="mb-3 flex items-center justify-center gap-3 text-center">
                                     <span className="text-[12px] uppercase tracking-[0.1em] text-neutral-500 sm:text-[12px]">
-                                        See what <span className="text-[15px] font-bold text-[rgba(245,95,42,1)]">5000+</span> Kloner members have built with
+                                        See what <span className="text-[15px] font-bold text-[rgba(255,141,33,1)]">5000+</span> Kloner members have built with
                                     </span>
                                     <span className="relative inline-block h-[48px] w-[48px] sm:h-[72px] sm:w-[72px]">
                                         <Image

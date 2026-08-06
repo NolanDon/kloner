@@ -4,7 +4,7 @@
 import NavBar from "@/components/NavBar";
 import { Mail, MessageCircleMore, AlertTriangle } from "lucide-react";
 
-const ACCENT = "#f55f2a";
+const ACCENT = "#FF8D21";
 
 export default function KlonerVercelSupport() {
     return (
