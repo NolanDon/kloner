@@ -163,7 +163,7 @@ export function CookieConsentBanner() {
                     <button
                         type="button"
                         onClick={acceptNecessaryOnlyCookies}
-                        className="text-sm font-medium text-neutral-600 underline decoration-neutral-400 underline-offset-4 transition hover:text-neutral-900"
+                        className="shrink-0 whitespace-nowrap text-sm font-medium text-neutral-600 underline decoration-neutral-400 underline-offset-4 transition hover:text-neutral-900"
                     >
                         No, just essential
                     </button>

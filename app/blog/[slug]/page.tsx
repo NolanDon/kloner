@@ -11,6 +11,7 @@ import {
   getReadingTimeMinutes,
   getSiteUrl,
 } from "@/lib/blog";
+import { buildMetaDescription } from "@/lib/seo";
 
 export function generateStaticParams() {
   return getAllBlogPosts().map((p) => ({ slug: p.slug }));
@@ -22,15 +23,19 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   if (!post) return {};
 
   const url = getBlogPostUrl(post.slug);
+  const metaDescription = buildMetaDescription([
+    post.description,
+    "Read the guide on Kloner for practical steps, examples, and launch-ready advice.",
+  ]);
   return {
     title: post.title,
-    description: post.description,
+    description: metaDescription,
     alternates: { canonical: url },
     openGraph: {
       url,
       type: "article",
       title: post.title,
-      description: post.description,
+      description: metaDescription,
       siteName: "Kloner",
       images: [
         {
@@ -44,7 +49,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
     twitter: {
       card: "summary_large_image",
       title: post.title,
-      description: post.description,
+      description: metaDescription,
       images: ["/images/opengraph.jpg"],
     },
   };
@@ -57,12 +62,16 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
 
   const minutes = getReadingTimeMinutes(post.markdown);
   const url = getBlogPostUrl(post.slug);
+  const metaDescription = buildMetaDescription([
+    post.description,
+    "Read the guide on Kloner for practical steps, examples, and launch-ready advice.",
+  ]);
 
   const jsonLd = {
     "@context": "https://schema.org",
     "@type": "BlogPosting",
     headline: post.title,
-    description: post.description,
+    description: metaDescription,
     url,
     datePublished: post.publishedAt,
     dateModified: post.updatedAt || post.publishedAt,

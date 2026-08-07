@@ -5,11 +5,15 @@ import NavBar from "@/components/NavBar";
 import Footer from "@/components/Footer";
 import Image from "next/image";
 import logo from "@/public/images/orange_logo.png";
+import { buildMetaDescription } from "@/lib/seo";
+
+const communityBuildsDescription = buildMetaDescription([
+    "Browse approved Kloner community builds with live previews, original layouts, and examples shared by other creators for your next project.",
+]);
 
 export const metadata: Metadata = {
     title: "Community builds",
-    description:
-        "Browse approved Kloner community builds and preview live layouts shared by other creators.",
+    description: communityBuildsDescription,
     alternates: {
         canonical: "https://kloner.app/community-builds",
     },

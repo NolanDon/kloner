@@ -15,6 +15,7 @@ import {
 import { GeneratedToolClient } from "@/components/tools/GeneratedToolClient";
 import { ToolPageShell } from "@/components/tools/ToolPageShell";
 import { TOOL_BY_SLUG, TOOL_CONFIGS, type ToolSlug } from "@/components/tools/toolRegistry";
+import { buildMetaDescription } from "@/lib/seo";
 
 const TOOL_RENDERERS: Partial<Record<ToolSlug, JSX.Element>> = {
   "qr-code-generator": <QrCodeTool />,
@@ -63,16 +64,18 @@ export async function generateMetadata({
     return {};
   }
 
+  const metaDescription = buildMetaDescription([tool.description, tool.intro, "Kloner keeps the workflow editable, fast, and easy to launch."]);
+
   return {
     title: tool.title,
-    description: tool.description,
+    description: metaDescription,
     alternates: {
       canonical: `https://kloner.app/tools/${tool.slug}`,
     },
     openGraph: {
       url: `https://kloner.app/tools/${tool.slug}`,
       title: tool.title,
-      description: tool.description,
+      description: metaDescription,
     },
   };
 }
