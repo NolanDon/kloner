@@ -12,7 +12,11 @@ import {
 } from "../../_lib/billing";
 import { captureCriticalEvent, captureException } from "@/lib/observability";
 import { makeRecoveryCheckoutUrl, makeUnsubUrl } from "@/app/api/private/email-links";
-import { canSendRecoveryOfferEmail } from "@/app/api/_lib/recoveryOffer";
+import {
+    canSendRecoveryOfferEmail,
+    hasActiveOrTrialingStripeSubscription,
+    hasLikelyActivePaidAccess,
+} from "@/app/api/_lib/recoveryOffer";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -297,12 +301,32 @@ We’re always here to help get your project started.
 — The Kloner team`;
 }
 
-async function sendRecoveryOfferEmail(params: { uid: string; sessionId: string; email: string; name?: string | null }) {
+async function sendRecoveryOfferEmail(params: {
+    uid: string;
+    sessionId: string;
+    email: string;
+    name?: string | null;
+    stripe: Stripe;
+    customerId?: string | null;
+}) {
         const userRef = db.collection("kloner_users").doc(params.uid);
         const snap = await userRef.get();
         const data = snap.exists ? (snap.data() as any) : {};
         const activityGate = canSendRecoveryOfferEmail(data);
         if (!activityGate.ok) return;
+
+        if (hasLikelyActivePaidAccess(data)) return;
+
+        const customerId =
+            typeof params.customerId === "string" && params.customerId.trim()
+                ? params.customerId.trim()
+                : typeof data?.stripeCustomerId === "string" && data.stripeCustomerId.trim()
+                    ? data.stripeCustomerId.trim()
+                    : "";
+        if (customerId) {
+            const activeSub = await hasActiveOrTrialingStripeSubscription(params.stripe, customerId).catch(() => false);
+            if (activeSub) return;
+        }
 
         const canClaim = await claimRecoveryOfferEmailOnce(userRef, params.sessionId);
         if (!canClaim) return;
@@ -1008,6 +1032,8 @@ export async function POST(req: NextRequest) {
                                 sessionId: session.id,
                                 email,
                                 name: authUser.displayName || null,
+                                stripe,
+                                customerId: typeof session.customer === "string" ? session.customer : null,
                             });
                         }
                     } catch (err) {

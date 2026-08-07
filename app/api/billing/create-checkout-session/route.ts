@@ -71,7 +71,7 @@ function pickExitPromoId(isProd: boolean) {
         : process.env.STRIPE_EXIT40_PROMO_TEST;
 
     const coupon = isProd
-        ? "6ugbzul1"
+        ? process.env.STRIPE_EXIT40_COUPON_PROD
         : process.env.STRIPE_EXIT40_COUPON_TEST;
 
     return { promo, coupon };

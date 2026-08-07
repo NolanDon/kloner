@@ -446,7 +446,7 @@ export async function submitDashboardUrlDraft({
     push: (text: string, tone: "ok" | "warn" | "err") => void;
     setErr: (value: string) => void;
     setInfo: (value: string) => void;
-    setShowCreditsPaywall: (mode: "screenshot") => void;
+    setShowCreditsPaywall: (mode: "screenshot" | "preview") => void;
     setWebsiteSubmissionPendingUrl: Setter<string | null>;
     setDraftApps: Setter<DashboardDraftCard[]>;
     setPendingDraftApps: Setter<Record<string, boolean>>;

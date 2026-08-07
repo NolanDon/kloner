@@ -134,13 +134,9 @@ export default function UrlProcessingPopup({
             stage === "submitting" ? 0.08 :
             stage === "creating" ? 0.18 :
             stage === "finishing" ? 0.72 :
-            stage === "ready" ? 1 :
-            stage === "navigating" ? 1 :
             0.12;
         const stageCeiling =
             stage === "finishing" ? 0.98 :
-            stage === "ready" ? 1 :
-            stage === "navigating" ? 1 :
             0.94;
 
         const value = stageFloor + (base * (stageCeiling - stageFloor));

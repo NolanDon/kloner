@@ -1,3 +1,5 @@
+import type Stripe from "stripe";
+
 const RECOVERY_OFFER_MIN_INACTIVE_MS = 30 * 60 * 1000;
 
 function toEpochMs(value: unknown): number | null {
@@ -63,4 +65,39 @@ export function canSendRecoveryOfferEmail(
     }
 
     return { ok: true, lastActivityMs };
+}
+
+export function hasLikelyActivePaidAccess(userData: Record<string, any> | null | undefined): boolean {
+    if (!userData || typeof userData !== "object") return false;
+
+    const status = String(
+        userData.stripeStatus ||
+        userData.subscriptionStatus ||
+        userData.billingStatus ||
+        "",
+    ).trim().toLowerCase();
+    if (status === "active" || status === "trialing") return true;
+
+    const tier = String(userData.tier || userData.userTier || "").trim().toLowerCase();
+    return tier === "pro" || tier === "agency";
+}
+
+export async function hasActiveOrTrialingStripeSubscription(
+    stripe: Stripe,
+    customerId: string,
+): Promise<boolean> {
+    const id = String(customerId || "").trim();
+    if (!id) return false;
+
+    const subs = await stripe.subscriptions.list({
+        customer: id,
+        status: "all",
+        limit: 100,
+    });
+
+    return subs.data.some((sub) => {
+        if (sub.status === "active") return true;
+        if (sub.status !== "trialing") return false;
+        return sub.cancel_at_period_end !== true;
+    });
 }

@@ -3,7 +3,12 @@ import { Resend } from "resend";
 import { requireSessionAndMaybeCsrf } from "../../_lib/route-guard";
 import { getAdminAuth, getAdminDb, verifySession } from "../../_lib/auth";
 import { makeRecoveryCheckoutUrl, makeUnsubUrl } from "@/app/api/private/email-links";
-import { canSendRecoveryOfferEmail } from "@/app/api/_lib/recoveryOffer";
+import {
+    canSendRecoveryOfferEmail,
+    hasActiveOrTrialingStripeSubscription,
+    hasLikelyActivePaidAccess,
+} from "@/app/api/_lib/recoveryOffer";
+import { getStripe } from "@/lib/stripe";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -92,6 +97,28 @@ export async function POST(req: NextRequest) {
                     },
                     { headers: { "Cache-Control": "no-store" } }
                 );
+            }
+
+            if (hasLikelyActivePaidAccess(userData)) {
+                return NextResponse.json(
+                    { ok: true, sent: false, skipped: "active_subscription" },
+                    { headers: { "Cache-Control": "no-store" } }
+                );
+            }
+
+            const customerId =
+                typeof userData?.stripeCustomerId === "string" && userData.stripeCustomerId.trim()
+                    ? userData.stripeCustomerId.trim()
+                    : null;
+            if (customerId) {
+                const stripe = getStripe();
+                const hasActiveSub = await hasActiveOrTrialingStripeSubscription(stripe, customerId).catch(() => false);
+                if (hasActiveSub) {
+                    return NextResponse.json(
+                        { ok: true, sent: false, skipped: "active_subscription" },
+                        { headers: { "Cache-Control": "no-store" } }
+                    );
+                }
             }
 
             const authUser = await getAdminAuth().getUser(decoded.uid);

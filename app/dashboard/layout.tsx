@@ -295,7 +295,7 @@ function PlanBlock({
     const badgeLabel = billingState === "trialing" ? "trialing" : planLabel;
 
     return (
-        <div className="border-b border-neutral-200 px-4 py-4">
+        <div className="border-b border-neutral-200 px-4 pb-4">
             <div className="inline-flex w-fit items-center gap-1 rounded-full border border-[rgba(255,141,33,0.45)] bg-white px-3 py-1">
                 <Crown className="h-3.5 w-3.5 text-[#FF8D21]" />
                 <span className="text-[10px] font-semibold uppercase tracking-wide text-[#FF8D21]">
@@ -394,7 +394,7 @@ function SidebarShell({
 
     return (
         <div className="flex h-full flex-col w-full">
-            <div className="px-5 py-5 border-b border-neutral-200">
+            <div className="px-5 pt-5">
                 <Link
                     href="/"
                     className="flex items-center gap-2 font-black tracking-tight text-xl md:text-2xl shrink-0"
