@@ -8773,7 +8773,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                             setInput(nextValue.slice(0, MAX_EDITOR_PROMPT_CHARS));
                         }}
                         onKeyPress={handleKeyPress}
-                        placeholder="Ask me to build something..."
+                        placeholder="Ask me to change something..."
                         className="flex-1 resize-none bg-transparent px-4 py-3 text-sm text-neutral-900 placeholder:text-neutral-400 focus:outline-none"
                         rows={3}
                         maxLength={MAX_EDITOR_PROMPT_CHARS}

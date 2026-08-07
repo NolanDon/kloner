@@ -5000,7 +5000,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                             setInput(nextValue);
                         }}
                         onKeyPress={handleKeyPress}
-                        placeholder="Ask me to build something..."
+                        placeholder="Ask me to change something..."
                         className="flex-1 resize-none bg-transparent p-3 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none"
                         rows={3}
                         disabled={isLoading || chatDisabled}

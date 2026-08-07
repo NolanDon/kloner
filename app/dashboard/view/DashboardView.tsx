@@ -145,6 +145,8 @@ const URL_ISSUE_DISMISS_STORAGE_KEY = "dashboardViewUrlIssueDismissalsV1";
 const URL_SCAN_RETRY_BACKOFF_SEQUENCE_MS = [10_000, 20_000, 40_000, 90_000, 180_000, 360_000, 720_000];
 const AUTOQUEUE_DEDUPE_STORAGE_KEY = "dashboardViewAutoQueueDedupeV1";
 const AUTOQUEUE_DEDUPE_TTL_MS = 2 * 60 * 1000;
+const AUTOQUEUE_CONSUMED_STORAGE_KEY = "dashboardViewAutoQueueConsumedV1";
+const AUTOQUEUE_CONSUMED_TTL_MS = 24 * 60 * 60 * 1000;
 const DRAFT_PENDING_MISSING_TTL_MS = 20_000;
 const DRAFT_EDIT_BUTTON_LOCK_MS = 45_000;
 const DRAFT_PROMOTION_SCAN_STORAGE_KEY = "dashboardViewDraftPromotionScanStateV1";
@@ -8462,6 +8464,48 @@ export default function PreviewPage(): JSX.Element {
         }
     }, []);
 
+    const hasConsumedAutoQueuedRun = useCallback((runKey: string): boolean => {
+        if (typeof window === "undefined") return false;
+        try {
+            const now = Date.now();
+            const raw = window.sessionStorage.getItem(AUTOQUEUE_CONSUMED_STORAGE_KEY);
+            const parsed = raw ? JSON.parse(raw) : {};
+            const next: Record<string, number> = {};
+
+            for (const [key, at] of Object.entries(parsed || {})) {
+                if (typeof at === "number" && now - at < AUTOQUEUE_CONSUMED_TTL_MS) {
+                    next[key] = at;
+                }
+            }
+
+            window.sessionStorage.setItem(AUTOQUEUE_CONSUMED_STORAGE_KEY, JSON.stringify(next));
+            return typeof next[runKey] === "number";
+        } catch {
+            return false;
+        }
+    }, []);
+
+    const markConsumedAutoQueuedRun = useCallback((runKey: string): void => {
+        if (typeof window === "undefined") return;
+        try {
+            const now = Date.now();
+            const raw = window.sessionStorage.getItem(AUTOQUEUE_CONSUMED_STORAGE_KEY);
+            const parsed = raw ? JSON.parse(raw) : {};
+            const next: Record<string, number> = {};
+
+            for (const [key, at] of Object.entries(parsed || {})) {
+                if (typeof at === "number" && now - at < AUTOQUEUE_CONSUMED_TTL_MS) {
+                    next[key] = at;
+                }
+            }
+
+            next[runKey] = now;
+            window.sessionStorage.setItem(AUTOQUEUE_CONSUMED_STORAGE_KEY, JSON.stringify(next));
+        } catch {
+            // ignore storage failures
+        }
+    }, []);
+
     const clearUrlScanQueuedState = useCallback((rawUrl: string, message: string) => {
         const normalized = normUrl(rawUrl);
         generateAbortedRef.current = `${user?.uid || ""}:${rawUrl}`;
@@ -8887,13 +8931,19 @@ export default function PreviewPage(): JSX.Element {
         if (nonRetryAutoQueue) {
             if (!user?.uid) return;
             const runKey = `${user.uid}:${targetUrl}`;
+            if (hasConsumedAutoQueuedRun(runKey)) {
+                clearAutoQueuedUrlQueryParams();
+                return;
+            }
             if (autoQueuedDraftRunRef.current === runKey) return;
             if (hasRecentAutoQueuedRun(runKey)) {
+                markConsumedAutoQueuedRun(runKey);
                 clearAutoQueuedUrlQueryParams();
                 return;
             }
             autoQueuedDraftRunRef.current = runKey;
             markRecentAutoQueuedRun(runKey);
+            markConsumedAutoQueuedRun(runKey);
 
             // Defensive cleanup for any legacy synthetic pending URL card state.
             setPendingCreatedApp((prev) => {
@@ -8922,8 +8972,10 @@ export default function PreviewPage(): JSX.Element {
         enqueueUrlScan,
         forceRetryRequested,
         hasRecentAutoQueuedRun,
+        hasConsumedAutoQueuedRun,
         loading,
         markRecentAutoQueuedRun,
+        markConsumedAutoQueuedRun,
         startRequested,
         submitMiniUrl,
         targetUrl,
