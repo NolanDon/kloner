@@ -181,6 +181,8 @@ async function ensureUserCreatedAt(u: User): Promise<void> {
 
         const updates: Record<string, any> = {
             updatedAt: serverTimestamp(),
+            lastAppActivityAt: serverTimestamp(),
+            lastAppActivitySource: "login",
         };
 
         if (!existing?.createdAt) {

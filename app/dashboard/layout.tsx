@@ -10,7 +10,8 @@ import {
 import { auth, db } from "@/lib/firebase";
 import { resetAuthClientCaches } from "@/lib/auth-client";
 import { checkSignupBlocklist } from "@/lib/signupBlocklistClient";
-import { collection, doc, onSnapshot, DocumentData } from "firebase/firestore";
+import { collection, onSnapshot, DocumentData } from "firebase/firestore";
+import { useAppActivityHeartbeat } from "@/src/hooks/useAppActivityHeartbeat";
 import Link from "next/link";
 import Image from "next/image";
 import logo from "@/public/images/orange_logo.png";
@@ -720,6 +721,8 @@ export default function AppShellLayout({ children }: { children: ReactNode }) {
     const [supportUnreadCount, setSupportUnreadCount] = useState(0);
     const [userTier, setUserTier] = useState<UserTier | "unknown">("unknown");
     const [billingState, setBillingState] = useState<"free" | "active" | "trialing" | "trial_cancelled">("free");
+
+    useAppActivityHeartbeat("dashboard-shell");
 
     useEffect(() => {
         const off = onAuthStateChanged(auth, async (u) => {

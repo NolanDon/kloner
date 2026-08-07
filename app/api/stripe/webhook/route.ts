@@ -12,6 +12,7 @@ import {
 } from "../../_lib/billing";
 import { captureCriticalEvent, captureException } from "@/lib/observability";
 import { makeRecoveryCheckoutUrl, makeUnsubUrl } from "@/app/api/private/email-links";
+import { canSendRecoveryOfferEmail } from "@/app/api/_lib/recoveryOffer";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -300,11 +301,11 @@ async function sendRecoveryOfferEmail(params: { uid: string; sessionId: string; 
         const userRef = db.collection("kloner_users").doc(params.uid);
         const snap = await userRef.get();
         const data = snap.exists ? (snap.data() as any) : {};
-        const prefs = (data?.notificationPrefs || {}) as any;
-        if (prefs?.journeyEmails === false) return;
+        const activityGate = canSendRecoveryOfferEmail(data);
+        if (!activityGate.ok) return;
 
-        const canSend = await claimRecoveryOfferEmailOnce(userRef, params.sessionId);
-        if (!canSend) return;
+        const canClaim = await claimRecoveryOfferEmailOnce(userRef, params.sessionId);
+        if (!canClaim) return;
 
         const from = process.env.WELCOME_EMAIL_FROM || RECOVERY_SENDER;
         const linkUrl = makeRecoveryCheckoutUrl({ uid: params.uid, kind: "exit40" });

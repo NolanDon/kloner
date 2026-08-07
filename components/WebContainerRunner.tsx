@@ -329,6 +329,7 @@ interface WebContainerRunnerProps {
   files: { [path: string]: { content: string; lastModified: number } };
   previewIssue?: string | null;
   filesReady?: boolean;
+  isDeleting?: boolean;
   onFileChange?: (path: string, content: string) => void;
   onPreviewReadyChange?: (ready: boolean) => void;
   onPreviewIssueChange?: (issue: {
@@ -373,7 +374,7 @@ interface WebContainerRunnerProps {
   onNavigatePathChange?: (path: string | null) => void;
 }
 
-export default function WebContainerRunner({ appId, files, filesReady = true, onFileChange, onPreviewReadyChange, onPreviewIssueChange, onBackendReady, onRequestRebuild, onCompileErrorFixRequest, debugPreviewScenario, reloadToken, applyToken, restartToken, reconnectToken, forceFreshStart, pollingConfig, navigatePath, navigatePathToken, onNavigatePathChange }: WebContainerRunnerProps) {
+export default function WebContainerRunner({ appId, files, filesReady = true, isDeleting = false, onFileChange, onPreviewReadyChange, onPreviewIssueChange, onBackendReady, onRequestRebuild, onCompileErrorFixRequest, debugPreviewScenario, reloadToken, applyToken, restartToken, reconnectToken, forceFreshStart, pollingConfig, navigatePath, navigatePathToken, onNavigatePathChange }: WebContainerRunnerProps) {
 
   type DebugEvent = {
     ts: number;
@@ -1972,6 +1973,8 @@ export default function WebContainerRunner({ appId, files, filesReady = true, on
   const reconnectOnlyRef = useRef(false);
   const filesRef = useRef(files);
   const startRunIdRef = useRef(0);
+  const isDeletingRef = useRef(false);
+  isDeletingRef.current = Boolean(isDeleting);
   const effectStartedAtRef = useRef<number>(0);
   const retryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const ensuredConfigRef = useRef(false);
@@ -2879,6 +2882,7 @@ export default function NavBar() {
     if (typeof reconnectToken !== 'number') return;
     if (reconnectToken <= 0) return;
     if (lastReconnectTokenRef.current === reconnectToken) return;
+    if (isDeletingRef.current) return;
     lastReconnectTokenRef.current = reconnectToken;
 
     console.log('[WebContainerRunner] Reconnect requested', { appId, reconnectToken });
@@ -2917,7 +2921,7 @@ export default function NavBar() {
     hubStatusUrlRef.current = null;
     lastReportedStatusRef.current = '';
     lastPreviewGenerationKeyRef.current = '';
-  }, [appId, reconnectToken]);
+  }, [appId, reconnectToken, isDeleting]);
 
   // Monitor app loading and surface persistent asset failures
   useEffect(() => {
@@ -2963,6 +2967,7 @@ export default function NavBar() {
   }, [previewUrl]);
 
   useEffect(() => {
+    if (isDeletingRef.current) return;
     const pending = pendingCleanupTimers.get(appId);
     if (typeof pending === 'number') {
       clearTimeout(pending);
@@ -2974,6 +2979,11 @@ export default function NavBar() {
 
     const startApp = async () => {
       try {
+        if (isDeletingRef.current) {
+          console.log(`[WebContainerRunner] Skipping startup for deleted app ${appId}`);
+          return;
+        }
+
         if (!filesReady) {
           console.log('⏳ Waiting for hydrated files before starting webcontainer');
           return;
@@ -5073,6 +5083,10 @@ export default function NavBar() {
       const delayMs = elapsedMs < 60000 ? 120000 : 30000; // 2min delay for recent starts, 30s otherwise
 
       const cleanup = () => {
+        if (isDeletingRef.current) {
+          console.log(`[WebContainerRunner] Skipping cleanup for deleted app ${appId}`);
+          return;
+        }
         console.log(`[WebContainerRunner] Cleaning up app ${appId} after ${elapsedMs}ms elapsed, delay was ${delayMs}ms`);
         pendingCleanupTimers.delete(appId);
         ensureSessionAndCsrf()
@@ -5105,7 +5119,7 @@ export default function NavBar() {
       const timer = window.setTimeout(cleanup, delayMs);
       pendingCleanupTimers.set(appId, timer);
     };
-  }, [appId, filesReady, startAttempt, manualStartNonce, restartToken, reconnectToken, forceFreshStart]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [appId, filesReady, startAttempt, manualStartNonce, restartToken, reconnectToken, forceFreshStart, isDeleting]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Reload the iframe without tearing down the underlying server/process.
   useEffect(() => {

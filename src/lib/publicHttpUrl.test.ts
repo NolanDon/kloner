@@ -31,6 +31,18 @@ describe("publicHttpUrl", () => {
         );
     });
 
+    it("rejects suspicious host-label quirks commonly used in phishing", () => {
+        expect(getPublicHttpUrlRejectionReason("https://www-example.com")).toBe(
+            "This domain is blocked from cloning.",
+        );
+        expect(validateAndNormalizePublicHttpUrl("https://www-example.com")).toBeNull();
+
+        expect(getPublicHttpUrlRejectionReason("https://xn--pple-43d.com")).toBe(
+            "This domain is blocked from cloning.",
+        );
+        expect(validateAndNormalizePublicHttpUrl("https://xn--pple-43d.com")).toBeNull();
+    });
+
     it("accepts ordinary public URLs", () => {
         const url = "example.com/products/widget";
 

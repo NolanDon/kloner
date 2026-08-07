@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
+import { useAppActivityHeartbeat } from "@/src/hooks/useAppActivityHeartbeat";
 import AppBuilderEditor from "@/components/AppBuilderEditor";
 
 type InitialAppData = {
@@ -43,6 +44,8 @@ export default function AppBuilderPageClient({
     const router = useRouter();
     const searchParams = useSearchParams();
     const initialViewMode = searchParams.get("view") === "custom" ? "custom" : "ai";
+
+    useAppActivityHeartbeat("app-builder");
 
     return (
         <AppBuilderEditor

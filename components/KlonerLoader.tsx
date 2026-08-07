@@ -126,14 +126,18 @@ export function WorkspaceLoadingScreen({
     className = "",
 }: WorkspaceLoadingPanelProps) {
     return (
-        <div
+        <motion.div
             className={`fixed inset-0 z-[9999] grid place-items-center px-4 ${className}`}
             role="status"
             aria-live="polite"
             aria-busy="true"
+            initial={{ opacity: 0, y: 4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 4 }}
+            transition={{ duration: 0.28, ease: "easeOut" }}
         >
             <WorkspaceLoadingPanel title={title} />
-        </div>
+        </motion.div>
     );
 }
 

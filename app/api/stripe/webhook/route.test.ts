@@ -303,6 +303,60 @@ describe("POST /api/stripe/webhook", () => {
         expect(userDoc.offers?.exitOffer40RecoveryEmailSentAt).toBeTruthy();
     });
 
+    it("does not send the recovery email when the user was recently active", async () => {
+        firestoreStore.set("kloner_users/uid_abc", {
+            stripeCustomerId: "cus_abc",
+            notificationPrefs: {
+                journeyEmails: true,
+            },
+            lastAppActivityAt: Date.now(),
+        });
+
+        const constructEvent = jest.fn(() => ({
+            id: "evt_expired",
+            type: "checkout.session.expired",
+            livemode: false,
+            data: {
+                object: {
+                    id: "cs_expired",
+                    metadata: {
+                        firebaseUid: "uid_abc",
+                        plan: "pro",
+                    },
+                    customer: "cus_abc",
+                },
+            },
+        }));
+
+        jest.doMock("stripe", () => {
+            return {
+                __esModule: true,
+                default: function StripeCtor() {
+                    return {
+                        webhooks: { constructEvent },
+                        invoices: { retrieve: async () => ({}) },
+                    };
+                },
+            };
+        });
+
+        const { POST } = await import("./route");
+
+        const req = {
+            headers: {
+                get: (k: string) => (k === "stripe-signature" ? "sig" : null),
+            },
+            text: async () => "{}",
+        } as any;
+
+        const res: any = await POST(req);
+        const body = await res.json();
+
+        expect(res.status).toBe(200);
+        expect(body.received).toBe(true);
+        expect(resendSend).not.toHaveBeenCalled();
+    });
+
     it("does not send the recovery email when journey emails are unsubscribed", async () => {
         firestoreStore.set("kloner_users/uid_abc", {
             stripeCustomerId: "cus_abc",

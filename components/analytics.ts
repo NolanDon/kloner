@@ -17,6 +17,37 @@ function msToMinutesRounded(ms: number | null | undefined): number | null {
     return Math.round((ms / 1000 / 60) * 10) / 10;
 }
 
+function getAnalyticsErrorText(err: unknown): { code: string; message: string } {
+    const code = String((err as any)?.code || "").trim().toLowerCase();
+    const message = String((err as any)?.message || "").trim();
+    return { code, message };
+}
+
+function isIgnorableAnalyticsError(err: unknown): boolean {
+    const { code, message } = getAnalyticsErrorText(err);
+    return (
+        code.includes("permission-denied") ||
+        code.includes("unauthenticated") ||
+        code.includes("failed-precondition") ||
+        code.includes("unavailable") ||
+        code.includes("deadline-exceeded") ||
+        code.includes("cancelled") ||
+        message.toLowerCase().includes("missing or insufficient permissions") ||
+        message.toLowerCase().includes("permission denied") ||
+        message.toLowerCase().includes("blocked")
+    );
+}
+
+function logAnalyticsBestEffortFailure(scope: string, err: unknown) {
+    const { code, message } = getAnalyticsErrorText(err);
+    const summary = code || message || "unknown error";
+    if (isIgnorableAnalyticsError(err)) {
+        console.warn(`[analytics] ${scope} skipped (${summary})`);
+        return;
+    }
+    console.warn(`[analytics] ${scope} failed (${summary})`);
+}
+
 /* =========================
  * EXPORT ANALYTICS
  * ========================= */
@@ -123,7 +154,7 @@ export async function recordExportAnalytics(
 
     } catch (err) {
         // analytics failures should never block export
-        console.error("recordExportAnalytics failed", err);
+        logAnalyticsBestEffortFailure("recordExportAnalytics", err);
     }
 }
 
@@ -192,7 +223,7 @@ export async function recordDeployAnalytics(
         });
 
     } catch (err) {
-        console.error("recordDeployAnalytics failed", err);
+        logAnalyticsBestEffortFailure("recordDeployAnalytics", err);
     }
 }
 
@@ -526,13 +557,9 @@ export async function recordAppBuilderSessionAnalytics(
                 stripeConfigured: integrationSnapshot.stripeConfigured,
             });
         } catch (err) {
-            const code = String((err as any)?.code || "").toLowerCase();
-            if (code.includes("permission-denied")) return;
-            console.error("recordAppBuilderSessionAnalytics session doc failed", err);
+            logAnalyticsBestEffortFailure("recordAppBuilderSessionAnalytics session doc", err);
         }
     } catch (err) {
-        const code = String((err as any)?.code || "").toLowerCase();
-        if (code.includes("permission-denied")) return;
-        console.error("recordAppBuilderSessionAnalytics failed", err);
+        logAnalyticsBestEffortFailure("recordAppBuilderSessionAnalytics", err);
     }
 }

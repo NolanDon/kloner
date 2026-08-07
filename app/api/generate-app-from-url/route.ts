@@ -379,6 +379,9 @@ export async function POST(req: NextRequest) {
               requestId: appResponse.reqId || null,
               archiveZipPath: typeof appData.archiveZipPath === "string" ? appData.archiveZipPath : null,
               archiveZipUrl: typeof appData.archiveZipUrl === "string" ? appData.archiveZipUrl : null,
+              archiveZipBytes: typeof appData.archiveZipBytes === "number" && Number.isFinite(appData.archiveZipBytes)
+                ? appData.archiveZipBytes
+                : null,
               errorCode: null,
               details: null,
               retryable: Boolean(appData.rescanRecommended),
@@ -388,6 +391,10 @@ export async function POST(req: NextRequest) {
             warnings: Array.isArray(appData.warnings) ? appData.warnings : [],
             rescanRecommended: appData.rescanRecommended === true,
             archiveZipPath: typeof appData.archiveZipPath === "string" ? appData.archiveZipPath : null,
+            archiveZipUrl: typeof appData.archiveZipUrl === "string" ? appData.archiveZipUrl : null,
+            archiveZipBytes: typeof appData.archiveZipBytes === "number" && Number.isFinite(appData.archiveZipBytes)
+              ? appData.archiveZipBytes
+              : null,
             generationFormat: appData.generationFormat === "html" ? "html" : "nextjs",
             files: existingData?.files || {},
             pendingCompleted: false,
@@ -428,6 +435,10 @@ export async function POST(req: NextRequest) {
             warnings: Array.isArray(appData.warnings) ? appData.warnings : [],
             rescanRecommended: appData.rescanRecommended === true,
             archiveZipPath: typeof appData.archiveZipPath === "string" ? appData.archiveZipPath : null,
+            archiveZipUrl: typeof appData.archiveZipUrl === "string" ? appData.archiveZipUrl : null,
+            archiveZipBytes: typeof appData.archiveZipBytes === "number" && Number.isFinite(appData.archiveZipBytes)
+              ? appData.archiveZipBytes
+              : null,
             generationFormat: appData.generationFormat === "html" ? "html" : "nextjs",
           },
           { status: 202 },

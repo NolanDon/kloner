@@ -8,6 +8,7 @@ import BillingBanner from "@/components/BillingBanner";
 import { AnimatedCreditCard } from "@/components/AnimatedCreditCard";
 import { useModal } from "@/components/ui/ModalContext";
 import { useAuth } from "@/src/hooks/useAuth";
+import { useAppActivityHeartbeat } from "@/src/hooks/useAppActivityHeartbeat";
 import { BASIC_MONTHLY_PRICE_USD, STRIPE_TRIAL_DAYS, TRIAL_CTA_LABEL } from "@/src/lib/billingAccess";
 import { Loader2 } from "lucide-react";
 import SuccessConfetti from "@/components/tools/SuccessConfetti";
@@ -138,6 +139,8 @@ export default function PriceClient(): JSX.Element {
     const { showAlert } = useModal();
     const { user, loading: authLoading } = useAuth();
     const PRICE_TOPUP_HANDLED_PREFIX = "kloner.price.topup.handled:";
+
+    useAppActivityHeartbeat("price-page");
 
     function markRecoveryCheckoutPending() {
         if (typeof window === "undefined" || !user?.uid) return;

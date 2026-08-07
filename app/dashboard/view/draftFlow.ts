@@ -34,6 +34,18 @@ export type DashboardDraftCard = {
 
 type Setter<T> = (next: T | ((prev: T) => T)) => void;
 
+export type DashboardUrlProcessingSession = {
+    appId: string | null;
+    draftId: string | null;
+    draftAppId: string | null;
+    sourceUrl: string | null;
+    archiveZipUrl: string | null;
+    archiveZipBytes: number | null;
+    errorMessage?: string | null;
+    phase: "processing" | "ready" | "navigating" | "error";
+    phaseStartedAt: number;
+};
+
 export const DRAFT_LOADING_TIMEOUT_MS = 10 * 60 * 1000;
 
 export type DashboardDraftThumbnailLookup =
@@ -412,6 +424,7 @@ export function shouldSuppressCompletedDraftIssue(
 export async function submitDashboardUrlDraft({
     rawUrl,
     canUseScreenshotCredit,
+    canUsePreviewCredit,
     fetchImpl,
     push,
     setErr,
@@ -423,9 +436,12 @@ export async function submitDashboardUrlDraft({
     onDraftReady,
     isGenerationInFlight,
     setGenerationInFlight,
+    onProcessingSessionChange,
+    onProcessingError,
 }: {
     rawUrl: string;
     canUseScreenshotCredit: () => boolean;
+    canUsePreviewCredit?: () => boolean;
     fetchImpl: typeof fetch;
     push: (text: string, tone: "ok" | "warn" | "err") => void;
     setErr: (value: string) => void;
@@ -437,6 +453,8 @@ export async function submitDashboardUrlDraft({
     onDraftReady?: (draft: DashboardDraftCard) => void | Promise<void>;
     isGenerationInFlight?: (canonicalUrl: string) => boolean;
     setGenerationInFlight?: (canonicalUrl: string | null) => void;
+    onProcessingSessionChange?: Setter<DashboardUrlProcessingSession | null>;
+    onProcessingError?: (message: string, sourceUrl: string | null) => void;
 }): Promise<boolean> {
     // Clear any previous error/info as soon as a new submission begins
     setErr("");
@@ -446,14 +464,23 @@ export async function submitDashboardUrlDraft({
     if (!normalized) {
         setErr("Please enter a valid public http(s) URL.");
         setInfo("");
+        onProcessingError?.("Please enter a valid public http(s) URL.", rawUrl || null);
         return false;
     }
 
     if (!canUseScreenshotCredit()) {
-        setErr("You have used all monthly screenshot credits. Upgrade to capture more pages and monitor more sites.");
+        setErr("");
         setInfo("");
         push("You have used all available screenshot credits for this month.", "warn");
         setShowCreditsPaywall("screenshot");
+        return false;
+    }
+
+    if (!canUsePreviewCredit?.()) {
+        setErr("");
+        setInfo("");
+        push("You have used all available scan credits for this month.", "warn");
+        setShowCreditsPaywall("preview");
         return false;
     }
 
@@ -488,6 +515,18 @@ export async function submitDashboardUrlDraft({
         warnings: [],
         blocked: false,
     };
+
+    onProcessingSessionChange?.({
+        appId: null,
+        draftId: draftDocId,
+        draftAppId,
+        sourceUrl: normalized,
+        archiveZipUrl: null,
+        archiveZipBytes: null,
+        errorMessage: null,
+        phase: "processing",
+        phaseStartedAt: Date.now(),
+    });
 
     setDraftApps((prev) => {
         if (prev.some((item) => item.draftId === draftDocId || item.id === draftAppId)) return prev;
@@ -555,6 +594,20 @@ export async function submitDashboardUrlDraft({
                     ),
                 );
                 setErr(blockedMessage);
+                onProcessingSessionChange?.((current) => (
+                    current && current.sourceUrl === normalized
+                        ? {
+                            ...current,
+                            appId: current.appId ?? draftAppId,
+                            draftId: current.draftId ?? draftDocId,
+                            draftAppId: current.draftAppId ?? draftAppId,
+                            errorMessage: blockedMessage,
+                            phase: "error",
+                            phaseStartedAt: current.phaseStartedAt || Date.now(),
+                        }
+                        : current
+                ));
+                onProcessingError?.(blockedMessage, normalized);
             } else {
                 const fallbackMsg = errorBody?.userMessage || errorBody?.message || errorBody?.error || "Failed to scan this URL. Please try again.";
                 const issueCode = typeof errorBody?.code === "string" && errorBody.code.trim()
@@ -638,6 +691,20 @@ export async function submitDashboardUrlDraft({
                 }
 
                 setErr(String(fallbackMsg));
+                onProcessingSessionChange?.((current) => (
+                    current && current.sourceUrl === normalized
+                        ? {
+                            ...current,
+                            appId: current.appId ?? draftAppId,
+                            draftId: current.draftId ?? draftDocId,
+                            draftAppId: current.draftAppId ?? draftAppId,
+                            errorMessage: String(fallbackMsg),
+                            phase: "error",
+                            phaseStartedAt: current.phaseStartedAt || Date.now(),
+                        }
+                        : current
+                ));
+                onProcessingError?.(String(fallbackMsg), normalized);
             }
 
             setPendingDraftApps((prev) => {
@@ -698,6 +765,20 @@ export async function submitDashboardUrlDraft({
             return next;
         });
         setWebsiteSubmissionPendingUrl((current) => (current === canonical ? null : current));
+        onProcessingSessionChange?.((current) => (
+            current && current.sourceUrl === normalized
+                ? {
+                    ...current,
+                    appId: current.appId ?? draftAppId,
+                    draftId: current.draftId ?? draftDocId,
+                    draftAppId: current.draftAppId ?? draftAppId,
+                    errorMessage: String((error as any)?.message || "Failed to process this URL."),
+                    phase: "error",
+                    phaseStartedAt: current.phaseStartedAt || Date.now(),
+                }
+                : current
+        ));
+        onProcessingError?.(String((error as any)?.message || "Failed to process this URL."), normalized);
         throw error;
     } finally {
         setGenerationInFlight?.(null);

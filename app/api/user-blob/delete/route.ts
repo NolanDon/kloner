@@ -40,30 +40,35 @@ function getBucket(): Bucket {
 
 type DeleteBody = {
     paths?: string[];
+    prefixes?: string[];
     renderId?: string;
 };
 
 export async function POST(req: NextRequest) {
     return requireSessionAndMaybeCsrf(req, async ({ uid, req: authedReq }) => {
         try {
-            const { paths } = (await authedReq.json()) as DeleteBody;
-            if (!Array.isArray(paths) || paths.length === 0) {
-                return NextResponse.json(
-                    { ok: false, error: "No blob paths provided" },
-                    { status: 400 },
-                );
-            }
+            const body = (await authedReq.json()) as DeleteBody;
+            const paths = Array.isArray(body.paths) ? body.paths : [];
+            const prefixes = Array.isArray(body.prefixes) ? body.prefixes : [];
 
             const allowedPrefixes = [
                 `kloner_images/${uid}/`,
                 `kloner_ai_home/${uid}/`,
+                `kloner-screenshots/${uid}/`,
+                `screenshots/${uid}/`,
+                `kloner-site-zips/${uid}/`,
+                `site-zips/${uid}/`,
             ];
 
             const toDelete = paths
                 .filter((p): p is string => typeof p === "string" && p.trim().length > 0)
                 .filter((p) => allowedPrefixes.some((prefix) => p.startsWith(prefix)));
 
-            if (!toDelete.length) {
+            const toDeletePrefixes = prefixes
+                .filter((p): p is string => typeof p === "string" && p.trim().length > 0)
+                .filter((p) => allowedPrefixes.some((prefix) => p.startsWith(prefix)));
+
+            if (!toDelete.length && !toDeletePrefixes.length) {
                 return NextResponse.json({ ok: true, count: 0 });
             }
 
@@ -72,7 +77,16 @@ export async function POST(req: NextRequest) {
                 toDelete.map((path) => bucket.file(path).delete({ ignoreNotFound: true })),
             );
 
-            return NextResponse.json({ ok: true, count: toDelete.length });
+            for (const prefix of toDeletePrefixes) {
+                try {
+                    const [files] = await bucket.getFiles({ prefix });
+                    await Promise.allSettled(files.map((file) => file.delete({ ignoreNotFound: true })));
+                } catch (error) {
+                    console.warn("[user-blob/delete] prefix cleanup failed", { prefix, error });
+                }
+            }
+
+            return NextResponse.json({ ok: true, count: toDelete.length + toDeletePrefixes.length });
         } catch (err: any) {
             console.error("user-storage delete error", err);
             return NextResponse.json(

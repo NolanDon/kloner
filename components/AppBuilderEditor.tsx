@@ -1425,6 +1425,7 @@ export default function AppBuilderEditor({
     onTrialPromptStartCheckout,
     previewDebugScenario = null,
     deployIssue = null,
+    isDeleting = false,
 }: {
     appId: string;
     initialAppData?: AppData | null;
@@ -1450,9 +1451,11 @@ export default function AppBuilderEditor({
     onTrialPromptStartCheckout?: (appId: string) => void;
     previewDebugScenario?: { mode: 'terminal-error' | 'terminal-error-auto-fix'; nonce: number } | null;
     deployIssue?: EditorIssue | null;
+    isDeleting?: boolean;
 }) {
     const { user, userTier, loading: authLoading } = useAuth();
     const { showConfirm, showAlert, hideModal } = useModal();
+    const isDeletingApp = Boolean(isDeleting);
     const onMissingAppRef = useRef(onMissingApp);
     const sourceUrlToRescan = useMemo(() => {
         if (agentWelcomeContext?.source !== "url") return "";
@@ -7018,7 +7021,7 @@ export default function AppBuilderEditor({
             ) : null}
             <motion.div
                 key="app-builder-shell"
-                className={`h-full w-full bg-white flex flex-col ${loading ? "pointer-events-none" : ""}`}
+                className={`relative h-full w-full bg-white flex flex-col ${loading || isDeletingApp ? "pointer-events-none" : ""}`}
                 initial={false}
                 animate={{
                     opacity: loading ? 0 : 1,
@@ -7027,6 +7030,23 @@ export default function AppBuilderEditor({
                 }}
                 transition={{ duration: 0.24, ease: "easeOut" }}
             >
+                {isDeletingApp ? (
+                    <div className="absolute inset-0 z-[18000] flex items-center justify-center bg-white/85 backdrop-blur-[4px]">
+                        <div className="flex items-center gap-3 rounded-full border border-neutral-200 bg-white px-4 py-2.5 shadow-sm">
+                            <span
+                                className="inline-block rounded-full border-2 border-neutral-300"
+                                style={{
+                                    width: 28,
+                                    height: 28,
+                                    borderTopColor: "#FF8D21",
+                                    animation: "spin 0.8s linear infinite",
+                                }}
+                                aria-hidden="true"
+                            />
+                            <span className="text-sm font-medium text-neutral-700">Deleting app…</span>
+                        </div>
+                    </div>
+                ) : null}
                 {/* Header */}
                 <div className="relative z-30 flex flex-nowrap items-center justify-between gap-2 overflow-visible border-b bg-gray-50 p-2.5 sm:p-4">
                     <div className="relative z-20 flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
@@ -8009,6 +8029,7 @@ export default function AppBuilderEditor({
                                                 appId={appId}
                                                 files={effectivePreviewFiles}
                                                 filesReady={isPreviewBootReady}
+                                                isDeleting={isDeletingApp}
                                                 onFileChange={handleFileChangeFromContainer}
                                                 onPreviewReadyChange={(ready) => {
                                                     if (ready) {

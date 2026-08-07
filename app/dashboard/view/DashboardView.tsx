@@ -111,8 +111,10 @@ import {
     resolveDashboardDraftThumbnailUrl,
     isTimedOutDraftLoadingState,
     shouldSuppressCompletedDraftIssue,
+    type DashboardUrlProcessingSession,
     submitDashboardUrlDraft,
 } from "./draftFlow";
+import UrlProcessingPopup from "@/components/UrlProcessingPopup";
 import { extractArchivedPageIdsFromRender, fetchRenderForDeployment, getArchivedRoutesForRender, persistArchivedPageIds, scrubArchivedRoutes, secureHtmlForPreviewIframe, withArchivedPageIds } from "@/components/helpers";
 import { useModal } from "@/components/ui/ModalContext";
 import AppBuilderEditor from "@/components/AppBuilderEditor";
@@ -1632,15 +1634,6 @@ function MiniDashboardEntry({
                 </div>
 
                 {error ? <div className="mt-2 text-sm text-red-700">{error}</div> : null}
-
-                {showQueuedScanStatus ? (
-                    <div className="mt-4 inline-flex items-center gap-2 text-xs text-neutral-600">
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        {captureStatus === "queued"
-                            ? "Queued scan… this can take a few minutes."
-                            : "Processing your URL… this can take a few minutes."}
-                    </div>
-                ) : null}
 
             </form>
         </div>
@@ -4175,6 +4168,7 @@ export default function PreviewPage(): JSX.Element {
 
     async function handleDeleteApp(appId: string) {
         if (!user) return;
+        const shouldCloseAppBuilder = appBuilderOpen && currentAppId === appId;
 
         const ok = await showConfirm(
             "Delete this app? This action cannot be undone.",
@@ -4197,16 +4191,29 @@ export default function PreviewPage(): JSX.Element {
 
             // Remove from local state
             setApps((prev) => prev.filter((a) => a.id !== appId));
+            if (shouldCloseAppBuilder) {
+                setAppBuilderOpen(false);
+                setCurrentAppId(null);
+                setAppBuilderInitialViewMode("ai");
+            }
             push("App deleted successfully", "ok");
         } catch (error) {
             console.error("Failed to delete app:", error);
             push("Failed to delete app. Please try again.", "err");
         } finally {
-            setDeletingApp((prev) => {
-                const next = { ...prev };
-                delete next[appId];
-                return next;
-            });
+            const clearDeleting = () => {
+                setDeletingApp((prev) => {
+                    const next = { ...prev };
+                    delete next[appId];
+                    return next;
+                });
+            };
+
+            if (shouldCloseAppBuilder) {
+                window.setTimeout(clearDeleting, 600);
+            } else {
+                clearDeleting();
+            }
         }
     }
 
@@ -4395,7 +4402,16 @@ export default function PreviewPage(): JSX.Element {
         sourceUrl?: string | null;
         retryable?: boolean;
         completed?: boolean;
+        archiveZipPath?: string | null;
+        archiveZipUrl?: string | null;
+        archiveZipBytes?: number | null;
     } | null>(null);
+    const [urlProcessingFailure, setUrlProcessingFailure] = useState<{
+        message: string;
+        url: string | null;
+        at: number;
+    } | null>(null);
+    const [urlProcessingHandoff, setUrlProcessingHandoff] = useState<DashboardUrlProcessingSession | null>(null);
     const [websiteSubmissionPendingUrl, setWebsiteSubmissionPendingUrl] = useState<string | null>(null);
     const [draftAppsLoading, setDraftAppsLoading] = useState(true);
     const [draftAppsInitialLoadComplete, setDraftAppsInitialLoadComplete] = useState(false);
@@ -4423,6 +4439,7 @@ export default function PreviewPage(): JSX.Element {
         blocked?: boolean;
     }>>([]);
     const pendingCreatedAppLaunchRequestedRef = useRef<string | null>(null);
+    const urlProcessingNavigateTimeoutRef = useRef<number | null>(null);
     const draftPromotionInFlightRef = useRef<Record<string, true>>({});
     const promoteDraftToAppRef = useRef<((draft: {
         draftId: string;
@@ -5936,6 +5953,8 @@ export default function PreviewPage(): JSX.Element {
         }>;
         rescanRecommended: boolean;
         archiveZipPath: string | null;
+        archiveZipUrl: string | null;
+        archiveZipBytes: number | null;
         generationFormat: "nextjs" | "html";
         details?: any;
         warning?: any;
@@ -6137,6 +6156,10 @@ export default function PreviewPage(): JSX.Element {
                 warnings: Array.isArray(responseData.warnings) ? responseData.warnings : [],
                 rescanRecommended: responseData.rescanRecommended === true,
                 archiveZipPath: typeof responseData.archiveZipPath === "string" ? responseData.archiveZipPath : null,
+                archiveZipUrl: typeof responseData.archiveZipUrl === "string" ? responseData.archiveZipUrl : null,
+                archiveZipBytes: typeof responseData.archiveZipBytes === "number" && Number.isFinite(responseData.archiveZipBytes)
+                    ? responseData.archiveZipBytes
+                    : null,
                 generationFormat: responseData.generationFormat === "html" ? "html" : "nextjs",
                 details,
                 warning,
@@ -6317,6 +6340,9 @@ export default function PreviewPage(): JSX.Element {
                     sourceUrl: mode === "url" ? url : null,
                     retryable: false,
                     completed: false,
+                    archiveZipPath: null,
+                    archiveZipUrl: null,
+                    archiveZipBytes: null,
                 });
             }
 
@@ -6412,6 +6438,11 @@ export default function PreviewPage(): JSX.Element {
                                 sourceUrl: url,
                                 retryable: Boolean(responseWarning),
                                 completed: true,
+                                archiveZipPath: acceptedAny?.archiveZipPath ?? prev.archiveZipPath ?? null,
+                                archiveZipUrl: acceptedAny?.archiveZipUrl ?? prev.archiveZipUrl ?? null,
+                                archiveZipBytes: typeof acceptedAny?.archiveZipBytes === "number"
+                                    ? acceptedAny.archiveZipBytes
+                                    : prev.archiveZipBytes ?? null,
                             };
                         });
                     } else if (shouldShowPendingAppUi) {
@@ -6422,12 +6453,28 @@ export default function PreviewPage(): JSX.Element {
                             sourceUrl: url,
                             retryable: Boolean(responseWarning),
                             completed: isArchiveCompletion,
+                            archiveZipPath: acceptedAny?.archiveZipPath ?? null,
+                            archiveZipUrl: acceptedAny?.archiveZipUrl ?? null,
+                            archiveZipBytes: typeof acceptedAny?.archiveZipBytes === "number" ? acceptedAny.archiveZipBytes : null,
                         });
                     }
 
                     appId = resolvedAppId || pendingCreatedAppId || fallbackJobId || fallbackRequestId || appName;
                     if (resolvedAppId) {
-                        void openAppBuilderPreviewFirstWithCookieGate(resolvedAppId);
+                        setUrlProcessingHandoff((current) => ({
+                            appId: resolvedAppId,
+                            draftId: current?.draftId ?? null,
+                            draftAppId: current?.draftAppId ?? null,
+                            sourceUrl: url,
+                            archiveZipUrl: typeof acceptedAny?.archiveZipUrl === "string"
+                                ? acceptedAny.archiveZipUrl
+                                : current?.archiveZipUrl ?? null,
+                            archiveZipBytes: typeof acceptedAny?.archiveZipBytes === "number"
+                                ? acceptedAny.archiveZipBytes
+                                : current?.archiveZipBytes ?? null,
+                            phase: "ready",
+                            phaseStartedAt: current?.phaseStartedAt || Date.now(),
+                        }));
                     }
                 } else {
                     const shouldPersistRescanWarning =
@@ -6516,6 +6563,11 @@ export default function PreviewPage(): JSX.Element {
                         }
 
                         if (parsed.failureKind === "validation_error") {
+                            setUrlProcessingFailure({
+                                message: parsed.message || "Please check the URL and try again.",
+                                url: url || null,
+                                at: Date.now(),
+                            });
                             void saveUrlDraft({
                                 retryable: false,
                                 completed: false,
@@ -6539,6 +6591,11 @@ export default function PreviewPage(): JSX.Element {
                         }
 
                         if (parsed.failureKind === "server_error") {
+                            setUrlProcessingFailure({
+                                message: parsed.message || "Something went wrong while generating this URL. Please retry.",
+                                url: url || null,
+                                at: Date.now(),
+                            });
                             void saveUrlDraft({
                                 retryable: true,
                                 completed: false,
@@ -6726,6 +6783,8 @@ export default function PreviewPage(): JSX.Element {
                         setAppWizardError(null);
                         setAppWizardBusy(false);
                     }
+                    setUrlProcessingHandoff(null);
+                    setUrlProcessingFailure(null);
                     setPendingCreatedApp(null);
                     return null;
                 }
@@ -6735,6 +6794,8 @@ export default function PreviewPage(): JSX.Element {
                     setAppWizardError(null);
                     setAppWizardBusy(false);
                 }
+                setUrlProcessingHandoff(null);
+                setUrlProcessingFailure(null);
                 setPendingCreatedApp(null);
                 return null;
             }
@@ -6745,11 +6806,18 @@ export default function PreviewPage(): JSX.Element {
                     setAppWizardError(null);
                     setAppWizardBusy(false);
                 }
+                setUrlProcessingHandoff(null);
+                setUrlProcessingFailure(null);
                 setPendingCreatedApp(null);
                 return null;
             }
 
             if (mode === "url" && Boolean((error as any)?.terminalUrlGenerationFailure)) {
+                setUrlProcessingFailure({
+                    message,
+                    url: url || null,
+                    at: Date.now(),
+                });
                 setPendingCreatedApp(null);
                 return null;
             }
@@ -6764,6 +6832,11 @@ export default function PreviewPage(): JSX.Element {
             }
 
             opts?.onError?.(message);
+            setUrlProcessingFailure({
+                message,
+                url: url || null,
+                at: Date.now(),
+            });
             setPendingCreatedApp(null);
             push(message, "err");
             return null;
@@ -6773,6 +6846,16 @@ export default function PreviewPage(): JSX.Element {
     useEffect(() => {
         if (!pendingCreatedApp) {
             pendingCreatedAppLaunchRequestedRef.current = null;
+            return;
+        }
+
+        if (urlProcessingHandoff?.appId === pendingCreatedApp.id) {
+            pendingCreatedAppLaunchRequestedRef.current = pendingCreatedApp.id;
+            return;
+        }
+
+        const launchRequestedForPendingApp = pendingCreatedAppLaunchRequestedRef.current === pendingCreatedApp.id;
+        if (launchRequestedForPendingApp) {
             return;
         }
 
@@ -6818,6 +6901,147 @@ export default function PreviewPage(): JSX.Element {
         blockedUrlGenerationAppId,
         userTier,
         stripeStatus,
+        urlProcessingHandoff?.appId,
+    ]);
+
+    useEffect(() => {
+        if (!urlProcessingHandoff) return;
+        if (urlProcessingHandoff.phase !== "ready") return;
+
+        const READY_HOLD_MS = 600;
+        const FADE_OUT_MS = 450;
+
+        if (urlProcessingNavigateTimeoutRef.current) {
+            window.clearTimeout(urlProcessingNavigateTimeoutRef.current);
+            urlProcessingNavigateTimeoutRef.current = null;
+        }
+
+        const readyTimer = window.setTimeout(() => {
+            setUrlProcessingHandoff((current) => {
+                if (!current || current.appId !== urlProcessingHandoff.appId || current.phase !== "ready") {
+                    return current;
+                }
+                return {
+                    ...current,
+                    phase: "navigating",
+                    phaseStartedAt: current.phaseStartedAt || Date.now(),
+                };
+            });
+
+            const appIdToOpen = pendingCreatedAppLaunchRequestedRef.current || urlProcessingHandoff.appId;
+            urlProcessingNavigateTimeoutRef.current = window.setTimeout(() => {
+                if (!appIdToOpen) return;
+                pendingCreatedAppLaunchRequestedRef.current = appIdToOpen;
+                void openAppBuilderPreviewFirstWithCookieGate(appIdToOpen);
+            }, FADE_OUT_MS);
+        }, READY_HOLD_MS);
+
+        return () => window.clearTimeout(readyTimer);
+    }, [openAppBuilderPreviewFirstWithCookieGate, urlProcessingHandoff]);
+
+    const handleStopUrlProcessing = useCallback(async () => {
+        const session = urlProcessingHandoff;
+        if (!session) {
+            setUrlProcessingFailure(null);
+            setUrlProcessingHandoff(null);
+            setPendingCreatedApp(null);
+            setWebsiteSubmissionPendingUrl(null);
+            setErr("");
+            setInfo("");
+            return;
+        }
+
+        const ok = await showConfirm(
+            "Stop this scan? This will delete the draft and remove anything collected so far.",
+            "Stop scan"
+        );
+        if (!ok) return;
+
+        if (urlProcessingNavigateTimeoutRef.current) {
+            window.clearTimeout(urlProcessingNavigateTimeoutRef.current);
+            urlProcessingNavigateTimeoutRef.current = null;
+        }
+
+        pendingCreatedAppLaunchRequestedRef.current = null;
+
+        const sessionSourceUrl = String(session.sourceUrl || "").trim();
+        const sessionDraftId = String(session.draftId || "").trim();
+        const sessionDraftAppId = String(session.draftAppId || "").trim();
+
+        if (user && sessionSourceUrl) {
+            try {
+                await purgeTrackedUrlData(user.uid, sessionSourceUrl);
+            } catch (error) {
+                console.warn("[dashboard] failed to purge stopped scan url data", error);
+            }
+        }
+
+        if (sessionDraftId) {
+            try {
+                const csrf = await ensureSessionAndCsrf().catch(() => null);
+                await fetch("/api/private/kloner-draft", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        ...(csrf ? { "x-csrf": csrf } : {}),
+                    },
+                    credentials: "include",
+                    body: JSON.stringify({
+                        action: "delete",
+                        draftId: sessionDraftId,
+                    }),
+                });
+            } catch (error) {
+                console.warn("[dashboard] failed to delete stopped scan draft", error);
+            }
+
+            setDraftApps((prev) => prev.filter((item) => item.draftId !== sessionDraftId && item.id !== sessionDraftAppId));
+            setPendingDraftApps((prev) => {
+                const next = { ...prev };
+                delete next[sessionDraftId];
+                return next;
+            });
+            setDraftPromotionScanByDraftId((prev) => {
+                if (!prev[sessionDraftId]) return prev;
+                const next = { ...prev };
+                delete next[sessionDraftId];
+                return next;
+            });
+        }
+
+        if (sessionDraftAppId) {
+            setPendingCreatedApp((prev) => (prev && (prev.id === sessionDraftAppId || prev.id === sessionDraftId) ? null : prev));
+        } else {
+            setPendingCreatedApp(null);
+        }
+
+        setUrlProcessingFailure(null);
+        setUrlProcessingHandoff(null);
+        setWebsiteSubmissionPendingUrl(null);
+        setErr("");
+        setInfo("");
+        setCurrentAppId(null);
+        setAppBuilderOpen(false);
+        setAppBuilderInitialViewMode("ai");
+        push("Stopped scan and deleted the draft.", "warn");
+    }, [
+        push,
+        purgeTrackedUrlData,
+        setAppBuilderInitialViewMode,
+        setAppBuilderOpen,
+        setCurrentAppId,
+        setDraftApps,
+        setDraftPromotionScanByDraftId,
+        setErr,
+        setInfo,
+        setPendingCreatedApp,
+        setPendingDraftApps,
+        setUrlProcessingFailure,
+        setUrlProcessingHandoff,
+        setWebsiteSubmissionPendingUrl,
+        showConfirm,
+        urlProcessingHandoff,
+        user,
     ]);
 
     useEffect(() => {
@@ -7485,20 +7709,31 @@ export default function PreviewPage(): JSX.Element {
             urlDoc.screenshotsPrefix ||
             (urlHash ? `kloner-screenshots/${userId}/${urlHash}` : "");
 
-        if (urlDoc.zipPath) {
-            await deleteObject(sRef(storage, urlDoc.zipPath)).catch(() => null);
-        }
+        const paths = [
+            typeof urlDoc.zipPath === "string" ? urlDoc.zipPath.trim() : "",
+            ...(Array.isArray(urlDoc.screenshotPaths) ? urlDoc.screenshotPaths : []),
+        ].filter((p): p is string => typeof p === "string" && !!p.trim()).map((p) => p.trim());
 
-        if (Array.isArray(urlDoc.screenshotPaths) && urlDoc.screenshotPaths.length > 0) {
-            await Promise.allSettled(
-                urlDoc.screenshotPaths.map((p) => deleteObject(sRef(storage, p)))
-            );
-            return;
-        }
+        const prefixes = prefix ? [prefix] : [];
 
-        if (prefix) {
-            const refs = await listAllDeepSafe(sRef(storage, prefix)).catch(() => []);
-            await Promise.allSettled(refs.map((it) => deleteObject(it)));
+        if (!paths.length && !prefixes.length) return;
+
+        try {
+            const csrf = await ensureSessionAndCsrf().catch(() => null);
+            await fetch("/api/user-blob/delete", {
+                method: "POST",
+                headers: {
+                    "content-type": "application/json",
+                    ...(csrf ? { "x-csrf": csrf } : {}),
+                },
+                credentials: "include",
+                body: JSON.stringify({
+                    paths,
+                    prefixes,
+                }),
+            });
+        } catch {
+            // Best-effort cleanup only.
         }
     }
 
@@ -7782,6 +8017,7 @@ export default function PreviewPage(): JSX.Element {
         async (raw: string) => submitDashboardUrlDraft({
             rawUrl: raw,
             canUseScreenshotCredit,
+            canUsePreviewCredit,
             fetchImpl: fetch,
             push,
             setErr,
@@ -7794,14 +8030,22 @@ export default function PreviewPage(): JSX.Element {
             setGenerationInFlight: (canonicalUrl: string | null) => {
                 urlGenerationInFlightRef.current = canonicalUrl;
             },
+            onProcessingSessionChange: setUrlProcessingHandoff,
             onDraftReady: async (draft) => {
                 await promoteDraftToAppRef.current?.({
                     ...draft,
                     skipPreviewCreditGate: true,
                 });
             },
+            onProcessingError: (message, sourceUrl) => {
+                setUrlProcessingFailure({
+                    message,
+                    url: sourceUrl ? String(sourceUrl).trim() || null : null,
+                    at: Date.now(),
+                });
+            },
         }),
-        [canUseScreenshotCredit, fetch, push, setErr, setInfo, setPendingDraftApps, setDraftApps, setShowCreditsPaywall, setWebsiteSubmissionPendingUrl]
+        [canUseScreenshotCredit, canUsePreviewCredit, fetch, push, setErr, setInfo, setPendingDraftApps, setDraftApps, setShowCreditsPaywall, setWebsiteSubmissionPendingUrl]
     );
 
     const submitMiniUrlWithDuplicateConfirm = useCallback(
@@ -7866,6 +8110,16 @@ export default function PreviewPage(): JSX.Element {
                     sourceUrl: normalized,
                 }),
             }));
+            setUrlProcessingHandoff((current) => {
+                if (!current || current.sourceUrl !== normalized) return current;
+                return {
+                    ...current,
+                    appId: current.appId || draft.id || draftKey,
+                    sourceUrl: normalized,
+                    phase: patch.phase === "error" ? "error" : (current.phase === "ready" ? "ready" : "processing"),
+                    phaseStartedAt: current.phaseStartedAt || Date.now(),
+                };
+            });
         };
 
         const clearScanState = () => {
@@ -7914,6 +8168,17 @@ export default function PreviewPage(): JSX.Element {
                 crawlProgressMessage: snapshot.crawlProgressMessage,
                 crawlProgressProgress: snapshot.crawlProgressProgress,
                 updatedAt: Date.now(),
+            });
+            setUrlProcessingHandoff((current) => {
+                if (!current || current.sourceUrl !== normalized) return current;
+                return {
+                    ...current,
+                    appId: current.appId || draft.id || draftKey,
+                    sourceUrl: normalized,
+                    archiveZipUrl: snapshot.zipUrl ?? current.archiveZipUrl ?? null,
+                    phase: nextPhase === "ready" ? "processing" : "error",
+                    phaseStartedAt: current.phaseStartedAt || Date.now(),
+                };
             });
         };
 
@@ -8179,6 +8444,16 @@ export default function PreviewPage(): JSX.Element {
 
         draftPromotionInFlightRef.current[draftKey] = true;
         setPendingDraftApps((prev) => ({ ...prev, [draftKey]: true }));
+        setUrlProcessingHandoff((current) => ({
+            appId: current?.appId || draft.id || draftKey,
+            draftId: current?.draftId ?? draftKey,
+            draftAppId: current?.draftAppId ?? draft.id,
+            sourceUrl: normalized,
+            archiveZipUrl: current?.archiveZipUrl ?? null,
+            archiveZipBytes: current?.archiveZipBytes ?? null,
+            phase: current?.phase === "error" ? "error" : "processing",
+            phaseStartedAt: current?.phaseStartedAt || Date.now(),
+        }));
         updateScanState({
             phase: "scanning",
             status: "queued",
@@ -8590,7 +8865,7 @@ export default function PreviewPage(): JSX.Element {
             }
 
             if (!canUseScreenshotCredit()) {
-                setErr("You have used all monthly screenshot credits. Upgrade to capture more pages and monitor more sites.");
+                setErr("");
                 setInfo("");
                 setShowCreditsPaywall("screenshot");
                 return false;
@@ -9118,6 +9393,49 @@ export default function PreviewPage(): JSX.Element {
             captureLocked ||
             showQueuedScanStatus,
     );
+
+    useEffect(() => {
+        const activeUrlFlow =
+            createWebsitePlusBusy ||
+            websiteSubmitBusy ||
+            captureLocked ||
+            showQueuedScanStatus ||
+            Boolean(urlProcessingHandoff);
+
+        if (activeUrlFlow) {
+            if (!err) {
+                setUrlProcessingFailure(null);
+            }
+            return;
+        }
+
+        if (!err) return;
+
+        const relevantUrl =
+            pendingCreatedApp?.sourceUrl ||
+            websiteSubmissionPendingUrl ||
+            targetUrl ||
+            null;
+
+        setUrlProcessingFailure((current) => {
+            if (current && current.message === err && current.url === relevantUrl) return current;
+            return {
+                message: err,
+                url: relevantUrl ? String(relevantUrl).trim() || null : null,
+                at: Date.now(),
+            };
+        });
+    }, [
+        captureLocked,
+        createWebsitePlusBusy,
+        err,
+        pendingCreatedApp,
+        showQueuedScanStatus,
+        targetUrl,
+        websiteSubmissionPendingUrl,
+        websiteSubmitBusy,
+        urlProcessingHandoff,
+    ]);
 
     useEffect(() => {
         if (!hasActiveUrlGeneration) return;
@@ -10640,7 +10958,7 @@ export default function PreviewPage(): JSX.Element {
             }
 
             if (!canUseScreenshotCredit()) {
-                setErr("You have used all monthly screenshot credits. Upgrade to capture more pages and monitor more sites.");
+                setErr("");
                 setInfo("");
                 push("You have used all available screenshot credits for this month.", "warn");
                 setShowCreditsPaywall("screenshot");
@@ -10961,8 +11279,22 @@ export default function PreviewPage(): JSX.Element {
             }
 
             if (r.status === 429 || j?.code === "PREVIEW_CREDITS_EXHAUSTED" || j?.reason === "preview_credits_exhausted") {
-                setErr("");
-                setShowCreditsPaywall("preview");
+                const previewLimitMessage =
+                    String(j?.userMessage || j?.message || j?.error || "Monthly preview limit reached for your plan.").trim() ||
+                    "Monthly preview limit reached for your plan.";
+                setErr(previewLimitMessage);
+                setUrlProcessingFailure({
+                    message: previewLimitMessage,
+                    url: targetUrl || null,
+                    at: Date.now(),
+                });
+                setUrlProcessingHandoff((current) => current ? {
+                    ...current,
+                    errorMessage: previewLimitMessage,
+                    phase: "error",
+                    phaseStartedAt: current.phaseStartedAt || Date.now(),
+                } : current);
+                setPendingCreatedApp(null);
                 return;
             }
 
@@ -13104,6 +13436,47 @@ export default function PreviewPage(): JSX.Element {
 
     return (
         <main className="min-h-screen bg-white notranslate" translate="no">
+            <UrlProcessingPopup
+                open={Boolean(urlProcessingHandoff || urlProcessingFailure)}
+                title={
+                    urlProcessingFailure || urlProcessingHandoff?.phase === "error"
+                        ? "URL processing failed"
+                        : urlProcessingHandoff?.phase === "ready"
+                            ? "Ready"
+                            : urlProcessingHandoff?.phase === "navigating"
+                                ? "Opening your editor"
+                            : "Processing your URL"
+                }
+                message={
+                    urlProcessingFailure?.message ||
+                    (urlProcessingHandoff?.phase === "error"
+                        ? urlProcessingHandoff?.errorMessage || "URL processing failed."
+                        : null) ||
+                    (urlProcessingHandoff?.phase === "ready"
+                        ? "Your app is ready."
+                        : urlProcessingHandoff?.phase === "navigating"
+                            ? "Opening your editor..."
+                        : null) ||
+                    "This can take a few minutes."
+                }
+                error={urlProcessingFailure?.message || (urlProcessingHandoff?.phase === "error" ? urlProcessingHandoff?.errorMessage || "URL processing failed." : null)}
+                archiveZipUrl={urlProcessingHandoff?.archiveZipUrl || pendingCreatedApp?.archiveZipUrl || null}
+                archiveZipBytes={urlProcessingHandoff?.archiveZipBytes ?? pendingCreatedApp?.archiveZipBytes ?? null}
+                stage={
+                    urlProcessingFailure || urlProcessingHandoff?.phase === "error"
+                        ? "error"
+                        : urlProcessingHandoff?.phase === "ready"
+                            ? "ready"
+                            : urlProcessingHandoff?.phase === "navigating"
+                                ? "navigating"
+                        : websiteSubmitBusy
+                            ? "submitting"
+                            : createWebsitePlusBusy
+                                ? "creating"
+                                    : "processing"
+                }
+                onDismiss={handleStopUrlProcessing}
+            />
             {isDev ? (
                 <>
                     <AnimatePresence>
@@ -13439,7 +13812,7 @@ export default function PreviewPage(): JSX.Element {
                             <div className="mt-1 text-sm leading-6 text-neutral-600">
                                 Your first website will show up here after you add one above.
                             </div>
-                            <button
+                            {/* <button
                                 type="button"
                                 onClick={() => {
                                     setFocusMiniUrlInputNonce((n) => n + 1);
@@ -13447,7 +13820,7 @@ export default function PreviewPage(): JSX.Element {
                                 className="mt-4 inline-flex items-center justify-center rounded-full border border-neutral-200 bg-white px-4 py-2 text-sm font-semibold text-neutral-900 shadow-sm transition hover:border-neutral-300 hover:bg-neutral-50 focus:outline-none focus:ring-2 focus:ring-[rgba(255,141,33,0.24)] focus:ring-offset-2"
                             >
                                 Add website
-                            </button>
+                            </button> */}
                         </div>
                     ) : null}
 
@@ -13614,6 +13987,7 @@ export default function PreviewPage(): JSX.Element {
                             <AppBuilderEditor
                                 appId={currentAppId}
                                 initialViewMode={appBuilderInitialViewMode}
+                                isDeleting={Boolean(deletingApp[currentAppId])}
                                 onCanonicalAppIdResolved={(canonicalAppId: string) => {
                                     const next = String(canonicalAppId || "").trim();
                                     if (!next || next === currentAppId) return;

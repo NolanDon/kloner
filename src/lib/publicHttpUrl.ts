@@ -78,6 +78,7 @@ const SENSITIVE_HOST_FRAGMENTS = [
   "mortgage",
   "wealth",
 ];
+const SUSPICIOUS_HOST_LABEL_PREFIXES = ["www-", "xn--"];
 
 function escapeRegexLiteral(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -359,6 +360,17 @@ function getSensitiveUrlTermRejectionReason(parsed: URL): string | null {
   return null;
 }
 
+function getSuspiciousHostLabelRejectionReason(hostLower: string): string | null {
+  const labels = hostLower.split(".").filter(Boolean);
+  if (!labels.length) return null;
+
+  if (labels.some((label) => SUSPICIOUS_HOST_LABEL_PREFIXES.some((prefix) => label.startsWith(prefix)))) {
+    return "This domain is blocked from cloning.";
+  }
+
+  return null;
+}
+
 export function getPublicHttpUrlRejectionReason(input: string): string | null {
   const s = (input ?? "").trim();
   if (!s) return "Enter a URL to continue.";
@@ -391,6 +403,11 @@ export function getPublicHttpUrlRejectionReason(input: string): string | null {
     }
 
     if (!DOMAIN_RE.test(hostLower)) return "Please enter a valid public http(s) URL.";
+
+    const suspiciousHostReason = getSuspiciousHostLabelRejectionReason(hostLower);
+    if (suspiciousHostReason) {
+      return suspiciousHostReason;
+    }
 
     const labels = hostLower.split(".").filter(Boolean);
     if (labels.some((label) => SENSITIVE_HOST_LABELS.has(label))) {

@@ -3,6 +3,7 @@ import { Resend } from "resend";
 import { requireSessionAndMaybeCsrf } from "../../_lib/route-guard";
 import { getAdminAuth, getAdminDb, verifySession } from "../../_lib/auth";
 import { makeRecoveryCheckoutUrl, makeUnsubUrl } from "@/app/api/private/email-links";
+import { canSendRecoveryOfferEmail } from "@/app/api/_lib/recoveryOffer";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -76,15 +77,21 @@ export async function POST(req: NextRequest) {
             const userRef = db.collection("kloner_users").doc(decoded.uid);
             const snap = await userRef.get();
             const userData = snap.exists ? (snap.data() as any) : {};
-            const prefs = (userData?.notificationPrefs || {}) as any;
-
-            if (prefs?.journeyEmails === false) {
-                return NextResponse.json({ ok: true, sent: false, skipped: "unsubscribed" }, { headers: { "Cache-Control": "no-store" } });
-            }
-
             const sentAt = userData?.offers?.exitOffer40RecoveryEmailSentAt || userData?.["offers.exitOffer40RecoveryEmailSentAt"];
             if (sentAt) {
                 return NextResponse.json({ ok: true, sent: false, skipped: "already_sent" }, { headers: { "Cache-Control": "no-store" } });
+            }
+
+            const canSend = canSendRecoveryOfferEmail(userData);
+            if (!canSend.ok) {
+                return NextResponse.json(
+                    {
+                        ok: true,
+                        sent: false,
+                        skipped: canSend.reason || "inactive",
+                    },
+                    { headers: { "Cache-Control": "no-store" } }
+                );
             }
 
             const authUser = await getAdminAuth().getUser(decoded.uid);

@@ -102,6 +102,28 @@ describe("POST /api/billing/send-recovery-offer", () => {
         expect(userDoc.offers?.exitOffer40RecoveryEmailSentAt).toBeTruthy();
     });
 
+    it("skips sending when the user was recently active", async () => {
+        store.set("kloner_users/uid_1", {
+            notificationPrefs: { journeyEmails: true },
+            offers: {},
+            lastAppActivityAt: Date.now(),
+        });
+
+        const { POST } = await import("./route");
+        const req = {
+            json: async () => ({}),
+        } as any;
+
+        const res: any = await POST(req);
+        const body = await res.json();
+
+        expect(res.status).toBe(200);
+        expect(body.ok).toBe(true);
+        expect(body.sent).toBe(false);
+        expect(body.skipped).toBe("active_recently");
+        expect(resendSend).not.toHaveBeenCalled();
+    });
+
     it("skips sending when the user unsubscribed from journey emails", async () => {
         store.set("kloner_users/uid_1", {
             notificationPrefs: { journeyEmails: false },
