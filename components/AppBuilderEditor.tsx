@@ -1044,7 +1044,7 @@ async function hydrateHtmlFilesForApp(
     for (let index = 0; index < sourceFiles.length; index += 1) {
         if (hasTimedOut()) {
             warnTimeout("inline_files", { completedWorkUnits, totalWorkUnits });
-            return { ...data, files: nextFiles, hydrationTimedOut: true as any };
+            return { ...data, files: nextFiles };
         }
         const [path, file] = sourceFiles[index];
         if (typeof file?.content !== "string") {
@@ -1077,7 +1077,7 @@ async function hydrateHtmlFilesForApp(
 
     if (hasTimedOut()) {
         warnTimeout("storage_precheck", { completedWorkUnits, totalWorkUnits });
-        return { ...data, files: nextFiles, hydrationTimedOut: true as any };
+        return { ...data, files: nextFiles };
     }
     completedWorkUnits += 1;
     emitProgress(completedWorkUnits, totalWorkUnits);
@@ -1087,7 +1087,7 @@ async function hydrateHtmlFilesForApp(
     if (!html) {
         if (hasTimedOut()) {
             warnTimeout("storage_read", { completedWorkUnits, totalWorkUnits, storagePath });
-            return { ...data, files: nextFiles, hydrationTimedOut: true as any };
+            return { ...data, files: nextFiles };
         }
         opts?.onProgress?.(100);
         return { ...data, files: nextFiles };
@@ -1098,7 +1098,7 @@ async function hydrateHtmlFilesForApp(
     for (const path of targetPaths) {
         if (hasTimedOut()) {
             warnTimeout("html_apply", { completedWorkUnits, totalWorkUnits, applied });
-            return { ...data, files: nextFiles, hydrationTimedOut: true as any };
+            return { ...data, files: nextFiles };
         }
         const current = nextFiles[path];
         if (current && String(current.content || "").trim()) continue;
@@ -1158,7 +1158,7 @@ async function hydratePrimaryHtmlFileForApp(
     if (!firstTarget) {
         if (hasTimedOut()) {
             warnTimeout("no_target");
-            return { ...data, files: nextFiles, hydrationTimedOut: true as any };
+            return { ...data, files: nextFiles };
         }
         opts?.onProgress?.(100);
         return { ...data, files: nextFiles };
@@ -1175,7 +1175,7 @@ async function hydratePrimaryHtmlFileForApp(
         await yieldToPaint();
         if (hasTimedOut()) {
             warnTimeout("existing_target");
-            return { ...data, files: nextFiles, hydrationTimedOut: true as any };
+            return { ...data, files: nextFiles };
         }
         opts?.onProgress?.(100);
         return { ...data, files: nextFiles };
@@ -1185,7 +1185,7 @@ async function hydratePrimaryHtmlFileForApp(
         await yieldToPaint();
         if (hasTimedOut()) {
             warnTimeout("missing_storage");
-            return { ...data, files: nextFiles, hydrationTimedOut: true as any };
+            return { ...data, files: nextFiles };
         }
         opts?.onProgress?.(100);
         return { ...data, files: nextFiles };
@@ -1198,7 +1198,7 @@ async function hydratePrimaryHtmlFileForApp(
         await yieldToPaint();
         if (hasTimedOut()) {
             warnTimeout("storage_read");
-            return { ...data, files: nextFiles, hydrationTimedOut: true as any };
+            return { ...data, files: nextFiles };
         }
         opts?.onProgress?.(100);
         return { ...data, files: nextFiles };
@@ -1206,7 +1206,7 @@ async function hydratePrimaryHtmlFileForApp(
 
     if (hasTimedOut()) {
         warnTimeout("pre_apply");
-        return { ...data, files: nextFiles, hydrationTimedOut: true as any };
+        return { ...data, files: nextFiles };
     }
     opts?.onProgress?.(85);
     await yieldToPaint();
@@ -1224,7 +1224,7 @@ async function hydratePrimaryHtmlFileForApp(
 
     if (hasTimedOut()) {
         warnTimeout("post_apply");
-        return { ...data, files: nextFiles, hydrationTimedOut: true as any };
+        return { ...data, files: nextFiles };
     }
     await yieldToPaint();
     opts?.onProgress?.(100);
@@ -2122,7 +2122,7 @@ export default function AppBuilderEditor({
                                     setFilesHydrationProgress(Math.max(0, Math.min(100, Math.round(62 + (progress * 0.38)))));
                                 },
                                 timeoutMs: FILES_HYDRATION_TIMEOUT_MS,
-                                debugLabel: normalizedAppId,
+                                debugLabel: String(appId || "").trim() || undefined,
                             });
                             return hydratedData;
                         }

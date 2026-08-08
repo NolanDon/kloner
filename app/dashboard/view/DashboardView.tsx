@@ -6949,7 +6949,7 @@ export default function PreviewPage(): JSX.Element {
         const remainingMs = Math.max(0, URL_PROCESSING_NAVIGATION_TIMEOUT_MS - elapsedMs);
         const timeoutId = window.setTimeout(() => {
             setUrlProcessingHandoff((current) => {
-                if (!isTimedOutUrlProcessingSession(current)) return current;
+                if (!current || !isTimedOutUrlProcessingSession(current)) return current;
                 return buildTimedOutUrlProcessingSession(current);
             });
 
