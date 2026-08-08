@@ -416,7 +416,7 @@ function BlockToolbar({
         if (currentFontFamily) tryCallFontApi("fontFamilySet", currentFontFamily);
     };
 
-    const showImageSection = hasImageContent || tagName === "IMG";
+    const showImageSection = hasImageContent || tagName === "IMG" || tagName === "DIV";
     const showFontSection = hasTextContent;
     const showLinkSection = canShowLinkSlot || hasNavLink;
 
