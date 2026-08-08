@@ -861,6 +861,9 @@ function buildFaviconIcoRouteTs(faviconUrl: string): string {
 }
 
 const htmlStorageContentCache = new Map<string, Promise<string | null>>();
+const FILES_HYDRATION_TIMEOUT_MS = 45_000;
+const FILES_HYDRATION_REQUEST_TIMEOUT_MS = 60_000;
+const HTML_STORAGE_FETCH_TIMEOUT_MS = 12_000;
 
 function isHtmlPath(path: string): boolean {
     return /\.(html?|xhtml)$/i.test(String(path || ""));
@@ -932,15 +935,37 @@ async function readHtmlFromStorage(storagePath: string): Promise<string | null> 
         const resolved = await resolveStorageUrl(path);
         if (!resolved) return null;
 
-        const res = await fetch(resolved, { method: "GET", cache: "no-store", credentials: "include" });
+        const controller = new AbortController();
+        const timeoutId = window.setTimeout(() => controller.abort(), HTML_STORAGE_FETCH_TIMEOUT_MS);
+        let res: Response;
+        try {
+            res = await fetch(resolved, {
+                method: "GET",
+                cache: "no-store",
+                credentials: "include",
+                signal: controller.signal,
+            });
+        } finally {
+            window.clearTimeout(timeoutId);
+        }
         if (!res.ok) return null;
 
         const html = (await res.text()).trim();
         return html || null;
     })().catch(() => null);
 
-    htmlStorageContentCache.set(path, pending);
-    return pending;
+    const tracked = pending.then((value) => {
+        if (!value) {
+            htmlStorageContentCache.delete(path);
+        }
+        return value;
+    }).catch((error) => {
+        htmlStorageContentCache.delete(path);
+        throw error;
+    });
+
+    htmlStorageContentCache.set(path, tracked);
+    return tracked;
 }
 
 function proxyFirebaseStorageUrl(rawUrl: string, proxyOrigin = ""): string {
@@ -978,8 +1003,25 @@ async function hydrateHtmlFilesForApp(
     data: AppData,
     opts?: {
         onProgress?: FileHydrationProgressCallback;
+        timeoutMs?: number;
+        debugLabel?: string;
     },
 ): Promise<AppData> {
+    const startedAt = Date.now();
+    const deadlineAt = typeof opts?.timeoutMs === "number" && Number.isFinite(opts.timeoutMs) && opts.timeoutMs > 0
+        ? startedAt + opts.timeoutMs
+        : null;
+
+    const hasTimedOut = () => deadlineAt !== null && Date.now() >= deadlineAt;
+    const warnTimeout = (stage: string, extra?: Record<string, unknown>) => {
+        console.warn("[app-builder] file hydration timed out", {
+            appId: data.id,
+            label: opts?.debugLabel || null,
+            stage,
+            elapsedMs: Date.now() - startedAt,
+            ...extra,
+        });
+    };
     const emitProgress = (completed: number, total: number) => {
         if (!opts?.onProgress) return;
         const safeTotal = Math.max(1, total);
@@ -1000,6 +1042,10 @@ async function hydrateHtmlFilesForApp(
     opts?.onProgress?.(1);
 
     for (let index = 0; index < sourceFiles.length; index += 1) {
+        if (hasTimedOut()) {
+            warnTimeout("inline_files", { completedWorkUnits, totalWorkUnits });
+            return { ...data, files: nextFiles, hydrationTimedOut: true as any };
+        }
         const [path, file] = sourceFiles[index];
         if (typeof file?.content !== "string") {
             nextFiles[path] = file;
@@ -1029,12 +1075,20 @@ async function hydrateHtmlFilesForApp(
         return { ...data, files: nextFiles };
     }
 
+    if (hasTimedOut()) {
+        warnTimeout("storage_precheck", { completedWorkUnits, totalWorkUnits });
+        return { ...data, files: nextFiles, hydrationTimedOut: true as any };
+    }
     completedWorkUnits += 1;
     emitProgress(completedWorkUnits, totalWorkUnits);
     await yieldToBrowser();
 
     const html = await readHtmlFromStorage(storagePath);
     if (!html) {
+        if (hasTimedOut()) {
+            warnTimeout("storage_read", { completedWorkUnits, totalWorkUnits, storagePath });
+            return { ...data, files: nextFiles, hydrationTimedOut: true as any };
+        }
         opts?.onProgress?.(100);
         return { ...data, files: nextFiles };
     }
@@ -1042,6 +1096,10 @@ async function hydrateHtmlFilesForApp(
     let applied = false;
 
     for (const path of targetPaths) {
+        if (hasTimedOut()) {
+            warnTimeout("html_apply", { completedWorkUnits, totalWorkUnits, applied });
+            return { ...data, files: nextFiles, hydrationTimedOut: true as any };
+        }
         const current = nextFiles[path];
         if (current && String(current.content || "").trim()) continue;
 
@@ -1071,8 +1129,23 @@ async function hydratePrimaryHtmlFileForApp(
     data: AppData,
     opts?: {
         onProgress?: FileHydrationProgressCallback;
+        timeoutMs?: number;
+        debugLabel?: string;
     },
 ): Promise<AppData> {
+    const startedAt = Date.now();
+    const deadlineAt = typeof opts?.timeoutMs === "number" && Number.isFinite(opts.timeoutMs) && opts.timeoutMs > 0
+        ? startedAt + opts.timeoutMs
+        : null;
+    const hasTimedOut = () => deadlineAt !== null && Date.now() >= deadlineAt;
+    const warnTimeout = (stage: string) => {
+        console.warn("[app-builder] primary html hydration timed out", {
+            appId: data.id,
+            label: opts?.debugLabel || null,
+            stage,
+            elapsedMs: Date.now() - startedAt,
+        });
+    };
     const yieldToPaint = () => new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
     const nextFiles: AppData["files"] = { ...(data.files || {}) };
     const storagePath = typeof data.htmlStoragePath === "string" ? data.htmlStoragePath.trim() : "";
@@ -1083,6 +1156,10 @@ async function hydratePrimaryHtmlFileForApp(
     await yieldToPaint();
 
     if (!firstTarget) {
+        if (hasTimedOut()) {
+            warnTimeout("no_target");
+            return { ...data, files: nextFiles, hydrationTimedOut: true as any };
+        }
         opts?.onProgress?.(100);
         return { ...data, files: nextFiles };
     }
@@ -1092,16 +1169,24 @@ async function hydratePrimaryHtmlFileForApp(
         nextFiles[firstTarget] = isHtmlPath(firstTarget)
             ? {
                 ...current,
-                content: rewriteFirebaseStorageUrlsInHtml(String(current.content || "")),
-            }
+            content: rewriteFirebaseStorageUrlsInHtml(String(current.content || "")),
+        }
             : current;
         await yieldToPaint();
+        if (hasTimedOut()) {
+            warnTimeout("existing_target");
+            return { ...data, files: nextFiles, hydrationTimedOut: true as any };
+        }
         opts?.onProgress?.(100);
         return { ...data, files: nextFiles };
     }
 
     if (!storagePath) {
         await yieldToPaint();
+        if (hasTimedOut()) {
+            warnTimeout("missing_storage");
+            return { ...data, files: nextFiles, hydrationTimedOut: true as any };
+        }
         opts?.onProgress?.(100);
         return { ...data, files: nextFiles };
     }
@@ -1111,10 +1196,18 @@ async function hydratePrimaryHtmlFileForApp(
     const html = await readHtmlFromStorage(storagePath);
     if (!html) {
         await yieldToPaint();
+        if (hasTimedOut()) {
+            warnTimeout("storage_read");
+            return { ...data, files: nextFiles, hydrationTimedOut: true as any };
+        }
         opts?.onProgress?.(100);
         return { ...data, files: nextFiles };
     }
 
+    if (hasTimedOut()) {
+        warnTimeout("pre_apply");
+        return { ...data, files: nextFiles, hydrationTimedOut: true as any };
+    }
     opts?.onProgress?.(85);
     await yieldToPaint();
     nextFiles[firstTarget] = {
@@ -1129,6 +1222,10 @@ async function hydratePrimaryHtmlFileForApp(
         };
     }
 
+    if (hasTimedOut()) {
+        warnTimeout("post_apply");
+        return { ...data, files: nextFiles, hydrationTimedOut: true as any };
+    }
     await yieldToPaint();
     opts?.onProgress?.(100);
     return { ...data, files: nextFiles };
@@ -2024,6 +2121,8 @@ export default function AppBuilderEditor({
                                 onProgress: (progress) => {
                                     setFilesHydrationProgress(Math.max(0, Math.min(100, Math.round(62 + (progress * 0.38)))));
                                 },
+                                timeoutMs: FILES_HYDRATION_TIMEOUT_MS,
+                                debugLabel: normalizedAppId,
                             });
                             return hydratedData;
                         }
@@ -4897,13 +4996,22 @@ export default function AppBuilderEditor({
 
                     const authHeaders = await getOptionalAuthHeaders(forceRefreshToken);
 
-                    return fetch('/api/app-builder/' + encodeURIComponent(appId) + '/files', {
-                        method: "GET",
-                        credentials: "include",
-                        cache: "no-store",
-                        signal: controller.signal,
-                        headers: authHeaders,
-                    });
+                    const fetchController = new AbortController();
+                    const onOuterAbort = () => fetchController.abort();
+                    controller.signal.addEventListener("abort", onOuterAbort);
+                    const fetchTimeoutId = window.setTimeout(() => fetchController.abort(), FILES_HYDRATION_REQUEST_TIMEOUT_MS);
+                    try {
+                        return await fetch('/api/app-builder/' + encodeURIComponent(appId) + '/files', {
+                            method: "GET",
+                            credentials: "include",
+                            cache: "no-store",
+                            signal: fetchController.signal,
+                            headers: authHeaders,
+                        });
+                    } finally {
+                        window.clearTimeout(fetchTimeoutId);
+                        controller.signal.removeEventListener("abort", onOuterAbort);
+                    }
                 };
 
                 let attempt = 0;
@@ -4913,7 +5021,20 @@ export default function AppBuilderEditor({
                 while (!didCancel && attempt < maxAttempts) {
                     attempt += 1;
 
-                    let res = await fetchFiles(false);
+                    let res: Response;
+                    try {
+                        res = await fetchFiles(false);
+                    } catch (fetchErr: any) {
+                        if (String(fetchErr?.name || "").includes("AbortError")) {
+                            console.warn("[app-builder] /files request timed out", {
+                                appId: normalizedAppId,
+                                attempt,
+                                timeoutMs: FILES_HYDRATION_REQUEST_TIMEOUT_MS,
+                            });
+                            throw new Error("Loading project files timed out. The project is taking too long to hydrate.");
+                        }
+                        throw fetchErr;
+                    }
                     if (res.status === 401) {
                         res = await fetchFiles(true);
                     }
@@ -4949,6 +5070,8 @@ export default function AppBuilderEditor({
                                     onProgress: (progress) => {
                                         setFilesHydrationProgress(Math.max(0, Math.min(100, Math.round(22 + (progress * 0.78)))));
                                     },
+                                    timeoutMs: FILES_HYDRATION_TIMEOUT_MS,
+                                    debugLabel: normalizedAppId,
                                 });
                                 if (didCancel) return;
                                 setApp(bootApp);
@@ -4964,7 +5087,10 @@ export default function AppBuilderEditor({
 
                             const backgroundHydrationPromise = (async (): Promise<AppData | null> => {
                                 try {
-                                    const hydratedData = await hydrateHtmlFilesForApp(rawApp);
+                                    const hydratedData = await hydrateHtmlFilesForApp(rawApp, {
+                                        timeoutMs: FILES_HYDRATION_TIMEOUT_MS,
+                                        debugLabel: normalizedAppId,
+                                    });
                                     if (didCancel) return null;
                                     setApp(hydratedData);
                                     buildFileTree(hydratedData.files);
@@ -5201,6 +5327,8 @@ export default function AppBuilderEditor({
                                     onProgress: (progress) => {
                                         setFilesHydrationProgress(Math.max(0, Math.min(100, Math.round(progress))));
                                     },
+                                    timeoutMs: FILES_HYDRATION_TIMEOUT_MS,
+                                    debugLabel: String(appId || "").trim() || undefined,
                                 },
                             )
                         : prevApp;

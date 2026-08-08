@@ -1,11 +1,44 @@
 import { cookies } from "next/headers";
 import { redirect, notFound } from "next/navigation";
+import { randomUUID } from "crypto";
 import { getAdminAuth, getAdminDb } from "@/app/api/_lib/auth";
 import { hydrateAppBuilderFiles } from "@/app/api/_lib/htmlStorage";
 import AppBuilderPageClient from "./AppBuilderPageClient";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
+
+const FILES_HYDRATION_TIMEOUT_MS = 45_000;
+
+async function hydrateFilesWithTimeout(params: {
+    db: any;
+    uid: string;
+    appId: string;
+    files: Record<string, any>;
+    fileManifest?: any;
+    fileStorageCollection?: string | null;
+    fileStorageMode?: string | null;
+    containerCode?: string | null;
+    htmlStoragePath?: string | null;
+    htmlEditIndex?: unknown;
+}) {
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    try {
+        return await Promise.race([
+            hydrateAppBuilderFiles(params).then((files) => ({ files, timedOut: false as const })),
+            new Promise<{ files: any; timedOut: true }>((resolve) => {
+                timeoutId = setTimeout(() => {
+                    resolve({
+                        files: params.files,
+                        timedOut: true,
+                    });
+                }, FILES_HYDRATION_TIMEOUT_MS);
+            }),
+        ]);
+    } finally {
+        if (timeoutId) clearTimeout(timeoutId);
+    }
+}
 
 function toPlainClientValue<T>(value: T): T {
     if (value == null) return value;
@@ -41,11 +74,21 @@ export default async function AppBuilderPage({ params }: { params: Promise<{ app
     if (!uid) redirect("/login");
 
     const db = getAdminDb();
+    const requestId = typeof randomUUID === "function" ? randomUUID() : String(Date.now());
     const appSnap = await db.collection("kloner_users").doc(uid).collection("kloner_apps").doc(appId).get();
     if (!appSnap.exists) notFound();
 
     const data = appSnap.data() || {};
-    const files = await hydrateAppBuilderFiles({
+    const startedAt = Date.now();
+    console.info("[app-builder/page] file hydration start", {
+        requestId,
+        uid,
+        appId,
+        fileCount: Object.keys((data.files || {}) as Record<string, unknown>).length,
+        hasManifest: Boolean((data as any).fileManifest),
+        htmlStoragePath: Boolean((data as any).htmlStoragePath),
+    });
+    const hydrationResult = await hydrateFilesWithTimeout({
         db,
         uid,
         appId,
@@ -57,6 +100,24 @@ export default async function AppBuilderPage({ params }: { params: Promise<{ app
         htmlStoragePath: (data as any).htmlStoragePath || null,
         htmlEditIndex: (data as any).htmlEditIndex,
     });
+    const elapsedMs = Date.now() - startedAt;
+    if (hydrationResult.timedOut) {
+        console.warn("[app-builder/page] file hydration timed out; rendering raw files", {
+            requestId,
+            uid,
+            appId,
+            elapsedMs,
+            timeoutMs: FILES_HYDRATION_TIMEOUT_MS,
+        });
+    } else {
+        console.info("[app-builder/page] file hydration complete", {
+            requestId,
+            uid,
+            appId,
+            elapsedMs,
+        });
+    }
+    const files = hydrationResult.files;
 
     const initialAppData = toPlainClientValue({
         id: appId,
