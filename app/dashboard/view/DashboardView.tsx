@@ -107,10 +107,13 @@ import SuccessConfetti from "../../../components/tools/SuccessConfetti";
 import KlonerLoader from "@/components/KlonerLoader";
 import {
     buildTimedOutDraftIssueState,
+    buildTimedOutUrlProcessingSession,
     normalizeDashboardDraftRecords,
     resolveDashboardDraftThumbnailUrl,
     isTimedOutDraftLoadingState,
+    isTimedOutUrlProcessingSession,
     shouldSuppressCompletedDraftIssue,
+    URL_PROCESSING_NAVIGATION_TIMEOUT_MS,
     type DashboardUrlProcessingSession,
     submitDashboardUrlDraft,
 } from "./draftFlow";
@@ -6924,7 +6927,7 @@ export default function PreviewPage(): JSX.Element {
                 return {
                     ...current,
                     phase: "navigating",
-                    phaseStartedAt: current.phaseStartedAt || Date.now(),
+                    phaseStartedAt: Date.now(),
                 };
             });
 
@@ -6938,6 +6941,30 @@ export default function PreviewPage(): JSX.Element {
 
         return () => window.clearTimeout(readyTimer);
     }, [openAppBuilderPreviewFirstWithCookieGate, urlProcessingHandoff]);
+
+    useEffect(() => {
+        if (!isTimedOutUrlProcessingSession(urlProcessingHandoff)) return;
+
+        const elapsedMs = Date.now() - (urlProcessingHandoff?.phaseStartedAt || Date.now());
+        const remainingMs = Math.max(0, URL_PROCESSING_NAVIGATION_TIMEOUT_MS - elapsedMs);
+        const timeoutId = window.setTimeout(() => {
+            setUrlProcessingHandoff((current) => {
+                if (!isTimedOutUrlProcessingSession(current)) return current;
+                return buildTimedOutUrlProcessingSession(current);
+            });
+
+            if (urlProcessingNavigateTimeoutRef.current) {
+                window.clearTimeout(urlProcessingNavigateTimeoutRef.current);
+                urlProcessingNavigateTimeoutRef.current = null;
+            }
+
+            pendingCreatedAppLaunchRequestedRef.current = null;
+            setUrlProcessingFailure(null);
+            setInfo("Opening your editor timed out. Close this dialog to delete the draft and try again.");
+        }, remainingMs);
+
+        return () => window.clearTimeout(timeoutId);
+    }, [setInfo, urlProcessingHandoff]);
 
     const handleStopUrlProcessing = useCallback(async () => {
         const session = urlProcessingHandoff;
@@ -8696,6 +8723,44 @@ export default function PreviewPage(): JSX.Element {
             // ignore
         }
     }, [router]);
+
+    const abortUrlGenerationFlow = useCallback(() => {
+        const abortedUrl = websiteSubmissionPendingUrl || targetUrl || "";
+        const normalizedAbortedUrl = abortedUrl ? normUrl(abortedUrl) : "";
+
+        if (abortedUrl) {
+            generateAbortedRef.current = `${user?.uid || ""}:${abortedUrl}`;
+            captureStallReportedForUrlRef.current = normalizedAbortedUrl;
+            captureStaleReportedForUrlRef.current = normalizedAbortedUrl;
+        }
+
+        startRequestedInFlightRef.current = "";
+        startRequestedEnqueueAttemptRef.current = "";
+        generateSucceededRef.current = "";
+        pendingUrlGenerationAppIdRef.current = null;
+        urlGenerationInFlightRef.current = null;
+
+        captureLockMinUntilRef.current = 0;
+        captureLockStartedAtRef.current = 0;
+        setCaptureLockUrl(null);
+        setCaptureTerminalFailureUrl("");
+        setCaptureIssueDetails("");
+        setCaptureIssueNotice("");
+        setActiveUrlScanJob(null);
+        setUrlProcessingFailure(null);
+        setUrlProcessingHandoff(null);
+        setWebsiteSubmissionPendingUrl(null);
+        setPendingCreatedApp(null);
+        setHideCaptureQueueStatus(false);
+        setErr("");
+        setInfo("");
+        clearAutoQueuedUrlQueryParams();
+    }, [
+        clearAutoQueuedUrlQueryParams,
+        targetUrl,
+        user?.uid,
+        websiteSubmissionPendingUrl,
+    ]);
 
     const hasRecentAutoQueuedRun = useCallback((runKey: string): boolean => {
         if (typeof window === "undefined") return false;
@@ -13265,6 +13330,7 @@ export default function PreviewPage(): JSX.Element {
     }
 
     function dismissWebsitePrePaywall() {
+        abortUrlGenerationFlow();
         setShowCreditsPaywall(null);
         setShowProPaywall(false);
         setShowAppExitOffer(false);
@@ -13433,32 +13499,35 @@ export default function PreviewPage(): JSX.Element {
         );
     }, [isDev]);
 
+    const urlProcessingPopupTitle = urlProcessingFailure
+        ? "URL processing failed"
+        : urlProcessingHandoff?.phase === "error"
+            ? (String(urlProcessingHandoff.errorMessage || "").toLowerCase().includes("timed out")
+                ? "Opening editor timed out"
+                : "URL processing failed")
+            : urlProcessingHandoff?.phase === "ready"
+                ? "Ready"
+                : urlProcessingHandoff?.phase === "navigating"
+                    ? "Opening your editor"
+                    : "Processing your URL";
+
+    const urlProcessingPopupMessage = urlProcessingFailure?.message ||
+        (urlProcessingHandoff?.phase === "error"
+            ? urlProcessingHandoff.errorMessage || "URL processing failed."
+            : null) ||
+        (urlProcessingHandoff?.phase === "ready"
+            ? "Your app is ready."
+            : urlProcessingHandoff?.phase === "navigating"
+                ? "Opening your editor..."
+                : null) ||
+        "This can take a few minutes.";
 
     return (
         <main className="min-h-screen bg-white notranslate" translate="no">
             <UrlProcessingPopup
                 open={Boolean(urlProcessingHandoff || urlProcessingFailure)}
-                title={
-                    urlProcessingFailure || urlProcessingHandoff?.phase === "error"
-                        ? "URL processing failed"
-                        : urlProcessingHandoff?.phase === "ready"
-                            ? "Ready"
-                            : urlProcessingHandoff?.phase === "navigating"
-                                ? "Opening your editor"
-                            : "Processing your URL"
-                }
-                message={
-                    urlProcessingFailure?.message ||
-                    (urlProcessingHandoff?.phase === "error"
-                        ? urlProcessingHandoff?.errorMessage || "URL processing failed."
-                        : null) ||
-                    (urlProcessingHandoff?.phase === "ready"
-                        ? "Your app is ready."
-                        : urlProcessingHandoff?.phase === "navigating"
-                            ? "Opening your editor..."
-                        : null) ||
-                    "This can take a few minutes."
-                }
+                title={urlProcessingPopupTitle}
+                message={urlProcessingPopupMessage}
                 error={urlProcessingFailure?.message || (urlProcessingHandoff?.phase === "error" ? urlProcessingHandoff?.errorMessage || "URL processing failed." : null)}
                 archiveZipUrl={urlProcessingHandoff?.archiveZipUrl || pendingCreatedApp?.archiveZipUrl || null}
                 archiveZipBytes={urlProcessingHandoff?.archiveZipBytes ?? pendingCreatedApp?.archiveZipBytes ?? null}
@@ -13994,6 +14063,7 @@ export default function PreviewPage(): JSX.Element {
                                     setCurrentAppId(next);
                                 }}
                                 onClose={() => {
+                                    abortUrlGenerationFlow();
                                     setAppBuilderOpen(false);
                                     setCurrentAppId(null);
                                     setAppBuilderInitialViewMode("ai");
@@ -15476,13 +15546,16 @@ export default function PreviewPage(): JSX.Element {
                 {/* generic paywall */}
                 {
                     showCreditsPaywall && (
-                        <WebsitePrePaywall
-                            open={Boolean(showCreditsPaywall)}
-                            onClose={() => setShowCreditsPaywall(null)}
-                            onStartCheckout={() => {
-                                setShowCreditsPaywall(null);
-                                void startProCheckout();
-                            }}
+                    <WebsitePrePaywall
+                        open={Boolean(showCreditsPaywall)}
+                        onClose={() => {
+                            abortUrlGenerationFlow();
+                            setShowCreditsPaywall(null);
+                        }}
+                        onStartCheckout={() => {
+                            setShowCreditsPaywall(null);
+                            void startProCheckout();
+                        }}
                             checkoutBusy={checkoutBusy}
                             title={
                                 showCreditsPaywall === "deploy"

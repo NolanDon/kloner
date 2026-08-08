@@ -47,6 +47,7 @@ export type DashboardUrlProcessingSession = {
 };
 
 export const DRAFT_LOADING_TIMEOUT_MS = 10 * 60 * 1000;
+export const URL_PROCESSING_NAVIGATION_TIMEOUT_MS = 5 * 60 * 1000;
 
 export type DashboardDraftThumbnailLookup =
     | Map<string, string | null>
@@ -156,6 +157,26 @@ export function buildTimedOutDraftIssueState(): {
         action: "Delete draft",
         retryable: false,
         blocked: false,
+    };
+}
+
+export function isTimedOutUrlProcessingSession(
+    session: DashboardUrlProcessingSession | null | undefined,
+    nowMs = Date.now(),
+): boolean {
+    if (!session || session.phase !== "navigating") return false;
+    if (!session.phaseStartedAt || !Number.isFinite(session.phaseStartedAt)) return false;
+    return nowMs - session.phaseStartedAt >= URL_PROCESSING_NAVIGATION_TIMEOUT_MS;
+}
+
+export function buildTimedOutUrlProcessingSession(
+    session: DashboardUrlProcessingSession,
+): DashboardUrlProcessingSession {
+    return {
+        ...session,
+        phase: "error",
+        errorMessage: "Opening your editor timed out after 5 minutes. Close this dialog to delete the draft and try again.",
+        phaseStartedAt: session.phaseStartedAt || Date.now(),
     };
 }
 

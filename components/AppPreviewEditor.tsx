@@ -1437,9 +1437,9 @@ function AppPreviewEditorCore({
             case "images":
                 return "Unlock Images";
             case "toolbar":
-                return "Unlock the full editing experience";
+                return "Unlock the full editor";
             default:
-                return "Unlock the full editing experience";
+                return "Unlock the full editor";
         }
     }, [accessPaywallContext]);
 

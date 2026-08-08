@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 
 const ACCENT = "#FF8D21";
@@ -23,6 +24,16 @@ type WorkspaceLoadingPanelProps = {
     title: string;
     className?: string;
 };
+
+type WorkspaceLoadingScreenProps = WorkspaceLoadingPanelProps & {
+    timeoutMs?: number;
+    timeoutTitle?: string;
+    timeoutMessage?: string;
+    timeoutActionLabel?: string;
+    onTimeoutAction?: () => void;
+};
+
+const DEFAULT_WORKSPACE_LOADING_TIMEOUT_MS = 5 * 60 * 1000;
 
 function clampProgress(value: number | null | undefined) {
     if (typeof value !== "number" || !Number.isFinite(value)) return 0;
@@ -124,19 +135,71 @@ export function WorkspaceLoadingPanel({
 export function WorkspaceLoadingScreen({
     title,
     className = "",
-}: WorkspaceLoadingPanelProps) {
+    timeoutMs = DEFAULT_WORKSPACE_LOADING_TIMEOUT_MS,
+    timeoutTitle = "Loading is taking longer than expected",
+    timeoutMessage = "We’re still trying to open your workspace. You can reload to try again.",
+    timeoutActionLabel = "Reload",
+    onTimeoutAction,
+}: WorkspaceLoadingScreenProps) {
+    const [timedOut, setTimedOut] = useState(false);
+
+    useEffect(() => {
+        setTimedOut(false);
+        if (!timeoutMs || timeoutMs <= 0) return;
+
+        const timeoutId = window.setTimeout(() => {
+            setTimedOut(true);
+        }, timeoutMs);
+
+        return () => window.clearTimeout(timeoutId);
+    }, [timeoutMs]);
+
     return (
         <motion.div
             className={`fixed inset-0 z-[9999] grid place-items-center px-4 ${className}`}
             role="status"
             aria-live="polite"
-            aria-busy="true"
+            aria-busy={timedOut ? "false" : "true"}
             initial={{ opacity: 0, y: 4 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 4 }}
             transition={{ duration: 0.28, ease: "easeOut" }}
         >
-            <WorkspaceLoadingPanel title={title} />
+            {timedOut ? (
+                <div className="w-full max-w-md rounded-3xl border border-neutral-200 bg-white px-6 py-6 text-center shadow-[0_24px_80px_rgba(15,23,42,0.12)]">
+                    <div className="kloner-dots mx-auto" aria-hidden="true">
+                        <span className="kloner-dot" />
+                        <span className="kloner-dot" />
+                        <span className="kloner-dot" />
+                    </div>
+                    <div className="mt-3 text-[11px] uppercase tracking-[0.22em] text-neutral-400">
+                        {title}
+                    </div>
+                    <div className="mt-2 text-[22px] font-normal leading-tight tracking-[-0.03em] text-neutral-900">
+                        {timeoutTitle}
+                    </div>
+                    <div className="mt-3 text-sm leading-6 text-neutral-600">
+                        {timeoutMessage}
+                    </div>
+                    <div className="mt-5 flex flex-col items-center justify-center gap-3 sm:flex-row">
+                        <button
+                            type="button"
+                            onClick={() => {
+                                if (onTimeoutAction) {
+                                    onTimeoutAction();
+                                    return;
+                                }
+                                window.location.reload();
+                            }}
+                            className="inline-flex items-center justify-center rounded-full bg-[#FF8D21] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#e77810]"
+                        >
+                            {timeoutActionLabel}
+                        </button>
+                    </div>
+                </div>
+            ) : (
+                <WorkspaceLoadingPanel title={title} />
+            )}
         </motion.div>
     );
 }

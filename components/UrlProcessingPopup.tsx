@@ -151,10 +151,10 @@ export default function UrlProcessingPopup({
         if (stage === "ready") return "Ready";
         if (stage === "navigating") return "Opening editor";
 
-        if (progress >= 92) return "Opening editor";
+        if (progress >= 98) return "Opening editor";
         if (progress >= 80) return "Preparing editor";
-        if (progress >= 55) return "Building your site";
-        if (progress >= 25) return "Gathering content";
+        if (progress >= 50) return "Stitching your site";
+        if (progress >= 20) return "Gathering content";
         return "Processing your URL";
     }, [error, progress, stage, title]);
     const verifyDomainMessage = useMemo(
@@ -259,11 +259,9 @@ export default function UrlProcessingPopup({
 
                         {!error ? (
                             <div className="mt-8 h-2 w-full overflow-hidden rounded-full bg-neutral-100">
-                                <motion.div
+                                <div
                                     className="h-full rounded-full bg-[#FF8D21]"
-                                    initial={{ width: "0%" }}
-                                    animate={{ width: `${progress}%` }}
-                                    transition={{ duration: 0.3, ease: "easeOut" }}
+                                    style={{ width: `${progress}%` }}
                                 />
                             </div>
                         ) : null}

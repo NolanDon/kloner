@@ -1,7 +1,9 @@
 import {
     buildTimedOutDraftIssueState,
+    buildTimedOutUrlProcessingSession,
     isPersistedDraftPendingState,
     isTimedOutDraftLoadingState,
+    isTimedOutUrlProcessingSession,
     normalizeDashboardDraftRecord,
     normalizeDashboardDraftRecords,
     resolveDashboardDraftThumbnailUrl,
@@ -112,6 +114,38 @@ describe("dashboard draft flow", () => {
             code: "DRAFT_SCAN_TIMEOUT",
             blocked: false,
             retryable: false,
+        });
+    });
+
+    it("times out a url processing navigation session after five minutes", () => {
+        const now = 1_000_000;
+        expect(
+            isTimedOutUrlProcessingSession({
+                appId: "app-1",
+                draftId: "draft-1",
+                draftAppId: "draftapp-1",
+                sourceUrl: "https://example.com",
+                archiveZipUrl: null,
+                archiveZipBytes: null,
+                phase: "navigating",
+                phaseStartedAt: now - (5 * 60 * 1000),
+            }, now),
+        ).toBe(true);
+
+        expect(
+            buildTimedOutUrlProcessingSession({
+                appId: "app-1",
+                draftId: "draft-1",
+                draftAppId: "draftapp-1",
+                sourceUrl: "https://example.com",
+                archiveZipUrl: null,
+                archiveZipBytes: null,
+                phase: "navigating",
+                phaseStartedAt: now - (5 * 60 * 1000),
+            }),
+        ).toMatchObject({
+            phase: "error",
+            errorMessage: "Opening your editor timed out after 5 minutes. Close this dialog to delete the draft and try again.",
         });
     });
 
@@ -281,6 +315,7 @@ describe("dashboard draft flow", () => {
         const ok = await submitDashboardUrlDraft({
             rawUrl: "example.com",
             canUseScreenshotCredit: () => true,
+            canUsePreviewCredit: () => true,
             fetchImpl: fetchImpl as any,
             push,
             setErr: (value) => {
@@ -367,6 +402,7 @@ describe("dashboard draft flow", () => {
         const ok = await submitDashboardUrlDraft({
             rawUrl: "example.com",
             canUseScreenshotCredit: () => true,
+            canUsePreviewCredit: () => true,
             fetchImpl: fetchImpl as any,
             push,
             setErr: (value) => {
