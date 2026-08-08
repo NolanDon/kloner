@@ -1448,6 +1448,7 @@ export default function PreviewEditorV2({
     const [archivedPageIds, setArchivedPageIds] = useState<string[]>([]);
     const [showPageLayers, setShowPageLayers] = useState(false);
     const shouldRunPreviewTour = !isCompactLayout && shouldShowTour;
+    const shouldDeferAccessPaywall = shouldRunPreviewTour && !hasCompletedPreviewTour;
 
     useEffect(() => {
         if (!isAccessLocked) {
@@ -1455,10 +1456,16 @@ export default function PreviewEditorV2({
             return;
         }
 
-        if (!shouldRunPreviewTour || hasCompletedPreviewTour) {
+        if (shouldDeferAccessPaywall) {
+            if (showAccessPaywall) {
+                setShowAccessPaywall(false);
+            }
+            return;
+        }
+        if (!showAccessPaywall) {
             setShowAccessPaywall(true);
         }
-    }, [hasCompletedPreviewTour, isAccessLocked, shouldRunPreviewTour]);
+    }, [hasCompletedPreviewTour, isAccessLocked, shouldDeferAccessPaywall, showAccessPaywall]);
 
     // inside your component body
     const [isPreviewFullscreen, setIsPreviewFullscreen] = useState(false);
@@ -4645,7 +4652,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
             className="fixed inset-0 z-[9999] bg-black/50"
         >
             <WebsitePrePaywall
-                open={showAccessPaywall}
+                open={showAccessPaywall && !shouldDeferAccessPaywall}
                 onClose={() => {
                     setShowAccessPaywall(false);
                 }}
@@ -4662,7 +4669,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                 footerNote="Cancel anytime before renewal."
             />
 
-            {shouldRunPreviewTour ? (
+            {shouldRunPreviewTour && !hasCompletedPreviewTour ? (
                 <PreviewEditorTour onEnd={() => setHasCompletedPreviewTour(true)} />
             ) : null}
 

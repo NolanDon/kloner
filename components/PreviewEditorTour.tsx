@@ -99,6 +99,12 @@ export function PreviewEditorTour({ startToken = 0, autoStart = true, onEnd }: P
     const { user } = useAuth();
     const db = getFirestore();
     const containerRef = useRef<HTMLDivElement | null>(null);
+    const scrollStateRef = useRef<{
+        htmlOverflow: string;
+        bodyOverflow: string;
+        htmlOverscrollBehavior: string;
+        bodyOverscrollBehavior: string;
+    } | null>(null);
 
     // Function to trigger panel actions
     const triggerStepAction = (action: string) => {
@@ -301,6 +307,35 @@ export function PreviewEditorTour({ startToken = 0, autoStart = true, onEnd }: P
             removeHighlight();
         };
     }, []);
+
+    useEffect(() => {
+        if (!running) return;
+        if (typeof document === "undefined") return;
+
+        const html = document.documentElement;
+        const body = document.body;
+        scrollStateRef.current = {
+            htmlOverflow: html.style.overflow,
+            bodyOverflow: body.style.overflow,
+            htmlOverscrollBehavior: html.style.overscrollBehavior,
+            bodyOverscrollBehavior: body.style.overscrollBehavior,
+        };
+
+        html.style.overflow = "hidden";
+        body.style.overflow = "hidden";
+        html.style.overscrollBehavior = "none";
+        body.style.overscrollBehavior = "none";
+
+        return () => {
+            const prev = scrollStateRef.current;
+            if (!prev) return;
+            html.style.overflow = prev.htmlOverflow;
+            body.style.overflow = prev.bodyOverflow;
+            html.style.overscrollBehavior = prev.htmlOverscrollBehavior;
+            body.style.overscrollBehavior = prev.bodyOverscrollBehavior;
+            scrollStateRef.current = null;
+        };
+    }, [running]);
 
     const finish = async (persist = true) => {
         markTourSeen();

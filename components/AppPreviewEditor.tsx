@@ -12,7 +12,7 @@ import { useModal } from "@/components/ui/ModalContext";
 import { WorkspaceLoadingPanel } from "./KlonerLoader";
 import { pickPreferredHtmlPath } from "@/src/lib/htmlEntrypoint";
 import { useHtmlDiscoveryFallbackGate } from "@/src/lib/htmlDiscoveryGate";
-import { PreviewEditorTour, TOUR_KEY as PREVIEW_TOUR_STORAGE_KEY } from "./PreviewEditorTour";
+import { PreviewEditorTour, TOUR_KEY as PREVIEW_TOUR_STORAGE_KEY, hasSeenPreviewTour } from "./PreviewEditorTour";
 import { ensureUserImageStorageRoom, IMAGE_STORAGE_LIMIT_BYTES, loadUserImageStorageUsage, uploadUserImageToFirebase } from "@/src/lib/imageStorage";
 
 export type Device = "desktop" | "tablet" | "mobile";
@@ -1419,7 +1419,7 @@ function AppPreviewEditorCore({
     const [showAccessUpgradePaywall, setShowAccessUpgradePaywall] = useState(false);
     const [accessPaywallContext, setAccessPaywallContext] = useState<"panel" | "images" | "toolbar">("panel");
     const shouldShowTour = typeof showTour === "boolean" ? showTour : true;
-    const [hasCompletedPreviewTour, setHasCompletedPreviewTour] = useState(false);
+    const [hasCompletedPreviewTour, setHasCompletedPreviewTour] = useState(() => hasSeenPreviewTour());
     const lastAutoPaywallOpenTokenRef = useRef<number>(0);
     const [controlsCollapsed, setControlsCollapsed] = useState<boolean>(false);
     const [sidePanelMode, setSidePanelMode] = useState<
@@ -1437,9 +1437,9 @@ function AppPreviewEditorCore({
             case "images":
                 return "Unlock Images";
             case "toolbar":
-                return "Unlock the full editor";
+                return "Unlock the full editing experience";
             default:
-                return "Unlock the full editor";
+                return "Unlock the full editing experience";
         }
     }, [accessPaywallContext]);
 
@@ -1447,33 +1447,6 @@ function AppPreviewEditorCore({
         setAccessPaywallContext(context);
         setShowAccessUpgradePaywall(true);
     }, []);
-
-    useEffect(() => {
-        if (typeof window === "undefined") return;
-        if (!previewOpenToken) return;
-        if (lastAutoPaywallOpenTokenRef.current === previewOpenToken) return;
-        if (authLoading) return;
-
-        if (!shouldShowTour && (accessLocked || userTier === "free") && !isAdmin && !authLoading) {
-            lastAutoPaywallOpenTokenRef.current = previewOpenToken;
-            openAccessPaywall("panel");
-        }
-    }, [accessLocked, authLoading, isAdmin, openAccessPaywall, previewOpenToken, shouldShowTour, userTier]);
-
-    useEffect(() => {
-        if (authLoading) return;
-        if (!(accessLocked || userTier === "free") || isAdmin) return;
-        if (shouldShowTour && !hasCompletedPreviewTour) return;
-        if (showAccessUpgradePaywall) return;
-        openAccessPaywall("panel");
-    }, [accessLocked, authLoading, hasCompletedPreviewTour, isAdmin, openAccessPaywall, shouldShowTour, showAccessUpgradePaywall, userTier]);
-
-    const handlePreviewTourEnd = useCallback(() => {
-        setHasCompletedPreviewTour(true);
-        if ((accessLocked || userTier === "free") && !isAdmin) {
-            openAccessPaywall("panel");
-        }
-    }, [accessLocked, isAdmin, openAccessPaywall, userTier]);
 
     function normalizeAiEditCreatedAt(raw: any): string {
         if (!raw) return "";
@@ -1593,11 +1566,44 @@ function AppPreviewEditorCore({
 
     const [isDraggingPreview, setIsDraggingPreview] = useState(false);
     const shouldRunPreviewTour = !isCompactLayout && isDevCodeMode && shouldShowTour;
+    const shouldDeferAccessPaywall = shouldRunPreviewTour && !hasCompletedPreviewTour;
     const shouldLockPreviewPanels =
         (accessLocked || userTier === "free") &&
         !isAdmin &&
         !authLoading &&
         (!shouldRunPreviewTour || hasCompletedPreviewTour);
+
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+        if (!previewOpenToken) return;
+        if (lastAutoPaywallOpenTokenRef.current === previewOpenToken) return;
+        if (authLoading) return;
+
+        if (!shouldShowTour && (accessLocked || userTier === "free") && !isAdmin && !authLoading) {
+            lastAutoPaywallOpenTokenRef.current = previewOpenToken;
+            openAccessPaywall("panel");
+        }
+    }, [accessLocked, authLoading, isAdmin, openAccessPaywall, previewOpenToken, shouldShowTour, userTier]);
+
+    useEffect(() => {
+        if (authLoading) return;
+        if (!(accessLocked || userTier === "free") || isAdmin) return;
+        if (shouldDeferAccessPaywall) {
+            if (showAccessUpgradePaywall) {
+                setShowAccessUpgradePaywall(false);
+            }
+            return;
+        }
+        if (showAccessUpgradePaywall) return;
+        openAccessPaywall("panel");
+    }, [accessLocked, authLoading, hasCompletedPreviewTour, isAdmin, openAccessPaywall, shouldDeferAccessPaywall, showAccessUpgradePaywall, userTier]);
+
+    const handlePreviewTourEnd = useCallback(() => {
+        setHasCompletedPreviewTour(true);
+        if ((accessLocked || userTier === "free") && !isAdmin) {
+            openAccessPaywall("panel");
+        }
+    }, [accessLocked, isAdmin, openAccessPaywall, userTier]);
 
     // 1) Per-session counters
     const sessionCountersRef = useRef<EditorSessionCounters>({
@@ -1816,6 +1822,7 @@ function AppPreviewEditorCore({
         } catch {
             // ignore storage failures
         }
+        setHasCompletedPreviewTour(false);
         setPreviewTourStartToken((token) => token + 1);
     }, []);
 
@@ -1824,10 +1831,11 @@ function AppPreviewEditorCore({
         if (typeof window === "undefined") return;
         if (previewTourSeededRef.current) return;
         if (viewMode !== "custom" && viewMode !== "images") return;
+        if (hasCompletedPreviewTour) return;
 
         previewTourSeededRef.current = true;
         setPreviewTourStartToken((token) => token + 1);
-    }, [viewMode]);
+    }, [hasCompletedPreviewTour, viewMode]);
 
         useEffect(() => {
             if (!isPageDropdownOpen) return;
@@ -5123,7 +5131,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
             tabIndex={-1}
             className="h-full w-full bg-white flex flex-col"
         >
-            {shouldRunPreviewTour ? (
+            {shouldRunPreviewTour && !hasCompletedPreviewTour ? (
                 <PreviewEditorTour
                     startToken={previewTourStartToken}
                     autoStart
@@ -7054,7 +7062,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                     : null}
 
                 <WebsitePrePaywall
-                    open={showAccessUpgradePaywall}
+                    open={showAccessUpgradePaywall && !shouldDeferAccessPaywall}
                     onClose={() => {
                         void onClose();
                     }}
@@ -7067,7 +7075,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                     title={accessPaywallTitle}
                     description="Upgrade to unlock editing, keep your momentum, and turn your changes into a live website."
                     primaryLabel={TRIAL_CTA_LABEL}
-                    secondaryLabel="No, I don't want this website"
+                    secondaryLabel="No thanks, exit editor"
                     footerNote="Cancel anytime before renewal."
                     dismissible={false}
                 />

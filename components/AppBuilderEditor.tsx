@@ -8604,10 +8604,10 @@ export default function AppBuilderEditor({
                     }}
                     checkoutBusy={trialCheckoutBusy || localTrialCheckoutBusy}
                     zIndexClassName="z-[9999999999]"
-                    title="Unlock the full editor"
+                    title="Unlock the full editing experience"
                     description="Upgrade to unlock editing, keep your momentum, and turn your changes into a live website."
                     primaryLabel={TRIAL_CTA_LABEL}
-                    secondaryLabel="No, I don't want this website"
+                    secondaryLabel="No thanks, exit editor"
                     footerNote="Cancel anytime before renewal."
                     dismissible={false}
                 />
