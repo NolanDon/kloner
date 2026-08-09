@@ -40,14 +40,14 @@ const testimonialSlides = [
         title: "Product Manager @ Stealth",
         avatar: "/images/avatars/portfolio1.jpg",
         quote:
-            "the manual editing saved me a ridiculous amount of time. i like the prompt feature but for small quick edits i love that i can just go in and type new copywrite",
+            "the manual editing saved me a ridiculous amount of time. I like the prompt feature but for small quick edits i love that i can just go in and type new copywrite",
     },
     {
         name: "Jordan B",
         title: "Solopreneur",
         avatar: "/images/avatars/portfolio2.jpg",
         quote:
-            "the whole app has been a legit lifesaver for us. we are a small team and were burning money waiting on revisions and now i can get client sites out way faster than i expected",
+            "the whole app has been a legit LIFESAVER for me. I run a small team and were burning money waiting on revisions and now I can get client sites out way faster than i expected",
     },
 ];
 
