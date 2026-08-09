@@ -14113,7 +14113,7 @@ export default function PreviewPage(): JSX.Element {
                                 onDeploy={(app) => openAppDeployWizard(app)}
                                 deployLocked={userTier === "free"}
                                 accessLocked={isFreeTierNotTrialing}
-                                showTour={isTourEligible || shouldForcePreviewTourInDev}
+                                showTour={isTourEligible || isFreeTierNotTrialing || shouldForcePreviewTourInDev}
                                 onRequestDeployCheckout={() => {
                                     void startProCheckoutForAppDeploy({ returnAppId: currentAppId });
                                 }}

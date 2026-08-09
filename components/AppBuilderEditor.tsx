@@ -2563,7 +2563,7 @@ export default function AppBuilderEditor({
     const appBuilderViewSwitchesRef = useRef<number>(0);
     const previousViewModeRef = useRef<LeftViewMode>("ai");
     const builderTrialPromptNotifiedRef = useRef(false);
-    const shouldRunBuilderTour = isDev && !isVisualEditorMode && (showTour || (trialPromptEnabled && trialPromptSessionEligible));
+    const shouldRunBuilderTour = !isVisualEditorMode && (showTour || (trialPromptEnabled && trialPromptSessionEligible));
     const shouldLockBuilderEditor = accessLocked || userTier === "free";
     const shouldShowBuilderTrialPrompt =
         trialPromptEnabled &&

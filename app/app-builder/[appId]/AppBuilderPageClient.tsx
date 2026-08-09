@@ -52,7 +52,7 @@ export default function AppBuilderPageClient({
             appId={appId}
             initialAppData={initialAppData as any}
             initialViewMode={initialViewMode}
-            showTour={process.env.NODE_ENV !== "production"}
+            showTour={true}
             onClose={() => {
                 router.push("/dashboard/view", { scroll: false });
             }}
