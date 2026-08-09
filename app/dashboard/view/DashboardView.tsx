@@ -163,6 +163,7 @@ const RENDER_TRIAL_SESSION_STORAGE_KEY = "kloner.firstGenTrial.renderSessions.v1
 const APP_BUILDER_TRIAL_SESSION_STORAGE_KEY = "kloner.firstGenTrial.appBuilderSessions.v1";
 const CHECKOUT_FETCH_TIMEOUT_MS = 20_000;
 const CHECKOUT_SESSION_FETCH_TIMEOUT_MS = 60_000;
+const URL_PROCESSING_NAVIGATION_RETRY_DELAYS_MS = [0, 2200, 5200];
 
 const APP_BUILDER_COOKIE_CONSENT_KEY = "kloner.appBuilder.necessaryCookiesAccepted.v1";
 const APP_BUILDER_COOKIE_CONSENT_COOKIE = "kloner_app_builder_nc";
@@ -4415,6 +4416,7 @@ export default function PreviewPage(): JSX.Element {
         at: number;
     } | null>(null);
     const [urlProcessingHandoff, setUrlProcessingHandoff] = useState<DashboardUrlProcessingSession | null>(null);
+    const [urlProcessingPopupSuppressed, setUrlProcessingPopupSuppressed] = useState(false);
     const [websiteSubmissionPendingUrl, setWebsiteSubmissionPendingUrl] = useState<string | null>(null);
     const [draftAppsLoading, setDraftAppsLoading] = useState(true);
     const [draftAppsInitialLoadComplete, setDraftAppsInitialLoadComplete] = useState(false);
@@ -4443,6 +4445,7 @@ export default function PreviewPage(): JSX.Element {
     }>>([]);
     const pendingCreatedAppLaunchRequestedRef = useRef<string | null>(null);
     const urlProcessingNavigateTimeoutRef = useRef<number | null>(null);
+    const urlProcessingNavigationRetryTimeoutsRef = useRef<number[]>([]);
     const draftPromotionInFlightRef = useRef<Record<string, true>>({});
     const promoteDraftToAppRef = useRef<((draft: {
         draftId: string;
@@ -4464,6 +4467,20 @@ export default function PreviewPage(): JSX.Element {
     const buildFromCollectionRef = useRef<((storageKeys: string[]) => Promise<void>) | null>(null);
     const previousEditorOpenRef = useRef(false);
     const previousAppBuilderOpenRef = useRef(false);
+
+    const clearUrlProcessingNavigationTimers = useCallback(() => {
+        if (urlProcessingNavigateTimeoutRef.current) {
+            window.clearTimeout(urlProcessingNavigateTimeoutRef.current);
+            urlProcessingNavigateTimeoutRef.current = null;
+        }
+
+        if (urlProcessingNavigationRetryTimeoutsRef.current.length) {
+            for (const timeoutId of urlProcessingNavigationRetryTimeoutsRef.current) {
+                window.clearTimeout(timeoutId);
+            }
+            urlProcessingNavigationRetryTimeoutsRef.current = [];
+        }
+    }, []);
 
     const [agentWelcomeContextByAppId, setAgentWelcomeContextByAppId] = useState<
         Record<
@@ -6910,14 +6927,12 @@ export default function PreviewPage(): JSX.Element {
     useEffect(() => {
         if (!urlProcessingHandoff) return;
         if (urlProcessingHandoff.phase !== "ready") return;
+        if (urlProcessingPopupSuppressed) return;
 
         const READY_HOLD_MS = 600;
         const FADE_OUT_MS = 450;
 
-        if (urlProcessingNavigateTimeoutRef.current) {
-            window.clearTimeout(urlProcessingNavigateTimeoutRef.current);
-            urlProcessingNavigateTimeoutRef.current = null;
-        }
+        clearUrlProcessingNavigationTimers();
 
         const readyTimer = window.setTimeout(() => {
             setUrlProcessingHandoff((current) => {
@@ -6937,10 +6952,22 @@ export default function PreviewPage(): JSX.Element {
                 pendingCreatedAppLaunchRequestedRef.current = appIdToOpen;
                 void openAppBuilderPreviewFirstWithCookieGate(appIdToOpen);
             }, FADE_OUT_MS);
+
+            const retryTimeouts = URL_PROCESSING_NAVIGATION_RETRY_DELAYS_MS.slice(1).map((delay) =>
+                window.setTimeout(() => {
+                    if (!appIdToOpen || urlProcessingPopupSuppressed) return;
+                    pendingCreatedAppLaunchRequestedRef.current = appIdToOpen;
+                    void openAppBuilderPreviewFirstWithCookieGate(appIdToOpen);
+                }, delay),
+            );
+            urlProcessingNavigationRetryTimeoutsRef.current = retryTimeouts;
         }, READY_HOLD_MS);
 
-        return () => window.clearTimeout(readyTimer);
-    }, [openAppBuilderPreviewFirstWithCookieGate, urlProcessingHandoff]);
+        return () => {
+            window.clearTimeout(readyTimer);
+            clearUrlProcessingNavigationTimers();
+        };
+    }, [clearUrlProcessingNavigationTimers, openAppBuilderPreviewFirstWithCookieGate, urlProcessingHandoff, urlProcessingPopupSuppressed]);
 
     useEffect(() => {
         if (!isTimedOutUrlProcessingSession(urlProcessingHandoff)) return;
@@ -6953,10 +6980,7 @@ export default function PreviewPage(): JSX.Element {
                 return buildTimedOutUrlProcessingSession(current);
             });
 
-            if (urlProcessingNavigateTimeoutRef.current) {
-                window.clearTimeout(urlProcessingNavigateTimeoutRef.current);
-                urlProcessingNavigateTimeoutRef.current = null;
-            }
+            clearUrlProcessingNavigationTimers();
 
             pendingCreatedAppLaunchRequestedRef.current = null;
             setUrlProcessingFailure(null);
@@ -6964,13 +6988,14 @@ export default function PreviewPage(): JSX.Element {
         }, remainingMs);
 
         return () => window.clearTimeout(timeoutId);
-    }, [setInfo, urlProcessingHandoff]);
+    }, [clearUrlProcessingNavigationTimers, setInfo, urlProcessingHandoff]);
 
     const handleStopUrlProcessing = useCallback(async () => {
         const session = urlProcessingHandoff;
         if (!session) {
             setUrlProcessingFailure(null);
             setUrlProcessingHandoff(null);
+            setUrlProcessingPopupSuppressed(false);
             setPendingCreatedApp(null);
             setWebsiteSubmissionPendingUrl(null);
             setErr("");
@@ -6984,10 +7009,7 @@ export default function PreviewPage(): JSX.Element {
         );
         if (!ok) return;
 
-        if (urlProcessingNavigateTimeoutRef.current) {
-            window.clearTimeout(urlProcessingNavigateTimeoutRef.current);
-            urlProcessingNavigateTimeoutRef.current = null;
-        }
+        clearUrlProcessingNavigationTimers();
 
         pendingCreatedAppLaunchRequestedRef.current = null;
 
@@ -7044,6 +7066,7 @@ export default function PreviewPage(): JSX.Element {
 
         setUrlProcessingFailure(null);
         setUrlProcessingHandoff(null);
+        setUrlProcessingPopupSuppressed(false);
         setWebsiteSubmissionPendingUrl(null);
         setErr("");
         setInfo("");
@@ -7054,6 +7077,7 @@ export default function PreviewPage(): JSX.Element {
     }, [
         push,
         purgeTrackedUrlData,
+        clearUrlProcessingNavigationTimers,
         setAppBuilderInitialViewMode,
         setAppBuilderOpen,
         setCurrentAppId,
@@ -7065,11 +7089,27 @@ export default function PreviewPage(): JSX.Element {
         setPendingDraftApps,
         setUrlProcessingFailure,
         setUrlProcessingHandoff,
+        setUrlProcessingPopupSuppressed,
         setWebsiteSubmissionPendingUrl,
         showConfirm,
         urlProcessingHandoff,
         user,
     ]);
+
+    const handleReturnToDashboardFromUrlProcessing = useCallback(() => {
+        clearUrlProcessingNavigationTimers();
+        pendingCreatedAppLaunchRequestedRef.current = null;
+        setUrlProcessingPopupSuppressed(true);
+        router.replace("/dashboard/view", { scroll: false });
+        push("Returned to the dashboard. The scan will keep running in the background.", "ok");
+    }, [clearUrlProcessingNavigationTimers, push, router]);
+
+    const urlProcessingPopupSessionKey = urlProcessingHandoff?.appId || urlProcessingFailure?.at || "";
+
+    useEffect(() => {
+        if (urlProcessingPopupSessionKey) return;
+        setUrlProcessingPopupSuppressed(false);
+    }, [urlProcessingPopupSessionKey]);
 
     useEffect(() => {
         if (!pendingCreatedApp) return;
@@ -12911,6 +12951,7 @@ export default function PreviewPage(): JSX.Element {
         userTier === "agency" ||
         userTier === "enterprise";
     const isTourEligible = !loading && isPaidOrTrialingTier;
+    const shouldForcePreviewTourInDev = process.env.NODE_ENV !== "production";
 
     useEffect(() => {
         const wasOpen = previousEditorOpenRef.current;
@@ -13525,7 +13566,7 @@ export default function PreviewPage(): JSX.Element {
     return (
         <main className="min-h-screen bg-white notranslate" translate="no">
             <UrlProcessingPopup
-                open={Boolean(urlProcessingHandoff || urlProcessingFailure)}
+                open={Boolean((urlProcessingHandoff || urlProcessingFailure) && !urlProcessingPopupSuppressed)}
                 title={urlProcessingPopupTitle}
                 message={urlProcessingPopupMessage}
                 error={urlProcessingFailure?.message || (urlProcessingHandoff?.phase === "error" ? urlProcessingHandoff?.errorMessage || "URL processing failed." : null)}
@@ -13545,6 +13586,7 @@ export default function PreviewPage(): JSX.Element {
                                     : "processing"
                 }
                 onDismiss={handleStopUrlProcessing}
+                onBackToDashboard={handleReturnToDashboardFromUrlProcessing}
             />
             {isDev ? (
                 <>
@@ -13980,7 +14022,7 @@ export default function PreviewPage(): JSX.Element {
                         initialHtml={editorHtml}
                         sourceImage={editorRefImg}
                         accessLocked={isFreeTierNotTrialing}
-                        showTour={isTourEligible}
+                        showTour={isTourEligible || shouldForcePreviewTourInDev}
                         sourceUrl={activeRender?.source || activeRender?.url || undefined}
                         initialSeoMetaByPage={activeSeoMetaByPage || undefined}
                         initialArchivedPageIds={activeArchivedPageIds}
@@ -14071,7 +14113,7 @@ export default function PreviewPage(): JSX.Element {
                                 onDeploy={(app) => openAppDeployWizard(app)}
                                 deployLocked={userTier === "free"}
                                 accessLocked={isFreeTierNotTrialing}
-                                showTour={isTourEligible}
+                                showTour={isTourEligible || shouldForcePreviewTourInDev}
                                 onRequestDeployCheckout={() => {
                                     void startProCheckoutForAppDeploy({ returnAppId: currentAppId });
                                 }}

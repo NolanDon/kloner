@@ -3,7 +3,7 @@
 import type { ReactNode } from "react";
 import Image from "next/image";
 import { motion } from "framer-motion";
-import { useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import logo from "@/public/images/orange_logo.png";
@@ -24,12 +24,31 @@ type WebsitePrePaywallProps = {
     footerNote?: string;
 };
 
+const carouselAutoAdvanceMs = [7200, 5600, 5600];
+
 const websitePaywallShowcaseImages = [
     "/images/showcase/showcase1.jpg",
     "/images/showcase/showcase2.jpg",
     "/images/showcase/showcase3.jpg",
     "/images/showcase/showcase4.jpg",
     "/images/showcase/showcase5.jpg",
+];
+
+const testimonialSlides = [
+    {
+        name: "RJ",
+        title: "Product Manager @ Stealth",
+        avatar: "/images/avatars/portfolio1.jpg",
+        quote:
+            "the manual editing saved me a ridiculous amount of time. i like the prompt feature but for small quick edits i love that i can just go in and type new copywrite",
+    },
+    {
+        name: "Jordan B",
+        title: "Solopreneur",
+        avatar: "/images/avatars/portfolio2.jpg",
+        quote:
+            "the whole app has been a legit lifesaver for us. we are a small team and were burning money waiting on revisions and now i can get client sites out way faster than i expected",
+    },
 ];
 
 export function WebsitePrePaywall({
@@ -45,7 +64,7 @@ export function WebsitePrePaywall({
         "Deploy 40+ websites per month",
         "One-click publishing",
         "AI task force to build and design your websites",
-        "Higher queue priority for faster outputs",
+        // "Higher queue priority for faster outputs",
         "24/7 Human support included",
         "Subscriptions starting at only $29.99/mo.",
     ],
@@ -53,6 +72,21 @@ export function WebsitePrePaywall({
     secondaryLabel = "No thanks, continue with limited features",
     footerNote = "Cancel anytime before renewal.",
 }: WebsitePrePaywallProps) {
+    const carouselSlides = useMemo(
+        () => [
+            {
+                kind: "checklist" as const,
+                title: "What you unlock",
+            },
+            ...testimonialSlides.map((slide) => ({
+            kind: "testimonial" as const,
+            ...slide,
+            })),
+        ],
+        [],
+    );
+    const [activeSlide, setActiveSlide] = useState(0);
+
     useEffect(() => {
         if (!open) return;
 
@@ -68,6 +102,22 @@ export function WebsitePrePaywall({
             docEl.style.overflow = prevHtmlOverflow;
             body.style.overflow = prevBodyOverflow;
         };
+    }, [open]);
+
+    useEffect(() => {
+        if (!open) return;
+
+        const currentDuration = carouselAutoAdvanceMs[activeSlide] ?? 5200;
+        const timer = window.setTimeout(() => {
+            setActiveSlide((current) => (current + 1) % carouselSlides.length);
+        }, currentDuration);
+
+        return () => window.clearTimeout(timer);
+    }, [activeSlide, carouselSlides.length, open]);
+
+    useEffect(() => {
+        if (!open) return;
+        setActiveSlide(0);
     }, [open]);
 
     if (!open) return null;
@@ -120,17 +170,79 @@ export function WebsitePrePaywall({
                                 </p>
                             </div>
 
-                            <div className="mt-4 space-y-2.5">
-                                {benefits.map((item) => (
-                                    <div key={item} className="flex items-start gap-2.5 text-sm leading-relaxed text-neutral-800 sm:text-[14px]">
-                                        <span className="mt-[1px] inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold text-accent">
-                                            ✓
-                                        </span>
-                                        <span className={/starting at/i.test(item) ? "font-semibold text-neutral-900" : ""}>
-                                            {item}
-                                        </span>
-                                    </div>
-                                ))}
+                            <div className="mt-6 border-t border-neutral-200 pt-4">
+                                <div className="relative overflow-hidden rounded-[24px] border border-neutral-200 bg-white shadow-[0_14px_36px_rgba(0,0,0,0.08)]">
+                                    <motion.div
+                                        animate={{ x: `${-activeSlide * 100}%` }}
+                                        transition={{ type: "spring", stiffness: 120, damping: 22, mass: 0.9 }}
+                                        className="flex w-full"
+                                    >
+                                        {carouselSlides.map((slide, index) => (
+                                            <div
+                                                key={`${slide.kind}-${index}`}
+                                                className="w-full shrink-0"
+                                            >
+                                                {slide.kind === "checklist" ? (
+                                                    <div className="flex h-full min-h-[170px] flex-col justify-center gap-3 px-5 py-5 sm:min-h-[210px] sm:px-6 sm:py-6">
+                                                        <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#FF8D21]">
+                                                            {slide.title}
+                                                        </div>
+                                                        <div className="space-y-4">
+                                                            {benefits.map((item) => (
+                                                                <div
+                                                                    key={item}
+                                                                    className="flex items-start gap-2 text-[13px] leading-relaxed text-neutral-800 sm:text-sm"
+                                                                >
+                                                                    <span className="mt-[1px] inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold text-[#FF8D21]">
+                                                                        ✓
+                                                                    </span>
+                                                                    <span className={/starting at/i.test(item) ? "font-semibold text-neutral-900" : ""}>
+                                                                        {item}
+                                                                    </span>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                ) : (
+                                                    <div className="flex h-full min-h-[170px] items-center justify-center sm:min-h-[210px]">
+                                                        <div className="w-full max-w-[440px] rounded-[24px]">
+                                                            <div className="mb-4 flex items-center gap-3">
+                                                                <div className="relative h-11 w-11 overflow-hidden rounded-full border border-neutral-200 bg-neutral-100">
+                                                                    <Image
+                                                                        src={slide.avatar}
+                                                                        alt={`${slide.name} profile photo`}
+                                                                        fill
+                                                                        sizes="44px"
+                                                                        className="object-cover"
+                                                                    />
+                                                                </div>
+                                                                <div>
+                                                                    <div className="text-sm font-semibold text-neutral-900">{slide.name}</div>
+                                                                    <div className="text-xs text-neutral-500">{slide.title}</div>
+                                                                </div>
+                                                            </div>
+                                                            <p className="text-[15px] leading-6 text-neutral-700 sm:text-[16px] sm:leading-7 pb-8">
+                                                                “{slide.quote}”
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ))}
+                                    </motion.div>
+
+                                </div>
+                                <div className="mt-4 flex items-center justify-center gap-3 pb-1">
+                                    {carouselSlides.map((slide, index) => (
+                                        <button
+                                            key={`${slide.kind}-dot-${index}`}
+                                            type="button"
+                                            onClick={() => setActiveSlide(index)}
+                                            className={`h-3 rounded-full transition-all shadow-sm ${index === activeSlide ? "w-8 bg-[#FF8D21]" : "w-3 bg-neutral-300 hover:bg-neutral-400"}`}
+                                            aria-label={`Show slide ${index + 1}`}
+                                        />
+                                    ))}
+                                </div>
                             </div>
 
                             <div className="mt-5 flex flex-col gap-3">
@@ -175,7 +287,7 @@ export function WebsitePrePaywall({
                                     </span>
                                 </div>
 
-                                <div className="relative overflow-hidden rounded-[24px] border border-neutral-200 bg-white shadow-[0_14px_36px_rgba(0,0,0,0.08)]">
+                                <div className="relative overflow-hidden rounded-[24px] shadow-[0_10px_24px_rgba(15,23,42,0.06)]">
                                     <div className="overflow-hidden py-3 sm:py-4">
                                         <div className="website-paywall-carousel flex w-max items-stretch gap-3 px-3">
                                             {[...websitePaywallShowcaseImages, ...websitePaywallShowcaseImages].map((src, index) => (

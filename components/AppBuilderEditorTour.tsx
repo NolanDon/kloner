@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 type TourStep = {
     target: string;
@@ -131,11 +131,11 @@ export function AppBuilderEditorTour({
     const isDev = useMemo(() => isDevBuild(), []);
     const steps = isMobile ? mobileSteps : desktopSteps;
 
-    const broadcastChatHighlightForStep = (stepIndex: number) => {
+    const broadcastChatHighlightForStep = useCallback((stepIndex: number) => {
         if (typeof window === "undefined") return;
         if (!isChatIntroTarget(steps[stepIndex]?.target)) return;
         window.postMessage({ type: "kloner:builder-tour-chat-highlighted" }, "*");
-    };
+    }, [steps]);
 
     const clearHighlight = () => {
         if (highlightRef.current) {
@@ -144,10 +144,11 @@ export function AppBuilderEditorTour({
         setMask(null);
     };
 
-    const updatePosition = () => {
+    const updatePosition = useCallback(() => {
         if (!running) return;
         const step = steps[index];
         if (!step || typeof window === "undefined") return;
+        const isMobilePreviewStep = isMobile && index === 0;
 
         const target = document.querySelector(step.target) as HTMLElement | null;
         if (!target) {
@@ -162,18 +163,23 @@ export function AppBuilderEditorTour({
         const popupH = popup?.getBoundingClientRect().height || 180;
 
         const preferAbove = rect.top > 180;
-        const rawTop = preferAbove ? rect.top - popupH - 12 : rect.bottom + 12;
-        const rawLeft = rect.left;
+        const rawTop = isMobilePreviewStep
+            ? rect.bottom - popupH - 20
+            : preferAbove
+                ? rect.top - popupH - 12
+                : rect.bottom + 12;
+        const rawLeft = isMobilePreviewStep ? rect.left - 18 : rect.left;
         const top = Math.min(Math.max(rawTop, 12), window.innerHeight - popupH - 12);
         const left = Math.min(Math.max(rawLeft, 12), window.innerWidth - popupW - 12);
         setPos({ top, left });
 
         if (highlightRef.current) {
             const pad = 8;
+            const leftShift = isMobilePreviewStep ? 18 : pad;
             const box = highlightRef.current;
             box.style.display = "block";
             box.style.top = `${Math.max(rect.top - pad, 8)}px`;
-            box.style.left = `${Math.max(rect.left - pad, 8)}px`;
+            box.style.left = `${Math.max(rect.left - leftShift, 8)}px`;
             box.style.width = `${Math.max(rect.width + pad * 2, 36)}px`;
             box.style.height = `${Math.max(rect.height + pad * 2, 24)}px`;
             box.style.borderRadius = "10px";
@@ -181,12 +187,12 @@ export function AppBuilderEditorTour({
 
         const pad = 8;
         setMask({
-            left: Math.max(rect.left - pad, 0),
+            left: Math.max(rect.left - (isMobilePreviewStep ? 18 : pad), 0),
             top: Math.max(rect.top - pad, 0),
             width: rect.width + pad * 2,
             height: rect.height + pad * 2,
         });
-    };
+    }, [index, isMobile, running, steps]);
 
     const finish = () => {
         setRunning(false);
@@ -239,7 +245,7 @@ export function AppBuilderEditorTour({
             window.removeEventListener("resize", onResize);
             window.removeEventListener("scroll", onScroll, true);
         };
-    }, [index, running, steps]);
+    }, [broadcastChatHighlightForStep, index, running, updatePosition]);
 
     useEffect(() => {
         if (running || !enabled) return;

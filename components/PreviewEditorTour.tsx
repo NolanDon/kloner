@@ -2,17 +2,54 @@
 "use client";
 
 import { createPortal } from "react-dom";
-import { useState, useEffect, useRef } from "react";
-import { getFirestore, doc, updateDoc } from "firebase/firestore";
-import { useAuth } from "@/src/hooks/useAuth";
+import { useState, useEffect, useLayoutEffect, useRef, useCallback, type ReactNode } from "react";
 
-const steps = [
-    {
-        target: "#kloner-home",
-        title: "Live preview",
-        content: "This is your live editable preview. Feel free to drag it around.",
-        action: "none"
-    },
+const PREVIEW_TOUR_SEEN_KEY = "kloner_preview_editor_tour_seen";
+const PREVIEW_TOUR_SUPPRESS_KEY = "kloner_preview_editor_tour_dont_show_again";
+
+function readTourFlag(key: string): boolean {
+    if (typeof window === "undefined") return false;
+    try {
+        return window.localStorage.getItem(key) === "1";
+    } catch {
+        return false;
+    }
+}
+
+export function hasPreviewEditorTourSeen(): boolean {
+    return readTourFlag(PREVIEW_TOUR_SEEN_KEY);
+}
+
+export function hasPreviewEditorTourDontShowAgain(): boolean {
+    return readTourFlag(PREVIEW_TOUR_SUPPRESS_KEY);
+}
+
+function markPreviewEditorTourSeen(): void {
+    if (typeof window === "undefined") return;
+    try {
+        window.localStorage.setItem(PREVIEW_TOUR_SEEN_KEY, "1");
+    } catch {
+        // ignore storage failures
+    }
+}
+
+function markPreviewEditorTourDontShowAgain(): void {
+    if (typeof window === "undefined") return;
+    try {
+        window.localStorage.setItem(PREVIEW_TOUR_SUPPRESS_KEY, "1");
+    } catch {
+        // ignore storage failures
+    }
+}
+
+type TourStep = {
+    target: string | null;
+    title: string;
+    content: ReactNode;
+    action: string;
+};
+
+const mobileSteps: TourStep[] = [
     // {
     //     target: "#kloner-page-switcher",
     //     title: "Page switcher",
@@ -50,6 +87,12 @@ const steps = [
         action: "none"
     },
     {
+        target: "#kloner-home",
+        title: "Live preview",
+        content: "This is your live editable preview. Feel free to drag it around.",
+        action: "none"
+    },
+    {
         target: "[data-tour-deploy]",
         title: "Deploy your website",
         content: "When you're ready, deploy your edits to a live website. This will export your current preview and trigger a deployment.",
@@ -57,54 +100,52 @@ const steps = [
     },
 ];
 
-export const TOUR_KEY = "kloner_preview_tour_done";
+const desktopSteps: TourStep[] = [
+    {
+        target: null,
+        title: "Quick tour",
+        content: (
+            <>
+                Fast tour, minimal suffering. When you&apos;re ready click below, then tap{" "}
+                <kbd className="inline-flex items-center rounded-md border border-black/10 bg-white px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-neutral-700 shadow-sm">
+                    spacebar
+                </kbd>{" "}
+                on your keyboard to continue through.
+            </>
+        ),
+        action: "none",
+    },
+    ...mobileSteps.slice(1),
+];
 
 type PreviewEditorTourProps = {
     startToken?: number;
     autoStart?: boolean;
+    onComplete?: () => void;
+    onDontShowAgain?: () => void;
     onEnd?: () => void;
 };
-
-function getTourStorage(): Storage | null {
-    if (typeof window === "undefined") return null;
-    try {
-        return process.env.NODE_ENV !== "production" ? window.sessionStorage : window.localStorage;
-    } catch {
-        return null;
-    }
-}
-
-export function hasSeenPreviewTour(): boolean {
-    if (process.env.NODE_ENV !== "production") return false;
-    return getTourStorage()?.getItem(TOUR_KEY) === "1";
-}
-
-function markTourSeen(): void {
-    if (process.env.NODE_ENV !== "production") return;
-    try {
-        getTourStorage()?.setItem(TOUR_KEY, "1");
-    } catch {
-        // ignore storage failures
-    }
-}
 
 function isDevBuild() {
     return process.env.NODE_ENV !== "production";
 }
 
-export function PreviewEditorTour({ startToken = 0, autoStart = true, onEnd }: PreviewEditorTourProps) {
+export function PreviewEditorTour({ startToken = 0, autoStart = true, onComplete, onDontShowAgain, onEnd }: PreviewEditorTourProps) {
     const [running, setRunning] = useState(false);
     const [index, setIndex] = useState(0);
     const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
-    const { user } = useAuth();
-    const db = getFirestore();
+    const [isDesktop, setIsDesktop] = useState(true);
+    const [hasSeenTourBefore, setHasSeenTourBefore] = useState(() => hasPreviewEditorTourSeen());
     const containerRef = useRef<HTMLDivElement | null>(null);
+    const dialogRef = useRef<HTMLDivElement | null>(null);
     const scrollStateRef = useRef<{
         htmlOverflow: string;
         bodyOverflow: string;
         htmlOverscrollBehavior: string;
         bodyOverscrollBehavior: string;
     } | null>(null);
+    const steps = isDesktop ? desktopSteps : mobileSteps;
+    const isDesktopIntroStep = isDesktop && index === 0;
 
     // Function to trigger panel actions
     const triggerStepAction = (action: string) => {
@@ -121,20 +162,27 @@ export function PreviewEditorTour({ startToken = 0, autoStart = true, onEnd }: P
     };
 
     useEffect(() => {
+        if (typeof window === "undefined") return;
+
+        const mq = window.matchMedia("(min-width: 768px)");
+        const update = () => setIsDesktop(mq.matches);
+
+        update();
+        mq.addEventListener("change", update);
+        return () => mq.removeEventListener("change", update);
+    }, []);
+
+    useEffect(() => {
         if (!autoStart) return;
         if (typeof window === "undefined") return;
 
-        if (hasSeenPreviewTour()) return;
-        markTourSeen();
         setRunning(true);
-    }, [autoStart, user]);
+    }, [autoStart]);
 
     useEffect(() => {
         if (typeof window === "undefined") return;
         const devAutoStart = isDevBuild() && autoStart;
         if (startToken <= 0 && !devAutoStart) return;
-        if (!isDevBuild() && hasSeenPreviewTour()) return;
-        markTourSeen();
         setIndex(0);
         setRunning(true);
     }, [autoStart, startToken]);
@@ -173,6 +221,13 @@ export function PreviewEditorTour({ startToken = 0, autoStart = true, onEnd }: P
         const step = steps[index];
         if (!step || typeof window === "undefined") {
             setPos(null);
+            return;
+        }
+
+        if (!step.target) {
+            setPos({ top: Math.max(window.innerHeight / 2 - 120, 24), left: Math.max(window.innerWidth / 2 - 170, 24) });
+            removeHighlight();
+            setOverlayMask(null);
             return;
         }
 
@@ -337,39 +392,81 @@ export function PreviewEditorTour({ startToken = 0, autoStart = true, onEnd }: P
         };
     }, [running]);
 
-    const finish = async (persist = true) => {
-        markTourSeen();
-        const onLocalhost =
-            typeof window !== "undefined" &&
-            (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
+    useLayoutEffect(() => {
+        if (!running) return;
 
-        if (persist && !onLocalhost && user?.uid) {
-            try {
-                await updateDoc(doc(db, "kloner_users", user.uid), { hasSeenPreviewTour: true });
-            } catch {
-                // ignore
-            }
+        try {
+            dialogRef.current?.focus({ preventScroll: true });
+        } catch {
+            dialogRef.current?.focus();
         }
+    }, [index, running]);
+
+    const finish = useCallback(async () => {
         setRunning(false);
         setIndex(0);
         onEnd?.();
-    };
+    }, [onEnd]);
 
-    const next = () => {
-        if (index >= steps.length - 1) return finish();
+    const complete = useCallback(async () => {
+        onComplete?.();
+        await finish();
+    }, [finish, onComplete]);
+
+    const handleDontShowAgain = useCallback(async () => {
+        markPreviewEditorTourDontShowAgain();
+        markPreviewEditorTourSeen();
+        setHasSeenTourBefore(true);
+        onDontShowAgain?.();
+        await finish();
+    }, [finish, onDontShowAgain]);
+
+    const next = useCallback(() => {
+        if (index >= steps.length - 1) return complete();
         const nextIndex = index + 1;
         const nextStep = steps[nextIndex];
         if (nextStep && nextStep.action && nextStep.action !== "none") {
             triggerStepAction(nextStep.action);
         }
         setIndex(nextIndex);
-    };
+    }, [complete, index, steps]);
 
-    const prev = () => setIndex((i) => Math.max(0, i - 1));
+    const handleStartIntro = useCallback(() => {
+        if (!hasSeenTourBefore) {
+            markPreviewEditorTourSeen();
+            setHasSeenTourBefore(true);
+        }
+        next();
+    }, [hasSeenTourBefore, next]);
+
+    const prev = useCallback(() => setIndex((i) => Math.max(0, i - 1)), []);
+
+    useLayoutEffect(() => {
+        if (!running) return;
+
+        const handleKeyDown = (event: KeyboardEvent) => {
+            if (event.key !== " " && event.key !== "Spacebar" && event.code !== "Space") return;
+            if (isDesktop && index === 0) return;
+            event.preventDefault();
+            event.stopPropagation();
+
+            if (index >= steps.length - 1) {
+                void complete();
+                return;
+            }
+
+            next();
+        };
+
+        window.addEventListener("keydown", handleKeyDown, true);
+        document.addEventListener("keydown", handleKeyDown, true);
+        return () => {
+            window.removeEventListener("keydown", handleKeyDown, true);
+            document.removeEventListener("keydown", handleKeyDown, true);
+        };
+    }, [complete, index, next, running, steps.length, isDesktop]);
 
     if (!running) return null;
-
-    // (Enter key behavior already works via native handling; no extra key listener needed)
 
     const step = steps[index];
 
@@ -377,9 +474,54 @@ export function PreviewEditorTour({ startToken = 0, autoStart = true, onEnd }: P
 
     return createPortal(
         <div ref={containerRef} className="fixed inset-0 z-[999999] pointer-events-none">
+            <style jsx global>{`
+                @keyframes kloner-spacebar-press {
+                    0%,
+                    100% {
+                        transform: translateY(0) scale(1);
+                        box-shadow: inset 0 -2px 0 rgba(255, 141, 33, 0.12), 0 10px 22px rgba(255, 141, 33, 0.14);
+                        opacity: 0.78;
+                    }
+                    28% {
+                        transform: translateY(2px) scale(0.995);
+                        box-shadow: inset 0 3px 10px rgba(0, 0, 0, 0.08), 0 4px 10px rgba(0, 0, 0, 0.08);
+                        opacity: 1;
+                    }
+                    42% {
+                        transform: translateY(2px) scale(0.994);
+                        box-shadow: inset 0 3px 10px rgba(0, 0, 0, 0.08), 0 4px 10px rgba(0, 0, 0, 0.08);
+                        opacity: 1;
+                    }
+                    58% {
+                        transform: translateY(0) scale(1);
+                        box-shadow: inset 0 -2px 0 rgba(255, 141, 33, 0.12), 0 10px 22px rgba(255, 141, 33, 0.14);
+                        opacity: 0.82;
+                    }
+                }
+
+                @keyframes kloner-spacebar-glow {
+                    0%,
+                    100% {
+                        opacity: 0.18;
+                        transform: scaleX(0.98);
+                    }
+                    28%,
+                    42% {
+                        opacity: 0.44;
+                        transform: scaleX(1);
+                    }
+                    58% {
+                        opacity: 0.22;
+                        transform: scaleX(0.99);
+                    }
+                }
+            `}</style>
             {/* overlay */}
-            <div className="absolute inset-0 pointer-events-auto" onClick={() => finish(false)} style={{ zIndex: 2147483645 }}>
-                <div className="absolute inset-0 bg-black/44" aria-hidden="true" />
+            <div className="absolute inset-0 pointer-events-auto" style={{ zIndex: 2147483645 }}>
+                <div
+                    className={`absolute inset-0 ${isDesktopIntroStep ? "bg-black/10 backdrop-blur-[6px] backdrop-saturate-125" : "bg-black/44"}`}
+                    aria-hidden="true"
+                />
                 {overlayMask ? (
                     <div
                         aria-hidden="true"
@@ -406,6 +548,8 @@ export function PreviewEditorTour({ startToken = 0, autoStart = true, onEnd }: P
             <div
                 role="dialog"
                 aria-modal="true"
+                tabIndex={-1}
+                ref={dialogRef}
                 style={{
                     top: pos?.top ?? 120,
                     left: pos?.left ?? 40,
@@ -416,43 +560,81 @@ export function PreviewEditorTour({ startToken = 0, autoStart = true, onEnd }: P
             >
                 <div className="flex items-start gap-3">
                     <div className="flex-1">
-                        <h3 className="text-sm font-medium text-ink mb-1">{step.title}</h3>
-                        <p className="text-sm text-black/75 leading-relaxed">{step.content}</p>
+                        <div className="text-xs font-semibold uppercase tracking-[0.12em] text-neutral-500">
+                            Preview tour
+                        </div>
+                        <h3 className="mt-1 text-[1.25rem] leading-tight font-semibold tracking-tight text-neutral-900 sm:text-[1.35rem]">
+                            {step.title}
+                        </h3>
+                        <p className="mt-2 text-sm leading-6 text-neutral-700">{step.content}</p>
                     </div>
                 </div>
 
-                <div className="mt-4 flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-2">
+                {isDesktopIntroStep ? (
+                    <div className="mt-6 flex items-center justify-center gap-4">
+                        {hasSeenTourBefore ? (
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    void handleDontShowAgain();
+                                }}
+                                className="inline-flex items-center text-[11px] font-medium text-neutral-400 underline underline-offset-4 decoration-neutral-300 transition hover:text-neutral-600 hover:decoration-neutral-400"
+                            >
+                                Don&apos;t show again
+                            </button>
+                        ) : null}
+
                         <button
-                            onClick={prev}
-                            disabled={index === 0}
-                            className="px-3 py-1.5 rounded-md text-sm font-semibold border border-black/10 bg-white text-accent pointer-events-auto disabled:opacity-40"
+                            type="button"
+                            data-tour-next
+                            onClick={handleStartIntro}
+                            className="inline-flex w-fit shrink-0 items-center justify-center rounded-full bg-[#FF8D21] px-10 py-3.5 text-base font-semibold text-white shadow-none transition-colors duration-200 ease-out hover:bg-[#d97717] active:translate-y-0 pointer-events-auto"
                         >
-                            Back
-                        </button>
-                        <button
-                            onClick={() => finish(true)}
-                            className="px-3 py-1.5 rounded-md text-sm font-semibold bg-white border border-black/10 text-black/70 pointer-events-auto"
-                        >
-                            Skip
+                            Start
                         </button>
                     </div>
+                ) : (
+                    <div className="mt-4 flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2">
+                            <button
+                                onClick={prev}
+                                disabled={index === 0}
+                                className="px-3 py-1.5 rounded-md text-sm font-semibold border border-black/10 bg-white text-accent pointer-events-auto disabled:opacity-40"
+                                >
+                                    Back
+                            </button>
+                        </div>
 
-                    <div className="flex items-center gap-2">
-                        <div className="text-xs text-black/50 mr-2">{index + 1}/{steps.length}</div>
-                        <button
-                            onClick={next}
-                            className="px-4 py-2 rounded-xl text-sm font-semibold bg-accent text-white shadow-sm pointer-events-auto inline-flex items-center gap-2"
-                        >
-                            <span>{index === steps.length - 1 ? "Done" : "Next"}</span>
-                            {index > 0 && (
-                                <kbd className="bg-black/5 text-xs px-2 py-0.5 rounded" aria-hidden>
-                                    Enter
-                                </kbd>
+                        <div className="flex items-center gap-2">
+                            <div className="text-xs text-black/50 mr-2">{index + 1}/{steps.length}</div>
+                            {index === steps.length - 1 ? (
+                                <button
+                                    type="button"
+                                    data-tour-complete
+                                    onClick={complete}
+                                    className="inline-flex w-fit shrink-0 items-center gap-2 whitespace-nowrap rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-white shadow-sm pointer-events-auto"
+                                >
+                                    <span>Complete</span>
+                                    <kbd className="shrink-0 rounded bg-black/5 px-2 py-0.5 text-xs" aria-hidden>
+                                        Spacebar
+                                    </kbd>
+                                </button>
+                            ) : (
+                                <button
+                                    type="button"
+                                    data-tour-next
+                                    onClick={next}
+                                    className="inline-flex w-fit shrink-0 items-center gap-2 whitespace-nowrap rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-white shadow-sm pointer-events-auto"
+                                >
+                                    <span>Next</span>
+                                    <kbd className="shrink-0 rounded bg-black/5 px-2 py-0.5 text-xs" aria-hidden>
+                                        Spacebar
+                                    </kbd>
+                                </button>
                             )}
-                        </button>
+                        </div>
                     </div>
-                </div>
+                )}
             </div>
         </div>,
         document.body,

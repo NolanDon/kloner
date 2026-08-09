@@ -374,7 +374,7 @@ export async function POST(req: NextRequest) {
               status: "processing",
               stage: "queued",
               progress: 0,
-              title: "Generating website",
+              title: "Finishing touches",
               jobId: acceptedJobId,
               requestId: appResponse.reqId || null,
               archiveZipPath: typeof appData.archiveZipPath === "string" ? appData.archiveZipPath : null,

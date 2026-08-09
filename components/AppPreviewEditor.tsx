@@ -12,7 +12,7 @@ import { useModal } from "@/components/ui/ModalContext";
 import { WorkspaceLoadingPanel } from "./KlonerLoader";
 import { pickPreferredHtmlPath } from "@/src/lib/htmlEntrypoint";
 import { useHtmlDiscoveryFallbackGate } from "@/src/lib/htmlDiscoveryGate";
-import { PreviewEditorTour, TOUR_KEY as PREVIEW_TOUR_STORAGE_KEY, hasSeenPreviewTour } from "./PreviewEditorTour";
+import { PreviewEditorTour, hasPreviewEditorTourDontShowAgain } from "./PreviewEditorTour";
 import { ensureUserImageStorageRoom, IMAGE_STORAGE_LIMIT_BYTES, loadUserImageStorageUsage, uploadUserImageToFirebase } from "@/src/lib/imageStorage";
 
 export type Device = "desktop" | "tablet" | "mobile";
@@ -73,6 +73,7 @@ type Props = {
     initialArchivedPageIds?: string[];
     onArchivedPageIdsChange?: (ids: string[]) => void;
     onClose: () => Promise<void> | void;
+    onRequestExitEditor?: () => Promise<void> | void;
     onExport: (html: string, name?: string, skipBuildFinalExport?: boolean) => Promise<void>;
     draftId?: string;
     isAdmin?: boolean;
@@ -1351,6 +1352,7 @@ function AppPreviewEditorCore({
     initialHtml,
     sourceImage,
     onClose,
+    onRequestExitEditor,
     onExport,
     draftId,
     saveDraft,
@@ -1417,10 +1419,9 @@ function AppPreviewEditorCore({
     const [exportPrompt, setExportPrompt] = useState(false);
     const [showDeployUpgradePaywall, setShowDeployUpgradePaywall] = useState(false);
     const [showAccessUpgradePaywall, setShowAccessUpgradePaywall] = useState(false);
-    const [accessPaywallContext, setAccessPaywallContext] = useState<"panel" | "images" | "toolbar">("panel");
     const shouldShowTour = typeof showTour === "boolean" ? showTour : true;
-    const [hasCompletedPreviewTour, setHasCompletedPreviewTour] = useState(() => hasSeenPreviewTour());
-    const lastAutoPaywallOpenTokenRef = useRef<number>(0);
+    const [hasCompletedPreviewTour, setHasCompletedPreviewTour] = useState(false);
+    const [previewTourDontShowAgain, setPreviewTourDontShowAgain] = useState(() => hasPreviewEditorTourDontShowAgain());
     const [controlsCollapsed, setControlsCollapsed] = useState<boolean>(false);
     const [sidePanelMode, setSidePanelMode] = useState<
         "style" | "meta" | "code" | "ai-library" | "revision-chat"
@@ -1432,21 +1433,7 @@ function AppPreviewEditorCore({
     const [prefetchedAiHistoryLoading, setPrefetchedAiHistoryLoading] = useState<boolean>(false);
     const canUsePremiumImagesTab = userTier === "pro" || userTier === "agency";
     const shouldLockImagesTab = !authLoading && !canUsePremiumImagesTab;
-    const accessPaywallTitle = useMemo(() => {
-        switch (accessPaywallContext) {
-            case "images":
-                return "Unlock Images";
-            case "toolbar":
-                return "Unlock the full editing experience";
-            default:
-                return "Unlock the full editing experience";
-        }
-    }, [accessPaywallContext]);
-
-    const openAccessPaywall = useCallback((context: "panel" | "images" | "toolbar") => {
-        setAccessPaywallContext(context);
-        setShowAccessUpgradePaywall(true);
-    }, []);
+    const accessPaywallTitle = "Unlock your project, keep building";
 
     function normalizeAiEditCreatedAt(raw: any): string {
         if (!raw) return "";
@@ -1566,7 +1553,7 @@ function AppPreviewEditorCore({
 
     const [isDraggingPreview, setIsDraggingPreview] = useState(false);
     const shouldRunPreviewTour = !isCompactLayout && isDevCodeMode && shouldShowTour;
-    const shouldDeferAccessPaywall = shouldRunPreviewTour && !hasCompletedPreviewTour;
+    const shouldAutoOpenAccessPaywallFromTour = shouldRunPreviewTour && previewTourDontShowAgain;
     const shouldLockPreviewPanels =
         (accessLocked || userTier === "free") &&
         !isAdmin &&
@@ -1574,36 +1561,23 @@ function AppPreviewEditorCore({
         (!shouldRunPreviewTour || hasCompletedPreviewTour);
 
     useEffect(() => {
-        if (typeof window === "undefined") return;
-        if (!previewOpenToken) return;
-        if (lastAutoPaywallOpenTokenRef.current === previewOpenToken) return;
-        if (authLoading) return;
+        if (!shouldAutoOpenAccessPaywallFromTour) return;
+        setHasCompletedPreviewTour(true);
+        setShowAccessUpgradePaywall(true);
+    }, [shouldAutoOpenAccessPaywallFromTour]);
 
-        if (!shouldShowTour && (accessLocked || userTier === "free") && !isAdmin && !authLoading) {
-            lastAutoPaywallOpenTokenRef.current = previewOpenToken;
-            openAccessPaywall("panel");
-        }
-    }, [accessLocked, authLoading, isAdmin, openAccessPaywall, previewOpenToken, shouldShowTour, userTier]);
-
-    useEffect(() => {
-        if (authLoading) return;
-        if (!(accessLocked || userTier === "free") || isAdmin) return;
-        if (shouldDeferAccessPaywall) {
-            if (showAccessUpgradePaywall) {
-                setShowAccessUpgradePaywall(false);
-            }
-            return;
-        }
-        if (showAccessUpgradePaywall) return;
-        openAccessPaywall("panel");
-    }, [accessLocked, authLoading, hasCompletedPreviewTour, isAdmin, openAccessPaywall, shouldDeferAccessPaywall, showAccessUpgradePaywall, userTier]);
-
-    const handlePreviewTourEnd = useCallback(() => {
+    const handlePreviewTourExit = useCallback(() => {
         setHasCompletedPreviewTour(true);
         if ((accessLocked || userTier === "free") && !isAdmin) {
-            openAccessPaywall("panel");
+            setShowAccessUpgradePaywall(true);
         }
-    }, [accessLocked, isAdmin, openAccessPaywall, userTier]);
+    }, [accessLocked, isAdmin, userTier]);
+
+    const handlePreviewTourDontShowAgain = useCallback(() => {
+        setPreviewTourDontShowAgain(true);
+        setHasCompletedPreviewTour(true);
+        setShowAccessUpgradePaywall(true);
+    }, []);
 
     // 1) Per-session counters
     const sessionCountersRef = useRef<EditorSessionCounters>({
@@ -1816,12 +1790,6 @@ function AppPreviewEditorCore({
     };
 
     const handleTakePreviewTour = useCallback(() => {
-        try {
-            window.sessionStorage?.removeItem(PREVIEW_TOUR_STORAGE_KEY);
-            window.localStorage?.removeItem(PREVIEW_TOUR_STORAGE_KEY);
-        } catch {
-            // ignore storage failures
-        }
         setHasCompletedPreviewTour(false);
         setPreviewTourStartToken((token) => token + 1);
     }, []);
@@ -5131,11 +5099,12 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
             tabIndex={-1}
             className="h-full w-full bg-white flex flex-col"
         >
-            {shouldRunPreviewTour && !hasCompletedPreviewTour ? (
+            {shouldRunPreviewTour && !hasCompletedPreviewTour && !previewTourDontShowAgain ? (
                 <PreviewEditorTour
                     startToken={previewTourStartToken}
                     autoStart
-                    onEnd={handlePreviewTourEnd}
+                    onComplete={handlePreviewTourExit}
+                    onDontShowAgain={handlePreviewTourDontShowAgain}
                 />
             ) : null}
 
@@ -5472,7 +5441,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                 aria-hidden={!isCompactLayout && !isSidebarOpen}
                             >
                                 {shouldLockPreviewPanels ? (
-                                    <PanelLockOverlay label="Unlock" onClick={() => openAccessPaywall("panel")} />
+                                    <PanelLockOverlay label="Unlock" />
                                 ) : null}
                                 <div className={shouldLockPreviewPanels ? "pointer-events-none select-none blur-[2px] opacity-50" : ""}>
                                 {/* STYLE MODE BODY */}
@@ -6006,7 +5975,6 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                         {shouldLockImagesTab ? (
                                             <PanelLockOverlay
                                                 label="Unlock"
-                                                onClick={() => openAccessPaywall("images")}
                                             />
                                         ) : null}
                                     </div>
@@ -6963,7 +6931,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                             onDockedToggle={() => setRightSidebarHidden((current) => !current)}
                             showDockToggle={showRightSidebarToggle}
                             locked={shouldLockPreviewPanels}
-                            onLockedClick={() => openAccessPaywall("toolbar")}
+                            onLockedClick={undefined}
                         />,
                         document.body,
                     )
@@ -7062,8 +7030,12 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                     : null}
 
                 <WebsitePrePaywall
-                    open={showAccessUpgradePaywall && !shouldDeferAccessPaywall}
+                    open={showAccessUpgradePaywall}
                     onClose={() => {
+                        if (onRequestExitEditor) {
+                            void onRequestExitEditor();
+                            return;
+                        }
                         void onClose();
                     }}
                     onStartCheckout={() => {
@@ -7073,7 +7045,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                     checkoutBusy={exporting}
                     zIndexClassName="z-[30000]"
                     title={accessPaywallTitle}
-                    description="Upgrade to unlock editing, keep your momentum, and turn your changes into a live website."
+                    description="Upgrade to unlock editing, keep your momentum, and turn your changes into a live website with one click."
                     primaryLabel={TRIAL_CTA_LABEL}
                     secondaryLabel="No thanks, exit editor"
                     footerNote="Cancel anytime before renewal."
@@ -7192,6 +7164,7 @@ type AppSourcePreviewEditorProps = {
     onApplyHtml: (path: string, html: string, skipMachineApply?: boolean) => Promise<void>;
     onSelectPath?: (path: string) => void;
     onClose?: () => void;
+    onRequestExitEditor?: () => void;
     appName?: string;
     onRenameSuccess?: (newName: string) => void;
     baseHref?: string;
@@ -7249,6 +7222,7 @@ export default function AppPreviewEditor({
     onApplyHtml,
     onSelectPath,
     onClose,
+    onRequestExitEditor,
     appName,
     onRenameSuccess,
     baseHref,
@@ -7533,6 +7507,7 @@ export default function AppPreviewEditor({
                     initialHtml={selectedHtml}
                     draftId={makeDraftId(appId, activeHtmlPath)}
                     onClose={() => onClose?.()}
+                    onRequestExitEditor={onRequestExitEditor}
                     onExport={handleExport}
                     baseHref={baseHref}
                     viewMode={viewMode}

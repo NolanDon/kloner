@@ -6,7 +6,6 @@ import { useEffect, useMemo, useRef, useState, useCallback, ChangeEvent } from "
 import { motion, AnimatePresence, useDragControls } from "framer-motion";
 import Image from 'next/image'
 import WebsitePrePaywall from "@/components/WebsitePrePaywall";
-import AccessLockBadge from "@/components/editor/AccessLockBadge";
 import { TRIAL_CTA_LABEL } from "@/src/lib/billingAccess";
 import type { UserTier } from "@/src/lib/credits";
 
@@ -661,7 +660,7 @@ import { Camera, Code2, Eye, EyeOff, FileText, Images, Loader2, Maximize2, Messa
 import { compressImageForUpload } from "@/src/lib/clientImageCompression";
 import { EditorSessionCounters, EditorSessionMetrics, EditorSessionUser, ExportAnalyticsUser, recordEditorSessionAnalytics, recordExportAnalytics } from "../../components/analytics";
 import PreviewEditorAgentPanel from "../../components/editor/PreviewEditorAgentPanel";
-import { hasSeenPreviewTour, PreviewEditorTour } from "../../components/PreviewEditorTour";
+import { PreviewEditorTour, hasPreviewEditorTourDontShowAgain } from "../../components/PreviewEditorTour";
 import { injectEditableOverlay } from "@/src/lib/klonerIframeRuntime";
 import { MetaSettings, UploadedAsset } from "../../components/MetaSettings";
 import { AiImageLibraryPanel } from "../../components/AiImageLibraryPanel";
@@ -1148,7 +1147,8 @@ export default function PreviewEditorV2({
     const isAccessLocked = accessLocked && !isAdmin;
     const [showAccessPaywall, setShowAccessPaywall] = useState(false);
     const shouldShowTour = typeof showTour === "boolean" ? showTour : true;
-    const [hasCompletedPreviewTour, setHasCompletedPreviewTour] = useState(() => hasSeenPreviewTour());
+    const [hasCompletedPreviewTour, setHasCompletedPreviewTour] = useState(false);
+    const [previewTourDontShowAgain, setPreviewTourDontShowAgain] = useState(() => hasPreviewEditorTourDontShowAgain());
     const [controlsCollapsed, setControlsCollapsed] = useState<boolean>(false);
     const [sidePanelMode, setSidePanelMode] = useState<
         "style" | "meta" | "code" | "ai-library" | "revision-chat"
@@ -1448,24 +1448,30 @@ export default function PreviewEditorV2({
     const [archivedPageIds, setArchivedPageIds] = useState<string[]>([]);
     const [showPageLayers, setShowPageLayers] = useState(false);
     const shouldRunPreviewTour = !isCompactLayout && shouldShowTour;
-    const shouldDeferAccessPaywall = shouldRunPreviewTour && !hasCompletedPreviewTour;
+    const shouldAutoOpenAccessPaywallFromTour = shouldRunPreviewTour && previewTourDontShowAgain;
 
     useEffect(() => {
-        if (!isAccessLocked) {
-            setShowAccessPaywall(false);
-            return;
-        }
-
-        if (shouldDeferAccessPaywall) {
-            if (showAccessPaywall) {
-                setShowAccessPaywall(false);
-            }
-            return;
-        }
-        if (!showAccessPaywall) {
+        if (!shouldAutoOpenAccessPaywallFromTour) return;
+        setHasCompletedPreviewTour(true);
+        if (isAccessLocked) {
             setShowAccessPaywall(true);
         }
-    }, [hasCompletedPreviewTour, isAccessLocked, shouldDeferAccessPaywall, showAccessPaywall]);
+    }, [isAccessLocked, shouldAutoOpenAccessPaywallFromTour]);
+
+    const handlePreviewTourExit = useCallback(() => {
+        setHasCompletedPreviewTour(true);
+        if (isAccessLocked) {
+            setShowAccessPaywall(true);
+        }
+    }, [isAccessLocked]);
+
+    const handlePreviewTourDontShowAgain = useCallback(() => {
+        setPreviewTourDontShowAgain(true);
+        setHasCompletedPreviewTour(true);
+        if (isAccessLocked) {
+            setShowAccessPaywall(true);
+        }
+    }, [isAccessLocked]);
 
     // inside your component body
     const [isPreviewFullscreen, setIsPreviewFullscreen] = useState(false);
@@ -4652,7 +4658,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
             className="fixed inset-0 z-[9999] bg-black/50"
         >
             <WebsitePrePaywall
-                open={showAccessPaywall && !shouldDeferAccessPaywall}
+                open={showAccessPaywall}
                 onClose={() => {
                     setShowAccessPaywall(false);
                 }}
@@ -4662,15 +4668,18 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                 }}
                 checkoutBusy={exporting}
                 zIndexClassName="z-[9999999999]"
-                title="Start your 7-day free trial to unlock the editor"
+                title="Unlock your project, keep building"
                 description="You can see the website in the background, but editing is locked until you subscribe."
                 primaryLabel={TRIAL_CTA_LABEL}
                 secondaryLabel=""
                 footerNote="Cancel anytime before renewal."
             />
 
-            {shouldRunPreviewTour && !hasCompletedPreviewTour ? (
-                <PreviewEditorTour onEnd={() => setHasCompletedPreviewTour(true)} />
+            {shouldRunPreviewTour && !hasCompletedPreviewTour && !previewTourDontShowAgain ? (
+                <PreviewEditorTour
+                    onComplete={handlePreviewTourExit}
+                    onDontShowAgain={handlePreviewTourDontShowAgain}
+                />
             ) : null}
 
             <div className={`absolute overflow-hidden ${isCompactLayout ? "inset-0 bg-white" : "inset-4"}`}>
@@ -5069,16 +5078,6 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                         exit={isCompactLayout ? { opacity: 0, y: 8 } : { x: -16, opacity: 0 }}
                         transition={{ duration: 0.18, ease: "easeOut" }}
                     >
-                        {isAccessLocked && !showAccessPaywall ? (
-                            <AccessLockBadge
-                                onClick={() => setShowAccessPaywall(true)}
-                                label="Unlock"
-                                hint="Click to unlock"
-                                center
-                                className="rounded-none"
-                            />
-                        ) : null}
-
                         {/* Panel header */}
                         <div className={`flex items-center justify-between px-4 py-3 ${isAccessLocked && !showAccessPaywall ? "blur-[1.5px] opacity-70 pointer-events-none select-none" : ""}`} style={{ backgroundColor: "rgba(255, 141, 33, 0.08)" }}>
                                 <div>

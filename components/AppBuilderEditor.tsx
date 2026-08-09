@@ -189,7 +189,7 @@ const DEPLOY_UPGRADE_PAYWALL_COPY: UpgradePaywallCopy = {
         "Deploy 40+ websites per month",
         "One-click publishing",
         "AI task force to build and design your websites",
-        "Higher queue priority for faster outputs",
+        // "Higher queue priority for faster outputs",
         "24/7 Human support included",
         "Subscriptions starting at only $29.99/mo.",
     ],
@@ -2321,6 +2321,7 @@ export default function AppBuilderEditor({
         } catch {
             // ignore storage failures
         }
+        setShowAccessPaywall(false);
         setBuilderTourStartToken((token) => token + 1);
     }, []);
 
@@ -2561,15 +2562,17 @@ export default function AppBuilderEditor({
     const appBuilderAiMessagesSentRef = useRef<number>(0);
     const appBuilderViewSwitchesRef = useRef<number>(0);
     const previousViewModeRef = useRef<LeftViewMode>("ai");
-    const [hasCompletedBuilderTour, setHasCompletedBuilderTour] = useState(false);
-    const shouldRunBuilderTour = isDev && !isVisualEditorMode && showTour;
+    const builderTrialPromptNotifiedRef = useRef(false);
+    const shouldRunBuilderTour = isDev && !isVisualEditorMode && (showTour || (trialPromptEnabled && trialPromptSessionEligible));
     const shouldLockBuilderEditor = accessLocked || userTier === "free";
-    const showAccessPaywall =
-        shouldLockBuilderEditor &&
+    const shouldShowBuilderTrialPrompt =
+        trialPromptEnabled &&
+        trialPromptSessionEligible &&
         !authLoading &&
         !loading &&
-        isPreviewBootReady &&
-        (!shouldRunBuilderTour || hasCompletedBuilderTour);
+        isPreviewBootReady;
+    const shouldSurfaceAccessPaywall = shouldLockBuilderEditor || shouldShowBuilderTrialPrompt;
+    const [showAccessPaywall, setShowAccessPaywall] = useState(false);
     const previousVisualEditorModeRef = useRef<boolean | null>(null);
     const pendingShareResumeRef = useRef(false);
     const previewActionThrottleRef = useRef<{ refreshAt: number; rebuildAt: number; saveAt: number }>({
@@ -2582,6 +2585,32 @@ export default function AppBuilderEditor({
         [autoPreviewError, previewError, previewIssue, previewIssueDiagnostics, previewIssueFailure],
     );
     const canFixPreviewIssueWithAi = previewIssueFixDecision.eligible;
+
+    const handleBuilderTourExit = useCallback(() => {
+        if (shouldSurfaceAccessPaywall) {
+            setShowAccessPaywall(true);
+        }
+    }, [shouldSurfaceAccessPaywall]);
+
+    useEffect(() => {
+        if (!shouldSurfaceAccessPaywall) {
+            setShowAccessPaywall(false);
+            builderTrialPromptNotifiedRef.current = false;
+        }
+    }, [shouldSurfaceAccessPaywall]);
+
+    useEffect(() => {
+        if (!showAccessPaywall) {
+            builderTrialPromptNotifiedRef.current = false;
+            return;
+        }
+
+        if (!shouldShowBuilderTrialPrompt) return;
+        if (builderTrialPromptNotifiedRef.current) return;
+
+        builderTrialPromptNotifiedRef.current = true;
+        onTrialPromptShown?.(appId);
+    }, [appId, onTrialPromptShown, shouldShowBuilderTrialPrompt, showAccessPaywall]);
 
     useEffect(() => {
         const wasVisual = previousVisualEditorModeRef.current;
@@ -7860,7 +7889,7 @@ export default function AppBuilderEditor({
                                             : 0;
 
                                         return (
-                                            <div key={item.id} className="rounded-xl border border-gray-200 bg-white p-3 space-y-2.5">
+                                            <div key={item.id} className="rounded-xl border border-gray-200 bg-white p-3 space-y-5">
                                                 <div className="flex items-start gap-3">
                                                     <Image
                                                         src={item.previewUrl}
@@ -7970,6 +7999,7 @@ export default function AppBuilderEditor({
                                                     .filter((path) => /\.html?$/i.test(path))
                                                     .sort((a, b) => a.localeCompare(b))}
                                                 onClose={() => { void requestViewModeChange("ai"); }}
+                                                onRequestExitEditor={onClose}
                                                 appName={app?.name}
                                                 onRenameSuccess={(newName) => setApp(prev => prev ? { ...prev, name: newName } : null)}
                                                 baseHref={(protectedPreviewUrl || app?.previewUrl || previewSrc || undefined)}
@@ -8590,9 +8620,7 @@ export default function AppBuilderEditor({
                 {shouldRunBuilderTour ? (
                     <AppBuilderEditorTour
                         startToken={builderTourStartToken}
-                        onEnd={() => {
-                            setHasCompletedBuilderTour(true);
-                        }}
+                        onEnd={handleBuilderTourExit}
                     />
                 ) : null}
 
@@ -8604,8 +8632,8 @@ export default function AppBuilderEditor({
                     }}
                     checkoutBusy={trialCheckoutBusy || localTrialCheckoutBusy}
                     zIndexClassName="z-[9999999999]"
-                    title="Unlock the full editing experience"
-                    description="Upgrade to unlock editing, keep your momentum, and turn your changes into a live website."
+                    title="Unlock your project"
+                    description="Upgrade to unlock editing, keep your momentum, and turn your changes into a live website with one click."
                     primaryLabel={TRIAL_CTA_LABEL}
                     secondaryLabel="No thanks, exit editor"
                     footerNote="Cancel anytime before renewal."

@@ -156,14 +156,14 @@ export function CookieConsentBanner() {
                     <button
                         type="button"
                         onClick={acceptNecessaryCookies}
-                        className="rounded-full bg-[#FF8D21] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:opacity-95"
+                        className="rounded-full bg-[#FF8D21] px-6 py-3 text-md font-semibold text-white shadow-sm transition hover:opacity-95"
                     >
-                        Accept all cookies
+                        Accept all
                     </button>
                     <button
                         type="button"
                         onClick={acceptNecessaryOnlyCookies}
-                        className="shrink-0 whitespace-nowrap text-sm font-medium text-neutral-600 underline decoration-neutral-400 underline-offset-4 transition hover:text-neutral-900"
+                        className="shrink-0 whitespace-nowrap text-xs text-neutral-600 underline decoration-neutral-400 underline-offset-4 transition hover:text-neutral-900"
                     >
                         No, just essential
                     </button>

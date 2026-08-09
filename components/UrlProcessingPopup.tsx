@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { ExternalLink, X } from "lucide-react";
+import { ArrowLeft, ExternalLink, X } from "lucide-react";
 
 type UrlProcessingPopupProps = {
     open: boolean;
@@ -10,6 +10,7 @@ type UrlProcessingPopupProps = {
     message?: string;
     error?: string | null;
     onDismiss?: () => void;
+    onBackToDashboard?: () => void;
     archiveZipUrl?: string | null;
     archiveZipBytes?: number | null;
     stage?: "submitting" | "processing" | "creating" | "finishing" | "ready" | "navigating" | "error";
@@ -57,6 +58,7 @@ export default function UrlProcessingPopup({
     message = "This can take a few minutes.",
     error = null,
     onDismiss,
+    onBackToDashboard,
     archiveZipUrl = null,
     archiveZipBytes = null,
     stage = "processing",
@@ -184,6 +186,20 @@ export default function UrlProcessingPopup({
                         transition={{ duration: 0.45, ease: "easeOut" }}
                     >
                         <div className="flex items-start justify-between gap-4">
+                            {onBackToDashboard ? (
+                                <button
+                                    type="button"
+                                    onClick={onBackToDashboard}
+                                    className="inline-flex h-9 w-9 shrink-0 items-center justify-center text-[#FF8D21] transition hover:opacity-80"
+                                    aria-label="Back to dashboard"
+                                    title="Back to dashboard"
+                                >
+                                    <ArrowLeft className="h-5 w-5" />
+                                </button>
+                            ) : (
+                                <div className="h-9 w-9 shrink-0" aria-hidden="true" />
+                            )}
+
                             <div className="min-w-0 flex-1 pr-4">
                                 <div className="text-[10px] uppercase tracking-[0.24em] text-neutral-400">
                                     {error ? "Error" : stage === "navigating" ? "Opening" : stage === "ready" ? "Ready" : "Working"}
