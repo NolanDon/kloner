@@ -121,7 +121,7 @@ import AppBuilderEditor from "@/components/AppBuilderEditor";
 import WebsitePrePaywall from "@/components/WebsitePrePaywall";
 import { STRIPE_TRIAL_DAYS, TRIAL_CTA_LABEL } from "@/src/lib/billingAccess";
 import { getPublicHttpUrlRejectionReason, validateAndNormalizePublicHttpUrl } from "@/src/lib/publicHttpUrl";
-import { recordAppBuilderSessionAnalytics, recordDeployAnalytics } from "@/components/analytics";
+import { recordDeployAnalytics } from "@/components/analytics";
 
 const VERCEL_INTEGRATION_SLUG =
     process.env.NEXT_PUBLIC_VERCEL_INTEGRATION_SLUG || "kloner";
