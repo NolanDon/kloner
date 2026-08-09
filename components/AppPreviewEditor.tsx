@@ -12,6 +12,7 @@ import { useModal } from "@/components/ui/ModalContext";
 import { WorkspaceLoadingPanel } from "./KlonerLoader";
 import { pickPreferredHtmlPath } from "@/src/lib/htmlEntrypoint";
 import { useHtmlDiscoveryFallbackGate } from "@/src/lib/htmlDiscoveryGate";
+import AccessLockBadge from "./editor/AccessLockBadge";
 import { PreviewEditorTour, hasPreviewEditorTourDontShowAgain } from "./PreviewEditorTour";
 import { ensureUserImageStorageRoom, IMAGE_STORAGE_LIMIT_BYTES, loadUserImageStorageUsage, uploadUserImageToFirebase } from "@/src/lib/imageStorage";
 
@@ -151,24 +152,6 @@ const PREVIEW_SIDEBAR_KEY = "kloner:preview-sidebar-collapsed";
 const PREVIEW_RIGHT_SIDEBAR_KEY = "kloner:preview-right-sidebar-collapsed";
 const PREVIEW_SIDEBAR_OPEN_WIDTH = 300;
 const PREVIEW_SIDEBAR_COLLAPSED_WIDTH = 56;
-
-function PanelLockOverlay({ label = "Unlock", onClick }: { label?: string; onClick?: () => void }) {
-    return (
-        <button
-            type="button"
-            className="absolute inset-0 z-30 flex items-center justify-center rounded-[inherit] bg-white/20 backdrop-blur-[2px]"
-            aria-label="Unlock"
-            onClick={onClick}
-        >
-            {/* <span className="inline-flex items-center gap-2 rounded-full border bg-white border-neutral-200 bg-white/92 px-4 py-2 text-sm font-semibold text-neutral-800 shadow-lg">
-                <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-[rgba(255,141,33,0.12)] text-[#FF8D21]">
-                    <Lock className="h-4 w-4" />
-                </span>
-                <span>{label}</span>
-            </span> */}
-        </button>
-    );
-}
 
 export type SelectionMeta = {
     has: boolean;
@@ -5441,7 +5424,13 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                 aria-hidden={!isCompactLayout && !isSidebarOpen}
                             >
                                 {shouldLockPreviewPanels ? (
-                                    <PanelLockOverlay label="Unlock" />
+                                    <AccessLockBadge
+                                        onClick={() => {}}
+                                        label="Unlock"
+                                        hint="Unlock editing"
+                                        center
+                                        className="rounded-[inherit]"
+                                    />
                                 ) : null}
                                 <div className={shouldLockPreviewPanels ? "pointer-events-none select-none blur-[2px] opacity-50" : ""}>
                                 {/* STYLE MODE BODY */}
@@ -5973,8 +5962,12 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                                             />
                                         </div>
                                         {shouldLockImagesTab ? (
-                                            <PanelLockOverlay
+                                            <AccessLockBadge
+                                                onClick={() => {}}
                                                 label="Unlock"
+                                                hint="Unlock editing"
+                                                center
+                                                className="rounded-[inherit]"
                                             />
                                         ) : null}
                                     </div>
