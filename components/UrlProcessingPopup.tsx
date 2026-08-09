@@ -120,6 +120,7 @@ export default function UrlProcessingPopup({
     const percentLabel = error ? "100%" : `${progress}%`;
     const helperText = error ? error : message;
     const byteLabel = formatBytes(resolvedBytes);
+    const isFinalizedStage = stage === "ready" || stage === "navigating";
     const displayTitle = useMemo(() => {
         if (error) return title || "URL processing failed";
         if (stage === "ready") return "Ready";
@@ -220,11 +221,13 @@ export default function UrlProcessingPopup({
 
                         <div className="mt-5 flex items-start justify-between gap-6">
                             <div className="min-w-0 flex-1">
-                                <div className="flex items-center gap-2" aria-hidden="true">
-                                    <span className={error ? "kloner-dot !animate-none" : "kloner-dot"} />
-                                    <span className={error ? "kloner-dot !animate-none" : "kloner-dot"} />
-                                    <span className={error ? "kloner-dot !animate-none" : "kloner-dot"} />
-                                </div>
+                                {!error && !isFinalizedStage ? (
+                                    <div className="flex items-center gap-2" aria-hidden="true">
+                                        <span className="kloner-dot" />
+                                        <span className="kloner-dot" />
+                                        <span className="kloner-dot" />
+                                    </div>
+                                ) : null}
                                 <div className="mt-3 text-sm font-normal leading-5 tracking-[-0.01em] text-neutral-900">
                                     {verifyDomainMessage ? (
                                         <>
@@ -270,7 +273,7 @@ export default function UrlProcessingPopup({
                             </div>
                         </div>
 
-                        {!error ? (
+                        {!error && !isFinalizedStage ? (
                             <div className="mt-8 h-2 w-full overflow-hidden rounded-full bg-neutral-100">
                                 <div
                                     className="h-full rounded-full bg-[#FF8D21]"

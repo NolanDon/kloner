@@ -221,7 +221,6 @@ export function AppBuilderEditorTour({
 
         if (typeof window === "undefined") return;
         if (startToken <= 0) return;
-        if (hasSeenTour()) return;
 
         setIndex(0);
         setRunning(true);
