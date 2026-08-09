@@ -1536,11 +1536,10 @@ function AppPreviewEditorCore({
 
     const [isDraggingPreview, setIsDraggingPreview] = useState(false);
     const shouldRunPreviewTour = !isCompactLayout && shouldShowTour;
-    const shouldAutoOpenAccessPaywallFromTour = shouldRunPreviewTour && previewTourDontShowAgain;
+    const shouldLockPreviewEditor = (accessLocked || userTier === "free") && !isAdmin && !authLoading;
+    const shouldAutoOpenAccessPaywallFromTour = shouldRunPreviewTour && previewTourDontShowAgain && shouldLockPreviewEditor;
     const shouldLockPreviewPanels =
-        (accessLocked || userTier === "free") &&
-        !isAdmin &&
-        !authLoading &&
+        shouldLockPreviewEditor &&
         (!shouldRunPreviewTour || hasCompletedPreviewTour);
 
     useEffect(() => {
@@ -1551,16 +1550,18 @@ function AppPreviewEditorCore({
 
     const handlePreviewTourExit = useCallback(() => {
         setHasCompletedPreviewTour(true);
-        if ((accessLocked || userTier === "free") && !isAdmin) {
+        if (shouldLockPreviewEditor) {
             setShowAccessUpgradePaywall(true);
         }
-    }, [accessLocked, isAdmin, userTier]);
+    }, [shouldLockPreviewEditor]);
 
     const handlePreviewTourDontShowAgain = useCallback(() => {
         setPreviewTourDontShowAgain(true);
         setHasCompletedPreviewTour(true);
-        setShowAccessUpgradePaywall(true);
-    }, []);
+        if (shouldLockPreviewEditor) {
+            setShowAccessUpgradePaywall(true);
+        }
+    }, [shouldLockPreviewEditor]);
 
     // 1) Per-session counters
     const sessionCountersRef = useRef<EditorSessionCounters>({
