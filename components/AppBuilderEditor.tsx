@@ -8644,7 +8644,6 @@ export default function AppBuilderEditor({
                     open={showDeployUpgradePaywall}
                     onClose={() => setShowDeployUpgradePaywall(false)}
                     onStartCheckout={() => {
-                        setShowDeployUpgradePaywall(false);
                         requestDeployCheckout();
                     }}
                     checkoutBusy={trialCheckoutBusy || localTrialCheckoutBusy}

@@ -6,6 +6,7 @@ import { useEffect, useMemo, useRef, useState, useCallback, ChangeEvent } from "
 import { motion, AnimatePresence, useDragControls } from "framer-motion";
 import Image from 'next/image'
 import WebsitePrePaywall from "@/components/WebsitePrePaywall";
+import { useModal } from "@/components/ui/ModalContext";
 import { TRIAL_CTA_LABEL } from "@/src/lib/billingAccess";
 import type { UserTier } from "@/src/lib/credits";
 
@@ -1130,6 +1131,7 @@ export default function PreviewEditorV2({
     onRequestDeployCheckout,
 }: Props) {
     const { user, userTier, loading: authLoading } = useAuth() as { user: FirebaseUser | null; userTier: UserTier; loading: boolean };
+    const { showAlert } = useModal();
     const isDevCodeMode = process.env.NODE_ENV === "development";
     const [nameHint, setNameHint] = useState<string>("");
     const [version, setVersion] = useState<number>(1);
@@ -1138,6 +1140,7 @@ export default function PreviewEditorV2({
     const [dirty, setDirty] = useState(false);
     const [savingDraft, setSavingDraft] = useState(false);
     const [exporting, setExporting] = useState(false);
+    const [localTrialCheckoutBusy, setLocalTrialCheckoutBusy] = useState(false);
     const [exportNote, setExportNote] = useState<string>("");
     const [applyingPreview, setApplyingPreview] = useState(false);
     const [closing, setClosing] = useState(false);
@@ -1160,6 +1163,61 @@ export default function PreviewEditorV2({
     const [prefetchedAiHistoryLoading, setPrefetchedAiHistoryLoading] = useState<boolean>(false);
     const canUsePremiumImagesTab = userTier === "pro" || userTier === "agency";
     const shouldLockImagesTab = !authLoading && !canUsePremiumImagesTab;
+
+    const startTrialCheckout = useCallback(async () => {
+        if (localTrialCheckoutBusy) return;
+        if (typeof window === "undefined") return;
+
+        setLocalTrialCheckoutBusy(true);
+        try {
+            await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+
+            if (onRequestDeployCheckout) {
+                await Promise.resolve(onRequestDeployCheckout());
+                return;
+            }
+
+            if (!draftId) {
+                void showAlert("We couldn’t determine which project to upgrade. Please reopen the editor and try again.", "Checkout Error");
+                return;
+            }
+
+            const csrf = await ensureSessionAndCsrf().catch(() => null);
+            const res = await fetch("/api/billing/create-checkout-session", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    ...(typeof csrf === "string" && csrf ? { "x-csrf": csrf } : {}),
+                },
+                credentials: "include",
+                cache: "no-store",
+                body: JSON.stringify({
+                    plan: "pro",
+                    returnRenderId: draftId,
+                    returnStep: 3,
+                }),
+            });
+
+            if (res.status === 401) {
+                const next = encodeURIComponent(window.location.pathname + window.location.search);
+                window.location.href = `/login?next=${next}`;
+                return;
+            }
+
+            const data = await res.json().catch(() => ({} as any));
+            if (!res.ok || !data?.url) {
+                void showAlert(data?.error || "Unable to start checkout.", "Checkout Error");
+                return;
+            }
+
+            window.location.href = data.url;
+        } catch (err) {
+            console.error("startTrialCheckout failed", err);
+            void showAlert("Checkout is taking too long. Please try again in a few seconds.", "Checkout Error");
+        } finally {
+            setLocalTrialCheckoutBusy(false);
+        }
+    }, [draftId, localTrialCheckoutBusy, onRequestDeployCheckout, showAlert]);
 
     function normalizeAiEditCreatedAt(raw: any): string {
         if (!raw) return "";
@@ -4663,10 +4721,9 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                     setShowAccessPaywall(false);
                 }}
                 onStartCheckout={() => {
-                    setShowAccessPaywall(false);
-                    void onRequestDeployCheckout?.();
+                    void startTrialCheckout();
                 }}
-                checkoutBusy={exporting}
+                checkoutBusy={exporting || localTrialCheckoutBusy}
                 zIndexClassName="z-[9999999999]"
                 title="Unlock your project, keep building"
                 description="You can see the website in the background, but editing is locked until you subscribe."
@@ -6912,10 +6969,9 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                     open={showDeployUpgradePaywall}
                     onClose={() => setShowDeployUpgradePaywall(false)}
                     onStartCheckout={() => {
-                        setShowDeployUpgradePaywall(false);
-                        void onRequestDeployCheckout?.();
+                        void startTrialCheckout();
                     }}
-                    checkoutBusy={exporting}
+                    checkoutBusy={exporting || localTrialCheckoutBusy}
                     zIndexClassName="z-[30001]"
                     title="Upgrade to publish"
                     description="Publish your website live from the editor. Upgrade to unlock one-click deploy and higher monthly credits."

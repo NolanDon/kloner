@@ -1395,6 +1395,7 @@ function AppPreviewEditorCore({
     const [dirty, setDirty] = useState(false);
     const [savingDraft, setSavingDraft] = useState(false);
     const [exporting, setExporting] = useState(false);
+    const [localTrialCheckoutBusy, setLocalTrialCheckoutBusy] = useState(false);
     const [exportNote, setExportNote] = useState<string>("");
     const [applyingPreview, setApplyingPreview] = useState(false);
     const [closing, setClosing] = useState(false);
@@ -1788,6 +1789,61 @@ function AppPreviewEditorCore({
         previewTourSeededRef.current = true;
         setPreviewTourStartToken((token) => token + 1);
     }, [hasCompletedPreviewTour, viewMode]);
+
+    const startTrialCheckout = useCallback(async () => {
+        if (localTrialCheckoutBusy) return;
+        if (typeof window === "undefined") return;
+
+        setLocalTrialCheckoutBusy(true);
+        try {
+            await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+
+            if (onRequestDeployCheckout) {
+                await Promise.resolve(onRequestDeployCheckout());
+                return;
+            }
+
+            if (!draftId) {
+                void showAlert("We couldn’t determine which project to upgrade. Please reopen the editor and try again.", "Checkout Error");
+                return;
+            }
+
+            const csrf = await ensureSessionAndCsrf().catch(() => null);
+            const res = await fetch("/api/billing/create-checkout-session", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    ...(typeof csrf === "string" && csrf ? { "x-csrf": csrf } : {}),
+                },
+                credentials: "include",
+                cache: "no-store",
+                body: JSON.stringify({
+                    plan: "pro",
+                    returnRenderId: draftId,
+                    returnStep: 3,
+                }),
+            });
+
+            if (res.status === 401) {
+                const next = encodeURIComponent(window.location.pathname + window.location.search);
+                window.location.href = `/login?next=${next}`;
+                return;
+            }
+
+            const data = await res.json().catch(() => ({} as any));
+            if (!res.ok || !data?.url) {
+                void showAlert(data?.error || "Unable to start checkout.", "Checkout Error");
+                return;
+            }
+
+            window.location.href = data.url;
+        } catch (err) {
+            console.error("startTrialCheckout failed", err);
+            void showAlert("Checkout is taking too long. Please try again in a few seconds.", "Checkout Error");
+        } finally {
+            setLocalTrialCheckoutBusy(false);
+        }
+    }, [draftId, localTrialCheckoutBusy, onRequestDeployCheckout, showAlert]);
 
         useEffect(() => {
             if (!isPageDropdownOpen) return;
@@ -7033,10 +7089,9 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                         void onClose();
                     }}
                     onStartCheckout={() => {
-                        setShowAccessUpgradePaywall(false);
-                        void onRequestDeployCheckout?.();
+                        void startTrialCheckout();
                     }}
-                    checkoutBusy={exporting}
+                    checkoutBusy={exporting || localTrialCheckoutBusy}
                     zIndexClassName="z-[30000]"
                     title={accessPaywallTitle}
                     description="Upgrade to unlock editing, keep your momentum, and turn your changes into a live website with one click."
@@ -7050,17 +7105,16 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                     open={showDeployUpgradePaywall}
                     onClose={() => setShowDeployUpgradePaywall(false)}
                     onStartCheckout={() => {
-                        setShowDeployUpgradePaywall(false);
-                        void onRequestDeployCheckout?.();
+                        void startTrialCheckout();
                     }}
-                checkoutBusy={exporting}
-                zIndexClassName="z-[30001]"
-                title="Upgrade to publish"
-                description="Publish your website live from the editor. Upgrade to unlock one-click deploy and higher monthly credits."
-                primaryLabel={TRIAL_CTA_LABEL}
-                secondaryLabel=""
-                footerNote="Cancel anytime before renewal."
-            />
+                    checkoutBusy={exporting || localTrialCheckoutBusy}
+                    zIndexClassName="z-[30001]"
+                    title="Upgrade to publish"
+                    description="Publish your website live from the editor. Upgrade to unlock one-click deploy and higher monthly credits."
+                    primaryLabel={TRIAL_CTA_LABEL}
+                    secondaryLabel=""
+                    footerNote="Cancel anytime before renewal."
+                />
 
                 {exportPrompt && (
                     <div className="fixed inset-0 z-[30000] flex items-center justify-center bg-black/40">
