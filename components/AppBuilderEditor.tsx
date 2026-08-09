@@ -8028,7 +8028,7 @@ export default function AppBuilderEditor({
                                                 isFilesHydrationActive={isFilesHydrationActive}
                                                 deployLocked={deployLocked}
                                                 accessLocked={accessLocked}
-                                                showTour={showTour}
+                                                showTour={false}
                                                 onRequestDeployCheckout={onRequestDeployCheckout}
                                                 showRightSidebarToggle={false}
                                             />

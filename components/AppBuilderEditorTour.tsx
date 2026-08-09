@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 type TourStep = {
     target: string;
@@ -104,10 +104,6 @@ const mobileSteps: TourStep[] = [
     },
 ];
 
-function isDevBuild() {
-    return process.env.NODE_ENV !== "production";
-}
-
 function isChatIntroTarget(target: string | undefined) {
     return target === "[data-tour-chat-panel]" || target === "[data-tour-mobile-prompt]";
 }
@@ -129,7 +125,6 @@ export function AppBuilderEditorTour({
     const [hasSeenTourBefore, setHasSeenTourBefore] = useState(() => hasSeenTour());
     const containerRef = useRef<HTMLDivElement | null>(null);
     const highlightRef = useRef<HTMLDivElement | null>(null);
-    const isDev = useMemo(() => isDevBuild(), []);
     const steps = isMobile ? mobileSteps : desktopSteps;
 
     const broadcastChatHighlightForStep = useCallback((stepIndex: number) => {
@@ -224,7 +219,7 @@ export function AppBuilderEditorTour({
 
         setIndex(0);
         setRunning(true);
-    }, [enabled, isDev, startToken]);
+    }, [enabled, startToken]);
 
     useEffect(() => {
         if (!running) return;

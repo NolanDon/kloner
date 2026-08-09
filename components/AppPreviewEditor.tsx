@@ -1535,7 +1535,7 @@ function AppPreviewEditorCore({
     const previewDragControls = useDragControls();
 
     const [isDraggingPreview, setIsDraggingPreview] = useState(false);
-    const shouldRunPreviewTour = !isCompactLayout && isDevCodeMode && shouldShowTour;
+    const shouldRunPreviewTour = !isCompactLayout && shouldShowTour;
     const shouldAutoOpenAccessPaywallFromTour = shouldRunPreviewTour && previewTourDontShowAgain;
     const shouldLockPreviewPanels =
         (accessLocked || userTier === "free") &&
