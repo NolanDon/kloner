@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { ArrowLeft, ArrowRight, ExternalLink, X } from "lucide-react";
+import { ArrowRight, ExternalLink, X } from "lucide-react";
 
 type UrlProcessingPopupProps = {
     open: boolean;
@@ -11,7 +11,6 @@ type UrlProcessingPopupProps = {
     error?: string | null;
     attemptLabel?: string | null;
     onDismiss?: () => void;
-    onBackToDashboard?: () => void;
     onPrimaryAction?: () => void;
     primaryActionLabel?: string | null;
     archiveZipBytes?: number | null;
@@ -61,7 +60,6 @@ export default function UrlProcessingPopup({
     error = null,
     attemptLabel = null,
     onDismiss,
-    onBackToDashboard,
     onPrimaryAction,
     primaryActionLabel = null,
     archiveZipBytes = null,
@@ -152,28 +150,14 @@ export default function UrlProcessingPopup({
                     aria-label="URL processing"
                 >
                     <motion.div
-                        className="flex w-full max-w-4xl flex-col justify-center"
+                        className="relative flex w-full max-w-4xl flex-col justify-center"
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: 10 }}
                         transition={{ duration: 0.45, ease: "easeOut" }}
                     >
-                        <div className="flex items-start justify-between gap-4">
-                            {onBackToDashboard ? (
-                                <button
-                                    type="button"
-                                    onClick={onBackToDashboard}
-                                    className="inline-flex h-9 w-9 shrink-0 items-center justify-center text-[#FF8D21] transition hover:opacity-80"
-                                    aria-label="Back to dashboard"
-                                    title="Back to dashboard"
-                                >
-                                    <ArrowLeft className="h-5 w-5" />
-                                </button>
-                            ) : (
-                                <div className="h-9 w-9 shrink-0" aria-hidden="true" />
-                            )}
-
-                            <div className="min-w-0 flex-1 pr-4">
+                        <div className="grid grid-cols-[minmax(0,1fr),auto] items-start gap-4">
+                            <div className="min-w-0 text-center">
                                 <div className="text-[10px] uppercase tracking-[0.24em] text-neutral-400">
                                     {error ? "Error" : stage === "navigating" ? "Opening" : stage === "ready" ? "Ready" : "Working"}
                                 </div>
@@ -198,83 +182,89 @@ export default function UrlProcessingPopup({
                                     <button
                                         type="button"
                                         onClick={onDismiss}
-                                        className="mb-2 inline-flex h-8 w-8 items-center justify-center self-end text-neutral-600 transition hover:text-neutral-950"
-                                        aria-label={error ? "Close and stop scan" : "Stop scan"}
-                                        title={error ? "Close and stop scan" : "Stop scan"}
+                                        className="inline-flex h-8 w-8 items-center justify-center self-end text-neutral-600 transition hover:text-neutral-950"
+                                        aria-label="Exit to dashboard"
+                                        title="Exit to dashboard"
                                     >
                                         <X className="h-5 w-5" />
                                     </button>
                                 ) : null}
-                                <motion.div
-                                    className="text-[11px] font-normal tracking-[0.18em] text-neutral-500"
-                                    initial={{ opacity: 0, y: -2 }}
-                                    animate={{ opacity: 1, y: 0 }}
-                                    transition={{ duration: 0.18 }}
-                                >
-                                    {percentLabel}
-                                </motion.div>
-                                <div className={`mt-1 text-[10px] tracking-[0.12em] ${!error && byteLabel ? "text-neutral-400" : "invisible"}`}>
-                                    {byteLabel || "0 KB"}
-                                </div>
                             </div>
                         </div>
 
-                        <div className="mt-5 flex items-start justify-between gap-6">
-                            <div className="min-w-0 flex-1">
-                                {!error && !isFinalizedStage ? (
-                                    <div className="flex items-center gap-2" aria-hidden="true">
-                                        <span className="kloner-dot" />
-                                        <span className="kloner-dot" />
-                                        <span className="kloner-dot" />
-                                    </div>
-                                ) : null}
-                                <div className="mt-3 text-sm font-normal leading-5 tracking-[-0.01em] text-neutral-900">
-                                    {verifyDomainMessage ? (
-                                        <>
-                                            {verifyDomainMessage.prefix}
-                                            <a
-                                                href={`https://${verifyDomainMessage.domain}`}
-                                                target="_blank"
-                                                rel="noreferrer noopener"
-                                                className="inline-flex items-center gap-1 font-semibold underline decoration-current underline-offset-2 transition hover:text-neutral-700"
-                                            >
-                                                {verifyDomainMessage.domain}
-                                                <ExternalLink className="h-3.5 w-3.5" />
-                                            </a>
-                                            {verifyDomainMessage.suffix ? ` ${verifyDomainMessage.suffix}` : ""}
-                                        </>
-                                    ) : (
-                                        helperText
-                                    )}
-                                </div>
-                                {attemptLabel ? (
-                                    <div className="mt-2 text-[11px] font-medium tracking-[0.06em] text-neutral-500">
-                                        {attemptLabel}
-                                    </div>
-                                ) : null}
-                            </div>
-
-                            <div className="flex min-h-[3.25rem] items-start justify-end pt-1">
-                                {onPrimaryAction && primaryActionLabel ? (
-                                    <button
-                                        type="button"
-                                        onClick={onPrimaryAction}
-                                        className="inline-flex min-h-[3.25rem] items-center justify-center gap-2 rounded-full bg-[#FF8D21] px-5 py-2.5 text-sm font-semibold text-white shadow-[0_12px_30px_rgba(255,141,33,0.22)] transition hover:opacity-95"
-                                    >
-                                        {primaryActionLabel}
-                                        <ArrowRight className="h-4 w-4" />
-                                    </button>
+                        <div className="relative mt-20 flex flex-col gap-3">
+                            <div className="w-full max-w-full overflow-hidden text-ellipsis whitespace-nowrap text-sm font-normal leading-5 tracking-[-0.01em] text-neutral-900">
+                                {verifyDomainMessage ? (
+                                    <>
+                                        {verifyDomainMessage.prefix}
+                                        <a
+                                            href={`https://${verifyDomainMessage.domain}`}
+                                            target="_blank"
+                                            rel="noreferrer noopener"
+                                            className="inline-flex items-center gap-1 font-semibold underline decoration-current underline-offset-2 transition hover:text-neutral-700"
+                                        >
+                                            {verifyDomainMessage.domain}
+                                            <ExternalLink className="h-3.5 w-3.5" />
+                                        </a>
+                                        {verifyDomainMessage.suffix ? ` ${verifyDomainMessage.suffix}` : ""}
+                                    </>
                                 ) : (
-                                    <div
-                                        className="min-h-[3.25rem] w-[12.5rem]"
-                                        aria-hidden="true"
-                                    />
+                                    helperText
                                 )}
                             </div>
+                            {attemptLabel ? (
+                                <div className="w-full max-w-full overflow-hidden text-ellipsis whitespace-nowrap text-[11px] font-medium tracking-[0.06em] text-neutral-500">
+                                    {attemptLabel}
+                                </div>
+                            ) : null}
+
+                            {!error ? (
+                                <div className="flex items-start justify-between gap-4">
+                                    <div className="min-w-0">
+                                        <div className="flex items-center gap-2" aria-hidden="true">
+                                            {!isFinalizedStage ? (
+                                                <>
+                                                    <span className="kloner-dot" />
+                                                    <span className="kloner-dot" />
+                                                    <span className="kloner-dot" />
+                                                </>
+                                            ) : (
+                                                <span className="h-3 w-10" aria-hidden="true" />
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    <div className="flex min-h-[3.25rem] items-end justify-end text-right">
+                                        {onPrimaryAction && primaryActionLabel ? (
+                                            <button
+                                                type="button"
+                                                onClick={onPrimaryAction}
+                                                className="inline-flex min-h-[3.25rem] items-center justify-center gap-2 rounded-full bg-[#FF8D21] px-5 py-2.5 text-sm font-semibold text-white shadow-[0_12px_30px_rgba(255,141,33,0.22)] transition hover:opacity-95"
+                                            >
+                                                {primaryActionLabel}
+                                                <ArrowRight className="h-4 w-4" />
+                                            </button>
+                                        ) : null}
+                                        <div className="ml-auto flex flex-col items-end gap-0.5">
+                                            <motion.div
+                                                className="text-[11px] font-normal tracking-[0.18em] text-neutral-500"
+                                                initial={{ opacity: 0, y: -2 }}
+                                                animate={{ opacity: 1, y: 0 }}
+                                                transition={{ duration: 0.18 }}
+                                            >
+                                                {percentLabel}
+                                            </motion.div>
+                                            <div className={`text-[10px] tracking-[0.12em] ${byteLabel ? "text-neutral-400" : "invisible"}`}>
+                                                {byteLabel || "0 KB"}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            ) : null}
                         </div>
 
-                        {!error && !isFinalizedStage ? (
-                            <div className="mt-8 h-2 w-full overflow-hidden rounded-full bg-neutral-100">
+                        {!error ? (
+                            <div className="mt-4 h-2 w-full overflow-hidden rounded-full bg-neutral-100">
                                 <div
                                     className="h-full rounded-full bg-[#FF8D21]"
                                     style={{ width: `${progress}%` }}

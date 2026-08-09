@@ -3,7 +3,7 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import { getAdminDb } from "../../../_lib/auth";
 import { requireSessionAndMaybeCsrf } from "../../../_lib/route-guard";
 import { assertAppBuilderScope } from "../../../_lib/appBuilderScope";
-import { buildSupportDocsContext, loadSupportDocs } from "@/src/lib/supportRag";
+import { buildSupportDocsContext, buildSupportPolicyContext, loadSupportDocs } from "@/src/lib/supportRag";
 import { resolveGenerateContentModels } from "@/src/lib/geminiModels";
 
 export const runtime = "nodejs";
@@ -29,6 +29,7 @@ function buildAskPrompt(params: {
         "You are the app help assistant for Kloner.",
         "Answer only from the provided support docs and any explicit app context.",
         "If the answer is not in the docs, say you do not know and suggest the user switch to Task mode or ask for a specific change.",
+        "If the question is about exporting, downloading, or extracting source code from Kloner, answer that code exporting is not currently available.",
         currentFile ? `Current file: ${currentFile}` : "Current file: (none)",
         currentFileContent ? `Current file content:\n${currentFileContent}` : "Current file content: (not provided)",
         recentConversation ? `Recent conversation:\n${recentConversation}` : "Recent conversation: (none)",
@@ -60,7 +61,12 @@ export async function POST(req: NextRequest, { params }: any) {
         }
 
         const docs = await loadSupportDocs(db);
-        const contextBlob = buildSupportDocsContext(question, docs);
+        const contextBlob = [
+            buildSupportPolicyContext(question),
+            buildSupportDocsContext(question, docs),
+        ]
+            .filter(Boolean)
+            .join("\n\n---\n\n") || null;
         const currentFile = typeof body?.currentFile === "string" ? body.currentFile.trim() || null : null;
         const currentFileContent = typeof body?.currentFileContent === "string" ? body.currentFileContent : null;
         const recentConversation = typeof body?.recentConversation === "string" ? body.recentConversation : "";

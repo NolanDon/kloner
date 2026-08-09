@@ -106,7 +106,7 @@ const desktopSteps: TourStep[] = [
         title: "Quick tour",
         content: (
             <>
-                Fast tour, minimal suffering. When you&apos;re ready click below, then tap{" "}
+                Fast tour, minimal suffering, we promise. When you&apos;re ready click below, then tap{" "}
                 <kbd className="inline-flex items-center rounded-md border border-black/10 bg-white px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-neutral-700 shadow-sm">
                     spacebar
                 </kbd>{" "}
@@ -561,7 +561,7 @@ export function PreviewEditorTour({ startToken = 0, autoStart = true, onComplete
                 <div className="flex items-start gap-3">
                     <div className="flex-1">
                         <div className="text-xs font-semibold uppercase tracking-[0.12em] text-neutral-500">
-                            Preview tour
+                            Preview editor
                         </div>
                         <h3 className="mt-1 text-[1.25rem] leading-tight font-semibold tracking-tight text-neutral-900 sm:text-[1.35rem]">
                             {step.title}
@@ -590,7 +590,7 @@ export function PreviewEditorTour({ startToken = 0, autoStart = true, onComplete
                             onClick={handleStartIntro}
                             className="inline-flex w-fit shrink-0 items-center justify-center rounded-full bg-[#FF8D21] px-10 py-3.5 text-base font-semibold text-white shadow-none transition-colors duration-200 ease-out hover:bg-[#d97717] active:translate-y-0 pointer-events-auto"
                         >
-                            Start
+                            Start tour
                         </button>
                     </div>
                 ) : (

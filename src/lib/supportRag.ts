@@ -8,6 +8,20 @@ export type SupportDoc = {
 
 export type RankedSupportDoc = SupportDoc & { score: number };
 
+const CODE_EXPORT_HINTS = [
+    /(?:export|exporting|download|downloadable|downloading)\s+(?:the\s+)?(?:code|source|project|repo|repository)/i,
+    /(?:code|source|project|repo|repository)\s+(?:export|exporting|download|downloadable|downloaded)/i,
+    /\bcode export\b/i,
+    /\bexport code\b/i,
+];
+
+const CODE_EXPORT_POLICY_DOC: SupportDoc = {
+    id: "code-export-policy",
+    text:
+        "Kloner does not currently offer code exporting. If a user asks to export, download, or move the source code out of Kloner, answer clearly that code export is not available right now. " +
+        "You can suggest continuing to edit inside Kloner, deploying the app, or asking for help with a specific change instead.",
+};
+
 function tokenize(text: string): string[] {
     return String(text || "")
         .toLowerCase()
@@ -63,11 +77,23 @@ export function rankSupportDocs(question: string, docs: SupportDoc[], queryEmbed
 
 export function buildSupportDocsContext(question: string, docs: SupportDoc[], queryEmbedding?: number[] | null, maxDocs = 3): string | null {
     const top = rankSupportDocs(question, docs, queryEmbedding).filter((doc) => doc.score > 0).slice(0, maxDocs);
-    if (!top.length) return null;
+    const query = String(question || "").trim();
+    const shouldAddCodeExportPolicy = CODE_EXPORT_HINTS.some((pattern) => pattern.test(query));
+    const contextDocs = shouldAddCodeExportPolicy
+        ? [CODE_EXPORT_POLICY_DOC, ...top]
+        : top;
+    if (!contextDocs.length) return null;
 
-    return top
+    return contextDocs
         .map((doc) => `### ${doc.id}\n${doc.text.trim().slice(0, 3000)}`)
         .join("\n\n---\n\n");
+}
+
+export function buildSupportPolicyContext(question: string): string | null {
+    const query = String(question || "").trim();
+    if (!query) return null;
+    if (!CODE_EXPORT_HINTS.some((pattern) => pattern.test(query))) return null;
+    return `### ${CODE_EXPORT_POLICY_DOC.id}\n${CODE_EXPORT_POLICY_DOC.text.trim()}`;
 }
 
 export async function loadSupportDocs(db: FirebaseFirestore.Firestore, collectionName = "support_doc"): Promise<SupportDoc[]> {

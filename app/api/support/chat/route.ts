@@ -4,6 +4,7 @@ import admin from "firebase-admin";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { getAdminDb } from "../../_lib/auth";
 import { captureCriticalEvent, captureException } from "@/lib/observability";
+import { buildSupportPolicyContext } from "@/src/lib/supportRag";
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || "";
 const geminiClient = GEMINI_API_KEY ? new GoogleGenerativeAI(GEMINI_API_KEY) : null;
@@ -601,7 +602,12 @@ export async function POST(req: NextRequest) {
                 return { role, text: data.text as string };
             });
 
-            const contextBlob = await buildContextFromDocs(textRaw);
+    const contextBlob = [
+        buildSupportPolicyContext(textRaw),
+        await buildContextFromDocs(textRaw),
+    ]
+        .filter(Boolean)
+        .join("\n\n---\n\n") || null;
 
             const baseSystem =
                 "You are the support assistant for Kloner, a tool for cloning and editing websites. " +

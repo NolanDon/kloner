@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 type TourStep = {
     target: string;
@@ -248,6 +248,32 @@ export function AppBuilderEditorTour({
         };
     }, [broadcastChatHighlightForStep, index, running, updatePosition]);
 
+    useLayoutEffect(() => {
+        if (!running) return;
+
+        const handleKeyDown = (event: KeyboardEvent) => {
+            if (event.key !== " " && event.key !== "Spacebar" && event.code !== "Space") return;
+            event.preventDefault();
+            event.stopPropagation();
+
+            if (index >= steps.length - 1) {
+                finish();
+                return;
+            }
+
+            const nextIndex = Math.min(steps.length - 1, index + 1);
+            broadcastChatHighlightForStep(nextIndex);
+            setIndex(nextIndex);
+        };
+
+        window.addEventListener("keydown", handleKeyDown, true);
+        document.addEventListener("keydown", handleKeyDown, true);
+        return () => {
+            window.removeEventListener("keydown", handleKeyDown, true);
+            document.removeEventListener("keydown", handleKeyDown, true);
+        };
+    }, [broadcastChatHighlightForStep, finish, index, running, steps.length]);
+
     useEffect(() => {
         if (running || !enabled) return;
         clearHighlight();
@@ -306,14 +332,6 @@ export function AppBuilderEditorTour({
                             >
                                 Skip
                             </button>
-                            <button
-                                type="button"
-                                onClick={() => setIndex((i) => Math.max(0, i - 1))}
-                                disabled={index === 0}
-                                className="rounded-full border border-neutral-300 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-700 hover:bg-neutral-50 disabled:opacity-40"
-                            >
-                                Back
-                            </button>
                         </div>
 
                         <div className="text-xs text-black/50 mr-2">{index + 1}/{steps.length}</div>
@@ -335,7 +353,7 @@ export function AppBuilderEditorTour({
                                 <span>{index >= steps.length - 1 ? "Done" : "Next"}</span>
                                 {!isMobile && index > 0 ? (
                                     <kbd className="bg-black/5 text-xs px-2 py-0.5 rounded" aria-hidden>
-                                        Enter
+                                        Spacebar
                                     </kbd>
                                 ) : null}
                             </button>

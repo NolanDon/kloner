@@ -1,4 +1,4 @@
-import { buildSupportDocsContext, rankSupportDocs } from "./supportRag";
+import { buildSupportDocsContext, buildSupportPolicyContext, rankSupportDocs } from "./supportRag";
 
 describe("supportRag", () => {
     const docs = [
@@ -18,5 +18,11 @@ describe("supportRag", () => {
         expect(context).toContain("### download");
         expect(context).toContain("Downloads are not supported");
         expect(context).not.toContain("### billing");
+    });
+
+    it("adds the export-code policy snippet for export questions", () => {
+        const context = buildSupportPolicyContext("can I export the code from Kloner?");
+        expect(context).toContain("code-export-policy");
+        expect(context).toContain("does not currently offer code exporting");
     });
 });

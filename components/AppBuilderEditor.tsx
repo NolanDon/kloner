@@ -25,7 +25,6 @@ import { useAuth } from "@/src/hooks/useAuth";
 import { useModal } from "@/components/ui/ModalContext";
 import { compressImageForUpload } from "@/src/lib/clientImageCompression";
 import { sanitizeImageName } from "./helpers";
-import { recordAppBuilderSessionAnalytics } from "@/components/analytics";
 import { AnimatePresence, motion } from "framer-motion";
 import { detectProjectFramework, shouldPreserveRuntimeScripts } from "@/src/lib/projectFramework";
 import { normalizePreviewApplyResponse } from "@/src/lib/appEmbeddingsClient";
@@ -2558,9 +2557,7 @@ export default function AppBuilderEditor({
     const [vercelConnectFlow, setVercelConnectFlow] = useState<VercelOAuthFlow>("preview");
     const [generationEver, setGenerationEver] = useState(false);
     const previewIssueFixRequestCooldownRef = useRef<{ fingerprint: string; until: number } | null>(null);
-    const appBuilderSessionStartedAtRef = useRef<number>(Date.now());
     const appBuilderAiMessagesSentRef = useRef<number>(0);
-    const appBuilderViewSwitchesRef = useRef<number>(0);
     const previousViewModeRef = useRef<LeftViewMode>("ai");
     const builderTrialPromptNotifiedRef = useRef(false);
     const shouldRunBuilderTour = !isVisualEditorMode && (showTour || (trialPromptEnabled && trialPromptSessionEligible));
@@ -2919,43 +2916,6 @@ export default function AppBuilderEditor({
     useEffect(() => {
         stagedImagesRef.current = stagedImages;
     }, [stagedImages]);
-
-    useEffect(() => {
-        const previous = previousViewModeRef.current;
-        if (previous !== viewMode) {
-            appBuilderViewSwitchesRef.current += 1;
-            previousViewModeRef.current = viewMode;
-        }
-    }, [viewMode]);
-
-    useEffect(() => {
-        appBuilderSessionStartedAtRef.current = Date.now();
-        return () => {
-            const durationMs = Math.max(0, Date.now() - appBuilderSessionStartedAtRef.current);
-            // Ignore ultra-short mounts (React strict-mode/dev remount jitter).
-            if (durationMs < 1500) return;
-
-            void recordAppBuilderSessionAnalytics(
-                user,
-                appId,
-                durationMs,
-                "close",
-                {
-                    aiUserMessagesSent: appBuilderAiMessagesSentRef.current,
-                    viewSwitchCount: appBuilderViewSwitchesRef.current,
-                },
-                {
-                    supabaseConnected: supabaseConnected === true,
-                    vercelConnected:
-                        !!(app?.vercelProjectId && String(app.vercelProjectId).trim()) ||
-                        !!(app?.productionUrl && String(app.productionUrl).trim()),
-                    stripeConfigured: appHasStripeConfig(app?.files),
-                },
-            ).catch((err) => {
-                console.error("AppBuilderEditor session analytics flush failed", err);
-            });
-        };
-    }, [appId, app?.files, app?.productionUrl, app?.vercelProjectId, supabaseConnected, user]);
 
     useEffect(() => {
         if (viewMode !== "images") return;

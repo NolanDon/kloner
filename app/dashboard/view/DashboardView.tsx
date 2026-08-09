@@ -152,6 +152,7 @@ const AUTOQUEUE_CONSUMED_TTL_MS = 24 * 60 * 60 * 1000;
 const DRAFT_PENDING_MISSING_TTL_MS = 20_000;
 const DRAFT_EDIT_BUTTON_LOCK_MS = 45_000;
 const DRAFT_PROMOTION_SCAN_STORAGE_KEY = "dashboardViewDraftPromotionScanStateV1";
+const URL_PROCESSING_AUTO_CONTINUE_DELAY_MS = 3000;
 const URL_ADD_SUCCESS_MESSAGE = "Your URL has been successfully added!";
 const APP_WIZARD_PROMPT_MAX_CHARS = 2000;
 const FIRST_GEN_TRIAL_OBSERVE_MS = 15 * 1000;
@@ -4412,6 +4413,7 @@ export default function PreviewPage(): JSX.Element {
     } | null>(null);
     const [urlProcessingHandoff, setUrlProcessingHandoff] = useState<DashboardUrlProcessingSession | null>(null);
     const [urlProcessingPopupSuppressed, setUrlProcessingPopupSuppressed] = useState(false);
+    const [urlProcessingContinueFallbackVisible, setUrlProcessingContinueFallbackVisible] = useState(false);
     const [websiteSubmissionPendingUrl, setWebsiteSubmissionPendingUrl] = useState<string | null>(null);
     const [draftAppsLoading, setDraftAppsLoading] = useState(true);
     const [draftAppsInitialLoadComplete, setDraftAppsInitialLoadComplete] = useState(false);
@@ -4460,9 +4462,14 @@ export default function PreviewPage(): JSX.Element {
     const buildFromCollectionRef = useRef<((storageKeys: string[]) => Promise<void>) | null>(null);
     const previousEditorOpenRef = useRef(false);
     const previousAppBuilderOpenRef = useRef(false);
+    const urlProcessingAutoContinueTimerRef = useRef<number | null>(null);
+    const urlProcessingAutoContinueSessionRef = useRef<string | null>(null);
 
     const clearUrlProcessingNavigationTimers = useCallback(() => {
-        // No-op: the editor-open timeout flow was removed in favor of a manual CTA.
+        if (urlProcessingAutoContinueTimerRef.current !== null) {
+            window.clearTimeout(urlProcessingAutoContinueTimerRef.current);
+            urlProcessingAutoContinueTimerRef.current = null;
+        }
     }, []);
 
     const [agentWelcomeContextByAppId, setAgentWelcomeContextByAppId] = useState<
@@ -6940,114 +6947,8 @@ export default function PreviewPage(): JSX.Element {
             };
         });
         setInfo("Opening your editor…");
-        void openAppBuilderPreviewFirstWithCookieGate(appIdToOpen);
-    }, [openAppBuilderPreviewFirstWithCookieGate, pendingCreatedApp?.id, setInfo, urlProcessingHandoff]);
-
-    const handleStopUrlProcessing = useCallback(async () => {
-        const session = urlProcessingHandoff;
-        if (!session) {
-            setUrlProcessingFailure(null);
-            setUrlProcessingHandoff(null);
-            setUrlProcessingPopupSuppressed(false);
-            setPendingCreatedApp(null);
-            setWebsiteSubmissionPendingUrl(null);
-            setErr("");
-            setInfo("");
-            return;
-        }
-
-        const ok = await showConfirm(
-            "Stop this scan? This will delete the draft and remove anything collected so far.",
-            "Stop scan"
-        );
-        if (!ok) return;
-
-        clearUrlProcessingNavigationTimers();
-
-        pendingCreatedAppLaunchRequestedRef.current = null;
-
-        const sessionSourceUrl = String(session.sourceUrl || "").trim();
-        const sessionDraftId = String(session.draftId || "").trim();
-        const sessionDraftAppId = String(session.draftAppId || "").trim();
-
-        if (user && sessionSourceUrl) {
-            try {
-                await purgeTrackedUrlData(user.uid, sessionSourceUrl);
-            } catch (error) {
-                console.warn("[dashboard] failed to purge stopped scan url data", error);
-            }
-        }
-
-        if (sessionDraftId) {
-            try {
-                const csrf = await ensureSessionAndCsrf().catch(() => null);
-                await fetch("/api/private/kloner-draft", {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                        ...(csrf ? { "x-csrf": csrf } : {}),
-                    },
-                    credentials: "include",
-                    body: JSON.stringify({
-                        action: "delete",
-                        draftId: sessionDraftId,
-                    }),
-                });
-            } catch (error) {
-                console.warn("[dashboard] failed to delete stopped scan draft", error);
-            }
-
-            setDraftApps((prev) => prev.filter((item) => item.draftId !== sessionDraftId && item.id !== sessionDraftAppId));
-            setPendingDraftApps((prev) => {
-                const next = { ...prev };
-                delete next[sessionDraftId];
-                return next;
-            });
-            setDraftPromotionScanByDraftId((prev) => {
-                if (!prev[sessionDraftId]) return prev;
-                const next = { ...prev };
-                delete next[sessionDraftId];
-                return next;
-            });
-        }
-
-        if (sessionDraftAppId) {
-            setPendingCreatedApp((prev) => (prev && (prev.id === sessionDraftAppId || prev.id === sessionDraftId) ? null : prev));
-        } else {
-            setPendingCreatedApp(null);
-        }
-
-        setUrlProcessingFailure(null);
-        setUrlProcessingHandoff(null);
-        setUrlProcessingPopupSuppressed(false);
-        setWebsiteSubmissionPendingUrl(null);
-        setErr("");
-        setInfo("");
-        setCurrentAppId(null);
-        setAppBuilderOpen(false);
-        setAppBuilderInitialViewMode("ai");
-        push("Stopped scan and deleted the draft.", "warn");
-    }, [
-        push,
-        purgeTrackedUrlData,
-        clearUrlProcessingNavigationTimers,
-        setAppBuilderInitialViewMode,
-        setAppBuilderOpen,
-        setCurrentAppId,
-        setDraftApps,
-        setDraftPromotionScanByDraftId,
-        setErr,
-        setInfo,
-        setPendingCreatedApp,
-        setPendingDraftApps,
-        setUrlProcessingFailure,
-        setUrlProcessingHandoff,
-        setUrlProcessingPopupSuppressed,
-        setWebsiteSubmissionPendingUrl,
-        showConfirm,
-        urlProcessingHandoff,
-        user,
-    ]);
+        openAppBuilderFromDashboardCard(appIdToOpen);
+    }, [openAppBuilderFromDashboardCard, pendingCreatedApp?.id, setInfo, urlProcessingHandoff]);
 
     const handleReturnToDashboardFromUrlProcessing = useCallback(() => {
         clearUrlProcessingNavigationTimers();
@@ -7056,6 +6957,72 @@ export default function PreviewPage(): JSX.Element {
         router.replace("/dashboard/view", { scroll: false });
         push("Returned to the dashboard. The scan will keep running in the background.", "ok");
     }, [clearUrlProcessingNavigationTimers, push, router]);
+
+    const handleStopUrlProcessing = useCallback(async () => {
+        const session = urlProcessingHandoff;
+        if (!session) {
+            handleReturnToDashboardFromUrlProcessing();
+            return;
+        }
+
+        const ok = await showConfirm(
+            "Exit to the dashboard? The scan will keep running in the background.",
+            "Exit to dashboard"
+        );
+        if (!ok) return;
+
+        clearUrlProcessingNavigationTimers();
+        handleReturnToDashboardFromUrlProcessing();
+    }, [
+        clearUrlProcessingNavigationTimers,
+        handleReturnToDashboardFromUrlProcessing,
+        showConfirm,
+        urlProcessingHandoff,
+    ]);
+
+    useEffect(() => {
+        const sessionAppId = String(urlProcessingHandoff?.appId || "").trim();
+
+        if (!sessionAppId || urlProcessingPopupSuppressed) {
+            clearUrlProcessingNavigationTimers();
+            urlProcessingAutoContinueSessionRef.current = null;
+            setUrlProcessingContinueFallbackVisible(false);
+            return;
+        }
+
+        if (urlProcessingHandoff?.phase !== "ready") {
+            if (urlProcessingAutoContinueSessionRef.current !== sessionAppId) {
+                clearUrlProcessingNavigationTimers();
+                setUrlProcessingContinueFallbackVisible(false);
+            }
+            return;
+        }
+
+        if (urlProcessingAutoContinueSessionRef.current === sessionAppId) {
+            return;
+        }
+
+        clearUrlProcessingNavigationTimers();
+        urlProcessingAutoContinueSessionRef.current = sessionAppId;
+        setUrlProcessingContinueFallbackVisible(false);
+        void handleContinueUrlProcessingEditorOpen();
+        urlProcessingAutoContinueTimerRef.current = window.setTimeout(() => {
+            urlProcessingAutoContinueTimerRef.current = null;
+            setUrlProcessingContinueFallbackVisible(true);
+        }, URL_PROCESSING_AUTO_CONTINUE_DELAY_MS);
+    }, [
+        clearUrlProcessingNavigationTimers,
+        handleContinueUrlProcessingEditorOpen,
+        urlProcessingHandoff?.appId,
+        urlProcessingHandoff?.phase,
+        urlProcessingPopupSuppressed,
+    ]);
+
+    useEffect(() => {
+        return () => {
+            clearUrlProcessingNavigationTimers();
+        };
+    }, [clearUrlProcessingNavigationTimers]);
 
     const urlProcessingPopupSessionKey = urlProcessingHandoff?.appId || urlProcessingFailure?.at || "";
 
@@ -13493,6 +13460,11 @@ export default function PreviewPage(): JSX.Element {
         );
     }, [isDev]);
 
+    const isUrlProcessingRedirecting = Boolean(
+        urlProcessingHandoff?.phase === "ready" ||
+        urlProcessingHandoff?.phase === "navigating"
+    );
+
     const urlProcessingPopupTitle = urlProcessingFailure
         ? "URL processing failed"
         : urlProcessingHandoff?.phase === "error"
@@ -13500,9 +13472,9 @@ export default function PreviewPage(): JSX.Element {
                 ? "Opening editor timed out"
                 : "URL processing failed")
             : urlProcessingHandoff?.phase === "ready"
-                ? "Ready"
+                ? (urlProcessingContinueFallbackVisible ? "Continue to editor" : "Redirecting to editor")
                 : urlProcessingHandoff?.phase === "navigating"
-                    ? "Opening your editor"
+                    ? (urlProcessingContinueFallbackVisible ? "Continue to editor" : "Redirecting to editor")
                     : "Processing your URL";
 
     const urlProcessingPopupMessage = urlProcessingFailure?.message ||
@@ -13510,13 +13482,18 @@ export default function PreviewPage(): JSX.Element {
             ? urlProcessingHandoff.errorMessage || "URL processing failed."
             : null) ||
         (urlProcessingHandoff?.phase === "ready"
-            ? "Your app is ready."
+            ? (urlProcessingContinueFallbackVisible
+                ? "Your app is ready. If nothing happens, continue below."
+                : "Your app is ready. Redirecting now.")
             : urlProcessingHandoff?.phase === "navigating"
-                ? "Opening your editor..."
+                ? (urlProcessingContinueFallbackVisible
+                    ? "If the redirect did not land, continue below."
+                    : "Opening your editor...")
                 : null) ||
         "This can take a few minutes.";
     const shouldShowUrlProcessingContinueAction = Boolean(
-        urlProcessingHandoff?.phase === "ready" &&
+        isUrlProcessingRedirecting &&
+        urlProcessingContinueFallbackVisible &&
         !urlProcessingPopupSuppressed &&
         urlProcessingHandoff?.appId
     );
@@ -13543,7 +13520,6 @@ export default function PreviewPage(): JSX.Element {
                                     : "processing"
                 }
                 onDismiss={handleStopUrlProcessing}
-                onBackToDashboard={handleReturnToDashboardFromUrlProcessing}
                 onPrimaryAction={shouldShowUrlProcessingContinueAction ? handleContinueUrlProcessingEditorOpen : undefined}
                 primaryActionLabel={shouldShowUrlProcessingContinueAction ? "Continue to editor" : null}
             />
