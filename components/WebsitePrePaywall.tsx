@@ -204,7 +204,7 @@ export function WebsitePrePaywall({
                                                         </div>
                                                     </div>
                                                 ) : (
-                                                    <div className="flex h-full min-h-[170px] items-center justify-center sm:min-h-[210px]">
+                                                    <div className="flex h-full min-h-[170px] items-center justify-center px-4 sm:min-h-[210px] sm:px-0">
                                                         <div className="w-full max-w-[440px] rounded-[24px]">
                                                             <div className="mb-4 flex items-center gap-3">
                                                                 <div className="relative h-11 w-11 overflow-hidden rounded-full border border-neutral-200 bg-neutral-100">

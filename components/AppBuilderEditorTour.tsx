@@ -126,6 +126,7 @@ export function AppBuilderEditorTour({
     const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
     const [mask, setMask] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
     const [isMobile, setIsMobile] = useState(false);
+    const [hasSeenTourBefore, setHasSeenTourBefore] = useState(() => hasSeenTour());
     const containerRef = useRef<HTMLDivElement | null>(null);
     const highlightRef = useRef<HTMLDivElement | null>(null);
     const isDev = useMemo(() => isDevBuild(), []);
@@ -222,10 +223,16 @@ export function AppBuilderEditorTour({
         if (startToken <= 0) return;
         if (hasSeenTour()) return;
 
-        markTourSeen();
         setIndex(0);
         setRunning(true);
     }, [enabled, isDev, startToken]);
+
+    useEffect(() => {
+        if (!running) return;
+        if (hasSeenTourBefore) return;
+        setHasSeenTourBefore(true);
+        markTourSeen();
+    }, [hasSeenTourBefore, running]);
 
     useEffect(() => {
         if (!running) return;
@@ -253,6 +260,8 @@ export function AppBuilderEditorTour({
     }, [enabled, running]);
 
     if (!running || !steps[index]) return null;
+
+    const showSkip = hasSeenTourBefore;
 
     return (
         <div ref={containerRef} className="pointer-events-none fixed inset-0 z-[999999]">
@@ -293,24 +302,29 @@ export function AppBuilderEditorTour({
                     <p className="mt-2 text-sm text-neutral-700">{steps[index].content}</p>
 
                     <div className="mt-4 flex items-center justify-between gap-3">
-                        <div className="text-xs text-black/50 mr-2">{index + 1}/{steps.length}</div>
                         <div className="flex items-center gap-2">
                             <button
                                 type="button"
                                 onClick={finish}
-                                className="rounded-full border border-neutral-200 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-600 hover:bg-neutral-50"
+                                className={`text-xs font-semibold text-neutral-500 transition hover:text-neutral-900 ${showSkip ? "" : "pointer-events-none opacity-0"}`}
+                                aria-hidden={!showSkip}
+                                tabIndex={showSkip ? 0 : -1}
                             >
                                 Skip
                             </button>
-                            {index > 0 ? (
-                                <button
-                                    type="button"
-                                    onClick={() => setIndex((i) => Math.max(0, i - 1))}
-                                    className="rounded-full border border-neutral-300 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-700 hover:bg-neutral-50"
-                                >
-                                    Back
-                                </button>
-                            ) : null}
+                            <button
+                                type="button"
+                                onClick={() => setIndex((i) => Math.max(0, i - 1))}
+                                disabled={index === 0}
+                                className="rounded-full border border-neutral-300 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-700 hover:bg-neutral-50 disabled:opacity-40"
+                            >
+                                Back
+                            </button>
+                        </div>
+
+                        <div className="text-xs text-black/50 mr-2">{index + 1}/{steps.length}</div>
+
+                        <div className="flex items-center gap-2">
                             <button
                                 type="button"
                                 onClick={() => {
@@ -325,7 +339,7 @@ export function AppBuilderEditorTour({
                                 className="px-4 py-2 rounded-xl text-sm font-semibold bg-accent text-white shadow-sm pointer-events-auto inline-flex items-center gap-2"
                             >
                                 <span>{index >= steps.length - 1 ? "Done" : "Next"}</span>
-                                {index > 0 ? (
+                                {!isMobile && index > 0 ? (
                                     <kbd className="bg-black/5 text-xs px-2 py-0.5 rounded" aria-hidden>
                                         Enter
                                     </kbd>
