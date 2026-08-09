@@ -85,7 +85,7 @@ export default function UrlProcessingPopup({
         setTick(Date.now());
     }, [open]);
 
-    const isProgressActive = open && !error && stage !== "error";
+    const isProgressActive = open && !error && stage !== "error" && stage !== "ready" && stage !== "navigating";
 
     useEffect(() => {
         if (!isProgressActive) return;
