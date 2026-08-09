@@ -17,6 +17,7 @@ import {
     hasActiveOrTrialingStripeSubscription,
     hasLikelyActivePaidAccess,
 } from "@/app/api/_lib/recoveryOffer";
+import { buildRecoveryOfferEmail } from "@/app/api/_lib/recoveryOfferEmail";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -224,8 +225,10 @@ function hasRecoveryOfferEmail(userData: Record<string, any> | null | undefined)
         if (nested && typeof nested === "object" && !Array.isArray(nested)) {
                 if ((nested as any).exitOffer40RecoveryEmailSentAt) return true;
                 if ((nested as any).exitOffer40RecoveryEmailSessionId) return true;
+                if ((nested as any).winback40RecoveryEmailSentAt) return true;
         }
         if ((userData as any)["offers.exitOffer40RecoveryEmailSentAt"]) return true;
+        if ((userData as any)["offers.winback40RecoveryEmailSentAt"]) return true;
         return false;
 }
 
@@ -249,56 +252,6 @@ async function claimRecoveryOfferEmailOnce(userRef: FirebaseFirestore.DocumentRe
 
                 return true;
         });
-}
-
-function buildRecoveryOfferHtml(args: { name?: string | null; linkUrl: string; unsubUrl: string }) {
-        const safeName = (args.name || "there").trim() || "there";
-        return `<!doctype html>
-<html lang="en">
-<head>
-    <meta charset="utf-8" />
-    <title>Open for a surprise</title>
-</head>
-<body style="margin:0;padding:0;background:#ffffff;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#111827;">
-    <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
-        <tr>
-            <td align="center" style="padding:40px 16px;">
-                <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="max-width:560px;">
-                    <tr>
-                        <td style="font-size:15px;line-height:1.65;">
-                            <p style="margin:0 0 16px 0;">Hey ${safeName},</p>
-                            <p style="margin:0 0 16px 0;">I saw you were close to checkout. If price was the blocker, here’s 40% off your first month.</p>
-                            <p style="margin:0 0 24px 0;">
-                                <a href="${args.linkUrl}" style="display:inline-block;padding:10px 18px;border-radius:8px;background:#111827;color:#ffffff;text-decoration:none;font-weight:600;">Get 40% off now</a>
-                            </p>
-                            <p style="margin:0 0 16px 0;color:#6b7280;font-size:13px;">This is a journey email. <a href="${args.unsubUrl}" style="color:#6b7280;text-decoration:underline;">Unsubscribe from these emails</a>.</p>
-                            <p style="margin:0 0 20px 0;">We’re always here to help get your project started.</p>
-                            <p style="margin:0 0 24px 0;color:#6b7280;">— The Kloner team</p>
-                        </td>
-                    </tr>
-                </table>
-            </td>
-        </tr>
-    </table>
-</body>
-</html>`;
-}
-
-function buildRecoveryOfferText(args: { name?: string | null; linkUrl: string; unsubUrl: string }) {
-        const safeName = (args.name || "there").trim() || "there";
-        return `Hey ${safeName},
-
-I saw you were close to checkout. If price was the blocker, here’s 40% off your first month.
-
-Get 40% off now:
-${args.linkUrl}
-
-This is a journey email. Unsubscribe from these emails:
-${args.unsubUrl}
-
-We’re always here to help get your project started.
-
-— The Kloner team`;
 }
 
 async function sendRecoveryOfferEmail(params: {
@@ -334,13 +287,19 @@ async function sendRecoveryOfferEmail(params: {
         const from = process.env.WELCOME_EMAIL_FROM || RECOVERY_SENDER;
         const linkUrl = makeRecoveryCheckoutUrl({ uid: params.uid, kind: "exit40" });
         const unsubUrl = makeUnsubUrl({ uid: params.uid, kind: "journey" });
+        const offer = buildRecoveryOfferEmail({
+                name: params.name,
+                linkUrl,
+                unsubUrl,
+                variant: "checkout",
+        });
         const resend = getResend();
         const result = await resend.emails.send({
                 from,
                 to: params.email,
-                subject: "Open for a surprise",
-                text: buildRecoveryOfferText({ name: params.name, linkUrl, unsubUrl }),
-                html: buildRecoveryOfferHtml({ name: params.name, linkUrl, unsubUrl }),
+                subject: offer.subject,
+                text: offer.text,
+                html: offer.html,
         });
 
         if (result && typeof result === "object" && "error" in result && (result as any).error) {

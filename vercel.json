@@ -8,6 +8,12 @@
       "maxDuration": 30
     }
   },
+  "crons": [
+    {
+      "path": "/api/private/send-journey-emails",
+      "schedule": "0 14 * * *"
+    }
+  ],
   "env": {
     "BACKEND_URL": "https://tracksite-hub.fly.dev"
   }

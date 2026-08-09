@@ -1,6 +1,11 @@
 import type Stripe from "stripe";
 
 const RECOVERY_OFFER_MIN_INACTIVE_MS = 30 * 60 * 1000;
+const WINBACK_OFFER_MIN_INACTIVE_MS = (() => {
+    const raw = Number.parseInt(process.env.WINBACK_OFFER_MIN_INACTIVE_DAYS || "7", 10);
+    const days = Number.isFinite(raw) && raw > 0 ? raw : 7;
+    return days * 24 * 60 * 60 * 1000;
+})();
 
 function toEpochMs(value: unknown): number | null {
     if (value === null || value === undefined) return null;
@@ -50,6 +55,26 @@ export function getUserLastAppActivityMs(userData: Record<string, any> | null | 
     return null;
 }
 
+export function getUserCreatedAtMs(userData: Record<string, any> | null | undefined): number | null {
+    if (!userData || typeof userData !== "object") return null;
+    return toEpochMs(userData.createdAt);
+}
+
+export function hasSentRecoveryOfferEmail(userData: Record<string, any> | null | undefined): boolean {
+    if (!userData || typeof userData !== "object") return false;
+
+    const offers = (userData as any)?.offers;
+    if (offers && typeof offers === "object" && !Array.isArray(offers)) {
+        if ((offers as any).exitOffer40RecoveryEmailSentAt) return true;
+        if ((offers as any).exitOffer40RecoveryEmailSessionId) return true;
+        if ((offers as any).winback40RecoveryEmailSentAt) return true;
+    }
+
+    if ((userData as any)["offers.exitOffer40RecoveryEmailSentAt"]) return true;
+    if ((userData as any)["offers.winback40RecoveryEmailSentAt"]) return true;
+    return false;
+}
+
 export function canSendRecoveryOfferEmail(
     userData: Record<string, any> | null | undefined,
     nowMs: number = Date.now(),
@@ -65,6 +90,38 @@ export function canSendRecoveryOfferEmail(
     }
 
     return { ok: true, lastActivityMs };
+}
+
+export function canSendWinbackOfferEmail(
+    userData: Record<string, any> | null | undefined,
+    nowMs: number = Date.now(),
+): { ok: boolean; reason?: "unsubscribed" | "active_recently" | "active_subscription" | "too_new" | "already_sent"; lastActivityMs: number | null } {
+    const prefs = (userData?.notificationPrefs || {}) as any;
+    if (prefs?.journeyEmails === false) {
+        return { ok: false, reason: "unsubscribed", lastActivityMs: getUserLastAppActivityMs(userData) };
+    }
+
+    if (hasLikelyActivePaidAccess(userData)) {
+        return { ok: false, reason: "active_subscription", lastActivityMs: getUserLastAppActivityMs(userData) };
+    }
+
+    const lastActivityMs = getUserLastAppActivityMs(userData);
+    const createdAtMs = getUserCreatedAtMs(userData);
+    const anchorMs = lastActivityMs ?? createdAtMs;
+
+    if (anchorMs === null) {
+        return { ok: false, reason: "too_new", lastActivityMs: null };
+    }
+
+    if (nowMs - anchorMs < WINBACK_OFFER_MIN_INACTIVE_MS) {
+        return { ok: false, reason: "too_new", lastActivityMs: anchorMs };
+    }
+
+    if (hasSentRecoveryOfferEmail(userData)) {
+        return { ok: false, reason: "already_sent", lastActivityMs: anchorMs };
+    }
+
+    return { ok: true, lastActivityMs: anchorMs };
 }
 
 export function hasLikelyActivePaidAccess(userData: Record<string, any> | null | undefined): boolean {
