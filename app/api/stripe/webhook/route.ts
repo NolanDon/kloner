@@ -206,8 +206,8 @@ async function sendTrialWelcomeEmail(params: {
                 html: buildTrialWelcomeHtml({ name: params.name, dashboardUrl }),
         });
 
-        if ("error" in result && result.error) {
-                throw new Error(result.error.message || "Email send failed");
+        if (result && typeof result === "object" && "error" in result && (result as any).error) {
+                throw new Error(((result as any).error?.message as string) || "Email send failed");
         }
 
         await userRef.set(
@@ -957,7 +957,10 @@ export async function POST(req: NextRequest) {
                 await applyAiCreditTopupFromCheckoutSession(session);
 
                 const checkoutFlow = cleanStr((session.metadata as any)?.checkoutFlow, 64);
-                if (firebaseUid && checkoutFlow === "app_deploy_trial") {
+                const trialWelcomeEmail = cleanStr((session.metadata as any)?.trialWelcomeEmail, 16);
+                const shouldSendTrialWelcome = !!firebaseUid && (checkoutFlow === "app_deploy_trial" || trialWelcomeEmail === "1");
+
+                if (shouldSendTrialWelcome && firebaseUid) {
                     try {
                         const authUser = await admin.auth().getUser(firebaseUid);
                         const email = authUser.email?.trim() || "";

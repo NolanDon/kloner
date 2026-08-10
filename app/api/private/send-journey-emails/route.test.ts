@@ -169,7 +169,7 @@ describe("GET /api/private/send-journey-emails", () => {
         expect(body.skipped).toBe(3);
         expect(resendSend).toHaveBeenCalledTimes(1);
         const payload = resendSend.mock.calls[0]?.[0];
-        expect(payload.subject).toContain("Still want to build this?");
+        expect(payload.subject).toBe("Still want to build this?");
         expect(String(payload.text)).toContain("Claim 40% off");
         expect(String(payload.text)).toContain("/api/billing/recovery-checkout?t=");
 

@@ -176,6 +176,8 @@ describe("POST /api/billing/create-checkout-session", () => {
 
         // The default checkout includes the 7-day trial for Pro.
         expect(payload.subscription_data?.trial_period_days).toBe(7);
+        expect(payload.metadata?.trialWelcomeEmail).toBe("1");
+        expect(payload.subscription_data?.metadata?.trialWelcomeEmail).toBe("1");
     });
 
     it("prefers STRIPE_PRICE_BASIC_PROD for pro checkout when configured", async () => {

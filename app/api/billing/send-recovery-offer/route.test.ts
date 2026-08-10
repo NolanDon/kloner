@@ -95,7 +95,7 @@ describe("POST /api/billing/send-recovery-offer", () => {
         expect(body.sent).toBe(true);
         expect(resendSend).toHaveBeenCalledTimes(1);
         const payload = resendSend.mock.calls[0]?.[0];
-        expect(payload.subject).toContain("Still want");
+        expect(payload.subject).toBe("A quick note about your checkout");
         expect(String(payload.text)).toContain("/api/billing/recovery-checkout?t=");
         expect(String(payload.text)).toContain("/api/email/unsubscribe?t=");
         const userDoc = store.get("kloner_users/uid_1") || {};

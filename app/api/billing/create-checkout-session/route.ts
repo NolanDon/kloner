@@ -377,6 +377,7 @@ async function handler({ req, uid }: { req: NextRequest; uid: string }) {
         ...(returnAppId ? { returnAppId: String(returnAppId) } : {}),
         ...(returnRenderId ? { returnRenderId: String(returnRenderId) } : {}),
         ...(returnStep ? { returnStep: String(returnStep) } : {}),
+        ...(includeTrial ? { trialWelcomeEmail: "1" } : {}),
         ...(exitOfferRequested ? { checkoutFlow: "recovery_exit40" } : {}),
         ...(isAppDeployTrialSuccess ? { checkoutFlow: "app_deploy_trial" } : {}),
     };

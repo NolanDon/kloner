@@ -184,6 +184,64 @@ describe("POST /api/stripe/webhook", () => {
         expect(linkCustomerToUid).toHaveBeenCalledWith("cus_abc", "uid_abc");
     });
 
+    it("checkout.session.completed sends the trial welcome email when the checkout is trial-eligible", async () => {
+        firestoreStore.set("kloner_users/uid_abc", {});
+
+        const constructEvent = jest.fn(() => ({
+            id: "evt_trial",
+            type: "checkout.session.completed",
+            livemode: false,
+            data: {
+                object: {
+                    id: "cs_trial",
+                    metadata: {
+                        firebaseUid: "uid_abc",
+                        plan: "pro",
+                        trialWelcomeEmail: "1",
+                    },
+                    customer: "cus_trial",
+                },
+            },
+        }));
+
+        jest.doMock("stripe", () => {
+            return {
+                __esModule: true,
+                default: function StripeCtor() {
+                    return {
+                        webhooks: { constructEvent },
+                        invoices: { retrieve: async () => ({}) },
+                    };
+                },
+            };
+        });
+
+        const { POST } = await import("./route");
+
+        const req = {
+            headers: {
+                get: (k: string) => (k === "stripe-signature" ? "sig" : null),
+            },
+            text: async () => "{}",
+        } as any;
+
+        const res: any = await POST(req);
+        const body = await res.json();
+
+        expect(res.status).toBe(200);
+        expect(body.received).toBe(true);
+        expect(resendSend).toHaveBeenCalledTimes(1);
+
+        const payload = resendSend.mock.calls[0]?.[0];
+        expect(payload.subject).toBe("Welcome to your Kloner trial");
+        expect(String(payload.text)).toContain("Your Kloner trial is live");
+        expect(String(payload.text)).toContain("Open your dashboard:");
+
+        const userDoc = firestoreStore.get("kloner_users/uid_abc") || {};
+        expect(userDoc.trialWelcomeEmailSessionId).toBe("cs_trial");
+        expect(userDoc.trialWelcomeEmailSentAt).toBeTruthy();
+    });
+
     it("customer.subscription.updated sets tier to paid tier when status is trialing", async () => {
         const constructEvent = jest.fn(() => ({
             id: "evt_2",
