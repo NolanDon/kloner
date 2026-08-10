@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import Image from "next/image";
 import { notFound } from "next/navigation";
 import NavBar from "@/components/NavBar";
 import Footer from "@/components/Footer";
+import BlogUrlCta from "@/components/blog/BlogUrlCta";
 import Markdown from "@/components/blog/Markdown";
 import {
   getAllBlogPosts,
@@ -17,7 +19,11 @@ export function generateStaticParams() {
   return getAllBlogPosts().map((p) => ({ slug: p.slug }));
 }
 
-export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}): Promise<Metadata> {
   const { slug } = await params;
   const post = getBlogPostBySlug(slug);
   if (!post) return {};
@@ -55,7 +61,38 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   };
 }
 
-export default async function BlogPostPage({ params }: { params: Promise<{ slug: string }> }) {
+function stripLeadingTitle(markdown: string, title: string): string {
+  const input = String(markdown || "");
+  const lines = input.split("\n");
+  const firstContentLine = lines.findIndex((line) => line.trim().length > 0);
+  if (firstContentLine === -1) return input;
+
+  const firstLine = lines[firstContentLine]!.trim();
+  const normalizedTitle = String(title || "")
+    .trim()
+    .toLowerCase();
+  const normalizedHeading = firstLine
+    .replace(/^#{1,6}\s+/, "")
+    .trim()
+    .toLowerCase();
+
+  if (!firstLine.startsWith("#") || normalizedHeading !== normalizedTitle) {
+    return input;
+  }
+
+  const nextLines = [
+    ...lines.slice(0, firstContentLine),
+    ...lines.slice(firstContentLine + 1),
+  ];
+
+  return nextLines.join("\n").replace(/^\s*\n/, "");
+}
+
+export default async function BlogPostPage({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}) {
   const { slug } = await params;
   const post = getBlogPostBySlug(slug);
   if (!post) notFound();
@@ -66,6 +103,8 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
     post.description,
     "Read the guide on Kloner for practical steps, examples, and launch-ready advice.",
   ]);
+  const authorName = "Kloner Editorial";
+  const authorRole = "Written for builders";
 
   const jsonLd = {
     "@context": "https://schema.org",
@@ -91,55 +130,114 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
     },
   };
 
-  const recent = getAllBlogPosts().filter((p) => p.slug !== post.slug).slice(0, 3);
+  const recent = getAllBlogPosts()
+    .filter((p) => p.slug !== post.slug)
+    .slice(0, 3);
 
   return (
     <main className="min-h-screen bg-neutral-50 text-neutral-900">
       <NavBar />
 
-      <section className="pt-28 pb-20 px-4">
-        <div className="mx-auto max-w-3xl">
-          <div className="inline-flex items-center gap-2 rounded-full bg-accent text-neutral-50 px-3 py-1 text-[11px] mb-4">
-            <span>Kloner · Blog</span>
-          </div>
+      <section className="pt-24 pb-20 px-4 sm:px-6 lg:px-8">
+        <div className="mx-auto max-w-5xl">
+          <header className="relative mt-4 overflow-hidden rounded-[2rem] border border-neutral-200 bg-white shadow-sm">
+            <div
+              className="absolute inset-0"
+              aria-hidden
+              style={{
+                background:
+                  "radial-gradient(1200px circle at 30% -20%, rgba(255,141,33,0.14), transparent 55%), linear-gradient(135deg, rgba(255,255,255,0.98), rgba(250,250,249,0.98), rgba(244,244,245,0.94))",
+              }}
+            />
 
-          <header className="rounded-3xl border border-neutral-200 bg-gradient-to-br from-white via-neutral-50 to-neutral-100 px-6 py-6 sm:px-8 sm:py-7 shadow-sm">
-            <div className="flex items-center justify-between gap-4 flex-wrap">
-              <Link href="/blog" className="text-sm font-semibold text-neutral-700 hover:text-neutral-900">
-                ← Back to blog
-              </Link>
+            <div className="relative px-6 py-8 sm:px-8 sm:py-10 lg:px-10">
+              <div className="flex items-start justify-between gap-6 flex-wrap">
+                <Link
+                  href="/blog"
+                  className="text-sm font-medium text-neutral-600 hover:text-neutral-900"
+                >
+                  ← Back to blog
+                </Link>
+              </div>
 
-              <div className="inline-flex items-center gap-2">
-                <span className="rounded-full border border-neutral-200 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-800 shadow-sm">
-                  {post.publishedAt}
-                </span>
-                <span className="rounded-full border border-neutral-200 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-800 shadow-sm">
-                  {minutes} min read
-                </span>
+              <div className="mt-10 max-w-4xl">
+                <div className="flex items-center gap-3">
+                  <div className="relative h-11 w-11 overflow-hidden rounded-full border border-neutral-200 bg-white shadow-sm">
+                    <Image
+                      src="/images/testimonial-avatar.jpg"
+                      alt={authorName}
+                      fill
+                      className="object-cover"
+                    />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-sm font-semibold text-neutral-900">
+                      {authorName}
+                    </div>
+                    <div className="text-xs text-neutral-500">{authorRole}</div>
+                  </div>
+                </div>
+
+                <h1 className="mt-5 text-[32px] tracking-tight text-neutral-900 sm:text-[40px] lg:text-[48px]">
+                  {post.title}
+                </h1>
+                <div className="mt-4 inline-flex flex-wrap items-center gap-2 text-[11px] text-neutral-500">
+                  <span className="rounded-full border border-neutral-200 bg-white px-3 py-1.5 font-medium text-neutral-700 shadow-sm">
+                    {post.publishedAt}
+                  </span>
+                  <span className="rounded-full border border-neutral-200 bg-white px-3 py-1.5 font-medium text-neutral-700 shadow-sm">
+                    {minutes} min read
+                  </span>
+                </div>
+                <p className="mt-4 max-w-3xl text-base leading-7 text-neutral-600 sm:text-lg">
+                  {post.description}
+                </p>
               </div>
             </div>
           </header>
 
-          <article className="mt-6 rounded-3xl border border-black/10 bg-white px-6 py-7 sm:px-8 sm:py-9 shadow-sm">
-            <Markdown markdown={post.markdown} />
+          <div className="mx-auto mt-8 h-px max-w-7xl bg-neutral-200" />
+
+          <div className="mx-auto mt-8 max-w-5xl px-1 sm:px-2 lg:px-4">
+            <BlogUrlCta
+              title="Clone this idea from a URL"
+              description="Paste your website below and Kloner will get you started."
+            />
+          </div>
+
+          <article className="mx-auto mt-8 max-w-5xl px-1 sm:px-2 lg:px-4">
+            <Markdown markdown={stripLeadingTitle(post.markdown, post.title)} />
           </article>
 
+          <div className="mx-auto mt-10 max-w-5xl px-1 sm:px-2 lg:px-4">
+            <BlogUrlCta
+              title="Start your version from a URL"
+              description="If you’ve read this far, you can turn any public reference into a signup-ready project in a few seconds."
+            />
+          </div>
+
           {recent.length ? (
-            <div className="mt-10">
-              <div className="text-sm font-semibold text-neutral-900">Recent posts</div>
-              <div className="mt-4 grid gap-3">
+            <div className="mx-auto mt-16 max-w-7xl">
+              <div className="text-sm font-semibold text-neutral-900">
+                Recent posts
+              </div>
+              <div className="mt-4 grid gap-3 md:grid-cols-3">
                 {recent.map((p) => (
                   <Link
                     key={p.slug}
                     href={`/blog/${p.slug}`}
                     className={[
-                      "group rounded-2xl border border-black/10 bg-white px-4 py-3 shadow-sm",
+                      "group rounded-2xl border border-black/10 bg-white px-4 py-4 shadow-sm",
                       "transition hover:-translate-y-0.5 hover:shadow-md hover:border-[rgba(255,141,33,0.35)]",
                       "focus:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(255,141,33,0.25)] focus-visible:ring-offset-2",
                     ].join(" ")}
                   >
-                    <div className="text-sm font-semibold text-neutral-900">{p.title}</div>
-                    <div className="mt-1 text-xs text-neutral-600">{p.description}</div>
+                    <div className="text-sm font-semibold text-neutral-900">
+                      {p.title}
+                    </div>
+                    <div className="mt-1 text-xs text-neutral-600">
+                      {p.description}
+                    </div>
                   </Link>
                 ))}
               </div>
@@ -150,7 +248,6 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
 
       <script
         type="application/ld+json"
-        // eslint-disable-next-line react/no-danger
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
 

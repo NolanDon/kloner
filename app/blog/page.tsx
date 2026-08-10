@@ -2,7 +2,11 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import NavBar from "@/components/NavBar";
 import Footer from "@/components/Footer";
-import { getAllBlogPosts, getBlogIndexUrl, getReadingTimeMinutes } from "@/lib/blog";
+import {
+  getAllBlogPosts,
+  getBlogIndexUrl,
+  getReadingTimeMinutes,
+} from "@/lib/blog";
 
 export const metadata: Metadata = {
   title: "Blog",
@@ -29,9 +33,12 @@ export default function BlogIndexPage() {
             <div className="rounded-3xl border border-neutral-200 bg-gradient-to-br from-white via-neutral-50 to-neutral-100 px-6 py-7 sm:px-8 sm:py-9 shadow-sm">
               <div className="flex items-start justify-between gap-4 flex-wrap">
                 <div>
-                  <h1 className="text-3xl sm:text-4xl tracking-tight text-neutral-900">Blog</h1>
+                  <h1 className="text-3xl sm:text-4xl tracking-tight text-neutral-900">
+                    Blog
+                  </h1>
                   <p className="mt-1 max-w-2xl text-sm text-neutral-600">
-                    Practical articles on cloning sites responsibly, shipping quick MVPs, and using AI agents to accelerate product work.
+                    Practical articles on cloning sites responsibly, shipping
+                    quick MVPs, and using AI agents to accelerate product work.
                   </p>
                 </div>
 
@@ -84,18 +91,9 @@ export default function BlogIndexPage() {
                     <div className="mt-4 text-[17px] font-semibold tracking-tight text-neutral-900">
                       {p.title}
                     </div>
-                    <p className="mt-2 text-sm text-neutral-600 leading-6">{p.description}</p>
-
-                    <div className="mt-4 flex flex-wrap gap-2">
-                      {p.tags.slice(0, 4).map((t) => (
-                        <span
-                          key={`${p.slug}-${t}`}
-                          className="rounded-full border border-[rgba(255,141,33,0.22)] bg-[rgba(255,141,33,0.08)] px-2.5 py-1 text-[11px] font-medium text-[rgba(255,141,33,1)]"
-                        >
-                          {t}
-                        </span>
-                      ))}
-                    </div>
+                    <p className="mt-2 text-sm text-neutral-600 leading-6">
+                      {p.description}
+                    </p>
                   </div>
                 </Link>
               );

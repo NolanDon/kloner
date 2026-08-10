@@ -150,12 +150,6 @@ export function RightQuickNav() {
                             );
                         })}
                     </nav>
-
-                    <div className="mt-3 rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2">
-                        <p className="text-[10px] text-neutral-600 leading-relaxed">
-                            Each jump triggers a brief highlight on the target section.
-                        </p>
-                    </div>
                 </div>
             </div>
         </aside>
