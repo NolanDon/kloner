@@ -524,7 +524,6 @@ function filesShallowEqualByContentAndTimestamp(
         const av = (a as any)[key];
         const bv = (b as any)[key];
         if (!bv) return false;
-        if (av?.lastModified !== bv?.lastModified) return false;
         if (av?.content !== bv?.content) return false;
     }
     return true;
@@ -2228,11 +2227,7 @@ export default function AppBuilderEditor({
     const [isSharingPreview, setIsSharingPreview] = useState(false);
     const [isPreviewBuilding, setIsPreviewBuilding] = useState(false);
     const [isCustomSidebarOpen, setIsCustomSidebarOpen] = useState(true);
-    const [customPreviewScale, setCustomPreviewScale] = useState<number>(() => {
-        if (typeof window === "undefined") return 0.6;
-        const v = Number(localStorage.getItem("kloner:uiScale"));
-        return Number.isFinite(v) && v >= 0.5 && v <= 1.25 ? v : getResponsiveUiScale(window.innerWidth);
-    });
+    const [customPreviewScale, setCustomPreviewScale] = useState<number>(0.6);
     const [previewPagePath, setPreviewPagePath] = useState<string | null>(null);
     const [previewNavigateToken, setPreviewNavigateToken] = useState(0);
     const [isPageDropdownOpen, setIsPageDropdownOpen] = useState(false);
@@ -2307,6 +2302,16 @@ export default function AppBuilderEditor({
         if (typeof window === "undefined") return;
         localStorage.setItem("kloner:uiScale", String(customPreviewScale));
     }, [customPreviewScale]);
+
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+        const saved = Number(localStorage.getItem("kloner:uiScale"));
+        const next =
+            Number.isFinite(saved) && saved >= 0.5 && saved <= 1.25
+                ? saved
+                : getResponsiveUiScale(window.innerWidth);
+        setCustomPreviewScale(next);
+    }, []);
 
     useEffect(() => {
         if (!appId) return;

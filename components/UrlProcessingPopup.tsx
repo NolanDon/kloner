@@ -115,7 +115,7 @@ export default function UrlProcessingPopup({
         return clamp(Math.round(value * 100), 0, 98);
     }, [open, error, tick, resolvedBytes, stage]);
 
-    const percentLabel = error ? "100%" : `${progress}%`;
+    const percentLabel = progress >= 100 ? null : `${progress}%`;
     const helperText = error ? error : message;
     const byteLabel = formatBytes(resolvedBytes);
     const isFinalizedStage = stage === "ready" || stage === "navigating";
@@ -128,7 +128,7 @@ export default function UrlProcessingPopup({
         if (progress >= 80) return "Preparing editor";
         if (progress >= 50) return "Stitching your site";
         if (progress >= 20) return "Gathering content";
-        return "Processing your URL";
+        return title || "Processing your site";
     }, [error, progress, stage, title]);
     const verifyDomainMessage = useMemo(
         () => (error ? parseVerifyDomainMessage(error) : null),
@@ -165,7 +165,7 @@ export default function UrlProcessingPopup({
                                     <AnimatePresence mode="wait" initial={false}>
                                         <motion.div
                                             key={displayTitle}
-                                            className="absolute inset-0 whitespace-nowrap text-[22px] font-normal leading-tight tracking-[-0.03em] text-neutral-900 sm:text-[26px]"
+                                            className="absolute inset-0 truncate text-[22px] font-normal leading-tight tracking-[-0.03em] text-neutral-900 sm:text-[26px]"
                                             initial={{ opacity: 0 }}
                                             animate={{ opacity: 1 }}
                                             exit={{ opacity: 0 }}
@@ -201,7 +201,7 @@ export default function UrlProcessingPopup({
                                             href={`https://${verifyDomainMessage.domain}`}
                                             target="_blank"
                                             rel="noreferrer noopener"
-                                            className="inline-flex items-center gap-1 font-semibold underline decoration-current underline-offset-2 transition hover:text-neutral-700"
+                                            className="inline-flex items-center gap-1 font-semibold text-[#FF8D21] underline decoration-current underline-offset-2 transition hover:text-[#f47f0b]"
                                         >
                                             {verifyDomainMessage.domain}
                                             <ExternalLink className="h-3.5 w-3.5" />
@@ -239,21 +239,23 @@ export default function UrlProcessingPopup({
                                             <button
                                                 type="button"
                                                 onClick={onPrimaryAction}
-                                                className="inline-flex min-h-[3.25rem] items-center justify-center gap-2 rounded-full bg-[#FF8D21] px-5 py-2.5 text-sm font-semibold text-white shadow-[0_12px_30px_rgba(255,141,33,0.22)] transition hover:opacity-95"
+                                                className="hidden min-h-[3.25rem] items-center justify-center gap-2 rounded-full bg-[#FF8D21] px-5 py-2.5 text-sm font-semibold text-white shadow-[0_12px_30px_rgba(255,141,33,0.22)] transition hover:opacity-95 md:inline-flex"
                                             >
                                                 {primaryActionLabel}
                                                 <ArrowRight className="h-4 w-4" />
                                             </button>
                                         ) : null}
                                         <div className="ml-auto flex flex-col items-end gap-0.5">
-                                            <motion.div
-                                                className="text-[11px] font-normal tracking-[0.18em] text-neutral-500"
-                                                initial={{ opacity: 0, y: -2 }}
-                                                animate={{ opacity: 1, y: 0 }}
-                                                transition={{ duration: 0.18 }}
-                                            >
-                                                {percentLabel}
-                                            </motion.div>
+                                            {percentLabel ? (
+                                                <motion.div
+                                                    className="text-[11px] font-normal tracking-[0.18em] text-neutral-500"
+                                                    initial={{ opacity: 0, y: -2 }}
+                                                    animate={{ opacity: 1, y: 0 }}
+                                                    transition={{ duration: 0.18 }}
+                                                >
+                                                    {percentLabel}
+                                                </motion.div>
+                                            ) : null}
                                             <div className={`text-[10px] tracking-[0.12em] ${byteLabel ? "text-neutral-400" : "invisible"}`}>
                                                 {byteLabel || "0 KB"}
                                             </div>
@@ -269,6 +271,19 @@ export default function UrlProcessingPopup({
                                     className="h-full rounded-full bg-[#FF8D21]"
                                     style={{ width: `${progress}%` }}
                                 />
+                            </div>
+                        ) : null}
+
+                        {onPrimaryAction && primaryActionLabel ? (
+                            <div className="mt-4 md:hidden">
+                                <button
+                                    type="button"
+                                    onClick={onPrimaryAction}
+                                    className="inline-flex min-h-[3.25rem] w-full items-center justify-center gap-2 rounded-full bg-[#FF8D21] px-5 py-2.5 text-sm font-semibold text-white shadow-[0_12px_30px_rgba(255,141,33,0.22)] transition hover:opacity-95"
+                                >
+                                    {primaryActionLabel}
+                                    <ArrowRight className="h-4 w-4" />
+                                </button>
                             </div>
                         ) : null}
                     </motion.div>

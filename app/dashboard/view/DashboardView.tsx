@@ -727,6 +727,25 @@ function normalizeUrlStatus(
     return "unknown";
 }
 
+function formatProcessingUrlTitle(rawUrl: string | null | undefined): string {
+    const cleaned = String(rawUrl || "").trim();
+    if (!cleaned) return "Processing your site";
+
+    try {
+        const parsed = new URL(cleaned);
+        const host = parsed.hostname.replace(/^www\./i, "").trim();
+        if (!host) return "Processing your site";
+        return `Processing ${host}`;
+    } catch {
+        const host = cleaned
+            .replace(/^https?:\/\//i, "")
+            .replace(/^www\./i, "")
+            .split(/[/?#]/)[0]
+            .trim();
+        return host ? `Processing ${host}` : "Processing your site";
+    }
+}
+
 type UrlRescanWarningState = {
     blocking: boolean;
     code: string | null;
@@ -914,14 +933,27 @@ function extractAppCardIssueState(source: any): AppCardIssueState | null {
         archiveHealth?.warningAction,
     ];
     const rawAction = actionCandidates.map((value) => String(value || "").trim()).find(Boolean) || null;
+    const normalizedMessage = rawMessage
+        .toLowerCase()
+        .replace(/[.…]+$/g, "")
+        .trim();
+    const isProgressOnlyMessage =
+        normalizedMessage === "starting scan" ||
+        normalizedMessage === "scanning url" ||
+        normalizedMessage === "scan in progress" ||
+        normalizedMessage === "queued";
 
     const isPureProcessingState =
-        normalizedStatus === "processing" &&
+        (normalizedStatus === "starting" ||
+            normalizedStatus === "processing" ||
+            normalizedStatus === "queued") &&
         (normalizedRecommendedAction === "wait" || !normalizedRecommendedAction) &&
         !source.warningCode &&
         !source.errorCode &&
         !source.errorReason &&
-        source.retryable !== true;
+        source.retryable !== true &&
+        (!rawMessage || isProgressOnlyMessage) &&
+        !rawDetails;
     if (isPureProcessingState) {
         return null;
     }
@@ -4536,9 +4568,10 @@ export default function PreviewPage(): JSX.Element {
         void openAppBuilderWithCookieGate(appId, isMobileViewport ? "ai" : "custom", opts?.forceReload ? { forceReload: true } : undefined);
     }, [isMobileViewport, openAppBuilderWithCookieGate]);
 
-    const openAppBuilderFromDashboardCard = useCallback((appId: string | null) => {
+    const openAppBuilderFromDashboardCard = useCallback((appId: string | null, opts?: { forceReload?: boolean }) => {
         void openAppBuilderWithCookieGate(appId, isMobileViewport ? "ai" : "custom", {
             bypassBlockedUrlGenerationGuard: true,
+            ...(opts?.forceReload ? { forceReload: true } : null),
         });
     }, [isMobileViewport, openAppBuilderWithCookieGate]);
 
@@ -5992,6 +6025,7 @@ export default function PreviewPage(): JSX.Element {
         errorCode?: string | null;
         errorReason?: string | null;
         userMessage?: string | null;
+        message?: string | null;
         retryable?: boolean | null;
         readyForEditor?: boolean | null;
         openable?: boolean | null;
@@ -6031,6 +6065,7 @@ export default function PreviewPage(): JSX.Element {
         warningAction?: string | null;
         errorReason?: string | null;
         userMessage?: string | null;
+        message?: string | null;
         retryable?: boolean | null;
         rescanRequired?: boolean;
     };
@@ -6073,7 +6108,9 @@ export default function PreviewPage(): JSX.Element {
         const errorReason = typeof responseData.errorReason === "string" && responseData.errorReason.trim()
             ? responseData.errorReason.trim()
             : rawReason;
+        const errorMessage = typeof responseData.error === "string" && responseData.error.trim() ? responseData.error.trim() : null;
         const userMessage = typeof responseData.userMessage === "string" && responseData.userMessage.trim() ? responseData.userMessage.trim() : null;
+        const responseMessage = typeof responseData.message === "string" && responseData.message.trim() ? responseData.message.trim() : null;
         const retryable = typeof responseData.retryable === "boolean" ? responseData.retryable : null;
         const isPreviewCreditsExhausted = code === "PREVIEW_CREDITS_EXHAUSTED" || errorReason === "preview_credits_exhausted";
         const archiveNeedsRescan = responseData.archiveHealth?.needsRescan;
@@ -6101,14 +6138,14 @@ export default function PreviewPage(): JSX.Element {
         };
 
         const buildValidationMessage = () => {
-            if (typeof responseData.error === "string" && responseData.error.trim()) return responseData.error.trim();
+            if (errorMessage) return errorMessage;
             if (code === "BLOCKED_URL") return "This URL is blocked for site cloning. Please use a different URL.";
             if (isPreviewCreditsExhausted) return "Monthly preview limit reached for your plan.";
             return "Please check the URL and try again.";
         };
 
         const buildServerMessage = () => {
-            if (typeof responseData.error === "string" && responseData.error.trim()) return responseData.error.trim();
+            if (errorMessage) return errorMessage;
             return "Something went wrong while generating this URL. Please retry.";
         };
 
@@ -6197,6 +6234,7 @@ export default function PreviewPage(): JSX.Element {
                 errorCode: typeof responseData.errorCode === "string" ? responseData.errorCode : null,
                 errorReason,
                 userMessage,
+                message: responseMessage,
                 retryable,
             };
         }
@@ -6222,6 +6260,7 @@ export default function PreviewPage(): JSX.Element {
                 warningAction,
                 errorReason,
                 userMessage,
+                message: errorMessage,
                 retryable,
                 rescanRequired,
             };
@@ -6245,6 +6284,7 @@ export default function PreviewPage(): JSX.Element {
             warningAction,
             errorReason,
             userMessage,
+            message: errorMessage,
             retryable,
             rescanRequired,
         };
@@ -6947,7 +6987,7 @@ export default function PreviewPage(): JSX.Element {
             };
         });
         setInfo("Opening your editor…");
-        openAppBuilderFromDashboardCard(appIdToOpen);
+        openAppBuilderFromDashboardCard(appIdToOpen, { forceReload: true });
     }, [openAppBuilderFromDashboardCard, pendingCreatedApp?.id, setInfo, urlProcessingHandoff]);
 
     const handleReturnToDashboardFromUrlProcessing = useCallback(() => {
@@ -13475,7 +13515,13 @@ export default function PreviewPage(): JSX.Element {
                 ? (urlProcessingContinueFallbackVisible ? "Continue to editor" : "Redirecting to editor")
                 : urlProcessingHandoff?.phase === "navigating"
                     ? (urlProcessingContinueFallbackVisible ? "Continue to editor" : "Redirecting to editor")
-                    : "Processing your URL";
+                    : formatProcessingUrlTitle(
+                        urlProcessingHandoff?.sourceUrl ||
+                        pendingCreatedApp?.sourceUrl ||
+                        websiteSubmissionPendingUrl ||
+                        urlProcessingFailure?.url ||
+                        null,
+                    );
 
     const urlProcessingPopupMessage = urlProcessingFailure?.message ||
         (urlProcessingHandoff?.phase === "error"
@@ -13487,7 +13533,7 @@ export default function PreviewPage(): JSX.Element {
                 : "Your app is ready. Redirecting now.")
             : urlProcessingHandoff?.phase === "navigating"
                 ? (urlProcessingContinueFallbackVisible
-                    ? "If the redirect did not land, continue below."
+                    ? "If you're not redirected, continue below."
                     : "Opening your editor...")
                 : null) ||
         "This can take a few minutes.";

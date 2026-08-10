@@ -1405,7 +1405,7 @@ function AppPreviewEditorCore({
     const [showAccessUpgradePaywall, setShowAccessUpgradePaywall] = useState(false);
     const shouldShowTour = typeof showTour === "boolean" ? showTour : true;
     const [hasCompletedPreviewTour, setHasCompletedPreviewTour] = useState(false);
-    const [previewTourDontShowAgain, setPreviewTourDontShowAgain] = useState(() => hasPreviewEditorTourDontShowAgain());
+    const [previewTourDontShowAgain, setPreviewTourDontShowAgain] = useState(false);
     const [controlsCollapsed, setControlsCollapsed] = useState<boolean>(false);
     const [sidePanelMode, setSidePanelMode] = useState<
         "style" | "meta" | "code" | "ai-library" | "revision-chat"
@@ -1503,33 +1503,9 @@ function AppPreviewEditorCore({
 
     const [aiHistory, setAiHistory] = useState<AiEditSuggestion[]>([]);
     const [historyOpen, setHistoryOpen] = useState(false);
-    const [sidebarHidden, setSidebarHidden] = useState(() => {
-        if (typeof window === "undefined") return IS_MOBILE;
-
-        try {
-            const stored = window.localStorage.getItem(PREVIEW_SIDEBAR_KEY);
-            if (stored === "1") return true;
-            if (stored === "0") return false;
-        } catch {
-            // Ignore storage access issues.
-        }
-
-        return !IS_MOBILE && window.innerHeight < 860;
-    });
-    const [rightSidebarHidden, setRightSidebarHidden] = useState(() => {
-        if (typeof window === "undefined") return false;
-
-        try {
-            const stored = window.localStorage.getItem(PREVIEW_RIGHT_SIDEBAR_KEY);
-            if (stored === "1") return true;
-            if (stored === "0") return false;
-        } catch {
-            // Ignore storage access issues.
-        }
-
-        return false;
-    });
-    const [isCompactLayout, setIsCompactLayout] = useState(IS_MOBILE);
+    const [sidebarHidden, setSidebarHidden] = useState(false);
+    const [rightSidebarHidden, setRightSidebarHidden] = useState(false);
+    const [isCompactLayout, setIsCompactLayout] = useState(false);
     const [mobileTab, setMobileTab] = useState<"preview" | "panel">("preview");
     const [mobileControlsOpen, setMobileControlsOpen] = useState(false);
     // dragging iframe
@@ -1548,6 +1524,39 @@ function AppPreviewEditorCore({
         setHasCompletedPreviewTour(true);
         setShowAccessUpgradePaywall(true);
     }, [shouldAutoOpenAccessPaywallFromTour]);
+
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+
+        try {
+            const stored = window.localStorage.getItem(PREVIEW_SIDEBAR_KEY);
+            if (stored === "1") setSidebarHidden(true);
+            if (stored === "0") setSidebarHidden(false);
+            if (stored == null && window.innerHeight < 860) {
+                setSidebarHidden(true);
+            }
+        } catch {
+            // Ignore storage access issues.
+        }
+    }, []);
+
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+
+        try {
+            const stored = window.localStorage.getItem(PREVIEW_RIGHT_SIDEBAR_KEY);
+            if (stored === "1") setRightSidebarHidden(true);
+            if (stored === "0") setRightSidebarHidden(false);
+        } catch {
+            // Ignore storage access issues.
+        }
+    }, []);
+
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+
+        setPreviewTourDontShowAgain(hasPreviewEditorTourDontShowAgain());
+    }, []);
 
     const handlePreviewTourExit = useCallback(() => {
         setHasCompletedPreviewTour(true);
