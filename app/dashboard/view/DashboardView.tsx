@@ -102,7 +102,6 @@ import { useVercelIntegration } from "@/src/hooks/useVercelIntegration";
 import { archiveRender, filterRendersForBuilder, resolveStorageUrl, useResolvedImg } from "@/src/lib/renders";
 import { archiveApp } from "@/src/lib/apps";
 import { AnimatePresence, motion } from "framer-motion";
-import TrialSuccessCelebration from "../../../components/TrialSuccessCelebration";
 import SuccessConfetti from "../../../components/tools/SuccessConfetti";
 import KlonerLoader from "@/components/KlonerLoader";
 import {
@@ -558,6 +557,8 @@ function isScreenshotCreditLimitResponse(status: number, payload: any): boolean 
 
 function markBillingSuccessShown(): void {
     if (typeof window === "undefined" || typeof document === "undefined") return;
+    const secure = window.location.protocol === "https:" ? "; Secure" : "";
+    document.cookie = `${BILLING_SUCCESS_COOKIE}=${Date.now()}; Path=/; Max-Age=${BILLING_SUCCESS_COOKIE_MAX_AGE_SEC}; SameSite=Lax${secure}`;
 }
 
 function shouldShowTrialPromptForSession(storageKey: string, everyNthSession: number): boolean {
@@ -4154,7 +4155,6 @@ export default function PreviewPage(): JSX.Element {
     const [appBuilderTrialSessionEligible, setAppBuilderTrialSessionEligible] = useState(false);
     const [exitOfferClaimed, setExitOfferClaimed] = useState(false);
     const [, setShowWebsitePrePaywall] = useState(false);
-    const [showTrialSuccessCelebration, setShowTrialSuccessCelebration] = useState(false);
     const [showDeploySuccessConfetti, setShowDeploySuccessConfetti] = useState(false);
     const [showTopupSuccessConfetti, setShowTopupSuccessConfetti] = useState(false);
     const [showRecoveryCheckoutLoader, setShowRecoveryCheckoutLoader] = useState(false);
@@ -5255,7 +5255,6 @@ export default function PreviewPage(): JSX.Element {
 
         if (!hasRecentlyShownBillingSuccess()) {
             markBillingSuccessShown();
-            setShowTrialSuccessCelebration(true);
         }
 
         void (async () => {
@@ -13633,18 +13632,6 @@ export default function PreviewPage(): JSX.Element {
 
                                     <button
                                         type="button"
-                                        onClick={() => {
-                                            setShowDevQuickMenu(false);
-                                            setShowTrialSuccessCelebration(true);
-                                        }}
-                                        className="flex w-full items-center justify-between rounded-2xl border border-neutral-200 bg-white px-3 py-2.5 text-left text-sm font-medium text-neutral-800 transition hover:bg-neutral-50"
-                                    >
-                                        <span>Show trial celebration</span>
-                                        <Sparkles className="h-4 w-4 text-[#FF8D21]" />
-                                    </button>
-
-                                    <button
-                                        type="button"
                                         onClick={showDevHydrationLoader}
                                         className="flex w-full items-center justify-between rounded-2xl border border-neutral-200 bg-white px-3 py-2.5 text-left text-sm font-medium text-neutral-800 transition hover:bg-neutral-50"
                                     >
@@ -15720,10 +15707,6 @@ export default function PreviewPage(): JSX.Element {
                         </div>
                     )
                 }
-                <TrialSuccessCelebration
-                    open={showTrialSuccessCelebration}
-                    onDismiss={() => setShowTrialSuccessCelebration(false)}
-                />
                 <SuccessConfetti
                     open={showDeploySuccessConfetti}
                     title="Your website is live."

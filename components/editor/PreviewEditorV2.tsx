@@ -9,6 +9,7 @@ import WebsitePrePaywall from "@/components/WebsitePrePaywall";
 import { useModal } from "@/components/ui/ModalContext";
 import { TRIAL_CTA_LABEL } from "@/src/lib/billingAccess";
 import type { UserTier } from "@/src/lib/credits";
+import { getResponsiveUiScale } from "@/src/lib/uiScale";
 
 export type Device = "desktop" | "tablet" | "mobile";
 export type ViewMode = "code" | "preview" | "screenshot";
@@ -2025,13 +2026,25 @@ export default function PreviewEditorV2({
     const [uiScale, setUiScale] = useState<number>(() => {
         if (typeof window === "undefined") return (IS_MOBILE ? 1.05 : 0.75)
         const v = Number(localStorage.getItem("kloner:uiScale"));
-        return Number.isFinite(v) && v >= 0.5 && v <= 1.25 ? v : (IS_MOBILE ? 1.05 : 0.75)
+        const responsive = getResponsiveUiScale(window.innerWidth);
+        return Number.isFinite(v) && v >= 0.5 && v <= 1.25 ? Math.max(v, responsive) : responsive
     });
 
     useEffect(() => {
         if (typeof window === "undefined") return;
         localStorage.setItem("kloner:uiScale", String(uiScale));
     }, [uiScale]);
+
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+        const saved = Number(localStorage.getItem("kloner:uiScale"));
+        const responsive = getResponsiveUiScale(window.innerWidth);
+        const next =
+            Number.isFinite(saved) && saved >= 0.5 && saved <= 1.25
+                ? Math.max(saved, responsive)
+                : responsive;
+        setUiScale((prev) => (Math.abs(prev - next) > 0.0001 ? next : prev));
+    }, []);
 
 
     // derive pages from initialHtml once

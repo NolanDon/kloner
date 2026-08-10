@@ -2306,10 +2306,11 @@ export default function AppBuilderEditor({
     useEffect(() => {
         if (typeof window === "undefined") return;
         const saved = Number(localStorage.getItem("kloner:uiScale"));
+        const responsive = getResponsiveUiScale(window.innerWidth);
         const next =
             Number.isFinite(saved) && saved >= 0.5 && saved <= 1.25
-                ? saved
-                : getResponsiveUiScale(window.innerWidth);
+                ? Math.max(saved, responsive)
+                : responsive;
         setCustomPreviewScale(next);
     }, []);
 
@@ -2570,6 +2571,7 @@ export default function AppBuilderEditor({
     const shouldShowBuilderTrialPrompt =
         trialPromptEnabled &&
         trialPromptSessionEligible &&
+        userTier === "free" &&
         !authLoading &&
         !loading &&
         isPreviewBootReady;

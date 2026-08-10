@@ -15,6 +15,7 @@ import { useHtmlDiscoveryFallbackGate } from "@/src/lib/htmlDiscoveryGate";
 import AccessLockBadge from "./editor/AccessLockBadge";
 import { PreviewEditorTour, hasPreviewEditorTourDontShowAgain } from "./PreviewEditorTour";
 import { ensureUserImageStorageRoom, IMAGE_STORAGE_LIMIT_BYTES, loadUserImageStorageUsage, uploadUserImageToFirebase } from "@/src/lib/imageStorage";
+import { getResponsiveUiScale } from "@/src/lib/uiScale";
 
 export type Device = "desktop" | "tablet" | "mobile";
 export type ViewMode = "code" | "preview" | "screenshot";
@@ -2378,12 +2379,25 @@ function AppPreviewEditorCore({
         if (typeof sharedUiScale === "number") return sharedUiScale;
         if (typeof window === "undefined") return 0.55;
         const v = Number(localStorage.getItem("kloner:uiScale"));
-        return Number.isFinite(v) && v >= 0.5 && v <= 1.25 ? v : 0.55
+        const responsive = getResponsiveUiScale(window.innerWidth);
+        return Number.isFinite(v) && v >= 0.5 && v <= 1.25 ? Math.max(v, responsive) : responsive;
     });
 
     useEffect(() => {
         if (typeof sharedUiScale !== "number") return;
         setUiScale((prev) => (Math.abs(prev - sharedUiScale) > 0.0001 ? sharedUiScale : prev));
+    }, [sharedUiScale]);
+
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+        if (typeof sharedUiScale === "number") return;
+        const saved = Number(localStorage.getItem("kloner:uiScale"));
+        const responsive = getResponsiveUiScale(window.innerWidth);
+        const next =
+            Number.isFinite(saved) && saved >= 0.5 && saved <= 1.25
+                ? Math.max(saved, responsive)
+                : responsive;
+        setUiScale((prev) => (Math.abs(prev - next) > 0.0001 ? next : prev));
     }, [sharedUiScale]);
 
     useEffect(() => {
