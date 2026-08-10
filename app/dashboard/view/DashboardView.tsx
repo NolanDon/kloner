@@ -6065,7 +6065,6 @@ export default function PreviewPage(): JSX.Element {
         warningAction?: string | null;
         errorReason?: string | null;
         userMessage?: string | null;
-        message?: string | null;
         retryable?: boolean | null;
         rescanRequired?: boolean;
     };
@@ -6260,7 +6259,6 @@ export default function PreviewPage(): JSX.Element {
                 warningAction,
                 errorReason,
                 userMessage,
-                message: errorMessage,
                 retryable,
                 rescanRequired,
             };
@@ -6284,7 +6282,6 @@ export default function PreviewPage(): JSX.Element {
             warningAction,
             errorReason,
             userMessage,
-            message: errorMessage,
             retryable,
             rescanRequired,
         };
@@ -13519,7 +13516,6 @@ export default function PreviewPage(): JSX.Element {
                         urlProcessingHandoff?.sourceUrl ||
                         pendingCreatedApp?.sourceUrl ||
                         websiteSubmissionPendingUrl ||
-                        urlProcessingFailure?.url ||
                         null,
                     );
 
