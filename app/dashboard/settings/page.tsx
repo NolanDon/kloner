@@ -1256,19 +1256,18 @@ export default function SettingsPage(): JSX.Element {
     ? daysUntilUnixSeconds(endOfAccessSec)
     : null;
 
-  const canCancel =
+  const hasPaidSubscription =
     tier !== "free" &&
     !tierLoading &&
-    !!stripeStatus &&
-    stripeStatus !== "canceled" &&
-    stripeStatus !== "unpaid" &&
-    cancelAtPeriodEnd !== true;
+    (stripeStatus === "active" ||
+      stripeStatus === "trialing" ||
+      !!stripeSubscriptionId);
+
+  const canCancel = hasPaidSubscription && cancelAtPeriodEnd !== true;
 
   const canRenew =
-    !tierLoading &&
     billingState === "trial_cancelled" &&
-    !!stripeSubscriptionId &&
-    cancelAtPeriodEnd === true;
+    !!stripeSubscriptionId;
 
   const showRenewSubscription = canRenew;
   const renewButtonKind = "trial";
@@ -2108,19 +2107,35 @@ export default function SettingsPage(): JSX.Element {
                       View plans
                     </a>
 
-                    <button
-                      type="button"
-                      onClick={openCancelFeedbackPopup}
-                      disabled={!canCancel || cancelBusy}
-                      className="inline-flex items-center gap-1 text-sm font-medium text-neutral-700 hover:text-neutral-900 disabled:opacity-50 disabled:pointer-events-none"
-                    >
-                      {cancelBusy ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        <XCircle className="h-3.5 w-3.5" />
-                      )}
-                      Cancel subscription
-                    </button>
+                    {canCancel ? (
+                      <button
+                        type="button"
+                        onClick={openCancelFeedbackPopup}
+                        disabled={cancelBusy}
+                        className="inline-flex items-center gap-1 text-sm font-medium text-neutral-700 hover:text-neutral-900 disabled:opacity-50 disabled:pointer-events-none"
+                      >
+                        {cancelBusy ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <XCircle className="h-3.5 w-3.5" />
+                        )}
+                        Cancel subscription
+                      </button>
+                    ) : showRenewSubscription ? (
+                      <button
+                        type="button"
+                        onClick={() => void handleRenewSubscription()}
+                        disabled={renewBusy}
+                        className="inline-flex items-center gap-1 text-sm font-medium text-neutral-700 hover:text-neutral-900 disabled:opacity-50 disabled:pointer-events-none"
+                      >
+                        {renewBusy ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <CheckCircle2 className="h-3.5 w-3.5" />
+                        )}
+                        Resume subscription
+                      </button>
+                    ) : null}
 
                     {onTrial && (
                       <p className="max-w-[18rem] text-right text-xs leading-5 text-amber-700 sm:max-w-[20rem]">

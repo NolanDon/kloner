@@ -162,8 +162,6 @@ const CHECKOUT_FETCH_TIMEOUT_MS = 20_000;
 const CHECKOUT_SESSION_FETCH_TIMEOUT_MS = 60_000;
 const APP_BUILDER_COOKIE_CONSENT_KEY = "kloner.appBuilder.necessaryCookiesAccepted.v1";
 const APP_BUILDER_COOKIE_CONSENT_COOKIE = "kloner_app_builder_nc";
-const BILLING_SUCCESS_COOKIE = "kloner_billing_success_seen_v1";
-const BILLING_SUCCESS_COOKIE_MAX_AGE_SEC = 5 * 60;
 
 type DraftPromotionScanState = {
     draftId: string;
@@ -526,19 +524,6 @@ function persistAppBuilderNecessaryCookiesConsent(): void {
     document.cookie = `${APP_BUILDER_COOKIE_CONSENT_COOKIE}=1; Path=/; Max-Age=${60 * 60 * 24 * 365}; SameSite=Lax${secure}`;
 }
 
-function readBillingSuccessSeenAt(): number {
-    const raw = getCookieValueSafe(BILLING_SUCCESS_COOKIE);
-    if (!raw) return 0;
-    const parsed = Number.parseInt(raw, 10);
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
-}
-
-function hasRecentlyShownBillingSuccess(): boolean {
-    const seenAt = readBillingSuccessSeenAt();
-    if (!seenAt) return false;
-    return Date.now() - seenAt < BILLING_SUCCESS_COOKIE_MAX_AGE_SEC * 1000;
-}
-
 function isScreenshotCreditLimitResponse(status: number, payload: any): boolean {
     if (status !== 429) return false;
 
@@ -553,12 +538,6 @@ function isScreenshotCreditLimitResponse(status: number, payload: any): boolean 
         reasonText === "snapshot_credit_limit" ||
         (typeof remaining === "number" && remaining <= 0)
     );
-}
-
-function markBillingSuccessShown(): void {
-    if (typeof window === "undefined" || typeof document === "undefined") return;
-    const secure = window.location.protocol === "https:" ? "; Secure" : "";
-    document.cookie = `${BILLING_SUCCESS_COOKIE}=${Date.now()}; Path=/; Max-Age=${BILLING_SUCCESS_COOKIE_MAX_AGE_SEC}; SameSite=Lax${secure}`;
 }
 
 function shouldShowTrialPromptForSession(storageKey: string, everyNthSession: number): boolean {
@@ -4157,6 +4136,8 @@ export default function PreviewPage(): JSX.Element {
     const [, setShowWebsitePrePaywall] = useState(false);
     const [showDeploySuccessConfetti, setShowDeploySuccessConfetti] = useState(false);
     const [showTopupSuccessConfetti, setShowTopupSuccessConfetti] = useState(false);
+    const [showBillingSuccessConfetti, setShowBillingSuccessConfetti] = useState(false);
+    const [resumeSubscriptionBusy, setResumeSubscriptionBusy] = useState(false);
     const [showRecoveryCheckoutLoader, setShowRecoveryCheckoutLoader] = useState(false);
     const [showDevQuickMenu, setShowDevQuickMenu] = useState(false);
     const [previewDebugScenario, setPreviewDebugScenario] = useState<{ mode: 'terminal-error' | 'terminal-error-auto-fix'; nonce: number } | null>(null);
@@ -4639,6 +4620,7 @@ export default function PreviewPage(): JSX.Element {
     const appDeployWizardUpgradePrimaryLabel = STRIPE_TRIAL_DAYS > 0
         ? `Start your ${STRIPE_TRIAL_DAYS}-day free trial & deploy →`
         : "Upgrade to deploy →";
+    const billingSuccessHandledRef = useRef(false);
 
     useEffect(() => {
         if (!appDeployWizardRetryLockedUntil) return;
@@ -4708,6 +4690,37 @@ export default function PreviewPage(): JSX.Element {
         setAppWizardError(null);
         return true;
     }, [refreshUserTierNow]);
+
+    const handleResumeSubscription = useCallback(async () => {
+        if (resumeSubscriptionBusy) return;
+
+        setResumeSubscriptionBusy(true);
+        try {
+            const csrf = await ensureSessionAndCsrf().catch(() => null);
+            const res = await fetch("/api/billing/cancel-subscription", {
+                method: "POST",
+                credentials: "include",
+                headers: {
+                    "content-type": "application/json",
+                    ...(csrf ? { "x-csrf": csrf } : {}),
+                },
+                body: JSON.stringify({ atPeriodEnd: false }),
+            });
+
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok || !data?.ok) {
+                throw new Error(data?.error || `Resume failed (HTTP ${res.status})`);
+            }
+
+            push("Subscription resumed. You can build again now.", "ok");
+            await refreshUserTierNow();
+        } catch (err: any) {
+            console.error("Resume subscription failed", err);
+            push(err?.message || "Unable to resume your subscription right now.", "err");
+        } finally {
+            setResumeSubscriptionBusy(false);
+        }
+    }, [push, refreshUserTierNow, resumeSubscriptionBusy]);
 
     // ───────── web app wizard (new) ─────────
     const [appWizardOpen, setAppWizardOpen] = useState(false);
@@ -5218,8 +5231,13 @@ export default function PreviewPage(): JSX.Element {
         const renderId = search.get("render");
         const returnAppId = search.get("appId");
 
-        if (!isBillingSuccess) return;
+        if (!isBillingSuccess) {
+            billingSuccessHandledRef.current = false;
+            return;
+        }
         if (!user) return;
+        if (billingSuccessHandledRef.current) return;
+        billingSuccessHandledRef.current = true;
 
         if (recoveryPendingStorageKey) {
             try {
@@ -5253,9 +5271,7 @@ export default function PreviewPage(): JSX.Element {
             console.error("Failed to clear trial success params", e);
         }
 
-        if (!hasRecentlyShownBillingSuccess()) {
-            markBillingSuccessShown();
-        }
+        setShowBillingSuccessConfetti(true);
 
         void (async () => {
             // pull latest nameHint/app name from Firestore
@@ -13781,6 +13797,37 @@ export default function PreviewPage(): JSX.Element {
                     />
                 </section>
 
+                {billingState === "trial_cancelled" ? (
+                    <motion.div
+                        initial={{ opacity: 0, y: -8, scale: 0.98 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        transition={{ type: "spring", stiffness: 700, damping: 28, mass: 0.55 }}
+                        className="relative mb-4 overflow-hidden rounded-3xl border border-red-300/80 bg-red-50/95 px-4 py-3 text-xs text-red-950 shadow-[0_14px_34px_rgba(185,28,28,0.10)] sm:pr-14"
+                    >
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-3">
+                            <div className="flex min-w-0 flex-1 items-start gap-2 text-left">
+                                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-600" />
+                                <span className="min-w-0 flex-1 whitespace-normal break-words font-semibold leading-5 text-red-950">
+                                    Your account is cancelled, and projects have been paused. Renew to continue building.
+                                </span>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => void handleResumeSubscription()}
+                                disabled={resumeSubscriptionBusy}
+                                className="inline-flex items-center justify-center gap-1 rounded-full border border-red-300/70 bg-white px-3 py-1 text-[11px] font-semibold text-red-800 transition hover:border-red-400 hover:text-red-950 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                                {resumeSubscriptionBusy ? (
+                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                ) : (
+                                    <RotateCcw className="h-3.5 w-3.5" />
+                                )}
+                                Renew
+                            </button>
+                        </div>
+                    </motion.div>
+                ) : null}
+
                 {/* Step 1: URL selection */}
                 {err ? (
                     <RedIssueBanner
@@ -15718,6 +15765,12 @@ export default function PreviewPage(): JSX.Element {
                     title="Credits added"
                     message="Top-up confirmed and credits were added to your account."
                     onDismiss={() => setShowTopupSuccessConfetti(false)}
+                />
+                <SuccessConfetti
+                    open={showBillingSuccessConfetti}
+                    title="Subscription active"
+                    message="Your billing update went through. You can keep building now."
+                    onDismiss={() => setShowBillingSuccessConfetti(false)}
                 />
             </div>
         </main>
