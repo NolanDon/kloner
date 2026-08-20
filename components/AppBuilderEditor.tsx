@@ -859,8 +859,8 @@ function buildFaviconIcoRouteTs(faviconUrl: string): string {
 }
 
 const htmlStorageContentCache = new Map<string, Promise<string | null>>();
-const FILES_HYDRATION_TIMEOUT_MS = 45_000;
-const FILES_HYDRATION_REQUEST_TIMEOUT_MS = 60_000;
+const FILES_HYDRATION_TIMEOUT_MS = 300_000;
+const FILES_HYDRATION_REQUEST_TIMEOUT_MS = 300_000;
 const HTML_STORAGE_FETCH_TIMEOUT_MS = 12_000;
 
 function isHtmlPath(path: string): boolean {
@@ -3392,6 +3392,46 @@ export default function AppBuilderEditor({
         }
         return nextFiles;
     }, [app?.files, generationPlaceholderFiles, isGenerationProcessing, isPreviewBootReady]);
+
+    const previewHtmlPath = useMemo(() => {
+        const files = app?.files || {};
+        const htmlPaths = Object.keys(files)
+            .filter((path) => /\.html?$/i.test(path))
+            .sort((left, right) => left.localeCompare(right));
+        const current = String(currentFile || "").trim();
+        if (current && htmlPaths.includes(current) && String(files[current]?.content || "").trim()) {
+            return current;
+        }
+        return htmlPaths.find((path) => String(files[path]?.content || "").trim()) || "";
+    }, [app?.files, currentFile]);
+
+    const previewHtmlContent = useMemo(() => {
+        if (!previewHtmlPath) return "";
+        return String(app?.files?.[previewHtmlPath]?.content || "").trim();
+    }, [app?.files, previewHtmlPath]);
+
+    const previewLoadingItems = useMemo(() => {
+        const files = app?.files || {};
+        const htmlPaths = Object.keys(files)
+            .filter((path) => /\.html?$/i.test(path))
+            .sort((left, right) => left.localeCompare(right));
+
+        return htmlPaths.map((path) => {
+            const content = String(files[path]?.content || "").trim();
+            const segments = path.split("/").filter(Boolean);
+            const fileName = segments[segments.length - 1] || path;
+            const directory = segments.slice(0, -1).join("/") || "root";
+            return {
+                label: fileName,
+                detail: directory,
+                done: content.length > 0,
+            };
+        });
+    }, [app?.files]);
+
+    const shouldHoldCustomPreviewHtml =
+        isVisualEditorMode &&
+        (isGenerationProcessing || !previewHtmlPath || !previewHtmlContent);
 
     const usedPlaceholderRef = useRef(false);
     useEffect(() => {
@@ -7952,53 +7992,62 @@ export default function AppBuilderEditor({
                                             exit={{ opacity: 0, y: 8 }}
                                             transition={{ duration: 0.24, ease: "easeOut" }}
                                         >
-                                            <AppPreviewEditor
-                                                appId={appId}
-                                                files={app?.files || {}}
-                                                initialPath={currentFile}
-                                                onApplyHtml={handleApplyCustomHtml}
-                                                onSelectPath={handleFileSelect}
-                                                currentHtmlPath={currentFile || undefined}
-                                                htmlEntryHints={(app as any)?.htmlEditIndex}
-                                                preserveRuntimeScripts={shouldPreserveRuntimeScripts(projectFramework)}
-                                                onSelectHtmlPath={handleFileSelect}
-                                                editableHtmlPaths={Object.keys(app?.files || {})
-                                                    .filter((path) => /\.html?$/i.test(path))
-                                                    .sort((a, b) => a.localeCompare(b))}
-                                                onClose={() => { void requestViewModeChange("ai"); }}
-                                                onRequestExitEditor={onClose}
-                                                appName={app?.name}
-                                                onRenameSuccess={(newName) => setApp(prev => prev ? { ...prev, name: newName } : null)}
-                                                baseHref={(protectedPreviewUrl || app?.previewUrl || previewSrc || undefined)}
-                                                viewMode={viewMode}
-                                                onChangeViewMode={(mode) => { void requestViewModeChange(mode); }}
-                                                isProduction={IS_PRODUCTION}
-                                                onSidebarVisibilityChange={setIsCustomSidebarOpen}
-                                                sharedUiScale={customPreviewScale}
-                                                onSharedUiScaleChange={setCustomPreviewScale}
-                                                preferredSidePanelMode={viewMode === "images" ? "ai-library" : "style"}
-                                                isVercelConnected={isVercelConnected}
-                                                onConnectVercel={async () => {
-                                                    await ensureFreshVercelConnection("images");
-                                                }}
-                                                hasVercelProject={Boolean(app?.vercelProjectId?.trim())}
-                                                onPrepareVercelProject={runVercelDeployLive}
-                                                onLiveHtml={handleVisualEditorLiveHtml}
-                                                previewOpenToken={previewOpenToken}
-                                                registerBeforeExitFlush={(fn) => {
-                                                    previewEditorFlushRef.current = fn;
-                                                }}
-                                                onTakeBuilderTour={handleTakeBuilderTour}
-                                                isFilesHydrated={filesHydrated}
-                                                filesHydrationProgress={filesHydrationProgress}
-                                                isPreviewReady={previewMode !== "webcontainer" ? true : isPreviewBootReady}
-                                                isFilesHydrationActive={isFilesHydrationActive}
-                                                deployLocked={deployLocked}
-                                                accessLocked={accessLocked}
-                                                showTour={false}
-                                                onRequestDeployCheckout={onRequestDeployCheckout}
-                                                showRightSidebarToggle={false}
-                                            />
+                                            {shouldHoldCustomPreviewHtml ? (
+                                                <div className="flex h-full min-h-[420px] items-center justify-center bg-white">
+                                                    <WorkspaceLoadingPanel
+                                                        title="Loading preview"
+                                                        progressItems={previewLoadingItems}
+                                                    />
+                                                </div>
+                                            ) : (
+                                                <AppPreviewEditor
+                                                    appId={appId}
+                                                    files={app?.files || {}}
+                                                    initialPath={currentFile}
+                                                    onApplyHtml={handleApplyCustomHtml}
+                                                    onSelectPath={handleFileSelect}
+                                                    currentHtmlPath={currentFile || undefined}
+                                                    htmlEntryHints={(app as any)?.htmlEditIndex}
+                                                    preserveRuntimeScripts={shouldPreserveRuntimeScripts(projectFramework)}
+                                                    onSelectHtmlPath={handleFileSelect}
+                                                    editableHtmlPaths={Object.keys(app?.files || {})
+                                                        .filter((path) => /\.html?$/i.test(path))
+                                                        .sort((a, b) => a.localeCompare(b))}
+                                                    onClose={() => { void requestViewModeChange("ai"); }}
+                                                    onRequestExitEditor={onClose}
+                                                    appName={app?.name}
+                                                    onRenameSuccess={(newName) => setApp(prev => prev ? { ...prev, name: newName } : null)}
+                                                    baseHref={(protectedPreviewUrl || app?.previewUrl || previewSrc || undefined)}
+                                                    viewMode={viewMode}
+                                                    onChangeViewMode={(mode) => { void requestViewModeChange(mode); }}
+                                                    isProduction={IS_PRODUCTION}
+                                                    onSidebarVisibilityChange={setIsCustomSidebarOpen}
+                                                    sharedUiScale={customPreviewScale}
+                                                    onSharedUiScaleChange={setCustomPreviewScale}
+                                                    preferredSidePanelMode={viewMode === "images" ? "ai-library" : "style"}
+                                                    isVercelConnected={isVercelConnected}
+                                                    onConnectVercel={async () => {
+                                                        await ensureFreshVercelConnection("images");
+                                                    }}
+                                                    hasVercelProject={Boolean(app?.vercelProjectId?.trim())}
+                                                    onPrepareVercelProject={runVercelDeployLive}
+                                                    onLiveHtml={handleVisualEditorLiveHtml}
+                                                    previewOpenToken={previewOpenToken}
+                                                    registerBeforeExitFlush={(fn) => {
+                                                        previewEditorFlushRef.current = fn;
+                                                    }}
+                                                    onTakeBuilderTour={handleTakeBuilderTour}
+                                                    isFilesHydrated={filesHydrated}
+                                                    filesHydrationProgress={filesHydrationProgress}
+                                                    isPreviewReady={previewMode !== "webcontainer" ? true : isPreviewBootReady}
+                                                    isFilesHydrationActive={isFilesHydrationActive}
+                                                    deployLocked={deployLocked}
+                                                    accessLocked={accessLocked}
+                                                    showTour={false}
+                                                    onRequestDeployCheckout={onRequestDeployCheckout}
+                                                    showRightSidebarToggle={false}
+                                                />
+                                            )}
                                         </motion.div>
                                     ) : (
                                         <motion.div

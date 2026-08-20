@@ -9,7 +9,7 @@ import { hydrateAppBuilderFiles } from "../../../_lib/htmlStorage";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const FILES_HYDRATION_TIMEOUT_MS = 45_000;
+const FILES_HYDRATION_TIMEOUT_MS = 300_000;
 
 async function hydrateFilesWithTimeout(params: {
     db: any;

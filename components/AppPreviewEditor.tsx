@@ -7505,33 +7505,10 @@ export default function AppPreviewEditor({
 
     if (!htmlPaths.length) {
         return (
-            <div className="fixed inset-0 z-[22060] flex items-center justify-center px-4">
-                <div className={`absolute inset-0 ${fallbackBackdrop}`} />
-                <div className={`relative ${fallbackShellClass}`}>
-                    <div className="p-6 sm:p-7">
-                        <div className="inline-flex items-center rounded-full border border-[#FF8D2133] bg-[#FF8D2110] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#C86F1F]">
-                            Something went wrong
-                        </div>
-                        <div className="mt-4 text-[22px] font-semibold tracking-tight text-neutral-900">
-                            We could not load an editable file for this project yet.
-                        </div>
-                        <div className="mt-3 text-sm leading-6 text-neutral-600">
-                            The files may still be settling, or this project may need a fresh rescan from the dashboard.
-                        </div>
-                        <div className="mt-6 flex flex-wrap items-center gap-3">
-                            <Link
-                                href="/dashboard/view"
-                                className={fallbackPrimaryButtonClass}
-                                style={{ backgroundColor: fallbackAccent }}
-                            >
-                                Open dashboard
-                            </Link>
-                            <span className="text-xs text-neutral-500">
-                                Rescan there, then reopen the editor.
-                            </span>
-                        </div>
-                    </div>
-                </div>
+            <div className="pointer-events-none fixed inset-0 z-[22050] grid place-items-center px-4">
+                <WorkspaceLoadingPanel
+                    title={isFilesStillHydrating ? "Loading project files" : "Preparing preview"}
+                />
             </div>
         );
     }

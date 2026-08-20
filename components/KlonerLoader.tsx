@@ -23,6 +23,11 @@ type HydrationDotsLoaderProps = {
 type WorkspaceLoadingPanelProps = {
     title: string;
     className?: string;
+    progressItems?: Array<{
+        label: string;
+        detail?: string;
+        done: boolean;
+    }>;
 };
 
 type WorkspaceLoadingScreenProps = WorkspaceLoadingPanelProps & {
@@ -111,7 +116,10 @@ export function HydrationDotsLoader({
 export function WorkspaceLoadingPanel({
     title,
     className = "",
+    progressItems,
 }: WorkspaceLoadingPanelProps) {
+    const doneCount = progressItems?.filter((item) => item.done).length || 0;
+    const totalCount = progressItems?.length || 0;
     return (
         <motion.div
             className={`flex flex-col items-center text-center ${className}`}
@@ -128,6 +136,43 @@ export function WorkspaceLoadingPanel({
             <div className="mt-3 text-sm leading-5 tracking-[-0.01em] text-neutral-900">
                 {title}
             </div>
+            {progressItems?.length ? (
+                <div className="mt-5 w-full max-w-md rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-left shadow-sm">
+                    <div className="flex items-center justify-between text-[11px] uppercase tracking-[0.18em] text-neutral-400">
+                        <span>Preview files</span>
+                        <span>{doneCount}/{totalCount}</span>
+                    </div>
+                    <div className="mt-3 max-h-44 space-y-2 overflow-auto pr-1">
+                        {progressItems.map((item) => (
+                            <div
+                                key={`${item.label}-${item.detail || "item"}`}
+                                className="flex items-start gap-3 rounded-xl border border-neutral-100 bg-neutral-50 px-3 py-2"
+                            >
+                                <span
+                                    className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold ${
+                                        item.done
+                                            ? "bg-emerald-500 text-white"
+                                            : "bg-neutral-200 text-neutral-500"
+                                    }`}
+                                    aria-hidden="true"
+                                >
+                                    {item.done ? "✓" : "…"}
+                                </span>
+                                <div className="min-w-0">
+                                    <div className="truncate text-sm font-medium text-neutral-900">
+                                        {item.label}
+                                    </div>
+                                    {item.detail ? (
+                                        <div className="truncate text-[11px] leading-5 text-neutral-500">
+                                            {item.detail}
+                                        </div>
+                                    ) : null}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            ) : null}
         </motion.div>
     );
 }

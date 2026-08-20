@@ -8,7 +8,7 @@ import AppBuilderPageClient from "./AppBuilderPageClient";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-const FILES_HYDRATION_TIMEOUT_MS = 45_000;
+const FILES_HYDRATION_TIMEOUT_MS = 300_000;
 
 async function hydrateFilesWithTimeout(params: {
     db: any;
