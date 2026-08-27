@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
 
 const ACCENT = "#FF8D21";
@@ -120,6 +120,14 @@ export function WorkspaceLoadingPanel({
 }: WorkspaceLoadingPanelProps) {
     const doneCount = progressItems?.filter((item) => item.done).length || 0;
     const totalCount = progressItems?.length || 0;
+    const progressListRef = useRef<HTMLDivElement | null>(null);
+
+    useEffect(() => {
+        const list = progressListRef.current;
+        if (!list || !progressItems?.length) return;
+        list.scrollTo({ top: list.scrollHeight, behavior: "smooth" });
+    }, [doneCount, progressItems?.length]);
+
     return (
         <motion.div
             className={`flex flex-col items-center text-center ${className}`}
@@ -142,7 +150,7 @@ export function WorkspaceLoadingPanel({
                         <span>Preview files</span>
                         <span>{doneCount}/{totalCount}</span>
                     </div>
-                    <div className="mt-3 max-h-44 space-y-2 overflow-auto pr-1">
+                    <div ref={progressListRef} className="mt-3 max-h-44 space-y-2 overflow-auto pr-1">
                         {progressItems.map((item) => (
                             <div
                                 key={`${item.label}-${item.detail || "item"}`}

@@ -142,6 +142,7 @@ type AppData = {
 };
 
 type FileHydrationProgressCallback = (progress: number) => void;
+type FileHydrationFilesCallback = (files: AppData["files"]) => void;
 
 type NormalizedGenerationState = {
     status: string | null;
@@ -1001,6 +1002,7 @@ async function hydrateHtmlFilesForApp(
     data: AppData,
     opts?: {
         onProgress?: FileHydrationProgressCallback;
+        onFiles?: FileHydrationFilesCallback;
         timeoutMs?: number;
         debugLabel?: string;
     },
@@ -1058,6 +1060,7 @@ async function hydrateHtmlFilesForApp(
 
         completedWorkUnits += 1;
         emitProgress(completedWorkUnits, totalWorkUnits);
+        opts?.onFiles?.({ ...nextFiles });
         if ((index + 1) % 8 === 0) {
             await yieldToBrowser();
         }
@@ -1106,6 +1109,7 @@ async function hydrateHtmlFilesForApp(
             lastModified: current?.lastModified || Date.now(),
         };
         applied = true;
+        opts?.onFiles?.({ ...nextFiles });
 
         if (Object.prototype.hasOwnProperty.call(data.files || {}, path)) {
             break;
@@ -1961,6 +1965,24 @@ export default function AppBuilderEditor({
     const [filesHydrationProgress, setFilesHydrationProgress] = useState(0);
     const [filesHydrationCompletionHold, setFilesHydrationCompletionHold] = useState(false);
     const [isFilesHydrationActive, setIsFilesHydrationActive] = useState(false);
+    const previewLoadingItems = useMemo(() => {
+        const files = app?.files || {};
+        const htmlPaths = Object.keys(files)
+            .filter((path) => /\.html?$/i.test(path))
+            .sort((left, right) => left.localeCompare(right));
+
+        return htmlPaths.map((path) => {
+            const content = String(files[path]?.content || "").trim();
+            const segments = path.split("/").filter(Boolean);
+            const fileName = segments[segments.length - 1] || path;
+            const directory = segments.slice(0, -1).join("/") || "root";
+            return {
+                label: fileName,
+                detail: directory,
+                done: content.length > 0,
+            };
+        });
+    }, [app?.files]);
     const filesHydrationRunIdRef = useRef(0);
     const filesHydrationInFlightRef = useRef<Promise<AppData | null> | null>(null);
     const filesHydrationActiveCountRef = useRef(0);
@@ -2116,9 +2138,13 @@ export default function AppBuilderEditor({
                             if (runId !== filesHydrationRunIdRef.current) return null;
                             clearFilesHydrationTimer();
                             const hydratedData = await hydrateHtmlFilesForApp(data as AppData, {
-                                onProgress: (progress) => {
-                                    setFilesHydrationProgress(Math.max(0, Math.min(100, Math.round(62 + (progress * 0.38)))));
-                                },
+                                    onProgress: (progress) => {
+                                        setFilesHydrationProgress(Math.max(0, Math.min(100, Math.round(62 + (progress * 0.38)))));
+                                    },
+                                    onFiles: (files) => {
+                                        setApp((prev) => (prev ? { ...prev, files } : prev));
+                                        buildFileTree(files);
+                                    },
                                 timeoutMs: FILES_HYDRATION_TIMEOUT_MS,
                                 debugLabel: String(appId || "").trim() || undefined,
                             });
@@ -2689,7 +2715,10 @@ export default function AppBuilderEditor({
                     aria-live="polite"
                     aria-busy="true"
                 >
-                    <WorkspaceLoadingPanel title="Loading project files" />
+                    <WorkspaceLoadingPanel
+                        title="Loading project files"
+                        progressItems={previewLoadingItems}
+                    />
                 </div>
             ) : (
                 <div
@@ -2704,7 +2733,10 @@ export default function AppBuilderEditor({
                     aria-live="polite"
                     aria-busy="true"
                 >
-                    <WorkspaceLoadingPanel title="Loading project files" />
+                    <WorkspaceLoadingPanel
+                        title="Loading project files"
+                        progressItems={previewLoadingItems}
+                    />
                 </div>
             ),
             document.body,
@@ -3409,25 +3441,6 @@ export default function AppBuilderEditor({
         if (!previewHtmlPath) return "";
         return String(app?.files?.[previewHtmlPath]?.content || "").trim();
     }, [app?.files, previewHtmlPath]);
-
-    const previewLoadingItems = useMemo(() => {
-        const files = app?.files || {};
-        const htmlPaths = Object.keys(files)
-            .filter((path) => /\.html?$/i.test(path))
-            .sort((left, right) => left.localeCompare(right));
-
-        return htmlPaths.map((path) => {
-            const content = String(files[path]?.content || "").trim();
-            const segments = path.split("/").filter(Boolean);
-            const fileName = segments[segments.length - 1] || path;
-            const directory = segments.slice(0, -1).join("/") || "root";
-            return {
-                label: fileName,
-                detail: directory,
-                done: content.length > 0,
-            };
-        });
-    }, [app?.files]);
 
     const shouldHoldCustomPreviewHtml =
         isVisualEditorMode &&
@@ -5126,6 +5139,10 @@ export default function AppBuilderEditor({
                                     const hydratedData = await hydrateHtmlFilesForApp(rawApp, {
                                         timeoutMs: FILES_HYDRATION_TIMEOUT_MS,
                                         debugLabel: normalizedAppId,
+                                        onFiles: (files) => {
+                                            setApp((prev) => (prev ? { ...prev, files } : prev));
+                                            buildFileTree(files);
+                                        },
                                     });
                                     if (didCancel) return null;
                                     setApp(hydratedData);

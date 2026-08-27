@@ -61,6 +61,40 @@ export async function GET(
             return NextResponse.json({ error: "App data not found" }, { status: 404 });
         }
 
+        // A freshly accepted URL generation creates the app record before the
+        // generator has written its files.  Do not turn that placeholder record
+        // into a successful files response: the editor would mark preview boot
+        // complete with an empty file map and never recover on the initial open.
+        const generationStatus = String(
+            (data as any).generation?.status ||
+            (data as any).generationStatus ||
+            (data as any).status ||
+            "",
+        ).trim().toLowerCase();
+        const generationPending = ["processing", "in_progress", "queued", "pending", "booting", "starting"].includes(generationStatus);
+        const hasInlineFileContent = Object.values(((data as any).files || {}) as Record<string, any>)
+            .some((file) => typeof file?.content === "string" && file.content.trim().length > 0);
+        const hasHydrationSource = Boolean(
+            (data as any).htmlStoragePath ||
+            (data as any).fileManifest ||
+            (data as any).fileStorageCollection,
+        );
+        const generationFailed = ["error", "failed", "cancelled", "canceled"].includes(generationStatus);
+        if (!generationFailed && !hasInlineFileContent && (generationPending || !hasHydrationSource)) {
+            const res = NextResponse.json(
+                {
+                    error: "App files are still being generated.",
+                    status: generationStatus,
+                    nextPollAfterMs: 1500,
+                },
+                { status: 202 },
+            );
+            // The editor may start other privileged startup work while it polls.
+            // Bind the session even for an intermediate files response.
+            issueAppBuilderScopeCookie(res, uid, appId);
+            return res;
+        }
+
         console.info("[app-builder/files] hydration start", {
             requestId,
             uid,

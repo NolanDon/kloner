@@ -3448,6 +3448,20 @@ export default function NavBar() {
           validatedFiles[path] = file;
         }
 
+        // Ensure app scope cookie exists before privileged app-builder APIs.
+        const ensureAppScopeCookie = async () => {
+          try {
+            await fetch(`/api/app-builder/${encodeURIComponent(appId)}/scope`, {
+              method: 'GET',
+              credentials: 'include',
+              cache: 'no-store',
+            });
+          } catch {
+            // best-effort; request path below still handles scope retry
+          }
+        };
+        await ensureAppScopeCookie();
+
         // One-time: ensure jsconfig/tsconfig exists and has compilerOptions to avoid
         // Next dev bundler crashes (baseUrl read of undefined) which breaks HMR.
         // Persist via update-file so Firestore remains the source of truth.
@@ -3477,19 +3491,6 @@ export default function NavBar() {
             // ignore
           }
         }
-
-        // Ensure app scope cookie exists before privileged app-builder APIs.
-        const ensureAppScopeCookie = async () => {
-          try {
-            await fetch(`/api/app-builder/${encodeURIComponent(appId)}/scope`, {
-              method: 'GET',
-              credentials: 'include',
-              cache: 'no-store',
-            });
-          } catch {
-            // best-effort; request path below still handles scope retry
-          }
-        };
 
         // Start the webcontainer creation (async, fire-and-forget)
         const requestBody = { appId, files: validatedFiles, mode: 'dev' };
