@@ -46,6 +46,21 @@ export type DashboardUrlProcessingSession = {
     phaseStartedAt: number;
 };
 
+/** Matches the archive-size paywall across fetch and Axios-shaped callers. */
+export function isArchiveSizeLimitPaywallResponse(responseOrError: unknown, body?: unknown): boolean {
+    const source = responseOrError && typeof responseOrError === "object"
+        ? responseOrError as any
+        : null;
+    const status = typeof responseOrError === "number"
+        ? responseOrError
+        : source?.response?.status ?? source?.status;
+    const payload = body ?? source?.response?.data ?? source?.data;
+
+    return status === 402 &&
+        payload?.paywallRequired === true &&
+        payload?.code === "ARCHIVE_SIZE_LIMIT_REACHED";
+}
+
 export const DRAFT_LOADING_TIMEOUT_MS = 10 * 60 * 1000;
 export const URL_PROCESSING_NAVIGATION_TIMEOUT_MS = 5 * 60 * 1000;
 
@@ -584,6 +599,21 @@ export async function submitDashboardUrlDraft({
             // Try to read the error body so we can surface a blocked-domain state
             let errorBody: Record<string, any> = {};
             try { errorBody = await res.json(); } catch { /* ignore */ }
+
+            if (isArchiveSizeLimitPaywallResponse(res.status, errorBody)) {
+                const paywallMessage = String(errorBody.error || "This website is too large for the Free plan.").trim();
+                setDraftApps((prev) => prev.filter((item) => item.draftId !== draftDocId));
+                setErr(paywallMessage);
+                setShowCreditsPaywall("screenshot");
+                onProcessingSessionChange?.(null);
+                setPendingDraftApps((prev) => {
+                    const next = { ...prev };
+                    delete next[draftDocId];
+                    return next;
+                });
+                setWebsiteSubmissionPendingUrl((current) => (current === canonical ? null : current));
+                return false;
+            }
 
             const userFacingText = String(errorBody?.userMessage || errorBody?.message || errorBody?.error || "").trim();
             const errorText = userFacingText.toLowerCase();

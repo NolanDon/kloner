@@ -113,7 +113,7 @@ describe("POST /api/private/generate", () => {
         });
     });
 
-    it("maps downstream 500s to a domain verification message in the response", async () => {
+    it("maps downstream 500s to a site accessibility message in the response", async () => {
         callBackend.mockResolvedValueOnce({
             status: 500,
             upstream: { ok: false, statusText: "Internal Server Error" },
@@ -142,8 +142,8 @@ describe("POST /api/private/generate", () => {
 
         expect(res.status).toBe(500);
         expect(body).toMatchObject({
-            error: "Please verify your domain example.com.",
-            userMessage: "Please verify your domain example.com.",
+            error: "We couldn't access example.com to scan it. Make sure the site is publicly accessible without a login, CAPTCHA, or network restriction, then try again.",
+            userMessage: "We couldn't access example.com to scan it. Make sure the site is publicly accessible without a login, CAPTCHA, or network restriction, then try again.",
             code: "DOMAIN_VERIFICATION_REQUIRED",
             upstreamStatus: 500,
             upstreamStatusText: "Internal Server Error",

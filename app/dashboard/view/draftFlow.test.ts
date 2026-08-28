@@ -9,6 +9,7 @@ import {
     resolveDashboardDraftThumbnailUrl,
     shouldSuppressCompletedDraftIssue,
     shouldDisableDraftDeleteButton,
+    isArchiveSizeLimitPaywallResponse,
     submitDashboardUrlDraft,
 } from "./draftFlow";
 
@@ -285,7 +286,7 @@ describe("dashboard draft flow", () => {
             pendingDrafts: {} as Record<string, boolean>,
             err: "",
             info: "",
-            paywall: null as "screenshot" | null,
+            paywall: null as "screenshot" | "preview" | null,
         };
         const calls: Array<[string, any?]> = [];
         const push = jest.fn();
@@ -368,7 +369,7 @@ describe("dashboard draft flow", () => {
             pendingDrafts: {} as Record<string, boolean>,
             err: "",
             info: "",
-            paywall: null as "screenshot" | null,
+            paywall: null as "screenshot" | "preview" | null,
         };
         const calls: Array<[string, any?]> = [];
         const push = jest.fn();
@@ -443,5 +444,75 @@ describe("dashboard draft flow", () => {
         expect(draftBody.draft.details).toEqual({ reason: "upstream timeout" });
 
         jest.restoreAllMocks();
+    });
+
+    it("opens the existing paywall for an archive-size 402 without generic error handling", async () => {
+        const state = {
+            pendingUrl: null as string | null,
+            drafts: [] as any[],
+            pendingDrafts: {} as Record<string, boolean>,
+            err: "",
+            info: "",
+            paywall: null as "screenshot" | "preview" | null,
+        };
+        const push = jest.fn();
+        const onProcessingError = jest.fn();
+        const fetchImpl = jest.fn(async (input: any) => {
+            if (String(input) === "/api/private/generate") {
+                return {
+                    ok: false,
+                    status: 402,
+                    json: async () => ({
+                        ok: false,
+                        error: "This website is too large for the Free plan.",
+                        code: "ARCHIVE_SIZE_LIMIT_REACHED",
+                        paywallRequired: true,
+                        paywallReason: "archive_size_limit",
+                        upgrade: { requiredPlan: "pro", action: "upgrade" },
+                    }),
+                } as any;
+            }
+            throw new Error(`unexpected fetch: ${String(input)}`);
+        });
+
+        const ok = await submitDashboardUrlDraft({
+            rawUrl: "example.com",
+            canUseScreenshotCredit: () => true,
+            canUsePreviewCredit: () => true,
+            fetchImpl: fetchImpl as any,
+            push,
+            setErr: (value) => { state.err = value; },
+            setInfo: (value) => { state.info = value; },
+            setShowCreditsPaywall: (mode) => { state.paywall = mode; },
+            setWebsiteSubmissionPendingUrl: (next) => {
+                state.pendingUrl = typeof next === "function" ? next(state.pendingUrl) : next;
+            },
+            setDraftApps: (next) => {
+                state.drafts = typeof next === "function" ? next(state.drafts) : next;
+            },
+            setPendingDraftApps: (next) => {
+                state.pendingDrafts = typeof next === "function" ? next(state.pendingDrafts) : next;
+            },
+            onProcessingError,
+        });
+
+        expect(ok).toBe(false);
+        expect(state.err).toBe("This website is too large for the Free plan.");
+        expect(state.paywall).toBe("screenshot");
+        expect(state.pendingUrl).toBeNull();
+        expect(state.pendingDrafts).toEqual({});
+        expect(state.drafts).toEqual([]);
+        expect(push).not.toHaveBeenCalled();
+        expect(onProcessingError).not.toHaveBeenCalled();
+        expect(isArchiveSizeLimitPaywallResponse({
+            response: {
+                status: 402,
+                data: { paywallRequired: true, code: "ARCHIVE_SIZE_LIMIT_REACHED" },
+            },
+        })).toBe(true);
+        expect(isArchiveSizeLimitPaywallResponse(500, {
+            paywallRequired: true,
+            code: "ARCHIVE_SIZE_LIMIT_REACHED",
+        })).toBe(false);
     });
 });

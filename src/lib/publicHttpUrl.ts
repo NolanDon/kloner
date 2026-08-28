@@ -76,8 +76,22 @@ const SENSITIVE_HOST_FRAGMENTS = [
   "financial",
   "loan",
   "mortgage",
+  "police",
   "wealth",
 ];
+const GOVERNMENT_HOST_SUFFIXES = [
+  ".gov", ".gouv", ".mil", ".gov.uk", ".gov.au", ".gov.ca", ".gc.ca",
+  ".gov.in", ".govt.nz", ".go.jp", ".go.kr", ".go.id", ".go.th",
+  ".gob.mx", ".gob.es", ".gob.ar", ".gob.cl", ".gob.pe", ".gouv.fr",
+  ".gouv.qc.ca",
+];
+const SENSITIVE_FINANCIAL_BRANDS = new Set([
+  "anz", "barclays", "bmo", "bnz", "capitalone", "chase", "cibc", "citi",
+  "commbank", "dbs", "deutschebank", "halifax", "hdfc", "hsbc", "ing",
+  "jpmorgan", "lloyds", "macquarie", "maybank", "nab", "natwest", "paypal",
+  "rbc", "revolut", "santander", "scotiabank", "tdbank", "ubs", "usbank",
+  "wellsfargo", "westpac", "wise",
+]);
 const SUSPICIOUS_HOST_LABEL_PREFIXES = ["www-", "xn--"];
 
 function escapeRegexLiteral(value: string): string {
@@ -317,6 +331,7 @@ export const BLOCKED_URL_TERMS = [
   "opioids",
   "phish",
   "phishing",
+  "police",
   "ransomware",
   "ransom",
   "skimmer",
@@ -371,6 +386,24 @@ function getSuspiciousHostLabelRejectionReason(hostLower: string): string | null
   return null;
 }
 
+function isSensitiveGovernmentHost(hostLower: string): boolean {
+  if (GOVERNMENT_HOST_SUFFIXES.some((suffix) =>
+    hostLower === suffix.slice(1) || hostLower.endsWith(suffix),
+  )) return true;
+
+  // Cover international variants such as .gob.xx, .govt.xx, and go.xx
+  // without treating ordinary domains like go.com as government sites.
+  return /\.(?:gov|gouv|gob|govt|government|administration|mil)\.[a-z]{2,3}$/i.test(hostLower) ||
+    /\.go\.[a-z]{2}$/i.test(hostLower);
+}
+
+function isSensitiveFinancialHost(labels: string[]): boolean {
+  return labels.some((label) => {
+    const compact = label.replace(/[^a-z0-9]/g, "");
+    return SENSITIVE_FINANCIAL_BRANDS.has(compact);
+  });
+}
+
 export function getPublicHttpUrlRejectionReason(input: string): string | null {
   const s = (input ?? "").trim();
   if (!s) return "Enter a URL to continue.";
@@ -404,6 +437,10 @@ export function getPublicHttpUrlRejectionReason(input: string): string | null {
 
     if (!DOMAIN_RE.test(hostLower)) return "Please enter a valid public http(s) URL.";
 
+    if (isSensitiveGovernmentHost(hostLower)) {
+      return "Banking, government, and account-access URLs are blocked.";
+    }
+
     const suspiciousHostReason = getSuspiciousHostLabelRejectionReason(hostLower);
     if (suspiciousHostReason) {
       return suspiciousHostReason;
@@ -415,6 +452,10 @@ export function getPublicHttpUrlRejectionReason(input: string): string | null {
     }
 
     if (SENSITIVE_HOST_FRAGMENTS.some((fragment) => hostLower.includes(fragment))) {
+      return "Banking, government, and account-access URLs are blocked.";
+    }
+
+    if (isSensitiveFinancialHost(labels)) {
       return "Banking, government, and account-access URLs are blocked.";
     }
 

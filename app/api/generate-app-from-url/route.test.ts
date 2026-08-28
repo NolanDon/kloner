@@ -220,6 +220,45 @@ describe("POST /api/generate-app-from-url", () => {
         expect(consumeUserCredit).not.toHaveBeenCalled();
     });
 
+    it("forwards archive-size paywall details from an upstream 402", async () => {
+        callBackend.mockResolvedValueOnce({
+            status: 402,
+            json: {
+                ok: false,
+                error: "This website is too large for the Free plan.",
+                code: "ARCHIVE_SIZE_LIMIT_REACHED",
+                paywallRequired: true,
+                paywallReason: "archive_size_limit",
+                upgrade: { requiredPlan: "pro", action: "upgrade" },
+            },
+            reqId: "req_paywall",
+            url: "https://backend.example/api/v1/generate-app-from-url",
+        });
+
+        const { POST } = await import("./route");
+        const req: any = {
+            json: async () => ({
+                url: "https://example.com",
+                name: "Example",
+            }),
+        };
+
+        const res: any = await POST(req);
+        const body = await res.json();
+
+        expect(res.status).toBe(402);
+        expect(body).toMatchObject({
+            error: "This website is too large for the Free plan.",
+            code: "ARCHIVE_SIZE_LIMIT_REACHED",
+            paywallRequired: true,
+            paywallReason: "archive_size_limit",
+            upgrade: { requiredPlan: "pro", action: "upgrade" },
+            upstreamStatus: 402,
+            reqId: "req_paywall",
+        });
+        expect(consumeUserCredit).not.toHaveBeenCalled();
+    });
+
     it("maps upstream 404 responses to route mismatch errors", async () => {
         callBackend.mockResolvedValueOnce({
             status: 404,

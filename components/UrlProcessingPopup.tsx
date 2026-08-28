@@ -124,7 +124,7 @@ export default function UrlProcessingPopup({
         if (stage === "ready") return "Ready";
         if (stage === "navigating") return "Opening editor";
 
-        if (progress >= 98) return "Opening editor";
+        if (progress >= 98) return "Preparing editor";
         if (progress >= 80) return "Preparing editor";
         if (progress >= 50) return "Stitching your site";
         if (progress >= 20) return "Gathering content";

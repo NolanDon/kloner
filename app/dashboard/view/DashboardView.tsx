@@ -112,6 +112,7 @@ import {
     shouldSuppressCompletedDraftIssue,
     type DashboardUrlProcessingSession,
     submitDashboardUrlDraft,
+    isArchiveSizeLimitPaywallResponse,
 } from "./draftFlow";
 import UrlProcessingPopup from "@/components/UrlProcessingPopup";
 import { extractArchivedPageIdsFromRender, fetchRenderForDeployment, getArchivedRoutesForRender, persistArchivedPageIds, scrubArchivedRoutes, secureHtmlForPreviewIframe, withArchivedPageIds } from "@/components/helpers";
@@ -2822,6 +2823,7 @@ function AppCard({
     onDelete,
     onDeleteDraft,
     onPromoteDraft,
+    onUpgradeDraft,
     appBuilderNavigated = false,
     draftPromotionScanState = null,
 }: {
@@ -2842,6 +2844,7 @@ function AppCard({
     onDeploy: (app: { id: string; name: string }) => void;
     onDelete: (appId: string) => void;
     onDeleteDraft?: (draft: { draftId: string; id: string }) => void;
+    onUpgradeDraft?: () => void;
     onPromoteDraft?: (draft: {
         draftId: string;
         id: string;
@@ -3046,6 +3049,7 @@ function AppCard({
             return "This draft has an issue.";
         })()
         : "";
+    const isArchiveSizeLimitDraft = draftIssue?.code === "ARCHIVE_SIZE_LIMIT_REACHED";
     const appBadgeLabel = useMemo(() => {
         const cleanedName = appDisplayName.replace(/^Clone of\s+/i, "").trim();
         const parts = cleanedName.split(/[^a-zA-Z0-9]+/).filter(Boolean);
@@ -3124,6 +3128,13 @@ function AppCard({
         setDraftEditLaunchBusy(true);
         activateDraftEditLock(DRAFT_EDIT_BUTTON_LOCK_MS);
         try {
+            if (isArchiveSizeLimitDraft) {
+                clearDraftEditUnlockTimer();
+                setDraftEditLockActive(false);
+                setDraftEditLaunchBusy(false);
+                onUpgradeDraft?.();
+                return;
+            }
             await Promise.resolve(onPromoteDraft({
                 draftId,
                 id: app.id,
@@ -3143,12 +3154,15 @@ function AppCard({
         activateDraftEditLock,
         app.createdAt,
         app.id,
+        clearDraftEditUnlockTimer,
         app.name,
         draftEditLaunchBusy,
         draftEditLockActive,
         disableActions,
         draftId,
+        isArchiveSizeLimitDraft,
         onPromoteDraft,
+        onUpgradeDraft,
     ]);
 
     useEffect(() => {
@@ -3273,11 +3287,11 @@ function AppCard({
                                         <LayoutGrid className="h-14 w-14" />
                                     </span>
                                 )}
-                                {!draftIssue || draftIssueIsAccessGate ? (
+                                {!draftIssue || draftIssueIsAccessGate || isArchiveSizeLimitDraft ? (
                                     <button
                                         type="button"
                                         onClick={() => void handleDraftEdit()}
-                                        disabled={isDeleting || disableActions || draftEditIsBusy || !onPromoteDraft}
+                                        disabled={isDeleting || disableActions || draftEditIsBusy || (!onPromoteDraft && !onUpgradeDraft)}
                                         className="absolute inset-0 z-20 grid place-items-center rounded-[2.75rem] border border-neutral-200 bg-transparent text-neutral-800 opacity-0 backdrop-blur-[1px] transition-all duration-200 hover:bg-transparent group-hover/draft-icon:opacity-100 group-focus-visible/draft-icon:opacity-100 group-hover/draft-icon:scale-[1.015] group-focus-visible/draft-icon:scale-[1.015]"
                                         aria-label={draftEditIsBusy ? "Opening draft" : "View draft"}
                                         title={draftIssueIsBlocked ? blockedDraftDescription : draftEditIsBusy ? "Opening draft" : "View draft"}
@@ -3479,13 +3493,13 @@ function AppCard({
                                 <button
                                     type="button"
                                     onClick={() => {
-                                        if (draftIssueNeedsWarning) return;
+                                        if (draftIssueNeedsWarning && !isArchiveSizeLimitDraft) return;
                                         void handleDraftEdit();
                                     }}
-                                    disabled={isDeleting || disableActions || draftEditIsBusy || !onPromoteDraft || draftIssueNeedsWarning}
+                                    disabled={isDeleting || disableActions || draftEditIsBusy || (!onPromoteDraft && !onUpgradeDraft) || (draftIssueNeedsWarning && !isArchiveSizeLimitDraft)}
                                     aria-label={draftEditIsBusy ? "Opening draft" : "View draft"}
                                     title={
-                                        draftIssueNeedsWarning
+                                        draftIssueNeedsWarning && !isArchiveSizeLimitDraft
                                             ? draftIssueDetails || blockedDraftDescription
                                             : draftEditIsBusy
                                                 ? "Opening draft"
@@ -4126,7 +4140,7 @@ export default function PreviewPage(): JSX.Element {
 
 
     const [showCreditsPaywall, setShowCreditsPaywall] = useState<
-        null | "screenshot" | "preview" | "deploy"
+        null | "screenshot" | "preview" | "archive_size" | "deploy"
     >(null);
     const [showProPaywall, setShowProPaywall] = useState(false);
     const [firstGenerationTrialPromptShown, setFirstGenerationTrialPromptShown] = useState(false);
@@ -4424,6 +4438,7 @@ export default function PreviewPage(): JSX.Element {
         url: string | null;
         at: number;
     } | null>(null);
+    const suppressUrlProcessingFailureRef = useRef(false);
     const [urlProcessingHandoff, setUrlProcessingHandoff] = useState<DashboardUrlProcessingSession | null>(null);
     const [urlProcessingPopupSuppressed, setUrlProcessingPopupSuppressed] = useState(false);
     const [urlProcessingContinueFallbackVisible, setUrlProcessingContinueFallbackVisible] = useState(false);
@@ -6460,6 +6475,7 @@ export default function PreviewPage(): JSX.Element {
                 const data: any = rawData;
                 const parsed: any = parseUrlGenerationResponse(res, data);
                 const responseWarning = extractUrlRescanWarning(data);
+                const archiveSizePaywall = isArchiveSizeLimitPaywallResponse(res.status, data);
                 const isArchiveCompletion = Boolean(
                     data?.archiveHealth ||
                     data?.archiveZipPath ||
@@ -6557,6 +6573,62 @@ export default function PreviewPage(): JSX.Element {
                         }));
                     }
                 } else {
+                    if (archiveSizePaywall) {
+                        const paywallMessage = String(
+                            data?.error || "This website is too large for the Free plan.",
+                        ).trim();
+                        const paywallDetails = {
+                            paywallRequired: true,
+                            paywallReason: data?.paywallReason || "archive_size_limit",
+                            upgrade: data?.upgrade || { requiredPlan: "pro", action: "upgrade" },
+                            limits: data?.limits || null,
+                        };
+                        await saveUrlDraft({
+                            retryable: false,
+                            completed: false,
+                            warningCode: "ARCHIVE_SIZE_LIMIT_REACHED",
+                            warningMessage: paywallMessage,
+                            warningAction: "Upgrade to continue",
+                            errorCode: "ARCHIVE_SIZE_LIMIT_REACHED",
+                            errorMessage: paywallMessage,
+                            errorReason: "archive_size_limit",
+                            userMessage: paywallMessage,
+                            details: paywallDetails,
+                            blocked: false,
+                            sourceUrl: url,
+                        }).catch((draftError) => {
+                            console.warn("[drafts] failed to persist archive-size paywall", draftError);
+                        });
+                        setDraftApps((prev) => prev.map((item) => (
+                            item.draftId === draftDocId || item.id === draftAppId
+                                ? {
+                                    ...item,
+                                    retryable: false,
+                                    completed: false,
+                                    warningCode: "ARCHIVE_SIZE_LIMIT_REACHED",
+                                    warningMessage: paywallMessage,
+                                    warningAction: "Upgrade to continue",
+                                    errorCode: "ARCHIVE_SIZE_LIMIT_REACHED",
+                                    errorMessage: paywallMessage,
+                                    errorReason: "archive_size_limit",
+                                    userMessage: paywallMessage,
+                                    details: paywallDetails,
+                                    blocked: false,
+                                }
+                                : item
+                        )));
+                        pendingUrlGenerationAppIdRef.current = null;
+                        setPendingCreatedApp(null);
+                        setAppBuilderOpen(false);
+                        setCurrentAppId(null);
+                        setUrlProcessingHandoff(null);
+                        setUrlProcessingFailure(null);
+                        suppressUrlProcessingFailureRef.current = true;
+                        setErr(paywallMessage);
+                        setShowCreditsPaywall("archive_size");
+                        return null;
+                    }
+
                     const shouldPersistRescanWarning =
                         responseWarning?.blocking ||
                         parsed.failureKind === "rescan_required";
@@ -8764,6 +8836,7 @@ export default function PreviewPage(): JSX.Element {
         setWebsiteSubmissionPendingUrl(null);
         setPendingCreatedApp(null);
         setHideCaptureQueueStatus(false);
+        suppressUrlProcessingFailureRef.current = false;
         setErr("");
         setInfo("");
         clearAutoQueuedUrlQueryParams();
@@ -9069,6 +9142,15 @@ export default function PreviewPage(): JSX.Element {
                     });
                         const payload: any = await res.clone().json().catch(() => ({} as any));
                         shouldMarkHandled = res.ok;
+                        if (isArchiveSizeLimitPaywallResponse(res.status, payload)) {
+                            const paywallMessage = String(
+                                payload?.error || "This website is too large for the Free plan.",
+                            ).trim();
+                            clearUrlScanQueuedState(target, paywallMessage);
+                            setShowCreditsPaywall("screenshot");
+                            setActiveUrlScanJob(null);
+                            return;
+                        }
                         if (res.ok) {
                             const backendRequestId = typeof payload?.requestId === "string" && payload.requestId.trim()
                                 ? payload.requestId.trim()
@@ -9483,6 +9565,11 @@ export default function PreviewPage(): JSX.Element {
             if (!err) {
                 setUrlProcessingFailure(null);
             }
+            return;
+        }
+
+        if (suppressUrlProcessingFailureRef.current) {
+            if (!err) suppressUrlProcessingFailureRef.current = false;
             return;
         }
 
@@ -11348,6 +11435,19 @@ export default function PreviewPage(): JSX.Element {
             });
 
             const j = (await r.json().catch(() => ({}))) as any;
+
+            if (isArchiveSizeLimitPaywallResponse(r.status, j)) {
+                const paywallMessage = String(
+                    j?.error || "This website is too large for the Free plan.",
+                ).trim();
+                suppressUrlProcessingFailureRef.current = true;
+                setErr(paywallMessage);
+                setShowCreditsPaywall("archive_size");
+                setUrlProcessingHandoff(null);
+                setUrlProcessingFailure(null);
+                setPendingCreatedApp(null);
+                return;
+            }
 
             if (r.status === 202) {
                 push("Started generating your website…", "ok");
@@ -13980,6 +14080,7 @@ export default function PreviewPage(): JSX.Element {
                                     onDelete={handleDeleteApp}
                                     onDeleteDraft={handleDeleteDraft}
                                     onPromoteDraft={promoteDraftToApp}
+                                    onUpgradeDraft={() => setShowCreditsPaywall("archive_size")}
                                     appBuilderNavigated={appBuilderOpen}
                                     draftPromotionScanState={draftPromotionScanState}
                                 />
@@ -15611,7 +15712,9 @@ export default function PreviewPage(): JSX.Element {
                         }}
                             checkoutBusy={checkoutBusy}
                             title={
-                                showCreditsPaywall === "deploy"
+                                showCreditsPaywall === "archive_size"
+                                    ? "Upgrade to capture sites of this size"
+                                    : showCreditsPaywall === "deploy"
                                     ? "Upgrade to publish"
                                     : userTier === "free"
                                         ? "You’ve hit the limit on your free plan"
@@ -15632,7 +15735,9 @@ export default function PreviewPage(): JSX.Element {
                                             to capture more pages and monitor more sites.
                                         </>
                                     )
-                                    : showCreditsPaywall === "preview"
+                                    : showCreditsPaywall === "archive_size"
+                                        ? "This website is too large for the Free plan. Upgrade to capture sites of this size."
+                                        : showCreditsPaywall === "preview"
                                         ? "You have used all monthly generation credits. Upgrade to websites and unlock one-click deploy."
                                         : "Publish your website live from the editor. Upgrade to unlock one-click deploy and higher monthly credits."
                             }

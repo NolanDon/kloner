@@ -448,6 +448,35 @@ export async function POST(req: NextRequest) {
       const appData = (appResponse.json || {}) as any;
       const upstreamStatus = appResponse.status || 502;
 
+      if (
+        upstreamStatus === 402 &&
+        appData?.paywallRequired === true &&
+        appData?.code === "ARCHIVE_SIZE_LIMIT_REACHED"
+      ) {
+        await reportZipGenerationFailure({
+          req,
+          uid: decoded.uid,
+          url: normalizedUrl,
+          name,
+          reason: "archive_size_limit_reached",
+          statusCode: 402,
+          reqId: appResponse.reqId,
+          backendUrl: appResponse.url,
+          backendStatus: upstreamStatus,
+          backendMessage: appData.error || "This website is too large for the Free plan.",
+        }).catch(() => null);
+
+        return NextResponse.json(
+          {
+            ...appData,
+            error: appData.error || "This website is too large for the Free plan.",
+            upstreamStatus,
+            reqId: appResponse.reqId,
+          },
+          { status: 402 },
+        );
+      }
+
       if (upstreamStatus === 404) {
         const routePath = typeof appData?.path === "string" && appData.path.trim() ? appData.path.trim() : null;
         const routeScope = typeof appData?.scope === "string" && appData.scope.trim() ? appData.scope.trim() : null;

@@ -31,6 +31,26 @@ describe("publicHttpUrl", () => {
         );
     });
 
+    it("rejects police, international government, and major financial hosts", () => {
+        const blockedUrls = [
+            "https://city-police.example.com",
+            "https://service.gouv.fr",
+            "https://agency.gov.in",
+            "https://portal.go.jp",
+            "https://services.go.ke",
+            "https://secure.hsbc.com",
+            "https://login.santander.com",
+            "https://online.wellsfargo.com",
+        ];
+
+        for (const url of blockedUrls) {
+            expect(getPublicHttpUrlRejectionReason(url)).toBe(
+                "Banking, government, and account-access URLs are blocked.",
+            );
+            expect(validateAndNormalizePublicHttpUrl(url)).toBeNull();
+        }
+    });
+
     it("rejects suspicious host-label quirks commonly used in phishing", () => {
         expect(getPublicHttpUrlRejectionReason("https://www-example.com")).toBe(
             "This domain is blocked from cloning.",

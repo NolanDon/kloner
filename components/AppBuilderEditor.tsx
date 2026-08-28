@@ -5212,9 +5212,16 @@ export default function AppBuilderEditor({
                 }
 
                 if (!didCancel) {
-                    setError("This app is still syncing its files. We’ll keep trying to load it.");
-                    setFilesHydrated(true);
-                    setIsPreviewBootReady(true);
+                    // Exhausting the initial sync poll is not an app-load failure.
+                    // Keep the normal project-file loader visible so this state does
+                    // not become the misleading “Failed to load app” dialog.
+                    console.warn("App files are still syncing after the initial poll window", {
+                        appId: normalizedAppId,
+                        attempts: maxAttempts,
+                    });
+                    setError(null);
+                    setFilesHydrated(false);
+                    setIsPreviewBootReady(false);
                 }
             } catch (err: any) {
                 if (didCancel) return;

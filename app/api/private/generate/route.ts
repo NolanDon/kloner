@@ -77,10 +77,12 @@ function buildDomainVerificationMessage(targetUrl: string): {
         if (!verificationDomain) return null;
 
         const verificationUrl = parsed.origin;
+        const accessibilityMessage =
+            `We couldn't access ${verificationDomain} to scan it. Make sure the site is publicly accessible without a login, CAPTCHA, or network restriction, then try again.`;
 
         return {
-            error: `Please verify your domain ${verificationDomain}.`,
-            userMessage: `Please verify your domain ${verificationDomain}.`,
+            error: accessibilityMessage,
+            userMessage: accessibilityMessage,
             code: "DOMAIN_VERIFICATION_REQUIRED",
             verificationUrl,
             verificationDomain,
