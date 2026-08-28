@@ -133,8 +133,8 @@ describe("GET /api/private/send-journey-emails", () => {
         store.set("kloner_users/recent_1", {
             email: "recent@example.com",
             notificationPrefs: { journeyEmails: true },
-            createdAt: Date.now() - 2 * 24 * 60 * 60 * 1000,
-            lastAppActivityAt: Date.now() - 2 * 24 * 60 * 60 * 1000,
+            createdAt: Date.now() - 30 * 60 * 1000,
+            lastAppActivityAt: Date.now() - 30 * 60 * 1000,
             offers: {},
         });
         store.set("kloner_users/active_1", {
@@ -165,6 +165,7 @@ describe("GET /api/private/send-journey-emails", () => {
 
         expect(res.status).toBe(200);
         expect(body.ok).toBe(true);
+        expect(body.runId).toMatch(/^journey_/);
         expect(body.sent).toBe(1);
         expect(body.skipped).toBe(3);
         expect(resendSend).toHaveBeenCalledTimes(1);
@@ -178,6 +179,10 @@ describe("GET /api/private/send-journey-emails", () => {
         expect(store.get("kloner_users/recent_1")?.offers?.winback40RecoveryEmailSentAt).toBeFalsy();
         expect(store.get("kloner_users/active_1")?.offers?.winback40RecoveryEmailSentAt).toBeFalsy();
         expect(store.get("kloner_users/unsub_1")?.offers?.winback40RecoveryEmailSentAt).toBeFalsy();
+        const run = [...store.entries()].find(([key]) => key.startsWith("kloner_email_job_runs/"))?.[1];
+        expect(run?.job).toBe("send-journey-emails");
+        expect(run?.status).toBe("completed");
+        expect(run?.stats).toMatchObject({ scanned: 4, sent: 1, skipped: 3, errors: 0 });
     });
 
     it("rejects unauthorized cron requests", async () => {

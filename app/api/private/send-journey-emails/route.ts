@@ -45,7 +45,13 @@ function parseBatchLimit(req: NextRequest): number {
 }
 
 function requireCronAuth(req: NextRequest): NextResponse | null {
-    const expected = getCronSecret();
+    let expected: string;
+    try {
+        expected = getCronSecret();
+    } catch (err) {
+        console.error("[send-journey-emails] cron auth is not configured", err);
+        return NextResponse.json({ ok: false, error: "CRON_SECRET is not configured" }, { status: 500 });
+    }
     const auth = (req.headers.get("authorization") || "").trim();
     if (auth === `Bearer ${expected}`) return null;
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -170,6 +176,19 @@ async function sendWinbackBatch(limit: number) {
                     variant: "winback",
                 });
 
+                await docSnap.ref.set(
+                    {
+                        offers: {
+                            ...(data?.offers && typeof data.offers === "object" ? data.offers : {}),
+                            winback40RecoveryEmailLastAttemptAt: Date.now(),
+                            winback40RecoveryEmailStatus: "sending",
+                        },
+                    },
+                    { merge: true },
+                ).catch((trackingError: any) => {
+                    console.error("[send-journey-emails] failed to record send attempt", trackingError);
+                });
+
                 const result = await resend.emails.send({
                     from,
                     to: email,
@@ -187,6 +206,8 @@ async function sendWinbackBatch(limit: number) {
                         offers: {
                             ...(data?.offers && typeof data.offers === "object" ? data.offers : {}),
                             winback40RecoveryEmailSentAt: Date.now(),
+                            winback40RecoveryEmailStatus: "sent",
+                            winback40RecoveryEmailId: (result as any)?.data?.id || null,
                         },
                     },
                     { merge: true },
@@ -195,6 +216,16 @@ async function sendWinbackBatch(limit: number) {
                 stats.sent += 1;
             } catch (err) {
                 stats.errors += 1;
+                await docSnap.ref.set(
+                    {
+                        offers: {
+                            winback40RecoveryEmailLastAttemptAt: Date.now(),
+                            winback40RecoveryEmailStatus: "error",
+                            winback40RecoveryEmailError: err instanceof Error ? err.message : String(err),
+                        },
+                    },
+                    { merge: true },
+                ).catch(() => null);
                 console.error("[send-journey-emails] failed to send", err);
             }
         }
@@ -206,14 +237,45 @@ async function sendWinbackBatch(limit: number) {
     return stats;
 }
 
+function makeRunId(): string {
+    return `journey_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+}
+
+async function startTrackedRun(): Promise<{ id: string; ref: any } | null> {
+    try {
+        const id = makeRunId();
+        const runDoc = getAdminDb().collection("kloner_email_job_runs").doc(id);
+        const ref = runDoc.ref || runDoc;
+        await ref.set({
+            job: "send-journey-emails",
+            status: "running",
+            startedAt: Date.now(),
+        });
+        return { id, ref };
+    } catch (err) {
+        console.error("[send-journey-emails] failed to start run tracking", err);
+        return null;
+    }
+}
+
+async function finishTrackedRun(run: { id: string; ref: any } | null, patch: Record<string, any>): Promise<void> {
+    if (!run) return;
+    await run.ref.set({ ...patch, finishedAt: Date.now() }, { merge: true }).catch((err: any) => {
+        console.error("[send-journey-emails] failed to finish run tracking", { runId: run.id, err });
+    });
+}
+
 export async function GET(req: NextRequest) {
     const authError = requireCronAuth(req);
     if (authError) return authError;
 
+    const run = await startTrackedRun();
     try {
         const stats = await sendWinbackBatch(parseBatchLimit(req));
-        return NextResponse.json({ ok: true, ...stats }, { headers: { "Cache-Control": "no-store" } });
+        await finishTrackedRun(run, { status: "completed", stats });
+        return NextResponse.json({ ok: true, runId: run?.id || null, ...stats }, { headers: { "Cache-Control": "no-store" } });
     } catch (err: any) {
+        await finishTrackedRun(run, { status: "failed", error: err?.message || "Failed to send journey emails" });
         console.error("[send-journey-emails] cron failed", err);
         return NextResponse.json(
             { ok: false, error: err?.message || "Failed to send journey emails" },
@@ -226,10 +288,13 @@ export async function POST(req: NextRequest) {
     const authError = requireInternalAuth(req);
     if (authError) return authError;
 
+    const run = await startTrackedRun();
     try {
         const stats = await sendWinbackBatch(parseBatchLimit(req));
-        return NextResponse.json({ ok: true, ...stats }, { headers: { "Cache-Control": "no-store" } });
+        await finishTrackedRun(run, { status: "completed", stats });
+        return NextResponse.json({ ok: true, runId: run?.id || null, ...stats }, { headers: { "Cache-Control": "no-store" } });
     } catch (err: any) {
+        await finishTrackedRun(run, { status: "failed", error: err?.message || "Failed to send journey emails" });
         console.error("[send-journey-emails] internal run failed", err);
         return NextResponse.json(
             { ok: false, error: err?.message || "Failed to send journey emails" },

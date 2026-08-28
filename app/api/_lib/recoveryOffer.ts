@@ -2,9 +2,9 @@ import type Stripe from "stripe";
 
 const RECOVERY_OFFER_MIN_INACTIVE_MS = 30 * 60 * 1000;
 const WINBACK_OFFER_MIN_INACTIVE_MS = (() => {
-    const raw = Number.parseInt(process.env.WINBACK_OFFER_MIN_INACTIVE_DAYS || "7", 10);
-    const days = Number.isFinite(raw) && raw > 0 ? raw : 7;
-    return days * 24 * 60 * 60 * 1000;
+    const raw = Number.parseInt(process.env.WINBACK_OFFER_MIN_INACTIVE_HOURS || "1", 10);
+    const hours = Number.isFinite(raw) && raw > 0 ? raw : 1;
+    return hours * 60 * 60 * 1000;
 })();
 
 function toEpochMs(value: unknown): number | null {
