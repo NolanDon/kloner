@@ -48,12 +48,32 @@ function buildWelcomeHtml(email: string, name?: string) {
                 Hey ${safeName},
               </p>
 
-              <p style="margin:0 0 16px 0;">
-                Kloner helps you clone a site and edit the preview visually.
+              <p style="margin:0 0 16px 0;font-size:24px;line-height:1.25;font-weight:700;color:#111827;">
+                Turn inspiration into an editable website.
               </p>
 
               <p style="margin:0 0 20px 0;">
-                Drop a site link to get started, then make changes in the editor.
+                Kloner helps you clone your site into an editable starting point, then bring your ideas to life in a visual editor.
+              </p>
+
+              <p style="margin:0 0 10px 0;font-weight:600;color:#111827;">
+                Get started in three steps:
+              </p>
+
+              <p style="margin:0 0 20px 0;">
+                1. Open your dashboard.<br />
+                2. Drop in your site’s URL.<br />
+                3. Open your preview and start tweaking the layout, copy, colors, and content.
+              </p>
+
+              <p style="margin:0 0 24px 0;">
+                <a href="https://kloner.app/dashboard" style="display:inline-block;border-radius:999px;background:#ff8d21;color:#ffffff;font-weight:600;text-decoration:none;padding:12px 20px;">
+                  Open your dashboard
+                </a>
+              </p>
+
+              <p style="margin:0 0 20px 0;color:#4b5563;">
+                Your site is the starting point. Your ideas take it from there. For the best results, make sure your site is publicly accessible without a login or CAPTCHA. If you get stuck, reply to this email or contact support@kloner.app.
               </p>
 
               <p style="margin:0;">
@@ -126,9 +146,13 @@ export async function POST(req: NextRequest) {
         const html = buildWelcomeHtml(email, name);
         const text =
           `Hi ${name || "there"},\n\n` +
-          `Thanks for signing up for Kloner. Drop a site link to clone it and edit the preview visually.\n\n` +
+          `Thanks for signing up for Kloner. Your site is about to become a lot more fun to work with. Clone it, open the preview, and start shaping it into what you want.\n\n` +
+          `Get started:\n` +
+          `1. Open your dashboard.\n` +
+          `2. Drop in your site's URL.\n` +
+          `3. Open the generated preview and edit the layout, copy, colors, and content visually.\n\n` +
           `Open your dashboard: https://kloner.app/dashboard\n\n` +
-          `If you have any questions, email support@kloner.app.\n\n` +
+          `Your site is the starting point. Your ideas take it from there. For the best results, make sure your site is publicly accessible without a login or CAPTCHA. If you get stuck, reply to this email or contact support@kloner.app.\n\n` +
           `— The Kloner team`;
 
         const resend = getResend();
