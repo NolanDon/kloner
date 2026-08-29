@@ -245,7 +245,9 @@ async function startTrackedRun(): Promise<{ id: string; ref: any } | null> {
     try {
         const id = makeRunId();
         const runDoc = getAdminDb().collection("kloner_email_job_runs").doc(id);
-        const ref = runDoc.ref || runDoc;
+        // Admin SDK returns a DocumentReference directly; the fallback keeps this
+        // compatible with the lightweight collection mock used by the route tests.
+        const ref = (runDoc as any).ref || runDoc;
         await ref.set({
             job: "send-journey-emails",
             status: "running",
