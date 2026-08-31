@@ -1,6 +1,6 @@
 // src/lib/installKlonerIframeApi.ts
 
-import type { Device } from "@/components/editor/PreviewEditorV2";
+import type { Device } from "@/components/AppPreviewEditor";
 
 export function installKlonerIframeApi(
     doc: Document,

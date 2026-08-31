@@ -889,6 +889,7 @@ import { Camera, Check, ChevronDown, ChevronLeft, ChevronRight, Code2, Eye, EyeO
 import { compressImageForUpload } from "@/src/lib/clientImageCompression";
 import { EditorSessionCounters, EditorSessionMetrics, EditorSessionUser, ExportAnalyticsUser, recordEditorSessionAnalytics, recordExportAnalytics } from "./analytics";
 import { injectEditableOverlay } from "@/src/lib/klonerIframeRuntime";
+import { waitForPreviewResources } from "@/src/lib/previewIframeReadiness";
 import { MetaSettings, UploadedAsset } from "./MetaSettings";
 import { AiImageLibraryPanel } from "./AiImageLibraryPanel";
 import { IS_MOBILE, sanitizeImageName } from "./helpers";
@@ -1332,7 +1333,7 @@ type DraftSnapshot = {
 };
 
 const SINGLE_PAGE_KEY = "__single__";
-function AppPreviewEditorCore({
+export function AppPreviewEditorCore({
     initialHtml,
     sourceImage,
     onClose,
@@ -1489,6 +1490,7 @@ function AppPreviewEditorCore({
     const [htmlDraft, setHtmlDraft] = useState<string>("");
     const [previewHtml, setPreviewHtml] = useState<string>("");
     const iframeRef = useRef<HTMLIFrameElement>(null);
+    const [iframeReady, setIframeReady] = useState(false);
     const containerRef = useRef<HTMLDivElement>(null);
     const [activePageId, setActivePageId] = useState<string>("");
     const [derivedPages, setDerivedPages] = useState<EditorPage[]>([]);
@@ -5095,12 +5097,17 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
         ? "opacity-40 blur-sm saturate-75 transition-[opacity,filter] duration-300 ease-out"
         : "opacity-100 transition-[opacity,filter] duration-300 ease-out";
 
+    useEffect(() => {
+        setIframeReady(false);
+    }, [renderHtml, aiPreviewHtml, currentPageKey, currentHtmlPath, mode]);
 
     const iframeNode = (
         <iframe
             key={`${currentPageKey}:${currentHtmlPath || "single"}`}
             ref={iframeRef}
-            className="w-full h-[70vh] sm:h-[80vh] border-0"
+            className={`w-full h-[70vh] sm:h-[80vh] border-0 transition-opacity duration-150 ${
+                iframeReady ? "opacity-100" : "opacity-0"
+            }`}
             title="KlonerPreview"
             referrerPolicy="no-referrer"
             sandbox="allow-scripts allow-same-origin"
@@ -5109,9 +5116,14 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                 renderHtml ||
                 "<!doctype html><html><head><meta charset='utf-8'></head><body></body></html>"
             }
-            onLoad={() => {
+            aria-busy={!iframeReady}
+            onLoad={async () => {
+                const iframe = iframeRef.current;
                 const doc = getPreviewIframeDocument();
                 if (!doc) return;
+
+                await waitForPreviewResources(doc);
+                if (iframeRef.current !== iframe) return;
 
                 // doc.querySelectorAll(".kloner-toolbar").forEach((n) => n.remove());
                 // doc.querySelectorAll(".kloner-style-panel").forEach((n) => n.remove());
@@ -5133,6 +5145,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                 }
 
                 trackPreviewImageHydration(doc);
+                setIframeReady(true);
             }}
         />
 

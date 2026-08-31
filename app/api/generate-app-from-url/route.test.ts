@@ -19,6 +19,7 @@ jest.mock("next/server", () => {
 const callBackend = jest.fn();
 const peekUserCredit = jest.fn();
 const consumeUserCredit = jest.fn();
+const getAuthoritativeUserTier = jest.fn();
 const appRefGet = jest.fn();
 const appRefSet = jest.fn();
 const appRef = {
@@ -62,7 +63,7 @@ jest.mock("../_lib/auth", () => {
 jest.mock("../_lib/userTier", () => {
     return {
         __esModule: true,
-        getAuthoritativeUserTier: async () => "pro",
+        getAuthoritativeUserTier: (...args: any[]) => getAuthoritativeUserTier(...args),
     };
 });
 
@@ -87,6 +88,8 @@ describe("POST /api/generate-app-from-url", () => {
         callBackend.mockReset();
         peekUserCredit.mockReset();
         consumeUserCredit.mockReset();
+        getAuthoritativeUserTier.mockReset();
+        getAuthoritativeUserTier.mockResolvedValue("pro");
         getAdminDb.mockClear();
         collectionKlonerUsers.mockClear();
         collectionKlonerApps.mockClear();
@@ -103,6 +106,28 @@ describe("POST /api/generate-app-from-url", () => {
             url: "https://backend.example/api/v1/generate-app-from-url",
         });
         jest.resetModules();
+    });
+
+    it("returns the early paywall before checking credits or calling the backend", async () => {
+        process.env.EARLY_PAYWALL_COUNTRIES = "BD";
+        getAuthoritativeUserTier.mockResolvedValue("free");
+        const { POST } = await import("./route");
+        const req: any = {
+            headers: new Headers({ "cf-ipcountry": "BD" }),
+            json: async () => ({ url: "https://example.com", name: "Example" }),
+        };
+
+        const res: any = await POST(req);
+        const body = await res.json();
+
+        expect(res.status).toBe(402);
+        expect(body).toMatchObject({
+            code: "EARLY_GENERATION_PAYWALL_REQUIRED",
+            paywallRequired: true,
+        });
+        expect(peekUserCredit).not.toHaveBeenCalled();
+        expect(callBackend).not.toHaveBeenCalled();
+        delete process.env.EARLY_PAYWALL_COUNTRIES;
     });
 
     it("routes url payloads to archive generation without screenshot preflight", async () => {

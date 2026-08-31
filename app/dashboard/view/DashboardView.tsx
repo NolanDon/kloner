@@ -50,8 +50,8 @@ import {
     type StorageReference,
 } from "firebase/storage";
 import { auth, db, storage } from "@/lib/firebase";
-import { buildFinalExport, buildSeoMetaMapForExport, SeoMeta, SeoMetaMap } from "@/components/editor/PreviewEditorV2";
-import PreviewEditorManager from "@/components/editor/PreviewEditorManager";
+import { buildFinalExport, buildSeoMetaMapForExport, SeoMeta, SeoMetaMap } from "@/components/AppPreviewEditor";
+import { AppPreviewEditorCore } from "@/components/AppPreviewEditor";
 import {
     Rocket,
     ChevronDown,
@@ -4140,7 +4140,7 @@ export default function PreviewPage(): JSX.Element {
 
 
     const [showCreditsPaywall, setShowCreditsPaywall] = useState<
-        null | "screenshot" | "preview" | "archive_size" | "deploy"
+        null | "screenshot" | "preview" | "archive_size" | "deploy" | "early_generation"
     >(null);
     const [showProPaywall, setShowProPaywall] = useState(false);
     const [firstGenerationTrialPromptShown, setFirstGenerationTrialPromptShown] = useState(false);
@@ -6476,6 +6476,9 @@ export default function PreviewPage(): JSX.Element {
                 const parsed: any = parseUrlGenerationResponse(res, data);
                 const responseWarning = extractUrlRescanWarning(data);
                 const archiveSizePaywall = isArchiveSizeLimitPaywallResponse(res.status, data);
+                const earlyGenerationPaywall = res.status === 402 &&
+                    data?.paywallRequired === true &&
+                    data?.code === "EARLY_GENERATION_PAYWALL_REQUIRED";
                 const isArchiveCompletion = Boolean(
                     data?.archiveHealth ||
                     data?.archiveZipPath ||
@@ -6573,6 +6576,19 @@ export default function PreviewPage(): JSX.Element {
                         }));
                     }
                 } else {
+                    if (earlyGenerationPaywall) {
+                        const paywallMessage = String(data?.error || "Please upgrade before generating a website from this request.").trim();
+                        pendingUrlGenerationAppIdRef.current = null;
+                        setPendingCreatedApp(null);
+                        setAppBuilderOpen(false);
+                        setCurrentAppId(null);
+                        setUrlProcessingHandoff(null);
+                        setUrlProcessingFailure(null);
+                        suppressUrlProcessingFailureRef.current = true;
+                        setErr(paywallMessage);
+                        setShowCreditsPaywall("early_generation");
+                        return null;
+                    }
                     if (archiveSizePaywall) {
                         const paywallMessage = String(
                             data?.error || "This website is too large for the Free plan.",
@@ -14126,24 +14142,16 @@ export default function PreviewPage(): JSX.Element {
                 </section>
 
                 {editorOpen && (
-                    <PreviewEditorManager
-                        firebaseUser={user}
-                        userTier={userTier}
-                        startProCheckout={startProCheckout}
-                        mode={editorMode}
+                    <AppPreviewEditorCore
                         initialHtml={editorHtml}
                         sourceImage={editorRefImg}
                         accessLocked={isFreeTierNotTrialing}
                         showTour={isTourEligible || shouldForcePreviewTourInDev}
-                        sourceUrl={activeRender?.source || activeRender?.url || undefined}
                         initialSeoMetaByPage={activeSeoMetaByPage || undefined}
                         initialArchivedPageIds={activeArchivedPageIds}
                         onArchivedPageIdsChange={
                             handleArchivedPageIdsChange
                         }
-                        onCreateApp={async (mode, _prompt, renderId) => {
-                            await handleCreateApp(mode as "clone" | "url", renderId);
-                        }}
                         onClose={() => {
                             setEditorOpen(false);
                             setActiveRenderId(undefined);
@@ -15712,7 +15720,9 @@ export default function PreviewPage(): JSX.Element {
                         }}
                             checkoutBusy={checkoutBusy}
                             title={
-                                showCreditsPaywall === "archive_size"
+                                showCreditsPaywall === "early_generation"
+                                    ? "Upgrade before generating this website"
+                                    : showCreditsPaywall === "archive_size"
                                     ? "Upgrade to capture sites of this size"
                                     : showCreditsPaywall === "deploy"
                                     ? "Upgrade to publish"
@@ -15721,7 +15731,9 @@ export default function PreviewPage(): JSX.Element {
                                         : `You’ve hit the limit on your ${userTier} plan`
                             }
                             description={
-                                showCreditsPaywall === "screenshot"
+                                showCreditsPaywall === "early_generation"
+                                    ? "This generation is paused until your account is upgraded."
+                                    : showCreditsPaywall === "screenshot"
                                     ? (
                                         <>
                                             You have used all monthly screenshot credits.{" "}

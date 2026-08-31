@@ -8,6 +8,7 @@ import type { UserTier } from "@/src/lib/credits";
 import { peekUserCredit, consumeUserCredit } from "../_lib/credits-server";
 import { validateAndNormalizePublicHttpUrl, getPublicHttpUrlRejectionReason } from "@/src/lib/publicHttpUrl";
 import { captureCriticalEvent } from "@/lib/observability";
+import { shouldRequireEarlyGenerationPaywall } from "../_lib/earlyGenerationGate";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -195,6 +196,22 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Stop before credit consumption, backend work, or LLM-backed promotion.
+    // This is an operational routing control, not a country-based denial.
+    const earlyPaywall = shouldRequireEarlyGenerationPaywall(req);
+    if (tier === "free" && earlyPaywall.required) {
+      return NextResponse.json(
+        {
+          error: "Please upgrade before generating a website from this request.",
+          code: "EARLY_GENERATION_PAYWALL_REQUIRED",
+          paywallRequired: true,
+          paywallReason: earlyPaywall.reason,
+          upgrade: { requiredPlan: "pro", action: "upgrade" },
+        },
+        { status: 402, headers: { "Cache-Control": "private, no-store" } },
+      );
+    }
+
 
     // Hard gate: app generation with createPreview consumes preview credits.
     try {
@@ -247,7 +264,7 @@ export async function POST(req: NextRequest) {
           generationType,
           generationFormat: generationType,
         },
-        userCtx: { uid: decoded.uid, email: decoded?.email || "", tier },
+        userCtx: { uid: decoded.uid, email: decoded?.email || "", tier, country: earlyPaywall.country },
         timeoutMs: 300000, // 5 minutes
         acceptOnTimeout: true,
       });

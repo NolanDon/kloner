@@ -35,8 +35,8 @@ import {
     Trash2,
     ShieldAlert,
 } from "lucide-react";
-import type { Device, SeoMeta, ViewMode } from "@/components/editor/PreviewEditorV2";
-import PreviewEditorManager from "@/components/editor/PreviewEditorManager";
+import type { Device, SeoMeta, ViewMode } from "@/components/AppPreviewEditor";
+import { AppPreviewEditorCore } from "@/components/AppPreviewEditor";
 import { ensureSessionAndCsrf } from "@/lib/auth-client";
 import {
     extractArchivedPageIdsFromRender,
@@ -1785,8 +1785,7 @@ export default function DeploymentsPage(): JSX.Element {
                 )}
 
                 {editorOpen && activeDeployment && editorDraftId && (
-                    <PreviewEditorManager
-                        firebaseUser={user}
+                    <AppPreviewEditorCore
                         initialHtml={editorHtml}
                         sourceImage={editorRefImg}
                         initialSeoMetaByPage={

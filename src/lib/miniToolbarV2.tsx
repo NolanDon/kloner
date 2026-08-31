@@ -16,7 +16,7 @@ import {
     ArrowLeft,
     ArrowRight,
 } from "lucide-react";
-import type { SelectionMeta } from "@/components/editor/PreviewEditorV2";
+import type { SelectionMeta } from "@/components/AppPreviewEditor";
 
 type MiniToolbarProps = {
     iframeRef: React.RefObject<HTMLIFrameElement>;

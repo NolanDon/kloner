@@ -21,7 +21,7 @@ import {
     Palette,
 } from "lucide-react";
 import AccessLockBadge from "@/components/editor/AccessLockBadge";
-import type { SelectionMeta } from "@/components/editor/PreviewEditorV2";
+import type { SelectionMeta } from "@/components/AppPreviewEditor";
 
 type FloatingBlockToolbarProps = {
     iframeRef: React.RefObject<HTMLIFrameElement>;

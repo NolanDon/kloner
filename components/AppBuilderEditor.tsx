@@ -7498,7 +7498,7 @@ export default function AppBuilderEditor({
                             </button>
                         ) : null}
 
-                        {/* Top-right reserved for machine + deploy (PreviewEditorV2-style) */}
+                        {/* Top-right reserved for machine + deploy */}
                         <div className={`hidden md:inline-flex items-center gap-1 rounded-full border border-neutral-200 bg-white px-1.5 py-1 shadow-md lg:gap-2 lg:px-2 ${isVisualEditorMode ? "invisible pointer-events-none" : ""}`}>
                             <div className="px-1.5 text-[10px] font-semibold text-neutral-700 whitespace-nowrap lg:px-2 lg:text-[11px]">
                                 <span

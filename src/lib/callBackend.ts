@@ -18,7 +18,7 @@ type CallOpts = {
     timeoutMs?: number;
     idempotencyKey?: string;
     /** If provided, signs x-user-ctx/x-user-ctx-sig with INTERNAL_API_KEY */
-    userCtx?: { uid?: string; email?: string; tier?: string | null | undefined };
+    userCtx?: { uid?: string; email?: string; tier?: string | null | undefined; country?: string | null | undefined };
     /**
      * If true, convert AbortError (timeout) into a 202 Accepted pseudo-response.
      * Useful for "kick a job and return fast" routes.
