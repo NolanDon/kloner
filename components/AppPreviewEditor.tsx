@@ -2,7 +2,7 @@
 "use client";
 
 import { ensureSessionAndCsrf } from "@/lib/auth-client";
-import { useEffect, useMemo, useRef, useState, useCallback, ChangeEvent, type ComponentProps } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback, useLayoutEffect, ChangeEvent, type ComponentProps } from "react";
 import Link from "next/link";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence, useDragControls } from "framer-motion";
@@ -5097,7 +5097,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
         ? "opacity-40 blur-sm saturate-75 transition-[opacity,filter] duration-300 ease-out"
         : "opacity-100 transition-[opacity,filter] duration-300 ease-out";
 
-    useEffect(() => {
+    useLayoutEffect(() => {
         setIframeReady(false);
     }, [renderHtml, aiPreviewHtml, currentPageKey, currentHtmlPath, mode]);
 
@@ -5108,6 +5108,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
             className={`w-full h-[70vh] sm:h-[80vh] border-0 transition-opacity duration-150 ${
                 iframeReady ? "opacity-100" : "opacity-0"
             }`}
+            style={{ visibility: iframeReady ? "visible" : "hidden" }}
             title="KlonerPreview"
             referrerPolicy="no-referrer"
             sandbox="allow-scripts allow-same-origin"
