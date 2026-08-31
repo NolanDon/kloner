@@ -11,6 +11,7 @@ import {
     peekUserCredit,
     consumeUserCredit,
 } from "../../_lib/credits-server";
+import { shouldRequireEarlyGenerationPaywall } from "../../_lib/earlyGenerationGate";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -201,6 +202,20 @@ export async function POST(req: NextRequest) {
                             "Unable to determine subscription tier. Try again shortly.",
                     },
                     { status: 500 }
+                );
+            }
+
+            const earlyPaywall = shouldRequireEarlyGenerationPaywall(req);
+            if (tier === "free" && earlyPaywall.required) {
+                return jsonNoStatusAlert(
+                    {
+                        error: "Please upgrade before scanning a website from this request.",
+                        code: "EARLY_GENERATION_PAYWALL_REQUIRED",
+                        paywallRequired: true,
+                        paywallReason: earlyPaywall.reason,
+                        upgrade: { requiredPlan: "pro", action: "upgrade" },
+                    },
+                    { status: 402, headers: { "Cache-Control": "private, no-store" } },
                 );
             }
 

@@ -482,7 +482,7 @@ export async function submitDashboardUrlDraft({
     push: (text: string, tone: "ok" | "warn" | "err") => void;
     setErr: (value: string) => void;
     setInfo: (value: string) => void;
-    setShowCreditsPaywall: (mode: "screenshot" | "preview") => void;
+    setShowCreditsPaywall: (mode: "screenshot" | "preview" | "early_generation") => void;
     setWebsiteSubmissionPendingUrl: Setter<string | null>;
     setDraftApps: Setter<DashboardDraftCard[]>;
     setPendingDraftApps: Setter<Record<string, boolean>>;
@@ -605,6 +605,21 @@ export async function submitDashboardUrlDraft({
                 setDraftApps((prev) => prev.filter((item) => item.draftId !== draftDocId));
                 setErr(paywallMessage);
                 setShowCreditsPaywall("screenshot");
+                onProcessingSessionChange?.(null);
+                setPendingDraftApps((prev) => {
+                    const next = { ...prev };
+                    delete next[draftDocId];
+                    return next;
+                });
+                setWebsiteSubmissionPendingUrl((current) => (current === canonical ? null : current));
+                return false;
+            }
+
+            if (res.status === 402 && errorBody?.paywallRequired === true && errorBody?.code === "EARLY_GENERATION_PAYWALL_REQUIRED") {
+                const paywallMessage = String(errorBody.error || "Please upgrade before scanning a website from this request.").trim();
+                setDraftApps((prev) => prev.filter((item) => item.draftId !== draftDocId));
+                setErr(paywallMessage);
+                setShowCreditsPaywall("early_generation");
                 onProcessingSessionChange?.(null);
                 setPendingDraftApps((prev) => {
                     const next = { ...prev };

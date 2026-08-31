@@ -1423,6 +1423,9 @@ type MiniDashboardEntryProps = {
     creationBusy?: boolean;
     queueActive?: boolean;
     focusUrlInputNonce?: number;
+    showDevEarlyGenerationPaywallSwitch?: boolean;
+    devEarlyGenerationPaywallEnabled?: boolean;
+    onToggleDevEarlyGenerationPaywall?: () => void;
 };
 
 function MiniDashboardEntry({
@@ -1446,6 +1449,9 @@ function MiniDashboardEntry({
     creationBusy = false,
     queueActive = false,
     focusUrlInputNonce = 0,
+    showDevEarlyGenerationPaywallSwitch = false,
+    devEarlyGenerationPaywallEnabled = false,
+    onToggleDevEarlyGenerationPaywall,
 }: MiniDashboardEntryProps) {
     const isCompact = size === "compact";
     const [url, setUrl] = useState("");
@@ -1571,6 +1577,25 @@ function MiniDashboardEntry({
                                         : `${editRemaining}`}
                             </span>
                         </span>
+
+                        {showDevEarlyGenerationPaywallSwitch && onToggleDevEarlyGenerationPaywall ? (
+                            <button
+                                type="button"
+                                role="switch"
+                                aria-checked={devEarlyGenerationPaywallEnabled}
+                                onClick={onToggleDevEarlyGenerationPaywall}
+                                className="inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-amber-900 transition hover:bg-amber-100"
+                                title="Development-only test switch"
+                            >
+                                <span>Force early paywall</span>
+                                <span
+                                    aria-hidden="true"
+                                    className={`relative inline-flex h-4 w-7 shrink-0 rounded-full transition ${devEarlyGenerationPaywallEnabled ? "bg-[#FF8D21]" : "bg-neutral-300"}`}
+                                >
+                                    <span className={`absolute top-0.5 h-3 w-3 rounded-full bg-white shadow transition ${devEarlyGenerationPaywallEnabled ? "left-3.5" : "left-0.5"}`} />
+                                </span>
+                            </button>
+                        ) : null}
                     </div>
 
 
@@ -4154,6 +4179,7 @@ export default function PreviewPage(): JSX.Element {
     const [resumeSubscriptionBusy, setResumeSubscriptionBusy] = useState(false);
     const [showRecoveryCheckoutLoader, setShowRecoveryCheckoutLoader] = useState(false);
     const [showDevQuickMenu, setShowDevQuickMenu] = useState(false);
+    const [devEarlyGenerationPaywallEnabled, setDevEarlyGenerationPaywallEnabled] = useState(false);
     const [previewDebugScenario, setPreviewDebugScenario] = useState<{ mode: 'terminal-error' | 'terminal-error-auto-fix'; nonce: number } | null>(null);
     const isDev = process.env.NODE_ENV !== "production";
     const [deletingOwnAccount, setDeletingOwnAccount] = useState(false);
@@ -6329,6 +6355,11 @@ export default function PreviewPage(): JSX.Element {
     ) => {
         if (!user) return;
 
+        if (isDev && devEarlyGenerationPaywallEnabled) {
+            setShowCreditsPaywall("early_generation");
+            return null;
+        }
+
         const shouldOpenAppBuilderImmediately =
             mode === "url" &&
             Boolean(opts?.openAppBuilderImmediately) &&
@@ -7009,7 +7040,7 @@ export default function PreviewPage(): JSX.Element {
             push(message, "err");
             return null;
         }
-    }, [user, router, push, activeRenderId, openAppBuilderWithCookieGate, requestAppBuilderCookieConsent, appWizardOpen, stripeStatus, setDraftApps, setPendingDraftApps]);
+    }, [user, router, push, activeRenderId, openAppBuilderWithCookieGate, requestAppBuilderCookieConsent, appWizardOpen, stripeStatus, setDraftApps, setPendingDraftApps, isDev, devEarlyGenerationPaywallEnabled]);
 
     useEffect(() => {
         if (!pendingCreatedApp) {
@@ -8141,38 +8172,48 @@ export default function PreviewPage(): JSX.Element {
     }, [urlParam, targetUrl, router]);
 
     const submitMiniUrl = useCallback(
-        async (raw: string) => submitDashboardUrlDraft({
-            rawUrl: raw,
-            canUseScreenshotCredit,
-            canUsePreviewCredit,
-            fetchImpl: fetch,
-            push,
-            setErr,
-            setInfo,
-            setShowCreditsPaywall,
-            setWebsiteSubmissionPendingUrl,
-            setDraftApps,
-            setPendingDraftApps,
-            isGenerationInFlight: (canonicalUrl: string) => urlGenerationInFlightRef.current === canonicalUrl,
-            setGenerationInFlight: (canonicalUrl: string | null) => {
-                urlGenerationInFlightRef.current = canonicalUrl;
-            },
-            onProcessingSessionChange: setUrlProcessingHandoff,
-            onDraftReady: async (draft) => {
-                await promoteDraftToAppRef.current?.({
-                    ...draft,
-                    skipPreviewCreditGate: true,
-                });
-            },
-            onProcessingError: (message, sourceUrl) => {
-                setUrlProcessingFailure({
-                    message,
-                    url: sourceUrl ? String(sourceUrl).trim() || null : null,
-                    at: Date.now(),
-                });
-            },
-        }),
-        [canUseScreenshotCredit, canUsePreviewCredit, fetch, push, setErr, setInfo, setPendingDraftApps, setDraftApps, setShowCreditsPaywall, setWebsiteSubmissionPendingUrl]
+        async (raw: string) => {
+            if (isDev && devEarlyGenerationPaywallEnabled) {
+                setErr("");
+                setInfo("");
+                setWebsiteSubmissionPendingUrl(null);
+                setUrlProcessingHandoff(null);
+                setShowCreditsPaywall("early_generation");
+                return false;
+            }
+            return submitDashboardUrlDraft({
+                rawUrl: raw,
+                canUseScreenshotCredit,
+                canUsePreviewCredit,
+                fetchImpl: fetch,
+                push,
+                setErr,
+                setInfo,
+                setShowCreditsPaywall,
+                setWebsiteSubmissionPendingUrl,
+                setDraftApps,
+                setPendingDraftApps,
+                isGenerationInFlight: (canonicalUrl: string) => urlGenerationInFlightRef.current === canonicalUrl,
+                setGenerationInFlight: (canonicalUrl: string | null) => {
+                    urlGenerationInFlightRef.current = canonicalUrl;
+                },
+                onProcessingSessionChange: setUrlProcessingHandoff,
+                onDraftReady: async (draft) => {
+                    await promoteDraftToAppRef.current?.({
+                        ...draft,
+                        skipPreviewCreditGate: true,
+                    });
+                },
+                onProcessingError: (message, sourceUrl) => {
+                    setUrlProcessingFailure({
+                        message,
+                        url: sourceUrl ? String(sourceUrl).trim() || null : null,
+                        at: Date.now(),
+                    });
+                },
+            });
+        },
+        [canUseScreenshotCredit, canUsePreviewCredit, devEarlyGenerationPaywallEnabled, fetch, isDev, push, setErr, setInfo, setPendingDraftApps, setDraftApps, setShowCreditsPaywall, setWebsiteSubmissionPendingUrl]
     );
 
     const submitMiniUrlWithDuplicateConfirm = useCallback(
@@ -9158,6 +9199,13 @@ export default function PreviewPage(): JSX.Element {
                     });
                         const payload: any = await res.clone().json().catch(() => ({} as any));
                         shouldMarkHandled = res.ok;
+                        if (res.status === 402 && payload?.paywallRequired === true && payload?.code === "EARLY_GENERATION_PAYWALL_REQUIRED") {
+                            const paywallMessage = String(payload?.error || "Please upgrade before scanning a website from this request.").trim();
+                            clearUrlScanQueuedState(target, paywallMessage);
+                            setShowCreditsPaywall("early_generation");
+                            setActiveUrlScanJob(null);
+                            return;
+                        }
                         if (isArchiveSizeLimitPaywallResponse(res.status, payload)) {
                             const paywallMessage = String(
                                 payload?.error || "This website is too large for the Free plan.",
@@ -13910,6 +13958,9 @@ export default function PreviewPage(): JSX.Element {
                         creationBusy={isAppCreationPending || websiteSubmitBusy}
                         queueActive={captureLocked || retryRescanPending}
                         focusUrlInputNonce={focusMiniUrlInputNonce}
+                        showDevEarlyGenerationPaywallSwitch={isDev}
+                        devEarlyGenerationPaywallEnabled={devEarlyGenerationPaywallEnabled}
+                        onToggleDevEarlyGenerationPaywall={() => setDevEarlyGenerationPaywallEnabled((enabled) => !enabled)}
                     />
                 </section>
 
