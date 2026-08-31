@@ -172,7 +172,8 @@ describe("POST /api/billing/create-checkout-session", () => {
         expect(payload.success_url).toContain("step=2");
         expect(payload.success_url).toContain("billing=success");
         expect(payload.cancel_url).toContain("/dashboard/view?billing=cancelled&recovery=1");
-        expect(payload.payment_method_options?.card?.request_three_d_secure).toBe("any");
+        expect(payload.payment_method_collection).toBe("always");
+        expect(payload.payment_method_options).toBeUndefined();
 
         // The default checkout includes the 7-day trial for Pro.
         expect(payload.subscription_data?.trial_period_days).toBe(7);
@@ -299,7 +300,8 @@ describe("POST /api/billing/create-checkout-session", () => {
         const payload = sessionsCreate.mock.calls[0]?.[0];
 
         expect(payload.line_items?.[0]?.price).toBe("price_live_agency");
-        expect(payload.payment_method_options?.card?.request_three_d_secure).toBe("any");
+        expect(payload.payment_method_collection).toBe("always");
+        expect(payload.payment_method_options).toBeUndefined();
         expect(payload.subscription_data?.trial_period_days).toBeUndefined();
     });
 
@@ -486,7 +488,8 @@ describe("POST /api/billing/create-checkout-session", () => {
         expect(body.url).toBe("https://stripe/checkout");
 
         const payload = sessionsCreate.mock.calls[0]?.[0];
-        expect(payload.payment_method_options?.card?.request_three_d_secure).toBe("any");
+        expect(payload.payment_method_collection).toBe("always");
+        expect(payload.payment_method_options).toBeUndefined();
         expect(payload.subscription_data?.trial_period_days).toBeUndefined();
     });
 
@@ -614,7 +617,8 @@ describe("POST /api/billing/create-checkout-session", () => {
         expect(payload).toBeTruthy();
         expect(payload.discounts).toBeUndefined();
         expect(payload.allow_promotion_codes).toBe(true);
-        expect(payload.payment_method_options?.card?.request_three_d_secure).toBe("any");
+        expect(payload.payment_method_collection).toBe("always");
+        expect(payload.payment_method_options).toBeUndefined();
         expect(payload.metadata.exitOffer).toBeUndefined();
         expect(payload.subscription_data?.metadata?.exitOffer).toBeUndefined();
     });

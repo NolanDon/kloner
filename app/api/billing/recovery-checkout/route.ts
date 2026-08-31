@@ -164,11 +164,9 @@ export async function GET(req: NextRequest) {
         success_url: successUrl,
         cancel_url: cancelUrl,
         metadata: baseMeta,
-        payment_method_options: {
-            card: {
-                request_three_d_secure: "any",
-            },
-        },
+        // Collect the card for future off-session invoices, but let Stripe/Radar
+        // request 3DS dynamically when the issuer or risk engine requires it.
+        payment_method_collection: "always",
         discounts,
         subscription_data: {
             ...(STRIPE_TRIAL_DAYS > 0 ? { trial_period_days: STRIPE_TRIAL_DAYS } : {}),
