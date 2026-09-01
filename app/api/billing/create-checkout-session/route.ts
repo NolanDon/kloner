@@ -6,6 +6,7 @@ import admin from "firebase-admin";
 import { linkCustomerToUid } from "../../_lib/billing";
 import { requireSessionAndMaybeCsrf } from "../../_lib/route-guard";
 import { captureCriticalEvent, captureException } from "@/lib/observability";
+import { resolveMonthlyPriceId } from "@/app/api/_lib/monthlyPrice";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -86,13 +87,7 @@ function resolveCheckoutPriceId(plan: string, isProd: boolean): string | null {
     }
 
     if (normalizedPlan === "pro" || normalizedPlan === "basic") {
-        return isProd
-            ? process.env.STRIPE_PRICE_BASIC_PROD ||
-                  process.env.STRIPE_PRICE_PRO_PROD ||
-                  null
-            : process.env.STRIPE_PRICE_BASIC_TEST ||
-                  process.env.STRIPE_PRICE_PRO_TEST ||
-                  null;
+        return resolveMonthlyPriceId(isProd);
     }
 
     return null;

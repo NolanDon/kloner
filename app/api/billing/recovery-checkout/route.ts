@@ -4,6 +4,7 @@ import { linkCustomerToUid } from "@/app/api/_lib/billing";
 import { getStripe } from "@/lib/stripe";
 import { verifySignedToken } from "@/app/api/private/email-links";
 import { STRIPE_TRIAL_DAYS } from "@/src/lib/billingAccess";
+import { resolveMonthlyPriceId } from "@/app/api/_lib/monthlyPrice";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,9 +13,7 @@ const stripe = getStripe();
 const DEFAULT_EXIT_CODE = "DEPLOY40";
 
 function resolveRecoveryPriceId(isProd: boolean): string | null {
-    return isProd
-        ? process.env.STRIPE_PRICE_BASIC_PROD || process.env.STRIPE_PRICE_PRO_PROD || null
-        : process.env.STRIPE_PRICE_BASIC_TEST || process.env.STRIPE_PRICE_PRO_TEST || null;
+    return resolveMonthlyPriceId(isProd);
 }
 
 function pickExitPromoId(isProd: boolean) {

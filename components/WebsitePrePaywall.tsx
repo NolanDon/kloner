@@ -7,7 +7,7 @@ import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import logo from "@/public/images/orange_logo.png";
-import { TRIAL_CTA_LABEL } from "@/src/lib/billingAccess";
+import { BASIC_MONTHLY_PRICE_USD, TRIAL_CTA_LABEL } from "@/src/lib/billingAccess";
 
 type WebsitePrePaywallProps = {
     open: boolean;
@@ -66,7 +66,7 @@ export function WebsitePrePaywall({
         "AI task force to build and design your websites",
         // "Higher queue priority for faster outputs",
         "24/7 Human support included",
-        "Subscriptions starting at only $29.99/mo.",
+        `Subscriptions starting at only $${BASIC_MONTHLY_PRICE_USD.toFixed(2)}/mo.`,
     ],
     primaryLabel = TRIAL_CTA_LABEL,
     secondaryLabel = "No thanks, continue with limited features",

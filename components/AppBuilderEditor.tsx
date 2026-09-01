@@ -16,7 +16,7 @@ import WebContainerRunner from "./WebContainerRunner";
 import { bootstrapServerSession, ensureSessionAndCsrf, resetAuthClientCaches } from "@/lib/auth-client";
 import { useVercelIntegration } from "@/src/hooks/useVercelIntegration";
 import { auth, db, storage } from "@/lib/firebase";
-import { TRIAL_CTA_LABEL } from "@/src/lib/billingAccess";
+import { BASIC_MONTHLY_PRICE_USD, TRIAL_CTA_LABEL } from "@/src/lib/billingAccess";
 import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
 import { doc, onSnapshot } from "firebase/firestore";
 import { resolveStorageUrl } from "@/src/lib/renders";
@@ -191,7 +191,7 @@ const DEPLOY_UPGRADE_PAYWALL_COPY: UpgradePaywallCopy = {
         "AI task force to build and design your websites",
         // "Higher queue priority for faster outputs",
         "24/7 Human support included",
-        "Subscriptions starting at only $29.99/mo.",
+        `Subscriptions starting at only $${BASIC_MONTHLY_PRICE_USD.toFixed(2)}/mo.`,
     ],
     primaryLabel: TRIAL_CTA_LABEL,
     footerNote: "Cancel anytime before renewal.",
@@ -206,7 +206,7 @@ const FREE_PLAN_UPGRADE_PAYWALL_COPY: UpgradePaywallCopy = {
         "Priority rendering and faster queues",
         "Access way more features",
         "AI task force to build and design your websites",
-        "Subscriptions starting at only $29.99/mo.",
+        `Subscriptions starting at only $${BASIC_MONTHLY_PRICE_USD.toFixed(2)}/mo.`,
     ],
     primaryLabel: TRIAL_CTA_LABEL,
     footerNote: "Cancel anytime before renewal.",
