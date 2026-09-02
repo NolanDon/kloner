@@ -189,9 +189,9 @@ async function collectUserProjects(uid: string, userRef?: any): Promise<ProjectR
         ref.collection("deployments").get(),
     ]);
 
-    apps.docs.forEach((snap) => add(snap.data()));
-    renders.docs.forEach((snap) => add(snap.data()));
-    deployments.docs.forEach((snap) => add(snap.data()));
+    apps.docs.forEach((snap: FirebaseFirestore.QueryDocumentSnapshot) => add(snap.data()));
+    renders.docs.forEach((snap: FirebaseFirestore.QueryDocumentSnapshot) => add(snap.data()));
+    deployments.docs.forEach((snap: FirebaseFirestore.QueryDocumentSnapshot) => add(snap.data()));
     return [...records.values()];
 }
 

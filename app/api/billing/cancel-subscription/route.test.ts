@@ -236,7 +236,7 @@ describe("POST /api/billing/cancel-subscription", () => {
                     discounts: [{ coupon: "coupon_40_once" }],
                 }),
             );
-            expect(updateMock.mock.calls[0][1]).not.toHaveProperty("cancel_at");
+            expect((updateMock.mock.calls[0] as any[])[1]).not.toHaveProperty("cancel_at");
             expect(store.get("kloner_users/uid_1")?.billingRetentionOfferUsedAt).toBeTruthy();
 
             const second = await POST(request());

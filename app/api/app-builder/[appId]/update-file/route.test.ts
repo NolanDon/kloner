@@ -71,8 +71,8 @@ jest.mock("../../../_lib/appBuilderScope", () => {
 jest.mock("../../../_lib/htmlStorage", () => {
     return {
         __esModule: true,
-        buildAppBuilderFileStoragePath: (...args: any[]) => buildAppBuilderFileStoragePath(...args),
-        writeStorageText: (...args: any[]) => writeStorageText(...args),
+        buildAppBuilderFileStoragePath,
+        writeStorageText,
     };
 });
 

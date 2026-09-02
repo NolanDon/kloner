@@ -286,7 +286,7 @@ describe("dashboard draft flow", () => {
             pendingDrafts: {} as Record<string, boolean>,
             err: "",
             info: "",
-            paywall: null as "screenshot" | "preview" | null,
+            paywall: null as "screenshot" | "preview" | "early_generation" | null,
         };
         const calls: Array<[string, any?]> = [];
         const push = jest.fn();
@@ -369,7 +369,7 @@ describe("dashboard draft flow", () => {
             pendingDrafts: {} as Record<string, boolean>,
             err: "",
             info: "",
-            paywall: null as "screenshot" | "preview" | null,
+            paywall: null as "screenshot" | "preview" | "early_generation" | null,
         };
         const calls: Array<[string, any?]> = [];
         const push = jest.fn();
@@ -453,7 +453,7 @@ describe("dashboard draft flow", () => {
             pendingDrafts: {} as Record<string, boolean>,
             err: "",
             info: "",
-            paywall: null as "screenshot" | "preview" | null,
+        paywall: null as "screenshot" | "preview" | "early_generation" | null,
         };
         const push = jest.fn();
         const onProcessingError = jest.fn();
