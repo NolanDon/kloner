@@ -102,6 +102,7 @@ export async function POST(req: NextRequest, { params }: any) {
             let userTier = normalizeTier(userData?.tier);
             const stripeStatus = typeof userData?.stripeStatus === "string" ? userData.stripeStatus : null;
             const stripeSubId = typeof userData?.stripeSubscriptionId === "string" ? userData.stripeSubscriptionId.trim() : "";
+            const stripeCancelAtPeriodEnd = userData?.stripeCancelAtPeriodEnd === true;
             const tierSource = typeof userData?.tierSource === "string" ? userData.tierSource : "";
 
             const looksPaidButTierFree =
@@ -111,7 +112,8 @@ export async function POST(req: NextRequest, { params }: any) {
 
             const needsDowngradeReconcile =
                 userTier !== "free" &&
-                (!stripeSubId ||
+                (stripeCancelAtPeriodEnd ||
+                    !stripeSubId ||
                     stripeStatus === "canceled" ||
                     stripeStatus === "incomplete_expired" ||
                     stripeStatus === "paused" ||

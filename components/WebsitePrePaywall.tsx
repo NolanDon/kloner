@@ -269,6 +269,13 @@ export function WebsitePrePaywall({
                                         {secondaryLabel}
                                     </button>
                                 ) : null}
+
+                                <a
+                                    href="/dashboard/settings"
+                                    className="inline-flex items-center justify-center text-[12px] font-medium tracking-tight text-neutral-500 transition hover:text-neutral-800"
+                                >
+                                    Manage subscription in Settings <span className="ml-1" aria-hidden="true">→</span>
+                                </a>
                             </div>
 
                             <div className="mt-6 border-t border-neutral-200 pt-4">

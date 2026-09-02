@@ -8,6 +8,11 @@ import {
 import { monthlyLimitFor } from "@/src/lib/credits";
 import { requireSessionAndMaybeCsrf } from "../../_lib/route-guard";
 import { getAdminDb } from "../../_lib/auth";
+import {
+    sendSiteAccessSuspendedEmail,
+    shouldEnforceLiveSiteAccess,
+    suspendUserLiveSites,
+} from "@/app/api/_lib/subscriptionSiteAccess";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -150,40 +155,15 @@ export async function GET(req: NextRequest) {
                     );
                 }
 
-                const source: string | undefined = userData.tierSource;
-
-                const stripeStatus = typeof userData.stripeStatus === "string" ? userData.stripeStatus : null;
-                const stripeSubId = typeof userData.stripeSubscriptionId === "string" ? userData.stripeSubscriptionId : "";
                 const storedTier = (userData.tier as UserTier) || "free";
 
                 let stripeRefreshError: string | null = null;
 
-                // Self-heal: if Stripe shows an active/trialing subscription but Firestore tier is still free,
-                // force a refresh from Stripe. This is critical for redirect flows (checkout success → resume wizard)
-                // and for production env misconfig incidents.
-                const looksPaidButTierFree =
-                    storedTier === "free" &&
-                    !!stripeSubId &&
-                    (stripeStatus === "active" || stripeStatus === "trialing");
-
-                const needsDowngradeReconcile =
-                    storedTier !== "free" &&
-                    (!stripeSubId ||
-                        stripeStatus === "canceled" ||
-                        stripeStatus === "incomplete_expired" ||
-                        stripeStatus === "paused" ||
-                        stripeStatus === "past_due" ||
-                        stripeStatus === "unpaid" ||
-                        stripeStatus === "incomplete");
-
-                // force refresh, or if we don't yet trust that Firestore tier
-                if (
-                    refresh ||
-                    looksPaidButTierFree ||
-                    needsDowngradeReconcile ||
-                    !source || // no source set yet
-                    source !== "stripe" // make Stripe the source of truth
-                ) {
+                // Stripe is the entitlement source of truth. Firestore is only a
+                // mirror/cache, so refresh on every request (the `refresh` query
+                // remains supported for callers that explicitly request it).
+                const shouldRefreshFromStripe = true;
+                if (shouldRefreshFromStripe || refresh) {
                     try {
                         tier = await refreshTierFromStripeForUid(uid);
                         const freshSnap = await userRef.get();
@@ -196,8 +176,6 @@ export async function GET(req: NextRequest) {
                                 ? e.message
                                 : "stripe_refresh_failed";
                     }
-                } else {
-                    tier = (userData.tier as UserTier) || "free";
                 }
 
                 // Self-heal: keep credits.aiEdits in sync with the tier.
@@ -250,6 +228,37 @@ export async function GET(req: NextRequest) {
                     }
                 } catch (e) {
                     console.error("billing/tier aiEdits self-heal failed", e);
+                }
+
+                // Reconcile live-site access on reads too. This covers cancellations
+                // that happened before the webhook/enforcement deployment and keeps
+                // Stripe authoritative even if a webhook was delayed or missed.
+                const normalizedStripeStatus =
+                    typeof userData?.stripeStatus === "string" ? userData.stripeStatus.trim().toLowerCase() : "";
+                const shouldSuspendSites =
+                    userData?.stripeCancelAtPeriodEnd === true ||
+                    ["canceled", "unpaid", "past_due", "incomplete", "incomplete_expired", "paused"].includes(normalizedStripeStatus);
+                if (shouldSuspendSites && shouldEnforceLiveSiteAccess()) {
+                    try {
+                        const result = await suspendUserLiveSites(
+                            uid,
+                            userData?.stripeCancelAtPeriodEnd === true ? "subscription_cancelled" : "payment_failed",
+                        );
+                        if (result.suspended > 0) {
+                            const authUser = await admin.auth().getUser(uid).catch(() => null);
+                            const email = authUser?.email?.trim() || "";
+                            if (email) {
+                                await sendSiteAccessSuspendedEmail({
+                                    uid,
+                                    email,
+                                    name: authUser?.displayName || null,
+                                    reason: userData?.stripeCancelAtPeriodEnd === true ? "subscription_cancelled" : "payment_failed",
+                                });
+                            }
+                        }
+                    } catch (error) {
+                        console.error("billing/tier live-site reconciliation failed", error);
+                    }
                 }
 
                 const billingState = getBillingState(userData, tier);

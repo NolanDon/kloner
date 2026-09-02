@@ -242,6 +242,7 @@ export async function POST(
         // Self-heal: if Stripe shows paid but tier is still free, force-refresh from Stripe.
         const stripeStatus = typeof userData?.stripeStatus === "string" ? userData.stripeStatus : null;
         const stripeSubId = typeof userData?.stripeSubscriptionId === "string" ? userData.stripeSubscriptionId.trim() : "";
+        const stripeCancelAtPeriodEnd = userData?.stripeCancelAtPeriodEnd === true;
         const tierSource = typeof userData?.tierSource === "string" ? userData.tierSource : "";
 
         const looksPaidButTierFree =
@@ -251,7 +252,8 @@ export async function POST(
 
         const needsDowngradeReconcile =
             userTier !== "free" &&
-            (!stripeSubId ||
+            (stripeCancelAtPeriodEnd ||
+                !stripeSubId ||
                 stripeStatus === "canceled" ||
                 stripeStatus === "incomplete_expired" ||
                 stripeStatus === "paused" ||

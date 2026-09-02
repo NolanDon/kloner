@@ -55,10 +55,12 @@ export async function getAuthoritativeUserTier(uid: string): Promise<UserTier> {
     const storedTier = (userData.tier as UserTier) || "free";
     const stripeStatus = typeof userData?.stripeStatus === "string" ? userData.stripeStatus : null;
     const stripeSubId = typeof userData?.stripeSubscriptionId === "string" ? userData.stripeSubscriptionId.trim() : "";
+    const stripeCancelAtPeriodEnd = userData?.stripeCancelAtPeriodEnd === true;
 
     const needsDowngradeReconcile =
         storedTier !== "free" &&
-        (!stripeSubId ||
+        (stripeCancelAtPeriodEnd ||
+            !stripeSubId ||
             stripeStatus === "canceled" ||
             stripeStatus === "incomplete_expired" ||
             stripeStatus === "paused" ||

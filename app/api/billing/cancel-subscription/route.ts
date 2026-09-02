@@ -7,7 +7,15 @@ import { getStripe } from "@/lib/stripe";
 import { requireSessionAndMaybeCsrf } from "../../_lib/route-guard";
 import { getSubscriptionIdForUid } from "../../_lib/billing";
 import { monthlyLimitFor, type UserTier } from "@/src/lib/credits";
-import { captureCriticalEvent, captureException } from "@/lib/observability";
+import { captureAuditEvent, captureCriticalEvent, captureException } from "@/lib/observability";
+import {
+    enqueueSiteAccessJob,
+    reportSiteAccessChangeRequested,
+    sendSiteAccessSuspendedEmail,
+    shouldEnforceLiveSiteAccess,
+    suspendUserLiveSites,
+    restoreUserLiveSites,
+} from "@/app/api/_lib/subscriptionSiteAccess";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -59,6 +67,16 @@ function getResend() {
 
 function cleanStr(v: unknown, max = 200): string {
         return typeof v === "string" ? v.trim().slice(0, max) : "";
+}
+
+function retentionCouponId(): string {
+        const isProd = process.env.NODE_ENV === "production";
+        return cleanStr(
+                isProd
+                        ? process.env.STRIPE_RETENTION_COUPON_PROD || process.env.STRIPE_EXIT40_COUPON_PROD
+                        : process.env.STRIPE_RETENTION_COUPON_TEST || process.env.STRIPE_EXIT40_COUPON_TEST,
+                200,
+        );
 }
 
 function buildCancellationFeedbackText(args: {
@@ -178,10 +196,13 @@ async function handler(req: NextRequest, uid: string) {
         atPeriodEnd?: boolean;
         cancellationReason?: string | null;
         cancellationFeedback?: string;
+        retentionOffer?: boolean;
     };
     const atPeriodEnd = body?.atPeriodEnd !== false;
     const cancellationReason = cleanStr(body?.cancellationReason, 80);
         const cancellationFeedback = cleanStr(body?.cancellationFeedback, 200);
+    const retentionOfferRequested = body?.retentionOffer === true;
+    let siteAccessResult: Record<string, unknown> = { status: "not_requested" };
 
     if (atPeriodEnd && !cancellationReason && !cancellationFeedback) {
                 return NextResponse.json(
@@ -198,12 +219,100 @@ async function handler(req: NextRequest, uid: string) {
         );
     }
 
+    const userRef = db.collection("kloner_users").doc(uid);
+
+    const retentionCoupon = retentionOfferRequested ? retentionCouponId() : "";
+    if (retentionOfferRequested && !retentionCoupon) {
+        return NextResponse.json(
+            { ok: false, error: "The retention offer is not configured yet." },
+            { status: 503 },
+        );
+    }
+
+    if (retentionOfferRequested) {
+        try {
+            const coupon = await stripe.coupons.retrieve(retentionCoupon);
+            if (coupon.percent_off !== 40 || coupon.duration !== "once") {
+                return NextResponse.json(
+                    { ok: false, error: "The retention coupon must be a one-time 40% Stripe coupon." },
+                    { status: 503 },
+                );
+            }
+        } catch {
+            return NextResponse.json(
+                { ok: false, error: "The retention coupon could not be found in Stripe." },
+                { status: 503 },
+            );
+        }
+
+        try {
+            const currentSubscription = await stripe.subscriptions.retrieve(subId, { expand: ["discounts"] });
+            const currentAny = currentSubscription as any;
+            const currentDiscounts = Array.isArray(currentAny?.discounts)
+                ? currentAny.discounts
+                : Array.isArray(currentAny?.discounts?.data)
+                    ? currentAny.discounts.data
+                    : [];
+            const alreadyDiscounted = currentDiscounts.some((discount: any) =>
+                String(discount?.coupon?.id || discount?.coupon || "") === retentionCoupon,
+            );
+            const alreadyMarked = currentAny?.metadata?.klonerRetentionOfferUsed === "1";
+            if (alreadyDiscounted || alreadyMarked) {
+                if (alreadyDiscounted) {
+                    await userRef.set(
+                        {
+                            billingRetentionOfferUsedAt: admin.firestore.FieldValue.serverTimestamp(),
+                            billingRetentionOfferSubscriptionId: subId,
+                        },
+                        { merge: true },
+                    );
+                }
+                return NextResponse.json(
+                    { ok: false, error: "The retention offer has already been used on this subscription." },
+                    { status: 409 },
+                );
+            }
+        } catch {
+            return NextResponse.json(
+                { ok: false, error: "Unable to verify retention-offer eligibility." },
+                { status: 503 },
+            );
+        }
+
+        const userSnap = await userRef.get();
+        const userData = userSnap.exists ? (userSnap.data() as any) : {};
+        if (userData?.billingRetentionOfferUsedAt) {
+            return NextResponse.json(
+                { ok: false, error: "The retention offer has already been used on this account." },
+                { status: 409 },
+            );
+        }
+        await userRef.set(
+            {
+                billingRetentionOfferUsedAt: admin.firestore.FieldValue.serverTimestamp(),
+                billingRetentionOfferSubscriptionId: subId,
+            },
+            { merge: true },
+        );
+    }
+
     let updatedRaw: Record<string, any>;
     try {
         updatedRaw = (await stripe.subscriptions.update(subId, {
-            cancel_at_period_end: atPeriodEnd,
+            cancel_at_period_end: retentionOfferRequested ? false : atPeriodEnd,
+            ...(retentionOfferRequested ? { discounts: [{ coupon: retentionCoupon }] } : {}),
+            ...(retentionOfferRequested ? { metadata: { klonerRetentionOfferUsed: "1" } } : {}),
         })) as unknown as Record<string, any>;
     } catch (error: any) {
+        if (retentionOfferRequested) {
+            await userRef.set(
+                {
+                    billingRetentionOfferUsedAt: admin.firestore.FieldValue.delete(),
+                    billingRetentionOfferSubscriptionId: admin.firestore.FieldValue.delete(),
+                },
+                { merge: true },
+            ).catch(() => undefined);
+        }
         const status =
             typeof error?.statusCode === "number"
                 ? error.statusCode
@@ -227,12 +336,14 @@ async function handler(req: NextRequest, uid: string) {
             await captureCriticalEvent({
                 source: "vercel",
                 severity: "critical",
+                alwaysNotifySlack: true,
                 statusCode: status,
                 route: "/api/billing/cancel-subscription",
                 method: "POST",
                 action: "billing.cancelSubscription.update",
                 service: "billing-subscription",
                 userId: uid,
+                requestId: error?.requestId || req.headers.get("x-request-id") || req.headers.get("x-vercel-id") || undefined,
                 message: typeof error?.message === "string" ? error.message : "Stripe cancel subscription failed",
                 errorName: typeof error?.type === "string" ? error.type : undefined,
                 stack: typeof error?.stack === "string" ? error.stack : undefined,
@@ -255,8 +366,6 @@ async function handler(req: NextRequest, uid: string) {
         stripeStatus,
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     };
-
-    const userRef = db.collection("kloner_users").doc(uid);
 
     // Mirror directly onto your existing user doc fields (matches your schema)
     await userRef.set(payload, { merge: true });
@@ -336,6 +445,84 @@ async function handler(req: NextRequest, uid: string) {
         );
     }
 
+    if (atPeriodEnd && shouldEnforceLiveSiteAccess()) {
+        try {
+            await enqueueSiteAccessJob(uid, "suspend", "subscription_cancelled");
+            await reportSiteAccessChangeRequested(uid, "suspend");
+            // Process from the backend request as well as the Stripe webhook. This
+            // makes local/test cancellations work without waiting for a webhook or
+            // a Vercel cron invocation; the job remains as the retry record.
+            const result = await suspendUserLiveSites(uid, "subscription_cancelled");
+            const authUser = await admin.auth().getUser(uid).catch(() => null);
+            if (authUser?.email && result.suspended > 0) {
+                await sendSiteAccessSuspendedEmail({ uid, email: authUser.email, name: authUser.displayName || null, reason: "subscription_cancelled" });
+            }
+            siteAccessResult = { status: "completed", suspended: result.suspended, failed: result.failed };
+        } catch (error) {
+            siteAccessResult = { status: "failed", error: error instanceof Error ? error.message : String(error) };
+            await captureAuditEvent({
+                source: "vercel",
+                severity: "critical",
+                alwaysNotifySlack: true,
+                route: "/api/billing/cancel-subscription",
+                method: "POST",
+                action: "billing.liveSites.suspension_failed",
+                service: "vercel-project-access",
+                userId: uid,
+                message: `Live-site pause execution failed for canceled user ${uid}: ${error instanceof Error ? error.message : String(error)}`,
+                extra: { error: error instanceof Error ? error.stack || error.message : String(error) },
+            });
+            await captureCriticalEvent({
+                source: "vercel",
+                severity: "critical",
+                alwaysNotifySlack: true,
+                statusCode: 500,
+                route: "/api/billing/cancel-subscription",
+                method: "POST",
+                action: "billing.cancelSubscription.siteAccess",
+                service: "billing-subscription",
+                userId: uid,
+                message: typeof (error as any)?.message === "string" ? (error as any).message : "Failed to suspend live sites",
+            });
+        }
+    } else if (atPeriodEnd) {
+        siteAccessResult = { status: "skipped", reason: "STRIPE_ENFORCE_LIVE_SITE_ACCESS is disabled" };
+        await captureAuditEvent({
+            source: "vercel",
+            severity: "critical",
+            alwaysNotifySlack: true,
+            route: "/api/billing/cancel-subscription",
+            method: "POST",
+            action: "billing.liveSites.pause_skipped",
+            service: "vercel-project-access",
+            userId: uid,
+            message: `Live-site pause was skipped for canceled user ${uid}: STRIPE_ENFORCE_LIVE_SITE_ACCESS is disabled.`,
+        });
+    }
+
+    if (!atPeriodEnd && shouldEnforceLiveSiteAccess()) {
+        try {
+            await enqueueSiteAccessJob(uid, "restore", "subscription_resumed");
+            await reportSiteAccessChangeRequested(uid, "restore");
+            const result = await restoreUserLiveSites(uid);
+            siteAccessResult = { status: "completed", restored: result.restored, failed: result.failed };
+        } catch (error) {
+            siteAccessResult = { status: "failed", error: error instanceof Error ? error.message : String(error) };
+            await captureCriticalEvent({
+                source: "vercel",
+                severity: "critical",
+                alwaysNotifySlack: true,
+                statusCode: 500,
+                route: "/api/billing/cancel-subscription",
+                method: "POST",
+                action: "billing.cancelSubscription.siteAccessRestore",
+                service: "billing-subscription",
+                userId: uid,
+                message: typeof (error as any)?.message === "string" ? (error as any).message : "Failed to restore live sites",
+            });
+        }
+    }
+
     if (atPeriodEnd && (cancellationReason || cancellationFeedback)) {
         const feedbackDoc = db.collection("billing_cancellation_feedback").doc();
         const authUser = await admin.auth().getUser(uid).catch(() => null);
@@ -402,6 +589,7 @@ async function handler(req: NextRequest, uid: string) {
         currentPeriodEnd: payload.stripeCurrentPeriodEnd,
         trialEnd: payload.stripeTrialEnd,
         status: payload.stripeStatus,
+        siteAccess: siteAccessResult,
     });
 }
 

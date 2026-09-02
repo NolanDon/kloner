@@ -2,6 +2,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
+import Image from "next/image";
 import { auth, db } from "@/lib/firebase";
 import { onAuthStateChanged, type User, updateProfile } from "firebase/auth";
 import {
@@ -15,6 +16,7 @@ import {
   ArchiveRestore,
   XCircle,
   Trash2,
+  Wrench,
 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useVercelIntegration } from "@/src/hooks/useVercelIntegration";
@@ -279,6 +281,10 @@ export default function SettingsPage(): JSX.Element {
   const [trialEndSec, setTrialEndSec] = useState<number | null>(null);
 
   const [cancelBusy, setCancelBusy] = useState(false);
+  const [retentionOfferBusy, setRetentionOfferBusy] = useState(false);
+  const [retentionOfferChecking, setRetentionOfferChecking] = useState(false);
+  const [showRetentionOffer, setShowRetentionOffer] = useState(false);
+  const [retentionOfferError, setRetentionOfferError] = useState<string | null>(null);
   const [cancelError, setCancelError] = useState<string | null>(null);
   const [cancelSuccess, setCancelSuccess] = useState<string | null>(null);
   const [cancelReason, setCancelReason] = useState<string>("");
@@ -1042,6 +1048,8 @@ export default function SettingsPage(): JSX.Element {
     setRenewSuccess(null);
     setCancelReason("");
     setCancelFeedback("");
+    setShowRetentionOffer(false);
+    setRetentionOfferError(null);
     setShowCancelFeedbackPopup(true);
   }
 
@@ -1053,9 +1061,33 @@ export default function SettingsPage(): JSX.Element {
     setCancelReason(prefix);
   }
 
-  async function handleCancelSubscription() {
+  async function handleCancelSubscription(options?: { skipRetentionOffer?: boolean; acceptRetentionOffer?: boolean }) {
     const reason = cancelReason.trim();
     const feedback = cancelFeedback.trim();
+
+    if (!options?.skipRetentionOffer && !options?.acceptRetentionOffer) {
+      setRetentionOfferError(null);
+      setRetentionOfferChecking(true);
+      try {
+        const eligibility = await fetch("/api/billing/retention-offer", {
+          method: "GET",
+          credentials: "include",
+          cache: "no-store",
+        });
+        const data = await eligibility.json().catch(() => ({}));
+        if (eligibility.ok && data?.eligible === true) {
+          setShowRetentionOffer(true);
+        } else {
+          await handleCancelSubscription({ skipRetentionOffer: true });
+        }
+      } catch {
+        // Fail closed: never show an offer that may be rejected with 409.
+        await handleCancelSubscription({ skipRetentionOffer: true });
+      } finally {
+        setRetentionOfferChecking(false);
+      }
+      return;
+    }
 
     if (!reason && !feedback) {
       setCancelError("Pick a reason, add a note, or do both.");
@@ -1079,26 +1111,32 @@ export default function SettingsPage(): JSX.Element {
           ...(csrf ? { "x-csrf": csrf } : {}),
         },
         body: JSON.stringify({
-          atPeriodEnd: true,
+          atPeriodEnd: options?.acceptRetentionOffer ? false : true,
           cancellationReason: reason || null,
           cancellationFeedback: feedback,
+          retentionOffer: options?.acceptRetentionOffer === true,
         }),
       });
 
       const data = await res.json().catch(() => ({}));
 
       if (!res.ok || !data?.ok) {
-        setCancelError(data?.error || `Cancel failed (HTTP ${res.status})`);
+        const message = data?.error || `Cancel failed (HTTP ${res.status})`;
+        if (options?.acceptRetentionOffer) setRetentionOfferError(message);
+        else setCancelError(message);
         return;
       }
 
       setCancelSuccess(
-        onTrial
+        options?.acceptRetentionOffer
+          ? "You’re staying with Kloner. Your 40% discount will apply to your next invoice."
+          : onTrial
           ? "Cancellation scheduled. Trial access is revoked immediately and website generation is disabled."
           : "Cancellation scheduled. You’ll keep access until the end date.",
       );
       setCancelReason("");
       setCancelFeedback("");
+      setShowRetentionOffer(false);
       setShowCancelFeedbackPopup(false);
       await loadTier();
     } catch (err: any) {
@@ -1229,9 +1267,12 @@ export default function SettingsPage(): JSX.Element {
   const stripeStatusLabel =
     billingState === "trial_cancelled"
       ? "free"
+      : cancelAtPeriodEnd
+        ? "cancellation scheduled"
       : (stripeStatus ?? "no active subscription");
   const downgradeNotice =
     billingState === "trial_cancelled" ||
+    cancelAtPeriodEnd ||
     stripeStatus === "canceled" ||
     stripeStatus === "unpaid";
 
@@ -1260,14 +1301,13 @@ export default function SettingsPage(): JSX.Element {
     tier !== "free" &&
     !tierLoading &&
     (stripeStatus === "active" ||
-      stripeStatus === "trialing" ||
-      !!stripeSubscriptionId);
+      stripeStatus === "trialing");
 
   const canCancel = hasPaidSubscription && cancelAtPeriodEnd !== true;
 
   const canRenew =
-    billingState === "trial_cancelled" &&
-    !!stripeSubscriptionId;
+    !!stripeSubscriptionId &&
+    (billingState === "trial_cancelled" || cancelAtPeriodEnd);
 
   const showRenewSubscription = canRenew;
   const renewButtonKind = "trial";
@@ -1976,32 +2016,6 @@ export default function SettingsPage(): JSX.Element {
                 </div>
               )}
 
-              {IS_DEV && (
-                <div className="mt-4">
-                  <button
-                    type="button"
-                    onClick={() => void handleDevResetStripeCustomer()}
-                    disabled={billingResetBusy}
-                    className={btnClass({
-                      kind: "danger",
-                      disabled: billingResetBusy,
-                    })}
-                    title="Delete the attached Stripe customer and reset billing"
-                  >
-                    {billingResetBusy ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Trash2 className="h-4 w-4" />
-                    )}
-                    <span>Reset Stripe customer</span>
-                  </button>
-                  <p className="mt-2 text-xs leading-5 text-neutral-500">
-                    Developer reset. Deletes the attached Stripe customer and
-                    resets this account to free.
-                  </p>
-                </div>
-              )}
-
               <details className="group mt-4 rounded-2xl border border-neutral-200 bg-neutral-50 px-4 py-3">
                 <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-sm font-medium text-neutral-900 [&::-webkit-details-marker]:hidden">
                   <span className="inline-flex items-center gap-2">
@@ -2020,15 +2034,6 @@ export default function SettingsPage(): JSX.Element {
                 </summary>
 
                 <div className="mt-3 space-y-3">
-                  <p className="text-sm leading-6 text-neutral-600">
-                    {tier === "free" &&
-                      "Free tier with low daily preview and snapshot limits."}
-                    {tier === "pro" &&
-                      "Pro tier with higher limits and priority processing."}
-                    {tier === "agency" &&
-                      "Agency tier for higher volume and team workflows."}
-                  </p>
-
                   <p className="text-xs leading-5 text-neutral-500">
                     Stripe status:{" "}
                     <span className="font-semibold">{stripeStatusLabel}</span>
@@ -2036,9 +2041,8 @@ export default function SettingsPage(): JSX.Element {
                       <> · trial canceled, access is paused until you renew.</>
                     ) : downgradeNotice ? (
                       <>
-                        {" "}
-                        · your account will fall back to the Free tier after
-                        this period.
+                        {" "}· access is paused now and will resume only if
+                        you renew.
                       </>
                     ) : null}
                   </p>
@@ -2065,7 +2069,8 @@ export default function SettingsPage(): JSX.Element {
                     endOfAccessDays !== null &&
                     endOfAccessSec && (
                       <p className="text-xs leading-5 text-amber-700">
-                        Cancellation scheduled · access ends in{" "}
+                        Cancellation scheduled · access is paused now; Stripe
+                        ends billing in{" "}
                         <span className="font-semibold">
                           {endOfAccessDays} day
                           {endOfAccessDays === 1 ? "" : "s"}
@@ -2090,15 +2095,6 @@ export default function SettingsPage(): JSX.Element {
                   {renewSuccess && (
                     <p className="text-xs text-emerald-600">{renewSuccess}</p>
                   )}
-                  {billingResetError && (
-                    <p className="text-xs text-red-600">{billingResetError}</p>
-                  )}
-                  {billingResetSuccess && (
-                    <p className="text-xs text-emerald-600">
-                      {billingResetSuccess}
-                    </p>
-                  )}
-
                   <div className="flex flex-col gap-2 pt-1">
                     <a
                       href="/price"
@@ -2147,6 +2143,51 @@ export default function SettingsPage(): JSX.Element {
                 </div>
               </details>
             </SettingsSection>
+
+            {IS_DEV && (
+              <SettingsSection
+                title="Developer tools"
+                subtitle="Development-only billing and account controls."
+                icon={<Wrench className="h-4 w-4" />}
+              >
+                <details className="rounded-2xl border border-dashed border-neutral-300 bg-neutral-50 px-4 py-3">
+                  <summary className="cursor-pointer list-none text-sm font-semibold text-neutral-700 [&::-webkit-details-marker]:hidden">
+                    Stripe customer controls
+                  </summary>
+                  <div className="mt-3">
+                    <button
+                      type="button"
+                      onClick={() => void handleDevResetStripeCustomer()}
+                      disabled={billingResetBusy}
+                      className={btnClass({
+                        kind: "danger",
+                        disabled: billingResetBusy,
+                      })}
+                      title="Delete the attached Stripe customer and reset billing"
+                    >
+                      {billingResetBusy ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Trash2 className="h-4 w-4" />
+                      )}
+                      <span>Reset Stripe customer</span>
+                    </button>
+                    <p className="mt-2 text-xs leading-5 text-neutral-500">
+                      Developer reset. Deletes the attached Stripe customer and
+                      resets this account to free.
+                    </p>
+                    {billingResetError && (
+                      <p className="mt-2 text-xs text-red-600">{billingResetError}</p>
+                    )}
+                    {billingResetSuccess && (
+                      <p className="mt-2 text-xs text-emerald-600">
+                        {billingResetSuccess}
+                      </p>
+                    )}
+                  </div>
+                </details>
+              </SettingsSection>
+            )}
 
             {showCancelFeedbackPopup && (
               <div className="fixed inset-0 z-[80] flex items-end justify-center bg-black/35 px-3 py-3 sm:items-center">
@@ -2257,6 +2298,7 @@ export default function SettingsPage(): JSX.Element {
                       onClick={() => void handleCancelSubscription()}
                       disabled={
                         cancelBusy ||
+                        retentionOfferChecking ||
                         (!cancelReason.trim() && !cancelFeedback.trim())
                       }
                       className="inline-flex items-center justify-center rounded-full bg-accent px-4 py-2 text-sm font-semibold text-white hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-50"
@@ -2267,6 +2309,99 @@ export default function SettingsPage(): JSX.Element {
                       <span className="ml-2">
                         Cancel subscription, and pause my projects
                       </span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {showRetentionOffer && (
+              <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/35 px-4">
+                <div className="w-full max-w-sm rounded-3xl border border-neutral-200 bg-white p-5 shadow-2xl">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-orange-500">
+                        One-time offer
+                      </p>
+                      <h3 className="mt-1 text-lg font-semibold text-neutral-900">
+                        Stay for 40% off
+                      </h3>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowRetentionOffer(false)}
+                      disabled={retentionOfferBusy || cancelBusy}
+                      className="inline-flex h-8 w-8 items-center justify-center rounded-full text-neutral-500 hover:bg-neutral-100"
+                      aria-label="Close offer"
+                    >
+                      <XCircle className="h-5 w-5" />
+                    </button>
+                  </div>
+                  <p className="mt-3 text-sm leading-6 text-neutral-600">
+                    Keep your subscription active and get 40% off your next monthly invoice.
+                    Your projects will stay live.
+                  </p>
+                  <div className="relative mt-4 overflow-hidden rounded-[24px] border border-neutral-200 bg-white shadow-[0_14px_36px_rgba(0,0,0,0.08)]">
+                    <div className="overflow-hidden py-3 sm:py-4">
+                      <div className="website-paywall-carousel flex w-max items-stretch gap-3 px-3">
+                        {[1, 2, 3, 4, 5, 1, 2, 3, 4, 5].map((imageNumber, index) => (
+                          <div
+                            key={`${imageNumber}-${index}`}
+                            className="relative h-[132px] w-[180px] shrink-0 overflow-hidden rounded-[20px] border border-neutral-200 bg-neutral-100 shadow-[0_12px_28px_rgba(0,0,0,0.10)]"
+                          >
+                            <Image
+                              src={`/images/showcase/showcase${imageNumber}.jpg`}
+                              alt="Kloner website example"
+                              fill
+                              sizes="180px"
+                              className="object-cover"
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                  {retentionOfferError && (
+                    <p className="mt-3 text-xs text-red-600">{retentionOfferError}</p>
+                  )}
+                  <div className="mt-5 flex flex-col gap-2">
+                    <button
+                      type="button"
+                      disabled={retentionOfferBusy}
+                      onClick={async () => {
+                        setRetentionOfferBusy(true);
+                        setRetentionOfferError(null);
+                        try {
+                          await handleCancelSubscription({ acceptRetentionOffer: true });
+                        } catch (error: any) {
+                          setRetentionOfferError(error?.message || "Unable to apply the offer.");
+                        } finally {
+                          setRetentionOfferBusy(false);
+                        }
+                      }}
+                      className="inline-flex items-center justify-center rounded-full bg-accent px-4 py-2.5 text-sm font-semibold text-white hover:brightness-95 disabled:opacity-50"
+                    >
+                      {retentionOfferBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                      Keep my subscription
+                    </button>
+                    <button
+                      type="button"
+                      disabled={retentionOfferBusy || cancelBusy}
+                      onClick={async () => {
+                        setRetentionOfferBusy(true);
+                        setRetentionOfferError(null);
+                        try {
+                          await handleCancelSubscription({ skipRetentionOffer: true });
+                        } catch (error: any) {
+                          setRetentionOfferError(error?.message || "Unable to cancel the subscription.");
+                        } finally {
+                          setRetentionOfferBusy(false);
+                        }
+                      }}
+                      className="inline-flex items-center justify-center px-3 py-1.5 text-xs font-medium text-neutral-400 hover:text-neutral-600 disabled:opacity-50"
+                    >
+                      {retentionOfferBusy ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> : null}
+                      {retentionOfferBusy ? "Cancelling…" : "No thanks, continue cancelling"}
                     </button>
                   </div>
                 </div>

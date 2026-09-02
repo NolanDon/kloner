@@ -85,6 +85,7 @@ export async function POST(req: NextRequest) {
             // Self-heal: if Stripe shows paid but tier is still free, force-refresh from Stripe.
             const stripeStatus = typeof userData?.stripeStatus === "string" ? userData.stripeStatus : null;
             const stripeSubId = typeof userData?.stripeSubscriptionId === "string" ? userData.stripeSubscriptionId.trim() : "";
+            const stripeCancelAtPeriodEnd = userData?.stripeCancelAtPeriodEnd === true;
             const tierSource = typeof userData?.tierSource === "string" ? userData.tierSource : "";
 
             const looksPaidButTierFree =
@@ -92,7 +93,7 @@ export async function POST(req: NextRequest) {
                 !!stripeSubId &&
                 (stripeStatus === "active" || stripeStatus === "trialing");
 
-            if (userTier === "free" && (looksPaidButTierFree || (tierSource && tierSource !== "stripe"))) {
+            if (stripeCancelAtPeriodEnd || (userTier === "free" && (looksPaidButTierFree || (tierSource && tierSource !== "stripe")))) {
                 try {
                     const refreshed = await refreshTierFromStripeForUid(uid);
                     userTier = refreshed === "pro" || refreshed === "agency" ? refreshed : "free";

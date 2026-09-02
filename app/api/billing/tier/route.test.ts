@@ -106,7 +106,7 @@ describe("GET /api/billing/tier", () => {
         expect(body.tier).toBe("pro");
     });
 
-    it("does not refresh when tierSource=stripe and tier already paid", async () => {
+    it("refreshes Stripe even when the mirrored tier already says paid", async () => {
         const only = snap({
             tierSource: "stripe",
             tier: "pro",
@@ -132,7 +132,7 @@ describe("GET /api/billing/tier", () => {
         const res: any = await GET({ url: "https://example.com/api/billing/tier" } as any);
         const body = await res.json();
 
-        expect(refreshTierFromStripeForUid).toHaveBeenCalledTimes(0);
+        expect(refreshTierFromStripeForUid).toHaveBeenCalledTimes(1);
         expect(body.tier).toBe("pro");
     });
 
@@ -178,7 +178,7 @@ describe("GET /api/billing/tier", () => {
         const res: any = await GET({ url: "https://example.com/api/billing/tier" } as any);
         const body = await res.json();
 
-        expect(refreshTierFromStripeForUid).toHaveBeenCalledTimes(0);
+        expect(refreshTierFromStripeForUid).toHaveBeenCalledTimes(1);
         expect(body.tier).toBe("pro");
         expect(setCalls).toBe(1);
         expect(store.credits.aiEdits.monthlyLimit).toBe(300);

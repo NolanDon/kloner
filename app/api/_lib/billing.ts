@@ -416,6 +416,7 @@ export function effectiveTierFromStripeSubscription(params: {
     status?: string | null;
     currentPeriodEnd?: number | null;
     trialEnd?: number | null;
+    cancelAtPeriodEnd?: boolean | null;
     created?: number | null;
     nowMs?: number;
 }): Tier {
@@ -424,11 +425,16 @@ export function effectiveTierFromStripeSubscription(params: {
         status,
         currentPeriodEnd,
         trialEnd,
+        cancelAtPeriodEnd,
         created,
         nowMs = Date.now(),
     } = params;
 
     const normalized = typeof status === "string" ? status.trim().toLowerCase() : "";
+    // A cancellation requested from Kloner revokes product/site access immediately.
+    // Stripe keeps the subscription `active` until the paid period ends, so status
+    // alone must not be treated as an entitlement when cancel_at_period_end is set.
+    if (cancelAtPeriodEnd === true) return "free";
     if (normalized === "active" || normalized === "trialing") return mappedTier;
 
     const graceStatuses = new Set(["past_due", "unpaid", "incomplete"]);
@@ -581,6 +587,7 @@ export async function refreshTierFromStripeForUid(uid: string): Promise<Tier> {
         status,
         currentPeriodEnd,
         trialEnd,
+        cancelAtPeriodEnd,
         created: typeof subAny.created === "number" ? subAny.created : null,
     });
 

@@ -72,7 +72,10 @@ describe("POST /api/billing/cancel-subscription", () => {
             default: {
                 apps: [{}],
                 firestore: Object.assign(() => db, {
-                    FieldValue: { serverTimestamp: () => ({ __type: "serverTimestamp" }) },
+                    FieldValue: {
+                        serverTimestamp: () => ({ __type: "serverTimestamp" }),
+                        delete: () => ({ __type: "delete" }),
+                    },
                 }),
             },
         }));
@@ -105,7 +108,10 @@ describe("POST /api/billing/cancel-subscription", () => {
             default: {
                 apps: [{}],
                 firestore: Object.assign(() => db, {
-                    FieldValue: { serverTimestamp: () => ({ __type: "serverTimestamp" }) },
+                    FieldValue: {
+                        serverTimestamp: () => ({ __type: "serverTimestamp" }),
+                        delete: () => ({ __type: "delete" }),
+                    },
                 }),
                 auth: () => ({
                     getUser: async () => ({ email: "user@example.com", displayName: "Test User" }),
@@ -168,5 +174,79 @@ describe("POST /api/billing/cancel-subscription", () => {
         expect(userDoc.tierSource).toBe("override");
         expect(userDoc.tierOverrideTier).toBe("free");
         expect(userDoc.tierOverrideUntil).toBeTruthy();
+    });
+
+    it("rejects a second retention-offer attempt for the same account", async () => {
+        const previousCoupon = process.env.STRIPE_RETENTION_COUPON_TEST;
+        process.env.STRIPE_RETENTION_COUPON_TEST = "coupon_40_once";
+
+        try {
+            const { db, store } = createFirestoreMock();
+
+            jest.doMock("firebase-admin", () => ({
+                __esModule: true,
+                default: {
+                    apps: [{}],
+                    firestore: Object.assign(() => db, {
+                        FieldValue: {
+                            serverTimestamp: () => ({ __type: "serverTimestamp" }),
+                            delete: () => ({ __type: "delete" }),
+                        },
+                    }),
+                },
+            }));
+
+            const updateMock = jest.fn(async () => ({
+                id: "sub_1",
+                cancel_at_period_end: false,
+                current_period_end: 123,
+                trial_end: null,
+                status: "active",
+            }));
+
+            jest.doMock("@/lib/stripe", () => ({
+                __esModule: true,
+                getStripe: () => ({
+                    coupons: {
+                        retrieve: jest.fn(async () => ({ percent_off: 40, duration: "once" })),
+                    },
+                    subscriptions: {
+                        retrieve: jest.fn(async () => ({ id: "sub_1", discounts: [], metadata: {} })),
+                        update: updateMock,
+                    },
+                }),
+            }));
+
+            const { POST } = await import("./route");
+            const request = () => ({
+                json: async () => ({
+                    atPeriodEnd: false,
+                    cancellationReason: "pricing",
+                    retentionOffer: true,
+                }),
+            }) as any;
+
+            const first = await POST(request());
+            expect(first.status).toBe(200);
+            expect(updateMock).toHaveBeenCalledTimes(1);
+            expect(updateMock).toHaveBeenCalledWith(
+                "sub_1",
+                expect.objectContaining({
+                    cancel_at_period_end: false,
+                    discounts: [{ coupon: "coupon_40_once" }],
+                }),
+            );
+            expect(updateMock.mock.calls[0][1]).not.toHaveProperty("cancel_at");
+            expect(store.get("kloner_users/uid_1")?.billingRetentionOfferUsedAt).toBeTruthy();
+
+            const second = await POST(request());
+            const secondBody = await (second as any).json();
+            expect(second.status).toBe(409);
+            expect(secondBody.error).toMatch(/already been used/i);
+            expect(updateMock).toHaveBeenCalledTimes(1);
+        } finally {
+            if (previousCoupon === undefined) delete process.env.STRIPE_RETENTION_COUPON_TEST;
+            else process.env.STRIPE_RETENTION_COUPON_TEST = previousCoupon;
+        }
     });
 });
