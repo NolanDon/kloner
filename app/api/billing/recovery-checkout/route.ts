@@ -5,6 +5,7 @@ import { getStripe } from "@/lib/stripe";
 import { verifySignedToken } from "@/app/api/private/email-links";
 import { STRIPE_TRIAL_DAYS } from "@/src/lib/billingAccess";
 import { resolveMonthlyPriceId } from "@/app/api/_lib/monthlyPrice";
+import { shouldRequireEarlyGenerationPaywall } from "@/app/api/_lib/earlyGenerationGate";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -83,6 +84,7 @@ export async function GET(req: NextRequest) {
 
     const isProd = process.env.NODE_ENV === "production";
     const priceId = resolveRecoveryPriceId(isProd);
+    const earlyPaywallCountry = shouldRequireEarlyGenerationPaywall(req).required;
 
     if (!priceId) {
         return NextResponse.json({ ok: false, error: "Recovery pricing is not configured." }, { status: 500 });
@@ -168,7 +170,7 @@ export async function GET(req: NextRequest) {
         payment_method_collection: "always",
         discounts,
         subscription_data: {
-            ...(STRIPE_TRIAL_DAYS > 0 ? { trial_period_days: STRIPE_TRIAL_DAYS } : {}),
+            ...(STRIPE_TRIAL_DAYS > 0 && !earlyPaywallCountry ? { trial_period_days: STRIPE_TRIAL_DAYS } : {}),
             metadata: baseMeta,
         },
     });

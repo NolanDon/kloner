@@ -5739,6 +5739,33 @@ export default function PreviewPage(): JSX.Element {
         []
     );
 
+    // Open the app deploy wizard when the editor hands the user back to the dashboard.
+    // This keeps the standalone app-builder route on the same deploy path as dashboard cards.
+    useEffect(() => {
+        if (!user || search.get("appDeploy") !== "1") return;
+
+        const appId = String(search.get("appId") || "").trim();
+        if (!appId) return;
+
+        openAppDeployWizard({
+            id: appId,
+            name: String(search.get("appName") || "").trim(),
+        });
+
+        try {
+            const url = new URL(window.location.href);
+            const params = url.searchParams;
+            params.delete("appDeploy");
+            params.delete("appId");
+            params.delete("appName");
+            const qs = params.toString();
+            const next = qs ? `${url.pathname}?${qs}` : url.pathname;
+            router.replace(next, { scroll: false });
+        } catch {
+            // ignore URL cleanup failures
+        }
+    }, [openAppDeployWizard, router, search, user]);
+
     const deployAppLive = useCallback(async (opts?: { force?: boolean }) => {
         if (appDeployWizardBusy && !opts?.force) return;
         if (!user) return;
@@ -14693,13 +14720,13 @@ export default function PreviewPage(): JSX.Element {
                                                 </div> */}
 
                                                 {isVercelConnected && !isVercelChecking ? (
-                                                    <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-sm text-emerald-800">
-                                                        <div className="flex h-7 w-7 items-center justify-center rounded-full border border-emerald-200 bg-white">
-                                                            <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+                                                    <div className="flex items-center gap-3 rounded-2xl border border-orange-200 bg-orange-50/80 px-3.5 py-3 text-sm text-neutral-800">
+                                                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-orange-200 bg-white shadow-sm">
+                                                            <Loader2 className="h-4 w-4 animate-spin text-orange-500" />
                                                         </div>
-                                                        <div>
-                                                            {/* <p className="text-neutral-900">Connected</p> */}
-                                                            <p className="text-[13px] text-emerald-700">Continuing to deploy…</p>
+                                                        <div className="min-w-0">
+                                                            <p className="text-[13px] font-semibold text-neutral-900">Vercel connected</p>
+                                                            <p className="mt-0.5 text-xs text-neutral-600">Continuing to deploy…</p>
                                                         </div>
                                                     </div>
                                                 ) : null}

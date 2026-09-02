@@ -23,6 +23,13 @@ describe("early generation paywall gate", () => {
             country: "BD",
             reason: "configured_country_hold",
         });
+        for (const country of ["IN", "PK"]) {
+            expect(shouldRequireEarlyGenerationPaywall(requestWithHeaders({ "cf-ipcountry": country }))).toEqual({
+                required: true,
+                country,
+                reason: "configured_country_hold",
+            });
+        }
         expect(shouldRequireEarlyGenerationPaywall(requestWithHeaders({ "cf-ipcountry": "FR" }))).toEqual({
             required: false,
             country: "FR",

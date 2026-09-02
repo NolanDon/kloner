@@ -7,6 +7,7 @@ import { linkCustomerToUid } from "../../_lib/billing";
 import { requireSessionAndMaybeCsrf } from "../../_lib/route-guard";
 import { captureCriticalEvent, captureException } from "@/lib/observability";
 import { resolveMonthlyPriceId } from "@/app/api/_lib/monthlyPrice";
+import { shouldRequireEarlyGenerationPaywall } from "@/app/api/_lib/earlyGenerationGate";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -213,6 +214,7 @@ async function handler({ req, uid }: { req: NextRequest; uid: string }) {
 
     // Trial is configurable and defaults to 7 days.
     const trialCandidate = plan === "pro" && STRIPE_TRIAL_DAYS > 0;
+    const earlyPaywallCountry = shouldRequireEarlyGenerationPaywall(req).required;
 
     const isProd = process.env.NODE_ENV === "production";
 
@@ -338,7 +340,7 @@ async function handler({ req, uid }: { req: NextRequest; uid: string }) {
     // If this customer has any prior subscription history (including canceled),
     // do not attach a new trial.
     const hasAnySubscriptionHistory = existingSubs.data.length > 0;
-    const includeTrial = trialCandidate && !hasAnySubscriptionHistory;
+    const includeTrial = trialCandidate && !hasAnySubscriptionHistory && !earlyPaywallCountry;
     const isAppDeployTrialSuccess = !!(returnAppId && includeTrial);
 
     const appOrigin = isProd

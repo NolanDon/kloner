@@ -56,6 +56,12 @@ export default function AppBuilderPageClient({
             onClose={() => {
                 router.push("/dashboard/view", { scroll: false });
             }}
+            onDeploy={(app) => {
+                router.push(
+                    `/dashboard/view?appDeploy=1&appId=${encodeURIComponent(app.id)}&appName=${encodeURIComponent(app.name)}`,
+                    { scroll: false },
+                );
+            }}
             onCanonicalAppIdResolved={(canonicalAppId) => {
                 const next = String(canonicalAppId || "").trim();
                 if (!next || next === appId) return;
