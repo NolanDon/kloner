@@ -25,6 +25,16 @@ export function isProductionSiteAccessRuntime(): boolean {
     return (process.env.VERCEL_ENV || "").trim().toLowerCase() === "production";
 }
 
+export function canExecuteSiteAccessForUser(uid: string): boolean {
+    if (isProductionSiteAccessRuntime()) return true;
+    if (process.env.NODE_ENV !== "development" || process.env.VERCEL_ENV) return false;
+    return (process.env.STRIPE_LOCAL_SITE_ACCESS_TEST_UIDS || "")
+        .split(",")
+        .map((value) => value.trim())
+        .filter(Boolean)
+        .includes(uid);
+}
+
 function getDb() {
     return getAdminDb();
 }
@@ -389,7 +399,7 @@ export async function enqueueSiteAccessJob(uid: string, operation: SiteAccessJob
 
 /** Atomically claims a queued site-access job for either the request or worker. */
 export async function claimSiteAccessJob(uid: string, operation: SiteAccessJobOperation): Promise<boolean> {
-    if (!isProductionSiteAccessRuntime()) return false;
+    if (!canExecuteSiteAccessForUser(uid)) return false;
     const ref = getDb().collection("billing_site_access_jobs").doc(uid);
     return getDb().runTransaction(async (tx) => {
         const snap = await tx.get(ref);
@@ -426,8 +436,8 @@ export async function reportSiteAccessExecutionStarted(uid: string, operation: S
         action: operation === "suspend" ? "billing.liveSites.pause_execution_started" : "billing.liveSites.restore_execution_started",
         userId: uid,
         service: "vercel-project-access",
-        message: `Production live-site ${operation === "suspend" ? "pause" : "restore"} execution started for ${uid}. Projects to process: ${projects.length}.`,
-        extra: { operation, projectCount: projects.length, projectIds: projects.map((project) => project.projectId) },
+        message: `${isProductionSiteAccessRuntime() ? "Production" : "Local test"} live-site ${operation === "suspend" ? "pause" : "restore"} execution started for ${uid}. Projects to process: ${projects.length}.`,
+        extra: { operation, runtime: isProductionSiteAccessRuntime() ? "production" : "local-test", projectCount: projects.length, projectIds: projects.map((project) => project.projectId) },
     });
 }
 

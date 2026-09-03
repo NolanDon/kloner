@@ -7,13 +7,7 @@ import { getStripe } from "@/lib/stripe";
 import { requireSessionAndMaybeCsrf } from "../../_lib/route-guard";
 import { getSubscriptionIdForUid } from "../../_lib/billing";
 import { monthlyLimitFor, type UserTier } from "@/src/lib/credits";
-import { captureAuditEvent, captureCriticalEvent, captureException } from "@/lib/observability";
-import {
-    enqueueSiteAccessJob,
-    reportSiteAccessChangeRequested,
-    shouldEnforceLiveSiteAccess,
-} from "@/app/api/_lib/subscriptionSiteAccess";
-
+import { captureCriticalEvent, captureException } from "@/lib/observability";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -200,7 +194,6 @@ async function handler(req: NextRequest, uid: string) {
     const cancellationReason = cleanStr(body?.cancellationReason, 80);
         const cancellationFeedback = cleanStr(body?.cancellationFeedback, 200);
     const retentionOfferRequested = body?.retentionOffer === true;
-    let siteAccessResult: Record<string, unknown> = { status: "not_requested" };
 
     if (atPeriodEnd && !cancellationReason && !cancellationFeedback) {
                 return NextResponse.json(
@@ -300,6 +293,8 @@ async function handler(req: NextRequest, uid: string) {
             cancel_at_period_end: retentionOfferRequested ? false : atPeriodEnd,
             ...(retentionOfferRequested ? { discounts: [{ coupon: retentionCoupon }] } : {}),
             ...(retentionOfferRequested ? { metadata: { klonerRetentionOfferUsed: "1" } } : {}),
+        }, {
+            idempotencyKey: `${uid}:${subId}:${retentionOfferRequested ? "retention" : atPeriodEnd ? "cancel" : "resume"}`,
         })) as unknown as Record<string, any>;
     } catch (error: any) {
         if (retentionOfferRequested) {
@@ -443,33 +438,10 @@ async function handler(req: NextRequest, uid: string) {
         );
     }
 
-    if (atPeriodEnd && shouldEnforceLiveSiteAccess()) {
-        await enqueueSiteAccessJob(uid, "suspend", "subscription_cancelled");
-        await reportSiteAccessChangeRequested(uid, "suspend");
-        siteAccessResult = { status: "queued", processor: "stripe_webhook" };
-    } else if (atPeriodEnd) {
-        siteAccessResult = { status: "skipped", reason: "STRIPE_ENFORCE_LIVE_SITE_ACCESS is disabled" };
-        await captureAuditEvent({
-            source: "vercel",
-            severity: "critical",
-            alwaysNotifySlack: true,
-            route: "/api/billing/cancel-subscription",
-            method: "POST",
-            action: "billing.liveSites.pause_skipped",
-            service: "vercel-project-access",
-            userId: uid,
-            message: `Live-site pause was skipped for canceled user ${uid}: STRIPE_ENFORCE_LIVE_SITE_ACCESS is disabled.`,
-        });
-    }
-
-    if (!atPeriodEnd && shouldEnforceLiveSiteAccess()) {
-        await enqueueSiteAccessJob(uid, "restore", "subscription_resumed");
-        await reportSiteAccessChangeRequested(uid, "restore");
-        siteAccessResult = { status: "queued", processor: "stripe_webhook" };
-    }
-
     if (atPeriodEnd && (cancellationReason || cancellationFeedback)) {
-        const feedbackDoc = db.collection("billing_cancellation_feedback").doc();
+        const feedbackDoc = db.collection("billing_cancellation_feedback").doc(
+            `${uid}_${payload.stripeSubscriptionId}`.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 150),
+        );
         const authUser = await admin.auth().getUser(uid).catch(() => null);
         const feedbackPayload = {
             uid,
@@ -486,7 +458,22 @@ async function handler(req: NextRequest, uid: string) {
             updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         };
 
-        await feedbackDoc.set(feedbackPayload, { merge: false });
+        let shouldSendFeedbackEmail = false;
+        await db.runTransaction(async (tx) => {
+            const existing = await tx.get(feedbackDoc);
+            if (existing.exists) return;
+            tx.create(feedbackDoc, feedbackPayload);
+            shouldSendFeedbackEmail = true;
+        });
+
+        if (!shouldSendFeedbackEmail) return NextResponse.json({
+            ok: true,
+            subscriptionId: payload.stripeSubscriptionId,
+            cancelAtPeriodEnd: payload.stripeCancelAtPeriodEnd,
+            currentPeriodEnd: payload.stripeCurrentPeriodEnd,
+            trialEnd: payload.stripeTrialEnd,
+            status: payload.stripeStatus,
+        });
 
         try {
             await sendCancellationFeedbackEmail({
@@ -534,7 +521,6 @@ async function handler(req: NextRequest, uid: string) {
         currentPeriodEnd: payload.stripeCurrentPeriodEnd,
         trialEnd: payload.stripeTrialEnd,
         status: payload.stripeStatus,
-        siteAccess: siteAccessResult,
     });
 }
 

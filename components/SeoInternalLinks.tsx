@@ -20,6 +20,14 @@ const CORE_LINKS: LinkItem[] = [
 //
 // Includes the URLs reported as orphans in recent SEO audits.
 const AFFECTED_BLOG_POSTS: LinkItem[] = [
+  { label: "Clone a website from a URL", href: "/blog/clone-website-from-url" },
+  { label: "AI website cloner", href: "/blog/ai-website-cloner" },
+  { label: "Clone a website to React", href: "/blog/clone-website-to-react" },
+  {
+    label: "Website cloner vs website downloader",
+    href: "/blog/website-cloner-vs-website-downloader",
+  },
+  { label: "Clone a website to HTML", href: "/blog/clone-website-to-html" },
   { label: "Clone a website from a URL", href: "/blog/clone-a-website-from-a-url" },
   { label: "Clone your next SaaS in minutes", href: "/blog/clone-your-next-saas-in-minutes" },
   { label: "Productionizing AI clones fast", href: "/blog/productionizing-ai-clones-fast" },

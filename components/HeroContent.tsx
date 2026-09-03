@@ -86,12 +86,12 @@ export default function HeroContent({
           className={`${displayClassName} leading-[0.95] font-bold tracking-tight text-white`}
           style={{ fontSize: "clamp(3rem, min(12vw, 8.8vh), 5.5rem)" }}
         >
-          Clone any website <br /> instantly.
+          AI website cloner: <br /> clone any website instantly.
         </h1>
 
         <p className="mt-[clamp(0.75rem,2.2vh,1.5rem)] text-white/90 text-base sm:text-lg md:text-xl max-w-xl mx-auto font-medium">
-          Use Kloner as a website cloner to copy a website, preview the layout,
-          and make it your own without starting from scratch.
+          Paste a URL to clone a website, preview the editable result,
+          customize it with AI, and deploy.
         </p>
 
         <form onSubmit={onSubmit} className="mt-[clamp(1rem,3.2vh,2.5rem)] w-full max-w-2xl mx-auto space-y-3">

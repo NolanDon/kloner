@@ -21,17 +21,6 @@ import {
   hasLikelyActivePaidAccess,
 } from "@/app/api/_lib/recoveryOffer";
 import { buildRecoveryOfferEmail } from "@/app/api/_lib/recoveryOfferEmail";
-import {
-  enqueueSiteAccessJob,
-  claimSiteAccessJob,
-  completeSiteAccessJob,
-  isProductionSiteAccessRuntime,
-  reportSiteAccessExecutionStarted,
-  restoreUserLiveSites,
-  sendSiteAccessSuspendedEmail,
-  shouldEnforceLiveSiteAccess,
-  suspendUserLiveSites,
-} from "@/app/api/_lib/subscriptionSiteAccess";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -1197,53 +1186,6 @@ export async function POST(req: NextRequest) {
           cancelAtPeriodEnd: (sub as any).cancel_at_period_end ?? undefined,
         });
 
-        if (shouldEnforceLiveSiteAccess()) {
-          const shouldSuspend =
-            sub.status !== "active" && sub.status !== "trialing" ||
-            (sub as any).cancel_at_period_end === true;
-          try {
-            if (shouldSuspend) {
-              await enqueueSiteAccessJob(
-                uid,
-                "suspend",
-                (sub as any).cancel_at_period_end === true ? "subscription_cancelled" : "payment_failed",
-              );
-              if (isProductionSiteAccessRuntime() && await claimSiteAccessJob(uid, "suspend")) {
-                await reportSiteAccessExecutionStarted(uid, "suspend");
-                const reason = (sub as any).cancel_at_period_end === true ? "subscription_cancelled" : "payment_failed";
-                const result = await suspendUserLiveSites(uid, reason);
-                const authUser = await admin.auth().getUser(uid).catch(() => null);
-                if (authUser?.email && result.suspended > 0) {
-                  await sendSiteAccessSuspendedEmail({ uid, email: authUser.email, name: authUser.displayName || null, reason });
-                }
-                await completeSiteAccessJob(uid, "suspend");
-              }
-            } else {
-              await enqueueSiteAccessJob(uid, "restore", "subscription_active");
-              if (isProductionSiteAccessRuntime() && await claimSiteAccessJob(uid, "restore")) {
-                await reportSiteAccessExecutionStarted(uid, "restore");
-                await restoreUserLiveSites(uid);
-                await completeSiteAccessJob(uid, "restore");
-              }
-            }
-          } catch (error) {
-            console.error("[stripe-webhook] site access enforcement failed", { uid, eventType: event.type, error });
-            await captureCriticalEvent({
-              source: "vercel",
-              severity: "critical",
-              alwaysNotifySlack: true,
-              statusCode: 500,
-              route: "/api/stripe/webhook",
-              method: "POST",
-              action: "billing.liveSites.enforcement_failed",
-              service: "vercel-project-access",
-              userId: uid,
-              message: `Live-site ${shouldSuspend ? "pause" : "restore"} failed during Stripe webhook processing: ${error instanceof Error ? error.message : String(error)}`,
-              extra: { eventType: event.type, error: error instanceof Error ? error.stack || error.message : String(error) },
-            });
-          }
-        }
-
         break;
       }
 
@@ -1258,24 +1200,6 @@ export async function POST(req: NextRequest) {
       case "invoice.paid":
       case "invoice.payment_succeeded": {
         const inv = event.data.object as Stripe.Invoice;
-
-        if (shouldEnforceLiveSiteAccess()) {
-          const customerId =
-            typeof inv.customer === "string" ? inv.customer : inv.customer?.id;
-          if (customerId) {
-            const uid = await resolveUidForCustomerId(customerId);
-            if (!uid) {
-              await reportMissingStripeUid({ customerId, eventType: event.type, eventId: event.id });
-            } else {
-              await enqueueSiteAccessJob(uid, "restore", "invoice_paid");
-              if (isProductionSiteAccessRuntime() && await claimSiteAccessJob(uid, "restore")) {
-                await reportSiteAccessExecutionStarted(uid, "restore");
-                await restoreUserLiveSites(uid);
-                await completeSiteAccessJob(uid, "restore");
-              }
-            }
-          }
-        }
 
         // These often exist on the invoice; if not, retrieve the invoice to fill them.
         let piId =
@@ -1346,28 +1270,6 @@ export async function POST(req: NextRequest) {
       case "invoice.payment_failed":
       case "invoice.payment_action_required": {
         const inv = event.data.object as Stripe.Invoice;
-
-        if (shouldEnforceLiveSiteAccess()) {
-          const customerId =
-            typeof inv.customer === "string" ? inv.customer : inv.customer?.id;
-          if (customerId) {
-            const uid = await resolveUidForCustomerId(customerId);
-            if (!uid) {
-              await reportMissingStripeUid({ customerId, eventType: event.type, eventId: event.id });
-            } else {
-              await enqueueSiteAccessJob(uid, "suspend", "payment_failed");
-              if (isProductionSiteAccessRuntime() && await claimSiteAccessJob(uid, "suspend")) {
-                await reportSiteAccessExecutionStarted(uid, "suspend");
-                const result = await suspendUserLiveSites(uid, "payment_failed");
-                const authUser = await admin.auth().getUser(uid).catch(() => null);
-                if (authUser?.email && result.suspended > 0) {
-                  await sendSiteAccessSuspendedEmail({ uid, email: authUser.email, name: authUser.displayName || null, reason: "payment_failed" });
-                }
-                await completeSiteAccessJob(uid, "suspend");
-              }
-            }
-          }
-        }
 
         await reverseByLookupId({
           lookupId: `inv_${inv.id}`,

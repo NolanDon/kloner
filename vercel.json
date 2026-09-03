@@ -12,10 +12,6 @@
     {
       "path": "/api/private/send-journey-emails",
       "schedule": "0 14 * * *"
-    },
-    {
-      "path": "/api/private/process-billing-site-access",
-      "schedule": "0 3 * * *"
     }
   ],
   "env": {

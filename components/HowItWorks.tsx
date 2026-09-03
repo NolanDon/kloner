@@ -465,7 +465,7 @@ export default function HowItWorks() {
 
           <div className="md:sticky md:top-44">
             <h2 className="text-4xl md:text-6xl mb-10 text-black/80">
-              How to copy a website
+              How to clone a website
             </h2>
 
             <div className="relative">

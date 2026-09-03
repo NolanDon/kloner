@@ -17,6 +17,18 @@ const GROUPS: Group[] = [
                 a: 'Yes. Paste a public URL and Kloner builds an editable website preview you can customize.'
             },
             {
+                q: 'What is a website cloner?',
+                a: 'A website cloner recreates a site’s supported structure, styling, assets, and interactions as an editable project. Kloner is designed to help you start from a public URL instead of a blank page.'
+            },
+            {
+                q: 'What is the difference between cloning and downloading a website?',
+                a: 'Downloading or copying raw HTML gives you files from one page. Kloner turns a supported public page into a structured, editable project that you can refine and deploy.'
+            },
+            {
+                q: 'Can I clone my own website?',
+                a: 'Yes. Cloning your own site is a useful way to create a redesign baseline, prototype a migration, or preserve a starting point for a new project.'
+            },
+            {
                 q: 'How do I make the cloned site my own?',
                 a: 'Change the copy, colors, images, sections, and domain so the final site matches your brand.'
             },
@@ -44,6 +56,14 @@ const GROUPS: Group[] = [
             {
                 q: 'Do I need a card to try the preview?',
                 a: 'We offer free trials so you can see your preview before deciding to pay.'
+            },
+            {
+                q: 'Is Kloner a free website cloner?',
+                a: 'Kloner offers a free trial so you can test the preview workflow before subscribing. Paid plans add higher usage limits and Pro capabilities; it is not an unlimited free website cloner.'
+            },
+            {
+                q: 'What can I do with Kloner for free?',
+                a: 'You can use the available trial access to test a website preview and evaluate the cloning workflow. Your account shows the limits that apply before you choose a paid plan.'
             },
             {
                 q: 'What’s included in Pro?',
@@ -77,6 +97,14 @@ const GROUPS: Group[] = [
             {
                 q: 'What about frameworks other than HTML?',
                 a: 'Current generation is Next.js V2. Community templates are legacy V1 HTML templates, which are still usable but do not support the same integration and runtime functionality as V2 apps.'
+            },
+            {
+                q: 'Is website cloning legal?',
+                a: 'That depends on the source site, its content, your purpose, and the law where you operate. Clone websites you own or have permission to reproduce, and replace third-party branding, copy, images, and other protected assets before publishing.'
+            },
+            {
+                q: 'Can I clone another company’s website?',
+                a: 'Only when you have permission and the rights needed for the content and design elements you use. A visual reference is not automatically permission to republish someone else’s site.'
             },
         ],
     },

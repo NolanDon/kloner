@@ -1062,6 +1062,7 @@ export default function SettingsPage(): JSX.Element {
   }
 
   async function handleCancelSubscription(options?: { skipRetentionOffer?: boolean; acceptRetentionOffer?: boolean }) {
+    if (cancelBusy || retentionOfferChecking) return;
     const reason = cancelReason.trim();
     const feedback = cancelFeedback.trim();
 
