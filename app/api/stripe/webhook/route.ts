@@ -26,6 +26,7 @@ import {
   claimSiteAccessJob,
   completeSiteAccessJob,
   isProductionSiteAccessRuntime,
+  reportSiteAccessExecutionStarted,
   restoreUserLiveSites,
   sendSiteAccessSuspendedEmail,
   shouldEnforceLiveSiteAccess,
@@ -1208,6 +1209,7 @@ export async function POST(req: NextRequest) {
                 (sub as any).cancel_at_period_end === true ? "subscription_cancelled" : "payment_failed",
               );
               if (isProductionSiteAccessRuntime() && await claimSiteAccessJob(uid, "suspend")) {
+                await reportSiteAccessExecutionStarted(uid, "suspend");
                 const reason = (sub as any).cancel_at_period_end === true ? "subscription_cancelled" : "payment_failed";
                 const result = await suspendUserLiveSites(uid, reason);
                 const authUser = await admin.auth().getUser(uid).catch(() => null);
@@ -1219,6 +1221,7 @@ export async function POST(req: NextRequest) {
             } else {
               await enqueueSiteAccessJob(uid, "restore", "subscription_active");
               if (isProductionSiteAccessRuntime() && await claimSiteAccessJob(uid, "restore")) {
+                await reportSiteAccessExecutionStarted(uid, "restore");
                 await restoreUserLiveSites(uid);
                 await completeSiteAccessJob(uid, "restore");
               }
@@ -1266,6 +1269,7 @@ export async function POST(req: NextRequest) {
             } else {
               await enqueueSiteAccessJob(uid, "restore", "invoice_paid");
               if (isProductionSiteAccessRuntime() && await claimSiteAccessJob(uid, "restore")) {
+                await reportSiteAccessExecutionStarted(uid, "restore");
                 await restoreUserLiveSites(uid);
                 await completeSiteAccessJob(uid, "restore");
               }
@@ -1353,6 +1357,7 @@ export async function POST(req: NextRequest) {
             } else {
               await enqueueSiteAccessJob(uid, "suspend", "payment_failed");
               if (isProductionSiteAccessRuntime() && await claimSiteAccessJob(uid, "suspend")) {
+                await reportSiteAccessExecutionStarted(uid, "suspend");
                 const result = await suspendUserLiveSites(uid, "payment_failed");
                 const authUser = await admin.auth().getUser(uid).catch(() => null);
                 if (authUser?.email && result.suspended > 0) {

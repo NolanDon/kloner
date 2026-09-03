@@ -6,6 +6,7 @@ import {
   claimSiteAccessJob,
   getSiteAccessExecutionEnvironment,
   isProductionSiteAccessRuntime,
+  reportSiteAccessExecutionStarted,
   restoreUserLiveSites,
   sendSiteAccessSuspendedEmail,
   suspendUserLiveSites,
@@ -45,6 +46,7 @@ export async function POST(req: NextRequest) {
     if (!claimed) continue;
 
     try {
+      await reportSiteAccessExecutionStarted(data.uid, data.operation);
       if (data.operation === "suspend") {
         const result = await suspendUserLiveSites(data.uid, data.reason || "subscription_cancelled");
         const authUser = await getAdminAuth().getUser(data.uid).catch(() => null);

@@ -1127,6 +1127,19 @@ export default function SettingsPage(): JSX.Element {
         return;
       }
 
+      if (!options?.acceptRetentionOffer) {
+        const access = data?.siteAccess;
+        const failed = Number(access?.failed || 0);
+        if (access?.status !== "completed" || failed > 0) {
+          if (access?.status === "queued") {
+            return;
+          } else {
+            setCancelError(`Cancellation succeeded, but ${failed || "some"} project pause operation${failed === 1 ? "" : "s"} failed. Please try again or contact support.`);
+          }
+          return;
+        }
+      }
+
       setCancelSuccess(
         options?.acceptRetentionOffer
           ? "You’re staying with Kloner. Your 40% discount will apply to your next invoice."
@@ -2189,7 +2202,7 @@ export default function SettingsPage(): JSX.Element {
             )}
 
             {showCancelFeedbackPopup && (
-              <div className="fixed inset-0 z-[80] flex items-end justify-center bg-black/35 px-3 py-3 sm:items-center">
+              <div className="fixed inset-0 z-[80] flex items-end justify-center bg-black/35 px-3 pb-3 sm:items-center">
                 <div className="w-full max-w-xl rounded-3xl border border-neutral-200 bg-white p-4 shadow-2xl sm:p-5">
                   <div className="flex items-start justify-between gap-3">
                     <div>

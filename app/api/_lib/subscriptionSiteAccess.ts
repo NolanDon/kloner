@@ -283,7 +283,7 @@ export async function suspendUserLiveSites(uid: string, reason: string): Promise
         severity: "info",
         route: "/api/billing/subscription-site-access",
         method: "PATCH",
-        action: "billing.liveSites.suspension_completed",
+        action: "billing.liveSites.pause_completed",
         userId: uid,
         service: "vercel-project-access",
         message: `Live-site pause completed for canceled user ${uid}: ${suspendedProjects.length} succeeded, ${failed} failed out of ${projects.length}. Results: ${projectResults.map((project) => `${project.projectId}=${project.status}${project.error ? ` (${project.error})` : ""}`).join("; ") || "none"}`,
@@ -413,6 +413,22 @@ export async function completeSiteAccessJob(uid: string, operation: SiteAccessJo
         completedAt: new Date(),
         updatedAt: new Date(),
     }, { merge: true });
+}
+
+export async function reportSiteAccessExecutionStarted(uid: string, operation: SiteAccessJobOperation): Promise<void> {
+    const projects = await collectUserProjects(uid);
+    await captureAuditEvent({
+        source: "vercel",
+        severity: "info",
+        alwaysNotifySlack: true,
+        route: "/api/private/process-billing-site-access",
+        method: "POST",
+        action: operation === "suspend" ? "billing.liveSites.pause_execution_started" : "billing.liveSites.restore_execution_started",
+        userId: uid,
+        service: "vercel-project-access",
+        message: `Production live-site ${operation === "suspend" ? "pause" : "restore"} execution started for ${uid}. Projects to process: ${projects.length}.`,
+        extra: { operation, projectCount: projects.length, projectIds: projects.map((project) => project.projectId) },
+    });
 }
 
 export async function reportSiteAccessChangeRequested(uid: string, operation: SiteAccessJobOperation): Promise<void> {

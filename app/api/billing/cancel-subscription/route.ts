@@ -10,14 +10,8 @@ import { monthlyLimitFor, type UserTier } from "@/src/lib/credits";
 import { captureAuditEvent, captureCriticalEvent, captureException } from "@/lib/observability";
 import {
     enqueueSiteAccessJob,
-    claimSiteAccessJob,
-    completeSiteAccessJob,
-    isProductionSiteAccessRuntime,
     reportSiteAccessChangeRequested,
-    sendSiteAccessSuspendedEmail,
     shouldEnforceLiveSiteAccess,
-    suspendUserLiveSites,
-    restoreUserLiveSites,
 } from "@/app/api/_lib/subscriptionSiteAccess";
 
 export const runtime = "nodejs";
@@ -450,51 +444,9 @@ async function handler(req: NextRequest, uid: string) {
     }
 
     if (atPeriodEnd && shouldEnforceLiveSiteAccess()) {
-        try {
-            await enqueueSiteAccessJob(uid, "suspend", "subscription_cancelled");
-            await reportSiteAccessChangeRequested(uid, "suspend");
-            const claimed = isProductionSiteAccessRuntime() && await claimSiteAccessJob(uid, "suspend");
-            if (!claimed) {
-                siteAccessResult = { status: "queued", reason: "A site-access worker is already processing this request." };
-            } else {
-            // Process from the backend request as well as the Stripe webhook. This
-            // makes local/test cancellations work without waiting for a webhook or
-            // a Vercel cron invocation; the job remains as the retry record.
-            const result = await suspendUserLiveSites(uid, "subscription_cancelled");
-            const authUser = await admin.auth().getUser(uid).catch(() => null);
-            if (authUser?.email && result.suspended > 0) {
-                await sendSiteAccessSuspendedEmail({ uid, email: authUser.email, name: authUser.displayName || null, reason: "subscription_cancelled" });
-            }
-            await completeSiteAccessJob(uid, "suspend");
-            siteAccessResult = { status: "completed", suspended: result.suspended, failed: result.failed };
-            }
-        } catch (error) {
-            siteAccessResult = { status: "failed", error: error instanceof Error ? error.message : String(error) };
-            await captureAuditEvent({
-                source: "vercel",
-                severity: "critical",
-                alwaysNotifySlack: true,
-                route: "/api/billing/cancel-subscription",
-                method: "POST",
-                action: "billing.liveSites.suspension_failed",
-                service: "vercel-project-access",
-                userId: uid,
-                message: `Live-site pause execution failed for canceled user ${uid}: ${error instanceof Error ? error.message : String(error)}`,
-                extra: { error: error instanceof Error ? error.stack || error.message : String(error) },
-            });
-            await captureCriticalEvent({
-                source: "vercel",
-                severity: "critical",
-                alwaysNotifySlack: true,
-                statusCode: 500,
-                route: "/api/billing/cancel-subscription",
-                method: "POST",
-                action: "billing.cancelSubscription.siteAccess",
-                service: "billing-subscription",
-                userId: uid,
-                message: typeof (error as any)?.message === "string" ? (error as any).message : "Failed to suspend live sites",
-            });
-        }
+        await enqueueSiteAccessJob(uid, "suspend", "subscription_cancelled");
+        await reportSiteAccessChangeRequested(uid, "suspend");
+        siteAccessResult = { status: "queued", processor: "stripe_webhook" };
     } else if (atPeriodEnd) {
         siteAccessResult = { status: "skipped", reason: "STRIPE_ENFORCE_LIVE_SITE_ACCESS is disabled" };
         await captureAuditEvent({
@@ -511,32 +463,9 @@ async function handler(req: NextRequest, uid: string) {
     }
 
     if (!atPeriodEnd && shouldEnforceLiveSiteAccess()) {
-        try {
-            await enqueueSiteAccessJob(uid, "restore", "subscription_resumed");
-            await reportSiteAccessChangeRequested(uid, "restore");
-            const claimed = isProductionSiteAccessRuntime() && await claimSiteAccessJob(uid, "restore");
-            if (!claimed) {
-                siteAccessResult = { status: "queued", reason: "A site-access worker is already processing this request." };
-            } else {
-                const result = await restoreUserLiveSites(uid);
-                await completeSiteAccessJob(uid, "restore");
-                siteAccessResult = { status: "completed", restored: result.restored, failed: result.failed };
-            }
-        } catch (error) {
-            siteAccessResult = { status: "failed", error: error instanceof Error ? error.message : String(error) };
-            await captureCriticalEvent({
-                source: "vercel",
-                severity: "critical",
-                alwaysNotifySlack: true,
-                statusCode: 500,
-                route: "/api/billing/cancel-subscription",
-                method: "POST",
-                action: "billing.cancelSubscription.siteAccessRestore",
-                service: "billing-subscription",
-                userId: uid,
-                message: typeof (error as any)?.message === "string" ? (error as any).message : "Failed to restore live sites",
-            });
-        }
+        await enqueueSiteAccessJob(uid, "restore", "subscription_resumed");
+        await reportSiteAccessChangeRequested(uid, "restore");
+        siteAccessResult = { status: "queued", processor: "stripe_webhook" };
     }
 
     if (atPeriodEnd && (cancellationReason || cancellationFeedback)) {
