@@ -1130,12 +1130,8 @@ export default function SettingsPage(): JSX.Element {
       if (!options?.acceptRetentionOffer) {
         const access = data?.siteAccess;
         const failed = Number(access?.failed || 0);
-        if (access?.status !== "completed" || failed > 0) {
-          if (access?.status === "queued") {
-            return;
-          } else {
-            setCancelError(`Cancellation succeeded, but ${failed || "some"} project pause operation${failed === 1 ? "" : "s"} failed. Please try again or contact support.`);
-          }
+        if (access?.status !== "queued" && failed > 0) {
+          setCancelError(`Cancellation succeeded, but ${failed || "some"} project pause operation${failed === 1 ? "" : "s"} failed. Please try again or contact support.`);
           return;
         }
       }
@@ -1150,8 +1146,8 @@ export default function SettingsPage(): JSX.Element {
       setCancelReason("");
       setCancelFeedback("");
       setShowRetentionOffer(false);
-      setShowCancelFeedbackPopup(false);
       await loadTier();
+      setShowCancelFeedbackPopup(false);
     } catch (err: any) {
       console.error("Cancel subscription error", err);
       setCancelError(err?.message || "Cancel failed.");
