@@ -1149,7 +1149,6 @@ export default function SettingsPage(): JSX.Element {
 
   function handleKeepProjectsAndClose() {
     setShowCancelFeedbackPopup(false);
-    router.push("/dashboard/view");
   }
 
   async function handleRenewSubscription() {
@@ -1479,7 +1478,7 @@ export default function SettingsPage(): JSX.Element {
                           })
                         }
                         className={[
-                          "relative inline-flex h-7 w-12 items-center rounded-full transition",
+                          "relative inline-flex h-7 w-12 shrink-0 items-center justify-start overflow-hidden rounded-full transition",
                           prefs.journeyEmails
                             ? "bg-neutral-900"
                             : "bg-neutral-300",
@@ -1519,7 +1518,7 @@ export default function SettingsPage(): JSX.Element {
                           })
                         }
                         className={[
-                          "relative inline-flex h-7 w-12 items-center rounded-full transition",
+                          "relative inline-flex h-7 w-12 shrink-0 items-center justify-start overflow-hidden rounded-full transition",
                           prefs.productEmails
                             ? "bg-neutral-900"
                             : "bg-neutral-300",
@@ -1559,7 +1558,7 @@ export default function SettingsPage(): JSX.Element {
                           })
                         }
                         className={[
-                          "relative inline-flex h-7 w-12 items-center rounded-full transition",
+                          "relative inline-flex h-7 w-12 shrink-0 items-center justify-start overflow-hidden rounded-full transition",
                           prefs.securityEmails
                             ? "bg-neutral-900"
                             : "bg-neutral-300",
@@ -2284,11 +2283,11 @@ export default function SettingsPage(): JSX.Element {
                     <p className="mt-3 text-xs text-red-600">{cancelError}</p>
                   )}
 
-                  <div className="mt-5 flex items-center justify-end gap-2 border-t border-neutral-200 pt-4">
+                  <div className="mt-5 flex flex-col gap-2 border-t border-neutral-200 pt-4">
                     <button
                       type="button"
                       onClick={handleKeepProjectsAndClose}
-                      className="inline-flex items-center justify-center rounded-full border border-neutral-200 px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
+                      className="inline-flex w-full items-center justify-center rounded-full bg-accent px-4 py-3 text-sm font-semibold text-white hover:brightness-95"
                     >
                       No, don&apos;t stop my projects
                     </button>
@@ -2301,7 +2300,7 @@ export default function SettingsPage(): JSX.Element {
                         retentionOfferChecking ||
                         (!cancelReason.trim() && !cancelFeedback.trim())
                       }
-                      className="inline-flex items-center justify-center rounded-full bg-accent px-4 py-2 text-sm font-semibold text-white hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-50"
+                      className="inline-flex w-full items-center justify-center rounded-full px-4 py-2 text-xs font-medium text-neutral-500 hover:bg-neutral-50 hover:text-neutral-700 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       {cancelBusy ? (
                         <Loader2 className="h-4 w-4 animate-spin" />

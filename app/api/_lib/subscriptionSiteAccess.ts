@@ -17,6 +17,14 @@ type ProjectRecord = {
 
 export type SiteAccessJobOperation = "suspend" | "restore";
 
+export function getSiteAccessExecutionEnvironment(): string {
+    return "production";
+}
+
+export function isProductionSiteAccessRuntime(): boolean {
+    return (process.env.VERCEL_ENV || "").trim().toLowerCase() === "production";
+}
+
 function getDb() {
     return getAdminDb();
 }
@@ -150,7 +158,9 @@ async function rollbackProject(params: { accessToken: string; projectId: string;
     });
     if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        throw new Error(body?.error?.message || `Project restore failed (${res.status})`);
+        const message = String(body?.error?.message || body?.error || "");
+        if (/current production deployment/i.test(message)) return;
+        throw new Error(message || `Project restore failed (${res.status})`);
     }
 }
 
@@ -204,6 +214,7 @@ export async function suspendUserLiveSites(uid: string, reason: string): Promise
     const integrationRef = userRef.collection("integrations").doc("vercel");
     const integration = await loadVercelIntegration(integrationRef);
     if (!integration.accessToken) throw new Error("Vercel integration is not connected.");
+    const accessToken = integration.accessToken;
 
     const projects = await collectUserProjects(uid, userRef);
     const previousProjects = new Map<string, ProjectRecord>(
@@ -213,17 +224,17 @@ export async function suspendUserLiveSites(uid: string, reason: string): Promise
     const projectResults: Array<Record<string, unknown>> = [];
     let failed = 0;
 
-    for (const project of projects) {
+    await Promise.all(projects.map(async (project) => {
         try {
             const current = await getVercelProject({
-                accessToken: integration.accessToken,
+                accessToken,
                 projectId: project.projectId,
                 teamId: project.teamId,
             });
             if (!current) {
                 failed += 1;
                 projectResults.push({ projectId: project.projectId, status: "failed", error: "Vercel project could not be retrieved" });
-                continue;
+                return;
             }
 
             const currentProject = {
@@ -233,23 +244,23 @@ export async function suspendUserLiveSites(uid: string, reason: string): Promise
             };
             inspectedProjects.push(currentProject);
             const previous = previousProjects.get(project.projectId);
-            const latestProductionId = await getLatestProductionDeployment({ accessToken: integration.accessToken, projectId: project.projectId, teamId: project.teamId });
+            const latestProductionId = await getLatestProductionDeployment({ accessToken, projectId: project.projectId, teamId: project.teamId });
             if (previous?.suspensionDeploymentId && latestProductionId === previous.suspensionDeploymentId) {
                 currentProject.originalDeploymentId = previous.originalDeploymentId || null;
                 currentProject.suspensionDeploymentId = previous.suspensionDeploymentId;
                 projectResults.push({ projectId: project.projectId, status: "succeeded", verified: true, originalDeploymentId: currentProject.originalDeploymentId, suspensionDeploymentId: currentProject.suspensionDeploymentId, domains: currentProject.domains || [] });
-                continue;
+                return;
             }
             const originalDeploymentId = previous?.originalDeploymentId || latestProductionId;
             if (!originalDeploymentId) throw new Error("No current production deployment found");
             currentProject.originalDeploymentId = originalDeploymentId;
-            currentProject.suspensionDeploymentId = await deployBlankSite({ accessToken: integration.accessToken, projectId: project.projectId, teamId: project.teamId, projectName: currentProject.projectName });
+            currentProject.suspensionDeploymentId = await deployBlankSite({ accessToken, projectId: project.projectId, teamId: project.teamId, projectName: currentProject.projectName });
             projectResults.push({ projectId: currentProject.projectId, status: "succeeded", originalDeploymentId: currentProject.originalDeploymentId, suspensionDeploymentId: currentProject.suspensionDeploymentId, domains: currentProject.domains || [] });
         } catch (error) {
             failed += 1;
             projectResults.push({ projectId: project.projectId, status: "failed", error: error instanceof Error ? error.message : String(error) });
         }
-    }
+    }));
     const suspendedProjects = inspectedProjects.filter((project) => project.suspensionDeploymentId);
 
     await userRef.set(
@@ -366,11 +377,40 @@ export async function enqueueSiteAccessJob(uid: string, operation: SiteAccessJob
     await ref.set({
         uid,
         operation,
+        environment: getSiteAccessExecutionEnvironment(),
         reason: reason || null,
         status: "queued",
         attempts: 0,
         queuedAt: new Date(),
         nextAttemptAt: new Date(),
+        updatedAt: new Date(),
+    }, { merge: true });
+}
+
+/** Atomically claims a queued site-access job for either the request or worker. */
+export async function claimSiteAccessJob(uid: string, operation: SiteAccessJobOperation): Promise<boolean> {
+    if (!isProductionSiteAccessRuntime()) return false;
+    const ref = getDb().collection("billing_site_access_jobs").doc(uid);
+    return getDb().runTransaction(async (tx) => {
+        const snap = await tx.get(ref);
+        const data = snap.data() as any;
+        if (!snap.exists || data?.operation !== operation || !["queued", "retry"].includes(data?.status)) return false;
+        tx.update(ref, {
+            status: "processing",
+            processingEnvironment: getSiteAccessExecutionEnvironment(),
+            startedAt: new Date(),
+            updatedAt: new Date(),
+        });
+        return true;
+    });
+}
+
+export async function completeSiteAccessJob(uid: string, operation: SiteAccessJobOperation): Promise<void> {
+    const ref = getDb().collection("billing_site_access_jobs").doc(uid);
+    await ref.set({
+        status: "completed",
+        operation,
+        completedAt: new Date(),
         updatedAt: new Date(),
     }, { merge: true });
 }
@@ -383,11 +423,11 @@ export async function reportSiteAccessChangeRequested(uid: string, operation: Si
         alwaysNotifySlack: true,
         route: "/api/billing/cancel-subscription",
         method: "POST",
-        action: operation === "suspend" ? "billing.liveSites.pause_queued" : "billing.liveSites.resume_requested",
+        action: operation === "suspend" ? "billing.liveSites.pause_requested" : "billing.liveSites.resume_requested",
         userId: uid,
         service: "billing-site-access-worker",
         message: operation === "suspend"
-            ? `Subscription cancellation received for ${uid}; live-site pause processing queued. Kloner-linked Vercel projects: ${projects.length}.`
+            ? `Subscription cancellation received for ${uid}; production live-site pause requested. Only the production worker may process it. Kloner-linked Vercel projects: ${projects.length}.`
             : `Subscription resume requested for ${uid}. Live-site restore processing queued. Kloner-linked Vercel projects: ${projects.length}.`,
         extra: { operation, projectCount: projects.length, projectIds: projects.map((project) => project.projectId) },
     });

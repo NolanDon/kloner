@@ -3,6 +3,9 @@ import admin from "firebase-admin";
 import { getAdminAuth, getAdminDb } from "../../_lib/auth";
 import { captureCriticalEvent } from "@/lib/observability";
 import {
+  claimSiteAccessJob,
+  getSiteAccessExecutionEnvironment,
+  isProductionSiteAccessRuntime,
   restoreUserLiveSites,
   sendSiteAccessSuspendedEmail,
   suspendUserLiveSites,
@@ -10,6 +13,7 @@ import {
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 300;
 
 function authorized(req: NextRequest): boolean {
   const secret = (process.env.CRON_SECRET || "").trim();
@@ -18,27 +22,28 @@ function authorized(req: NextRequest): boolean {
 
 export async function POST(req: NextRequest) {
   if (!authorized(req)) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  if (!isProductionSiteAccessRuntime()) {
+    return NextResponse.json({ ok: false, error: "Billing site-access worker is production-only." }, { status: 403 });
+  }
   const db = getAdminDb();
   const now = new Date();
   const snap = await db.collection("billing_site_access_jobs").get();
   const jobs = snap.docs.filter((doc) => {
     const data = doc.data() as any;
+    const jobEnvironment = String(data.environment || "").trim().toLowerCase();
+    const workerEnvironment = getSiteAccessExecutionEnvironment();
+    // Legacy jobs without an environment are processed by production only.
+    if (jobEnvironment ? jobEnvironment !== workerEnvironment : workerEnvironment !== "production") return false;
     const next = data.nextAttemptAt?.toDate?.() || data.nextAttemptAt;
     return ["queued", "retry"].includes(data.status) && (!next || new Date(next).getTime() <= now.getTime());
   }).slice(0, 25);
   const results: Array<Record<string, unknown>> = [];
 
   for (const doc of jobs) {
-    const claimed = await db.runTransaction(async (tx) => {
-      const fresh = await tx.get(doc.ref);
-      const data = fresh.data() as any;
-      if (!fresh.exists || !["queued", "retry"].includes(data?.status)) return false;
-      tx.update(doc.ref, { status: "processing", startedAt: new Date(), updatedAt: new Date() });
-      return true;
-    });
+    const data = doc.data() as any;
+    const claimed = await claimSiteAccessJob(data.uid, data.operation);
     if (!claimed) continue;
 
-    const data = doc.data() as any;
     try {
       if (data.operation === "suspend") {
         const result = await suspendUserLiveSites(data.uid, data.reason || "subscription_cancelled");

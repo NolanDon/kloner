@@ -10,6 +10,9 @@ import { monthlyLimitFor, type UserTier } from "@/src/lib/credits";
 import { captureAuditEvent, captureCriticalEvent, captureException } from "@/lib/observability";
 import {
     enqueueSiteAccessJob,
+    claimSiteAccessJob,
+    completeSiteAccessJob,
+    isProductionSiteAccessRuntime,
     reportSiteAccessChangeRequested,
     sendSiteAccessSuspendedEmail,
     shouldEnforceLiveSiteAccess,
@@ -19,6 +22,7 @@ import {
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 300;
 
 const stripe = getStripe() as unknown as Stripe;
 const db = admin.firestore();
@@ -449,6 +453,10 @@ async function handler(req: NextRequest, uid: string) {
         try {
             await enqueueSiteAccessJob(uid, "suspend", "subscription_cancelled");
             await reportSiteAccessChangeRequested(uid, "suspend");
+            const claimed = isProductionSiteAccessRuntime() && await claimSiteAccessJob(uid, "suspend");
+            if (!claimed) {
+                siteAccessResult = { status: "queued", reason: "A site-access worker is already processing this request." };
+            } else {
             // Process from the backend request as well as the Stripe webhook. This
             // makes local/test cancellations work without waiting for a webhook or
             // a Vercel cron invocation; the job remains as the retry record.
@@ -457,7 +465,9 @@ async function handler(req: NextRequest, uid: string) {
             if (authUser?.email && result.suspended > 0) {
                 await sendSiteAccessSuspendedEmail({ uid, email: authUser.email, name: authUser.displayName || null, reason: "subscription_cancelled" });
             }
+            await completeSiteAccessJob(uid, "suspend");
             siteAccessResult = { status: "completed", suspended: result.suspended, failed: result.failed };
+            }
         } catch (error) {
             siteAccessResult = { status: "failed", error: error instanceof Error ? error.message : String(error) };
             await captureAuditEvent({
@@ -504,8 +514,14 @@ async function handler(req: NextRequest, uid: string) {
         try {
             await enqueueSiteAccessJob(uid, "restore", "subscription_resumed");
             await reportSiteAccessChangeRequested(uid, "restore");
-            const result = await restoreUserLiveSites(uid);
-            siteAccessResult = { status: "completed", restored: result.restored, failed: result.failed };
+            const claimed = isProductionSiteAccessRuntime() && await claimSiteAccessJob(uid, "restore");
+            if (!claimed) {
+                siteAccessResult = { status: "queued", reason: "A site-access worker is already processing this request." };
+            } else {
+                const result = await restoreUserLiveSites(uid);
+                await completeSiteAccessJob(uid, "restore");
+                siteAccessResult = { status: "completed", restored: result.restored, failed: result.failed };
+            }
         } catch (error) {
             siteAccessResult = { status: "failed", error: error instanceof Error ? error.message : String(error) };
             await captureCriticalEvent({

@@ -23,6 +23,9 @@ import {
 import { buildRecoveryOfferEmail } from "@/app/api/_lib/recoveryOfferEmail";
 import {
   enqueueSiteAccessJob,
+  claimSiteAccessJob,
+  completeSiteAccessJob,
+  isProductionSiteAccessRuntime,
   restoreUserLiveSites,
   sendSiteAccessSuspendedEmail,
   shouldEnforceLiveSiteAccess,
@@ -548,14 +551,19 @@ function getInvoiceSubscriptionId(invoice: Stripe.Invoice): string | null {
 
 /** Fallback: find uid by stripeCustomerId field if mapping doc is missing */
 async function findUidByCustomerId(customerId: string): Promise<string | null> {
-  const snap = await db
-    .collection("kloner_users")
-    .where("stripeCustomerId", "==", customerId)
-    .limit(1)
-    .get();
+  // `users` is the canonical collection for current accounts. Keep the
+  // legacy collection as a fallback while older records are migrated.
+  for (const collection of ["users", "kloner_users"]) {
+    const snap = await db
+      .collection(collection)
+      .where("stripeCustomerId", "==", customerId)
+      .limit(1)
+      .get();
 
-  if (snap.empty) return null;
-  return snap.docs[0]!.id;
+    if (!snap.empty) return snap.docs[0]!.id;
+  }
+
+  return null;
 }
 
 /** Resolve uid from mapping table or fallback query */
@@ -570,6 +578,30 @@ async function resolveUidForCustomerId(
   }
 
   return uid;
+}
+
+async function reportMissingStripeUid(params: {
+  customerId: string;
+  eventType: string;
+  eventId: string;
+}): Promise<void> {
+  await captureCriticalEvent({
+    source: "vercel",
+    severity: "critical",
+    alwaysNotifySlack: true,
+    statusCode: 500,
+    route: "/api/stripe/webhook",
+    method: "POST",
+    action: "billing.stripe.uid_resolution_failed",
+    service: "billing-subscription",
+    message: `Stripe webhook ${params.eventId} could not resolve a Firebase UID for customer ${params.customerId}; live-site enforcement was not run.`,
+    extra: {
+      eventType: params.eventType,
+      stripeEventId: params.eventId,
+      stripeCustomerId: params.customerId,
+      searchedCollections: ["users", "kloner_users"],
+    },
+  });
 }
 
 /**
@@ -1131,7 +1163,10 @@ export async function POST(req: NextRequest) {
         if (!customerId) break;
 
         const uid = await resolveUidForCustomerId(customerId);
-        if (!uid) break;
+        if (!uid) {
+          await reportMissingStripeUid({ customerId, eventType: event.type, eventId: event.id });
+          break;
+        }
 
         const firstItem = sub.items?.data?.[0];
         const priceId =
@@ -1172,18 +1207,37 @@ export async function POST(req: NextRequest) {
                 "suspend",
                 (sub as any).cancel_at_period_end === true ? "subscription_cancelled" : "payment_failed",
               );
-              const reason = (sub as any).cancel_at_period_end === true ? "subscription_cancelled" : "payment_failed";
-              const result = await suspendUserLiveSites(uid, reason);
-              const authUser = await admin.auth().getUser(uid).catch(() => null);
-              if (authUser?.email && result.suspended > 0) {
-                await sendSiteAccessSuspendedEmail({ uid, email: authUser.email, name: authUser.displayName || null, reason });
+              if (isProductionSiteAccessRuntime() && await claimSiteAccessJob(uid, "suspend")) {
+                const reason = (sub as any).cancel_at_period_end === true ? "subscription_cancelled" : "payment_failed";
+                const result = await suspendUserLiveSites(uid, reason);
+                const authUser = await admin.auth().getUser(uid).catch(() => null);
+                if (authUser?.email && result.suspended > 0) {
+                  await sendSiteAccessSuspendedEmail({ uid, email: authUser.email, name: authUser.displayName || null, reason });
+                }
+                await completeSiteAccessJob(uid, "suspend");
               }
             } else {
               await enqueueSiteAccessJob(uid, "restore", "subscription_active");
-              await restoreUserLiveSites(uid);
+              if (isProductionSiteAccessRuntime() && await claimSiteAccessJob(uid, "restore")) {
+                await restoreUserLiveSites(uid);
+                await completeSiteAccessJob(uid, "restore");
+              }
             }
           } catch (error) {
             console.error("[stripe-webhook] site access enforcement failed", { uid, eventType: event.type, error });
+            await captureCriticalEvent({
+              source: "vercel",
+              severity: "critical",
+              alwaysNotifySlack: true,
+              statusCode: 500,
+              route: "/api/stripe/webhook",
+              method: "POST",
+              action: "billing.liveSites.enforcement_failed",
+              service: "vercel-project-access",
+              userId: uid,
+              message: `Live-site ${shouldSuspend ? "pause" : "restore"} failed during Stripe webhook processing: ${error instanceof Error ? error.message : String(error)}`,
+              extra: { eventType: event.type, error: error instanceof Error ? error.stack || error.message : String(error) },
+            });
           }
         }
 
@@ -1207,9 +1261,14 @@ export async function POST(req: NextRequest) {
             typeof inv.customer === "string" ? inv.customer : inv.customer?.id;
           if (customerId) {
             const uid = await resolveUidForCustomerId(customerId);
-            if (uid) {
+            if (!uid) {
+              await reportMissingStripeUid({ customerId, eventType: event.type, eventId: event.id });
+            } else {
               await enqueueSiteAccessJob(uid, "restore", "invoice_paid");
-              await restoreUserLiveSites(uid);
+              if (isProductionSiteAccessRuntime() && await claimSiteAccessJob(uid, "restore")) {
+                await restoreUserLiveSites(uid);
+                await completeSiteAccessJob(uid, "restore");
+              }
             }
           }
         }
@@ -1289,12 +1348,17 @@ export async function POST(req: NextRequest) {
             typeof inv.customer === "string" ? inv.customer : inv.customer?.id;
           if (customerId) {
             const uid = await resolveUidForCustomerId(customerId);
-            if (uid) {
+            if (!uid) {
+              await reportMissingStripeUid({ customerId, eventType: event.type, eventId: event.id });
+            } else {
               await enqueueSiteAccessJob(uid, "suspend", "payment_failed");
-              const result = await suspendUserLiveSites(uid, "payment_failed");
-              const authUser = await admin.auth().getUser(uid).catch(() => null);
-              if (authUser?.email && result.suspended > 0) {
-                await sendSiteAccessSuspendedEmail({ uid, email: authUser.email, name: authUser.displayName || null, reason: "payment_failed" });
+              if (isProductionSiteAccessRuntime() && await claimSiteAccessJob(uid, "suspend")) {
+                const result = await suspendUserLiveSites(uid, "payment_failed");
+                const authUser = await admin.auth().getUser(uid).catch(() => null);
+                if (authUser?.email && result.suspended > 0) {
+                  await sendSiteAccessSuspendedEmail({ uid, email: authUser.email, name: authUser.displayName || null, reason: "payment_failed" });
+                }
+                await completeSiteAccessJob(uid, "suspend");
               }
             }
           }
