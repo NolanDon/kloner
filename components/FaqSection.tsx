@@ -100,7 +100,7 @@ const GROUPS: Group[] = [
             },
             {
                 q: 'Is website cloning legal?',
-                a: 'That depends on the source site, its content, your purpose, and the law where you operate. Clone websites you own or have permission to reproduce, and replace third-party branding, copy, images, and other protected assets before publishing.'
+                a: 'Kloner may be used to clone a website only when you own it or have the necessary rights and permission to capture and use it. You are responsible for using Kloner lawfully and confirming that you are authorized to reproduce the source site’s content, code, branding, and assets before publishing.'
             },
             {
                 q: 'Can I clone another company’s website?',
