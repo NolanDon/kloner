@@ -25,6 +25,7 @@ jest.mock("../../_lib/auth", () => ({
     __esModule: true,
     verifySession: async () => ({ uid: "uid_1" }),
     getAdminDb: () => ({
+        runTransaction: async (fn: any) => fn({ get: (ref: any) => ref.get(), set: (ref: any, data: any, opts: any) => ref.set(data, opts) }),
         collection: (name: string) => ({
             doc: (id: string) => {
                 const key = `${name}/${id}`;
@@ -40,7 +41,7 @@ jest.mock("../../_lib/auth", () => ({
                     },
                     set: async (data: any, opts?: { merge?: boolean }) => {
                         const prev = store.get(key) ?? {};
-                        store.set(key, opts?.merge ? { ...prev, ...data } : { ...data });
+                        store.set(key, opts?.merge ? { ...prev, ...data, ...(data.offers ? { offers: { ...prev.offers, ...data.offers } } : {}) } : { ...data });
                     },
                 };
             },
@@ -71,6 +72,7 @@ describe("POST /api/billing/send-recovery-offer", () => {
         jest.resetModules();
         jest.clearAllMocks();
         store.clear();
+        resendSend.mockReset().mockResolvedValue({ data: { id: "email_1" } });
         process.env.EMAIL_LINK_SECRET = "test-secret";
         process.env.RESEND_API_KEY = "resend_test";
         process.env.WELCOME_EMAIL_FROM = "hello@kloner.app";
@@ -100,6 +102,17 @@ describe("POST /api/billing/send-recovery-offer", () => {
         expect(String(payload.text)).toContain("/api/email/unsubscribe?t=");
         const userDoc = store.get("kloner_users/uid_1") || {};
         expect(userDoc.offers?.exitOffer40RecoveryEmailSentAt).toBeTruthy();
+    });
+
+    it("does not mark a rejected email as sent and allows a retry", async () => {
+        store.set("kloner_users/uid_1", { offers: {} });
+        resendSend.mockResolvedValueOnce({ error: { message: "Resend unavailable" } });
+        const { POST } = await import("./route");
+        await expect(POST({} as any)).rejects.toThrow("Resend unavailable");
+        expect(store.get("kloner_users/uid_1")?.offers.exitOffer40RecoveryEmailSentAt).toBeFalsy();
+        const res: any = await POST({} as any);
+        expect((await res.json()).sent).toBe(true);
+        expect(resendSend).toHaveBeenCalledTimes(2);
     });
 
     it("skips sending when the user was recently active", async () => {

@@ -1,6 +1,7 @@
 "use client";
 
-import { ReactNode, useEffect } from "react";
+import { ReactNode, useEffect, useId, useState } from "react";
+import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 
 type ModalType = "alert" | "confirm";
@@ -26,6 +27,27 @@ export default function UniformModal({
   confirmText = "OK",
   cancelText = "Cancel",
 }: UniformModalProps) {
+  const titleId = useId();
+  const [portalRoot, setPortalRoot] = useState<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    // Mount after the editor/paywall portals, just like the editor close popup.
+    // A dedicated root keeps the dialog out of animated ancestor stacking contexts.
+    const root = document.createElement("div");
+    root.dataset.klonerModalRoot = "true";
+    Object.assign(root.style, {
+      position: "fixed",
+      inset: "0",
+      zIndex: "2147483647",
+      pointerEvents: "auto",
+    });
+    document.body.appendChild(root);
+    setPortalRoot(root);
+    return () => root.remove();
+  }, [isOpen]);
+
   // Handle escape key
   useEffect(() => {
     if (!isOpen) return;
@@ -51,7 +73,7 @@ export default function UniformModal({
     onClose();
   };
 
-  return (
+  const modal = (
     <AnimatePresence>
       {isOpen && (
         <motion.div
@@ -59,7 +81,10 @@ export default function UniformModal({
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 z-[20000] flex items-center justify-center bg-black/40 p-4"
+          className="fixed inset-0 flex items-center justify-center bg-black/40 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby={titleId}
           onMouseDown={(e) => {
             if (e.target === e.currentTarget) onClose();
           }}
@@ -73,7 +98,7 @@ export default function UniformModal({
           >
             <div className="flex items-start justify-between gap-4 border-b border-neutral-200 px-5 py-4">
               <div className="space-y-1">
-                <div className="text-lg font-semibold text-neutral-900 leading-tight">
+                <div id={titleId} className="text-lg font-semibold text-neutral-900 leading-tight">
                   {title}
                 </div>
               </div>
@@ -128,6 +153,10 @@ export default function UniformModal({
       )}
     </AnimatePresence>
   );
+
+  // Navigation confirmations must appear above editor and paywall portals,
+  // outside any stacking context created by the app shell.
+  return isOpen && portalRoot ? createPortal(modal, portalRoot) : null;
 }
 
 // Utility functions to replace window.alert and window.confirm

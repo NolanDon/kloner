@@ -13,6 +13,7 @@ type WebsitePrePaywallProps = {
     open: boolean;
     onClose: () => void;
     onStartCheckout: () => void;
+    onManageSubscription?: () => void;
     checkoutBusy?: boolean;
     zIndexClassName?: string;
     dismissible?: boolean;
@@ -55,6 +56,7 @@ export function WebsitePrePaywall({
     open,
     onClose,
     onStartCheckout,
+    onManageSubscription,
     checkoutBusy = false,
     zIndexClassName = "z-[2147483647]",
     dismissible = true,
@@ -270,12 +272,22 @@ export function WebsitePrePaywall({
                                     </button>
                                 ) : null}
 
-                                <a
-                                    href="/dashboard/settings"
-                                    className="inline-flex items-center justify-center text-[12px] font-medium tracking-tight text-neutral-500 transition hover:text-neutral-800"
-                                >
-                                    Manage subscription in Settings <span className="ml-1" aria-hidden="true">→</span>
-                                </a>
+                                {onManageSubscription ? (
+                                    <button
+                                        type="button"
+                                        onClick={onManageSubscription}
+                                        className="inline-flex items-center justify-center text-[12px] font-medium tracking-tight text-neutral-500 transition hover:text-neutral-800"
+                                    >
+                                        Manage subscription in Settings <span className="ml-1" aria-hidden="true">→</span>
+                                    </button>
+                                ) : (
+                                    <a
+                                        href="/dashboard/settings"
+                                        className="inline-flex items-center justify-center text-[12px] font-medium tracking-tight text-neutral-500 transition hover:text-neutral-800"
+                                    >
+                                        Manage subscription in Settings <span className="ml-1" aria-hidden="true">→</span>
+                                    </a>
+                                )}
                             </div>
 
                             <div className="mt-6 border-t border-neutral-200 pt-4">

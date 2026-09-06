@@ -20,6 +20,7 @@ import {
   hasActiveOrTrialingStripeSubscription,
   hasLikelyActivePaidAccess,
 } from "@/app/api/_lib/recoveryOffer";
+import { deliverRecoveryOfferEmail } from "@/app/api/_lib/recoveryOfferDelivery";
 import { buildRecoveryOfferEmail } from "@/app/api/_lib/recoveryOfferEmail";
 
 export const runtime = "nodejs";
@@ -221,51 +222,6 @@ async function sendTrialWelcomeEmail(params: {
   );
 }
 
-function hasRecoveryOfferEmail(
-  userData: Record<string, any> | null | undefined,
-): boolean {
-  if (!userData || typeof userData !== "object") return false;
-  const nested = (userData as any)?.offers;
-  if (nested && typeof nested === "object" && !Array.isArray(nested)) {
-    if ((nested as any).exitOffer40RecoveryEmailSentAt) return true;
-    if ((nested as any).exitOffer40RecoveryEmailSessionId) return true;
-    if ((nested as any).winback40RecoveryEmailSentAt) return true;
-  }
-  if ((userData as any)["offers.exitOffer40RecoveryEmailSentAt"]) return true;
-  if ((userData as any)["offers.winback40RecoveryEmailSentAt"]) return true;
-  return false;
-}
-
-async function claimRecoveryOfferEmailOnce(
-  userRef: FirebaseFirestore.DocumentReference,
-  sessionId: string,
-): Promise<boolean> {
-  return db.runTransaction(async (tx: any) => {
-    const snap = await tx.get(userRef);
-    const data = snap.exists ? (snap.data() as Record<string, any>) : {};
-    if (hasRecoveryOfferEmail(data)) return false;
-
-    tx.set(
-      userRef,
-      {
-        offers: {
-          ...(data?.offers &&
-          typeof data.offers === "object" &&
-          !Array.isArray(data.offers)
-            ? data.offers
-            : {}),
-          exitOffer40RecoveryEmailSessionId: sessionId,
-          exitOffer40RecoveryEmailSentAt:
-            admin.firestore.FieldValue.serverTimestamp(),
-        },
-      },
-      { merge: true },
-    );
-
-    return true;
-  });
-}
-
 async function sendRecoveryOfferEmail(params: {
   uid: string;
   sessionId: string;
@@ -293,12 +249,9 @@ async function sendRecoveryOfferEmail(params: {
     const activeSub = await hasActiveOrTrialingStripeSubscription(
       params.stripe,
       customerId,
-    ).catch(() => false);
+    );
     if (activeSub) return;
   }
-
-  const canClaim = await claimRecoveryOfferEmailOnce(userRef, params.sessionId);
-  if (!canClaim) return;
 
   const from = process.env.WELCOME_EMAIL_FROM || RECOVERY_SENDER;
   const linkUrl = makeRecoveryCheckoutUrl({ uid: params.uid, kind: "exit40" });
@@ -310,25 +263,18 @@ async function sendRecoveryOfferEmail(params: {
     variant: "checkout",
   });
   const resend = getResend();
-  const result = await resend.emails.send({
-    from,
-    to: params.email,
-    subject: offer.subject,
-    text: offer.text,
-    html: offer.html,
+  await deliverRecoveryOfferEmail({
+    db,
+    userRef,
+    variant: "checkout",
+    send: () => resend.emails.send({
+      from,
+      to: params.email,
+      subject: offer.subject,
+      text: offer.text,
+      html: offer.html,
+    }),
   });
-
-  if (
-    result &&
-    typeof result === "object" &&
-    "error" in result &&
-    (result as any).error
-  ) {
-    throw new Error(
-      ((result as any).error?.message as string) ||
-        "Recovery email send failed",
-    );
-  }
 }
 
 // ------------------------
@@ -1126,6 +1072,7 @@ export async function POST(req: NextRequest) {
             }
           } catch (err) {
             console.error("[stripe-webhook] recovery email failed", err);
+            return NextResponse.json({ error: "Recovery email failed" }, { status: 500 });
           }
         }
         break;

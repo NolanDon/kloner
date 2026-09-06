@@ -9,6 +9,7 @@ import {
     hasLikelyActivePaidAccess,
 } from "@/app/api/_lib/recoveryOffer";
 import { buildRecoveryOfferEmail } from "@/app/api/_lib/recoveryOfferEmail";
+import { deliverRecoveryOfferEmail } from "@/app/api/_lib/recoveryOfferDelivery";
 import { getStripe } from "@/lib/stripe";
 
 export const runtime = "nodejs";
@@ -63,7 +64,7 @@ export async function POST(req: NextRequest) {
                     : null;
             if (customerId) {
                 const stripe = getStripe();
-                const hasActiveSub = await hasActiveOrTrialingStripeSubscription(stripe, customerId).catch(() => false);
+                const hasActiveSub = await hasActiveOrTrialingStripeSubscription(stripe, customerId);
                 if (hasActiveSub) {
                     return NextResponse.json(
                         { ok: true, sent: false, skipped: "active_subscription" },
@@ -78,16 +79,6 @@ export async function POST(req: NextRequest) {
                 return NextResponse.json({ ok: true, sent: false, skipped: "missing_email" }, { headers: { "Cache-Control": "no-store" } });
             }
 
-            await userRef.set(
-                {
-                    offers: {
-                        ...(userData?.offers && typeof userData.offers === "object" ? userData.offers : {}),
-                        exitOffer40RecoveryEmailSentAt: Date.now(),
-                    },
-                },
-                { merge: true },
-            );
-
             const from = process.env.WELCOME_EMAIL_FROM || RECOVERY_SENDER;
             const linkUrl = makeRecoveryCheckoutUrl({ uid: decoded.uid, kind: "exit40" });
             const unsubUrl = makeUnsubUrl({ uid: decoded.uid, kind: "journey" });
@@ -98,19 +89,20 @@ export async function POST(req: NextRequest) {
                 variant: "checkout",
             });
             const resend = getResend();
-            const result = await resend.emails.send({
-                from,
-                to: email,
-                subject: offer.subject,
-                text: offer.text,
-                html: offer.html,
+            const sent = await deliverRecoveryOfferEmail({
+                db,
+                userRef,
+                variant: "checkout",
+                send: () => resend.emails.send({
+                    from,
+                    to: email,
+                    subject: offer.subject,
+                    text: offer.text,
+                    html: offer.html,
+                }),
             });
 
-            if (result && typeof result === "object" && "error" in result && (result as any).error) {
-                throw new Error(((result as any).error?.message as string) || "Recovery email send failed");
-            }
-
-            return NextResponse.json({ ok: true, sent: true }, { headers: { "Cache-Control": "no-store" } });
+            return NextResponse.json({ ok: true, sent }, { headers: { "Cache-Control": "no-store" } });
         },
         { methods: ["POST"], csrf: true },
     );

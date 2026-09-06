@@ -7253,15 +7253,13 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                     >
                         {agentMode === "v3" ? WORKSPACE_AUTONOMY_V3_AGENT_NAME : "Agent"}
                     </h3>
-                    {process.env.NODE_ENV !== "production" ? (
-                        <span
-                            className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-blue-200 bg-blue-50 text-blue-600"
-                            title={projectFramework.reason}
-                            aria-label={projectFramework.label}
-                        >
-                            <Info className="h-3 w-3" />
-                        </span>
-                    ) : null}
+                    <span
+                        className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-blue-200 bg-blue-50 text-blue-600"
+                        title={projectFramework.reason}
+                        aria-label={projectFramework.label}
+                    >
+                        <Info className="h-3 w-3" />
+                    </span>
                     {creditError ? (
                         <div className="ml-2 text-[11px] text-red-600 max-w-[220px] truncate" title={creditError}>
                             {creditError}

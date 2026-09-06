@@ -3592,6 +3592,10 @@ export default function AppBuilderEditor({
             const target = e.target as HTMLElement | null;
             const anchor = target?.closest?.("a") as HTMLAnchorElement | null;
             if (!anchor) return;
+            // Paywall account-management links are already an explicit escape
+            // hatch from the editor. Let them navigate directly instead of
+            // opening the editor leave confirmation underneath the paywall.
+            if (anchor.dataset.klonerNavigationBypass === "true") return;
             if (anchor.target && anchor.target !== "_self") return;
             const hrefAttr = (anchor.getAttribute("href") || "").trim();
             if (!hrefAttr || hrefAttr.startsWith("#")) return;
@@ -3660,6 +3664,15 @@ export default function AppBuilderEditor({
     }, [appId]);
 
     const closeRequestInFlightRef = useRef(false);
+    const manageSubscriptionFromPaywall = useCallback(async () => {
+        const confirmed = await showConfirm(
+            "Leave the App Builder?",
+            "Leave App Builder",
+        );
+        if (!confirmed) return;
+        allowNextNavigationRef.current = true;
+        window.location.assign("/dashboard/settings");
+    }, [showConfirm]);
     const requestClose = useCallback(async () => {
         if (closeRequestInFlightRef.current) return;
         closeRequestInFlightRef.current = true;
@@ -8766,6 +8779,7 @@ export default function AppBuilderEditor({
                     onStartCheckout={() => {
                         requestDeployCheckout();
                     }}
+                    onManageSubscription={agentMode === "v3" ? () => void manageSubscriptionFromPaywall() : undefined}
                     checkoutBusy={trialCheckoutBusy || localTrialCheckoutBusy}
                     zIndexClassName="z-[9999999999]"
                     title="Unlock your project"
@@ -8782,6 +8796,7 @@ export default function AppBuilderEditor({
                     onStartCheckout={() => {
                         requestDeployCheckout();
                     }}
+                    onManageSubscription={agentMode === "v3" ? () => void manageSubscriptionFromPaywall() : undefined}
                     checkoutBusy={trialCheckoutBusy || localTrialCheckoutBusy}
                     zIndexClassName="z-[20001]"
                     title={upgradePaywallCopy.title}

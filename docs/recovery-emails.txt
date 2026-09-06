@@ -1,0 +1,54 @@
+# Recovery email operations
+
+`vercel.json` schedules `GET /api/private/send-journey-emails` daily at
+14:00 UTC. Vercel installs the cron on a production deployment; preview
+builds do not run it. The route allows up to 300 seconds for a batch.
+
+Configure these environment variables on the production Vercel project:
+
+- `CRON_SECRET`: Vercel supplies it as the cron's Bearer token.
+- `RESEND_API_KEY`: key for the Resend account being monitored.
+- `EMAIL_LINK_SECRET`: signs the discount and unsubscribe links.
+- `FIREBASE_SERVICE_ACCOUNT`: credentials for the production user database.
+- `STRIPE_SECRET_KEY_LIVE` (or `STRIPE_SECRET_KEY_PROD` / `STRIPE_SECRET_KEY`).
+- `WELCOME_EMAIL_FROM`: optional; defaults to `Kloner Team <hello@kloner.app>`.
+  The sender's domain must be verified in Resend.
+
+Users with a Stripe customer ID are checked for an active subscription and
+receive **A quick note about your checkout** after at least 30 minutes of
+inactivity, at the next daily run. Other inactive signups receive
+**Still want to build this?**, with a default minimum inactivity of one hour.
+Journey-email opt-outs and active paid users are excluded. Checkout-return
+requests and expired-checkout webhooks can also trigger the checkout email.
+The cron covers users who close the tab and events skipped for recent activity.
+
+All triggers share a five-minute delivery lease. A sent timestamp is recorded
+only after Resend returns an email ID. Rejected sends can retry; failed cron
+runs return HTTP 500 and expired-checkout failures return HTTP 500 to Stripe.
+
+After deploying, inspect the job in Vercel's Cron Jobs page and its function
+logs. Authenticated runs are recorded in Firestore `kloner_email_job_runs`
+with their status, counts of sent/skipped/failed users, or a setup error.
+Missing/invalid cron authentication is logged before run tracking starts.
+Per-user `offers.recoveryEmailStatus` and `offers.recoveryEmailError` expose
+send failures; successful records include the Resend email ID.
+
+The old checkout handlers wrote sent markers before contacting Resend.
+Existing markers cannot reliably distinguish a delivered email from a failed
+attempt. Audit those against Resend before clearing any: this change preserves
+old markers to avoid sending duplicate offers to past recipients.
+
+Vercel setup reference: https://vercel.com/docs/cron-jobs/manage-cron-jobs
+
+Single-recipient smoke test (deploy the updated route first):
+
+GET /api/private/send-journey-emails?testEmail=owner%40example.com
+Authorization: Bearer <production CRON_SECRET>
+
+The recipient must be an existing Kloner Firebase Auth account. This explicit
+mode sends exactly one checkout recovery email, bypasses campaign eligibility,
+and leaves the user's campaign delivery markers untouched. The response and
+function log include testMode, runId, and the Resend emailId. It still tests
+production Firebase, signed email links, sender configuration, and Resend.
+The production RESEND_API_KEY is read from Vercel environment variables; it is
+not supplied as a request parameter. Omitting testEmail runs the normal batch.

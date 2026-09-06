@@ -77,7 +77,7 @@ jest.mock("firebase-admin", () => {
   };
   const setData = (key: string, data: any, opts?: { merge?: boolean }) => {
     const prev = firestoreStore.get(key) ?? {};
-    firestoreStore.set(key, opts?.merge ? { ...prev, ...data } : { ...data });
+    firestoreStore.set(key, opts?.merge ? { ...prev, ...data, ...(data.offers ? { offers: { ...prev.offers, ...data.offers } } : {}) } : { ...data });
   };
   const db = {
     collection: (name: string) => ({
@@ -142,7 +142,7 @@ describe("POST /api/stripe/webhook", () => {
     mapPriceToTier.mockClear();
     effectiveTierFromStripeSubscription.mockClear();
     getUidForStripeCustomer.mockClear();
-    resendSend.mockClear();
+    resendSend.mockReset().mockResolvedValue({ data: { id: "email_1" } });
     firestoreStore.clear();
 
     process.env.STRIPE_WEBHOOK_SECRET_TEST = "whsec_test";
@@ -173,6 +173,7 @@ describe("POST /api/stripe/webhook", () => {
         __esModule: true,
         default: function StripeCtor() {
           return {
+            subscriptions: { list: async () => ({ data: [] }) },
             webhooks: { constructEvent },
             invoices: { retrieve: async () => ({}) },
           };
@@ -222,6 +223,7 @@ describe("POST /api/stripe/webhook", () => {
         __esModule: true,
         default: function StripeCtor() {
           return {
+            subscriptions: { list: async () => ({ data: [] }) },
             webhooks: { constructEvent },
             invoices: { retrieve: async () => ({}) },
           };
@@ -283,6 +285,7 @@ describe("POST /api/stripe/webhook", () => {
         __esModule: true,
         default: function StripeCtor() {
           return {
+            subscriptions: { list: async () => ({ data: [] }) },
             webhooks: { constructEvent },
             invoices: { retrieve: async () => ({}) },
           };
@@ -349,6 +352,7 @@ describe("POST /api/stripe/webhook", () => {
         __esModule: true,
         default: function StripeCtor() {
           return {
+            subscriptions: { list: async () => ({ data: [] }) },
             webhooks: { constructEvent },
             invoices: { retrieve: async () => ({}) },
           };
@@ -372,11 +376,36 @@ describe("POST /api/stripe/webhook", () => {
     expect(body.received).toBe(true);
     expect(resendSend).toHaveBeenCalledTimes(1);
     const payload = resendSend.mock.calls[0]?.[0];
-    expect(payload.subject).toContain("Still want");
+    expect(payload.subject).toBe("A quick note about your checkout");
     expect(String(payload.text)).toContain("/api/billing/recovery-checkout?t=");
     expect(String(payload.text)).toContain("/api/email/unsubscribe?t=");
     const userDoc = firestoreStore.get("kloner_users/uid_abc") || {};
     expect(userDoc.offers?.exitOffer40RecoveryEmailSentAt).toBeTruthy();
+  });
+
+  it("returns a retryable error when Resend rejects an expired-checkout email", async () => {
+    firestoreStore.set("kloner_users/uid_abc", { stripeCustomerId: "cus_abc" });
+    resendSend.mockResolvedValueOnce({ error: { message: "Resend unavailable" } });
+    jest.doMock("stripe", () => ({
+      __esModule: true,
+      default: function StripeCtor() {
+        return {
+          subscriptions: { list: async () => ({ data: [] }) },
+          webhooks: { constructEvent: () => ({
+            id: "evt_expired_retry", type: "checkout.session.expired", livemode: false,
+            data: { object: { id: "cs_retry", customer: "cus_abc", metadata: { firebaseUid: "uid_abc", plan: "pro" } } },
+          }) },
+        };
+      },
+    }));
+    const { POST } = await import("./route");
+    const req = { headers: { get: () => "sig" }, text: async () => "{}" } as any;
+    const first: any = await POST(req);
+    expect(first.status).toBe(500);
+    expect(firestoreStore.get("kloner_users/uid_abc")?.offers.exitOffer40RecoveryEmailSentAt).toBeFalsy();
+    const retry: any = await POST(req);
+    expect(retry.status).toBe(200);
+    expect(resendSend).toHaveBeenCalledTimes(2);
   });
 
   it("does not send the recovery email when the user was recently active", async () => {
@@ -409,6 +438,7 @@ describe("POST /api/stripe/webhook", () => {
         __esModule: true,
         default: function StripeCtor() {
           return {
+            subscriptions: { list: async () => ({ data: [] }) },
             webhooks: { constructEvent },
             invoices: { retrieve: async () => ({}) },
           };
@@ -462,6 +492,7 @@ describe("POST /api/stripe/webhook", () => {
         __esModule: true,
         default: function StripeCtor() {
           return {
+            subscriptions: { list: async () => ({ data: [] }) },
             webhooks: { constructEvent },
             invoices: { retrieve: async () => ({}) },
           };

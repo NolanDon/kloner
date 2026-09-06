@@ -8,10 +8,12 @@ function makeDocSnap(collection: string, id: string) {
     const key = `${collection}/${id}`;
     return {
         id,
+        get: async () => makeDocSnap(collection, id),
         ref: {
+            get: async () => makeDocSnap(collection, id),
             set: async (data: any, opts?: { merge?: boolean }) => {
                 const prev = store.get(key) ?? {};
-                store.set(key, opts?.merge ? { ...prev, ...data } : { ...data });
+                store.set(key, opts?.merge ? { ...prev, ...data, ...(data.offers ? { offers: { ...prev.offers, ...data.offers } } : {}) } : { ...data });
             },
         },
         data: () => {
@@ -71,6 +73,7 @@ jest.mock("firebase-admin", () => ({
 jest.mock("../../_lib/auth", () => ({
     __esModule: true,
     getAdminDb: () => ({
+        runTransaction: async (fn: any) => fn({ get: (ref: any) => ref.get(), set: (ref: any, data: any, opts: any) => ref.set(data, opts) }),
         collection: (name: string) => {
             const query = makeQuery(name);
             return {
@@ -80,6 +83,7 @@ jest.mock("../../_lib/auth", () => ({
         },
     }),
     getAdminAuth: () => ({
+        getUserByEmail: async (email: string) => ({ uid: "test_user", email, displayName: "Test User" }),
         getUser: async (uid: string) => ({
             uid,
             email: `${uid}@example.com`,
@@ -113,6 +117,8 @@ describe("GET /api/private/send-journey-emails", () => {
         jest.resetModules();
         jest.clearAllMocks();
         store.clear();
+        resendSend.mockReset().mockResolvedValue({ data: { id: "email_1" } });
+        stripeList.mockReset().mockResolvedValue({ data: [] });
         process.env.CRON_SECRET = "cron_secret";
         process.env.INTERNAL_API_KEY = "internal_secret";
         process.env.RESEND_API_KEY = "resend_test";
@@ -183,6 +189,83 @@ describe("GET /api/private/send-journey-emails", () => {
         expect(run?.job).toBe("send-journey-emails");
         expect(run?.status).toBe("completed");
         expect(run?.stats).toMatchObject({ scanned: 4, sent: 1, skipped: 3, errors: 0 });
+    });
+
+    it("recovers abandoned Stripe checkouts after 30 minutes without a browser return or webhook", async () => {
+        store.set("kloner_users/checkout_1", {
+            stripeCustomerId: "cus_abandoned",
+            lastAppActivityAt: Date.now() - 40 * 60 * 1000,
+        });
+        const { GET } = await import("./route");
+        const req = new Request("https://example.com/api/private/send-journey-emails", {
+            headers: { authorization: "Bearer cron_secret" },
+        }) as any;
+        const res: any = await GET(req);
+        expect((await res.json()).sent).toBe(1);
+        expect(resendSend.mock.calls[0][0].subject).toBe("A quick note about your checkout");
+        expect(store.get("kloner_users/checkout_1")?.offers.exitOffer40RecoveryEmailId).toBe("email_1");
+        await GET(req);
+        expect(resendSend).toHaveBeenCalledTimes(1);
+    });
+
+    it("reports Resend failures and retries them on the next cron run", async () => {
+        store.set("kloner_users/checkout_1", { stripeCustomerId: "cus_abandoned" });
+        resendSend.mockResolvedValueOnce({ error: { message: "rate limited" } });
+        const { GET } = await import("./route");
+        const req = new Request("https://example.com/api/private/send-journey-emails", {
+            headers: { authorization: "Bearer cron_secret" },
+        }) as any;
+        const first: any = await GET(req);
+        expect(first.status).toBe(500);
+        expect((await first.json()).errors).toBe(1);
+        expect(store.get("kloner_users/checkout_1")?.offers.exitOffer40RecoveryEmailSentAt).toBeFalsy();
+        const retry: any = await GET(req);
+        expect((await retry.json()).sent).toBe(1);
+        expect(resendSend).toHaveBeenCalledTimes(2);
+    });
+
+    it("does not send when Stripe subscription verification fails", async () => {
+        store.set("kloner_users/checkout_1", { stripeCustomerId: "cus_abandoned" });
+        stripeList.mockRejectedValueOnce(new Error("Stripe unavailable"));
+        const { GET } = await import("./route");
+        const res: any = await GET(new Request("https://example.com/api/private/send-journey-emails", {
+            headers: { authorization: "Bearer cron_secret" },
+        }) as any);
+        expect(res.status).toBe(500);
+        expect(resendSend).not.toHaveBeenCalled();
+    });
+
+    it("sends exactly one test through the cron endpoint without processing or marking campaign users", async () => {
+        store.set("kloner_users/eligible_customer", { stripeCustomerId: "cus_abandoned" });
+        store.set("kloner_users/test_user", { offers: {}, stripeStatus: "active" });
+        const { GET } = await import("./route");
+        const res: any = await GET(new Request("https://example.com/api/private/send-journey-emails?testEmail=owner%40example.com", {
+            headers: { authorization: "Bearer cron_secret" },
+        }) as any);
+        expect(res.status).toBe(200);
+        expect(await res.json()).toMatchObject({ testMode: true, sent: 1, emailId: "email_1" });
+        expect(resendSend).toHaveBeenCalledTimes(1);
+        expect(resendSend.mock.calls[0][0]).toMatchObject({ to: "owner@example.com", subject: "A quick note about your checkout" });
+        expect(store.get("kloner_users/test_user")?.offers).toEqual({});
+        expect(store.get("kloner_users/eligible_customer")?.offers).toBeUndefined();
+        expect(stripeList).not.toHaveBeenCalled();
+    });
+
+    it("rejects an empty test recipient instead of falling through to the batch", async () => {
+        store.set("kloner_users/eligible_customer", { stripeCustomerId: "cus_abandoned" });
+        const { GET } = await import("./route");
+        const res: any = await GET(new Request("https://example.com/api/private/send-journey-emails?testEmail=", {
+            headers: { authorization: "Bearer cron_secret" },
+        }) as any);
+        expect(res.status).toBe(400);
+        expect(resendSend).not.toHaveBeenCalled();
+    });
+
+    it("keeps test delivery protected by cron authentication", async () => {
+        const { GET } = await import("./route");
+        const res: any = await GET(new Request("https://example.com/api/private/send-journey-emails?testEmail=owner%40example.com") as any);
+        expect(res.status).toBe(401);
+        expect(resendSend).not.toHaveBeenCalled();
     });
 
     it("rejects unauthorized cron requests", async () => {
