@@ -4165,7 +4165,7 @@ export default function PreviewPage(): JSX.Element {
     const [showArchivedApps, setShowArchivedApps] = useState<boolean>(false);
     const isTrialAccessRevoked = billingState === "trial_cancelled";
     const workspaceAutonomyV3IsDefault =
-        (process.env.NEXT_PUBLIC_WORKSPACE_AUTONOMY_V3_ENABLED_FOR_ALL === "true" && Boolean(user?.uid)) ||
+        (process.env.NEXT_PUBLIC_WORKSPACE_AUTONOMY_V3_ENABLED_FOR_ALL !== "false" && Boolean(user?.uid)) ||
         user?.uid === WORKSPACE_AUTONOMY_V3_TEST_UID ||
         user?.email?.toLowerCase() === WORKSPACE_AUTONOMY_V3_TEST_EMAIL;
 
