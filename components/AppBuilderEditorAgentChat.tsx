@@ -7251,7 +7251,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                         className="font-medium text-sm"
                         title={agentMode === "v3" ? "Workspace Autonomy V3 is active for this editor" : undefined}
                     >
-                        {agentMode === "v3" ? `V3 · ${WORKSPACE_AUTONOMY_V3_AGENT_NAME}` : "Agent"}
+                        {agentMode === "v3" ? WORKSPACE_AUTONOMY_V3_AGENT_NAME : "Agent"}
                     </h3>
                     {process.env.NODE_ENV !== "production" ? (
                         <span
