@@ -220,7 +220,8 @@ export async function POST(req: NextRequest) {
             finalRemaining = Math.max(startRemaining - cost, 0);
             ok = true;
 
-            const bonusSpent = Math.min(inferredBonus, cost);
+            const monthlyRemaining = Math.max(0, startRemaining - inferredBonus);
+            const bonusSpent = Math.min(inferredBonus, Math.max(0, cost - monthlyRemaining));
             const newBonus = Math.max(inferredBonus - bonusSpent, 0);
 
             tx.set(

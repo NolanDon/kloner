@@ -99,6 +99,8 @@ const clearStoredContainerCodeEverywhere = async (appId: string, user: any) => {
   try {
     if (user?.uid) {
       const docRef = doc(db, 'kloner_users', user.uid, 'kloner_apps', appId);
+      const existing = await getDoc(docRef);
+      if (!existing.exists()) return;
       await updateDoc(docRef, {
         containerCode: null,
         containerCodeTimestamp: null,
@@ -319,6 +321,31 @@ function formatPreviewFailureSection(value: unknown): string {
   }
 }
 
+function buildCompactPreviewFailureMessage(rawStatusData: any, fallback = 'Something went wrong while starting the preview.') {
+  const raw = asRecord(rawStatusData) || {};
+  const failure = normalizePreviewFailureDetails(raw);
+  const base = pickFirstString(
+    raw.uiMessage,
+    raw.error,
+    raw.uiTitle,
+    failure.uiMessage,
+    fallback,
+  ) || fallback;
+  const details: string[] = [];
+  const code = pickFirstString(raw.errorCode, raw.code, raw.failure?.code, raw.previewFailure?.code);
+  const reason = failure.timeoutReason || pickFirstString(raw.reason, raw.failure?.reason);
+  if (code) details.push(`Code: ${code}`);
+  if (failure.uiStage) details.push(`Stage: ${failure.uiStage}`);
+  if (reason) details.push(`Reason: ${reason}`);
+  if (failure.machineState) details.push(`Machine: ${failure.machineState}`);
+  if (failure.restartCount != null) details.push(`Restarts: ${failure.restartCount}`);
+  if (failure.requestId) details.push(`Request: ${failure.requestId}`);
+  if (raw.compileError?.summary || raw.debug?.compile?.summary) {
+    details.push(`Build: ${String(raw.compileError?.summary || raw.debug?.compile?.summary).slice(0, 240)}`);
+  }
+  return details.length ? `${base}\n\n${details.join(' · ')}` : base;
+}
+
 // React 18 StrictMode in dev intentionally mounts/unmounts twice.
 // If we eagerly stop the local runner on unmount, we create a start/stop/start loop.
 // This small scheduler avoids killing the process when a remount happens immediately.
@@ -341,6 +368,7 @@ interface WebContainerRunnerProps {
   onBackendReady?: (args: { appId: string; code: string; url: string }) => void;
   onRequestRebuild?: () => void | Promise<void>;
   reloadToken?: number;
+  workspaceRevision?: string;
   applyToken?: number;
   restartToken?: number;
   reconnectToken?: number;
@@ -374,7 +402,7 @@ interface WebContainerRunnerProps {
   onNavigatePathChange?: (path: string | null) => void;
 }
 
-export default function WebContainerRunner({ appId, files, filesReady = true, isDeleting = false, onFileChange, onPreviewReadyChange, onPreviewIssueChange, onBackendReady, onRequestRebuild, onCompileErrorFixRequest, debugPreviewScenario, reloadToken, applyToken, restartToken, reconnectToken, forceFreshStart, pollingConfig, navigatePath, navigatePathToken, onNavigatePathChange }: WebContainerRunnerProps) {
+export default function WebContainerRunner({ appId, files, filesReady = true, isDeleting = false, onFileChange, onPreviewReadyChange, onPreviewIssueChange, onBackendReady, onRequestRebuild, onCompileErrorFixRequest, debugPreviewScenario, reloadToken, workspaceRevision, applyToken, restartToken, reconnectToken, forceFreshStart, pollingConfig, navigatePath, navigatePathToken, onNavigatePathChange }: WebContainerRunnerProps) {
 
   type DebugEvent = {
     ts: number;
@@ -1957,6 +1985,7 @@ export default function WebContainerRunner({ appId, files, filesReady = true, is
   const lastFilesSignatureRef = useRef<string>('');
   const lastReloadIssuedAtRef = useRef<number>(0);
   const lastReloadTokenRef = useRef<number | null>(null);
+  const lastWorkspaceRevisionRef = useRef("");
   const lastApplyTokenRef = useRef<number | null>(null);
   const applyReloadTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastRestartTokenRef = useRef<number | null>(null);
@@ -2647,6 +2676,19 @@ export default function NavBar() {
     setPreviewUrl(withCacheBust(base));
   };
 
+  // V3 has already applied and verified the server. Reload the iframe once,
+  // even when HMR claims to be connected, and retain the request until a URL exists.
+  useEffect(() => {
+    if (!workspaceRevision || workspaceRevision === lastWorkspaceRevisionRef.current) return;
+    if (!proxyBaseRef.current && !previewUrlRef.current) return;
+    lastWorkspaceRevisionRef.current = workspaceRevision;
+    setError(null);
+    setIsApplyRefreshing(true);
+    iframeLoadedSuccessfullyRef.current = false;
+    onPreviewReadyChange?.(false);
+    hardReloadPreview("workspace_change_confirmed");
+  }, [workspaceRevision, previewUrl]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Workaround: HMR inside embedded hub previews can stop propagating even when the dev server recompiles.
   // When we detect next-dev + hub + preview already loaded, issue a hard reload after file edits.
   useEffect(() => {
@@ -2998,7 +3040,7 @@ export default function NavBar() {
           setPreviewUrl(null);
           setError(null);
           setIsPolling(false);
-          setIsLoading(false);
+          setIsLoading(true);
           appLoadedSuccessfullyRef.current = false;
           iframeLoadedSuccessfullyRef.current = false;
           pollingCodeRef.current = null;
@@ -3566,6 +3608,7 @@ export default function NavBar() {
           const fallbackData = await response.clone().json().catch(() => ({} as any));
           const fallbackCode = String(fallbackData?.code || '').toLowerCase();
           const fallbackError = String(fallbackData?.error || '').toLowerCase();
+          const appMissing = fallbackCode === 'app_not_found' || fallbackError === 'app not found';
           const backendHydrationUnsupported =
             response.status === 400 ||
             response.status === 404 ||
@@ -3578,7 +3621,10 @@ export default function NavBar() {
             fallbackError.includes('missing files') ||
             fallbackError.includes('unsupported startupstrategy');
 
-          const shouldFallbackToLegacy = response.status !== 401 && response.status !== 403;
+          // A missing app record cannot be repaired by sending the same request
+          // again with the full file payload. Avoid a duplicate backend request
+          // and preserve the real storage error for the user.
+          const shouldFallbackToLegacy = !appMissing && response.status !== 401 && response.status !== 403;
           if (shouldFallbackToLegacy) {
             console.warn('[WebContainerRunner] server-hydrated startup failed; retrying legacy full-files startup', {
               appId,
@@ -4084,11 +4130,21 @@ export default function NavBar() {
             const attachableFlag = Boolean((statusData as any)?.attachable);
             const restartPendingFlag = Boolean((statusData as any)?.restartPending || (statusData as any)?.queued || (statusData as any)?.outcome === 'restart_pending');
             const restartConfirmedFlag = Boolean((statusData as any)?.restartConfirmed);
-            const activeRestartSignal = restartPendingFlag && !restartConfirmedFlag;
+            const restartRecordStatus = String((statusData as any)?.restart?.status || '').trim().toLowerCase();
+            const activeRestartSignal = (restartPendingFlag || ['queued', 'running'].includes(restartRecordStatus)) && !restartConfirmedFlag;
             const readyByLifecycle = phase === 'ready' || restartConfirmedFlag;
             const phaseTimedOut = phase === 'timeout';
             const phaseFailed = phase === 'failed';
-            const readyFlag = Boolean((statusData as any)?.ready || readyByLifecycle);
+            // Some legacy preview documents have ready=false persisted even
+            // though the backend has already advanced to ready/app_ready. The
+            // lifecycle state is authoritative when no restart is active; this
+            // prevents a permanently spinning iframe after a successful boot.
+            const readyByStatus =
+              (status === 'ready' || uiStage === 'ready' || uiStage === 'app_ready') &&
+              !activeRestartSignal &&
+              !phaseTimedOut &&
+              !phaseFailed;
+            const readyFlag = Boolean((statusData as any)?.ready || readyByLifecycle || readyByStatus);
             const retryableFlag = Boolean((statusData as any)?.retryable || (statusData as any)?.retryAfterSeconds != null || (statusData as any)?.retry_after_seconds != null);
             const retryAfterSeconds = asRetryAfterSeconds((statusData as any)?.retryAfterSeconds ?? (statusData as any)?.retry_after_seconds ?? null);
             const backendSignal = classifyBackendSignal(statusData);
@@ -4439,7 +4495,7 @@ export default function NavBar() {
               setIsLoading(false);
               setConnectingToExisting(false);
               setLoadingStatus('');
-              setError('Something went wrong while starting the preview. Please rebuild or refresh it.');
+              setError(buildCompactPreviewFailureMessage(statusData, 'Preview stopped before it became available.'));
               setCanRetry(true);
               setPreviewUrl(null);
               return;
@@ -4454,7 +4510,7 @@ export default function NavBar() {
               setConnectingToExisting(false);
               setLoadingStatus('');
               setPreviewUrl(null);
-              setError('Something went wrong while starting the preview. Please rebuild or refresh it.');
+              setError(buildCompactPreviewFailureMessage(statusData, 'Preview failed before it became available.'));
               setCanRetry(true);
               return;
             }
@@ -4471,7 +4527,8 @@ export default function NavBar() {
               return;
             }
 
-            // Completion contract: only stop polling when `ready === true`.
+            // Completion contract: ready status plus a non-active restart is
+            // also accepted for legacy preview records.
             if (readyFlag) {
               const recoveredFingerprint = compileErrorActiveFingerprintRef.current;
               if (recoveredFingerprint) {
@@ -4712,7 +4769,7 @@ export default function NavBar() {
               setIsLoading(false);
               setConnectingToExisting(false);
               setLoadingStatus('');
-              setError('Something went wrong while starting the preview. Please rebuild or refresh it.');
+              setError(buildCompactPreviewFailureMessage(statusData, 'Preview failed to start.'));
               setCanRetry(true);
               setPreviewUrl(null);
               return;
@@ -5370,14 +5427,16 @@ export default function NavBar() {
               browser: detectBrowserLabel(),
               userAgent: typeof navigator !== 'undefined' ? String(navigator.userAgent || '') : 'unknown',
             });
-            setError(`Unable to load preview at ${previewUrl}. Try Reconnect, or use Start fresh to start a new machine.`);
+            setError(buildCompactPreviewFailureMessage(
+              currentStatusData || lastBackendStatusRef.current,
+              `Unable to load preview at ${previewUrl}. Try Reconnect, or use Start fresh to start a new machine.`,
+            ));
             setCookieRecoveryPromptVisible(false);
             setCanRetry(true);
           }
           setIsLoading(false);
           setIsPolling(false);
           setConnectingToExisting(false);
-          setCurrentStatusData(null);
           setLoadingStatus('');
           iframeLoadedSuccessfullyRef.current = false;
           appLoadedSuccessfullyRef.current = false;
@@ -5488,7 +5547,9 @@ export default function NavBar() {
   const previewFailureContract = normalizePreviewFailureContract(previewIssueContextData);
   const canFixPreviewFailureWithAi = canShowPreviewFixWithAi(previewFailureContract);
   const terminalPreviewErrorMessage = buildPreviewFixIssueMessage(
-    error || 'Something went wrong while starting the preview.',
+    /app(?:lication)?\s+(?:data\s+)?not\s+found/i.test(String(error || ''))
+      ? 'This saved project is no longer available. V3 supports existing inline and sharded projects, so a new scan is not required. Reopen the project from Dashboard or restore it before retrying.'
+      : (error || 'Something went wrong while starting the preview.'),
     previewIssueContextData,
   );
   const previewIssueDiagnostics = previewIssueContextData
@@ -6193,7 +6254,11 @@ export default function NavBar() {
                   switchToExternalPreviewMode(activePreviewUrl, 'safari_iframe_onerror_hub_preview');
                   return;
                 }
-                setError('Preview couldn’t load in this iframe. The embedded preview may be blocked by browser routing/cookie settings, or it may still be starting. We will automatically refresh the preview in a few seconds.');
+                const latestStatus = lastBackendStatusRef.current;
+                setError(buildCompactPreviewFailureMessage(
+                  latestStatus,
+                  'Preview could not load in the embedded frame. The browser may be blocking preview routing/cookies, or the server is still starting.',
+                ));
                 setCookieRecoveryPromptVisible(true);
                 setCanRetry(true);
                 reportCookieIframeBlocked({
@@ -6204,7 +6269,6 @@ export default function NavBar() {
                 setIsLoading(false);
                 setIsPolling(false);
                 setConnectingToExisting(false);
-                setCurrentStatusData(null);
                 setLoadingStatus('');
                 iframeLoadedSuccessfullyRef.current = false;
                 appLoadedSuccessfullyRef.current = false;
@@ -6256,13 +6320,15 @@ export default function NavBar() {
                     userAgent: typeof navigator !== 'undefined' ? String(navigator.userAgent || '') : 'unknown',
                   });
 
-                  setError(`Unable to load preview. The deployment may still be starting up or has failed. Please try again in a few minutes.`);
+                  setError(buildCompactPreviewFailureMessage(
+                    latestStatus,
+                    'Unable to load the preview. The deployment may still be starting or has failed.',
+                  ));
                   setCookieRecoveryPromptVisible(false);
                   setCanRetry(true);
                   setIsLoading(false);
                   setIsPolling(false);
                   setConnectingToExisting(false);
-                  setCurrentStatusData(null);
                   setLoadingStatus('');
                   iframeLoadedSuccessfullyRef.current = false;
                   appLoadedSuccessfullyRef.current = false;

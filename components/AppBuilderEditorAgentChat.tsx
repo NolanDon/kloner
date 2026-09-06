@@ -3,6 +3,8 @@
 
 import { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo } from "react";
 import Image from "next/image";
+import { WorkspaceAgentLoader, WorkspaceAgentProgress } from "./WorkspaceAgentActivity";
+import WorkspaceRestoreControls, { type WorkspaceRestoreState } from "./WorkspaceRestoreControls";
 import { Send, Bot, RotateCcw, Database, FileText, RefreshCw, X, AlertTriangle, ChevronDown, ChevronUp, ExternalLink, Copy, Check, Info, ThumbsUp, ThumbsDown, Search } from "lucide-react";
 import { ensureSessionAndCsrf } from "@/lib/auth-client";
 import { useAuth } from "@/src/hooks/useAuth";
@@ -17,6 +19,8 @@ import {
     fetchEmbeddingEditPlan,
     fetchEmbeddingEditPlanJobStatus,
     fetchEmbeddingSearch,
+    fetchWorkspaceAutonomyAgentV3,
+    revertWorkspaceAutonomyAgentV3,
     getEmbeddingSearchErrorMessage,
     getEmbeddingSearchRefreshQueuedNotice,
     getEditPlanJobPollDelayMs,
@@ -33,6 +37,8 @@ import {
     type AppEmbeddingEditPlanProposal,
     type AppEmbeddingEditPlanOp,
     type AppEmbeddingEditPlanResponse,
+    type WorkspaceAutonomyRepairContext,
+    type WorkspaceAutonomyAgentV3Result,
 } from "@/src/lib/appEmbeddingsClient";
 import {
     buildProjectFrameworkPrompt,
@@ -61,7 +67,8 @@ import {
 import { resolveEditPlanCreditCharge } from "@/src/lib/editPlanCreditConsumption";
 import { resolveAppBuilderChatRoute, type AppBuilderChatMode, type AppBuilderChatRoute } from "@/src/lib/appBuilderChatIntent";
 import CoinLottieBadge from "@/components/tools/CoinLottieBadge";
-import { requestPreviewForceFresh } from "@/components/previewRefresh";
+import { requestPreviewForceFresh, requestWorkspacePreviewRefresh } from "@/components/previewRefresh";
+import { stripWorkspaceInternalSummaryMetadata } from "@/src/lib/workspaceAgentSummary";
 
 type SummarySearchFeedbackContext = {
     appId: string;
@@ -125,6 +132,8 @@ type Message = {
     debugDetails?: string;
     restorePointId?: string;
     restoreActionLabel?: string;
+    workspaceRestore?: WorkspaceRestoreState;
+    workspaceProgress?: boolean;
     migrationProposalId?: string;
     migrationSql?: string;
     migrationDestructive?: boolean;
@@ -152,6 +161,9 @@ type Message = {
     restorePointsCard?: boolean;
     restorePointsCardReason?: string;
     summaryFeedbackContext?: SummarySearchFeedbackContext;
+    workspaceRepairPrompt?: string;
+    workspaceRepairContext?: WorkspaceAutonomyRepairContext;
+    workspaceRepairStatus?: "PENDING" | "RUNNING" | "DONE";
 };
 
 type StagedBundle = {
@@ -184,6 +196,13 @@ type DatabaseConnection = {
 };
 
 const MAX_EDITOR_PROMPT_CHARS = 600;
+const WORKSPACE_AUTONOMY_V3_AGENT_NAME = "Copper Otter";
+
+function getWorkspaceAutonomyV3PollDelayMs(elapsedMs: number): number {
+    if (elapsedMs < 10_000) return 3_000;
+    if (elapsedMs < 60_000) return 5_000;
+    return 8_000;
+}
 
 type ChatRequestPageOption = {
     path: string;
@@ -191,7 +210,7 @@ type ChatRequestPageOption = {
     label: string;
 };
 
-type AppBuilderEditorAgentChatProps = {
+export type AppBuilderEditorAgentChatProps = {
     appId: string;
     files: { [path: string]: { content: string; lastModified: number } };
     currentFile?: string | null;
@@ -217,6 +236,7 @@ type AppBuilderEditorAgentChatProps = {
         url?: string | null;
         templateName?: string | null;
     };
+    agentMode?: "v2" | "v3";
 };
 
 function resolveFallbackCurrentFile(files: { [path: string]: { content: string; lastModified: number } }, currentFile?: string | null): string | null {
@@ -1071,7 +1091,7 @@ function buildRestorePointDiffPreview(detail: RestorePointDetail | null | undefi
     return { before, after };
 }
 
-export default function AppBuilderEditorAgentChat({ appId, files, currentFile, onFileEdit, onFilesReplace, onRestoreApplied, creditError, previewReady, previewIssue, previewIssueActionLabel, onPreviewIssueAction, onPreviewIssueFixRequest, onUserMessageSent, onIntroSequenceComplete, onRequestUpgradePaywall, topupModalTrigger, welcomeContext }: AppBuilderEditorAgentChatProps) {
+export default function AppBuilderEditorAgentChat({ appId, files, currentFile, onFileEdit, onFilesReplace, onRestoreApplied, creditError, previewReady, previewIssue, previewIssueActionLabel, onPreviewIssueAction, onPreviewIssueFixRequest, onUserMessageSent, onIntroSequenceComplete, onRequestUpgradePaywall, topupModalTrigger, welcomeContext, agentMode = "v2" }: AppBuilderEditorAgentChatProps) {
     const { user, userTier } = useAuth();
     const { showConfirm, showAlert } = useModal();
     const PRO_MONTHLY_PRICE_USD = BASIC_MONTHLY_PRICE_USD;
@@ -1261,6 +1281,8 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
     const [editPlanApplyStatusMessage, setEditPlanApplyStatusMessage] = useState<string | null>(null);
     const [editPlanApplyLoaderMessage, setEditPlanApplyLoaderMessage] = useState<string | null>(null);
     const [activeEditPlanJob, setActiveEditPlanJob] = useState<AppEmbeddingEditPlanJobStatus | null>(null);
+    const v3ActiveJobRef = useRef<AppEmbeddingEditPlanJobStatus | null>(null);
+    const v3RunTokenRef = useRef<string | null>(null);
     const [editPlanStatusMessageId, setEditPlanStatusMessageId] = useState<string | null>(null);
     const [editPlanFilesCardMessageId, setEditPlanFilesCardMessageId] = useState<string | null>(null);
     const [showRestorePointsPanel, setShowRestorePointsPanel] = useState(false);
@@ -1448,6 +1470,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
 
     const buildEditPlanStatusBubbleText = useCallback((job: AppEmbeddingEditPlanJobStatus): string => {
         const status = String(job.status || "queued").toLowerCase();
+        const isWorkspaceAutonomyV3 = String((job as any)?.agentMode || "") === "workspace_autonomy_v3";
         const applyRetryInfo = extractJobApplyRetryInfo(job);
         const isRetryingApply =
             (status === "working" || status === "processing" || status === "applying")
@@ -1469,6 +1492,38 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
         }
 
         const narrative = (() => {
+            if (isWorkspaceAutonomyV3) {
+                const stage = String((job as any)?.stage || "").toLowerCase();
+                if (status === "queued") {
+                    if (Number((job as any)?.queuedForSeconds || 0) >= 30) return "The worker is taking longer than usual to start. I’m continuing to monitor this request in the background.";
+                    return "Got it — your update is next. I’ll keep you posted.";
+                }
+                if (stage === "workspace_loaded") return "I’ve opened your project. Let me find the right place for this change.";
+                if (stage === "agent_reasoning") return "I’m working out how this fits with the rest of your site.";
+                if (stage === "agent_tools") return "I’m checking the details and making the changes.";
+                if (stage === "agent_retry") return "I’m verifying the edit because the first reasoning pass did not produce a usable file change.";
+                if (stage === "recovered_mutation") return "I found a safe source-level recovery for the requested change and I’m validating it now.";
+                if (stage === "restarting") return "Your changes are saved. I’m bringing the preview back up.";
+                if (stage === "preview_recovery") return "The preview health channel was temporarily unavailable. I’m restarting it once and checking again.";
+                if (stage === "health_checks") return "I’m checking that your site still opens with the update.";
+                if (stage === "repairing") return "A health check found an issue. I’m reasoning through a bounded repair attempt.";
+                if (stage === "finalizing") return "Just finishing up. I’ve also saved a way to undo this.";
+                if (status === "completed") return "The workspace change is complete and the project checks have finished.";
+                if (status === "failed") {
+                    const error = (job as any)?.error;
+                    const detail = typeof error === "string"
+                        ? error.trim()
+                        : typeof error?.message === "string"
+                            ? error.message.trim()
+                            : "";
+                    return detail
+                        ? `The workspace agent could not complete this change.\n\n${detail}`
+                        : "The workspace agent could not complete this change.";
+                }
+                if (status === "expired") return "The workspace agent expired before it could finish.";
+                return "I’m working through the project and validating the change.";
+            }
+
             switch (status) {
                 case "queued":
                     return "I’ve queued this edit plan. I’m waiting for a worker to pick it up.";
@@ -2009,7 +2064,13 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
         if (!raw) return;
         try {
             const parsed = JSON.parse(raw);
-            const job = normalizeEmbeddingEditPlanJobStatus(parsed);
+            const normalizedJob = normalizeEmbeddingEditPlanJobStatus(parsed);
+            // A V3 editor must never resume a persisted job through the legacy
+            // polling/status path. Older snapshots did not always persist the
+            // mode, so the editor mode is the safe source of truth here.
+            const job = agentMode === "v3"
+                ? { ...normalizedJob, agentMode: "workspace_autonomy_v3" }
+                : normalizedJob;
             const activeJob = isActiveEditPlanJobStatus(job.status) && job.statusUrl ? job : null;
             if (activeJob) {
                 setActiveEditPlanJob(activeJob);
@@ -2019,7 +2080,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
         } catch {
             safeRemoveStorageItem(storageKey);
         }
-    }, [appId]);
+    }, [agentMode, appId]);
 
     useEffect(() => {
         if (typeof window === "undefined" || !appId) return;
@@ -2046,6 +2107,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
 
     useEffect(() => {
         if (typeof window === "undefined") return;
+        if (agentMode === "v3" || String((activeEditPlanJob as any)?.agentMode || "") === "workspace_autonomy_v3") return;
         if (!activeEditPlanJob?.statusUrl || !isActiveEditPlanJobStatus(activeEditPlanJob.status)) return;
 
         const jobStatusUrl = activeEditPlanJob.statusUrl;
@@ -2384,7 +2446,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                 editPlanJobPollTimerRef.current = null;
             }
         };
-    }, [activeEditPlanJob, surfaceEditPlanFailure]);
+    }, [activeEditPlanJob, agentMode, surfaceEditPlanFailure]);
 
     useEffect(() => {
         if (allowDatabaseSetupUi) return;
@@ -2918,6 +2980,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                         timestamp: ts,
                         restorePointId: typeof m.restorePointId === "string" ? m.restorePointId : undefined,
                         restoreActionLabel: typeof m.restoreActionLabel === "string" ? m.restoreActionLabel : undefined,
+                        workspaceRestore: m.workspaceRestore && typeof m.workspaceRestore.pointId === "string" ? m.workspaceRestore : undefined,
                         supabaseContinuationPrompt:
                             typeof m.supabaseContinuationPrompt === "string" ? m.supabaseContinuationPrompt : undefined,
                         supabaseContinuationStatus:
@@ -2942,6 +3005,9 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                         editPlanFailureJobId: typeof m.editPlanFailureJobId === "string" ? m.editPlanFailureJobId : undefined,
                         editPlanFailureRequestId: typeof m.editPlanFailureRequestId === "string" ? m.editPlanFailureRequestId : undefined,
                         editPlanFailureHttpStatus: typeof m.editPlanFailureHttpStatus === "number" ? m.editPlanFailureHttpStatus : undefined,
+                        workspaceRepairPrompt: typeof m.workspaceRepairPrompt === "string" ? m.workspaceRepairPrompt : undefined,
+                        workspaceRepairContext: m.workspaceRepairContext && typeof m.workspaceRepairContext === "object" ? m.workspaceRepairContext : undefined,
+                        workspaceRepairStatus: m.workspaceRepairStatus === "PENDING" || m.workspaceRepairStatus === "RUNNING" || m.workspaceRepairStatus === "DONE" ? m.workspaceRepairStatus : undefined,
                         restorePointsCard: m.restorePointsCard === true,
                         restorePointsCardReason: typeof m.restorePointsCardReason === "string" ? m.restorePointsCardReason : undefined,
                     };
@@ -2980,6 +3046,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                             type: msg.type === "code" || msg.type === "file-edit" ? msg.type : "text",
                                             restorePointId: typeof msg.restorePointId === "string" ? msg.restorePointId : undefined,
                                             restoreActionLabel: typeof msg.restoreActionLabel === "string" ? msg.restoreActionLabel : undefined,
+                                            workspaceRestore: msg.workspaceRestore && typeof msg.workspaceRestore.pointId === "string" ? msg.workspaceRestore : undefined,
                                             editPlanRetryPrompt: typeof msg.editPlanRetryPrompt === "string" ? msg.editPlanRetryPrompt : undefined,
                                             editPlanRetryCurrentPath: typeof msg.editPlanRetryCurrentPath === "string" ? msg.editPlanRetryCurrentPath : undefined,
                                             editPlanRebuildPrompt: typeof msg.editPlanRebuildPrompt === "boolean" ? msg.editPlanRebuildPrompt : undefined,
@@ -3687,6 +3754,25 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
         if (!jobKey) return;
 
         const nextContent = buildEditPlanStatusBubbleText(activeEditPlanJob);
+        const isV3Job = agentMode === "v3" || String((activeEditPlanJob as any)?.agentMode || "") === "workspace_autonomy_v3";
+        if (isV3Job) {
+            if (isEditPlanJobTerminalStatus(String(activeEditPlanJob.status))) return;
+            const id = `edit_plan_status_v3_${jobKey}`;
+            setMessages((prev) => {
+                // Collapse status bubbles created by older V3 builds or by a
+                // restored job that briefly entered the legacy path. There is
+                // exactly one live progress bubble per V3 job.
+                const withoutDuplicateStatusBubbles = prev.filter((item) =>
+                    !String(item.id || "").startsWith("edit_plan_status_") || item.id === id,
+                );
+                const existing = withoutDuplicateStatusBubbles.find((item) => item.id === id);
+                if (existing?.content === nextContent && withoutDuplicateStatusBubbles.length === prev.length) return prev;
+                return existing
+                    ? withoutDuplicateStatusBubbles.map((item) => item.id === id ? { ...item, content: nextContent, workspaceProgress: true } : item)
+                    : [...withoutDuplicateStatusBubbles, { id, role: "assistant", content: nextContent, timestamp: new Date(), type: "text", workspaceProgress: true }];
+            });
+            return;
+        }
         const bubbleId = editPlanStatusMessageIdRef.current;
         const lastContent = editPlanStatusMessageTextRef.current;
 
@@ -3722,7 +3808,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                 ),
             );
         }
-    }, [activeEditPlanJob, buildEditPlanStatusBubbleText]);
+    }, [activeEditPlanJob, buildEditPlanStatusBubbleText, agentMode]);
 
     useEffect(() => {
         if (!activeEditPlanJob) return;
@@ -3730,6 +3816,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
         const jobKey = activeEditPlanJob.jobId || activeEditPlanJob.requestId || activeEditPlanJob.statusUrl || null;
         if (!jobKey) return;
 
+        if (agentMode === "v3" || String((activeEditPlanJob as any)?.agentMode || "") === "workspace_autonomy_v3") return;
         const details = buildEditPlanDetailsChatMessage(activeEditPlanJob);
         if (!details) {
             if (editPlanDetailsMessageKeyRef.current !== jobKey) {
@@ -3802,7 +3889,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                 ),
             );
         }
-    }, [activeEditPlanJob]);
+    }, [activeEditPlanJob, agentMode]);
 
     useEffect(() => {
         if (!activeEditPlanJob) return;
@@ -4396,6 +4483,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                 timestampMs: m.timestamp.getTime(),
                 restorePointId: m.restorePointId ?? null,
                 restoreActionLabel: m.restoreActionLabel ?? null,
+                workspaceRestore: m.workspaceRestore ?? null,
                 supabaseContinuationPrompt: m.supabaseContinuationPrompt ?? null,
                 supabaseContinuationStatus: m.supabaseContinuationStatus ?? null,
                 dbSetupPrompt: m.dbSetupPrompt ?? null,
@@ -4408,6 +4496,9 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                 editPlanFailureJobId: m.editPlanFailureJobId ?? null,
                 editPlanFailureRequestId: m.editPlanFailureRequestId ?? null,
                 editPlanFailureHttpStatus: m.editPlanFailureHttpStatus ?? null,
+                workspaceRepairPrompt: m.workspaceRepairPrompt ?? null,
+                workspaceRepairContext: m.workspaceRepairContext ?? null,
+                workspaceRepairStatus: m.workspaceRepairStatus ?? null,
                 restorePointsCard: m.restorePointsCard ?? null,
                 restorePointsCardReason: m.restorePointsCardReason ?? null,
                 summaryFeedbackContext: m.summaryFeedbackContext ?? null,
@@ -5468,10 +5559,245 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
         }
     }, [applyRestorePoint, checkpoints, currentFile, lastRestorePointId, onFileEdit]);
 
+    const commitV3TerminalMessage = useCallback((message: Record<string, any>) => {
+        const content = String(message.content || '').trim();
+        const nextBubbleId = String(message.id || `v3_message_${Date.now()}`);
+        // V3 is intentionally a conversational timeline: a stage update is a
+        // new assistant message, not an in-place replacement of prior progress.
+        // Keep the refs aligned so the status effect does not immediately
+        // duplicate this terminal/background message on its next render.
+        editPlanStatusMessageIdRef.current = nextBubbleId;
+        editPlanStatusMessageTextRef.current = content;
+        setEditPlanStatusMessageId(nextBubbleId);
+        setMessages((prev) => {
+            if (prev.some((item) => item.id === nextBubbleId)) return prev;
+            return [...prev, { ...message, content, id: nextBubbleId, role: 'assistant', timestamp: new Date(), type: 'text' }];
+        });
+    }, []);
+
+    const refreshV3Preview = useCallback(async (revision: string) => {
+        try {
+            const response = await fetch(`/api/app-builder/${encodeURIComponent(appId)}/files`, { credentials: "include", cache: "no-store" });
+            const json = await response.json().catch(() => null);
+            if (response.ok && json?.files) onFilesReplace?.(json.files);
+        } finally {
+            requestWorkspacePreviewRefresh(appId, revision);
+        }
+    }, [appId, onFilesReplace]);
+
+    const restoreV3Change = useCallback(async (pointId: string): Promise<string> => {
+        const response = await revertWorkspaceAutonomyAgentV3(appId, pointId, await withCsrfHeaders());
+        const result = response.data;
+        if (!response.ok || result?.ok !== true || typeof result.inverseRestorePointId !== "string") {
+            throw new Error(String(result?.error || response.error || "I couldn't verify the restored preview. Please retry."));
+        }
+        await refreshV3Preview(`restore:${pointId}`).catch(() => {});
+        return result.inverseRestorePointId;
+    }, [appId, refreshV3Preview, withCsrfHeaders]);
+
+    const runWorkspaceAutonomyAgentV3 = useCallback(async (params: { query: string; currentPath: string | null; repairContext?: WorkspaceAutonomyRepairContext | null; conversationHistory?: Array<{ role: "user" | "assistant"; content: string }> }) => {
+        v3ActiveJobRef.current = null;
+        const requestId = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+            ? crypto.randomUUID()
+            : `v3_${Date.now()}`;
+        const runToken = `${requestId}:${Date.now()}`;
+        v3RunTokenRef.current = runToken;
+        const isCurrentRun = () => v3RunTokenRef.current === runToken;
+        const headers = await withCsrfHeaders();
+        const queued = await fetchWorkspaceAutonomyAgentV3(
+            {
+                appId,
+                query: params.query,
+                currentPath: params.currentPath,
+                repairContext: params.repairContext || null,
+                conversationHistory: params.conversationHistory || [],
+            },
+            { ...headers, "x-request-id": requestId, "x-client-request-id": requestId },
+        );
+        if (!queued.ok || !queued.data) throw new Error(queued.error || "Workspace Autonomy V3 could not start.");
+
+        const statusUrl = queued.data.statusUrl || queued.data.job?.statusUrl;
+        if (!statusUrl) throw new Error("Workspace Autonomy V3 did not return a job status URL.");
+
+        const setV3Job = (raw: unknown) => {
+            if (!isCurrentRun()) return null;
+            const normalized = normalizeEmbeddingEditPlanJobStatus(raw);
+            const v3Job = { ...normalized, agentMode: "workspace_autonomy_v3" } as AppEmbeddingEditPlanJobStatus;
+            v3ActiveJobRef.current = v3Job;
+            setActiveEditPlanJob(v3Job);
+            return v3Job;
+        };
+
+        setV3Job(queued.data);
+        const startedAt = Date.now();
+        // A restart can take up to 60s and the bounded project health command
+        // can take up to 120s. Keep the execution window above that sum, but
+        // fail fast while still queued so a missing worker never leaves the
+        // user staring at an indefinite "Working on it" loader.
+        const pollUntilTerminal = async () => {
+            while (Date.now() - startedAt < 900_000) {
+                if (!isCurrentRun()) return;
+                const snapshot = await fetchEmbeddingEditPlanJobStatus(statusUrl, {});
+                if (!snapshot.ok || !snapshot.data) throw new Error(snapshot.error || "Workspace Autonomy V3 status lookup failed.");
+
+                const job = setV3Job(snapshot.data);
+                if (!job) return;
+                const status = String(job.status || "queued").toLowerCase();
+                if (isEditPlanJobTerminalStatus(status)) {
+                    const rawJob = snapshot.data as any;
+                    const terminalResult = rawJob?.result || rawJob?.job?.result;
+                    if (typeof terminalResult?.billing?.remaining === "number") setAiCreditsRemaining(terminalResult.billing.remaining);
+                    if (status === "expired") {
+                        commitV3TerminalMessage({
+                            id: `v3_expired_${job.jobId || Date.now()}`,
+                            content: "The workspace agent did not start before the queue window expired, so no project files were changed. Please retry this request.",
+                            editPlanRetryPrompt: lastEditPlanPromptRef.current?.trim() || "Retry change",
+                        });
+                        return;
+                    }
+                    if (status !== "completed") {
+                    const failedResult = rawJob?.result || rawJob?.job?.result || null;
+                    const failedFiles = Array.isArray(failedResult?.changedFiles) ? failedResult.changedFiles : [];
+                    const failedDetail = failedResult?.health?.error || failedResult?.preview?.error || failedResult?.restart?.error || "";
+                    const failedHealth = failedResult?.health && typeof failedResult.health === "object"
+                        ? failedResult.health
+                        : null;
+                    if (failedHealth && failedHealth.ok === false) {
+                        const repairContext: WorkspaceAutonomyRepairContext = {
+                            code: typeof failedHealth.code === "string" ? failedHealth.code : "HEALTH_CHECK_FAILED",
+                            message: typeof failedHealth.error === "string" ? failedHealth.error : failedDetail,
+                            command: typeof failedHealth.command === "string" ? failedHealth.command : "",
+                            stdout: typeof failedHealth.stdout === "string" ? failedHealth.stdout : "",
+                            stderr: typeof failedHealth.stderr === "string" ? failedHealth.stderr : "",
+                            changedFiles: failedFiles,
+                            restorePointId: typeof failedResult?.restorePointId === "string" ? failedResult.restorePointId : "",
+                        };
+                        const technicalOutput = [
+                            repairContext.message,
+                            repairContext.stdout,
+                            repairContext.stderr,
+                        ].filter((value) => String(value || "").trim()).join("\n").trim();
+                        const repairPrompt = [
+                            "Fix the current project compilation or health-check failure in my workspace.",
+                            "Inspect the project and make the smallest safe repair. Preserve the requested feature change and do not merely explain the error.",
+                            `Exact diagnostic code: ${repairContext.code}`,
+                            `Exact diagnostic:\n${technicalOutput || "The health check failed without additional output."}`,
+                        ].join("\n\n");
+                        const infrastructureFailure = new Set([
+                            "NO_ACTIVE_PREVIEW",
+                            "MACHINE_NOT_READY",
+                            "MACHINE_NOT_FOUND",
+                            "MACHINE_UNREACHABLE",
+                            "HEALTH_CHECK_EXEC_FAILED",
+                            "HEALTH_CHECK_START_FAILED",
+                            "HEALTH_CHECK_TIMEOUT",
+                            "RESTART_FAILED",
+                            "RESTART_TIMEOUT",
+                            "RESTART_STATUS_UNAVAILABLE",
+                        ]).has(String(repairContext.code || ""));
+                        commitV3TerminalMessage({
+                            id: `v3_health_failed_${job.jobId || Date.now()}`,
+                            workspaceRestore: failedResult?.restorePointId ? { pointId: failedResult.restorePointId } : undefined,
+                            content: infrastructureFailure
+                                ? (failedFiles.length > 0
+                                    ? "I saved the requested files, but the live preview could not be resolved after the restart, so I did not mark the change complete. Refresh or reopen the preview and retry; the saved change can be reverted from its restore point."
+                                    : "I could not resolve the live preview after the restart, so I did not mark the change complete. Refresh or reopen the preview and retry.")
+                                : (failedFiles.length > 0
+                                    ? "I saved the requested change, but the preview still has a code problem and cannot be considered healthy yet. You can ask AI to inspect and repair it. Open the technical details below if you want to see the exact compiler output."
+                                    : "The project has a code problem, so I could not confirm the change safely. You can ask AI to inspect and repair it. Open the technical details below to see the exact compiler output."),
+                            ...(infrastructureFailure ? {
+                                restorePointId: repairContext.restorePointId || undefined,
+                                editPlanRetryPrompt: lastEditPlanPromptRef.current?.trim() || "Retry change",
+                                editPlanRebuildPrompt: true,
+                            } : {
+                                restorePointId: repairContext.restorePointId || undefined,
+                                workspaceRepairPrompt: repairPrompt,
+                                workspaceRepairContext: repairContext,
+                                workspaceRepairStatus: "PENDING",
+                            }),
+                        });
+                        return;
+                    }
+                    const suffix = failedFiles.length > 0
+                        ? ` ${failedFiles.length} file${failedFiles.length === 1 ? "" : "s"} were saved and can be reverted${failedResult?.restorePointId ? ` with restore point ${failedResult.restorePointId}` : ""}.`
+                        : "";
+                    throw new Error(`${(job as any)?.error?.message || (job as any)?.error || `Workspace Autonomy V3 ${status}.`}${failedDetail ? ` Detail: ${failedDetail}.` : ""}${suffix}`);
+                }
+                const rawResult = rawJob?.result || rawJob?.job?.result || null;
+                if (!rawResult || !Array.isArray(rawResult.changedFiles)) {
+                    const reportCode = String(job.reportCode || rawJob?.reportCode || "").trim();
+                    commitV3TerminalMessage({
+                        id: `v3_incomplete_${job.jobId || Date.now()}`,
+                        content: [
+                            "Change not confirmed.",
+                            "The server reached a terminal state but returned no verifiable V3 result, so this request is marked failed. Do not assume the project changed. Please retry.",
+                            reportCode ? `Report: ${reportCode}` : "",
+                        ].filter(Boolean).join("\n\n"),
+                    });
+                    return;
+                }
+                const result = rawResult as WorkspaceAutonomyAgentV3Result;
+                const changedFiles = Array.isArray(result.changedFiles) ? result.changedFiles : [];
+                const hasChanges = changedFiles.length > 0;
+                const summary = stripWorkspaceInternalSummaryMetadata(String(result.summary || ""));
+                const friendlySummary = !summary || /^Updated\s+\d+\s+file/i.test(summary)
+                    ? `I’ve finished your update: “${params.query}”. Take a look and let me know what you think.`
+                    : summary;
+                if (hasChanges) await refreshV3Preview(`job:${job.jobId || requestId}`).catch(() => {});
+                const completionText = hasChanges
+                    ? `${friendlySummary}\n\nI’m refreshing your preview so you can review it. You can undo this change below.`
+                    : summary || "Your project already has that change, so there was nothing new to save.";
+
+                commitV3TerminalMessage({
+                    id: `v3_completed_${job.jobId || Date.now()}`,
+                    content: completionText,
+                    workspaceRestore: result.restorePointId ? { pointId: result.restorePointId } : undefined,
+                    debugDetails: `Files: ${changedFiles.join(", ")}\nRestore point: ${result.restorePointId || "none"}`,
+                });
+                    return;
+                }
+
+                await new Promise((resolve) => setTimeout(resolve, getWorkspaceAutonomyV3PollDelayMs(Date.now() - startedAt)));
+            }
+
+            throw new Error("Workspace Autonomy V3 exceeded its bounded execution window while waiting for a terminal result.");
+        };
+
+        let detachedFromChat = false;
+        const backgroundPoll = pollUntilTerminal().catch((error) => {
+            if (!isCurrentRun()) return;
+            if (!detachedFromChat) throw error;
+            const message = String(error?.message || error || "Workspace Autonomy V3 failed while finishing in the background.");
+            v3ActiveJobRef.current = null;
+            setActiveEditPlanJob(null);
+            commitV3TerminalMessage({
+                id: `v3_background_failed_${requestId}`,
+                content: `The workspace agent could not complete this change.\n\n${message}`,
+            });
+        });
+
+        // Keep the chat responsive even when a preview restart/health probe is
+        // slow. The poll continues in the background and the status bubble
+        // remains visible, so this is not a success or a cancellation.
+        const userWaitBudgetMs = 90_000;
+        const waitResult = await Promise.race([
+            backgroundPoll.then(() => "terminal" as const),
+            new Promise<"background">((resolve) => window.setTimeout(() => resolve("background"), userWaitBudgetMs)),
+        ]);
+        if (waitResult === "background") {
+            detachedFromChat = true;
+            commitV3TerminalMessage({
+                id: `v3_background_${requestId}`,
+                content: "This is taking longer than expected. The workspace agent is still working in the background, so I have not marked the change successful. I’ll keep monitoring the project and show the final result here.",
+            });
+        }
+    }, [appId, commitV3TerminalMessage, refreshV3Preview, withCsrfHeaders]);
+
     const sendMessage = async (opts?: {
         forcedInput?: string;
         forcedCurrentPath?: string | null;
         forcedCompileFixContext?: CompileErrorQuickFixContext;
+        forcedWorkspaceRepairContext?: WorkspaceAutonomyRepairContext | null;
         allowWhenChatDisabled?: boolean;
         hideUserMessage?: boolean;
         bypassInitialSearch?: boolean;
@@ -5656,6 +5982,50 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
         setInput("");
         setIsLoading(true);
         lastEditPlanPromptRef.current = messageInput;
+
+        if (agentMode === "v3") {
+            try {
+                const conversationHistory = messages
+                    .filter((entry) => !entry.workspaceProgress)
+                    .slice(-12)
+                    .map((entry) => ({
+                        role: entry.role,
+                        content: String(entry.content || "").trim().slice(0, 2400),
+                    }))
+                    .filter((entry) => entry.content.length > 0);
+                await runWorkspaceAutonomyAgentV3({
+                    query: messageInput,
+                    currentPath: typeof opts?.forcedCurrentPath === "string"
+                        ? (opts.forcedCurrentPath.trim() || null)
+                        : selectedRequestCurrentPath,
+                    repairContext: opts?.forcedWorkspaceRepairContext || null,
+                    conversationHistory,
+                });
+            } catch (error: any) {
+                const errorMessage = String(error?.message || error || "Workspace Autonomy V3 failed.");
+                const activeV3Job = v3ActiveJobRef.current;
+                if (activeV3Job?.statusUrl) {
+                    // The polling status bubble is already the user-facing
+                    // progress surface. Replace it once with the terminal
+                    // error instead of leaving the failed job active and
+                    // letting the status effect append/re-render duplicates.
+                    v3ActiveJobRef.current = null;
+                    setActiveEditPlanJob(null);
+                    commitV3TerminalMessage({
+                        id: `v3_failed_${activeV3Job.jobId || Date.now()}`,
+                        content: errorMessage,
+                    });
+                } else {
+                    commitV3TerminalMessage({
+                        id: `v3_failed_${Date.now()}`,
+                        content: errorMessage,
+                    });
+                }
+            } finally {
+                setIsLoading(false);
+            }
+            return;
+        }
 
         try {
             const headers = await withCsrfHeaders();
@@ -5866,7 +6236,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                 if (scopeRecoveryDuringRun) {
                     const scopeMessage = scopeRecoveryRecoveredDuringRun
                         ? "I had to refresh this app session before searching files. Please run your request again so I can continue safely."
-                        : "This app session needs a fresh start. Please reopen the app in App Builder and try again.";
+                        : "This app session needs a fresh start. Please click Refresh and try again.";
                     setMessages((prev) => [
                         ...prev,
                         {
@@ -6878,6 +7248,14 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                 <div className="flex items-center gap-2">
                     <Bot className="w-5 h-6 text-accent" />
                     <h3 className="font-medium text-sm">Agent</h3>
+                    {agentMode === "v3" ? (
+                        <span
+                            className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-bold tracking-[0.08em] text-emerald-700"
+                            title="Workspace Autonomy V3 is active for this editor"
+                        >
+                            V3 · {WORKSPACE_AUTONOMY_V3_AGENT_NAME}
+                        </span>
+                    ) : null}
                     {process.env.NODE_ENV !== "production" ? (
                         <span
                             className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-blue-200 bg-blue-50 text-blue-600"
@@ -7046,7 +7424,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
             ) : null}
 
             {/* Messages */}
-            <div className="flex-1 min-h-0 overflow-y-auto px-4 py-5 space-y-4 bg-[radial-gradient(circle_at_top,_rgba(255,141,33,0.10),_transparent_36%),linear-gradient(180deg,rgba(255,250,247,0.96),rgba(255,255,255,1))]">
+            <div data-app-builder-chat-scroll="true" className="flex-1 min-h-0 overflow-y-auto px-4 py-5 pb-40 space-y-4 bg-[radial-gradient(circle_at_top,_rgba(255,141,33,0.10),_transparent_36%),linear-gradient(180deg,rgba(255,250,247,0.96),rgba(255,255,255,1))]">
                 {showInitialChatLoader ? (
                     <div className="flex min-h-[220px] items-center justify-center px-4 py-10">
                         <div className="w-full max-w-sm rounded-3xl border border-[#FF8D21]/15 bg-white/90 px-5 py-5 text-left shadow-[0_16px_40px_rgba(15,23,42,0.08)] backdrop-blur-sm">
@@ -7068,21 +7446,12 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                 ) : null}
 
                 {renderedMessages.map((message) => {
-                    const isActiveStatusBubble = Boolean(
-                        activeEditPlanJob
-                        && isActiveEditPlanJobStatus(activeEditPlanJob.status)
-                    );
-                    const isStatusPlaceholderBubble = Boolean(
-                        message.role === "assistant"
-                        && message.id === editPlanStatusMessageId
-                        && isActiveStatusBubble,
-                    );
                     const isFilesCardPlaceholderBubble = Boolean(
                         message.role === "assistant"
                         && message.id === editPlanFilesCardMessageId
                         && !showFileChangesCardBubble,
                     );
-                    if (isStatusPlaceholderBubble || isFilesCardPlaceholderBubble) {
+                    if (isFilesCardPlaceholderBubble) {
                         return null;
                     }
 
@@ -7108,44 +7477,113 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                     return (
                     <div
                         key={message.id}
-                        className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
+                        className={`flex min-w-0 ${message.role === "user" ? "justify-end" : "justify-start"}`}
                     >
 
                         <div
-                            className={`relative max-w-[82%] rounded-[1.35rem] px-4 py-3 shadow-[0_12px_28px_rgba(15,23,42,0.08)] ${message.role === "user"
+                            className={`relative min-w-0 max-w-[82%] rounded-[1.35rem] px-4 py-3 shadow-[0_12px_28px_rgba(15,23,42,0.08)] ${message.role === "user"
                                 ? "border border-[#FF8D21]/20 bg-[linear-gradient(135deg,#FF8D21_0%,#FF8A5C_100%)] text-white"
                                 : "border border-[#FF8D21]/14 bg-[linear-gradient(180deg,rgba(255,251,248,0.98),rgba(255,255,255,0.95))] text-neutral-900"
                                 }`}
                         >
-                            {!(message.role === "assistant" && message.id === editPlanStatusMessageId && isActiveStatusBubble) ? (
-                                message.editPlanFailure ? ( 
-                                    <div className="space-y-2">
-                                        <div className="inline-flex items-center gap-2 text-sm font-semibold text-neutral-900">
-                                            <AlertTriangle className="h-4 w-4 text-amber-600" />
-                                            <span>Could not apply changes</span>
-                                        </div>
-                                        <div className="whitespace-pre-wrap break-words text-sm leading-relaxed text-neutral-900">
-                                            {messageText || "This step could not be completed."}
-                                        </div>
-                                        {showPreviewIssueDetails && (message.editPlanFailureCode || message.editPlanFailureJobId || message.editPlanFailureRequestId || typeof message.editPlanFailureHttpStatus === "number") ? (
-                                            <details className="rounded-xl border border-neutral-200 bg-neutral-50/70 px-3 py-2">
-                                                <summary className="cursor-pointer list-none text-xs font-medium text-neutral-700">
-                                                    View technical details
-                                                </summary>
-                                                <div className="mt-2 space-y-1 text-xs text-neutral-600 break-all">
-                                                    {message.editPlanFailureCode ? <div>Code: {message.editPlanFailureCode}</div> : null}
-                                                    {message.editPlanFailureJobId ? <div>Job: {message.editPlanFailureJobId}</div> : null}
-                                                    {message.editPlanFailureRequestId ? <div>Request: {message.editPlanFailureRequestId}</div> : null}
-                                                    {typeof message.editPlanFailureHttpStatus === "number" ? <div>HTTP: {message.editPlanFailureHttpStatus}</div> : null}
-                                                </div>
-                                            </details>
-                                        ) : null}
+                            {message.editPlanFailure ? (
+                                <div className="space-y-2">
+                                    <div className="inline-flex items-center gap-2 text-sm font-semibold text-neutral-900">
+                                        <AlertTriangle className="h-4 w-4 text-amber-600" />
+                                        <span>Could not apply changes</span>
                                     </div>
-                                ) : (
-                                    <div className={`whitespace-pre-wrap break-words text-sm leading-relaxed ${message.role === "user" ? "text-white/95" : "text-neutral-900"}`}>
-                                        {renderTextWithLinks(messageText)}
+                                    <div className="whitespace-pre-wrap break-words text-sm leading-relaxed text-neutral-900">
+                                        {messageText || "This step could not be completed."}
                                     </div>
-                                )
+                                    {showPreviewIssueDetails && (message.editPlanFailureCode || message.editPlanFailureJobId || message.editPlanFailureRequestId || typeof message.editPlanFailureHttpStatus === "number") ? (
+                                        <details className="rounded-xl border border-neutral-200 bg-neutral-50/70 px-3 py-2">
+                                            <summary className="cursor-pointer list-none text-xs font-medium text-neutral-700">
+                                                View technical details
+                                            </summary>
+                                            <div className="mt-2 space-y-1 text-xs text-neutral-600 break-all">
+                                                {message.editPlanFailureCode ? <div>Code: {message.editPlanFailureCode}</div> : null}
+                                                {message.editPlanFailureJobId ? <div>Job: {message.editPlanFailureJobId}</div> : null}
+                                                {message.editPlanFailureRequestId ? <div>Request: {message.editPlanFailureRequestId}</div> : null}
+                                                {typeof message.editPlanFailureHttpStatus === "number" ? <div>HTTP: {message.editPlanFailureHttpStatus}</div> : null}
+                                            </div>
+                                        </details>
+                                    ) : null}
+                                </div>
+                            ) : (
+                                <div className={`whitespace-pre-wrap break-words text-sm leading-relaxed ${message.role === "user" ? "text-white/95" : "text-neutral-900"}`}>
+                                    {message.workspaceProgress ? <WorkspaceAgentProgress text={messageText} /> : renderTextWithLinks(messageText)}
+                                </div>
+                            )}
+
+                            {message.workspaceRestore ? <WorkspaceRestoreControls
+                                state={message.workspaceRestore}
+                                disabled={isLoading || Boolean(activeEditPlanJob && !isEditPlanJobTerminalStatus(String(activeEditPlanJob.status)))}
+                                restore={restoreV3Change}
+                                onChange={(state) => setMessages((prev) => prev.map((item) => item.id === message.id ? { ...item, workspaceRestore: state } : item))}
+                            /> : null}
+                            {message.role === "assistant" && message.workspaceRepairPrompt ? (
+                                <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50/80 p-3">
+                                    <div className="flex items-start gap-2">
+                                        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" aria-hidden="true" />
+                                        <div className="min-w-0 flex-1">
+                                            <div className="text-xs font-semibold text-amber-950">The project needs a code fix</div>
+                                            <div className="mt-1 text-xs leading-5 text-amber-900">
+                                                You don’t need to understand this technical error. AI can inspect the project and try a bounded repair.
+                                            </div>
+                                            {message.workspaceRepairContext ? (
+                                                <details className="mt-2 rounded-xl border border-amber-200 bg-white/70 px-2.5 py-2">
+                                                    <summary className="cursor-pointer list-none text-[11px] font-semibold text-amber-900">
+                                                        View technical details
+                                                    </summary>
+                                                    <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap break-words text-[11px] leading-5 text-neutral-700">
+                                                        {[
+                                                            message.workspaceRepairContext.code ? `Code: ${message.workspaceRepairContext.code}` : "",
+                                                            message.workspaceRepairContext.message || "",
+                                                            message.workspaceRepairContext.stdout || "",
+                                                            message.workspaceRepairContext.stderr || "",
+                                                        ].filter(Boolean).join("\n")}
+                                                    </pre>
+                                                </details>
+                                            ) : null}
+                                            <div className="mt-3 flex flex-wrap items-center gap-2">
+                                                {message.workspaceRepairStatus === "RUNNING" ? (
+                                                    <span className="text-xs font-semibold text-amber-800">AI is inspecting and repairing the project…</span>
+                                                ) : message.workspaceRepairStatus === "DONE" ? (
+                                                    <span className="text-xs font-semibold text-emerald-700">Repair request sent.</span>
+                                                ) : (
+                                                    <button
+                                                        type="button"
+                                                        disabled={isLoading}
+                                                        onClick={() => {
+                                                            if (isLoading) return;
+                                                            const prompt = String(message.workspaceRepairPrompt || "").trim();
+                                                            if (!prompt) return;
+                                                            setMessages((prev) => prev.map((item) => item.id === message.id
+                                                                ? { ...item, workspaceRepairStatus: "RUNNING" as const }
+                                                                : item));
+                                                            void sendMessage({
+                                                                forcedInput: prompt,
+                                                                forcedWorkspaceRepairContext: message.workspaceRepairContext || null,
+                                                                allowWhenChatDisabled: true,
+                                                                hideUserMessage: true,
+                                                            }).finally(() => {
+                                                                setMessages((prev) => prev.map((item) => item.id === message.id
+                                                                    ? { ...item, workspaceRepairStatus: "DONE" as const }
+                                                                    : item));
+                                                            });
+                                                        }}
+                                                        className="inline-flex items-center rounded-full bg-[#FF8D21] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#D96E11] disabled:cursor-not-allowed disabled:opacity-50"
+                                                    >
+                                                        Fix with AI
+                                                    </button>
+                                                )}
+                                                {message.restorePointId ? (
+                                                    <span className="text-[11px] text-amber-800">Your saved change can still be reverted.</span>
+                                                ) : null}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
                             ) : null}
 
                             {message.role === "assistant" && String(message.id || "").startsWith("edit_plan_details_") ? (
@@ -7690,7 +8128,8 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                     </div>
                     );
                 })}
-                {isLoading && (
+                {agentMode === "v3" && (isLoading || Boolean(activeEditPlanJob && !isEditPlanJobTerminalStatus(String(activeEditPlanJob.status)))) && <WorkspaceAgentLoader />}
+                {agentMode !== "v3" && isLoading && !activeEditPlanJob && (
                     <div className="flex justify-start">
                         <div className="max-w-[82%] rounded-2xl border border-gray-200 bg-white p-3 shadow-[0_10px_24px_rgba(15,23,42,0.05)]">
                             <div className="flex items-center gap-2">
@@ -8570,8 +9009,8 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                 <p className="mt-1 text-sm leading-relaxed text-neutral-700">
                                     Something went wrong building website.
                                 </p>
-                                <div className="mt-3 flex flex-wrap items-center gap-2">
-                                    <div className="inline-flex items-center gap-2">
+                                <div className="mt-3 flex w-full min-w-0 flex-col items-start gap-2">
+                                    <div className="flex w-full min-w-0 flex-wrap items-center gap-2">
                                         <button
                                             type="button"
                                             onClick={() => onPreviewIssueAction?.()}
@@ -8579,16 +9018,34 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                         >
                                             {previewIssueActionLabel || "Rebuild"}
                                         </button>
-                                        <details className="shrink-0">
+                                        <details
+                                            className="group w-full min-w-0"
+                                            onToggle={(event) => {
+                                                const details = event.currentTarget;
+                                                if (!details.open) return;
+                                                window.requestAnimationFrame(() => {
+                                                    const scroller = details.closest('[data-app-builder-chat-scroll="true"]') as HTMLElement | null;
+                                                    if (!scroller) {
+                                                        details.scrollIntoView({ behavior: "smooth", block: "nearest" });
+                                                        return;
+                                                    }
+                                                    const detailsBottom = details.getBoundingClientRect().bottom;
+                                                    const scrollerBottom = scroller.getBoundingClientRect().bottom;
+                                                    if (detailsBottom > scrollerBottom - 20) {
+                                                        scroller.scrollBy({ top: detailsBottom - scrollerBottom + 36, behavior: "smooth" });
+                                                    }
+                                                });
+                                            }}
+                                        >
                                             <summary className="inline-flex cursor-pointer list-none items-center justify-center rounded-full border border-rose-200 bg-white p-2 text-rose-600 transition hover:bg-rose-50">
                                                 <ChevronDown className="h-4 w-4" aria-hidden="true" />
                                             </summary>
-                                            <div className="mt-2 w-full rounded-xl border border-rose-200 bg-white px-3 py-2 shadow-[0_10px_24px_rgba(244,63,94,0.08)]">
-                                                <div className="space-y-2">
+                                            <div className="mt-2 w-full min-w-0 max-w-full overflow-hidden rounded-xl border border-rose-200 bg-white px-3 py-2 shadow-[0_10px_24px_rgba(244,63,94,0.08)]">
+                                                <div className="max-h-[min(18rem,40vh)] min-w-0 space-y-2 overflow-y-auto pr-1">
                                                     <p className="text-sm leading-6 text-neutral-700">
                                                         The preview ran into a problem, but you can still chat here to debug it or ask for help.
                                                     </p>
-                                                    <div className="max-w-full rounded-xl border border-rose-100 bg-rose-50 px-3 py-2 text-xs leading-5 text-rose-900 break-words whitespace-pre-wrap">
+                                                    <div className="w-full max-w-full overflow-x-auto rounded-xl border border-rose-100 bg-rose-50 px-3 py-2 text-xs leading-5 text-rose-900 break-words whitespace-pre-wrap">
                                                         {previewIssueText}
                                                     </div>
                                                 </div>

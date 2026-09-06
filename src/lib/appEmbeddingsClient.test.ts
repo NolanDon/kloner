@@ -6,6 +6,7 @@ import {
     fetchEmbeddingEditPlan,
     fetchEmbeddingEditPlanJobStatus,
     fetchEmbeddingSearch,
+    fetchWorkspaceAutonomyAgentV3,
     applyEditPlanOps,
     getEditPlanJobDisplayStatus,
     getEditPlanJobPollDelayMs,
@@ -553,6 +554,58 @@ describe("appEmbeddingsClient", () => {
         expect(extractCompletedEditPlanResult(completedJob)).toMatchObject({
             summary: "Done",
         });
+    });
+
+    it("preserves V3 terminal metadata when normalizing a completed job", () => {
+        const completedJob = normalizeEmbeddingEditPlanJobStatus({
+            status: "completed",
+            result: {
+                agent: "WorkspaceAutonomyAgentV3",
+                summary: "Changed the background color.",
+                changedFiles: ["public/index.html"],
+                restorePointId: "restore-1",
+                preview: { ok: true, wrote: 1, requiresRestart: true },
+                restart: { ok: true, code: "RESTART_COMPLETED" },
+                health: { ok: true, code: "HEALTH_CHECK_PASSED" },
+                toolTrace: [{ name: "patch_file", ok: true }],
+            },
+        });
+
+        expect(completedJob.result).toMatchObject({
+            agent: "WorkspaceAutonomyAgentV3",
+            changedFiles: ["public/index.html"],
+            restorePointId: "restore-1",
+            preview: { ok: true, wrote: 1 },
+            restart: { ok: true, code: "RESTART_COMPLETED" },
+            health: { ok: true, code: "HEALTH_CHECK_PASSED" },
+        });
+        expect(extractCompletedEditPlanResult(completedJob)?.changedFiles).toEqual(["public/index.html"]);
+    });
+
+    it("sends recent conversation context with V3 requests", async () => {
+        const fetchMock = jest.spyOn(globalThis, "fetch" as any).mockResolvedValueOnce({
+            ok: true,
+            status: 202,
+            headers: { get: () => null },
+            json: async () => ({ ok: true, queued: true, jobId: "job-v3" }),
+        } as any);
+
+        await fetchWorkspaceAutonomyAgentV3({
+            appId: "app-1",
+            query: "you missed some background colors",
+            currentPath: "public/index.html",
+            conversationHistory: [
+                { role: "user", content: "make the background burgundy" },
+                { role: "assistant", content: "I changed the page background to burgundy." },
+            ],
+        }, { "x-csrf-token": "csrf" });
+
+        const requestInit = fetchMock.mock.calls[0]?.[1] as RequestInit | undefined;
+        const body = JSON.parse(String(requestInit?.body || "{}"));
+        expect(body.conversationHistory).toEqual([
+            { role: "user", content: "make the background burgundy" },
+            { role: "assistant", content: "I changed the page background to burgundy." },
+        ]);
     });
 
     it("surfaces access and lookup failures from the job status endpoint", async () => {

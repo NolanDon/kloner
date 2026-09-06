@@ -16,6 +16,18 @@ export type AppEmbeddingSearchRequest = {
     frameworkLabel?: string | null;
     frameworkConfidence?: string | null;
     frameworkReason?: string | null;
+    repairContext?: WorkspaceAutonomyRepairContext | null;
+    conversationHistory?: Array<{ role: "user" | "assistant"; content: string }> | null;
+};
+
+export type WorkspaceAutonomyRepairContext = {
+    code?: string | null;
+    message?: string | null;
+    command?: string | null;
+    stdout?: string | null;
+    stderr?: string | null;
+    changedFiles?: string[] | null;
+    restorePointId?: string | null;
 };
 
 export type AppEmbeddingSearchChunk = {
@@ -191,11 +203,35 @@ export type AppEmbeddingEditPlanPlan = {
     questions?: string[];
     clarifyingQuestions?: string[];
     proposal?: AppEmbeddingEditPlanProposal | null;
+    // V3 terminal metadata must survive normalization. The chat uses these
+    // fields to distinguish a verified completion from an incomplete record.
+    agent?: string | null;
+    agentMode?: string | null;
+    changedFiles?: string[];
+    deletedFiles?: string[];
+    restorePointId?: string | null;
+    preview?: AppEmbeddingJobApplyResult | null;
+    restart?: { ok?: boolean; code?: string | null; restartJobId?: string | null; error?: string | null; [key: string]: unknown } | null;
+    health?: WorkspaceAutonomyRepairContext & { ok?: boolean; code?: string | null; exitCode?: number | null; checks?: unknown[]; [key: string]: unknown } | null;
+    repairTurns?: number;
+    toolTrace?: Array<{ tool?: string; name?: string; path?: string; ok?: boolean; [key: string]: unknown }>;
     apply?: AppEmbeddingJobApplyResult | null;
     requestId?: string | null;
     code?: string | null;
     error?: string | null;
     [key: string]: unknown;
+};
+
+export type WorkspaceAutonomyAgentV3Result = AppEmbeddingEditPlanResponse & {
+    agent?: string | null;
+    agentMode?: string | null;
+    changedFiles?: string[];
+    deletedFiles?: string[];
+    restorePointId?: string | null;
+    restart?: { ok?: boolean; code?: string | null; restartJobId?: string | null; error?: string | null } | null;
+    health?: WorkspaceAutonomyRepairContext & { ok?: boolean; exitCode?: number | null; checks?: unknown[] } | null;
+    repairTurns?: number;
+    toolTrace?: Array<{ tool?: string; path?: string; ok?: boolean }>;
 };
 
 export type AppEmbeddingEditPlanJobStatus = {
@@ -688,6 +724,23 @@ export function normalizeEmbeddingEditPlanPlan(raw: unknown): AppEmbeddingEditPl
         questions: Array.isArray((raw as any)?.questions) ? (raw as any).questions : undefined,
         clarifyingQuestions: Array.isArray((raw as any)?.clarifyingQuestions) ? (raw as any).clarifyingQuestions : undefined,
         proposal: (raw as any)?.proposal && typeof (raw as any).proposal === "object" ? normalizeEmbeddingEditPlanProposal((raw as any).proposal) : undefined,
+        agent: typeof (raw as any)?.agent === "string" ? (raw as any).agent : null,
+        agentMode: typeof (raw as any)?.agentMode === "string" ? (raw as any).agentMode : null,
+        usage: asRecord((raw as any)?.usage),
+        billing: asRecord((raw as any)?.billing),
+        creditCost: asNullableNumber((raw as any)?.creditCost),
+        changedFiles: Array.isArray((raw as any)?.changedFiles)
+            ? (raw as any).changedFiles.map((path: unknown) => asString(path, 500)).filter(Boolean)
+            : [],
+        deletedFiles: Array.isArray((raw as any)?.deletedFiles)
+            ? (raw as any).deletedFiles.map((path: unknown) => asString(path, 500)).filter(Boolean)
+            : [],
+        restorePointId: typeof (raw as any)?.restorePointId === "string" ? (raw as any).restorePointId : null,
+        preview: (raw as any)?.preview && typeof (raw as any).preview === "object" ? (raw as any).preview as AppEmbeddingJobApplyResult : null,
+        restart: (raw as any)?.restart && typeof (raw as any).restart === "object" ? (raw as any).restart as AppEmbeddingEditPlanPlan["restart"] : null,
+        health: (raw as any)?.health && typeof (raw as any).health === "object" ? (raw as any).health as AppEmbeddingEditPlanPlan["health"] : null,
+        repairTurns: Number.isFinite(Number((raw as any)?.repairTurns)) ? Number((raw as any).repairTurns) : 0,
+        toolTrace: Array.isArray((raw as any)?.toolTrace) ? (raw as any).toolTrace as AppEmbeddingEditPlanPlan["toolTrace"] : [],
         requestId: typeof (raw as any)?.requestId === "string" ? (raw as any).requestId : null,
         code: typeof (raw as any)?.code === "string" ? (raw as any).code : null,
         error: typeof (raw as any)?.error === "string" ? (raw as any).error : null,
@@ -977,12 +1030,35 @@ export async function fetchEmbeddingEditPlanJobStatus(
     statusUrl: string,
     headers: HeadersInit,
 ): Promise<AppEmbeddingRequestResult<AppEmbeddingEditPlanJobStatus>> {
-    const response = await fetch(statusUrl, {
-        method: "GET",
-        headers,
-        credentials: "include",
-        cache: "no-store",
-    });
+    const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
+    const timeoutId = typeof window !== "undefined"
+        ? window.setTimeout(() => controller?.abort(), 12_000)
+        : null;
+    let response: Response;
+    try {
+        response = await fetch(statusUrl, {
+            method: "GET",
+            headers,
+            credentials: "include",
+            cache: "no-store",
+            signal: controller?.signal,
+        });
+    } catch (error) {
+        const isAbort = typeof DOMException !== "undefined" && error instanceof DOMException && error.name === "AbortError";
+        return {
+            ok: false,
+            status: 0,
+            data: null,
+            error: isAbort
+                ? "Job status request timed out; the worker may still be running."
+                : error instanceof Error ? error.message : "Job status request failed",
+            retryAfter: null,
+            code: isAbort ? "JOB_STATUS_TIMEOUT" : "JOB_STATUS_FETCH_FAILED",
+            requestId: null,
+        };
+    } finally {
+        if (timeoutId !== null && typeof window !== "undefined") window.clearTimeout(timeoutId);
+    }
 
     const data = await response.json().catch(() => null);
     return {
@@ -1243,6 +1319,37 @@ export async function fetchEmbeddingEditPlan(
             maxChunks,
             ...(search ? { search } : {}),
         },
+        headers,
+    );
+}
+
+export async function fetchWorkspaceAutonomyAgentV3(
+    request: AppEmbeddingSearchRequest,
+    headers: HeadersInit = {},
+): Promise<AppEmbeddingRequestResult<WorkspaceAutonomyAgentV3Result>> {
+    return postJson<WorkspaceAutonomyAgentV3Result>(
+        "/api/app-embeddings/agent-v3",
+        {
+            appId: request.appId,
+            query: request.query,
+            requestText: request.requestText ?? request.query,
+            currentPath: request.currentPath || null,
+            selectedFiles: normalizeSelectedFiles(request.selectedFiles, request.selectedFile, request.currentPath),
+            ...(request.repairContext ? { repairContext: request.repairContext } : {}),
+            ...(Array.isArray(request.conversationHistory) ? { conversationHistory: request.conversationHistory } : {}),
+        },
+        headers,
+    );
+}
+
+export async function revertWorkspaceAutonomyAgentV3(
+    appId: string,
+    restorePointId: string,
+    headers: HeadersInit = {},
+): Promise<AppEmbeddingRequestResult<Record<string, unknown>>> {
+    return postJson<Record<string, unknown>>(
+        `/api/app-embeddings/agent-v3/restore-points/${encodeURIComponent(restorePointId)}/revert`,
+        { appId, restorePointId },
         headers,
     );
 }

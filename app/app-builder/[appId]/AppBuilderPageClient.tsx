@@ -2,7 +2,7 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAppActivityHeartbeat } from "@/src/hooks/useAppActivityHeartbeat";
-import AppBuilderEditor from "@/components/AppBuilderEditor";
+import AppBuilderEditor from "@/components/AppBuilderEditorRouted";
 
 type InitialAppData = {
     id: string;

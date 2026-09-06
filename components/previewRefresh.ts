@@ -1,3 +1,8 @@
+export function requestWorkspacePreviewRefresh(appId: string, revision: string) {
+    if (!appId || !revision || typeof window === "undefined") return;
+    window.dispatchEvent(new CustomEvent("kloner:workspace-preview-updated", { detail: { appId, revision } }));
+}
+
 export function requestPreviewForceFresh({
     appId,
     reason,

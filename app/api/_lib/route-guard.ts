@@ -32,7 +32,7 @@ function toPublicAuthError(err: any): {
     // Provide a short, user-actionable message for app-scope problems.
     const isAppScope = /app scope/i.test(rawMsg) || /_APP_SCOPE$/.test(code) || code.includes("APP_SCOPE");
     const message = isAppScope
-        ? "This app session needs a fresh start. Please reopen the app in App Builder and try again."
+        ? "This app session needs a fresh start. Please click Refresh and try again."
         : rawMsg;
 
     return {

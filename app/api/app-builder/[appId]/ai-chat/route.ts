@@ -15,6 +15,7 @@ type StoredMessage = {
     timestampMs?: number;
     restorePointId?: string | null;
     restoreActionLabel?: string | null;
+    workspaceRestore?: { pointId: string; undone: boolean; kept: boolean } | null;
 };
 
 function normalizeMessages(input: unknown): StoredMessage[] {
@@ -42,6 +43,8 @@ function normalizeMessages(input: unknown): StoredMessage[] {
             timestampMs,
             restorePointId: typeof m.restorePointId === "string" ? m.restorePointId : null,
             restoreActionLabel: typeof m.restoreActionLabel === "string" ? m.restoreActionLabel : null,
+            workspaceRestore: m.workspaceRestore && typeof m.workspaceRestore.pointId === "string" && m.workspaceRestore.pointId.length <= 200
+                ? { pointId: m.workspaceRestore.pointId, undone: m.workspaceRestore.undone === true, kept: m.workspaceRestore.kept === true } : null,
         });
     }
 

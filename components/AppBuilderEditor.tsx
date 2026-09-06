@@ -7,12 +7,14 @@ import Editor from "@monaco-editor/react";
 import Image from "next/image";
 import { Folder, File, Upload, X, RefreshCw, MessageSquare, Code, Check, RotateCcw, Database, Rocket, Monitor, SlidersHorizontal, Images, Send, Pencil, Loader2, Share2, ExternalLink, Copy, ChevronDown, ChevronRight, AlertTriangle, Search, Paintbrush, MoreVertical } from "lucide-react";
 import AppBuilderEditorAgentChat from "./AppBuilderEditorAgentChat";
+import AppBuilderEditorAgentChatV3 from "./AppBuilderEditorAgentChatV3";
 import { AppBuilderEditorTour } from "./AppBuilderEditorTour";
 import { TOUR_KEY as BUILDER_TOUR_STORAGE_KEY } from "./AppBuilderEditorTour";
 import AppPreviewEditor from "./AppPreviewEditor";
 import WebsitePrePaywall from "./WebsitePrePaywall";
 import KlonerLoader, { WorkspaceLoadingPanel, WorkspaceLoadingScreen } from "./KlonerLoader";
 import WebContainerRunner from "./WebContainerRunner";
+import { WorkspaceAgentLoader } from "./WorkspaceAgentActivity";
 import { bootstrapServerSession, ensureSessionAndCsrf, resetAuthClientCaches } from "@/lib/auth-client";
 import { useVercelIntegration } from "@/src/hooks/useVercelIntegration";
 import { auth, db, storage } from "@/lib/firebase";
@@ -55,6 +57,15 @@ function safeParseDiagnostics(raw: string | null | undefined): Record<string, an
     } catch {
         return null;
     }
+}
+
+function buildMissingAppMessage(raw: unknown): string {
+    const message = String(raw || "").trim();
+    if (!/app(?:lication)?\s+(?:data\s+)?not\s+found/i.test(message)) {
+        return message || "This saved project could not be loaded.";
+    }
+
+    return "This saved project is no longer available. Workspace Autonomy V3 supports existing inline and sharded projects, so a new scan is not required. Reopen the project from Dashboard or restore it before retrying.";
 }
 
 function getPreviewIssueFixDecision(issueText: string | null | undefined, diagnosticsRaw: string | null | undefined, explicitFailure: PreviewFailureContract | null | undefined): PreviewIssueFixDecision {
@@ -1525,6 +1536,7 @@ export default function AppBuilderEditor({
     previewDebugScenario = null,
     deployIssue = null,
     isDeleting = false,
+    agentMode = "v2",
 }: {
     appId: string;
     initialAppData?: AppData | null;
@@ -1551,6 +1563,7 @@ export default function AppBuilderEditor({
     previewDebugScenario?: { mode: 'terminal-error' | 'terminal-error-auto-fix'; nonce: number } | null;
     deployIssue?: EditorIssue | null;
     isDeleting?: boolean;
+    agentMode?: "v2" | "v3";
 }) {
     const { user, userTier, loading: authLoading } = useAuth();
     const { showConfirm, showAlert, hideModal } = useModal();
@@ -2155,7 +2168,23 @@ export default function AppBuilderEditor({
                             throw new Error(String(data?.error || data?.message || data?.detail || "This app is not ready yet."));
                         }
 
-                        if (res.status === 404 || res.status === 202 || res.status === 409) {
+                        if (res.status === 404) {
+                            // A missing app is terminal. Retrying a deleted/stale app id
+                            // only produces a noisy request loop and keeps the editor in a
+                            // misleading "syncing" state. Generation-in-progress uses
+                            // 202/409 and is handled separately below.
+                            lastNotFound = {
+                                status: res.status,
+                                message: buildMissingAppMessage(data?.error || data?.message),
+                            };
+                            clearFilesHydrationTimer();
+                            setError(lastNotFound.message);
+                            setFilesHydrated(true);
+                            setIsPreviewBootReady(true);
+                            return null;
+                        }
+
+                        if (res.status === 202 || res.status === 409) {
                             lastNotFound = {
                                 status: res.status,
                                 message: String(data?.error || data?.message || "This app is still syncing its files."),
@@ -2202,6 +2231,15 @@ export default function AppBuilderEditor({
     const [codeFileSearch, setCodeFileSearch] = useState("");
     const [code, setCode] = useState<string>("");
     const [refreshKey, setRefreshKey] = useState(0);
+    const [workspacePreviewRevision, setWorkspacePreviewRevision] = useState("");
+    useEffect(() => {
+        const onUpdated = (event: Event) => {
+            const detail = (event as CustomEvent).detail;
+            if (detail?.appId === appId && typeof detail.revision === "string") setWorkspacePreviewRevision(detail.revision);
+        };
+        window.addEventListener("kloner:workspace-preview-updated", onUpdated);
+        return () => window.removeEventListener("kloner:workspace-preview-updated", onUpdated);
+    }, [appId]);
     const [applyCompleteKey, setApplyCompleteKey] = useState(0);
     const [localRestartKey, setLocalRestartKey] = useState(0);
     const [reconnectKey, setReconnectKey] = useState(0);
@@ -3982,8 +4020,9 @@ export default function AppBuilderEditor({
                 setLocalRestartKey((k) => k + 1);
             }
             setRefreshKey((k) => k + 1);
-        } finally {
+        } catch (error) {
             setIsPreviewBuilding(false);
+            throw error;
         }
     }, [isPreviewBuilding]);
 
@@ -5194,16 +5233,18 @@ export default function AppBuilderEditor({
                     }
 
                     if (res.status === 404) {
-                        const message = String(data?.error || data?.message || "This app is still syncing its files.");
-                        console.warn("App files are not ready yet while loading editor", {
+                        const message = buildMissingAppMessage(data?.error || data?.message);
+                        console.warn("App files could not be found while loading editor", {
                             appId: normalizedAppId,
                             freshUrlGeneratedApp: isFreshUrlGeneratedApp,
                             status: 404,
                             attempt,
                         });
-                        await sleep(delayMs);
-                        delayMs = Math.min(5000, Math.max(500, Math.floor(delayMs * 1.35)));
-                        continue;
+                        clearFilesHydrationTimer();
+                        setError(message);
+                        setFilesHydrated(true);
+                        setIsPreviewBootReady(true);
+                        return;
                     }
 
                     if (!res.ok) {
@@ -5613,7 +5654,7 @@ export default function AppBuilderEditor({
         (nextFiles: { [path: string]: { content: string; lastModified: number } }) => {
             const normalizedNextFiles = normalizeIncomingFilesMap(nextFiles);
 
-            if (suppressNextFilesReplaceApplyRef.current) {
+            if (agentMode === "v3" || suppressNextFilesReplaceApplyRef.current) {
                 suppressNextFilesReplaceApplyRef.current = false;
                 setApp((prev) => (prev ? { ...prev, files: normalizedNextFiles } : null));
                 buildFileTree(normalizedNextFiles as any);
@@ -5655,7 +5696,7 @@ export default function AppBuilderEditor({
                 else setCode("");
             }
         },
-        [buildFileTree, currentFile, queuePreviewApply]
+        [agentMode, buildFileTree, currentFile, queuePreviewApply]
     );
 
     // If we used a placeholder preview while generating, rebuild the machine with the real files
@@ -6908,8 +6949,15 @@ export default function AppBuilderEditor({
         const now = Date.now();
         const throttleKey = forceFresh ? "rebuildAt" : "refreshAt";
         const cooldownMs = forceFresh ? 5000 : 1500;
-        if (now - previewActionThrottleRef.current[throttleKey] < cooldownMs) return;
-        previewActionThrottleRef.current[throttleKey] = now;
+        // Fresh rebuilds are throttled by restartLocalPreview, which is the
+        // function that actually increments the runner's fresh-start token.
+        // Stamping rebuildAt here first makes restartLocalPreview immediately
+        // reject the same request as a duplicate. Keep this guard for the
+        // reconnect-only refresh path, where this function owns the action.
+        if (!forceFresh) {
+            if (now - previewActionThrottleRef.current[throttleKey] < cooldownMs) return;
+            previewActionThrottleRef.current[throttleKey] = now;
+        }
 
         if (forceFresh) {
             // Show confirmation dialog for force fresh start
@@ -6923,9 +6971,21 @@ export default function AppBuilderEditor({
         setIsRefreshing(true);
         try {
             if (forceFresh) {
+                setIsWebPreviewReady(false);
+                setIsWebPreviewReadyLatched(false);
                 setFilesHydrated(false);
                 setIsPreviewBootReady(false);
-                await fetchAndHydrateAppFiles({ forceRefreshToken: true });
+                const hydrated = await fetchAndHydrateAppFiles({ forceRefreshToken: true });
+                if (!hydrated) {
+                    throw new Error("The latest project files could not be loaded, so the fresh rebuild was not started.");
+                }
+
+                // The runner is conditionally mounted behind isPreviewBootReady.
+                // Rebuild used to call restartLocalPreview while that component
+                // was unmounted, so its forceFreshStart effect never ran.
+                setFilesHydrated(true);
+                setIsPreviewBootReady(true);
+                await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
                 await restartLocalPreview(true);
                 return;
             }
@@ -6936,9 +6996,11 @@ export default function AppBuilderEditor({
             setRefreshKey((k) => k + 1);
         } catch (err) {
             console.warn("[app-builder] background file sync failed", err);
+            setIsPreviewBuilding(false);
         } finally {
             if (forceFresh) {
                 setFilesHydrated(true);
+                setIsPreviewBootReady(true);
             }
             setTimeout(() => setIsRefreshing(false), 500);
         }
@@ -7749,7 +7811,32 @@ export default function AppBuilderEditor({
                         {/* AI Chat or Code View */}
                         <div className="flex-1 min-h-0 overflow-hidden">
                             <div data-tour-chat-panel className={viewMode === "ai" ? "h-full" : "hidden"}>
-                                <AppBuilderEditorAgentChat
+                                {agentMode === "v3" ? (
+                                    <AppBuilderEditorAgentChatV3
+                                        appId={appId}
+                                        files={app.files}
+                                        currentFile={aiCurrentFile}
+                                        onFileEdit={handleFileEditFromAI}
+                                        onFilesReplace={handleFilesReplaceFromServer}
+                                        onRestoreApplied={handleRestoreApplied}
+                                        creditError={agentCreditError}
+                                        previewReady={previewMode !== "webcontainer" ? true : isWebPreviewReady}
+                                        previewIssue={previewMode !== "webcontainer" ? null : (previewIssue || autoPreviewError || previewError)}
+                                        previewIssueActionLabel={previewIssueActionLabel}
+                                        onPreviewIssueAction={() => {
+                                            const normalizedPreviewIssueAction = String(previewIssueActionLabel || "").trim().toLowerCase();
+                                            const shouldForceFreshRebuild = !normalizedPreviewIssueAction || normalizedPreviewIssueAction === "rebuild";
+                                            void handleRefresh(shouldForceFreshRebuild);
+                                        }}
+                                        onPreviewIssueFixRequest={canFixPreviewIssueWithAi ? handlePreviewIssueFixRequest : undefined}
+                                        onUserMessageSent={() => {
+                                            appBuilderAiMessagesSentRef.current += 1;
+                                        }}
+                                        onRequestUpgradePaywall={openFreePlanUpgradePaywall}
+                                        topupModalTrigger={topupModalTrigger}
+                                        welcomeContext={agentWelcomeContext}
+                                    />
+                                ) : <AppBuilderEditorAgentChat
                                     appId={appId}
                                     files={app.files}
                                     currentFile={aiCurrentFile}
@@ -7773,6 +7860,7 @@ export default function AppBuilderEditor({
                                     topupModalTrigger={topupModalTrigger}
                                     welcomeContext={agentWelcomeContext}
                                 />
+                                }
                             </div>
 
                             <div className={viewMode === "code" ? "h-full flex flex-col" : "hidden"}>
@@ -8219,7 +8307,11 @@ export default function AppBuilderEditor({
                         </div>
 
                         {/* App Content */}
-                        <div data-tour-builder-preview className="flex-1 bg-white">
+                        <div data-tour-builder-preview className="relative flex-1 bg-white">
+                            {(isRefreshing || isPreviewBuilding) && <div role="status" aria-label="Rebuilding preview" className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-3 bg-white/90 backdrop-blur-sm">
+                                <WorkspaceAgentLoader />
+                                <span className="text-sm text-neutral-600">Getting your preview ready…</span>
+                            </div>}
                             {previewMode === "webcontainer" ? (
                                 isPreviewBootReady ? (
                                     <div ref={previewHydrationAnchorRef} className="relative h-full w-full p-3">
@@ -8231,6 +8323,8 @@ export default function AppBuilderEditor({
                                                 onFileChange={handleFileChangeFromContainer}
                                                 onPreviewReadyChange={(ready) => {
                                                     if (ready) {
+                                                        setIsPreviewBuilding(false);
+                                                        setIsRefreshing(false);
                                                         setIsWebPreviewReady(true);
                                                         setIsWebPreviewReadyLatched(true);
                                                     } else {
@@ -8243,6 +8337,7 @@ export default function AppBuilderEditor({
                                                 }}
                                                 previewIssue={previewIssue}
                                             onPreviewIssueChange={(payload) => {
+                                                if (payload?.issue) setIsPreviewBuilding(false);
                                                 setPreviewIssue(payload?.issue || null);
                                                 setPreviewIssueDiagnostics(payload?.diagnostics || null);
                                                 setPreviewIssueFailure(normalizePreviewFailureContract(payload?.failure));
@@ -8259,6 +8354,7 @@ export default function AppBuilderEditor({
                                             }}
                                             onRequestRebuild={() => void handleRefresh(true)}
                                             reloadToken={refreshKey}
+                                            workspaceRevision={workspacePreviewRevision}
                                             applyToken={applyCompleteKey}
                                             restartToken={localRestartKey}
                                             reconnectToken={reconnectKey}

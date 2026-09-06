@@ -117,7 +117,7 @@ import {
 import UrlProcessingPopup from "@/components/UrlProcessingPopup";
 import { extractArchivedPageIdsFromRender, fetchRenderForDeployment, getArchivedRoutesForRender, persistArchivedPageIds, scrubArchivedRoutes, secureHtmlForPreviewIframe, withArchivedPageIds } from "@/components/helpers";
 import { useModal } from "@/components/ui/ModalContext";
-import AppBuilderEditor from "@/components/AppBuilderEditor";
+import AppBuilderEditor from "@/components/AppBuilderEditorRouted";
 import WebsitePrePaywall from "@/components/WebsitePrePaywall";
 import { STRIPE_TRIAL_DAYS, TRIAL_CTA_LABEL } from "@/src/lib/billingAccess";
 import { getPublicHttpUrlRejectionReason, validateAndNormalizePublicHttpUrl } from "@/src/lib/publicHttpUrl";
@@ -127,6 +127,8 @@ const VERCEL_INTEGRATION_SLUG =
     process.env.NEXT_PUBLIC_VERCEL_INTEGRATION_SLUG || "kloner";
 
 const ACCENT = "#FF8D21";
+const WORKSPACE_AUTONOMY_V3_TEST_UID = "FJPVD2BuHrXBLhOFOBWi9oW7Apt1";
+const WORKSPACE_AUTONOMY_V3_TEST_EMAIL = "nolan796@live.ca";
 const DEPLOY_RETRY_BASE_DELAY_MS = 1500;
 const DEPLOY_RETRY_MAX_DELAY_MS = 30000;
 
@@ -4162,6 +4164,10 @@ export default function PreviewPage(): JSX.Element {
     const [dashboardCompactLayout, setDashboardCompactLayout] = useState<boolean>(false);
     const [showArchivedApps, setShowArchivedApps] = useState<boolean>(false);
     const isTrialAccessRevoked = billingState === "trial_cancelled";
+    const workspaceAutonomyV3IsDefault =
+        (process.env.NEXT_PUBLIC_WORKSPACE_AUTONOMY_V3_ENABLED_FOR_ALL === "true" && Boolean(user?.uid)) ||
+        user?.uid === WORKSPACE_AUTONOMY_V3_TEST_UID ||
+        user?.email?.toLowerCase() === WORKSPACE_AUTONOMY_V3_TEST_EMAIL;
 
 
     const [showCreditsPaywall, setShowCreditsPaywall] = useState<
@@ -4548,11 +4554,11 @@ export default function PreviewPage(): JSX.Element {
         const nextId = typeof appId === "string" ? appId.trim() : "";
         if (!nextId) return null;
 
-        const nextViewMode = isMobileViewport ? "ai" : initialViewMode;
+        const nextViewMode = workspaceAutonomyV3IsDefault || isMobileViewport ? "ai" : initialViewMode;
         const qs = new URLSearchParams();
         qs.set("view", nextViewMode);
         return `/app-builder/${encodeURIComponent(nextId)}?${qs.toString()}`;
-    }, [isMobileViewport]);
+    }, [isMobileViewport, workspaceAutonomyV3IsDefault]);
 
     const openAppBuilderWithCookieGate = useCallback(async (
         appId: string | null,
@@ -4587,15 +4593,15 @@ export default function PreviewPage(): JSX.Element {
     }, [blockedUrlGenerationAppId, buildAppBuilderUrl, isTrialAccessRevoked, router, showAlert]);
 
     const openAppBuilderPreviewFirstWithCookieGate = useCallback((appId: string | null, opts?: { forceReload?: boolean }) => {
-        void openAppBuilderWithCookieGate(appId, isMobileViewport ? "ai" : "custom", opts?.forceReload ? { forceReload: true } : undefined);
-    }, [isMobileViewport, openAppBuilderWithCookieGate]);
+        void openAppBuilderWithCookieGate(appId, workspaceAutonomyV3IsDefault || isMobileViewport ? "ai" : "custom", opts?.forceReload ? { forceReload: true } : undefined);
+    }, [isMobileViewport, openAppBuilderWithCookieGate, workspaceAutonomyV3IsDefault]);
 
     const openAppBuilderFromDashboardCard = useCallback((appId: string | null, opts?: { forceReload?: boolean }) => {
-        void openAppBuilderWithCookieGate(appId, isMobileViewport ? "ai" : "custom", {
+        void openAppBuilderWithCookieGate(appId, workspaceAutonomyV3IsDefault || isMobileViewport ? "ai" : "custom", {
             bypassBlockedUrlGenerationGuard: true,
             ...(opts?.forceReload ? { forceReload: true } : null),
         });
-    }, [isMobileViewport, openAppBuilderWithCookieGate]);
+    }, [isMobileViewport, openAppBuilderWithCookieGate, workspaceAutonomyV3IsDefault]);
 
     const openAppBuilderDirectly = useCallback((appId: string | null) => {
         const nextId = typeof appId === "string" ? appId.trim() : "";
@@ -4612,9 +4618,9 @@ export default function PreviewPage(): JSX.Element {
         }
 
         const qs = new URLSearchParams();
-        qs.set("view", isMobileViewport ? "ai" : "custom");
+        qs.set("view", workspaceAutonomyV3IsDefault || isMobileViewport ? "ai" : "custom");
         router.push(`/app-builder/${encodeURIComponent(nextId)}?${qs.toString()}`, { scroll: false });
-    }, [blockedUrlGenerationAppId, isMobileViewport, isTrialAccessRevoked, router, showAlert]);
+    }, [blockedUrlGenerationAppId, isMobileViewport, isTrialAccessRevoked, router, showAlert, workspaceAutonomyV3IsDefault]);
 
     // ───────── app deploy wizard (first deploy) ─────────
     const [appDeployWizardOpen, setAppDeployWizardOpen] = useState(false);
