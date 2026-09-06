@@ -7247,15 +7247,12 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
             <div className="flex items-center justify-between p-3 border-b bg-white flex-shrink-0">
                 <div className="flex items-center gap-2">
                     <Bot className="w-5 h-6 text-accent" />
-                    <h3 className="font-medium text-sm">Agent</h3>
-                    {agentMode === "v3" ? (
-                        <span
-                            className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-bold tracking-[0.08em] text-emerald-700"
-                            title="Workspace Autonomy V3 is active for this editor"
-                        >
-                            V3 · {WORKSPACE_AUTONOMY_V3_AGENT_NAME}
-                        </span>
-                    ) : null}
+                    <h3
+                        className="font-medium text-sm"
+                        title={agentMode === "v3" ? "Workspace Autonomy V3 is active for this editor" : undefined}
+                    >
+                        {agentMode === "v3" ? `V3 · ${WORKSPACE_AUTONOMY_V3_AGENT_NAME}` : "Agent"}
+                    </h3>
                     {process.env.NODE_ENV !== "production" ? (
                         <span
                             className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-blue-200 bg-blue-50 text-blue-600"
