@@ -7,7 +7,6 @@ import StatsStrip from "@/components/StatsStrip";
 import HowItWorks from "@/components/HowItWorks";
 import Stories from "@/components/Stories";
 import WhatsIncluded from "@/components/WhatsIncluded";
-import WhatWeTest from "@/components/WhatWeTest";
 import Footer from "@/components/Footer";
 import FAQSection from "@/components/FaqSection";
 import ParallaxTypeHero from "@/components/ParallaxTypeHero";
@@ -50,10 +49,6 @@ export default function HomeClient() {
 
                 <section id="faq" className="snap-start snap-always min-h-screen flex flex-col">
                     <FAQSection />
-                </section>
-
-                <section id="what-we-test" className="snap-start snap-always flex flex-col">
-                    <WhatWeTest />
                 </section>
 
                 <section id="parallax" className="snap-start snap-always min-h-screen flex flex-col">

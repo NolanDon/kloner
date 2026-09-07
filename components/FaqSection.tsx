@@ -2,7 +2,6 @@
 'use client';
 
 import React, { useId, useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
 import { Plus } from 'lucide-react';
 
 type QA = { q: string; a: string };
@@ -21,6 +20,10 @@ const GROUPS: Group[] = [
                 a: 'A website cloner recreates a site’s supported structure, styling, assets, and interactions as an editable project. Kloner is designed to help you start from a public URL instead of a blank page.'
             },
             {
+                q: 'How do I clone a website?',
+                a: 'Paste a supported public URL into Kloner, review the generated preview, customize the editable project, and publish it when it is ready.'
+            },
+            {
                 q: 'What is the difference between cloning and downloading a website?',
                 a: 'Downloading or copying raw HTML gives you files from one page. Kloner turns a supported public page into a structured, editable project that you can refine and deploy.'
             },
@@ -34,11 +37,11 @@ const GROUPS: Group[] = [
             },
             {
                 q: 'How long does it take to copy a website?',
-                a: 'Most previews are ready in minutes, so you can move from URL to editable clone fast.'
+                a: 'Timing depends on the source site and the amount of content to process. Kloner shows the preview when it is ready.'
             },
             {
                 q: 'What do I get after cloning?',
-                a: 'A clean project with structured routes, components, and a preview you can keep editing.'
+                a: 'An editable project preview that you can review, customize, and prepare for publishing.'
             },
             {
                 q: 'Can I attach my own domain?',
@@ -46,7 +49,7 @@ const GROUPS: Group[] = [
             },
             {
                 q: 'Will forms and internal links still work?',
-                a: 'Yes. Kloner rewrites links to local routes and supports functional app flows.'
+                a: 'Review generated links and interactions in the preview. Forms, sign-in, payments, and other services may need configuration before publishing.'
             },
         ],
     },
@@ -54,20 +57,20 @@ const GROUPS: Group[] = [
         heading: 'Pricing & access',
         items: [
             {
-                q: 'Do I need a card to try the preview?',
-                a: 'We offer free trials so you can see your preview before deciding to pay.'
+                q: 'Can I preview a website for free?',
+                a: 'You can start with limited free preview access for supported public websites. Editing and publishing require a paid plan or eligible trial.'
             },
             {
                 q: 'Is Kloner a free website cloner?',
-                a: 'Kloner offers a free trial so you can test the preview workflow before subscribing. Paid plans add higher usage limits and Pro capabilities; it is not an unlimited free website cloner.'
+                a: 'Kloner offers limited free preview access for supported public websites. Eligible new Pro customers can start a 7-day trial with a payment method; paid plans add higher usage limits and editing and publishing capabilities.'
             },
             {
                 q: 'What can I do with Kloner for free?',
-                a: 'You can use the available trial access to test a website preview and evaluate the cloning workflow. Your account shows the limits that apply before you choose a paid plan.'
+                a: 'You can use the available free preview credits to evaluate the cloning workflow for supported public websites. Your dashboard shows the limits that apply before you choose a paid plan.'
             },
             {
                 q: 'What’s included in Pro?',
-                a: '40 website generations per month for any domain, clean HTML export, image/SEO/route setup, font subsetting, and one-click deploy integrations.'
+                a: 'Paid plans add higher usage limits, AI editing, project export, and publishing integrations. See the pricing page for current plan details.'
             },
             {
                 q: 'Can I cancel anytime?',
@@ -84,7 +87,7 @@ const GROUPS: Group[] = [
         items: [
             {
                 q: 'Are there site size limits?',
-                a: 'Pro handles most marketing sites. We show a page and asset count before export. Very large or app-heavy sites may need targeted capture.'
+                a: 'Very large or app-heavy sites may need targeted capture. Available preview and export limits depend on your plan and the source site.'
             },
             {
                 q: 'Are mobile apps available?',
@@ -92,7 +95,7 @@ const GROUPS: Group[] = [
             },
             {
                 q: 'Does it support Routing?',
-                a: 'Yes. You can choose pages/ or app/ output. We scaffold route groups where appropriate.'
+                a: 'Kloner can map supported pages and links into the generated project. Review the preview and adjust routes before publishing.'
             },
             {
                 q: 'What about frameworks other than HTML?',
@@ -130,22 +133,15 @@ function QAItem({ item, groupKey }: { item: QA; groupKey: string }) {
                 />
             </button>
 
-            <AnimatePresence initial={false}>
-                {open && (
-                    <motion.div
-                        id={`${groupKey}-${contentId}`}
-                        initial={{ height: 0, opacity: 0 }}
-                        animate={{ height: 'auto', opacity: 1 }}
-                        exit={{ height: 0, opacity: 0 }}
-                        transition={{ duration: 0.22 }}
-                        className="overflow-hidden"
-                    >
-                        <div className="pb-4 pr-10 text-sm leading-relaxed text-neutral-600">
-                            {item.a}
-                        </div>
-                    </motion.div>
-                )}
-            </AnimatePresence>
+            <div
+                id={`${groupKey}-${contentId}`}
+                hidden={!open}
+                className="overflow-hidden"
+            >
+                <div className="pb-4 pr-10 text-sm leading-relaxed text-neutral-600">
+                    {item.a}
+                </div>
+            </div>
         </li>
     );
 }

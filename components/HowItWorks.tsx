@@ -271,14 +271,14 @@ type ModalPlain = React.ComponentType;
 const items = [
   {
     title: "Paste a URL",
-    text: "Drop in a website you want to copy and we’ll build a clean starting point.",
+    text: "Drop in a public website URL and Kloner builds a supported starting point.",
     step: 1,
     Modal: UrlInputModal as ModalPlain,
     needsProgress: false,
   },
   {
-    title: "Preview the clone",
-    text: "Review the layout, sections, and structure before you change a single detail.",
+    title: "Preview the website clone",
+    text: "Review the generated layout, sections, and structure before changing a detail.",
     step: 2,
     Modal: PreviewGridModal as ModalPlain,
     needsProgress: false,
@@ -291,8 +291,8 @@ const items = [
     needsProgress: false,
   },
   {
-    title: "Deploy the new site",
-    text: "Publish the finished version when the cloned layout is ready to go live.",
+    title: "Deploy your website",
+    text: "Publish the finished version when your editable website is ready to go live.",
     step: 4,
     Modal: DeployModal as ModalWithProgress,
     needsProgress: true,

@@ -141,9 +141,9 @@ export default function WhatWeTest() {
 
       <div className="container-soft py-14 md:py-20">
         <SectionReveal>
-          <h2 className="text-5xl md:text-6xl tracking-tight">What we capture for you</h2>
+          <h2 className="text-5xl md:text-6xl tracking-tight">What Kloner captures from a website</h2>
           <p className="mt-3 mb-10 max-w-2xl text-lg text-neutral-600">
-            Everything needed to turn a live site into a clean project you control.
+            Kloner processes supported public pages into an editable project preview, with the structure, styling, and available assets that can be captured.
           </p>
         </SectionReveal>
 

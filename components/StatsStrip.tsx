@@ -86,9 +86,9 @@ function StatCard({ stat, delay = 0 }: { stat: Stat; delay?: number }) {
 
 export default function StatsStrip() {
   const stats: Stat[] = [
-    { value: "92%", label: "launch faster", sub: "from paste to preview under 120s" },
-    { value: "70%", label: "ship cleaner code", sub: "less manual cleanup post-clone" },
-    { value: "4×", label: "faster iterations", sub: "edit, preview, deploy on repeat" },
+    { value: "01", label: "Start from a URL", sub: "Use a supported public website as your starting point" },
+    { value: "02", label: "Edit the result", sub: "Refine the generated website preview with AI" },
+    { value: "03", label: "Deploy when ready", sub: "Publish your finished website through the available integrations" },
   ];
 
   return (

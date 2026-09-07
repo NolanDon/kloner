@@ -185,12 +185,12 @@ export default function MembershipSticky() {
           <div className="lg:col-span-4">
             <div className="md:sticky top-24">
               <h2 className="text-4xl md:text-6xl md:mb-10 text-black/80 bg-white pt-40 md:py-15 mt-20">
-                What&apos;s included in the website cloner
+                What your website clone includes
               </h2>
 
               <div className="mt-20">
                 <p className="mt-[-40px] md:mt-3 max-w-md text-neutral-600">
-                  Clone or copy a website, edit it in a live preview, export a clean project, and deploy with one click.
+                  Start from a public URL, review the supported website structure and available assets, edit the result with AI, and deploy when it is ready.
                 </p>
               </div>
 

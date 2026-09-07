@@ -46,7 +46,7 @@ function FeaturesStrip() {
         {
             icon: <ListChecks className="h-5 w-5 text-neutral-800" />,
             title: "Instant preview",
-            sub: "See the clone in seconds",
+            sub: "Preview the result",
         },
         {
             icon: <Hand className="h-5 w-5 text-neutral-800" />,
@@ -202,14 +202,14 @@ export default function PreviewDashboard({
                 >
                     <div className="flex flex-col items-center gap-3">
                         <h2 className="text-4xl sm:text-5xl md:text-6xl text-neutral-950 leading-[1.05]">
-                            Generate your website in a few clicks
+                            Clone a website from a URL
                         </h2>
                         <ClickyCursor size={30} />
                     </div>
 
                     <p className="text-neutral-600 mt-3 max-w-2xl mx-auto text-base sm:text-lg leading-relaxed">
-                        Drop a link. We generate assets, normalize code, and spin up a live
-                        preview you can deploy in one click.
+                        Paste a public URL. Kloner creates a supported website preview you can
+                        customize with AI and deploy when it is ready.
                     </p>
 
                     <button
@@ -217,7 +217,7 @@ export default function PreviewDashboard({
                         onClick={openUrlOverlay}
                         className="group inline-flex items-center rounded-full bg-[#FF8D21] px-4 py-2 text-sm text-white mt-5 whitespace-nowrap transition-[padding] duration-200 ease-out hover:bg-[#D96E11]"
                     >
-                        <span>Get started</span>
+                        <span>Clone a website</span>
 
                         <span
                             className="ml-0 w-0 overflow-hidden inline-flex items-center transition-[width,margin] duration-200 ease-out group-hover:w-4 group-hover:ml-1"

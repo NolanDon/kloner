@@ -86,7 +86,7 @@ export default function HeroContent({
           className={`${displayClassName} leading-[0.95] font-bold tracking-tight text-white`}
           style={{ fontSize: "clamp(3rem, min(12vw, 8.8vh), 5.5rem)" }}
         >
-          AI website cloner: <br /> clone any website instantly.
+          AI website cloner: <br /> clone a website from a URL.
         </h1>
 
         <p className="mt-[clamp(0.75rem,2.2vh,1.5rem)] text-white/90 text-base sm:text-lg md:text-xl max-w-xl mx-auto font-medium">
@@ -138,7 +138,7 @@ export default function HeroContent({
             className="mt-3 sm:mt-4 text-xs sm:text-sm text-white font-medium"
             aria-live="polite"
           >
-            {error ?? "Clone your public website • Instant preview • Customize and launch"}
+            {error ?? "Clone a public website • Preview the result • Customize and launch"}
           </div>
         </form>
 
