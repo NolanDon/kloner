@@ -9957,6 +9957,65 @@ export default function PreviewPage(): JSX.Element {
     }, [targetUrl, captureStatus, err, startRequested, shouldSendFrontendTimeoutAlert]);
 
     useEffect(() => {
+        const rawTarget = targetUrl || urlProcessingFailure?.url || "";
+        if (!rawTarget) return;
+
+        // A scan can be accepted by /generate and fail later while the browser
+        // polls the Firestore URL document. That terminal failure never passes
+        // through the proxy's HTTP error handler, so report it from here.
+        const terminalError = captureStatus === "error";
+        const handoffError = Boolean(urlProcessingFailure?.message) &&
+            captureStatus !== "queued" &&
+            captureStatus !== "processing";
+        if (!terminalError && !handoffError) return;
+
+        // Do not report the old error state while a fresh scan is being queued.
+        if (terminalError && startRequested && !err) return;
+
+        const normalizedUrl = normUrl(rawTarget);
+        if (!normalizedUrl || !shouldSendFrontendTimeoutAlert("url_capture_terminal_error", normalizedUrl)) return;
+
+        const docError = String(
+            (docData as any)?.lastError ||
+            (docData as any)?.error ||
+            (docData as any)?.warningMessage ||
+            "",
+        ).trim();
+        const message =
+            urlProcessingFailure?.message?.trim() ||
+            docError ||
+            "URL capture reached a terminal error state before completion.";
+
+        void (async () => {
+            try {
+                const csrf = await ensureSessionAndCsrf().catch(() => null);
+                await fetch("/api/internal/observability/frontend-timeout", {
+                    method: "POST",
+                    headers: {
+                        "content-type": "application/json",
+                        ...(csrf ? { "x-csrf": csrf } : {}),
+                    },
+                    credentials: "include",
+                    body: JSON.stringify({
+                        action: "url_capture_terminal_error",
+                        alertKey: `url_capture_terminal_error:${normalizedUrl}`,
+                        route: "/dashboard/view",
+                        service: "dashboard-view",
+                        statusCode: 502,
+                        status: terminalError ? "error" : "processing_error",
+                        message: `URL capture failed for ${rawTarget}: ${message}`,
+                        previewUrl: rawTarget,
+                        code: String((docData as any)?.lastErrorCode || "URL_CAPTURE_TERMINAL_ERROR"),
+                        tags: ["url-capture", "terminal-error", "frontend"],
+                    }),
+                });
+            } catch {
+                // Observability must never interfere with the user's error UI.
+            }
+        })();
+    }, [captureStatus, docData, err, ensureSessionAndCsrf, shouldSendFrontendTimeoutAlert, startRequested, targetUrl, urlProcessingFailure]);
+
+    useEffect(() => {
         const normalizedUrl = targetUrl ? normUrl(targetUrl) : "";
         if (!normalizedUrl) return;
         if (captureStatus === "stale") return;
