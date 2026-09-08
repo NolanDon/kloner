@@ -79,14 +79,11 @@ export default function HeroContent({
         transition={{ duration: 0.8 }}
         className="w-full max-w-[720px] text-center"
       >
-        <div className="mb-3 inline-flex rounded-full border border-white/20 bg-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-white/85 backdrop-blur-sm">
-          Website cloner
-        </div>
         <h1
           className={`${displayClassName} leading-[0.95] font-bold tracking-tight text-white`}
           style={{ fontSize: "clamp(3rem, min(12vw, 8.8vh), 5.5rem)" }}
         >
-          AI website cloner: <br /> clone a website from a URL.
+          AI Website Cloner: <br /> Clone a Website from a URL.
         </h1>
 
         <p className="mt-[clamp(0.75rem,2.2vh,1.5rem)] text-white/90 text-base sm:text-lg md:text-xl max-w-xl mx-auto font-medium">

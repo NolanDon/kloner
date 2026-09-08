@@ -4733,8 +4733,6 @@ export default function PreviewPage(): JSX.Element {
             return true;
         }
 
-        setAppWizardBusy(false);
-        setAppWizardError(null);
         return true;
     }, [refreshUserTierNow]);
 
@@ -4769,14 +4767,7 @@ export default function PreviewPage(): JSX.Element {
         }
     }, [push, refreshUserTierNow, resumeSubscriptionBusy]);
 
-    // ───────── web app wizard (new) ─────────
-    const [appWizardOpen, setAppWizardOpen] = useState(false);
-    const [appWizardBusy, setAppWizardBusy] = useState(false);
-    const [appWizardError, setAppWizardError] = useState<string | null>(null);
-    const [appWizardUrl, setAppWizardUrl] = useState<string>("");
-    const [appWizardShotsUrl, setAppWizardShotsUrl] = useState<string>("");
-    const [appWizardSource, setAppWizardSource] = useState<"website" | null>(null);
-    const [appWizardSeedRenderId, setAppWizardSeedRenderId] = useState<string | null>(null);
+    // URL generation and app creation state.
     const [urlGenerationErrorDetails, setUrlGenerationErrorDetails] = useState<string>("");
     const [urlGenerationHealthWarning, setUrlGenerationHealthWarning] = useState<null | {
         url: string;
@@ -5451,50 +5442,6 @@ export default function PreviewPage(): JSX.Element {
         })();
     }, [search, user, router, deployWizardProjectName]);
 
-    // Open the web app wizard from query params.
-    // Example: /dashboard/view?wizard=1
-    useEffect(() => {
-        if (!user) return;
-        const wizardParam = search.get("wizard");
-
-        if (wizardParam !== "1") return;
-
-        if (userTier === "free" && stripeStatus !== "trialing") {
-            showWebsiteExitOfferPaywall();
-
-            try {
-                const url = new URL(window.location.href);
-                const params = url.searchParams;
-                params.delete("wizard");
-                params.delete("source");
-                params.delete("prompt");
-                const qs = params.toString();
-                const next = qs ? `${url.pathname}?${qs}` : url.pathname;
-                router.replace(next, { scroll: false });
-            } catch {
-                // ignore
-            }
-            return;
-        }
-
-        setAppWizardOpen(true);
-        setAppWizardBusy(false);
-        setAppWizardError(null);
-        setAppWizardSource("website");
-
-        // best-effort: clear wizard params so refresh doesn't re-open
-        try {
-            const url = new URL(window.location.href);
-            const params = url.searchParams;
-            params.delete("wizard");
-            const qs = params.toString();
-            const next = qs ? `${url.pathname}?${qs}` : url.pathname;
-            router.replace(next, { scroll: false });
-        } catch {
-            // ignore
-        }
-        }, [search, user, router, showWebsiteExitOfferPaywall, stripeStatus, userTier]);
-
     useEffect(() => {
         if (!user) return;
 
@@ -6080,9 +6027,6 @@ export default function PreviewPage(): JSX.Element {
             message: opts.message,
             url: typeof opts.url === "string" ? opts.url.trim() : "",
         });
-        setAppWizardBusy(false);
-        setAppWizardError(null);
-        setAppWizardOpen(false);
         setAppBuilderOpen(false);
         setCurrentAppId(null);
         setPendingAppBuilderAppId(null);
@@ -7010,22 +6954,12 @@ export default function PreviewPage(): JSX.Element {
             console.error("Failed to create app:", error);
             if (isGenerationTierBlockedMessage(message)) {
                 if (isDraftPromotionRequest) {
-                    if (appWizardOpen) {
-                        setAppWizardOpen(false);
-                        setAppWizardError(null);
-                        setAppWizardBusy(false);
-                    }
                     setUrlProcessingHandoff(null);
                     setUrlProcessingFailure(null);
                     setPendingCreatedApp(null);
                     return null;
                 }
                 showWebsiteExitOfferPaywall();
-                if (appWizardOpen) {
-                    setAppWizardOpen(false);
-                    setAppWizardError(null);
-                    setAppWizardBusy(false);
-                }
                 setUrlProcessingHandoff(null);
                 setUrlProcessingFailure(null);
                 setPendingCreatedApp(null);
@@ -7033,11 +6967,6 @@ export default function PreviewPage(): JSX.Element {
             }
             if (isPreviewCreditsLimitErrorMessage(message)) {
                 setShowCreditsPaywall("preview");
-                if (appWizardOpen) {
-                    setAppWizardOpen(false);
-                    setAppWizardError(null);
-                    setAppWizardBusy(false);
-                }
                 setUrlProcessingHandoff(null);
                 setUrlProcessingFailure(null);
                 setPendingCreatedApp(null);
@@ -7073,7 +7002,7 @@ export default function PreviewPage(): JSX.Element {
             push(message, "err");
             return null;
         }
-    }, [user, router, push, activeRenderId, openAppBuilderWithCookieGate, requestAppBuilderCookieConsent, appWizardOpen, stripeStatus, setDraftApps, setPendingDraftApps, isDev, devEarlyGenerationPaywallEnabled]);
+    }, [user, router, push, activeRenderId, openAppBuilderWithCookieGate, requestAppBuilderCookieConsent, stripeStatus, setDraftApps, setPendingDraftApps, isDev, devEarlyGenerationPaywallEnabled]);
 
     useEffect(() => {
         if (!pendingCreatedApp) {
@@ -7372,69 +7301,6 @@ export default function PreviewPage(): JSX.Element {
     const pendingCreatedAppId = pendingCreatedApp?.id ?? null;
     const createWebsitePlusBusy = Boolean(nextJsGenerationPendingUrl || htmlGenerationPendingUrl);
     const websiteSubmitBusy = Boolean(websiteSubmissionPendingUrl);
-
-    const startWebAppWizard = useCallback(
-        (opts?: { seedRenderId?: string | null; url?: string | null }) => {
-            // Always refresh Vercel status when opening the wizard so we don't
-            // accidentally auto-advance from stale "connected" state.
-            void refreshVercelStatus();
-            const url = typeof opts?.url === "string" ? opts.url : "";
-            setAppWizardUrl(url);
-            setAppWizardShotsUrl(url);
-            setAppWizardSeedRenderId(opts?.seedRenderId ?? null);
-            setAppWizardSource("website");
-            setAppWizardError(null);
-            setAppWizardBusy(false);
-            setAppWizardOpen(true);
-        },
-        [refreshVercelStatus],
-    );
-
-    const submitAppWizardWebsite = useCallback(async () => {
-        if (appWizardBusy) return;
-
-        setAppWizardBusy(true);
-        setAppWizardError(null);
-
-        try {
-            if (!(await canProceedWithAppWizardGeneration())) {
-                return;
-            }
-
-            const url = (appWizardUrl || "").trim();
-            if (!url) {
-                setAppWizardError("Select a successfully scanned URL to continue.");
-                return;
-            }
-
-            const normalizedSelected = validateAndNormalizePublicHttpUrl(url);
-            const canonicalSelected = normalizedSelected ? normUrl(normalizedSelected) : "";
-            if (!canonicalSelected) {
-                setAppWizardError("Enter a public URL to continue.");
-                return;
-            }
-
-            const normalizedShotsUrl = validateAndNormalizePublicHttpUrl(appWizardShotsUrl || "");
-            const canonicalShotsUrl = normalizedShotsUrl ? normUrl(normalizedShotsUrl) : "";
-            const canAttachShots = !!(canonicalShotsUrl && canonicalShotsUrl === normUrl(url));
-            const screenshotKeys = user && canAttachShots
-                ? shots
-                    .map((s) => s.path)
-                    .filter((p) => typeof p === "string" && p.startsWith(`kloner-screenshots/${user.uid}/`))
-                    .slice(0, 6)
-                : [];
-
-            const created = await handleCreateApp("url", undefined, url, {
-                screenshotKeys,
-                onError: setAppWizardError,
-            });
-            if (created) {
-                setAppWizardOpen(false);
-            }
-        } finally {
-            setAppWizardBusy(false);
-        }
-    }, [appWizardBusy, appWizardUrl, appWizardShotsUrl, user, shots, handleCreateApp, canProceedWithAppWizardGeneration]);
 
     // New: create an app from the starter template (free)
     const handleCreateTemplateApp = useCallback(async () => {
@@ -12820,10 +12686,6 @@ export default function PreviewPage(): JSX.Element {
 
                     if (appDeployWizardRestoreTokenRef.current !== token) return;
 
-                    setAppWizardOpen(false);
-                    setAppWizardError(null);
-                    setAppWizardBusy(false);
-
                     setAppDeployWizardAppId(nextAppId);
                     setAppDeployWizardAppName(nextAppName);
                     setAppDeployWizardError(null);
@@ -12995,10 +12857,6 @@ export default function PreviewPage(): JSX.Element {
                 const nextAppName =
                     (typeof pendingAppDeploy?.appName === "string" && pendingAppDeploy.appName) ||
                     "";
-
-                setAppWizardOpen(false);
-                setAppWizardError(null);
-                setAppWizardBusy(false);
 
                 setAppDeployWizardAppId(nextAppId);
                 setAppDeployWizardAppName(nextAppName);
@@ -13619,9 +13477,6 @@ export default function PreviewPage(): JSX.Element {
         setShowExitOffer(false);
         setExitOfferReason(null);
         setAppExitOfferReason(null);
-        setAppWizardOpen(false);
-        setAppWizardBusy(false);
-        setAppWizardError(null);
         if (exitOfferDisabled) {
             return;
         }
@@ -14427,7 +14282,8 @@ export default function PreviewPage(): JSX.Element {
                     )}
                 </AnimatePresence>
 
-                {/* web app wizard */}
+                {/* web app wizard removed permanently */}
+                {/*
                 <AnimatePresence>
                     {appWizardOpen && (
                         <motion.div
@@ -14562,6 +14418,7 @@ export default function PreviewPage(): JSX.Element {
                         </motion.div>
                     )}
                 </AnimatePresence>
+                */}
 
                 <AnimatePresence>
                     {urlGenerationRescanModal.open && (

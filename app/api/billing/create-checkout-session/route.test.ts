@@ -167,7 +167,7 @@ describe("POST /api/billing/create-checkout-session", () => {
 
         expect(payload.line_items?.[0]?.price).toBe("price_live_pro");
         expect(payload.success_url).toContain("/dashboard/view?");
-        expect(payload.success_url).toContain("wizard=1");
+        expect(payload.success_url).not.toContain("wizard=1");
         expect(payload.success_url).toContain("render=rid_1");
         expect(payload.success_url).toContain("step=2");
         expect(payload.success_url).toContain("billing=success");

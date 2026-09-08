@@ -349,13 +349,13 @@ async function handler({ req, uid }: { req: NextRequest; uid: string }) {
 
     const successUrl =
         returnRenderId && returnStep
-            ? `${appOrigin}/dashboard/view?wizard=1&step=${returnStep || 2}&render=${encodeURIComponent(
+            ? `${appOrigin}/dashboard/view?step=${returnStep || 2}&render=${encodeURIComponent(
                 returnRenderId || "",
             )}&billing=success`
             : returnAppId && returnStep
                 ? isAppDeployTrialSuccess
                     ? `${appOrigin}/dashboard/view?billing=success&trial=1`
-                    : `${appOrigin}/dashboard/view?wizard=1&step=${returnStep || 3}&appId=${encodeURIComponent(
+                    : `${appOrigin}/dashboard/view?step=${returnStep || 3}&appId=${encodeURIComponent(
                         returnAppId || "",
                     )}&billing=success`
             : `${appOrigin}/dashboard/view?billing=success`;
