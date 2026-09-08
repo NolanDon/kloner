@@ -88,6 +88,10 @@ export async function POST(req: NextRequest) {
 
             const backendStatus = cleanText((backend as any)?.status, 80);
             const backendUiStage = cleanText((backend as any)?.uiStage, 120);
+            const backendCode = cleanText((backend as any)?.code, 200);
+            const backendMessage = cleanText((backend as any)?.message, 1000);
+            const backendRequestId = cleanText((backend as any)?.requestId, 200);
+            const backendJobId = cleanText((backend as any)?.jobId, 200);
             const timeoutReason = cleanText((backendDebug as any)?.timeoutReason, 120);
             const backendMachineId = cleanText((backendDebug as any)?.machine?.id, 120);
             const machineState = cleanText((backendDebug as any)?.machine?.state, 120);
@@ -140,6 +144,11 @@ export async function POST(req: NextRequest) {
                     elapsedMs: typeof elapsedMs === "number" ? elapsedMs : undefined,
                     requestId: requestId || undefined,
                     jobId: jobId || undefined,
+                    backendStatus: backendStatus || undefined,
+                    backendCode: backendCode || code || undefined,
+                    backendMessage: backendMessage || undefined,
+                    backendRequestId: backendRequestId || requestId || undefined,
+                    backendJobId: backendJobId || jobId || undefined,
                     requestContext,
                     alertKey: alertKey || undefined,
                     deduped,

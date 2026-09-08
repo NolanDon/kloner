@@ -9975,16 +9975,35 @@ export default function PreviewPage(): JSX.Element {
         const normalizedUrl = normUrl(rawTarget);
         if (!normalizedUrl || !shouldSendFrontendTimeoutAlert("url_capture_terminal_error", normalizedUrl)) return;
 
-        const docError = String(
-            (docData as any)?.lastError ||
-            (docData as any)?.error ||
-            (docData as any)?.warningMessage ||
-            "",
-        ).trim();
-        const message =
-            urlProcessingFailure?.message?.trim() ||
-            docError ||
-            "URL capture reached a terminal error state before completion.";
+        const doc = (docData || {}) as any;
+        const scanJob = (activeUrlScanJob || {}) as any;
+        const genericMessages = new Set([
+            "something went wrong. please rescan the url and try again.",
+            "something went wrong while generating this url. please retry.",
+        ]);
+        const diagnosticMessage = [
+            doc.lastError,
+            doc.error,
+            scanJob.error,
+            doc.warningMessage,
+            urlProcessingFailure?.message,
+            err,
+        ]
+            .map((value) => String(value || "").trim())
+            .find((value) => value && !genericMessages.has(value.toLowerCase())) || "";
+        const requestId = String(doc.requestId || scanJob.requestId || "").trim();
+        const jobId = String(doc.jobId || scanJob.jobId || "").trim();
+        const code = String(doc.lastErrorCode || "").trim();
+        const stage = String(doc.stage || scanJob.stage || "").trim();
+        const message = diagnosticMessage || [
+            "URL capture reached a terminal error without a backend diagnostic.",
+            `captureStatus=${captureStatus || "unknown"}`,
+            doc.status ? `docStatus=${doc.status}` : "",
+            stage ? `stage=${stage}` : "",
+            code ? `code=${code}` : "",
+            requestId ? `requestId=${requestId}` : "",
+            jobId ? `jobId=${jobId}` : "",
+        ].filter(Boolean).join("; ");
 
         void (async () => {
             try {
@@ -10005,15 +10024,25 @@ export default function PreviewPage(): JSX.Element {
                         status: terminalError ? "error" : "processing_error",
                         message: `URL capture failed for ${rawTarget}: ${message}`,
                         previewUrl: rawTarget,
-                        code: String((docData as any)?.lastErrorCode || "URL_CAPTURE_TERMINAL_ERROR"),
-                        tags: ["url-capture", "terminal-error", "frontend"],
+                        code: code || "URL_CAPTURE_TERMINAL_ERROR",
+                        requestId: requestId || undefined,
+                        jobId: jobId || undefined,
+                        backend: {
+                            status: doc.status || null,
+                            uiStage: stage || null,
+                            code: code || null,
+                            message: diagnosticMessage || null,
+                            requestId: requestId || null,
+                            jobId: jobId || null,
+                        },
+                        tags: ["url-capture", "url-scan", "terminal-error", "frontend"],
                     }),
                 });
             } catch {
                 // Observability must never interfere with the user's error UI.
             }
         })();
-    }, [captureStatus, docData, err, ensureSessionAndCsrf, shouldSendFrontendTimeoutAlert, startRequested, targetUrl, urlProcessingFailure]);
+    }, [activeUrlScanJob, captureStatus, docData, err, ensureSessionAndCsrf, shouldSendFrontendTimeoutAlert, startRequested, targetUrl, urlProcessingFailure]);
 
     useEffect(() => {
         const normalizedUrl = targetUrl ? normUrl(targetUrl) : "";
