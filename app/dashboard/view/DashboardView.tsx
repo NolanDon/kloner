@@ -5536,6 +5536,7 @@ export default function PreviewPage(): JSX.Element {
                             },
                             credentials: "include",
                             cache: "no-store",
+                            body: JSON.stringify({ immediate: true }),
                         }).catch(() => null);
                     }
                 }

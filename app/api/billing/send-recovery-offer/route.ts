@@ -30,6 +30,13 @@ export async function POST(req: NextRequest) {
         req,
         async ({ req }) => {
             const decoded = await verifySession(req);
+            let body: any = {};
+            try {
+                body = await req.json();
+            } catch {
+                body = {};
+            }
+            const immediateCheckoutCancel = body?.immediate === true;
             const db = getAdminDb();
             const userRef = db.collection("kloner_users").doc(decoded.uid);
             const snap = await userRef.get();
@@ -41,14 +48,20 @@ export async function POST(req: NextRequest) {
 
             const canSend = canSendRecoveryOfferEmail(userData);
             if (!canSend.ok) {
-                return NextResponse.json(
-                    {
-                        ok: true,
-                        sent: false,
-                        skipped: canSend.reason || "inactive",
-                    },
-                    { headers: { "Cache-Control": "no-store" } }
-                );
+                if (immediateCheckoutCancel && canSend.reason === "active_recently") {
+                    // An explicit Stripe cancel return is a checkout abandonment signal.
+                    // Send immediately; unsubscribe and active-subscription checks below
+                    // still apply.
+                } else {
+                    return NextResponse.json(
+                        {
+                            ok: true,
+                            sent: false,
+                            skipped: canSend.reason || "inactive",
+                        },
+                        { headers: { "Cache-Control": "no-store" } }
+                    );
+                }
             }
 
             if (hasLikelyActivePaidAccess(userData)) {

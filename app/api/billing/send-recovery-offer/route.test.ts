@@ -137,6 +137,26 @@ describe("POST /api/billing/send-recovery-offer", () => {
         expect(resendSend).not.toHaveBeenCalled();
     });
 
+    it("sends immediately when the checkout cancel return is explicit", async () => {
+        store.set("kloner_users/uid_1", {
+            notificationPrefs: { journeyEmails: true },
+            offers: {},
+            lastAppActivityAt: Date.now(),
+        });
+
+        const { POST } = await import("./route");
+        const req = {
+            json: async () => ({ immediate: true }),
+        } as any;
+
+        const res: any = await POST(req);
+        const body = await res.json();
+
+        expect(res.status).toBe(200);
+        expect(body.sent).toBe(true);
+        expect(resendSend).toHaveBeenCalledTimes(1);
+    });
+
     it("skips sending when the user unsubscribed from journey emails", async () => {
         store.set("kloner_users/uid_1", {
             notificationPrefs: { journeyEmails: false },

@@ -271,6 +271,7 @@ export default function PriceClient(): JSX.Element {
                     },
                     credentials: "include",
                     cache: "no-store",
+                    body: JSON.stringify({ immediate: true }),
                 }).catch(() => null);
 
                 url.searchParams.delete("billing");
