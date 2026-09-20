@@ -149,6 +149,12 @@ const BASE_NAV_SECTIONS: NavSectionConfig[] = [
                 adminOnly: true,
             },
             {
+                href: "/admin/url-scan-reports",
+                label: "URL scan reports",
+                icon: ShieldCheck,
+                adminOnly: true,
+            },
+            {
                 href: "/admin/support-docs",
                 label: "Support docs",
                 icon: BookText,

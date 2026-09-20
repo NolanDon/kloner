@@ -8,16 +8,10 @@ import type { UserTier } from "@/src/lib/credits";
 import { peekUserCredit, consumeUserCredit } from "../_lib/credits-server";
 import { validateAndNormalizePublicHttpUrl, getPublicHttpUrlRejectionReason } from "@/src/lib/publicHttpUrl";
 import { captureCriticalEvent } from "@/lib/observability";
+import { getUserFacingUrlErrorMessage } from "@/src/lib/userFacingErrors";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-function backendConfigHint() {
-  const origin = process.env.BACKEND_ORIGIN || process.env.BACKEND_URL || process.env.PUBLIC_ORIGIN || "";
-  const prefix = process.env.BACKEND_PREFIX || "/api/v1";
-  const hasInternalKey = Boolean(process.env.INTERNAL_API_KEY);
-  return { origin, prefix, hasInternalKey };
-}
 
 async function reportBlockedUrlAttempt(args: { uid: string; url: string; reason: string }) {
   const webhookUrl = (process.env.MALICIOUS_ACTIVITY_WEBHOOK_URL || process.env.ABUSE_WEBHOOK_URL || "").trim();
@@ -114,9 +108,9 @@ export async function POST(req: NextRequest) {
     let decoded: any;
     try {
       decoded = await verifySession(req);
-    } catch (e: any) {
+    } catch {
       return NextResponse.json(
-        { error: e?.message || "Unauthorized" },
+        { error: getUserFacingUrlErrorMessage({ status: 401, code: "UNAUTHORIZED" }) },
         { status: 401 }
       );
     }
@@ -167,7 +161,7 @@ export async function POST(req: NextRequest) {
       }).catch(() => null);
       return NextResponse.json(
         {
-          error: reason,
+          error: getUserFacingUrlErrorMessage({ status: 400, code: "BLOCKED_URL", reason }),
           code: "BLOCKED_URL",
         },
         { status: 400 }
@@ -189,7 +183,7 @@ export async function POST(req: NextRequest) {
       }).catch(() => null);
       return NextResponse.json(
         {
-          error: e?.message || "Unable to determine subscription tier. Try again shortly.",
+          error: "We couldn’t verify your plan right now. Please try again shortly.",
         },
         { status: 500 }
       );
@@ -253,7 +247,6 @@ export async function POST(req: NextRequest) {
       });
 
       if (isBackendFetchFailed(appResponse)) {
-        const hint = backendConfigHint();
         await reportZipGenerationFailure({
           req,
           uid: decoded.uid,
@@ -268,24 +261,9 @@ export async function POST(req: NextRequest) {
         }).catch(() => null);
         return NextResponse.json(
           {
-            error:
-              process.env.NODE_ENV !== "production"
-                ? `Failed to reach the backend generation service at ${appResponse.url}. Check BACKEND_URL/BACKEND_ORIGIN and INTERNAL_API_KEY. Also try /api/internal/env-check.`
-                : "Failed to reach the backend generation service.",
+            error: getUserFacingUrlErrorMessage({ status: 502, code: "BACKEND_UNREACHABLE", message: "Failed to fetch" }),
             code: "BACKEND_UNREACHABLE",
             reqId: appResponse.reqId,
-            ...(process.env.NODE_ENV !== "production"
-              ? {
-                  debug: {
-                    attemptedUrl: appResponse.url,
-                    env: {
-                      BACKEND_ORIGIN: hint.origin || null,
-                      BACKEND_PREFIX: hint.prefix,
-                      INTERNAL_API_KEY_SET: hint.hasInternalKey,
-                    },
-                  },
-                }
-              : {}),
           },
           { status: 502 },
         );
@@ -328,11 +306,13 @@ export async function POST(req: NextRequest) {
 
           return NextResponse.json(
             {
-              error: message,
+              error: getUserFacingUrlErrorMessage({
+                status: appData?.code === "gemini_input_too_large" ? 413 : isTerminalFailure ? 409 : 502,
+                code: appData?.code,
+                message,
+              }),
               code: appData?.code || (isTerminalFailure ? "ARCHIVE_ZIP_MISSING" : "INVALID_ACCEPTED_RESPONSE"),
               reqId: appResponse.reqId,
-              upstreamStatus: appResponse.status,
-              ...(typeof appData?.details === "object" && appData.details ? { details: appData.details } : {}),
             },
             { status: appData?.code === "gemini_input_too_large" ? 413 : isTerminalFailure ? 409 : 502 },
           );
@@ -435,8 +415,6 @@ export async function POST(req: NextRequest) {
       const upstreamStatus = appResponse.status || 502;
 
       if (upstreamStatus === 404) {
-        const routePath = typeof appData?.path === "string" && appData.path.trim() ? appData.path.trim() : null;
-        const routeScope = typeof appData?.scope === "string" && appData.scope.trim() ? appData.scope.trim() : null;
         const backendMessage = appData.error || appData.message || "Not found";
 
         await reportZipGenerationFailure({
@@ -457,14 +435,6 @@ export async function POST(req: NextRequest) {
             error: "The generation service is temporarily unavailable. Please try again in a bit.",
             code: "BACKEND_ROUTE_NOT_FOUND",
             reqId: appResponse.reqId,
-            upstreamStatus,
-            scope: routeScope,
-            path: routePath,
-            details: {
-              backendError: backendMessage,
-              scope: routeScope,
-              path: routePath,
-            },
           },
           { status: 404 },
         );
@@ -485,11 +455,11 @@ export async function POST(req: NextRequest) {
       }).catch(() => null);
       return NextResponse.json(
         {
-          error:
-            appData.error ||
-            appData.message ||
-            `Backend refused app generation (HTTP ${upstreamStatus})`,
-          upstreamStatus,
+          error: getUserFacingUrlErrorMessage({
+            status: upstreamStatus,
+            code: appData?.code,
+            message: appData?.error || appData?.message,
+          }),
           reqId: appResponse.reqId,
         },
         { status: upstreamStatus >= 400 ? upstreamStatus : 502 },
@@ -506,7 +476,7 @@ export async function POST(req: NextRequest) {
         backendMessage: e?.message || "Request failed",
       }).catch(() => null);
       return NextResponse.json(
-        { error: e?.message || "Request failed" },
+        { error: getUserFacingUrlErrorMessage({ status: 502, message: e?.message || "Request failed" }) },
         { status: 502 }
       );
     }

@@ -117,6 +117,7 @@ import { useModal } from "@/components/ui/ModalContext";
 import AppBuilderEditor from "@/components/AppBuilderEditor";
 import { getPublicHttpUrlRejectionReason, validateAndNormalizePublicHttpUrl } from "@/src/lib/publicHttpUrl";
 import { recordAppBuilderSessionAnalytics, recordDeployAnalytics } from "@/components/analytics";
+import { getUserFacingUrlErrorMessage } from "@/src/lib/userFacingErrors";
 
 const VERCEL_INTEGRATION_SLUG =
     process.env.NEXT_PUBLIC_VERCEL_INTEGRATION_SLUG || "kloner";
@@ -561,18 +562,16 @@ function extractUrlRescanWarning(source: any): UrlRescanWarningState | null {
         archiveHealth?.userMessage,
         archiveHealth?.errorReason,
     ];
-    const detailsCandidates = [
-        warning?.details,
-        source.details,
-        archiveHealth?.details,
-    ];
+    const diagnosticMessage =
+        messageCandidates.map((value) => String(value || "").trim()).find(Boolean) || "";
+    const message = diagnosticMessage
+        ? getUserFacingUrlErrorMessage({ code: rawCode, reason: rawCode, message: diagnosticMessage })
+        : needsRescan
+            ? "This website needs to be rescanned before it can be opened."
+            : "";
 
-    const message =
-        messageCandidates.map((value) => String(value || "").trim()).find(Boolean) || ""
-
-    const details = detailsCandidates
-        .map((value) => stringifyWarningDetails(value))
-        .find(Boolean) || null;
+    // Backend details are diagnostic data for observability, not user-facing copy.
+    const details = null;
 
     const retryableValue =
         typeof source.retryable === "boolean"
@@ -647,7 +646,10 @@ function extractAppCardIssueState(source: any): AppCardIssueState | null {
         archiveHealth?.userMessage,
         archiveHealth?.errorReason,
     ];
-    const rawMessage = messageCandidates.map((value) => String(value || "").trim()).find(Boolean) || "";
+    const diagnosticMessage = messageCandidates.map((value) => String(value || "").trim()).find(Boolean) || "";
+    const rawMessage = diagnosticMessage
+        ? getUserFacingUrlErrorMessage({ code: rawCode, reason: rawCode, message: diagnosticMessage })
+        : "";
 
     const detailsCandidates = [
         warning?.details,
@@ -655,7 +657,8 @@ function extractAppCardIssueState(source: any): AppCardIssueState | null {
         primaryWarning?.details,
         archiveHealth?.details,
     ];
-    const rawDetails = detailsCandidates.map((value) => stringifyWarningDetails(value)).find(Boolean) || null;
+    const diagnosticDetails = detailsCandidates.map((value) => stringifyWarningDetails(value)).find(Boolean) || null;
+    const rawDetails = null;
 
     const actionCandidates = [
         warning?.action,
@@ -679,8 +682,8 @@ function extractAppCardIssueState(source: any): AppCardIssueState | null {
 
     const blockedText = [
         rawCode,
-        rawMessage,
-        rawDetails,
+        diagnosticMessage,
+        diagnosticDetails,
         rawAction,
         source.warningAction,
         source.errorCode,
@@ -718,7 +721,7 @@ function extractAppCardIssueState(source: any): AppCardIssueState | null {
         primaryWarning?.rescanRecommended === true ||
         String(rawAction || "").toLowerCase().includes("rescan") ||
         String(rawCode || "").toLowerCase().includes("rescan") ||
-        /networkerror|network error|failed to fetch|fetch failed/i.test(rawMessage || "")
+        /networkerror|network error|failed to fetch|fetch failed/i.test(diagnosticMessage || "")
     );
 
     if (!warning && !blocked && !retryable && !rawMessage && !rawDetails) {
@@ -765,12 +768,20 @@ function buildUrlRescanBackfillPatch(source: any, warning: UrlRescanWarningState
 
     const archiveHealth = source.archiveHealth && typeof source.archiveHealth === "object" ? source.archiveHealth : null;
     const warningObject = source.warning && typeof source.warning === "object" ? source.warning : null;
+    const safeWarningObject = warningObject
+        ? {
+            code: warningObject.code ?? warning.code ?? null,
+            severity: warningObject.severity ?? "error",
+            retryable: warningObject.retryable === true,
+            rescanRecommended: warningObject.rescanRecommended === true,
+        }
+        : null;
     const nextWarningCode = source.warningCode ?? warningObject?.code ?? archiveHealth?.warningCode ?? warning.code ?? source.errorCode ?? source.errorReason ?? null;
-    const nextWarningMessage = source.warningMessage ?? warningObject?.message ?? archiveHealth?.warningMessage ?? warning.message ?? source.userMessage ?? source.errorReason ?? null;
+    const nextWarningMessage = warning.message || null;
     const nextWarningAction = source.warningAction ?? warningObject?.warningAction ?? archiveHealth?.warningAction ?? warning.action ?? null;
     const nextErrorCode = source.errorCode ?? warningObject?.code ?? archiveHealth?.errorCode ?? warning.code ?? null;
-    const nextErrorReason = source.errorReason ?? warningObject?.message ?? archiveHealth?.errorReason ?? warning.message ?? null;
-    const nextUserMessage = source.userMessage ?? warningObject?.message ?? archiveHealth?.userMessage ?? warning.message ?? null;
+    const nextErrorReason = warning.code ?? null;
+    const nextUserMessage = warning.message || null;
     const nextRetryable = typeof source.retryable === "boolean"
         ? source.retryable
         : typeof warningObject?.retryable === "boolean"
@@ -778,12 +789,12 @@ function buildUrlRescanBackfillPatch(source: any, warning: UrlRescanWarningState
             : typeof archiveHealth?.retryable === "boolean"
                 ? archiveHealth.retryable
                 : warning.retryable;
-    const nextDetails = source.details ?? warningObject?.details ?? archiveHealth?.details ?? warning.details ?? null;
+    const nextDetails = null;
 
     return {
         archiveHealth: {
             needsRescan: true,
-            warning: warningObject ?? null,
+            warning: safeWarningObject,
             warningCode: nextWarningCode,
             warningMessage: nextWarningMessage,
             warningAction: nextWarningAction,
@@ -793,7 +804,7 @@ function buildUrlRescanBackfillPatch(source: any, warning: UrlRescanWarningState
             retryable: nextRetryable,
             details: nextDetails,
         },
-        warning: warningObject ?? null,
+        warning: safeWarningObject,
         warningCode: nextWarningCode,
         warningMessage: nextWarningMessage,
         warningAction: nextWarningAction,
@@ -5752,7 +5763,8 @@ export default function PreviewPage(): JSX.Element {
                         : "";
 
         const firstLine = rawMessage.split(/\r?\n/, 1)[0].replace(/^Error:\s*/i, "").trim();
-        return firstLine || fallback;
+        if (!firstLine) return fallback;
+        return getUserFacingUrlErrorMessage({ message: firstLine }) || fallback;
     }
 
     function isPreviewCreditsLimitErrorMessage(message: string): boolean {
@@ -5879,18 +5891,43 @@ export default function PreviewPage(): JSX.Element {
         const scope = typeof responseData.scope === "string" && responseData.scope.trim() ? responseData.scope.trim() : null;
         const path = typeof responseData.path === "string" && responseData.path.trim() ? responseData.path.trim() : null;
         const hardFailureCode = code === "ARCHIVE_ZIP_MISSING" || code === "gemini_input_too_large";
-        const details = typeof responseData.details === "object" && responseData.details ? responseData.details : null;
-        const warning = typeof responseData.warning === "object" && responseData.warning ? responseData.warning : null;
+        const details = null;
+        const warning = null;
         const warningCode = typeof responseData.warningCode === "string" && responseData.warningCode.trim() ? responseData.warningCode.trim() : null;
-        const warningMessage = typeof responseData.warningMessage === "string" && responseData.warningMessage.trim() ? responseData.warningMessage.trim() : null;
-        const warningAction = typeof responseData.warningAction === "string" && responseData.warningAction.trim() ? responseData.warningAction.trim() : null;
+        const rawWarningMessage = typeof responseData.warningMessage === "string" && responseData.warningMessage.trim() ? responseData.warningMessage.trim() : null;
+        const warningMessage = rawWarningMessage
+            ? getUserFacingUrlErrorMessage({ status: res.status, code: warningCode, message: rawWarningMessage })
+            : null;
+        const warningAction = typeof responseData.warningAction === "string" && responseData.warningAction.trim()
+            ? responseData.warningAction.toLowerCase().includes("rescan") ? "rescan_url" : null
+            : null;
         const rawReason = typeof responseData.reason === "string" && responseData.reason.trim() ? responseData.reason.trim() : null;
-        const errorReason = typeof responseData.errorReason === "string" && responseData.errorReason.trim()
+        const diagnosticErrorReason = typeof responseData.errorReason === "string" && responseData.errorReason.trim()
             ? responseData.errorReason.trim()
             : rawReason;
-        const userMessage = typeof responseData.userMessage === "string" && responseData.userMessage.trim() ? responseData.userMessage.trim() : null;
+        const errorReason = diagnosticErrorReason ? code || "SCAN_FAILED" : null;
+        const userMessage = diagnosticErrorReason
+            ? getUserFacingUrlErrorMessage({
+                status: res.status,
+                code,
+                reason: diagnosticErrorReason,
+                message: responseData.userMessage,
+            })
+            : null;
+        const warnings = Array.isArray(responseData.warnings)
+            ? responseData.warnings.map((item: any) => ({
+                code: typeof item?.code === "string" ? item.code : "SCAN_WARNING",
+                message: getUserFacingUrlErrorMessage({
+                    status: res.status,
+                    code: item?.code,
+                    reason: item?.reason,
+                    message: item?.message,
+                }),
+                severity: typeof item?.severity === "string" ? item.severity : "warning",
+                rescanRecommended: item?.rescanRecommended === true,
+            }))
+            : [];
         const retryable = typeof responseData.retryable === "boolean" ? responseData.retryable : null;
-        const isPreviewCreditsExhausted = code === "PREVIEW_CREDITS_EXHAUSTED" || errorReason === "preview_credits_exhausted";
         const rescanRequired = Boolean(
             responseData.archiveHealth?.needsRescan === true ||
             responseData.needsRescan === true ||
@@ -5912,16 +5949,21 @@ export default function PreviewPage(): JSX.Element {
         };
 
         const buildValidationMessage = () => {
-            if (typeof responseData.error === "string" && responseData.error.trim()) return responseData.error.trim();
-            if (code === "BLOCKED_URL") return "This URL is blocked for site cloning. Please use a different URL.";
-            if (isPreviewCreditsExhausted) return "Monthly preview limit reached for your plan.";
-            return "Please check the URL and try again.";
+            return getUserFacingUrlErrorMessage({
+                status: res.status,
+                code,
+                reason: errorReason,
+                message: responseData.error || responseData.message,
+            });
         };
 
         const buildServerMessage = () => {
-            if (typeof responseData.error === "string" && responseData.error.trim()) return responseData.error.trim();
-            if (typeof responseData.message === "string" && responseData.message.trim()) return responseData.message.trim();
-            return "Something went wrong while generating this URL. Please retry.";
+            return getUserFacingUrlErrorMessage({
+                status: res.status,
+                code,
+                reason: errorReason,
+                message: responseData.error || responseData.message,
+            });
         };
 
         const isRouteMismatch = res.status === 404 || code === "BACKEND_ROUTE_NOT_FOUND";
@@ -5993,7 +6035,7 @@ export default function PreviewPage(): JSX.Element {
                 appId,
                 jobId: resolvedJobId,
                 requestId,
-                warnings: Array.isArray(responseData.warnings) ? responseData.warnings : [],
+                warnings,
                 rescanRecommended: responseData.rescanRecommended === true,
                 archiveZipPath: typeof responseData.archiveZipPath === "string" ? responseData.archiveZipPath : null,
                 generationFormat: responseData.generationFormat === "html" ? "html" : "nextjs",
@@ -7981,9 +8023,12 @@ export default function PreviewPage(): JSX.Element {
                 const generatePayload: any = await generateRes.json().catch(() => ({}));
 
                 if (!generateRes.ok && generateRes.status !== 202) {
-                    const errorMessage =
-                        String(generatePayload?.userMessage || generatePayload?.message || generatePayload?.error || "").trim() ||
-                        `Failed to queue URL scan (HTTP ${generateRes.status})`;
+                    const errorMessage = getUserFacingUrlErrorMessage({
+                        status: generateRes.status,
+                        code: generatePayload?.code,
+                        reason: generatePayload?.reason || generatePayload?.errorReason,
+                        message: generatePayload?.userMessage || generatePayload?.message || generatePayload?.error,
+                    });
                     updateScanState({
                         phase: "error",
                         status: "error",
@@ -8435,12 +8480,14 @@ export default function PreviewPage(): JSX.Element {
                                 ? payload.error.trim()
                                 : "";
                         const backendReason = String(payload?.reason || payload?.code || payload?.warningMessage || payload?.warningAction || "").trim();
+                        const safeScanError = getUserFacingUrlErrorMessage({
+                            status: res.status,
+                            code: payload?.code || payload?.backendCode,
+                            reason: payload?.reason || payload?.errorReason,
+                            message: payload?.error || payload?.message,
+                        });
                         setCaptureIssueDetails(
-                            [
-                                `Backend returned HTTP ${res.status}${serverError ? `: ${serverError}` : ""}.`,
-                                "Test the URL in a private or incognito browser tab and make sure it loads without login, captcha, geo-blocking, or a redirect to a different domain.",
-                                "If the page works in a browser but not here, the site is likely blocking automated capture.",
-                            ].join(" "),
+                            `${safeScanError} If the page works in your browser but not here, the website may be blocking automated access.`,
                         );
                         const backendCode = String(payload?.code || payload?.backendCode || "").toUpperCase();
                         const looksBlocked = isBlockedUrlScanSignal(serverError, backendReason, payload?.message, payload?.details) || /blocked the snapshot request|site blocked|blocked/i.test(serverError);
@@ -8457,18 +8504,19 @@ export default function PreviewPage(): JSX.Element {
                         clearUrlScanQueuedState(target, uiError);
                         if (looksBlocked) {
                             captureBlockedFailureForUrlRef.current = normUrl(target);
+                            const safeBlockedMessage = "This website can’t be captured because access is restricted. Try a public page without a login, captcha, or geo-blocking.";
                             setUrlGenerationHealthWarning({
                                 url: target,
                                 generationFormat: "nextjs",
                                 blocking: true,
                                 code: backendCode || String(payload?.code || "BLOCKED_URL").toUpperCase(),
-                                message: serverError || backendReason || "This domain is blocked for site cloning. Please use a different URL.",
-                                details: payload?.details || backendReason || serverError || null,
+                                message: safeBlockedMessage,
+                                details: null,
                                 action: null,
                                 retryable: false,
                                 warnings: [{
                                     code: backendCode || String(payload?.code || "BLOCKED_URL").toUpperCase(),
-                                    message: serverError || backendReason || "This domain is blocked for site cloning. Please use a different URL.",
+                                    message: safeBlockedMessage,
                                     severity: "error",
                                     rescanRecommended: false,
                                 }],
@@ -8480,12 +8528,12 @@ export default function PreviewPage(): JSX.Element {
 
                         const nextUiError =
                             creditLimitResponse
-                                ? (serverError || uiError)
+                                ? safeScanError
                                 : looksCrossDomainRedirect
                                     ? "This URL redirected to a different domain and was stopped for safety. Please use the final destination URL directly."
                                     : looksBlocked
-                                        ? (serverError || backendReason || "This domain is blocked for site cloning. Please use a different URL.")
-                                        : (serverError || uiError);
+                                        ? "This website can’t be captured because access is restricted. Try a public page without a login, captcha, or geo-blocking."
+                                        : safeScanError || uiError;
                         if (nextUiError !== uiError) {
                             setErr(nextUiError);
                         }
@@ -9407,7 +9455,7 @@ export default function PreviewPage(): JSX.Element {
                     }
                 }
             } catch (e: any) {
-                setErr(e?.message || "Delete failed.");
+                setErr(getUserFacingUrlErrorMessage({ message: e?.message }) || "Delete failed.");
             } finally {
                 setInfo("");
             }
@@ -10553,7 +10601,12 @@ export default function PreviewPage(): JSX.Element {
                 }
 
                 if (!r.ok || !j?.ok) {
-                    const msg = j?.error || "Render failed";
+                    const msg = getUserFacingUrlErrorMessage({
+                        status: r.status,
+                        code: j?.code,
+                        reason: j?.reason,
+                        message: j?.error || j?.message,
+                    });
                     clearOptimisticWebsiteState();
                     setDeployWizardError(msg);
                     throw new Error(msg);
@@ -10561,7 +10614,7 @@ export default function PreviewPage(): JSX.Element {
 
                 await refreshRenders();
             } catch (e: any) {
-                const msg = e?.message || "Failed to start collection preview.";
+                const msg = getUserFacingUrlErrorMessage({ message: e?.message }) || "Failed to start collection preview.";
 
                 if (isGenerationTierBlockedMessage(msg)) {
                     clearOptimisticWebsiteState();
@@ -10698,7 +10751,12 @@ export default function PreviewPage(): JSX.Element {
             }
 
             if (!r.ok || !j?.ok) {
-                throw new Error(j?.error || (r.status === 429 ? "This URL failed to process. Please try again." : "Render failed"));
+                throw new Error(getUserFacingUrlErrorMessage({
+                    status: r.status,
+                    code: j?.code,
+                    reason: j?.reason,
+                    message: j?.error || j?.message,
+                }));
             }
 
             await refreshRenders();
@@ -10709,7 +10767,7 @@ export default function PreviewPage(): JSX.Element {
                 showWebsiteExitOfferPaywall();
                 return;
             }
-            push(e?.message || "Failed to start website generation.", "err");
+            push(getUserFacingUrlErrorMessage({ message: e?.message }) || "Failed to start website generation.", "err");
         }
     }, [
         user,
@@ -10882,7 +10940,12 @@ export default function PreviewPage(): JSX.Element {
                 }
 
                 if (!resp.ok || !j?.ok) {
-                    const msg = j?.error || "Retry failed";
+                    const msg = getUserFacingUrlErrorMessage({
+                        status: resp.status,
+                        code: j?.code,
+                        reason: j?.reason,
+                        message: j?.error || j?.message,
+                    });
                     throw new Error(msg);
                 }
 
@@ -10890,7 +10953,7 @@ export default function PreviewPage(): JSX.Element {
                 await refreshRenders();
                 push("Retry started for this preview.", "ok");
             } catch (e: any) {
-                const msg = e?.message || "Failed to retry render.";
+                const msg = getUserFacingUrlErrorMessage({ message: e?.message }) || "Failed to retry render.";
 
                 // Roll back optimistic change minimally back to error
                 setRenders((prev) =>
@@ -10955,13 +11018,18 @@ export default function PreviewPage(): JSX.Element {
 
                 if (!resp.ok) {
                     const j = await resp.json().catch(() => ({}));
-                    throw new Error(j?.error || "Failed to discard preview.");
+                    throw new Error(getUserFacingUrlErrorMessage({
+                        status: resp.status,
+                        code: j?.code,
+                        reason: j?.reason,
+                        message: j?.error || j?.message,
+                    }));
                 }
 
                 setRenders((prev) => prev.filter((r) => r.id !== renderId));
                 push("Preview discarded", "ok");
             } catch (e: any) {
-                setErr(e?.message || "Failed to discard preview.");
+                setErr(getUserFacingUrlErrorMessage({ message: e?.message }) || "Failed to discard preview.");
                 push("Failed to discard preview", "err");
             } finally {
                 setDeletingRender((m) => {
@@ -11241,10 +11309,15 @@ export default function PreviewPage(): JSX.Element {
             const j = (await r.json().catch(() => ({}))) as any;
 
             if (!r.ok || !j?.url) {
-                const msg = j?.error || "Vercel deploy failed";
-                const friendlyMsg = /don't have permission to create the project/i.test(msg)
+                const rawDeployMessage = String(j?.error || j?.message || "");
+                const friendlyMsg = /don't have permission to create the project/i.test(rawDeployMessage)
                     ? "This Vercel account cannot create a new project here. Fix the account or team, then retry the deploy."
-                    : msg;
+                    : getUserFacingUrlErrorMessage({
+                        status: r.status,
+                        code: j?.code,
+                        reason: j?.reason,
+                        message: rawDeployMessage,
+                    });
                 const nextRetryCount = deployWizardRetryCount + 1;
                 setDeployWizardRetryCount(nextRetryCount);
                 setDeployWizardRetryLockedUntil(Date.now() + computeDeployRetryDelayMs(nextRetryCount));

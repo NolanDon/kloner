@@ -7,6 +7,8 @@ import { getAuthoritativeUserTier } from "../../_lib/userTier";
 import { captureCriticalEvent } from "@/lib/observability";
 import type { UserTier } from "@/src/lib/credits";
 import { getPublicHttpUrlRejectionReason, validateAndNormalizePublicHttpUrl } from "@/src/lib/publicHttpUrl";
+import { getUserFacingUrlErrorMessage } from "@/src/lib/userFacingErrors";
+import { recordUrlScanAttempt } from "@/src/lib/urlScanReport";
 import {
     peekUserCredit,
     consumeUserCredit,
@@ -144,9 +146,9 @@ export async function POST(req: NextRequest) {
             let decoded: any;
             try {
                 decoded = await verifySession(req);
-            } catch (e: any) {
+            } catch {
                 return jsonNoStatusAlert(
-                    { error: e?.message || "Unauthorized" },
+                    { error: getUserFacingUrlErrorMessage({ status: 401, code: "UNAUTHORIZED" }) },
                     { status: 401 }
                 );
             }
@@ -222,6 +224,16 @@ export async function POST(req: NextRequest) {
                     r.status === 202 && (payload as any)?.code === "TIMEOUT_ACCEPTED";
 
                 if (timedOutBeforeAck) {
+                    void recordUrlScanAttempt({
+                        uid: decoded.uid,
+                        tier,
+                        url: normalizedUrl,
+                        status: "queued",
+                        httpStatus: r.status,
+                        backendCode: (payload as any)?.code || "TIMEOUT_ACCEPTED",
+                        backendRequestId: r.reqId,
+                        requestId: r.reqId,
+                    }).catch((error) => console.error("[url-scan-report] failed to record queued scan", error));
                     return NextResponse.json(
                         {
                             ok: true,
@@ -297,18 +309,32 @@ export async function POST(req: NextRequest) {
                             backendRaw: downstream.raw,
                         },
                     });
+                    void recordUrlScanAttempt({
+                        uid: decoded.uid,
+                        tier,
+                        url: normalizedUrl,
+                        status: "failure",
+                        httpStatus: status,
+                        backendCode: downstream.code,
+                        backendRequestId: downstream.requestId,
+                        backendSource: downstream.source,
+                        rawError: downstream.reason,
+                        rawResponse: downstream.raw,
+                        totalPlanned,
+                        requestId: r.reqId,
+                    }).catch((error) => console.error("[url-scan-report] failed to record failed scan", error));
+
+                    const userMessage = getUserFacingUrlErrorMessage({
+                        status,
+                        code: downstream.code,
+                        reason: downstream.reason,
+                        message: downstream.message,
+                    });
 
                     return jsonNoStatusAlert(
                         {
-                            error: downstream.reason,
+                            error: userMessage,
                             code: downstream.code || (status >= 500 ? "DOWNSTREAM_FAILURE" : "URL_SCAN_FAILED"),
-                            upstreamStatus: r.status,
-                            upstreamStatusText: downstream.statusText,
-                            upstreamCode: downstream.code,
-                            upstreamRequestId: downstream.requestId,
-                            upstreamSource: downstream.source,
-                            upstreamMessage: downstream.message,
-                            upstreamBody: downstream.body,
                             ...(totalPlanned === 0
                                 ? { reason: "no_captures" }
                                 : {}),
@@ -331,6 +357,17 @@ export async function POST(req: NextRequest) {
                 } catch {
                     // If this fails you effectively gave a free run; acceptable.
                 }
+
+                void recordUrlScanAttempt({
+                    uid: decoded.uid,
+                    tier,
+                    url: normalizedUrl,
+                    status: "success",
+                    httpStatus: r.status,
+                    backendRequestId: r.reqId,
+                    totalPlanned,
+                    requestId: r.reqId,
+                }).catch((error) => console.error("[url-scan-report] failed to record successful scan", error));
 
                 return NextResponse.json(payload, {
                     status: 200,
@@ -359,14 +396,27 @@ export async function POST(req: NextRequest) {
                         proxyErrorCode: e?.code || null,
                     },
                 });
+                void recordUrlScanAttempt({
+                    uid: decoded.uid,
+                    tier,
+                    url: normalizedUrl,
+                    status: "failure",
+                    httpStatus: 502,
+                    backendCode: e?.code || e?.name || "PROXY_FAILURE",
+                    rawError: e?.message || "Proxy failed",
+                    requestId: e?.requestId || e?.reqId || null,
+                }).catch((error) => console.error("[url-scan-report] failed to record proxy failure", error));
+
+                const userMessage = getUserFacingUrlErrorMessage({
+                    status: 502,
+                    code: e?.code || e?.name || "PROXY_FAILURE",
+                    message: e?.message || "Proxy failed",
+                });
 
                 return jsonNoStatusAlert(
                     {
-                        error: e?.message || "Proxy failed",
+                        error: userMessage,
                         code: e?.code || e?.name || "PROXY_FAILURE",
-                        upstreamStatus: 502,
-                        upstreamSource: "proxy",
-                        upstreamMessage: e?.message || "Proxy failed",
                     },
                     {
                         status: 502,
