@@ -67,6 +67,43 @@ We’re always here to help get your project started.
 — The Kloner team`;
 }
 
+function hasRecoveryOfferEmail(data: Record<string, any> | null | undefined): boolean {
+    return Boolean(
+        data?.offers?.exitOffer40RecoveryEmailSentAt ||
+            data?.["offers.exitOffer40RecoveryEmailSentAt"],
+    );
+}
+
+function recoveryEmailIsInFlight(data: Record<string, any> | null | undefined): boolean {
+    const value = data?.offers?.exitOffer40RecoveryEmailSendingAt;
+    const startedAt = typeof value === "number" ? value : 0;
+    return startedAt > 0 && Date.now() - startedAt < 10 * 60 * 1000;
+}
+
+async function claimRecoveryEmail(db: FirebaseFirestore.Firestore, userRef: FirebaseFirestore.DocumentReference) {
+    return db.runTransaction(async (tx) => {
+        const snap = await tx.get(userRef);
+        const data = snap.exists ? ((snap.data() as Record<string, any>) || {}) : {};
+        if (hasRecoveryOfferEmail(data) || recoveryEmailIsInFlight(data)) return false;
+
+        const previousOffers =
+            data.offers && typeof data.offers === "object" && !Array.isArray(data.offers)
+                ? data.offers
+                : {};
+        tx.set(
+            userRef,
+            {
+                offers: {
+                    ...previousOffers,
+                    exitOffer40RecoveryEmailSendingAt: Date.now(),
+                },
+            },
+            { merge: true },
+        );
+        return true;
+    });
+}
+
 export async function POST(req: NextRequest) {
     return requireSessionAndMaybeCsrf(
         req,
@@ -93,30 +130,35 @@ export async function POST(req: NextRequest) {
                 return NextResponse.json({ ok: true, sent: false, skipped: "missing_email" }, { headers: { "Cache-Control": "no-store" } });
             }
 
-            await userRef.set(
-                {
-                    offers: {
-                        ...(userData?.offers && typeof userData.offers === "object" ? userData.offers : {}),
-                        exitOffer40RecoveryEmailSentAt: Date.now(),
-                    },
-                },
-                { merge: true },
-            );
-
             const from = process.env.WELCOME_EMAIL_FROM || RECOVERY_SENDER;
             const linkUrl = makeRecoveryCheckoutUrl({ uid: decoded.uid, kind: "exit40" });
             const unsubUrl = makeUnsubUrl({ uid: decoded.uid, kind: "journey" });
             const resend = getResend();
-            const result = await resend.emails.send({
-                from,
-                to: email,
-                subject: "Open for a surprise",
-                text: buildRecoveryOfferText({ name: authUser.displayName || null, linkUrl, unsubUrl }),
-                html: buildRecoveryOfferHtml({ name: authUser.displayName || null, linkUrl, unsubUrl }),
-            });
+            const claimed = await claimRecoveryEmail(db, userRef);
+            if (!claimed) {
+                return NextResponse.json({ ok: true, sent: false, skipped: "already_sent_or_in_flight" }, { headers: { "Cache-Control": "no-store" } });
+            }
 
-            if (result && typeof result === "object" && "error" in result && (result as any).error) {
-                throw new Error(((result as any).error?.message as string) || "Recovery email send failed");
+            try {
+                const result = await resend.emails.send({
+                    from,
+                    to: email,
+                    subject: "Open for a surprise",
+                    text: buildRecoveryOfferText({ name: authUser.displayName || null, linkUrl, unsubUrl }),
+                    html: buildRecoveryOfferHtml({ name: authUser.displayName || null, linkUrl, unsubUrl }),
+                });
+
+                if (result && typeof result === "object" && "error" in result && (result as any).error) {
+                    throw new Error(((result as any).error?.message as string) || "Recovery email send failed");
+                }
+
+                await userRef.set(
+                    { offers: { exitOffer40RecoveryEmailSentAt: Date.now(), exitOffer40RecoveryEmailSendingAt: null } },
+                    { merge: true },
+                );
+            } catch (error) {
+                await userRef.set({ offers: { exitOffer40RecoveryEmailSendingAt: null } }, { merge: true });
+                throw error;
             }
 
             return NextResponse.json({ ok: true, sent: true }, { headers: { "Cache-Control": "no-store" } });

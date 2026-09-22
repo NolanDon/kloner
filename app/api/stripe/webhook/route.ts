@@ -218,17 +218,27 @@ function hasRecoveryOfferEmail(userData: Record<string, any> | null | undefined)
         const nested = (userData as any)?.offers;
         if (nested && typeof nested === "object" && !Array.isArray(nested)) {
                 if ((nested as any).exitOffer40RecoveryEmailSentAt) return true;
-                if ((nested as any).exitOffer40RecoveryEmailSessionId) return true;
         }
         if ((userData as any)["offers.exitOffer40RecoveryEmailSentAt"]) return true;
         return false;
+}
+
+function recoveryEmailIsInFlight(userData: Record<string, any> | null | undefined): boolean {
+        const value = userData?.offers?.exitOffer40RecoveryEmailSendingAt;
+        const startedAt =
+                typeof value === "number"
+                        ? value
+                        : typeof value?.toMillis === "function"
+                            ? value.toMillis()
+                            : 0;
+        return startedAt > 0 && Date.now() - startedAt < 10 * 60 * 1000;
 }
 
 async function claimRecoveryOfferEmailOnce(userRef: FirebaseFirestore.DocumentReference, sessionId: string): Promise<boolean> {
         return db.runTransaction(async (tx: any) => {
                 const snap = await tx.get(userRef);
                 const data = snap.exists ? (snap.data() as Record<string, any>) : {};
-                if (hasRecoveryOfferEmail(data)) return false;
+                if (hasRecoveryOfferEmail(data) || recoveryEmailIsInFlight(data)) return false;
 
                 tx.set(
                         userRef,
@@ -236,7 +246,7 @@ async function claimRecoveryOfferEmailOnce(userRef: FirebaseFirestore.DocumentRe
                                 offers: {
                                         ...(data?.offers && typeof data.offers === "object" && !Array.isArray(data.offers) ? data.offers : {}),
                                         exitOffer40RecoveryEmailSessionId: sessionId,
-                                        exitOffer40RecoveryEmailSentAt: admin.firestore.FieldValue.serverTimestamp(),
+                                        exitOffer40RecoveryEmailSendingAt: Date.now(),
                                 },
                         },
                         { merge: true },
@@ -244,6 +254,26 @@ async function claimRecoveryOfferEmailOnce(userRef: FirebaseFirestore.DocumentRe
 
                 return true;
         });
+}
+
+async function markRecoveryOfferEmailSent(userRef: FirebaseFirestore.DocumentReference, sessionId: string) {
+        await userRef.set(
+                {
+                        offers: {
+                                exitOffer40RecoveryEmailSessionId: sessionId,
+                                exitOffer40RecoveryEmailSentAt: admin.firestore.FieldValue.serverTimestamp(),
+                                exitOffer40RecoveryEmailSendingAt: null,
+                        },
+                },
+                { merge: true },
+        );
+}
+
+async function clearRecoveryOfferEmailClaim(userRef: FirebaseFirestore.DocumentReference) {
+        await userRef.set(
+                { offers: { exitOffer40RecoveryEmailSendingAt: null } },
+                { merge: true },
+        );
 }
 
 function buildRecoveryOfferHtml(args: { name?: string | null; linkUrl: string; unsubUrl: string }) {
@@ -310,16 +340,22 @@ async function sendRecoveryOfferEmail(params: { uid: string; sessionId: string; 
         const linkUrl = makeRecoveryCheckoutUrl({ uid: params.uid, kind: "exit40" });
         const unsubUrl = makeUnsubUrl({ uid: params.uid, kind: "journey" });
         const resend = getResend();
-        const result = await resend.emails.send({
-                from,
-                to: params.email,
-                subject: "Open for a surprise",
-                text: buildRecoveryOfferText({ name: params.name, linkUrl, unsubUrl }),
-                html: buildRecoveryOfferHtml({ name: params.name, linkUrl, unsubUrl }),
-        });
+        try {
+                const result = await resend.emails.send({
+                        from,
+                        to: params.email,
+                        subject: "Open for a surprise",
+                        text: buildRecoveryOfferText({ name: params.name, linkUrl, unsubUrl }),
+                        html: buildRecoveryOfferHtml({ name: params.name, linkUrl, unsubUrl }),
+                });
 
-        if (result && typeof result === "object" && "error" in result && (result as any).error) {
-                throw new Error(((result as any).error?.message as string) || "Recovery email send failed");
+                if (result && typeof result === "object" && "error" in result && (result as any).error) {
+                        throw new Error(((result as any).error?.message as string) || "Recovery email send failed");
+                }
+                await markRecoveryOfferEmailSent(userRef, params.sessionId);
+        } catch (error) {
+                await clearRecoveryOfferEmailClaim(userRef);
+                throw error;
         }
 }
 
@@ -998,7 +1034,6 @@ export async function POST(req: NextRequest) {
                 const plan = cleanStr((session.metadata as any)?.plan, 64);
 
                 if (firebaseUid && plan === "pro") {
-                    try {
                         const authUser = await admin.auth().getUser(firebaseUid);
                         const email = authUser.email?.trim() || "";
                         if (email) {
@@ -1009,9 +1044,6 @@ export async function POST(req: NextRequest) {
                                 name: authUser.displayName || null,
                             });
                         }
-                    } catch (err) {
-                        console.error("[stripe-webhook] recovery email failed", err);
-                    }
                 }
                 break;
             }

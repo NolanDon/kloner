@@ -45,6 +45,13 @@ jest.mock("../../_lib/auth", () => ({
                 };
             },
         }),
+        runTransaction: async (handler: any) => {
+            const tx = {
+                get: async (ref: any) => ref.get(),
+                set: (ref: any, data: any, opts?: { merge?: boolean }) => ref.set(data, opts),
+            };
+            return handler(tx);
+        },
     }),
     getAdminAuth: () => ({
         getUser: async (uid: string) => ({
