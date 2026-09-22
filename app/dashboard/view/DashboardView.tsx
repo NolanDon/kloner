@@ -5518,17 +5518,9 @@ export default function PreviewPage(): JSX.Element {
                 })();
 
                 if (!alreadyHandled) {
-                    if (handledKey) {
-                        try {
-                            window.sessionStorage.setItem(handledKey, "1");
-                        } catch {
-                            // ignore
-                        }
-                    }
-
                     const csrf = await ensureSessionAndCsrf().catch(() => null);
                     if (!cancelled) {
-                        await fetch("/api/billing/send-recovery-offer", {
+                        const recoveryResponse = await fetch("/api/billing/send-recovery-offer", {
                             method: "POST",
                             headers: {
                                 "content-type": "application/json",
@@ -5538,6 +5530,13 @@ export default function PreviewPage(): JSX.Element {
                             cache: "no-store",
                             body: JSON.stringify({ immediate: true }),
                         }).catch(() => null);
+                        if (recoveryResponse?.ok && handledKey) {
+                            try {
+                                window.sessionStorage.setItem(handledKey, "1");
+                            } catch {
+                                // ignore
+                            }
+                        }
                     }
                 }
 

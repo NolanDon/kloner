@@ -362,6 +362,10 @@ async function handler({ req, uid }: { req: NextRequest; uid: string }) {
 
     const cancelUrl = `${appOrigin}/dashboard/view?billing=cancelled&recovery=1`;
 
+    // Expire abandoned sessions promptly so close-the-tab abandonments reach the
+    // recovery-email webhook instead of waiting for Stripe's default 24 hours.
+    const checkoutExpiresAt = Math.floor(Date.now() / 1000) + 31 * 60;
+
     // ---- exit-offer discount resolution ----
     const exitOfferRequested = isValidExitOfferPayload({ offer, offerEndsAt });
     const exitOfferGranted = exitOfferRequested ? await claimExitOfferOnce(userRef) : false;
@@ -432,6 +436,7 @@ async function handler({ req, uid }: { req: NextRequest; uid: string }) {
             line_items: [{ price: priceId, quantity: 1 }],
             success_url: successUrl,
             cancel_url: cancelUrl,
+            expires_at: checkoutExpiresAt,
             metadata: baseMeta,
             // Collect and save a payment method during trials so future invoices
             // can be attempted off-session. Leave 3DS decisions to Stripe/Radar

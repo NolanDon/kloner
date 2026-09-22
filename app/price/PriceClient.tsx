@@ -254,16 +254,10 @@ export default function PriceClient(): JSX.Element {
                     return;
                 }
 
-                try {
-                    window.sessionStorage.setItem(handledKey, "1");
-                } catch {
-                    // ignore
-                }
-
                 const csrf = await ensureCsrf();
                 if (cancelled) return;
 
-                await fetch("/api/billing/send-recovery-offer", {
+                const recoveryResponse = await fetch("/api/billing/send-recovery-offer", {
                     method: "POST",
                     headers: {
                         "content-type": "application/json",
@@ -273,6 +267,14 @@ export default function PriceClient(): JSX.Element {
                     cache: "no-store",
                     body: JSON.stringify({ immediate: true }),
                 }).catch(() => null);
+
+                if (recoveryResponse?.ok) {
+                    try {
+                        window.sessionStorage.setItem(handledKey, "1");
+                    } catch {
+                        // ignore
+                    }
+                }
 
                 url.searchParams.delete("billing");
                 url.searchParams.delete("recovery");
