@@ -96,7 +96,7 @@ function FooterLink({ item }: { item: LinkItem }) {
   );
 }
 
-export default function Footer() {
+export default function Footer({ showSeoLinks = true }: { showSeoLinks?: boolean } = {}) {
   return (
     <footer className="relative bg-white text-neutral-800 rounded-t-[3rem] overflow-hidden">
       <div className="container-soft pt-10 md:pt-16 pb-8">
@@ -202,7 +202,7 @@ export default function Footer() {
         </div>
 
         {/* Crawlable internal links for SEO, styled to match the footer */}
-        <SeoInternalLinks variant="footer" />
+        {showSeoLinks ? <SeoInternalLinks variant="footer" /> : null}
 
         <div className="mt-8 md:mt-10 text-xs text-neutral-500">
           © {new Date().getFullYear()} Kloner, Inc. All rights reserved.

@@ -1,7 +1,7 @@
 import Image from "next/image";
 import HeroContent from "./HeroContent";
 
-export default function Hero() {
+export default function Hero({ eyebrow, heading, subhead }: { eyebrow?: string; heading?: React.ReactNode; subhead?: string } = {}) {
   return (
     <section
       className="relative bg-white overflow-hidden"
@@ -29,7 +29,7 @@ export default function Hero() {
             <div className="absolute inset-0 bg-gradient-to-b from-black/10 via-black/30 to-black/10" />
           </div>
 
-          <HeroContent displayClassName="font-black tracking-tight" />
+          <HeroContent displayClassName="font-black tracking-tight" eyebrow={eyebrow} heading={heading} subhead={subhead} />
         </div>
       </div>
     </section>

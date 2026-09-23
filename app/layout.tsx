@@ -6,6 +6,13 @@ import ChatWidgetProvider from "@/components/support/ChatWidgetProvider";
 import AffiliateRefCapture from "@/components/AffiliateRefCapture";
 import { Suspense } from "react";
 import StyledJsxRegistry from "./registry";
+import { Inter } from "next/font/google";
+
+const inter = Inter({
+  subsets: ["latin"],
+  variable: "--font-inter",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: {
@@ -53,7 +60,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" style={{ ["--font-inter" as string]: "ui-sans-serif, system-ui, sans-serif" }}>
+    <html lang="en" className={inter.variable}>
       <body className="bg-white scroll-smooth">
         <StyledJsxRegistry>
           <AuthProviderServer>

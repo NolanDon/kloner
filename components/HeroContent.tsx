@@ -9,8 +9,14 @@ import { getPublicHttpUrlRejectionReason, stripProtocol, validateAndNormalizePub
 
 export default function HeroContent({
   displayClassName,
+  eyebrow,
+  heading,
+  subhead,
 }: {
   displayClassName: string;
+  eyebrow?: string;
+  heading?: React.ReactNode;
+  subhead?: string;
 }) {
   const router = useRouter();
   const [url, setUrl] = useState("");
@@ -79,16 +85,22 @@ export default function HeroContent({
         transition={{ duration: 0.8 }}
         className="w-full max-w-[720px] text-center"
       >
+        {eyebrow ? <div className="mb-5 text-xs font-semibold uppercase tracking-[0.24em] text-white/75">{eyebrow}</div> : null}
         <h1
-          className={`${displayClassName} leading-[0.95] font-bold tracking-tight text-white`}
-          style={{ fontSize: "clamp(3rem, min(12vw, 8.8vh), 5.5rem)" }}
+          className={`${displayClassName} whitespace-nowrap leading-[0.95] font-bold tracking-tight text-white`}
+          style={{
+            fontSize: "clamp(2.25rem, min(12vw, 8.8vh), 5.5rem)",
+            fontFamily: "var(--font-inter), Inter, sans-serif",
+            WebkitFontSmoothing: "antialiased",
+            MozOsxFontSmoothing: "grayscale",
+            textRendering: "optimizeLegibility",
+          }}
         >
-          AI Website Cloner: <br /> Clone a Website from a URL.
+          {heading ?? <>AI Website Cloner</>}
         </h1>
 
         <p className="mt-[clamp(0.75rem,2.2vh,1.5rem)] text-white/90 text-base sm:text-lg md:text-xl max-w-xl mx-auto font-medium">
-          Paste a URL to clone a website, preview the editable result,
-          customize it with AI, and deploy.
+          {subhead ?? "Paste a URL to clone a website, preview the editable result, customize it with AI, and deploy."}
         </p>
 
         <form onSubmit={onSubmit} className="mt-[clamp(1rem,3.2vh,2.5rem)] w-full max-w-2xl mx-auto space-y-3">

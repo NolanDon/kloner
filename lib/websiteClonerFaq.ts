@@ -1,0 +1,16 @@
+export type WebsiteClonerFaqItem = { q: string; a: string };
+
+export const WEBSITE_CLONER_FAQ: WebsiteClonerFaqItem[] = [
+  { q: "What is a website cloner?", a: "A website cloner turns a supported public webpage into an editable project starting point. Kloner captures the available structure, styling, and assets so you can review and make the result your own." },
+  { q: "How do I clone a website from a URL with Kloner?", a: "Paste a supported public URL into Kloner, start the preview, review the generated website clone, then customize the copy, visuals, and sections before publishing." },
+  { q: "Is Kloner free to try?", a: "Kloner offers limited free preview access for supported public websites. Editing and publishing depend on your account and current plan; the pricing page has the latest details." },
+  { q: "Is it legal to clone a website?", a: "Use Kloner only with websites and content you own or have permission to capture and reuse. You are responsible for respecting copyright, trademarks, privacy, terms of service, and other rights before publishing a clone." },
+  { q: "What can I do with a cloned website?", a: "Use a website clone as a starting point for a redesign, migration, landing page, learning exercise, or client mockup. Replace the original branding and content, then adapt the project to your own goal." },
+  { q: "How accurate is the clone?", a: "Kloner aims to preserve the supported page structure and visual direction, but accuracy depends on the source site. Review the preview and expect to refine content, responsive details, and interactions yourself." },
+  { q: "What are the limitations?", a: "A website cloner cannot reliably reproduce everything behind login walls, private content, server-only behavior, or heavily JavaScript-driven applications. Some forms, payments, integrations, and dynamic states need separate setup." },
+  { q: "How is Kloner different from tools like HTTrack or copying code manually?", a: "HTTrack and manual copying focus on downloading or reproducing files. Kloner is built around an editable preview workflow: start from a URL, review the structure, change it, and prepare the result for deployment." },
+  { q: "Do I need coding skills to use it?", a: "No. You can start by pasting a URL and use the preview workflow without writing code. Coding knowledge is useful when you need deeper changes, custom integrations, or production-specific configuration." },
+  { q: "Can I edit the cloned site after cloning?", a: "Yes. The point of the editable website clone is to give you a starting point you can refine. Change text, colors, images, sections, and other supported project details before you publish." },
+  { q: "Where can I publish or host the finished site?", a: "You can prepare the finished project for the available publishing integrations, including Vercel. Choose hosting that fits your project and connect your own domain when your setup is ready." },
+  { q: "Who uses Kloner?", a: "Freelancers, agencies, students, and founders use website cloning workflows to explore ideas, create client mockups, learn from layouts, test landing pages, and move faster from reference URL to editable project." },
+];

@@ -41,6 +41,11 @@ const nextConfig = {
     async redirects() {
         return [
             {
+                source: '/blog/website-cloner',
+                destination: '/website-cloner',
+                permanent: true,
+            },
+            {
                 source: '/tools/gamertag-generator',
                 destination: '/tools/username-generator',
                 permanent: true,
@@ -73,6 +78,12 @@ const nextConfig = {
         ];
     },
     webpack: (config, { isServer }) => {
+        // Polling keeps Fast Refresh reliable when the repo is mounted through WSL.
+        config.watchOptions = {
+            ...config.watchOptions,
+            poll: 1000,
+            aggregateTimeout: 200,
+        };
         if (isServer) {
             // Keep server chunks under the default `chunks/` folder.
             // Setting this to `[id].js` causes the server webpack runtime to

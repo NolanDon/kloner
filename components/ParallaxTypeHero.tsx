@@ -4,7 +4,10 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { motion, useMotionValueEvent, useScroll, useTransform, useSpring } from 'framer-motion';
 import Image from 'next/image';
-import { useUrlOverlay } from './UrlOverlayProvider';
+import { ArrowRightSquare } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { auth } from '@/lib/firebase';
+import { getPublicHttpUrlRejectionReason, stripProtocol, validateAndNormalizePublicHttpUrl } from '@/src/lib/publicHttpUrl';
 
 const clamp = (n: number, min: number, max: number) => Math.min(Math.max(n, min), max);
 const easeOutCubic = (t: number) => 1 - Math.pow(1 - t, 3);
@@ -16,6 +19,7 @@ type Props = {
     vignette?: number;
     typingStart?: number;
     typingEnd?: number;
+    showUrlInput?: boolean;
 };
 
 export default function ParallaxTypeHero({
@@ -25,9 +29,12 @@ export default function ParallaxTypeHero({
     vignette = 0.35,
     typingStart = -0.005,
     typingEnd = 0.10,
+    showUrlInput = false,
 }: Props) {
     const sectionRef = useRef<HTMLDivElement>(null);
-    const { openUrlOverlay } = useUrlOverlay();
+    const router = useRouter();
+    const [url, setUrl] = useState('');
+    const [error, setError] = useState<string | null>(null);
     const { scrollYProgress } = useScroll({
         target: sectionRef,
         offset: ['start start', 'end start'],
@@ -99,29 +106,53 @@ export default function ParallaxTypeHero({
 
                     <motion.div initial={{ opacity: 0, y: 8 }} style={{ opacity: subOpacity }}>
                         <div className="mt-5 md:mt-6">
-                            <div
-                                onClick={openUrlOverlay}
-                                className="group relative inline-flex items-center gap-3 whitespace-nowrap h-12 px-7 rounded-full shrink-0 text-white text-[15px] bg-accent hover:bg-accent2 shadow-[0_6px_18px_rgba(0,0,0,0.25)] hover:shadow-[0_14px_40px_rgba(0,0,0,0.35)] transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
-                                aria-label={subcopy}
-                            >
-                                <span
-                                    className="pointer-events-none absolute inset-0 rounded-full before:content-[''] before:absolute before:inset-0 before:rounded-full before:bg-white/10 before:opacity-0 before:blur-md before:transition-opacity before:duration-200 group-hover:before:opacity-100"
-                                />
-                                <span className="relative px-2 py-5">{subcopy}</span>
-                                <svg
-                                    viewBox="0 0 24 24"
-                                    className="relative h-4 w-4 transition-transform duration-200 group-hover:translate-x-1"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    strokeWidth="2.2"
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    aria-hidden
+                            {showUrlInput ? (
+                                <form
+                                    onSubmit={(event) => {
+                                        event.preventDefault();
+                                        const normalized = validateAndNormalizePublicHttpUrl(stripProtocol(url));
+                                        if (!normalized) {
+                                            setError(getPublicHttpUrlRejectionReason(stripProtocol(url)) || 'Please enter a valid public http(s) URL.');
+                                            return;
+                                        }
+                                        setError(null);
+                                        if (auth.currentUser) {
+                                            router.replace(`/dashboard/view?u=${encodeURIComponent(normalized)}&focusUrl=1`);
+                                        } else {
+                                            try { localStorage.setItem('kloner.pendingUrl', normalized); } catch { /* ignore */ }
+                                            router.push(`/login?mode=signup&u=${encodeURIComponent(normalized)}`);
+                                        }
+                                    }}
+                                    className="w-full max-w-2xl space-y-3"
                                 >
-                                    <path d="M6 12h12" />
-                                    <path d="M12 6l6 6-6 6" />
-                                </svg>
-                            </div>
+                                    <div className="rounded-full bg-white/95 p-2 shadow-[0_20px_50px_rgba(0,0,0,0.3)] ring-1 ring-white/20 backdrop-blur-md">
+                                        <div className="flex items-stretch gap-2">
+                                            <div className="flex min-h-[48px] flex-1 items-center rounded-full px-4 sm:px-6">
+                                                <span className="hidden sm:inline text-neutral-400 text-lg font-medium mr-1">https://</span>
+                                                <input
+                                                    value={url}
+                                                    onChange={(event) => { const value = stripProtocol(event.target.value); setUrl(value); setError(value && !validateAndNormalizePublicHttpUrl(value) ? 'Please enter a valid public http(s) URL.' : null); }}
+                                                    placeholder="example.com"
+                                                    inputMode="url"
+                                                    autoCapitalize="none"
+                                                    autoComplete="off"
+                                                    aria-label="Website URL"
+                                                    className="w-full bg-transparent outline-none text-neutral-700 text-base sm:text-lg placeholder:text-neutral-400 font-medium"
+                                                />
+                                            </div>
+                                            <button type="submit" disabled={!url || !!error} className="inline-flex min-h-[48px] w-12 shrink-0 items-center justify-center rounded-full bg-[#FF8D21] text-white transition-all hover:bg-[#D96E11] disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto sm:px-5" aria-label="Clone website from URL">
+                                                <ArrowRightSquare className="h-5 w-5 sm:hidden" aria-hidden />
+                                                <span className="hidden text-sm sm:inline sm:text-base">Clone</span>
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div className="text-xs sm:text-sm text-white font-medium" aria-live="polite">{error ?? 'Clone a public website • Preview the result • Customize and launch'}</div>
+                                </form>
+                            ) : (
+                                <div onClick={() => router.push('/login?mode=signup')} className="group relative inline-flex items-center gap-3 whitespace-nowrap h-12 px-7 rounded-full shrink-0 text-white text-[15px] bg-accent hover:bg-accent2 shadow-[0_6px_18px_rgba(0,0,0,0.25)] hover:shadow-[0_14px_40px_rgba(0,0,0,0.35)] transition-all duration-200" aria-label={subcopy}>
+                                    <span className="relative px-2 py-5">{subcopy}</span>
+                                </div>
+                            )}
                         </div>
                     </motion.div>
                 </div>

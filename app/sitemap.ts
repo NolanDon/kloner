@@ -7,6 +7,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
   const now = new Date();
 
   const staticRoutes: MetadataRoute.Sitemap = [
+    { url: `${site}/website-cloner`, lastModified: now, priority: 0.95 },
     { url: `${site}/`, lastModified: now, priority: 1.0 },
     { url: `${site}/tools`, lastModified: now, priority: 0.9 },
     { url: `${site}/price`, lastModified: now, priority: 0.8 },
