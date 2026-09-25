@@ -1,3 +1,5 @@
+import { ADDITIONAL_BLOG_POSTS } from "./blogAdditional";
+
 export type BlogPost = {
   slug: string;
   title: string;
@@ -71,6 +73,7 @@ Want to ship faster? [Create an account](/login?mode=signup) or jump into the [d
 }
 
 export const BLOG_POSTS: BlogPost[] = [
+  ...ADDITIONAL_BLOG_POSTS,
   {
     slug: "ai-website-cloning-to-production",
     title: "AI Website Cloning: From Idea to Production",
