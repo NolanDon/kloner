@@ -4581,6 +4581,18 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
         [saveChatNow],
     );
 
+    const updateWorkspaceRestoreState = useCallback((messageId: string, workspaceRestore: WorkspaceRestoreState) => {
+        if (!messageId) return;
+        setMessages((prev) => {
+            const next = prev.map((item) => item.id === messageId ? { ...item, workspaceRestore } : item);
+            // Persist restore-state transitions immediately. The debounced chat
+            // save can otherwise lose the Reapply state during a rerender or
+            // before the user navigates away from the editor.
+            void saveChatNow(next);
+            return next;
+        });
+    }, [saveChatNow]);
+
     const copyTextToClipboard = useCallback(async (text: string): Promise<boolean> => {
         const value = String(text || "").trim();
         if (!value) return false;
@@ -7512,7 +7524,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                 state={message.workspaceRestore}
                                 disabled={isLoading || Boolean(activeEditPlanJob && !isEditPlanJobTerminalStatus(String(activeEditPlanJob.status)))}
                                 restore={restoreV3Change}
-                                onChange={(state) => setMessages((prev) => prev.map((item) => item.id === message.id ? { ...item, workspaceRestore: state } : item))}
+                                onChange={(state) => updateWorkspaceRestoreState(message.id, state)}
                             /> : null}
                             {message.role === "assistant" && message.workspaceRepairPrompt ? (
                                 <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50/80 p-3">
