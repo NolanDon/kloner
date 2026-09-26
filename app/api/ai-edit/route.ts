@@ -35,7 +35,7 @@ const geminiClient = GEMINI_API_KEY ? new GoogleGenerativeAI(GEMINI_API_KEY) : n
 // Choose a stable model you actually have access to.
 // If you were using "gemini-3-pro-preview" and it causes instability, switch to a stable tier.
 // Keep your original string if you need it.
-const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-3-pro-preview";
+const GEMINI_MODEL = "gemini-3.6-flash";
 
 /* =========================
    Types

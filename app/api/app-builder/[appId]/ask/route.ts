@@ -4,18 +4,13 @@ import { getAdminDb } from "../../../_lib/auth";
 import { requireSessionAndMaybeCsrf } from "../../../_lib/route-guard";
 import { assertAppBuilderScope } from "../../../_lib/appBuilderScope";
 import { buildSupportDocsContext, buildSupportPolicyContext, loadSupportDocs } from "@/src/lib/supportRag";
-import { resolveGenerateContentModels } from "@/src/lib/geminiModels";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const geminiApiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || "";
 const geminiClient = geminiApiKey ? new GoogleGenerativeAI(geminiApiKey) : null;
-const configuredSupportModel = process.env.GEMINI_CHAT_MODEL?.trim() || "";
-const preferredSupportModel = configuredSupportModel && configuredSupportModel !== "gemini-1.5-flash"
-    ? configuredSupportModel
-    : "gemini-2.5-flash";
-const supportModelFallbacks = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-pro", "gemini-pro"];
+const APP_BUILDER_ASK_MODEL = "gemini-3.6-flash";
 
 function buildAskPrompt(params: {
     question: string;
@@ -79,37 +74,14 @@ export async function POST(req: NextRequest, { params }: any) {
             currentFileContent,
         });
 
-        const candidateModels = await resolveGenerateContentModels({
-            apiKey: geminiApiKey,
-            preferred: [preferredSupportModel, "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-pro", "gemini-pro"],
-            fallback: supportModelFallbacks,
-        });
-
         try {
-            let lastError: unknown = null;
-            for (const modelName of candidateModels) {
-                if (!modelName) continue;
-                try {
-                    const model = geminiClient.getGenerativeModel({
-                        model: modelName,
-                        generationConfig: {
-                            temperature: 0.2,
-                            maxOutputTokens: 1024,
-                        },
-                    });
-                    const result = await model.generateContent(prompt);
-                    const answer = result.response.text().trim();
-                    return NextResponse.json({ ok: true, route: "ask", response: answer, hasContext: Boolean(contextBlob), model: modelName });
-                } catch (err) {
-                    lastError = err;
-                    const msg = String((err as any)?.message || err || "").toLowerCase();
-                    if (!msg.includes("not found") && !msg.includes("not supported") && !msg.includes("404")) {
-                        throw err;
-                    }
-                }
-            }
-
-            throw lastError || new Error("No supported Gemini generateContent model available");
+            const model = geminiClient.getGenerativeModel({
+                model: APP_BUILDER_ASK_MODEL,
+                generationConfig: { temperature: 0.2, maxOutputTokens: 1024 },
+            });
+            const result = await model.generateContent(prompt);
+            const answer = result.response.text().trim();
+            return NextResponse.json({ ok: true, route: "ask", response: answer, hasContext: Boolean(contextBlob), model: APP_BUILDER_ASK_MODEL });
         } catch (error: any) {
             const message = String(error?.message || "The question could not be answered right now.");
             return NextResponse.json({ ok: false, error: message, route: "ask" }, { status: 500 });

@@ -6722,7 +6722,6 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                     needsMoreContext: Boolean(rawPlan.needsMoreContext || rawPlan.result?.needsMoreContext || rawPlan.job?.result?.needsMoreContext),
                 });
                 const planRequestId = chargeDecision.requestId;
-                const creditCost = chargeDecision.creditCost;
                 const hasChargeableWork = chargeDecision.hasChargeableWork;
 
                 if (chargeDecision.shouldConsume) {
@@ -6730,7 +6729,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                     const consumeRes = await fetch("/api/credits/ai-edits/consume", {
                         method: "POST",
                         headers: headers2,
-                        body: JSON.stringify({ requestId: planRequestId, cost: creditCost }),
+                        body: JSON.stringify({ requestId: planRequestId }),
                     });
                     const consumeJson = await consumeRes.json().catch(() => ({} as any));
                     if (!consumeRes.ok || consumeJson?.ok === false) {
@@ -6813,7 +6812,6 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                 needsMoreContext: Boolean(rawPlan.needsMoreContext || rawPlan.result?.needsMoreContext || rawPlan.job?.result?.needsMoreContext),
             });
             const planRequestId = chargeDecision.requestId;
-            const creditCost = chargeDecision.creditCost;
             const planOps = Array.isArray(rawPlan?.ops)
                 ? rawPlan.ops.filter((op): op is AppEmbeddingEditPlanOp => Boolean(op && typeof op.path === "string" && op.path.trim()))
                 : [];
@@ -6824,7 +6822,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                 const consumeRes = await fetch("/api/credits/ai-edits/consume", {
                     method: "POST",
                     headers: headers2,
-                    body: JSON.stringify({ requestId: planRequestId, cost: creditCost }),
+                    body: JSON.stringify({ requestId: planRequestId }),
                 });
                 const consumeJson = await consumeRes.json().catch(() => ({} as any));
                 if (!consumeRes.ok || consumeJson?.ok === false) {

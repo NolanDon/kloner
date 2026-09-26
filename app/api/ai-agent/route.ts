@@ -18,6 +18,7 @@ export const dynamic = "force-dynamic";
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 const AI_AGENT_INPUT_TOKEN_CAP = parsePositiveNumber(process.env.AI_AGENT_INPUT_TOKEN_CAP, 12000);
 const AI_AGENT_OUTPUT_TOKEN_CAP = parsePositiveNumber(process.env.AI_AGENT_OUTPUT_TOKEN_CAP, 4096);
+const AI_AGENT_TOKENS_PER_CREDIT = parsePositiveNumber(process.env.AI_AGENT_TOKENS_PER_CREDIT, 4000);
 const AI_AGENT_CONTEXT_CHAR_CAP = parsePositiveNumber(process.env.AI_AGENT_CONTEXT_CHAR_CAP, 36_000);
 const GEMINI_INPUT_COST_PER_1M_TOKENS_USD = parsePositiveNumber(process.env.GEMINI_INPUT_COST_PER_1M_TOKENS_USD, 0);
 const GEMINI_OUTPUT_COST_PER_1M_TOKENS_USD = parsePositiveNumber(process.env.GEMINI_OUTPUT_COST_PER_1M_TOKENS_USD, 0);
@@ -76,6 +77,12 @@ function estimateAiRequestCostUsd(inputTokens: number, outputTokens: number): nu
     const inputCost = (inputTokens / 1_000_000) * GEMINI_INPUT_COST_PER_1M_TOKENS_USD;
     const outputCost = (outputTokens / 1_000_000) * GEMINI_OUTPUT_COST_PER_1M_TOKENS_USD;
     return Number((inputCost + outputCost).toFixed(6));
+}
+
+function calculateAiAgentCreditCost(inputTokens: number, outputTokens: number): number {
+    // Keep a one-credit minimum, while ensuring requests that previously cost
+    // two or more credits receive at least a 50% usage-credit reduction.
+    return Math.max(1, Math.floor((inputTokens + outputTokens) / AI_AGENT_TOKENS_PER_CREDIT));
 }
 
 function summarizeAiUsage(usageMetadata: any, estimatedInputTokens: number, estimatedOutputTokens: number): AiTokenUsage {
@@ -1406,7 +1413,7 @@ export async function POST(req: NextRequest) {
 
             if (requestMode === "quick_question" || chatIntent.kind === "quick-question") {
                 const model = genAI.getGenerativeModel({
-                    model: process.env.GEMINI_MODEL || "gemini-3-pro-preview",
+                    model: "gemini-3.6-flash",
                     safetySettings: [
                         { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
                         { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
@@ -1534,7 +1541,7 @@ export async function POST(req: NextRequest) {
             }
             const filePaths = Object.keys(allFiles);
             const plannerModel = genAI.getGenerativeModel({
-                model: process.env.GEMINI_MODEL || "gemini-3-pro-preview",
+                model: "gemini-3.6-flash",
                 safetySettings: [
                     { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
                     { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
@@ -1641,7 +1648,7 @@ export async function POST(req: NextRequest) {
             aiSlackRequestDigest = requestId;
 
             const model = genAI.getGenerativeModel({
-                model: process.env.GEMINI_MODEL || "gemini-3-pro-preview",
+                model: "gemini-3.6-flash",
                 safetySettings: [
                     { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
                     { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
@@ -2104,7 +2111,7 @@ export async function POST(req: NextRequest) {
                         estimatedCostUsd: aiRequestUsage.estimatedCostUsd,
                         inputTokenCap: AI_AGENT_INPUT_TOKEN_CAP,
                         outputTokenCap: AI_AGENT_OUTPUT_TOKEN_CAP,
-                        model: process.env.GEMINI_MODEL || "gemini-3-pro-preview",
+                        model: "gemini-3.6-flash",
                         searchDebug,
                         selectedFilesPreview: aiSlackSelectedFilesPreview,
                         fileContextPreview: aiSlackFileContextPreview,
@@ -2161,7 +2168,8 @@ export async function POST(req: NextRequest) {
                     outputTokens: aiRequestUsage.outputTokens,
                     totalTokens: aiRequestUsage.totalTokens,
                     estimatedCostUsd: aiRequestUsage.estimatedCostUsd,
-                    creditCost: Math.max(1, Math.ceil((aiRequestUsage.inputTokens + aiRequestUsage.outputTokens) / 2000)),
+                    creditCost: calculateAiAgentCreditCost(aiRequestUsage.inputTokens, aiRequestUsage.outputTokens),
+                    tokensPerCredit: AI_AGENT_TOKENS_PER_CREDIT,
                     attempts: aiRequestUsage.attempts,
                     inputTokenCap: AI_AGENT_INPUT_TOKEN_CAP,
                     outputTokenCap: AI_AGENT_OUTPUT_TOKEN_CAP,
@@ -2187,7 +2195,7 @@ export async function POST(req: NextRequest) {
                 build: lastBuild,
                 restorePointId: lastRestorePointId,
                 requestId,
-                creditCost: Math.max(1, Math.ceil((aiRequestUsage.inputTokens + aiRequestUsage.outputTokens) / 2000)),
+                creditCost: calculateAiAgentCreditCost(aiRequestUsage.inputTokens, aiRequestUsage.outputTokens),
             });
         } catch (error) {
             const classified = classifyAiProviderError(error);
@@ -2216,7 +2224,7 @@ export async function POST(req: NextRequest) {
                     estimatedCostUsd: aiRequestUsage.estimatedCostUsd,
                     inputTokenCap: AI_AGENT_INPUT_TOKEN_CAP,
                     outputTokenCap: AI_AGENT_OUTPUT_TOKEN_CAP,
-                    model: process.env.GEMINI_MODEL || "gemini-3-pro-preview",
+                        model: "gemini-3.6-flash",
                     providerMessage: classified.providerMessage,
                     code: classified.code,
                     providerErrorName: classified.providerErrorName,

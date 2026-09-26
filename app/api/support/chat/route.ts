@@ -9,27 +9,8 @@ import { buildSupportPolicyContext } from "@/src/lib/supportRag";
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || "";
 const geminiClient = GEMINI_API_KEY ? new GoogleGenerativeAI(GEMINI_API_KEY) : null;
 
-// Using flash model for cost efficiency while maintaining good performance
-const GEMINI_CHAT_MODEL = process.env.GEMINI_CHAT_MODEL?.trim() || "";
-const PRIMARY_CHAT_MODEL = GEMINI_CHAT_MODEL && GEMINI_CHAT_MODEL !== "gemini-1.5-flash" ? GEMINI_CHAT_MODEL : "gemini-2.5-flash";
-const GEMINI_EMBEDDING_MODEL = "models/embedding-001";
-const MODEL_DISCOVERY_URL = "https://generativelanguage.googleapis.com/v1beta/models";
-const MODEL_CACHE_TTL_MS = 10 * 60 * 1000;
-const CHAT_MODEL_PREFERENCES = [
-    PRIMARY_CHAT_MODEL,
-    "gemini-2.5-flash",
-    "gemini-2.0-flash",
-    "gemini-2.0-flash-lite",
-    "gemini-1.5-pro",
-    "gemini-pro",
-];
-const CHAT_MODEL_EXCLUDE = [
-    "gemini-2.0-flash",
-    "gemini-2.0-flash-lite",
-];
-
-let cachedResolvedChatModels: string[] = [];
-let cachedResolvedChatModelsAt = 0;
+const GEMINI_CHAT_MODEL = "gemini-3.6-flash";
+const GEMINI_EMBEDDING_MODEL = "gemini-embedding-2";
 
 type Sender = "user" | "ai" | "agent" | "system";
 
@@ -56,26 +37,6 @@ type SupportDoc = {
     embedding?: number[];
 };
 
-type GeminiModelInfo = {
-    name?: string;
-    supportedGenerationMethods?: string[];
-};
-
-function normalizeModelName(name: string): string {
-    return name.replace(/^models\//, "");
-}
-
-function isModelNotFoundError(err: unknown): boolean {
-    const status = (err as any)?.status;
-    const msg = String((err as any)?.message ?? "").toLowerCase();
-    return status === 404 || (msg.includes("model") && msg.includes("not found"));
-}
-
-function isModelRetiredError(err: unknown): boolean {
-    const msg = String((err as any)?.message ?? "").toLowerCase();
-    return msg.includes("no longer available") || msg.includes("update your code to use a newer model");
-}
-
 function isGeminiSafetyOrRecitationError(err: unknown): boolean {
     const msg = String((err as any)?.message ?? err ?? "").toLowerCase();
     return (
@@ -85,67 +46,6 @@ function isGeminiSafetyOrRecitationError(err: unknown): boolean {
         msg.includes("policy") ||
         msg.includes("recitation")
     );
-}
-
-function uniqueModels(list: string[]): string[] {
-    return Array.from(new Set(list.filter(Boolean)));
-}
-
-function isExcludedModel(name: string): boolean {
-    return CHAT_MODEL_EXCLUDE.includes(name);
-}
-
-async function listGenerateContentModels(): Promise<string[]> {
-    if (!GEMINI_API_KEY) return [];
-    const url = `${MODEL_DISCOVERY_URL}?key=${encodeURIComponent(GEMINI_API_KEY)}`;
-    const res = await fetch(url, { method: "GET", cache: "no-store" });
-    if (!res.ok) {
-        throw new Error(`ListModels failed: ${res.status} ${res.statusText}`);
-    }
-    const payload = (await res.json()) as { models?: GeminiModelInfo[] };
-    const models = payload.models || [];
-    return models
-        .filter((model) => model.supportedGenerationMethods?.includes("generateContent"))
-        .map((model) => normalizeModelName(model.name || ""))
-        .filter(Boolean);
-}
-
-async function resolveChatModels(forceRefresh = false): Promise<string[]> {
-    const now = Date.now();
-    if (
-        !forceRefresh &&
-        cachedResolvedChatModels.length > 0 &&
-        now - cachedResolvedChatModelsAt < MODEL_CACHE_TTL_MS
-    ) {
-        return cachedResolvedChatModels;
-    }
-
-    try {
-        const available = await listGenerateContentModels();
-        const filteredAvailable = available.filter((name) => !isExcludedModel(name));
-        if (filteredAvailable.length) {
-            const preferred = CHAT_MODEL_PREFERENCES.filter((name) => filteredAvailable.includes(name));
-            const rest = filteredAvailable.filter((name) => !preferred.includes(name));
-            const selected = uniqueModels([...preferred, ...rest]);
-            cachedResolvedChatModels = selected;
-            cachedResolvedChatModelsAt = now;
-            return selected;
-        }
-    } catch (err) {
-        console.warn("[support-chat] Failed to discover models; using fallback", err);
-    }
-
-    cachedResolvedChatModels = uniqueModels(
-        [
-            PRIMARY_CHAT_MODEL,
-            "gemini-2.5-flash",
-            "gemini-2.0-flash",
-            "gemini-1.5-pro",
-            "gemini-pro",
-        ].filter((name) => !isExcludedModel(name)),
-    );
-    cachedResolvedChatModelsAt = now;
-    return cachedResolvedChatModels;
 }
 
 async function generateSupportReply(
@@ -627,40 +527,17 @@ export async function POST(req: NextRequest) {
 
             let aiText = "";
             try {
-                const triedModels = new Set<string>();
-
-                const tryModels = async (candidates: string[]): Promise<boolean> => {
-                    for (const modelName of candidates) {
-                        if (!modelName || triedModels.has(modelName)) continue;
-                        triedModels.add(modelName);
-                        try {
-                            aiText = await generateSupportReply(modelName, systemPrompt, chatHistory);
-                            if (aiText) return true;
-                        } catch (modelErr) {
-                            console.warn(`[support-chat] model failed: ${modelName}`, modelErr);
-
-                            // Safety/recitation blocks are expected sometimes; respond with a friendly message
-                            // instead of leaking provider error strings to the user.
-                            if (isGeminiSafetyOrRecitationError(modelErr)) {
-                                aiText =
-                                    "I can’t help with that request as written. Try rephrasing in your own words " +
-                                    "(e.g. ask for a summary or ask about Kloner features), or contact support.";
-                                return true;
-                            }
-
-                            if (!isModelNotFoundError(modelErr) && !isModelRetiredError(modelErr)) {
-                                throw modelErr;
-                            }
-                        }
+                try {
+                    aiText = await generateSupportReply(GEMINI_CHAT_MODEL, systemPrompt, chatHistory);
+                } catch (modelErr) {
+                    console.warn(`[support-chat] model failed: ${GEMINI_CHAT_MODEL}`, modelErr);
+                    if (isGeminiSafetyOrRecitationError(modelErr)) {
+                        aiText =
+                            "I can’t help with that request as written. Try rephrasing in your own words " +
+                            "(e.g. ask for a summary or ask about Kloner features), or contact support.";
+                    } else {
+                        throw modelErr;
                     }
-                    return false;
-                };
-
-                const primaryCandidates = await resolveChatModels();
-                const primaryOk = await tryModels(primaryCandidates);
-                if (!primaryOk) {
-                    const refreshedCandidates = await resolveChatModels(true);
-                    await tryModels(refreshedCandidates);
                 }
             } catch (err) {
                 console.warn("[support-chat] primary model failed", err);

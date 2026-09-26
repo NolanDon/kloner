@@ -4075,7 +4075,7 @@ export default function AppBuilderEditor({
                     },
                     credentials: "include",
                     cache: "no-store",
-                    body: JSON.stringify({ requestId: rid, cost: 3 }),
+                    body: JSON.stringify({ requestId: rid }),
                 });
 
                 const data = await res.json().catch(() => ({} as any));

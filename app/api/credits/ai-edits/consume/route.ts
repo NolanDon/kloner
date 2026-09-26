@@ -3,11 +3,10 @@ import { assertCsrf, verifySession, getAdminDb } from "@/app/api/_lib/auth";
 import { monthlyLimitFor, type UserTier } from "@/src/lib/credits";
 import { getAuthoritativeUserTier } from "@/app/api/_lib/userTier";
 import { captureCriticalEvent, captureException } from "@/lib/observability";
+import { getAuthoritativeAiEditCreditCost } from "@/src/lib/aiEditCredits";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-const DEFAULT_COST = 3;
 
 function nextPeriodEndUtc(now: Date) {
     const y = now.getUTCFullYear();
@@ -75,7 +74,8 @@ export async function POST(req: NextRequest) {
         const requestIdRaw = typeof body?.requestId === "string" ? body.requestId.trim() : "";
         const requestId = requestIdRaw || "";
 
-        const cost = typeof body?.cost === "number" && Number.isFinite(body.cost) ? Math.max(0, Math.floor(body.cost)) : DEFAULT_COST;
+        // The requestId is only used for idempotency; browser-supplied cost is not trusted.
+        const cost = getAuthoritativeAiEditCreditCost(body?.cost);
         if (!requestId) {
             await captureCriticalEvent({
                 source: "vercel",
