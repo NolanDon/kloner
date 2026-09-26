@@ -28,7 +28,9 @@ export default function WorkspaceRestoreControls({ state, disabled, restore, onC
     };
     return <div className="mt-3 space-y-2">
         <div className="flex flex-wrap items-center gap-2">
-            <button type="button" disabled={busy || disabled} onClick={() => void run()} className="rounded-full border border-orange-200 bg-white px-3 py-1.5 text-xs font-medium text-neutral-700 disabled:opacity-50">
+            <button type="button" disabled={busy || disabled} onClick={() => void run()} className={state.undone
+                ? "rounded-full bg-[#FF8D21] px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
+                : "rounded-full border border-orange-200 bg-white px-3 py-1.5 text-xs font-medium text-neutral-700 disabled:opacity-50"}>
                 {state.undone ? "Reapply" : "Undo"}
             </button>
             {!state.undone && <button type="button" disabled={busy || disabled || state.kept} onClick={() => onChange({ ...state, kept: true })} className="rounded-full bg-[#FF8D21] px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50">{state.kept ? "Kept" : "Keep"}</button>}

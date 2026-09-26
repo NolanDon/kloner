@@ -18,7 +18,7 @@ export function WorkspaceAgentProgress({ text }: { text: string }) {
 }
 
 export function WorkspaceAgentLoader() {
-    return <div role="status" aria-label="Your assistant is working" className="flex w-fit gap-1.5 rounded-full border border-[#FF8D21]/15 bg-orange-50/60 px-4 py-3">
+    return <div role="status" aria-label="Your assistant is working" className="flex w-fit gap-1.5">
         {[0, 1, 2].map((dot) => <span key={dot} className="h-1.5 w-1.5 rounded-full bg-[#FF8D21] motion-safe:animate-bounce" style={{ animationDelay: `${dot * 150}ms` }} />)}
     </div>;
 }
