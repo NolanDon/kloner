@@ -5831,13 +5831,15 @@ export default function NavBar() {
         <div className="relative w-full h-full">
           {showApplyRefreshingOverlay ? (
             <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/85 backdrop-blur-[1px]">
-              <div className="w-full max-w-[320px] rounded-2xl border border-neutral-200 bg-white px-6 py-8 text-center shadow-sm">
-                {renderLiveStatusLine({
-                  uiStage: 'applying_changes',
-                  uiMessage: 'Refreshing app with new changes…',
-                  updatedAt: Date.now(),
-                })}
+              <div className="flex flex-col items-center text-center">
                 <div className="kloner-dots" aria-hidden="true"><span className="kloner-dot" /><span className="kloner-dot" /><span className="kloner-dot" /></div>
+                <div className="mt-3">
+                  {renderLiveStatusLine({
+                    uiStage: 'applying_changes',
+                    uiMessage: 'Refreshing app with new changes…',
+                    updatedAt: Date.now(),
+                  })}
+                </div>
               </div>
             </div>
           ) : null}
