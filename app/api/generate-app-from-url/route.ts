@@ -9,6 +9,7 @@ import { peekUserCredit, consumeUserCredit } from "../_lib/credits-server";
 import { validateAndNormalizePublicHttpUrl, getPublicHttpUrlRejectionReason } from "@/src/lib/publicHttpUrl";
 import { captureCriticalEvent } from "@/lib/observability";
 import { shouldRequireEarlyGenerationPaywall } from "../_lib/earlyGenerationGate";
+import { disableUserForBlockedUrl, getClientIp, isAdultBlockedUrl } from "../_lib/blockedUrlAbuse";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -157,6 +158,9 @@ export async function POST(req: NextRequest) {
     const normalizedUrl = validateAndNormalizePublicHttpUrl(url);
     if (!normalizedUrl) {
       const reason = getPublicHttpUrlRejectionReason(url) || "Invalid URL";
+      if (isAdultBlockedUrl(url)) {
+        await disableUserForBlockedUrl({ uid: decoded.uid, url, ip: getClientIp(req), route: "/api/generate-app-from-url", requestId: req.headers.get("x-request-id") });
+      }
       void reportBlockedUrlAttempt({ uid: decoded.uid, url, reason });
       await reportZipGenerationFailure({
         req,

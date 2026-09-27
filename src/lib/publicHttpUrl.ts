@@ -355,6 +355,67 @@ const BLOCKED_URL_TERM_RE = new RegExp(
   "i",
 );
 
+// Hostnames commonly combine an adult term with another brand word (for
+// example, "pornify" or "createaiporn"). The boundary-based URL matcher
+// above intentionally does not catch those compounds, so screen hostname
+// labels with substring matching as a separate, stricter gate.
+const BLOCKED_ADULT_HOST_TERMS = [
+  "anal",
+  "adult",
+  "blowjob",
+  "boob",
+  "bukkake",
+  "camgirl",
+  "camsex",
+  "chaturbate",
+  "creampie",
+  "dildo",
+  "escort",
+  "fetish",
+  "fisting",
+  "gangbang",
+  "handjob",
+  "hardcore",
+  "hentai",
+  "hookup",
+  "horny",
+  "masturbat",
+  "milf",
+  "nsfw",
+  "nude",
+  "nudes",
+  "onlyfans",
+  "p0rn",
+  "penis",
+  "porn",
+  "pussy",
+  "redtube",
+  "rule34",
+  "semen",
+  "sexcam",
+  "sexchat",
+  "sexdating",
+  "sextoy",
+  "sexual",
+  "shemale",
+  "slut",
+  "smut",
+  "stripchat",
+  "stripper",
+  "threesome",
+  "voyeur",
+  "whore",
+  "xhamster",
+  "xnxx",
+  "xvideo",
+  "xxx",
+  "youporn",
+] as const;
+const BLOCKED_ADULT_HOST_TERM_RE = new RegExp(
+  BLOCKED_ADULT_HOST_TERMS.map((term) => escapeRegexLiteral(term)).join("|"),
+  "i",
+);
+
 function buildUrlTextForScreening(parsed: URL): string {
   const hostname = parsed.hostname.toLowerCase();
   const decodeSafe = (s: string) => { try { return decodeURIComponent(s); } catch { return s; } };
@@ -369,6 +430,15 @@ function getSensitiveUrlTermRejectionReason(parsed: URL): string | null {
   if (!text) return null;
 
   if (BLOCKED_URL_TERM_RE.test(text)) {
+    return "This URL is blocked.";
+  }
+
+  return null;
+}
+
+function getBlockedAdultHostRejectionReason(hostLower: string): string | null {
+  const labels = hostLower.split(".").filter(Boolean);
+  if (labels.some((label) => BLOCKED_ADULT_HOST_TERM_RE.test(label))) {
     return "This URL is blocked.";
   }
 
@@ -457,6 +527,11 @@ export function getPublicHttpUrlRejectionReason(input: string): string | null {
 
     if (isSensitiveFinancialHost(labels)) {
       return "Banking, government, and account-access URLs are blocked.";
+    }
+
+    const blockedAdultHostReason = getBlockedAdultHostRejectionReason(hostLower);
+    if (blockedAdultHostReason) {
+      return blockedAdultHostReason;
     }
 
     const sensitiveUrlReason = getSensitiveUrlTermRejectionReason(parsed);

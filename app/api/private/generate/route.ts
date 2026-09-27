@@ -12,6 +12,7 @@ import {
     consumeUserCredit,
 } from "../../_lib/credits-server";
 import { shouldRequireEarlyGenerationPaywall } from "../../_lib/earlyGenerationGate";
+import { disableUserForBlockedUrl, getClientIp, isAdultBlockedUrl } from "../../_lib/blockedUrlAbuse";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -185,6 +186,15 @@ export async function POST(req: NextRequest) {
 
             const normalizedUrl = typeof url === "string" ? validateAndNormalizePublicHttpUrl(url) : null;
             if (!normalizedUrl) {
+                if (typeof url === "string" && url.trim() && isAdultBlockedUrl(url)) {
+                    await disableUserForBlockedUrl({
+                        uid: decoded.uid,
+                        url,
+                        ip: getClientIp(req),
+                        route: "/api/private/generate",
+                        requestId: req.headers?.get?.("x-request-id"),
+                    });
+                }
                 return jsonNoStatusAlert(
                     { error: getPublicHttpUrlRejectionReason(typeof url === "string" ? url : "") || "Invalid URL" },
                     { status: 400 }

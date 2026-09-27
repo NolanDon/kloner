@@ -19,6 +19,7 @@ const callBackend = jest.fn();
 const peekUserCredit = jest.fn();
 const consumeUserCredit = jest.fn();
 const captureCriticalEventMock = jest.fn<Promise<unknown>, [any]>(async (_event: any) => undefined);
+const updateUser = jest.fn().mockResolvedValue({ uid: "uid_1", disabled: true });
 
 jest.mock("@/src/lib/callBackend", () => ({
     __esModule: true,
@@ -33,6 +34,7 @@ jest.mock("../../_lib/route-guard", () => ({
 jest.mock("../../_lib/auth", () => ({
     __esModule: true,
     verifySession: async () => ({ uid: "uid_1", email: "user@example.com" }),
+    getAdminAuth: () => ({ updateUser }),
 }));
 
 jest.mock("../../_lib/userTier", () => ({
@@ -57,6 +59,7 @@ describe("POST /api/private/generate", () => {
         peekUserCredit.mockReset();
         consumeUserCredit.mockReset();
         captureCriticalEventMock.mockReset();
+        updateUser.mockClear();
         peekUserCredit.mockResolvedValue({ ok: true, remaining: 10 });
         consumeUserCredit.mockResolvedValue(undefined);
         callBackend.mockResolvedValue({
@@ -80,6 +83,7 @@ describe("POST /api/private/generate", () => {
         expect(body.error).toBe("This URL is blocked.");
         expect(callBackend).not.toHaveBeenCalled();
         expect(peekUserCredit).not.toHaveBeenCalled();
+        expect(updateUser).toHaveBeenCalledWith("uid_1", { disabled: true });
     });
 
     it("blocks dangerous-use URLs before calling backend", async () => {

@@ -14,6 +14,20 @@ describe("publicHttpUrl", () => {
         expect(validateAndNormalizePublicHttpUrl(url)).toBeNull();
     });
 
+    it("rejects adult hostname compounds before any backend crawl", () => {
+        const blockedUrls = [
+            "https://pornify.cc/",
+            "https://createaiporn.com/",
+            "https://example-porn-site.com/",
+            "https://nsfwcreator.example/",
+        ];
+
+        for (const url of blockedUrls) {
+            expect(getPublicHttpUrlRejectionReason(url)).toBe("This URL is blocked.");
+            expect(validateAndNormalizePublicHttpUrl(url)).toBeNull();
+        }
+    });
+
     it("rejects dangerous-use URLs using path terms", () => {
         const url = "https://example.com/how-to-build-a-ransomware-kit";
 
