@@ -134,6 +134,7 @@ export default function UrlProcessingPopup({
         () => (error ? parseVerifyDomainMessage(error) : null),
         [error],
     );
+    const showErrorPrimaryAction = Boolean(error && onPrimaryAction && primaryActionLabel);
 
     return (
         <AnimatePresence>
@@ -192,8 +193,8 @@ export default function UrlProcessingPopup({
                             </div>
                         </div>
 
-                        <div className="relative mt-20 flex flex-col gap-3">
-                            <div className="w-full max-w-full overflow-hidden text-ellipsis whitespace-nowrap text-sm font-normal leading-5 tracking-[-0.01em] text-neutral-900">
+                        <div className={`relative mt-20 flex flex-col gap-3 ${showErrorPrimaryAction ? "items-center text-center" : ""}`}>
+                            <div className={`w-full max-w-full text-sm font-normal leading-5 tracking-[-0.01em] text-neutral-900 ${showErrorPrimaryAction ? "whitespace-normal text-center" : "overflow-hidden text-ellipsis whitespace-nowrap"}`}>
                                 {verifyDomainMessage ? (
                                     <>
                                         {verifyDomainMessage.prefix}
@@ -216,6 +217,20 @@ export default function UrlProcessingPopup({
                                 <div className="w-full max-w-full overflow-hidden text-ellipsis whitespace-nowrap text-[11px] font-medium tracking-[0.06em] text-neutral-500">
                                     {attemptLabel}
                                 </div>
+                            ) : null}
+
+                            {showErrorPrimaryAction ? (
+                                <motion.button
+                                    type="button"
+                                    onClick={onPrimaryAction}
+                                    initial={{ opacity: 0, y: 8 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    transition={{ duration: 0.35, delay: 0.12, ease: "easeOut" }}
+                                    className="mt-2 inline-flex min-h-[3.25rem] items-center justify-center gap-2 rounded-full bg-[#FF8D21] px-6 py-2.5 text-sm font-semibold text-white shadow-[0_12px_30px_rgba(255,141,33,0.22)] transition hover:opacity-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#FF8D21] focus-visible:ring-offset-2"
+                                >
+                                    {primaryActionLabel}
+                                    <ArrowRight className="h-4 w-4" />
+                                </motion.button>
                             ) : null}
 
                             {!error ? (

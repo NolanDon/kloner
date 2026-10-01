@@ -13688,6 +13688,16 @@ export default function PreviewPage(): JSX.Element {
                     : "Opening your editor...")
                 : null) ||
         "This can take a few minutes.";
+    const urlProcessingUpgradeRequired = Boolean(
+        urlProcessingFailure?.message &&
+        /please upgrade before scanning a website/i.test(urlProcessingFailure.message),
+    );
+    const openUrlProcessingUpgradePaywall = useCallback(() => {
+        setUrlProcessingFailure(null);
+        setErr("");
+        setUrlProcessingHandoff(null);
+        setShowCreditsPaywall("early_generation");
+    }, []);
     const shouldShowUrlProcessingContinueAction = Boolean(
         isUrlProcessingRedirecting &&
         urlProcessingContinueFallbackVisible &&
@@ -13717,8 +13727,16 @@ export default function PreviewPage(): JSX.Element {
                                     : "processing"
                 }
                 onDismiss={handleStopUrlProcessing}
-                onPrimaryAction={shouldShowUrlProcessingContinueAction ? handleContinueUrlProcessingEditorOpen : undefined}
-                primaryActionLabel={shouldShowUrlProcessingContinueAction ? "Continue to editor" : null}
+                onPrimaryAction={urlProcessingUpgradeRequired
+                    ? openUrlProcessingUpgradePaywall
+                    : shouldShowUrlProcessingContinueAction
+                        ? handleContinueUrlProcessingEditorOpen
+                        : undefined}
+                primaryActionLabel={urlProcessingUpgradeRequired
+                    ? "Upgrade"
+                    : shouldShowUrlProcessingContinueAction
+                        ? "Continue to editor"
+                        : null}
             />
             {isDev ? (
                 <>

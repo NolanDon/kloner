@@ -31,6 +31,18 @@ export async function POST(req: NextRequest) {
                 currentPath: asString(body.currentPath, 500) || null,
                 selectedFiles: Array.isArray(body.selectedFiles) ? body.selectedFiles.slice(0, 20) : [],
                 repairContext: body.repairContext && typeof body.repairContext === "object" ? body.repairContext : null,
+                conversationHistory: Array.isArray(body.conversationHistory)
+                    ? body.conversationHistory
+                        .slice(-12)
+                        .map((entry: unknown) => {
+                            const item = entry && typeof entry === "object" ? entry as Record<string, unknown> : {};
+                            return {
+                                role: item.role === "assistant" ? "assistant" : "user",
+                                content: asString(item.content, 2_400),
+                            };
+                        })
+                        .filter((entry: { content: string }) => entry.content.length > 0)
+                    : [],
             },
         });
         return NextResponse.json(result.json, { status: result.status });
