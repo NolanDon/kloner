@@ -18,7 +18,7 @@ const drafts: Draft[] = [
     slug: "clone-website-to-figma",
     title: "How to Copy a Website to Figma (2026 Guide)",
     h1: "How to Copy a Website to Figma",
-    metaDescription: "Copy any website design straight into Figma — clone the layout with Kloner and import it for redesign. Step-by-step designer workflow.",
+    metaDescription: "Copy any website design into Figma — use Kloner to study an editable layout baseline, then rebuild it for redesign. Step-by-step designer workflow.",
     description: "Bring a permitted website into Figma, clean up imported layers, and turn a visual reference into an editable design system.",
     publishedAt: "2026-09-24",
     tags: ["clone website to Figma", "Figma", "web design"],
@@ -152,7 +152,7 @@ const drafts: Draft[] = [
     slug: "clone-shopify-store-design",
     title: "How to Clone a Shopify Store (2026 Guide)",
     h1: "How to Clone a Shopify Store",
-    metaDescription: "Clone any Shopify store — design, layout and product pages — into an editable project with Kloner. Migrate or rebuild without starting from zero.",
+    metaDescription: "Clone a Shopify store design — use Kloner for an editable visual baseline, then rebuild the theme, products, and pages in Shopify.",
     description: "Recreate a Shopify storefront you own or are authorized to reference while handling theme structure, products, checkout, and assets correctly.",
     publishedAt: "2026-09-24",
     tags: ["clone Shopify store", "Shopify", "ecommerce"],
@@ -174,7 +174,7 @@ const drafts: Draft[] = [
     slug: "clone-website-design",
     title: "How to Copy a Website's Design (2026 Guide)",
     h1: "How to Copy a Website's Design",
-    metaDescription: "Learn how to copy a website's design — layout, styles and assets — into an editable project with Kloner. No code needed.",
+    metaDescription: "Learn how to copy a website's design — layout, styles and assets — using Kloner as an editable visual baseline. No code needed to start.",
     description: "Extract layout principles and reusable components from a website reference while producing an original visual system for your own product.",
     publishedAt: "2026-09-24",
     tags: ["clone website design", "web design", "design system"],
@@ -391,7 +391,8 @@ const drafts: Draft[] = [
   {
     slug: "clone-website-to-vue",
     title: "How to Clone a Website to Vue (2026 Guide)",
-    description: "Clone any website into a Vue project — convert design and layout to Vue components with Kloner. Step-by-step guide, no manual rebuild.",
+    metaDescription: "Clone any website into a Vue project — use Kloner for an editable visual baseline, then adapt the design to Vue components. Step-by-step guide.",
+    description: "Use Kloner to create an editable website baseline, then adapt the design and layout into Vue components with your own Vue project.",
     publishedAt: "2026-10-01",
     tags: ["clone website to Vue", "Vue", "website cloning"],
     intro: "To clone a website to Vue, use the reference page to define a component plan, then turn its visible structure into maintainable Vue components. Kloner can provide an editable first pass so you can focus on behavior, content, and ownership.",
@@ -411,7 +412,8 @@ const drafts: Draft[] = [
   {
     slug: "clone-website-to-angular",
     title: "How to Clone a Website to Angular (2026 Guide)",
-    description: "Turn any website into an Angular project. Kloner converts the design to components — step-by-step cloning guide for Angular developers.",
+    metaDescription: "Turn any website into an Angular project — use Kloner for an editable visual baseline, then adapt the design to Angular components.",
+    description: "Use Kloner to create an editable website baseline, then adapt the design and layout into Angular components in your own project.",
     publishedAt: "2026-10-01",
     tags: ["clone website to Angular", "Angular", "website cloning"],
     intro: "A website-to-Angular rebuild works best when you translate visible page patterns into components and keep application behavior separate from the reference design. Kloner helps create the first editable structure; Angular supplies the architecture for a maintainable application.",
@@ -431,6 +433,7 @@ const drafts: Draft[] = [
   {
     slug: "clone-website-to-svelte",
     title: "How to Clone a Website to Svelte (2026 Guide)",
+    metaDescription: "Clone any website into Svelte — use Kloner for an editable visual baseline, then adapt the design to clean Svelte components step by step.",
     description: "Clone any website into clean Svelte components with Kloner. Skip the manual rebuild — step-by-step guide.",
     publishedAt: "2026-10-01",
     tags: ["clone website to Svelte", "Svelte", "website cloning"],
@@ -517,7 +520,7 @@ const drafts: Draft[] = [
     slug: "clone-website-to-wordpress",
     title: "How to Clone Any Website to WordPress (2026 Guide)",
     h1: "How to Clone Any Website to WordPress",
-    metaDescription: "Turn any website into a WordPress site — clone the design and content, then rebuild it on WordPress with Kloner. Full migration guide, no manual rebuild.",
+    metaDescription: "Move an authorized website to WordPress — use Kloner for an editable visual baseline, then rebuild the theme, content, and integrations.",
     description: "Move an authorized website design and content into WordPress by using Kloner for the visual baseline and rebuilding the destination theme, content, and integrations.",
     publishedAt: "2026-10-01",
     tags: ["clone website to WordPress", "copy website design to WordPress", "WordPress migration"],
@@ -562,8 +565,8 @@ const drafts: Draft[] = [
   },
 ];
 
-// Keep the published batch intentionally focused at the requested 20 posts.
-export const ADDITIONAL_BLOG_POSTS: BlogPost[] = drafts.slice(0, 20).map((draft) => ({
+// All editorial entries are published through the normal blog collection.
+export const ADDITIONAL_BLOG_POSTS: BlogPost[] = drafts.map((draft) => ({
   slug: draft.slug,
   title: draft.title,
   h1: draft.h1,
