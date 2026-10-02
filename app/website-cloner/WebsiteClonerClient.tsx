@@ -17,7 +17,7 @@ export default function WebsiteClonerClient() {
     <section id="preview" className="snap-start snap-always min-h-screen flex flex-col"><PreviewDashboard /></section>
     <section id="how-to-clone-a-website" className="snap-none"><HowItWorks /></section>
     <section id="social-proof" className="snap-start snap-always"><Stories /></section>
-    <section id="what-your-website-clone-includes" className="snap-start snap-always"><WhatsIncluded heading="What you get with a website clone" /></section>
+    <section id="what-your-website-clone-includes" className="snap-start snap-always"><WhatsIncluded heading="What you get with a website cloner" /></section>
     <WebsiteClonerFaq />
     <section id="start-cloning" className="mt-24 md:mt-32 snap-start snap-always min-h-screen flex flex-col"><ParallaxTypeHero headline="Clone a website from a URL." subcopy="Start a free preview" showUrlInput /></section>
     <Footer showSeoLinks={false} />
