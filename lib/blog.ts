@@ -650,7 +650,7 @@ This improves conversion and gives you a stronger signal during validation.
 If your MVP depends on organic discovery, do the basics:
 
 - Unique title and description
-- Clean URLs (e.g., /blog/..., /pricing)
+- Clean URLs (e.g., /blog/..., /price)
 - Internal links (nav + footer)
 - Sitemap updates
 

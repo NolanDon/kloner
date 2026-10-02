@@ -1,17 +1,18 @@
 // app/HomeClient.tsx (CLIENT)
 "use client";
 
+import dynamic from "next/dynamic";
 import NavBar from "@/components/NavBar";
 import Hero from "@/components/Hero";
-import StatsStrip from "@/components/StatsStrip";
-import HowItWorks from "@/components/HowItWorks";
-import Stories from "@/components/Stories";
-import WhatsIncluded from "@/components/WhatsIncluded";
-import Footer from "@/components/Footer";
-import FAQSection from "@/components/FaqSection";
-import ParallaxTypeHero from "@/components/ParallaxTypeHero";
-import PreviewDashboard from "@/components/StartsWithLabs";
-import KlonerExamples from "@/components/KlonerExamples";
+const StatsStrip = dynamic(() => import("@/components/StatsStrip"));
+const HowItWorks = dynamic(() => import("@/components/HowItWorks"));
+const Stories = dynamic(() => import("@/components/Stories"));
+const WhatsIncluded = dynamic(() => import("@/components/WhatsIncluded"));
+const Footer = dynamic(() => import("@/components/Footer"));
+const FAQSection = dynamic(() => import("@/components/FaqSection"));
+const ParallaxTypeHero = dynamic(() => import("@/components/ParallaxTypeHero"));
+const PreviewDashboard = dynamic(() => import("@/components/StartsWithLabs"));
+const KlonerExamples = dynamic(() => import("@/components/KlonerExamples"));
 
 export default function HomeClient() {
     return (
@@ -20,7 +21,7 @@ export default function HomeClient() {
 
             <main className="h-screen snap-y snap-mandatory scroll-smooth motion-reduce:snap-none motion-reduce:scroll-auto">
                 <section id="hero" className="snap-start snap-always min-h-screen flex flex-col">
-                    <Hero />
+                    <Hero heading="AI Website Cloner — Clone Any Website from a URL" />
                 </section>
 
                 <section id="preview" className="snap-start snap-always min-h-screen flex flex-col">

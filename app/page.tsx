@@ -2,14 +2,14 @@ import type { Metadata } from "next";
 import HomeClient from "./HomeClient";
 
 export const metadata: Metadata = {
-  title: "AI Website Cloner | Clone a Website from a URL | Kloner",
+  title: "Kloner – AI Website Cloner",
   description:
     "Clone a website from a public URL with Kloner's AI website cloner. Create an editable preview, customize it with AI, and start with limited free access.",
   alternates: {
     canonical: "https://kloner.app/",
   },
   openGraph: {
-    title: "AI Website Cloner | Clone a Website from a URL | Kloner",
+    title: "Kloner – AI Website Cloner",
     description:
       "Clone a website from a public URL with Kloner's AI website cloner. Create an editable preview, customize it with AI, and start with limited free access.",
     url: "https://kloner.app/",
@@ -26,7 +26,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "AI Website Cloner | Clone a Website from a URL | Kloner",
+    title: "Kloner – AI Website Cloner",
     description:
       "Clone a website from a public URL with Kloner's AI website cloner. Create an editable preview, customize it with AI, and start with limited free access.",
     images: ["/images/opengraph.jpg"],

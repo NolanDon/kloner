@@ -83,13 +83,13 @@ export default function HeroContent({
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.8 }}
-        className="w-full max-w-[720px] text-center"
+        className="w-full max-w-[1000px] text-center"
       >
         {eyebrow ? <div className="mb-5 text-xs font-semibold uppercase tracking-[0.24em] text-white/75">{eyebrow}</div> : null}
         <h1
-          className={`${displayClassName} whitespace-normal sm:whitespace-nowrap leading-[0.95] font-bold tracking-tight text-white`}
+          className={`${displayClassName} mx-auto max-w-[1000px] whitespace-normal leading-[1.1] font-bold tracking-tight text-white`}
           style={{
-            fontSize: "clamp(2.25rem, min(12vw, 8.8vh), 5.5rem)",
+            fontSize: "clamp(2.25rem, min(10vw, 7.5vh), 5rem)",
             fontFamily: "var(--font-inter), Inter, sans-serif",
             WebkitFontSmoothing: "antialiased",
             MozOsxFontSmoothing: "grayscale",

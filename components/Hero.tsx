@@ -23,6 +23,7 @@ export default function Hero({ eyebrow, heading, subhead }: { eyebrow?: string; 
               height={1600}
               priority
               fetchPriority="high"
+              quality={70}
               sizes="100vw"
               className="absolute inset-0 h-full w-full object-cover select-none pointer-events-none"
             />

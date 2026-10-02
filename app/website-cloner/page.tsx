@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import WebsiteClonerClient from './WebsiteClonerClient';
 import { WEBSITE_CLONER_FAQ } from '@/lib/websiteClonerFaq';
 
-const title = 'Website Cloner – Clone Any Website from a URL | Kloner';
+const title = 'AI Website Cloner — Clone Any Website from a URL';
 const description = 'Kloner is the AI website cloner that turns any public URL into an editable website. Paste a link, preview instantly, customize, deploy. Start free, no setup.';
 const url = 'https://kloner.app/website-cloner';
 

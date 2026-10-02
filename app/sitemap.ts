@@ -17,7 +17,6 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { url: `${site}/terms`, lastModified: now, priority: 0.5 },
     { url: `${site}/legal/kloner-vercel-eula`, lastModified: now, priority: 0.5 },
     { url: getBlogIndexUrl(), lastModified: now, priority: 0.7 },
-    { url: `${site}/blog/rss.xml`, lastModified: now, priority: 0.3 },
   ];
 
   const blogRoutes: MetadataRoute.Sitemap = getAllBlogPosts().map((p) => ({

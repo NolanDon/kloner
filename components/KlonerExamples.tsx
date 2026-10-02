@@ -310,8 +310,7 @@ export default function DeckImageCarousel({
                                                 fill
                                                 sizes={imageSizes}
                                                 quality={82}
-                                                loading={isCenter || absDelta === 1 ? "eager" : "lazy"}
-                                                priority={idx === activeIndex}
+                                                loading="lazy"
                                                 className="object-cover object-top"
                                             />
                                             <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/45 via-transparent to-black/80" />

@@ -2,7 +2,7 @@ import "./globals.css";
 import type { Metadata } from "next";
 import AuthProviderServer from "@/components/auth/auth-provider.server";
 import { AppClientProviders } from "./AppClientProvider";
-import ChatWidgetProvider from "@/components/support/ChatWidgetProvider";
+import DeferredChatWidget from "@/components/support/DeferredChatWidget";
 import AffiliateRefCapture from "@/components/AffiliateRefCapture";
 import { Suspense } from "react";
 import StyledJsxRegistry from "./registry";
@@ -69,7 +69,7 @@ export default function RootLayout({
                 <AffiliateRefCapture />
               </Suspense>
               {children}
-              <ChatWidgetProvider />
+              <DeferredChatWidget />
             </AppClientProviders>
           </AuthProviderServer>
         </StyledJsxRegistry>

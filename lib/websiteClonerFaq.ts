@@ -1,9 +1,9 @@
-export type WebsiteClonerFaqItem = { q: string; a: string };
+export type WebsiteClonerFaqItem = { q: string; a: string; href?: string };
 
 export const WEBSITE_CLONER_FAQ: WebsiteClonerFaqItem[] = [
   { q: "What is a website cloner?", a: "A website cloner turns a supported public webpage into an editable project starting point. Kloner captures the available structure, styling, and assets so you can review and make the result your own." },
   { q: "How do I clone a website from a URL with Kloner?", a: "Paste a supported public URL into Kloner, start the preview, review the generated website clone, then customize the copy, visuals, and sections before publishing." },
-  { q: "Is Kloner free to try?", a: "Kloner offers limited free preview access for supported public websites. Editing and publishing depend on your account and current plan; the pricing page has the latest details." },
+  { q: "Is Kloner free to try?", a: "Kloner offers limited free preview access for supported public websites. Editing and publishing depend on your account and current plan; the pricing page has the latest details. View pricing.", href: "/price" },
   { q: "Is it legal to clone a website?", a: "Use Kloner only with websites and content you own or have permission to capture and reuse. You are responsible for respecting copyright, trademarks, privacy, terms of service, and other rights before publishing a clone." },
   { q: "What can I do with a cloned website?", a: "Use a website clone as a starting point for a redesign, migration, landing page, learning exercise, or client mockup. Replace the original branding and content, then adapt the project to your own goal." },
   { q: "How accurate is the clone?", a: "Kloner aims to preserve the supported page structure and visual direction, but accuracy depends on the source site. Review the preview and expect to refine content, responsive details, and interactions yourself." },
