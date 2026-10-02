@@ -29,7 +29,7 @@ export async function generateMetadata({
   if (!post) return {};
 
   const url = getBlogPostUrl(post.slug);
-  const metaDescription = buildMetaDescription([
+  const metaDescription = post.metaDescription || buildMetaDescription([
     post.description,
     "Read the guide on Kloner for practical steps, examples, and launch-ready advice.",
   ]);
@@ -99,7 +99,7 @@ export default async function BlogPostPage({
 
   const minutes = getReadingTimeMinutes(post.markdown);
   const url = getBlogPostUrl(post.slug);
-  const metaDescription = buildMetaDescription([
+  const metaDescription = post.metaDescription || buildMetaDescription([
     post.description,
     "Read the guide on Kloner for practical steps, examples, and launch-ready advice.",
   ]);
@@ -109,7 +109,7 @@ export default async function BlogPostPage({
   const jsonLd = {
     "@context": "https://schema.org",
     "@type": "BlogPosting",
-    headline: post.title,
+    headline: post.h1 || post.title,
     description: metaDescription,
     url,
     datePublished: post.publishedAt,
@@ -129,6 +129,20 @@ export default async function BlogPostPage({
       "@id": url,
     },
   };
+  const faqJsonLd = post.faqs?.length
+    ? {
+        "@context": "https://schema.org",
+        "@type": "FAQPage",
+        mainEntity: post.faqs.map((faq) => ({
+          "@type": "Question",
+          name: faq.question,
+          acceptedAnswer: {
+            "@type": "Answer",
+            text: faq.answer,
+          },
+        })),
+      }
+    : null;
 
   const recent = getAllBlogPosts()
     .filter((p) => p.slug !== post.slug)
@@ -179,7 +193,7 @@ export default async function BlogPostPage({
                 </div>
 
                 <h1 className="mt-5 text-[32px] tracking-tight text-neutral-900 sm:text-[40px] lg:text-[48px]">
-                  {post.title}
+                  {post.h1 || post.title}
                 </h1>
                 <div className="mt-4 inline-flex flex-wrap items-center gap-2 text-[11px] text-neutral-500">
                   <span className="rounded-full border border-neutral-200 bg-white px-3 py-1.5 font-medium text-neutral-700 shadow-sm">
@@ -206,7 +220,7 @@ export default async function BlogPostPage({
           </div>
 
           <article className="mx-auto mt-8 max-w-5xl px-1 sm:px-2 lg:px-4">
-            <Markdown markdown={stripLeadingTitle(post.markdown, post.title)} />
+            <Markdown markdown={stripLeadingTitle(post.markdown, post.h1 || post.title)} />
           </article>
 
           <div className="mx-auto mt-10 max-w-5xl px-1 sm:px-2 lg:px-4">
@@ -250,6 +264,12 @@ export default async function BlogPostPage({
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
+      {faqJsonLd ? (
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd) }}
+        />
+      ) : null}
 
       <Footer />
     </main>

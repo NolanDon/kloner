@@ -39,6 +39,116 @@ const nextConfig = {
                 permanent: true,
             },
             {
+                source: '/blog/clone-a-website-from-a-url',
+                destination: '/blog/clone-website-from-url',
+                permanent: true,
+            },
+            {
+                source: '/blog/clone-wordpress-site',
+                destination: '/blog/clone-wordpress-website',
+                permanent: true,
+            },
+            {
+                source: '/blog/wordpress-site-duplicator',
+                destination: '/blog/clone-wordpress-website',
+                permanent: true,
+            },
+            {
+                source: '/blog/clone-wordpress-theme-from-url',
+                destination: '/blog/clone-wordpress-website',
+                permanent: true,
+            },
+            {
+                source: '/blog/clone-website-to-html-css',
+                destination: '/blog/clone-website-to-html',
+                permanent: true,
+            },
+            {
+                source: '/blog/clone-website-ai',
+                destination: '/blog/ai-website-cloner',
+                permanent: true,
+            },
+            {
+                source: '/blog/site-copier',
+                destination: '/blog/website-copier-online',
+                permanent: true,
+            },
+            {
+                source: '/blog/website-copier',
+                destination: '/blog/website-copier-online',
+                permanent: true,
+            },
+            {
+                source: '/blog/website-cloning-guide',
+                destination: '/blog/how-to-clone-a-website',
+                permanent: true,
+            },
+            {
+                source: '/blog/website-downloader',
+                destination: '/blog/website-cloner-vs-website-downloader',
+                permanent: true,
+            },
+            {
+                source: '/blog/best-website-builder-for-small-business',
+                destination: '/blog',
+                permanent: true,
+            },
+            {
+                source: '/blog/webflow-website-builder-vs-kloner',
+                destination: '/blog',
+                permanent: true,
+            },
+            {
+                source: '/blog/ai-agent-feedback-loops',
+                destination: '/blog',
+                permanent: true,
+            },
+            {
+                source: '/blog/analytics-for-ai-clone-ops',
+                destination: '/blog',
+                permanent: true,
+            },
+            {
+                source: '/blog/preview-infrastructure-for-ai-clones',
+                destination: '/blog',
+                permanent: true,
+            },
+            {
+                source: '/blog/demo-operations-playbook',
+                destination: '/blog',
+                permanent: true,
+            },
+            {
+                source: '/blog/productionizing-ai-clones-fast',
+                destination: '/blog',
+                permanent: true,
+            },
+            {
+                source: '/blog/ai-website-cloning-to-production',
+                destination: '/blog',
+                permanent: true,
+            },
+            {
+                source: '/blog/market-hypotheses-with-cloned-demos',
+                destination: '/blog',
+                permanent: true,
+            },
+            {
+                source: '/blog/user-research-with-ai-demo-clones',
+                destination: '/blog',
+                permanent: true,
+            },
+            {
+                source: '/blog/ai-agents-for-product-and-growth-teams',
+                destination: '/blog',
+                permanent: true,
+            },
+            {
+                source: '/blog/validate-a-market-with-a-fast-mvp',
+                destination: '/blog',
+                permanent: true,
+            },
+            {
                 source: '/blog/app/sitemap.ts',
                 destination: '/sitemap.xml',
                 permanent: true,

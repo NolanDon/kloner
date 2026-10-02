@@ -3,10 +3,13 @@ import { ADDITIONAL_BLOG_POSTS } from "./blogAdditional";
 export type BlogPost = {
   slug: string;
   title: string;
+  h1?: string;
   description: string;
+  metaDescription?: string;
   publishedAt: string; // YYYY-MM-DD
   updatedAt?: string; // YYYY-MM-DD
   tags: string[];
+  faqs?: Array<{ question: string; answer: string }>;
   markdown: string;
 };
 
@@ -1190,7 +1193,9 @@ If you want to do this in one sitting: start a preview from a URL, then ask the 
   },
   {
     slug: "best-ai-website-builder-for-cloning",
-    title: "Best AI Website Builder for Cloning",
+    title: "Best AI Website Cloners in 2026 (Compared)",
+    h1: "Best AI Website Builder for Cloning? What to Look For (and What to Avoid)",
+    metaDescription: "The best AI website cloners compared — features, templates and pricing. See why Kloner leads for cloning any website from a URL.",
     description:
       "A buyer’s guide for choosing an AI website builder or website cloner: editable components, export quality, SEO basics, and deployment workflows.",
     publishedAt: "2026-02-19",
@@ -1251,6 +1256,12 @@ The best tools make shipping boring:
 - Clear rollback path
 
 If your workflow is “generate, screenshot, rebuild from scratch”, you’re not saving time.
+
+## Templates: when they help and when they limit you
+
+Templates are useful when they give you a strong starting structure without locking your project into someone else’s content or brand. For cloning work, look for templates with editable sections, responsive rules, reusable components, and room to replace the copy, imagery, colors, and calls to action. A template that only produces a polished screenshot is less useful than an editable project you can continue changing.
+
+Kloner combines a URL-based starting point with an editable preview, so you can use a reference as a template for structure while still adapting the result to your own product and audience.
 
 ## The takeaway
 
@@ -1950,7 +1961,9 @@ The fastest path is to treat cloning as *scaffolding*, then make it your own.
 `,
   }, {
     slug: "how-to-clone-a-website",
-    title: "How to Clone a Website Fast and Safely",
+    title: "How to Clone a Website and Make It Your Own (2026)",
+    h1: "How to Clone a Website Fast and Safely",
+    metaDescription: "Learn how to clone a website step by step — 3 methods compared, from manual copying to Kloner's AI cloner. Paste a URL and get an editable copy.",
     description:
       "Learn how to clone a website the right way — capture layout and structure, skip the brittle copy-paste mess, and ship an editable site with Kloner.",
     publishedAt: "2026-04-09",
@@ -1980,6 +1993,8 @@ Understanding how to clone a website properly unlocks serious speed advantages a
 **Learning.** Cloning well-designed sites is one of the fastest ways to level up your eye for layout, hierarchy, and conversion design.
 
 Whether you're trying to clone a website free for a personal project or running a paid client engagement, the workflow is the same.
+
+For a practical URL-first starting point, use [Kloner’s website cloner](/website-cloner), then compare the [duplicate a website guide](/blog/duplicate-a-website) and [clone a website from a URL guide](/blog/clone-website-from-url) for the workflow that fits your goal.
 
 ## How to Clone a Website: Step-by-Step
 
@@ -2714,7 +2729,9 @@ A WordPress site duplicator is an essential tool for anyone managing WordPress s
   },
   {
     slug: "clone-wordpress-website",
-    title: "Clone WordPress Website: Methods, Tools, and Pitfalls",
+    title: "How to Clone a WordPress Site (2026): Full Guide",
+    h1: "Clone WordPress Website: Methods, Tools, and Pitfalls",
+    metaDescription: "Clone any WordPress site — theme, layout and content — without plugins. Step-by-step guide using Kloner's AI website cloner. No code required.",
     description:
       "Everything you need to clone a WordPress website — staging, migration, design cloning, and the tools that handle each use case correctly.",
     publishedAt: "2026-04-09",
@@ -2728,6 +2745,12 @@ There are more ways to clone a WordPress website than most guides acknowledge, a
 To clone a WordPress website means to create a functional, independent copy of it — including theme files, plugin files, media uploads, and the full MySQL database — that can run on a different server or domain. When done correctly, the clone behaves identically to the original.
 
 This is categorically different from design cloning, where you extract the visual patterns and layout structure of a WordPress site for use in a new project. Design cloning — using a reference WordPress site as inspiration for a new layout — is best handled by URL-based tools like Kloner.app rather than WordPress migration plugins. The two workflows don't overlap; using the wrong tool for your use case wastes significant time.
+
+## WordPress site cloning versus design cloning
+
+If you need a working copy for staging, migration, or backup, preserve the WordPress files, database, media library, URLs, and plugin configuration with a migration workflow. If you need to recreate the visible theme or layout for a new project, use the public page as a reference and rebuild the structure with your own content, assets, and integrations. Keeping these goals separate prevents a design reference from being mistaken for a complete WordPress migration.
+
+The same distinction applies when comparing WordPress duplicator plugins: they are built for environments you control, while [Kloner’s website cloner](/website-cloner) is useful for creating an editable visual starting point from a permitted public URL.
 
 ## Why Clone a WordPress Website?
 
@@ -2805,14 +2828,16 @@ Cloning a WordPress website is a well-solved problem with reliable tooling for e
   },
   {
     slug: "duplicate-a-website",
-    title: "Duplicate a Website: Tools, Methods, and Use Cases",
+    title: "How to Duplicate a Website in Minutes (2026 Guide)",
+    h1: "Duplicate Website: Tools, Methods, and Use Cases",
+    metaDescription: "Learn how to duplicate a website step by step — copy any site's design, layout and content with Kloner's AI website cloner. No code needed.",
     description:
       "Learn how to duplicate a website for staging, redesign, or new projects. Covers the best tools for WordPress duplication and AI-powered layout cloning.",
     publishedAt: "2026-04-09",
     tags: ["duplicate a website", "website cloning", "kloner"],
-    markdown: `# Duplicate a Website: Tools, Methods, and Use Cases
+    markdown: `# Duplicate Website: Tools, Methods, and Use Cases
 
-Knowing how to duplicate a website is one of the most practical web skills there is. Whether you're creating a staging copy before a risky update, migrating to a new host, handing off a finished build to a client, or using a proven layout as the starting point for a new project — the ability to duplicate a website quickly and cleanly saves hours of work and prevents production disasters. This guide covers all the major use cases, the tools that handle each, and the workflow that gets you from source site to working duplicate without the usual headaches.
+A duplicate website is one of the most practical starting points in web development. Whether you're creating a staging copy before a risky update, migrating to a new host, handing off a finished build to a client, or using a proven layout as the starting point for a new project — the ability to duplicate a website quickly and cleanly saves hours of work and prevents production disasters. This guide covers all the major use cases, the tools that handle each, and the workflow that gets you from source site to working duplicate without the usual headaches.
 
 ## What Does It Mean to Duplicate a Website?
 
@@ -2863,6 +2888,8 @@ A website clone, a site duplicate, and a cloned site all refer to versions of th
 **5. Add SEO metadata and deploy.**
 
 **Ready to clone your first site? [Try Kloner.app free →](https://kloner.app)**
+
+For the related workflows, see [how to clone a website](/blog/how-to-clone-a-website), [duplicate a website](/blog/duplicate-a-website), and [Kloner’s website cloner](/website-cloner).
 
 ## Duplicating a Website on Popular Platforms
 
@@ -3379,7 +3406,10 @@ A site copier is useful when it gives you momentum without locking you into the 
   },
   {
     slug: "website-cloner-vs-website-downloader",
-    title: "Website Cloner vs Website Downloader: What’s the Difference?",
+    title: "Website Cloner vs Website Downloader: Which Do You Need? (2026)",
+    h1: "Website Cloner vs Website Downloader: What’s the Difference?",
+    metaDescription: "Website cloner vs downloader — cloners give you an editable copy, downloaders give you static files. Compare the best website cloner tools and pick right.",
+    faqs: [{ question: "How do I compare different website cloner tools?", answer: "Compare the quality of the editable output, responsive behavior, source-file ownership, asset handling, multi-page support, and how much cleanup is needed before you can safely customize and deploy the result." }],
     description:
       "Compare website cloner and website downloader tools, including what each preserves, where each fits, and how to choose an editable workflow.",
     publishedAt: "2026-09-03",
@@ -3551,6 +3581,12 @@ Images, fonts, icons, and scripts often reveal whether a clone is ready for real
 
 Some source behavior cannot be recreated from a public page alone. Authentication, databases, private APIs, and server-side actions need your own implementation.
 
+## HTML and CSS cloning checklist
+
+For a simple marketing page, an HTML/CSS clone should remain understandable after the first capture. Use semantic sections, a small set of reusable classes, responsive containers, and CSS variables for color, spacing, type, and radii. Avoid carrying over framework wrappers, generated class names, source-domain URLs, or tracking scripts that make the result difficult to maintain.
+
+Before deployment, test keyboard navigation, focus states, long headlines, missing images, narrow screens, and forms. A static baseline is useful when it gives you clean structure; it is not a substitute for implementing application behavior or reviewing asset permissions.
+
 ## Step 6: Add metadata before deployment
 
 Give the new page its own title and description. Check the canonical URL, Open Graph image, robots directives, and any structured data. Do not leave the source site’s metadata in place by accident.
@@ -3573,14 +3609,18 @@ It may not be enough for an application with user accounts, dynamic data, server
 
 Kloner supports an editable preview and deployment workflow for supported projects. Review the generated result first, make the content and identity your own, and then use the available deployment integration when you are ready to publish.
 
-For the broader URL workflow, see [Clone a Website From a URL](/blog/clone-a-website-from-a-url). If you want the short version, start at the [Kloner website cloner homepage](/), paste a permitted public URL, and use the preview as the beginning of your own project.
+For the broader URL workflow, see [how to clone a website from a URL](/blog/clone-website-from-url). If you want the short version, start at [Kloner’s website cloner](/website-cloner), paste a permitted public URL, and use the preview as the beginning of your own project.
+
+When comparing tools, use the [website cloner versus website downloader](/blog/website-cloner-vs-website-downloader) guide to decide whether you need an editable project or a static snapshot.
 
 Cloning a website to HTML is valuable when it reduces blank-page work without hiding the decisions that still matter. The best output is not merely a copy that opens; it is a clear, editable foundation you can responsibly turn into something new.
 `,
   },
   {
     slug: "clone-website-from-url",
-    title: "How to Clone a Website From a URL: A Practical Workflow",
+    title: "How to Clone a Website From a URL (2026): Step-by-Step",
+    h1: "How to Clone a Website From a URL: A Practical Workflow",
+    metaDescription: "Paste any URL and get an editable clone of the website in seconds. Kloner's AI website cloner rebuilds the page — no code, no manual copying.",
     description:
       "A practical guide to cloning a permitted public website from a URL, reviewing the result, replacing source branding, and preparing it for launch.",
     publishedAt: "2026-09-03",
@@ -3666,7 +3706,9 @@ The most reliable process is simple: choose a permitted reference, inspect the g
   },
   {
     slug: "ai-website-cloner",
-    title: "AI Website Cloner: What It Recreates and What You Still Control",
+    title: "AI Website Cloner: Clone Any Site With AI (2026)",
+    h1: "AI Website Cloner: What It Recreates and What You Still Control",
+    metaDescription: "Kloner's AI website cloner rebuilds any website from a URL into an editable copy. See how AI cloning works, with templates and examples.",
     description:
       "Learn how an AI website cloner turns a public URL into an editable starting point, where automation helps, and what still requires human review.",
     publishedAt: "2026-09-03",
@@ -3713,6 +3755,10 @@ Authentication, search, checkout, dashboards, and other dynamic features usually
 A downloader is primarily concerned with retrieving files or saving a page snapshot. That can be useful for offline reference, but the output may contain source-specific paths, scripts, and assumptions about the original domain.
 
 An AI website cloner is aimed at the next step: understanding the page well enough to create a project you can edit. It does not make the result automatically original or production-ready. It simply reduces the amount of blank-page and repetitive setup work between reference and first draft.
+
+## Templates and examples for AI website cloning
+
+Templates are useful when they encode a repeatable page pattern, such as a SaaS landing page, portfolio, pricing page, or product marketing site. Treat them as starting points rather than finished identities: replace the copy, assets, colors, integrations, and calls to action, then test the result with the content your audience will actually see. An AI-generated example is strongest when it exposes editable sections and decisions you can reuse across pages.
 
 ## The human review pass still matters
 
@@ -3818,8 +3864,38 @@ React is valuable in this workflow because it gives the recreated interface an e
   },
 ];
 
+// These routes are intentionally no longer part of the published blog collection.
+// next.config.mjs owns their permanent redirects; filtering here keeps them out of
+// generated params, the blog index, and the sitemap as well.
+const RETIRED_BLOG_SLUGS = new Set([
+  "website-cloner",
+  "clone-a-website-from-a-url",
+  "clone-wordpress-site",
+  "wordpress-site-duplicator",
+  "clone-wordpress-theme-from-url",
+  "clone-website-to-html-css",
+  "clone-website-ai",
+  "site-copier",
+  "website-copier",
+  "website-cloning-guide",
+  "website-downloader",
+  "best-website-builder-for-small-business",
+  "webflow-website-builder-vs-kloner",
+  "ai-agent-feedback-loops",
+  "analytics-for-ai-clone-ops",
+  "preview-infrastructure-for-ai-clones",
+  "demo-operations-playbook",
+  "productionizing-ai-clones-fast",
+  "ai-website-cloning-to-production",
+  "market-hypotheses-with-cloned-demos",
+  "user-research-with-ai-demo-clones",
+  "ai-agents-for-product-and-growth-teams",
+  "validate-a-market-with-a-fast-mvp",
+]);
+
 export function getAllBlogPosts(): BlogPost[] {
   return [...BLOG_POSTS]
+    .filter((post) => !RETIRED_BLOG_SLUGS.has(post.slug))
     .sort((a, b) => (a.publishedAt < b.publishedAt ? 1 : -1))
     .map((p) => ({ ...p, markdown: withKlonerCta(p.markdown) }));
 }
@@ -3827,7 +3903,7 @@ export function getAllBlogPosts(): BlogPost[] {
 export function getBlogPostBySlug(slug: string): BlogPost | null {
   const s = String(slug || "").trim();
   if (!s) return null;
-  const post = BLOG_POSTS.find((p) => p.slug === s) || null;
+  const post = BLOG_POSTS.find((p) => p.slug === s && !RETIRED_BLOG_SLUGS.has(p.slug)) || null;
   if (!post) return null;
   return { ...post, markdown: withKlonerCta(post.markdown) };
 }
