@@ -174,7 +174,7 @@ const CARDS: CardData[] = [
 /* ----------------------------------------------------------------
    Section
 ------------------------------------------------------------------*/
-export default function MembershipSticky({ heading = 'What your website clone includes' }: { heading?: string } = {}) {
+export default function MembershipSticky({ heading = 'What your website cloner includes' }: { heading?: string } = {}) {
   const { openUrlOverlay } = useUrlOverlay();
 
   return (

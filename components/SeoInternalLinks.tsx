@@ -4,7 +4,6 @@ type LinkItem = { label: string; href: string };
 
 const CORE_LINKS: LinkItem[] = [
   { label: "Home", href: "/" },
-  { label: "Website cloner", href: "/website-cloner" },
   { label: "Blog", href: "/blog" },
   { label: "Pricing", href: "/price" },
   { label: "Compare", href: "/compare" },

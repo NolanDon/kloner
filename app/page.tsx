@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import HomeClient from "./HomeClient";
+import { WEBSITE_CLONER_FAQ } from "@/lib/websiteClonerFaq";
 
 export const metadata: Metadata = {
   title: "Kloner – AI Website Cloner",
@@ -50,6 +51,14 @@ export default function Page() {
         name: "Kloner",
         url: "https://kloner.app/",
         publisher: { "@id": "https://kloner.app/#organization" },
+      },
+      {
+        "@type": "FAQPage",
+        mainEntity: WEBSITE_CLONER_FAQ.map(({ q, a }) => ({
+          "@type": "Question",
+          name: q,
+          acceptedAnswer: { "@type": "Answer", text: a },
+        })),
       },
       {
         "@type": "SoftwareApplication",

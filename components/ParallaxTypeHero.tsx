@@ -64,7 +64,7 @@ export default function ParallaxTypeHero({
     const subOpacity = useTransform(scrollYProgress, [typingEnd - 0.10, typingEnd + 0.10], [0, 1]);
 
     return (
-        <section ref={sectionRef} className="relative w-full border-b rounded-xl" style={{ height: '100vh' }}>
+        <section ref={sectionRef} className="relative w-full overflow-clip border-b rounded-xl" style={{ height: '100vh' }}>
             <motion.div aria-hidden className="absolute inset-0 z-0 overflow-hidden" style={{ y, scale }}>
                 <div className="absolute -inset-[6vh]">
                     <div className="relative h-full w-full">

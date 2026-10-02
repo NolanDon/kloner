@@ -1,7 +1,7 @@
 // components/PreviewDashboard.tsx
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { motion, AnimatePresence, useAnimation } from "framer-motion";
 import Image from "next/image";
 import {
@@ -12,6 +12,7 @@ import {
     TimerOff,
     MousePointer,
     ArrowRight,
+    LoaderCircle,
 } from "lucide-react";
 import { ClickyCursor } from "./ClickyCursor";
 import { useUrlOverlay } from "./UrlOverlayProvider";
@@ -31,8 +32,10 @@ type Phase =
     | "loading"
     | "revealing"
     | "highlight"
+    | "previewClick"
     | "deploying"
     | "success"
+    | "deployClick"
     | "cooldown";
 
 /* ------------------------------ Mini features strip (static) ----------------- */
@@ -82,7 +85,7 @@ function FeaturesStrip() {
 }
 
 export default function PreviewDashboard({
-    url = "https://bettertherapy.ca",
+    url = "https://groundedtherapy.ca",
     timings = {
         startDelayMs: 300,
         typeMsPerChar: 18,
@@ -119,11 +122,20 @@ export default function PreviewDashboard({
 
     const [phase, setPhase] = useState<Phase>("idle");
     const [typed, setTyped] = useState<string>("");
-    const [pulseDeploy, setPulseDeploy] = useState<boolean>(false);
+    const sceneRef = useRef<HTMLDivElement>(null);
+    const previewButtonRef = useRef<HTMLButtonElement>(null);
+    const deployButtonRef = useRef<HTMLButtonElement>(null);
     const [previewReadyFlash, setPreviewReadyFlash] = useState<boolean>(false);
+    const [previewClicked, setPreviewClicked] = useState(false);
+    const previewEnabled = typed === url && phase !== "deploying";
+    const previewPressed = previewClicked || phase === "previewClick";
     const { openUrlOverlay } = useUrlOverlay();
 
-    const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+    useEffect(() => {
+        if (!previewClicked) return;
+        const timeout = setTimeout(() => setPreviewClicked(false), 650);
+        return () => clearTimeout(timeout);
+    }, [previewClicked]);
 
     // stable viewport sizing for the browser content area
     const CANVAS_CLASS =
@@ -131,55 +143,77 @@ export default function PreviewDashboard({
         "min-h-[560px] sm:min-h-[600px] lg:min-h-[640px] " +
         "max-h-[720px] md:max-h-[760px]";
 
-    const runLoop = async () => {
-        setPhase("idle");
-        setTyped("");
-        setPulseDeploy(false);
-        setPreviewReadyFlash(false);
-
-        await sleep(T.startDelayMs);
-
-        setPhase("typing");
-        for (let i = 1; i <= url.length; i++) {
-            setTyped(url.slice(0, i));
-            await sleep(T.typeMsPerChar);
-        }
-
-        setPreviewReadyFlash(true);
-        await sleep(500);
-        setPreviewReadyFlash(false);
-
-        setPhase("loading");
-        await sleep(T.skeletonMs);
-
-        setPhase("revealing");
-        await sleep(T.revealStaggerMs);
-
-        setPhase("highlight");
-        setPulseDeploy(true);
-        await sleep(T.highlightMs);
-        setPulseDeploy(false);
-
-        setPhase("deploying");
-        await sleep(T.deployingMs);
-
-        setPhase("success");
-        setTyped("");
-        await sleep(T.successMs);
-
-        setPhase("cooldown");
-        await sleep(T.cooldownMs);
-
-        runLoop();
-    };
-
     useEffect(() => {
-        runLoop();
+        let cancelled = false;
+        let timeout: ReturnType<typeof setTimeout>;
+        const sleep = (ms: number) => new Promise<void>((resolve) => {
+            timeout = setTimeout(resolve, ms);
+        });
+        const runLoop = async () => {
+            setPhase("idle");
+            setTyped("");
+            setPreviewClicked(false);
+            setPreviewReadyFlash(false);
+
+            await sleep(T.startDelayMs);
+            if (cancelled) return;
+
+            setPhase("typing");
+            for (let i = 1; i <= url.length; i++) {
+                setTyped(url.slice(0, i));
+                await sleep(T.typeMsPerChar);
+                if (cancelled) return;
+            }
+
+            setPreviewReadyFlash(true);
+            await sleep(500);
+            if (cancelled) return;
+            setPreviewReadyFlash(false);
+
+            setPhase("loading");
+            await sleep(T.skeletonMs);
+            if (cancelled) return;
+
+            setPhase("revealing");
+            await sleep(T.revealStaggerMs);
+            if (cancelled) return;
+
+            setPhase("highlight");
+            // Let the cursor finish its 620 ms movement before pressing the button.
+            await sleep(700);
+            if (cancelled) return;
+            setPhase("previewClick");
+            await sleep(Math.max(300, T.highlightMs - 700));
+            if (cancelled) return;
+
+            setPhase("deploying");
+            await sleep(T.deployingMs);
+            if (cancelled) return;
+
+            setPhase("success");
+            setTyped("");
+            await sleep(700);
+            if (cancelled) return;
+            setPhase("deployClick");
+            await sleep(300);
+            if (cancelled) return;
+
+            setPhase("cooldown");
+            await sleep(T.cooldownMs + Math.max(0, T.successMs - 1000));
+            if (cancelled) return;
+
+            void runLoop();
+        };
+        void runLoop();
+        return () => {
+            cancelled = true;
+            clearTimeout(timeout);
+        };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [url]);
 
     const showcaseVisible =
-        phase === "success" || phase === "cooldown";
+        phase === "success" || phase === "deployClick" || phase === "cooldown";
 
     const controls = useAnimation();
     useEffect(() => {
@@ -258,52 +292,55 @@ export default function PreviewDashboard({
                             contentClassName={CANVAS_CLASS}
                         >
                             {/* Inner app layout (flow-based, no absolute offsets) */}
-                            <div className="relative">
-                                <SequenceCursor phase={phase} showcaseVisible={showcaseVisible} />
+                            <div ref={sceneRef} className="relative">
+                                <SequenceCursor
+                                    phase={phase}
+                                    sceneRef={sceneRef}
+                                    previewButtonRef={previewButtonRef}
+                                    deployButtonRef={deployButtonRef}
+                                />
 
                                 {/* In-app header panel (sticky) */}
                                 {!showcaseVisible && (
                                     <div className="sticky top-0 z-20">
                                     <div className="px-3 sm:px-4 md:px-6 pt-3 sm:pt-4 min-h-[220px] flex items-center justify-center">
                                         <div className="w-full max-w-5xl px-4 sm:px-5 py-4 sm:py-5">
-                                                <div className="mt-1 flex items-center justify-center gap-2 text-xs text-neutral-700">
-                                                    <button
-                                                        type="button"
-                                                        disabled
-                                                        className="rounded-full px-3 py-1 ring-1 transition bg-neutral-100 ring-neutral-300 text-neutral-800 disabled:cursor-not-allowed disabled:opacity-70"
-                                                    >
-                                                        URL
-                                                    </button>
-                                                    <button
-                                                        type="button"
-                                                        disabled
-                                                        className="rounded-full px-3 py-1 ring-1 transition bg-transparent ring-neutral-300 text-neutral-500 disabled:cursor-not-allowed disabled:opacity-70"
-                                                    >
-                                                        Prompt
-                                                    </button>
-                                                </div>
-
                                                 <div className="mt-3 relative flex items-center bg-white/95 backdrop-blur-md p-2 pl-4 sm:pl-6 shadow-[0_20px_50px_rgba(0,0,0,0.08)] ring-1 ring-neutral-200 transition-all duration-300 ease-out rounded-full h-[64px] sm:h-[72px]">
                                                     <input
                                                         readOnly
-                                                        value={typed || "https://bettertherapy.ca"}
+                                                        value={typed}
                                                         className="flex-1 bg-transparent outline-none text-neutral-700 text-base sm:text-lg placeholder:text-neutral-400 font-medium pr-16 sm:pr-18 md:pr-0"
-                                                        placeholder="bettertherapy.ca"
+                                                        placeholder="groundedtherapy.ca"
                                                         aria-label="URL preview"
                                                     />
 
                                                     <motion.button
                                                         type="button"
-                                                        disabled
-                                                        className="absolute inset-y-2 right-2 h-auto w-10 rounded-full bg-[#FF8D21] text-white px-0 inline-flex items-center justify-center gap-2 disabled:cursor-not-allowed disabled:opacity-70 sm:static sm:h-full sm:w-auto sm:inset-y-auto sm:px-10"
+                                                        ref={previewButtonRef}
+                                                        disabled={!previewEnabled}
+                                                        onClick={() => setPreviewClicked(true)}
+                                                        aria-label={previewPressed || phase === "deploying" ? "Cloning website" : "Clone website"}
+                                                        aria-busy={previewPressed || phase === "deploying"}
+                                                        className={[
+                                                            "absolute inset-y-2 right-2 h-auto w-10 rounded-full px-0 inline-flex items-center justify-center gap-2 transition-colors duration-200 disabled:cursor-not-allowed sm:static sm:h-full sm:w-[190px] sm:shrink-0 sm:inset-y-auto sm:px-10 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-orange-200",
+                                                            previewEnabled
+                                                                ? "bg-[#FF8D21] text-white hover:bg-[#D96E11] cursor-pointer"
+                                                                : "bg-neutral-100 text-neutral-400 ring-1 ring-neutral-200",
+                                                            previewReadyFlash ? "ring-4 ring-orange-200" : "",
+                                                        ].join(" ")}
                                                         animate={{
-                                                            scale: phase === "highlight" ? 0.94 : 1,
-                                                            y: phase === "highlight" ? 1 : 0,
+                                                            scale: previewPressed ? 0.94 : 1,
+                                                            y: previewPressed ? 1 : 0,
                                                         }}
+                                                        whileTap={previewEnabled ? { scale: 0.94, y: 1 } : undefined}
                                                         transition={{ duration: 0.14, ease: "easeOut" }}
                                                     >
-                                                        <ArrowRight className="h-4.5 w-4.5 sm:hidden" />
-                                                        <span className="hidden sm:inline">Preview</span>
+                                                        {previewPressed || phase === "deploying" ? (
+                                                            <LoaderCircle className="absolute h-4 w-4 animate-spin sm:left-4" aria-hidden="true" />
+                                                        ) : (
+                                                            <ArrowRight className="h-4.5 w-4.5 sm:hidden" />
+                                                        )}
+                                                        <span className="hidden sm:inline">{previewPressed || phase === "deploying" ? "Cloning…" : "Clone"}</span>
                                                     </motion.button>
                                                 </div>
                                         </div>
@@ -338,16 +375,17 @@ export default function PreviewDashboard({
 
                                                     <motion.button
                                                         type="button"
-                                                        disabled
+                                                        ref={deployButtonRef}
+                                                        onClick={() => setPhase("cooldown")}
                                                         className={[
-                                                            "inline-flex h-8 w-8 md:w-auto items-center justify-center gap-1.5 rounded-full px-0 md:px-3 py-1 text-[13px] font-semibold text-white transition disabled:cursor-not-allowed disabled:opacity-70",
+                                                            "inline-flex h-8 w-8 md:w-auto items-center justify-center gap-1.5 rounded-full px-0 md:px-3 py-1 text-[13px] font-semibold text-white transition cursor-pointer shadow-sm hover:brightness-110 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-orange-200",
                                                             isDeployedState
                                                                 ? "border border-emerald-600 bg-emerald-600"
                                                                 : "border border-[#FF8D21] bg-[#FF8D21]",
                                                         ].join(" ")}
                                                         animate={{
-                                                            scale: phase === "success" ? 0.94 : 1,
-                                                            y: phase === "success" ? 1 : 0,
+                                                            scale: phase === "deployClick" ? 0.94 : 1,
+                                                            y: phase === "deployClick" ? 1 : 0,
                                                         }}
                                                         transition={{ duration: 0.14, ease: "easeOut" }}
                                                     >
@@ -427,39 +465,49 @@ function InlineKlonerLoader() {
 
 function SequenceCursor({
     phase,
-    showcaseVisible,
+    sceneRef,
+    previewButtonRef,
+    deployButtonRef,
 }: {
     phase: Phase;
-    showcaseVisible: boolean;
+    sceneRef: React.RefObject<HTMLDivElement>;
+    previewButtonRef: React.RefObject<HTMLButtonElement>;
+    deployButtonRef: React.RefObject<HTMLButtonElement>;
 }) {
-    const clickPhase = phase === "highlight" || phase === "success";
-    const isPreviewClick = phase === "highlight";
-
-    const previewTarget = { x: 85.2, y: 49.1 };
-    const previewSpawnTarget = { x: 75.2, y: 70.2 };
-    const deployTarget = { x: 90.5, y: 6.4 };
+    const [target, setTarget] = useState({ x: 0, y: 0 });
+    const clickPhase = phase === "previewClick" || phase === "deployClick";
     const isResetting = phase === "idle";
 
-    const target = (() => {
-        if (phase === "success" || phase === "cooldown") {
-            return { ...deployTarget, click: phase === "success" };
-        }
-        if (phase === "highlight" || phase === "deploying") {
-            return { ...previewTarget, click: phase === "highlight" };
-        }
-        if (!showcaseVisible) {
-            return { ...previewSpawnTarget, click: false };
-        }
-        return { ...previewSpawnTarget, click: false };
-    })();
+    useLayoutEffect(() => {
+        const scene = sceneRef.current;
+        if (!scene) return;
+        const updateTarget = () => {
+            const isDeploy = phase === "success" || phase === "deployClick" || phase === "cooldown";
+            const button = isDeploy ? deployButtonRef.current : previewButtonRef.current;
+            if (!button) return;
+            const bounds = scene.getBoundingClientRect();
+            const buttonBounds = button.getBoundingClientRect();
+            const approaching = phase === "idle" || phase === "typing" || phase === "loading" || phase === "revealing";
+            setTarget({
+                x: buttonBounds.left - bounds.left + buttonBounds.width / 2 - (approaching ? 70 : 0),
+                y: buttonBounds.top - bounds.top + buttonBounds.height / 2 + (approaching ? 65 : 0),
+            });
+        };
+        updateTarget();
+        const observer = new ResizeObserver(updateTarget);
+        observer.observe(scene);
+        if (previewButtonRef.current) observer.observe(previewButtonRef.current);
+        if (deployButtonRef.current) observer.observe(deployButtonRef.current);
+        return () => observer.disconnect();
+    }, [phase, sceneRef, previewButtonRef, deployButtonRef]);
 
     return (
         <motion.div
             className="pointer-events-none absolute z-30 will-change-transform"
             initial={false}
             animate={{
-                left: `${target.x}%`,
-                top: `${target.y}%`,
+                left: target.x,
+                top: target.y,
                 opacity: isResetting ? 0 : 1,
             }}
             transition={{
@@ -473,28 +521,26 @@ function SequenceCursor({
                 },
                 opacity: { duration: isResetting ? 0.12 : 0.2, ease: "easeOut" },
             }}
-            style={{ transform: "translate3d(-50%, -50%, 0)" }}
         >
             <motion.div
                 key={clickPhase ? `click-${phase}` : "idle"}
                 className="relative"
                 animate={
-                    target.click
+                    clickPhase
                         ? { scale: [1, 0.92, 1], y: [0, 1, 0] }
                         : { scale: 1, y: 0 }
                 }
                 transition={
-                    target.click
+                    clickPhase
                         ? {
                               duration: 0.3,
                               ease: "easeOut",
-                              delay: isPreviewClick ? 0.5 : 0,
                           }
                         : { duration: 0.2, ease: "easeOut" }
                 }
             >
-                <MousePointer className="h-7 w-7 text-neutral-900 drop-shadow-[0_1px_1px_rgba(255,255,255,0.55)]" />
-                {target.click ? (
+                <MousePointer className="h-7 w-7 fill-white text-neutral-900 drop-shadow-[0_2px_3px_rgba(0,0,0,0.2)]" />
+                {clickPhase ? (
                     <>
                         <motion.span
                             className="absolute -left-1 -top-1 h-4 w-4 rounded-full"
@@ -579,9 +625,6 @@ function BrowserFrame({
                     </div>
                 </div>
 
-                <div className="hidden sm:flex items-center gap-2">
-                    <span className="h-7 w-7 rounded-full bg-neutral-100 border border-neutral-200" />
-                </div>
             </div>
 
             {/* content viewport */}

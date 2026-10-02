@@ -37,8 +37,13 @@ const nextConfig = {
     async redirects() {
         return [
             {
+                source: '/website-cloner',
+                destination: '/',
+                permanent: true,
+            },
+            {
                 source: '/blog/website-cloner',
-                destination: '/website-cloner',
+                destination: '/',
                 permanent: true,
             },
             {
