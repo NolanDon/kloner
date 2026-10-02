@@ -1,6 +1,5 @@
 import type { MetadataRoute } from "next";
 import { getAllBlogPosts, getBlogIndexUrl, getBlogPostUrl, getSiteUrl } from "@/lib/blog";
-import { TOOL_CONFIGS } from "@/components/tools/toolRegistry";
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const site = getSiteUrl();
@@ -9,7 +8,6 @@ export default function sitemap(): MetadataRoute.Sitemap {
   const staticRoutes: MetadataRoute.Sitemap = [
     { url: `${site}/website-cloner`, lastModified: now, priority: 0.95 },
     { url: `${site}/`, lastModified: now, priority: 1.0 },
-    { url: `${site}/tools`, lastModified: now, priority: 0.9 },
     { url: `${site}/price`, lastModified: now, priority: 0.8 },
     { url: `${site}/community-builds`, lastModified: now, priority: 0.8 },
     { url: `${site}/compare`, lastModified: now, priority: 0.6 },
@@ -28,11 +26,5 @@ export default function sitemap(): MetadataRoute.Sitemap {
     priority: 0.7,
   }));
 
-  const toolRoutes: MetadataRoute.Sitemap = TOOL_CONFIGS.map((tool) => ({
-    url: `${site}/tools/${tool.slug}`,
-    lastModified: now,
-    priority: 0.8,
-  }));
-
-  return [...staticRoutes, ...toolRoutes, ...blogRoutes];
+  return [...staticRoutes, ...blogRoutes];
 }

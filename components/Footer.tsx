@@ -15,7 +15,6 @@ const FOOTER_SECTIONS: Array<{ title: string; items: LinkItem[]; note?: { atInde
   {
     title: "Product",
     items: [
-      { label: "Tools", href: "/tools" },
       { label: "How it Works", href: "/#how-it-works" },
       { label: "Examples", href: "/#examples" },
       { label: "FAQ", href: "/#faq" },
@@ -33,17 +32,6 @@ const FOOTER_SECTIONS: Array<{ title: string; items: LinkItem[]; note?: { atInde
       { label: "Privacy Policy", href: "/privacy" },
       { label: "Terms", href: "/terms" },
       { label: "Kloner Vercel EULA", href: "/legal/kloner-vercel-eula" },
-    ],
-  },
-  {
-    title: "Tools",
-    items: [
-      { label: "Tools hub", href: "/tools" },
-      { label: "QR Code Generator", href: "/tools/qr-code-generator" },
-      { label: "JSON Formatter", href: "/tools/json-formatter" },
-      { label: "Password Generator", href: "/tools/password-generator" },
-      { label: "Image Resizer", href: "/tools/image-resizer" },
-      { label: "Time Zone Converter", href: "/tools/time-zone-converter" },
     ],
   },
   {
@@ -127,11 +115,6 @@ export default function Footer({ showSeoLinks = true }: { showSeoLinks?: boolean
             <li>
               <Link href="/" className="text-neutral-700 hover:text-neutral-900">
                 Home
-              </Link>
-            </li>
-            <li>
-              <Link href="/tools" className="text-neutral-700 hover:text-neutral-900">
-                Tools
               </Link>
             </li>
             <li>

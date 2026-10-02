@@ -56,7 +56,7 @@ export default function HomeClient() {
                 </section>
 
                 <section id="footer" className="snap-start snap-always flex flex-col">
-                    <Footer />
+                    <Footer showSeoLinks={false} />
                 </section>
             </main>
         </>
