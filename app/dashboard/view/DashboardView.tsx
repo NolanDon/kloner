@@ -106,6 +106,10 @@ import SuccessConfetti from "../../../components/tools/SuccessConfetti";
 import KlonerLoader from "@/components/KlonerLoader";
 import {
     buildTimedOutDraftIssueState,
+    buildTimedOutUrlProcessingSession,
+    isTimedOutUrlProcessingSession,
+    canContinueUrlProcessingSession,
+    isUrlGenerationConfirmedReady,
     normalizeDashboardDraftRecords,
     resolveDashboardDraftThumbnailUrl,
     isTimedOutDraftLoadingState,
@@ -6579,7 +6583,8 @@ export default function PreviewPage(): JSX.Element {
                             archiveZipBytes: typeof acceptedAny?.archiveZipBytes === "number"
                                 ? acceptedAny.archiveZipBytes
                                 : current?.archiveZipBytes ?? null,
-                            phase: "ready",
+                            // HTTP acceptance does not confirm editor preparation completed.
+                            phase: "processing",
                             phaseStartedAt: current?.phaseStartedAt || Date.now(),
                         }));
                     }
@@ -7067,8 +7072,9 @@ export default function PreviewPage(): JSX.Element {
 
     const handleContinueUrlProcessingEditorOpen = useCallback(() => {
         const session = urlProcessingHandoff;
-        const appIdToOpen = pendingCreatedAppLaunchRequestedRef.current || session?.appId || pendingCreatedApp?.id || null;
-        if (!session || !appIdToOpen) return;
+        const appIdToOpen = session?.appId || pendingCreatedApp?.id || null;
+        if (!session || !appIdToOpen ||
+            !canContinueUrlProcessingSession(session, Boolean(urlProcessingFailure))) return;
 
         pendingCreatedAppLaunchRequestedRef.current = appIdToOpen;
         setUrlProcessingHandoff((current) => {
@@ -7081,19 +7087,43 @@ export default function PreviewPage(): JSX.Element {
         });
         setInfo("Opening your editor…");
         openAppBuilderFromDashboardCard(appIdToOpen, { forceReload: true });
-    }, [openAppBuilderFromDashboardCard, pendingCreatedApp?.id, setInfo, urlProcessingHandoff]);
+    }, [openAppBuilderFromDashboardCard, pendingCreatedApp?.id, setInfo, urlProcessingFailure, urlProcessingHandoff]);
+
+    useEffect(() => {
+        const session = urlProcessingHandoff;
+        if (!session?.appId || urlProcessingFailure ||
+            session.phase === "ready" || session.phase === "navigating") return;
+        const app = apps.find((item) => item.id === session.appId) as any;
+        const generation = app?.generation;
+        if (!generation) return;
+        const failed = ["error", "failed", "cancelled"].includes(String(generation.status || "").toLowerCase()) ||
+            Boolean(generation.error || generation.errorCode || generation.needsRescan);
+        const ready = isUrlGenerationConfirmedReady(generation);
+        if (!failed && !ready) return;
+        setUrlProcessingHandoff((current) => {
+            if (!current || current.appId !== session.appId) return current;
+            const phase = failed ? "error" : "ready";
+            const errorMessage = failed
+                ? String(generation.error || generation.message || "Editor preparation failed. Please try again.")
+                : null;
+            if (current.phase === phase && current.errorMessage === errorMessage) return current;
+            return { ...current, phase, errorMessage, phaseStartedAt: Date.now() };
+        });
+    }, [apps, urlProcessingFailure, urlProcessingHandoff]);
 
     const handleReturnToDashboardFromUrlProcessing = useCallback(() => {
         clearUrlProcessingNavigationTimers();
         pendingCreatedAppLaunchRequestedRef.current = null;
         setUrlProcessingPopupSuppressed(true);
         router.replace("/dashboard/view", { scroll: false });
-        push("Returned to the dashboard. The scan will keep running in the background.", "ok");
-    }, [clearUrlProcessingNavigationTimers, push, router]);
+        push(urlProcessingFailure || urlProcessingHandoff?.phase === "error"
+            ? "Returned to the dashboard. Check the scan status before trying again."
+            : "Returned to the dashboard. The scan will keep running in the background.", "ok");
+    }, [clearUrlProcessingNavigationTimers, push, router, urlProcessingFailure, urlProcessingHandoff?.phase]);
 
     const handleStopUrlProcessing = useCallback(async () => {
         const session = urlProcessingHandoff;
-        if (!session) {
+        if (!session || session.phase === "error" || urlProcessingFailure) {
             handleReturnToDashboardFromUrlProcessing();
             return;
         }
@@ -7111,7 +7141,21 @@ export default function PreviewPage(): JSX.Element {
         handleReturnToDashboardFromUrlProcessing,
         showConfirm,
         urlProcessingHandoff,
+        urlProcessingFailure,
     ]);
+
+    useEffect(() => {
+        if (!urlProcessingHandoff || urlProcessingHandoff.phase === "error" ||
+            urlProcessingHandoff.phase === "ready") return;
+        const checkTimeout = () => {
+            setUrlProcessingHandoff((current) => isTimedOutUrlProcessingSession(current)
+                ? buildTimedOutUrlProcessingSession(current!)
+                : current);
+        };
+        checkTimeout();
+        const timer = window.setInterval(checkTimeout, 1000);
+        return () => window.clearInterval(timer);
+    }, [urlProcessingHandoff]);
 
     useEffect(() => {
         const sessionAppId = String(urlProcessingHandoff?.appId || "").trim();
@@ -8184,6 +8228,9 @@ export default function PreviewPage(): JSX.Element {
                     appId: current.appId || draft.id || draftKey,
                     sourceUrl: normalized,
                     phase: patch.phase === "error" ? "error" : (current.phase === "ready" ? "ready" : "processing"),
+                    errorMessage: patch.phase === "error"
+                        ? patch.lastError || "Archive scan failed. Please try again."
+                        : current.errorMessage,
                     phaseStartedAt: current.phaseStartedAt || Date.now(),
                 };
             });
@@ -9823,16 +9870,15 @@ export default function PreviewPage(): JSX.Element {
     }, [targetUrl, captureStatus, err, startRequested, shouldSendFrontendTimeoutAlert]);
 
     useEffect(() => {
-        const rawTarget = targetUrl || urlProcessingFailure?.url || "";
+        const rawTarget = urlProcessingFailure?.url || urlProcessingHandoff?.sourceUrl || targetUrl || "";
         if (!rawTarget) return;
 
         // A scan can be accepted by /generate and fail later while the browser
         // polls the Firestore URL document. That terminal failure never passes
         // through the proxy's HTTP error handler, so report it from here.
         const terminalError = captureStatus === "error";
-        const handoffError = Boolean(urlProcessingFailure?.message) &&
-            captureStatus !== "queued" &&
-            captureStatus !== "processing";
+        const handoffError = Boolean(urlProcessingFailure?.message ||
+            (urlProcessingHandoff?.phase === "error" && urlProcessingHandoff.errorMessage));
         if (!terminalError && !handoffError) return;
 
         // Do not report the old error state while a fresh scan is being queued.
@@ -9853,6 +9899,7 @@ export default function PreviewPage(): JSX.Element {
             scanJob.error,
             doc.warningMessage,
             urlProcessingFailure?.message,
+            urlProcessingHandoff?.phase === "error" ? urlProcessingHandoff.errorMessage : null,
             err,
         ]
             .map((value) => String(value || "").trim())
@@ -9908,7 +9955,7 @@ export default function PreviewPage(): JSX.Element {
                 // Observability must never interfere with the user's error UI.
             }
         })();
-    }, [activeUrlScanJob, captureStatus, docData, err, ensureSessionAndCsrf, shouldSendFrontendTimeoutAlert, startRequested, targetUrl, urlProcessingFailure]);
+    }, [activeUrlScanJob, captureStatus, docData, err, ensureSessionAndCsrf, shouldSendFrontendTimeoutAlert, startRequested, targetUrl, urlProcessingFailure, urlProcessingHandoff?.phase, urlProcessingHandoff?.errorMessage, urlProcessingHandoff?.sourceUrl]);
 
     useEffect(() => {
         const normalizedUrl = targetUrl ? normUrl(targetUrl) : "";
@@ -13652,16 +13699,11 @@ export default function PreviewPage(): JSX.Element {
         );
     }, [isDev]);
 
-    const isUrlProcessingRedirecting = Boolean(
-        urlProcessingHandoff?.phase === "ready" ||
-        urlProcessingHandoff?.phase === "navigating"
-    );
-
     const urlProcessingPopupTitle = urlProcessingFailure
         ? "URL processing failed"
         : urlProcessingHandoff?.phase === "error"
             ? (String(urlProcessingHandoff.errorMessage || "").toLowerCase().includes("timed out")
-                ? "Opening editor timed out"
+                ? "Processing timed out"
                 : "URL processing failed")
             : urlProcessingHandoff?.phase === "ready"
                 ? (urlProcessingContinueFallbackVisible ? "Continue to editor" : "Redirecting to editor")
@@ -13699,7 +13741,7 @@ export default function PreviewPage(): JSX.Element {
         setShowCreditsPaywall("early_generation");
     }, []);
     const shouldShowUrlProcessingContinueAction = Boolean(
-        isUrlProcessingRedirecting &&
+        canContinueUrlProcessingSession(urlProcessingHandoff, Boolean(urlProcessingFailure)) &&
         urlProcessingContinueFallbackVisible &&
         !urlProcessingPopupSuppressed &&
         urlProcessingHandoff?.appId
@@ -13731,11 +13773,15 @@ export default function PreviewPage(): JSX.Element {
                     ? openUrlProcessingUpgradePaywall
                     : shouldShowUrlProcessingContinueAction
                         ? handleContinueUrlProcessingEditorOpen
+                        : urlProcessingFailure || urlProcessingHandoff?.phase === "error"
+                            ? handleReturnToDashboardFromUrlProcessing
                         : undefined}
                 primaryActionLabel={urlProcessingUpgradeRequired
                     ? "Upgrade"
                     : shouldShowUrlProcessingContinueAction
                         ? "Continue to editor"
+                        : urlProcessingFailure || urlProcessingHandoff?.phase === "error"
+                            ? "Return to dashboard"
                         : null}
             />
             {isDev ? (

@@ -1,6 +1,8 @@
 import {
     buildTimedOutDraftIssueState,
     buildTimedOutUrlProcessingSession,
+    canContinueUrlProcessingSession,
+    isUrlGenerationConfirmedReady,
     isPersistedDraftPendingState,
     isTimedOutDraftLoadingState,
     isTimedOutUrlProcessingSession,
@@ -14,6 +16,14 @@ import {
 } from "./draftFlow";
 
 describe("dashboard draft flow", () => {
+    it("requires completed successful generation before enabling editor navigation", () => {
+        expect(isUrlGenerationConfirmedReady({ status: "processing", finished: false })).toBe(false);
+        expect(isUrlGenerationConfirmedReady({ status: "ready", finished: false })).toBe(false);
+        expect(isUrlGenerationConfirmedReady({ status: "ready", finished: true })).toBe(true);
+        expect(isUrlGenerationConfirmedReady({ status: "ready", finished: true, error: "failed" })).toBe(false);
+        expect(isUrlGenerationConfirmedReady({ status: "failed", finished: true })).toBe(false);
+        expect(isUrlGenerationConfirmedReady({ status: "ready", finished: true, needsRescan: true })).toBe(false);
+    });
     it("keeps draft delete enabled during pending or locked states when not deleting", () => {
         expect(
             shouldDisableDraftDeleteButton({
@@ -146,8 +156,29 @@ describe("dashboard draft flow", () => {
             }),
         ).toMatchObject({
             phase: "error",
-            errorMessage: "Opening your editor timed out after 5 minutes. Close this dialog to delete the draft and try again.",
+            errorMessage: "Opening your editor timed out after 5 minutes. Return to the dashboard and open your completed app again.",
         });
+    });
+
+    it("times out unconfirmed processing and never permits it to open the editor", () => {
+        const now = 1_000_000;
+        const session = {
+            appId: "draftapp-1", draftId: "draft-1", draftAppId: "draftapp-1",
+            sourceUrl: "https://example.com", archiveZipUrl: null, archiveZipBytes: null,
+            phase: "processing" as const, phaseStartedAt: now - 300_000,
+        };
+        expect(isTimedOutUrlProcessingSession(session, now - 1)).toBe(false);
+        expect(isTimedOutUrlProcessingSession(session, now)).toBe(true);
+        const failed = buildTimedOutUrlProcessingSession(session);
+        expect(failed.phase).toBe("error");
+        expect(failed.errorMessage).toContain("couldn't confirm");
+        expect(canContinueUrlProcessingSession(session)).toBe(false);
+        expect(canContinueUrlProcessingSession(failed)).toBe(false);
+        expect(canContinueUrlProcessingSession({ ...session, phase: "ready" })).toBe(true);
+        expect(canContinueUrlProcessingSession({ ...session, phase: "navigating" })).toBe(true);
+        expect(canContinueUrlProcessingSession({ ...session, phase: "ready" }, true)).toBe(false);
+        expect(canContinueUrlProcessingSession({ ...session, phase: "ready", appId: null })).toBe(false);
+        expect(isTimedOutUrlProcessingSession({ ...session, phase: "ready" }, now)).toBe(false);
     });
 
     it("normalizes draft API payloads into newest-first dashboard records", () => {

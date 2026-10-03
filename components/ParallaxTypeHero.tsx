@@ -24,7 +24,7 @@ type Props = {
 
 export default function ParallaxTypeHero({
     headline = 'Clone a website from a URL.',
-    subcopy = 'Start a limited free preview',
+    subcopy = 'Start for free',
     parallaxStrength = 0,
     vignette = 0.35,
     typingStart = -0.005,

@@ -63,6 +63,21 @@ export function isArchiveSizeLimitPaywallResponse(responseOrError: unknown, body
 
 export const DRAFT_LOADING_TIMEOUT_MS = 10 * 60 * 1000;
 export const URL_PROCESSING_NAVIGATION_TIMEOUT_MS = 5 * 60 * 1000;
+export const URL_PROCESSING_SCAN_TIMEOUT_MS = 5 * 60 * 1000;
+
+export function canContinueUrlProcessingSession(
+    session: DashboardUrlProcessingSession | null | undefined,
+    hasFailure = false,
+): boolean {
+    return Boolean(!hasFailure && session?.appId &&
+        (session.phase === "ready" || session.phase === "navigating"));
+}
+
+export function isUrlGenerationConfirmedReady(generation: any): boolean {
+    return Boolean(generation && generation.finished === true &&
+        ["ready", "completed", "success"].includes(String(generation.status || "").toLowerCase()) &&
+        !generation.error && !generation.errorCode && !generation.needsRescan);
+}
 
 export type DashboardDraftThumbnailLookup =
     | Map<string, string | null>
@@ -179,9 +194,12 @@ export function isTimedOutUrlProcessingSession(
     session: DashboardUrlProcessingSession | null | undefined,
     nowMs = Date.now(),
 ): boolean {
-    if (!session || session.phase !== "navigating") return false;
+    if (!session || (session.phase !== "processing" && session.phase !== "navigating")) return false;
     if (!session.phaseStartedAt || !Number.isFinite(session.phaseStartedAt)) return false;
-    return nowMs - session.phaseStartedAt >= URL_PROCESSING_NAVIGATION_TIMEOUT_MS;
+    const timeoutMs = session.phase === "processing"
+        ? URL_PROCESSING_SCAN_TIMEOUT_MS
+        : URL_PROCESSING_NAVIGATION_TIMEOUT_MS;
+    return nowMs - session.phaseStartedAt >= timeoutMs;
 }
 
 export function buildTimedOutUrlProcessingSession(
@@ -190,7 +208,9 @@ export function buildTimedOutUrlProcessingSession(
     return {
         ...session,
         phase: "error",
-        errorMessage: "Opening your editor timed out after 5 minutes. Close this dialog to delete the draft and try again.",
+        errorMessage: session.phase === "processing"
+            ? "We couldn't confirm that your scan finished after 5 minutes. Return to the dashboard to check its status before trying again."
+            : "Opening your editor timed out after 5 minutes. Return to the dashboard and open your completed app again.",
         phaseStartedAt: session.phaseStartedAt || Date.now(),
     };
 }

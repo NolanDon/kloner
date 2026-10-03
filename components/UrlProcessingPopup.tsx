@@ -124,8 +124,8 @@ export default function UrlProcessingPopup({
         if (stage === "ready") return "Ready";
         if (stage === "navigating") return "Opening editor";
 
-        if (progress >= 98) return "Preparing editor";
-        if (progress >= 80) return "Preparing editor";
+        if (stage === "finishing") return "Preparing editor";
+        if (progress >= 80) return "Still processing your site";
         if (progress >= 50) return "Stitching your site";
         if (progress >= 20) return "Gathering content";
         return title || "Processing your site";
@@ -134,7 +134,7 @@ export default function UrlProcessingPopup({
         () => (error ? parseVerifyDomainMessage(error) : null),
         [error],
     );
-    const showErrorPrimaryAction = Boolean(error && onPrimaryAction && primaryActionLabel);
+    const showPrimaryAction = Boolean(onPrimaryAction && primaryActionLabel);
 
     return (
         <AnimatePresence>
@@ -193,8 +193,8 @@ export default function UrlProcessingPopup({
                             </div>
                         </div>
 
-                        <div className={`relative mt-20 flex flex-col gap-3 ${showErrorPrimaryAction ? "items-center text-center" : ""}`}>
-                            <div className={`w-full max-w-full text-sm font-normal leading-5 tracking-[-0.01em] text-neutral-900 ${showErrorPrimaryAction ? "whitespace-normal text-center" : "overflow-hidden text-ellipsis whitespace-nowrap"}`}>
+                        <div className={`relative mt-20 flex flex-col gap-3 ${showPrimaryAction ? "items-center text-center" : ""}`}>
+                            <div className={`w-full max-w-full text-sm font-normal leading-5 tracking-[-0.01em] text-neutral-900 ${showPrimaryAction ? "whitespace-normal text-center" : "overflow-hidden text-ellipsis whitespace-nowrap"}`}>
                                 {verifyDomainMessage ? (
                                     <>
                                         {verifyDomainMessage.prefix}
@@ -219,7 +219,7 @@ export default function UrlProcessingPopup({
                                 </div>
                             ) : null}
 
-                            {showErrorPrimaryAction ? (
+                            {showPrimaryAction ? (
                                 <motion.button
                                     type="button"
                                     onClick={onPrimaryAction}
@@ -250,16 +250,6 @@ export default function UrlProcessingPopup({
                                     </div>
 
                                     <div className="flex min-h-[3.25rem] items-end justify-end text-right">
-                                        {onPrimaryAction && primaryActionLabel ? (
-                                            <button
-                                                type="button"
-                                                onClick={onPrimaryAction}
-                                                className="hidden min-h-[3.25rem] items-center justify-center gap-2 rounded-full bg-[#FF8D21] px-5 py-2.5 text-sm font-semibold text-white shadow-[0_12px_30px_rgba(255,141,33,0.22)] transition hover:opacity-95 md:inline-flex"
-                                            >
-                                                {primaryActionLabel}
-                                                <ArrowRight className="h-4 w-4" />
-                                            </button>
-                                        ) : null}
                                         <div className="ml-auto flex flex-col items-end gap-0.5">
                                             {percentLabel ? (
                                                 <motion.div
@@ -289,18 +279,6 @@ export default function UrlProcessingPopup({
                             </div>
                         ) : null}
 
-                        {onPrimaryAction && primaryActionLabel ? (
-                            <div className="mt-4 md:hidden">
-                                <button
-                                    type="button"
-                                    onClick={onPrimaryAction}
-                                    className="inline-flex min-h-[3.25rem] w-full items-center justify-center gap-2 rounded-full bg-[#FF8D21] px-5 py-2.5 text-sm font-semibold text-white shadow-[0_12px_30px_rgba(255,141,33,0.22)] transition hover:opacity-95"
-                                >
-                                    {primaryActionLabel}
-                                    <ArrowRight className="h-4 w-4" />
-                                </button>
-                            </div>
-                        ) : null}
                     </motion.div>
                 </motion.div>
             ) : null}
