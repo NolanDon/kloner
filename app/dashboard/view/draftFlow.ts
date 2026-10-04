@@ -63,7 +63,8 @@ export function isArchiveSizeLimitPaywallResponse(responseOrError: unknown, body
 
 export const DRAFT_LOADING_TIMEOUT_MS = 10 * 60 * 1000;
 export const URL_PROCESSING_NAVIGATION_TIMEOUT_MS = 5 * 60 * 1000;
-export const URL_PROCESSING_SCAN_TIMEOUT_MS = 5 * 60 * 1000;
+// Includes capture, archive preparation, and confirmation of editor readiness.
+export const URL_PROCESSING_SCAN_TIMEOUT_MS = 10 * 60 * 1000;
 
 export function canContinueUrlProcessingSession(
     session: DashboardUrlProcessingSession | null | undefined,
@@ -209,7 +210,7 @@ export function buildTimedOutUrlProcessingSession(
         ...session,
         phase: "error",
         errorMessage: session.phase === "processing"
-            ? "We couldn't confirm that your scan finished after 5 minutes. Return to the dashboard to check its status before trying again."
+            ? `We couldn't confirm that your scan finished after ${URL_PROCESSING_SCAN_TIMEOUT_MS / 60_000} minutes. Return to the dashboard to check its status before trying again.`
             : "Opening your editor timed out after 5 minutes. Return to the dashboard and open your completed app again.",
         phaseStartedAt: session.phaseStartedAt || Date.now(),
     };

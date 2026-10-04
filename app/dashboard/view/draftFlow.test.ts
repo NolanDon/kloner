@@ -160,18 +160,19 @@ describe("dashboard draft flow", () => {
         });
     });
 
-    it("times out unconfirmed processing and never permits it to open the editor", () => {
+    it("allows ten minutes for unconfirmed processing and never permits it to open the editor", () => {
         const now = 1_000_000;
         const session = {
             appId: "draftapp-1", draftId: "draft-1", draftAppId: "draftapp-1",
             sourceUrl: "https://example.com", archiveZipUrl: null, archiveZipBytes: null,
-            phase: "processing" as const, phaseStartedAt: now - 300_000,
+            phase: "processing" as const, phaseStartedAt: now - 600_000,
         };
+        expect(isTimedOutUrlProcessingSession(session, session.phaseStartedAt + 300_000)).toBe(false);
         expect(isTimedOutUrlProcessingSession(session, now - 1)).toBe(false);
         expect(isTimedOutUrlProcessingSession(session, now)).toBe(true);
         const failed = buildTimedOutUrlProcessingSession(session);
         expect(failed.phase).toBe("error");
-        expect(failed.errorMessage).toContain("couldn't confirm");
+        expect(failed.errorMessage).toContain("couldn't confirm that your scan finished after 10 minutes");
         expect(canContinueUrlProcessingSession(session)).toBe(false);
         expect(canContinueUrlProcessingSession(failed)).toBe(false);
         expect(canContinueUrlProcessingSession({ ...session, phase: "ready" })).toBe(true);
