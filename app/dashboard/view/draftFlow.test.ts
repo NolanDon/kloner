@@ -3,6 +3,7 @@ import {
     buildTimedOutUrlProcessingSession,
     canContinueUrlProcessingSession,
     isUrlGenerationConfirmedReady,
+    isArchiveReadyForScan,
     isPersistedDraftPendingState,
     isTimedOutDraftLoadingState,
     isTimedOutUrlProcessingSession,
@@ -16,6 +17,16 @@ import {
 } from "./draftFlow";
 
 describe("dashboard draft flow", () => {
+    it("accepts a matching archive that finished while the scan request was awaiting its response", () => {
+        const snapshot = { finished: true, status: "ready", zipPath: "archives/site.zip", updatedAtMs: 1500 };
+        expect(isArchiveReadyForScan(snapshot, 1000)).toBe(true);
+        // The previous polling-time cutoff rejected this completed archive.
+        expect(isArchiveReadyForScan(snapshot, 2000)).toBe(false);
+        expect(isArchiveReadyForScan({ ...snapshot, updatedAtMs: 999 }, 1000)).toBe(false);
+        expect(isArchiveReadyForScan({ ...snapshot, finished: false }, 1000)).toBe(false);
+        expect(isArchiveReadyForScan({ ...snapshot, zipPath: null }, 1000)).toBe(false);
+        expect(isArchiveReadyForScan({ ...snapshot, status: "processing" }, 1000)).toBe(false);
+    });
     it("requires completed successful generation before enabling editor navigation", () => {
         expect(isUrlGenerationConfirmedReady({ status: "processing", finished: false })).toBe(false);
         expect(isUrlGenerationConfirmedReady({ status: "ready", finished: false })).toBe(false);

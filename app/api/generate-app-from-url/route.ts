@@ -377,49 +377,56 @@ export async function POST(req: NextRequest) {
         try {
           const db = getAdminDb();
           const appRef = db.collection("kloner_users").doc(decoded.uid).collection("kloner_apps").doc(acceptedAppId);
-          const existingApp = await appRef.get();
-          const now = new Date();
-          const existingData = existingApp.exists ? (existingApp.data() || {}) as any : null;
+          await db.runTransaction(async (transaction) => {
+            const existingApp = await transaction.get(appRef);
+            const now = new Date();
+            const existingData = existingApp.exists ? (existingApp.data() || {}) as any : null;
 
-          await appRef.set({
-            id: acceptedAppId,
-            userId: decoded.uid,
-            name,
-            url: normalizedUrl,
-            sourceUrl: normalizedUrl,
-            createdAt: existingData?.createdAt || now,
-            updatedAt: now,
-            status: "processing",
-            generationStatus: "processing",
-            generation: {
+            const initialState = {
               status: "processing",
-              stage: "queued",
-              progress: 0,
-              title: "Adding finishing touches",
-              jobId: acceptedJobId,
-              requestId: appResponse.reqId || null,
+              generationStatus: "processing",
+              files: {},
+              pendingCompleted: false,
+            };
+            transaction.set(appRef, {
+              id: acceptedAppId,
+              userId: decoded.uid,
+              name,
+              url: normalizedUrl,
+              sourceUrl: normalizedUrl,
+              createdAt: existingData?.createdAt || now,
+              updatedAt: now,
+              // The backend owns progress. Never regress a state it has already
+              // written while this request was waiting for acceptance/credits.
+              ...(!existingApp.exists ? { ...initialState, generation: {
+                status: "processing",
+                stage: "queued",
+                progress: 0,
+                title: "Adding finishing touches",
+                jobId: acceptedJobId,
+                requestId: appResponse.reqId || null,
+                archiveZipPath: typeof appData.archiveZipPath === "string" ? appData.archiveZipPath : null,
+                archiveZipUrl: typeof appData.archiveZipUrl === "string" ? appData.archiveZipUrl : null,
+                archiveZipBytes: typeof appData.archiveZipBytes === "number" && Number.isFinite(appData.archiveZipBytes)
+                  ? appData.archiveZipBytes
+                  : null,
+                errorCode: null,
+                details: null,
+                retryable: Boolean(appData.rescanRecommended),
+                needsRescan: appData.rescanRecommended === true,
+                nextAction: appData.rescanRecommended ? "rescan_url" : null,
+              },
+              warnings: Array.isArray(appData.warnings) ? appData.warnings : [],
+              rescanRecommended: appData.rescanRecommended === true,
               archiveZipPath: typeof appData.archiveZipPath === "string" ? appData.archiveZipPath : null,
               archiveZipUrl: typeof appData.archiveZipUrl === "string" ? appData.archiveZipUrl : null,
               archiveZipBytes: typeof appData.archiveZipBytes === "number" && Number.isFinite(appData.archiveZipBytes)
                 ? appData.archiveZipBytes
                 : null,
-              errorCode: null,
-              details: null,
-              retryable: Boolean(appData.rescanRecommended),
-              needsRescan: appData.rescanRecommended === true,
-              nextAction: appData.rescanRecommended ? "rescan_url" : null,
-            },
-            warnings: Array.isArray(appData.warnings) ? appData.warnings : [],
-            rescanRecommended: appData.rescanRecommended === true,
-            archiveZipPath: typeof appData.archiveZipPath === "string" ? appData.archiveZipPath : null,
-            archiveZipUrl: typeof appData.archiveZipUrl === "string" ? appData.archiveZipUrl : null,
-            archiveZipBytes: typeof appData.archiveZipBytes === "number" && Number.isFinite(appData.archiveZipBytes)
-              ? appData.archiveZipBytes
-              : null,
-            generationFormat: appData.generationFormat === "html" ? "html" : "nextjs",
-            files: existingData?.files || {},
-            pendingCompleted: false,
-          }, { merge: true });
+              generationFormat: appData.generationFormat === "html" ? "html" : "nextjs",
+              } : {}),
+            }, { merge: true });
+          });
         } catch (err: any) {
           await reportZipGenerationFailure({
             req,

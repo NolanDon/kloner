@@ -80,6 +80,17 @@ export function isUrlGenerationConfirmedReady(generation: any): boolean {
         !generation.error && !generation.errorCode && !generation.needsRescan);
 }
 
+export function isArchiveReadyForScan(snapshot: {
+    finished: boolean | null;
+    status: string | null;
+    zipPath: string | null;
+    updatedAtMs: number | null;
+}, scanStartedAt: number): boolean {
+    return snapshot.finished === true && snapshot.status === "ready" &&
+        Boolean(snapshot.zipPath) && snapshot.updatedAtMs !== null &&
+        snapshot.updatedAtMs >= scanStartedAt;
+}
+
 export type DashboardDraftThumbnailLookup =
     | Map<string, string | null>
     | Record<string, string | null | undefined>

@@ -110,6 +110,7 @@ import {
     isTimedOutUrlProcessingSession,
     canContinueUrlProcessingSession,
     isUrlGenerationConfirmedReady,
+    isArchiveReadyForScan,
     normalizeDashboardDraftRecords,
     resolveDashboardDraftThumbnailUrl,
     isTimedOutDraftLoadingState,
@@ -8434,7 +8435,7 @@ export default function PreviewPage(): JSX.Element {
             return !requiresRescan;
         };
 
-        const pollForArchiveReadiness = async (): Promise<{
+        const pollForArchiveReadiness = async (scanStartedAt: number): Promise<{
             status: string | null;
             zipPath: string | null;
             zipUrl: string | null;
@@ -8487,13 +8488,8 @@ export default function PreviewPage(): JSX.Element {
                     continue;
                 }
                 const nextSnapshot = parseArchiveSnapshotFromUrlDoc(urlDoc);
-                const updatedAtMs = nextSnapshot.updatedAtMs;
-                const isFreshTerminalReady =
-                    nextSnapshot.finished === true &&
-                    nextSnapshot.status === "ready" &&
-                    Boolean(nextSnapshot.zipPath) &&
-                    updatedAtMs !== null &&
-                    updatedAtMs >= startAt;
+                // Completion can precede the HTTP response and the first poll.
+                const isFreshTerminalReady = isArchiveReadyForScan(nextSnapshot, scanStartedAt);
                 const isFreshTerminalError =
                     nextSnapshot.finished === true &&
                     nextSnapshot.status === "error";
@@ -8582,6 +8578,7 @@ export default function PreviewPage(): JSX.Element {
             let archiveReady = await readArchiveSnapshot();
 
             if (!isReusableArchiveSnapshot(archiveReady)) {
+                const scanStartedAt = Date.now();
                 const generationAlreadyInFlight = urlGenerationInFlightRef.current === normalized;
 
                 if (!generationAlreadyInFlight) {
@@ -8620,7 +8617,7 @@ export default function PreviewPage(): JSX.Element {
                     }
                 }
 
-                archiveReady = await pollForArchiveReadiness();
+                archiveReady = await pollForArchiveReadiness(scanStartedAt);
             }
 
             if (!archiveReady) {

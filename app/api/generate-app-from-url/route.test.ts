@@ -36,6 +36,10 @@ const collectionKlonerUsers = jest.fn(() => ({
 }));
 const getAdminDb = jest.fn(() => ({
     collection: collectionKlonerUsers,
+    runTransaction: async (handler: any) => handler({
+        get: () => appRefGet(),
+        set: (_ref: any, ...args: any[]) => appRefSet(...args),
+    }),
 }));
 
 jest.mock("@/src/lib/callBackend", () => {
@@ -160,6 +164,23 @@ describe("POST /api/generate-app-from-url", () => {
         });
         expect(peekUserCredit).toHaveBeenCalledWith("uid_1", "pro", "preview");
         expect(consumeUserCredit).toHaveBeenCalledWith("uid_1", "pro", "preview");
+    });
+
+    it.each(["ready", "working", "error"])("does not reset a backend app already in %s after acceptance", async (status) => {
+        const generation = { status, stage: status, finished: status !== "working", jobId: "job_123" };
+        appRefGet.mockResolvedValue({
+            exists: true,
+            data: () => ({ generation, status, files: { "index.html": "<h1>Ready</h1>" }, pendingCompleted: true }),
+        });
+        const { POST } = await import("./route");
+        const res: any = await POST({
+            json: async () => ({ url: "https://example.com", name: "Example" }),
+        } as any);
+        expect(res.status).toBe(202);
+        const write = appRefSet.mock.calls[0][0];
+        for (const field of ["generation", "status", "generationStatus", "files", "pendingCompleted", "archiveZipPath", "archiveZipUrl", "archiveZipBytes", "warnings"]) {
+            expect(write).not.toHaveProperty(field);
+        }
     });
 
     it("forwards html generation type when requested", async () => {
