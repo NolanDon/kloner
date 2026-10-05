@@ -3,19 +3,18 @@ import { getAllBlogPosts, getBlogIndexUrl, getBlogPostUrl, getSiteUrl } from "@/
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const site = getSiteUrl();
-  const now = new Date();
 
   const staticRoutes: MetadataRoute.Sitemap = [
-    { url: `${site}/`, lastModified: now, priority: 1.0 },
-    { url: `${site}/price`, lastModified: now, priority: 0.8 },
-    { url: `${site}/community-builds`, lastModified: now, priority: 0.8 },
-    { url: `${site}/compare`, lastModified: now, priority: 0.6 },
-    { url: `${site}/contact`, lastModified: now, priority: 0.6 },
-    { url: `${site}/partners`, lastModified: now, priority: 0.5 },
-    { url: `${site}/privacy`, lastModified: now, priority: 0.5 },
-    { url: `${site}/terms`, lastModified: now, priority: 0.5 },
-    { url: `${site}/legal/kloner-vercel-eula`, lastModified: now, priority: 0.5 },
-    { url: getBlogIndexUrl(), lastModified: now, priority: 0.7 },
+    { url: `${site}/`, priority: 1.0 },
+    { url: `${site}/price`, priority: 0.8 },
+    { url: `${site}/community-builds`, priority: 0.8 },
+    { url: `${site}/compare`, priority: 0.6 },
+    { url: `${site}/contact`, priority: 0.6 },
+    { url: `${site}/partners`, priority: 0.5 },
+    { url: `${site}/privacy`, priority: 0.5 },
+    { url: `${site}/terms`, priority: 0.5 },
+    { url: `${site}/legal/kloner-vercel-eula`, priority: 0.5 },
+    { url: getBlogIndexUrl(), priority: 0.7 },
   ];
 
   const blogRoutes: MetadataRoute.Sitemap = getAllBlogPosts().map((p) => ({

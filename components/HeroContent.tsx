@@ -150,6 +150,9 @@ export default function HeroContent({
             {error ?? "Clone a public website • Preview the result • Customize and launch"}
           </div>
         </form>
+        <p className="mt-3 text-sm text-white/80">
+          Limited free preview access. Editing and publishing depend on your plan. <a href="/price" className="underline underline-offset-4">View pricing</a>.
+        </p>
 
         <div className="mt-[clamp(1rem,3.8vh,3rem)] flex justify-center">
           {/* <a

@@ -3,16 +3,16 @@ import HomeClient from "./HomeClient";
 import { WEBSITE_CLONER_FAQ } from "@/lib/websiteClonerFaq";
 
 export const metadata: Metadata = {
-  title: "Kloner – AI Website Cloner",
+  title: { absolute: "Website Cloner — Clone a Website from a URL | Kloner" },
   description:
-    "Clone a website from a public URL with Kloner's AI website cloner. Create an editable preview, customize it with AI, and start with limited free access.",
+    "Kloner is an AI website cloner that turns a public URL into an editable website preview. Customize the layout, text, and images, then deploy your site.",
   alternates: {
     canonical: "https://kloner.app/",
   },
   openGraph: {
-    title: "Kloner – AI Website Cloner",
+    title: "Website Cloner — Clone a Website from a URL | Kloner",
     description:
-      "Clone a website from a public URL with Kloner's AI website cloner. Create an editable preview, customize it with AI, and start with limited free access.",
+      "Kloner is an AI website cloner that turns a public URL into an editable website preview. Customize the layout, text, and images, then deploy your site.",
     url: "https://kloner.app/",
     siteName: "Kloner",
     type: "website",
@@ -27,9 +27,9 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "Kloner – AI Website Cloner",
+    title: "Website Cloner — Clone a Website from a URL | Kloner",
     description:
-      "Clone a website from a public URL with Kloner's AI website cloner. Create an editable preview, customize it with AI, and start with limited free access.",
+      "Kloner is an AI website cloner that turns a public URL into an editable website preview. Customize the layout, text, and images, then deploy your site.",
     images: ["/images/opengraph.jpg"],
   },
 };

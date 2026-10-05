@@ -56,7 +56,7 @@ function withKlonerCta(markdown: string): string {
   // Important: do NOT key off common links like `/login?mode=signup` because
   // posts may include those naturally; we only want to dedupe the injected block.
   const alreadyHasCta =
-    cleaned.includes("## Start cloning with Kloner") ||
+    cleaned.includes("## Start with Kloner’s website cloner") ||
     cleaned.includes(
       "Want to ship faster? [Create an account](/login?mode=signup) or jump into the [dashboard](/dashboard)"
     );
@@ -67,9 +67,9 @@ function withKlonerCta(markdown: string): string {
 
 ---
 
-## Start cloning with Kloner
+## Start with Kloner’s website cloner
 
-Want to ship faster? [Create an account](/login?mode=signup) or jump into the [dashboard](/dashboard) to clone from a URL or start from a prompt.
+Use [Kloner’s website cloner](/) with a supported public URL to generate a preview. Review and customize your website before deployment. Editing and publishing depend on your plan.
 `;
 
   return cleaned + cta;
@@ -350,7 +350,7 @@ At its best, an AI app cloner takes a URL (or a prompt) and produces:
 
 Think of it as *UI scaffolding + component generation*, not a literal 1:1 copy.
 
-If you want a broader, non-AI-specific overview, also see: [App Cloner: Clone a Web App From a URL](/blog/app-cloner).
+If you want a broader, non-AI-specific overview, also see: [Recreate a public web interface](/blog/clone-web-app-ui).
 
 ## When an AI app cloner is the right tool
 
@@ -437,7 +437,7 @@ Want to try the workflow end-to-end?
 3. Make 3 edits: copy, layout, and one component
 4. Share the preview for feedback
 
-If you want the next step after UI is solid, read: [How to clone apps](/blog/how-to-clone-apps).
+If you want the next step after UI is solid, read: [Recreate a public web interface](/blog/clone-web-app-ui).
 `,
   },
   {
@@ -523,7 +523,7 @@ A quick MVP is not about shipping “version 0.1.” It’s about **testing dema
 
 ---
 
-Next steps: browse [Pricing](/price) to see how you might package offers, and keep your iteration loop short by using a reliable preview flow (see [How it works](/#how-it-works)). If you’re also cloning layouts, read [AI Website Cloning](/blog/ai-website-cloning-to-production).`,
+Next steps: browse [Pricing](/price) to see how you might package offers, and keep your iteration loop short by using a reliable preview flow (see [How it works](/#how-it-works)). If you’re also cloning layouts, read [How to clone a website](/blog/how-to-clone-a-website).`,
   },
   {
     slug: "ai-agents-for-product-and-growth-teams",
@@ -672,7 +672,7 @@ Website cloning is a speed tool. Treat it as pattern capture + fast iteration, a
 
 ---
 
-Want a structured approach to deployment and previews? Start with [How it works](/#how-it-works) and sanity-check tradeoffs on [Compare](/compare). For validation tactics, see [Fast MVP Market Validation](/blog/validate-a-market-with-a-fast-mvp).`,
+Want a structured approach to deployment and previews? Start with [How it works](/#how-it-works) and sanity-check tradeoffs on [Compare](/compare). For validation tactics, see [Clone a website for an MVP](/blog/clone-website-for-mvp).`,
   },
   {
     slug: "ai-landing-page-builder-best-practices",
@@ -1281,7 +1281,7 @@ If you want to test this workflow: [Create an account](/login?mode=signup), then
 
 Search volume is exploding for terms like **ai website builder**, **website builder ai**, and **website generator** — but those phrases cover a wide range of tools.
 
-Some AI builders are “one-click sites” that you never really own. Others are closer to an **app cloner**: they generate a project you can iterate on, export, deploy, and maintain.
+Some AI builders are “one-click sites” that you never really own. Others are closer to a **website cloner**: they generate a project you can iterate on, export, deploy, and maintain.
 
 This post gives you a practical way to pick the right category based on your real goal.
 
@@ -1320,7 +1320,7 @@ Great for:
 Watch-outs:
 - You still need a workflow (component cleanup, SEO basics)
 
-If you’re specifically cloning layouts and flows, read: [AI Website Cloning: From Idea to Production](/blog/ai-website-cloning-to-production).
+If you’re specifically cloning layouts and flows, read: [How to clone a website](/blog/how-to-clone-a-website).
 
 ## A checklist that actually predicts success
 
@@ -1367,8 +1367,8 @@ Kloner is designed for a ship-first workflow:
 If you want a more cloning-specific checklist, read: [Best AI Website Builder for Cloning](/blog/best-ai-website-builder-for-cloning).
 
 ### Related reading
-- [App Cloner: Clone a Web App From a URL](/blog/app-cloner)
-- [Market Hypotheses With Cloned Demos](/blog/market-hypotheses-with-cloned-demos)
+- [Recreate a public web interface](/blog/clone-web-app-ui)
+- [Clone a website for an MVP](/blog/clone-website-for-mvp)
 
 Ready to try it? Start in the [dashboard](/dashboard) or compare plans on [Pricing](/price).
 `,
@@ -1399,7 +1399,7 @@ These are great for:
 
 But if you can’t export cleanly, you’re still paying later (in time).
 
-If you’re cloning layouts, read: [AI Website Cloning: From Idea to Production](/blog/ai-website-cloning-to-production).
+If you’re cloning layouts, read: [How to clone a website](/blog/how-to-clone-a-website).
 
 ## Option B: Free hosted website builders
 These give you a live site for $0, but typically include:
@@ -1448,7 +1448,7 @@ For a buying guide, see: [Best AI Website Builder for Cloning](/blog/best-ai-web
 
 ### Related reading
 - [AI Website Builder: What It Means in 2026](/blog/ai-website-builder)
-- [Market Hypotheses With Cloned Demos](/blog/market-hypotheses-with-cloned-demos)
+- [Clone a website for an MVP](/blog/clone-website-for-mvp)
 
 Want to build something real? Start from a URL in the [dashboard](/dashboard).
 `,
@@ -1510,7 +1510,7 @@ Choose Kloner if:
 
 ### Related reading
 - [How to Create a Website for Free (That Doesn’t Load Like a Brick)](/blog/how-to-create-a-website-for-free)
-- [AI Website Cloning: From Idea to Production](/blog/ai-website-cloning-to-production)
+- [How to clone a website](/blog/how-to-clone-a-website)
 
 If you want to test Kloner quickly, start from a URL in the [dashboard](/dashboard) and compare plans on [Pricing](/price).
 `,
@@ -1563,7 +1563,7 @@ Choose Kloner if you want:
 
 ### Related reading
 - [AI Website Builder: What It Means in 2026](/blog/ai-website-builder)
-- [Market Hypotheses With Cloned Demos](/blog/market-hypotheses-with-cloned-demos)
+- [Clone a website for an MVP](/blog/clone-website-for-mvp)
 
 Try Kloner from a URL in the [dashboard](/dashboard).
 `,
@@ -1604,7 +1604,7 @@ If you like Webflow-style layouts but want to ship faster:
 This is especially useful if you’re running SEO experiments and need performance.
 
 ### Related reading
-- [AI Website Cloning: From Idea to Production](/blog/ai-website-cloning-to-production)
+- [How to clone a website](/blog/how-to-clone-a-website)
 - [How to Create a Website for Free](/blog/how-to-create-a-website-for-free)
 
 Start from a URL in the [dashboard](/dashboard) and see how fast you can get to “good enough to ship.”
@@ -1639,7 +1639,7 @@ Kloner is better if you prioritize:
 - fewer “plugin ecosystems” that bloat over time
 - a workflow that feels like “generate → edit → deploy”
 
-If you’re trying to learn a market fast, this post is useful: [Test Market Hypotheses With Realistic Demos](/blog/market-hypotheses-with-cloned-demos).
+If you’re trying to learn a market fast, this post is useful: [Clone a website for an MVP](/blog/clone-website-for-mvp).
 
 ### Related reading
 - [AI Website Builder: What It Means in 2026](/blog/ai-website-builder)
@@ -1681,7 +1681,7 @@ Kloner is built for:
 
 ### Related reading
 - [How to Create a Website for Free](/blog/how-to-create-a-website-for-free)
-- [AI Website Cloning: From Idea to Production](/blog/ai-website-cloning-to-production)
+- [How to clone a website](/blog/how-to-clone-a-website)
 
 Start in the [dashboard](/dashboard) if you want to generate and iterate.
 `,
@@ -1723,7 +1723,7 @@ If you’re building something more than a brochure site, the second path is oft
 
 ### Related reading
 - [AI Website Builder: What It Means in 2026](/blog/ai-website-builder)
-- [App Cloner: Clone a Web App From a URL](/blog/app-cloner)
+- [Recreate a public web interface](/blog/clone-web-app-ui)
 
 Start from a URL in the [dashboard](/dashboard).
 `,
@@ -1772,7 +1772,7 @@ This is where “website generator” and “AI website builder” tools can hel
 3) Optimize images
 4) Add internal links and a sitemap
 
-If you want the cloning workflow: [AI Website Cloning: From Idea to Production](/blog/ai-website-cloning-to-production).
+If you want the cloning workflow: [How to clone a website](/blog/how-to-clone-a-website).
 
 ## A note on comparisons
 You’ll see lots of “X vs Y” articles online. The only comparison that matters is the one that matches your goal.
@@ -1781,7 +1781,7 @@ If your goal is performance and ownership, you’ll often prefer a workflow that
 
 ### Related reading
 - [Wix Website Builder vs Kloner](/blog/wix-website-builder-vs-kloner)
-- [Best Website Builder for Small Business](/blog/best-website-builder-for-small-business)
+- [Best Website Builder for Small Business](/blog/best-ai-website-builder-for-cloning)
 
 If you want to move fast, start in the [dashboard](/dashboard) and iterate.
 `,
@@ -1955,8 +1955,8 @@ If you want to put clone website AI into practice:
 The fastest path is to treat cloning as *scaffolding*, then make it your own.
 
 ### Related reading
-- [AI Website Cloning: From Idea to Production](/blog/ai-website-cloning-to-production)
-- [AI App Cloner: What It Is (and How to Use One Safely)](/blog/ai-app-cloner)
+- [How to clone a website](/blog/how-to-clone-a-website)
+- [Recreate a public web interface](/blog/clone-web-app-ui)
 - [Best AI Website Builder for Cloning](/blog/best-ai-website-builder-for-cloning)
 `,
   }, {
@@ -1968,188 +1968,20 @@ The fastest path is to treat cloning as *scaffolding*, then make it your own.
       "Learn how to clone a website the right way — capture layout and structure, skip the brittle copy-paste mess, and ship an editable site with Kloner.",
     publishedAt: "2026-04-09",
     tags: ["how to clone a website", "website cloning", "kloner"],
-    markdown: `# How to Clone a Website Fast and Safely
+    markdown: "# How to Clone a Website Fast and Safely\n\nEver land on a website so well-structured it converts on sight and think — I need that layout for my own project? You're not alone. Knowing how to clone a website is one of the highest-leverage skills for founders, agencies, and growth teams. But most people go about it the wrong way: copy-pasting raw HTML from DevTools, only to end up with a brittle, uneditable mess. This guide shows you the right approach — capturing layout patterns and structure, replacing everything that belongs to someone else, and shipping something you actually own.\n\n## What Does It Mean to Clone a Website?\n\nCloning a website means recreating its layout, structure, and UX patterns — not copying its brand assets, proprietary code, or content. When you clone a site, you're borrowing the *architecture*: the hero section, feature grid, social proof block, pricing table, and footer. You're not copying logos, product claims, or backend logic.\n\nThink of it like how architects study landmark buildings. You absorb proven structure, then design something original. A website clone is a starting point — a scaffold — not a final product. Tools like [Kloner.app](https://kloner.app) are built for this exact workflow: take a URL, extract the structural baseline, and give you something clean and editable to build from. Whether you want to duplicate a website for MVP testing or use a website cloner to launch a landing page fast, the goal is the same: pattern capture, not content theft.\n\n## Why Cloning a Website Matters\n\nUnderstanding how to clone a website properly unlocks serious speed advantages across a range of real-world use cases.\n\n**MVP validation.** Instead of designing from scratch, you start with a layout that's already been market-tested. That cuts your time-to-launch from weeks to days.\n\n**Reduced design risk.** Proven layouts reduce guesswork. If a competitor's page converts, the underlying structure is worth studying and borrowing.\n\n**Client work and agencies.** When a client says \"make it look like this,\" cloning the structure is the fastest legitimate path to a credible first draft.\n\n**Faster iteration loops.** When your clone lives in reusable components, swapping copy, sections, and CTAs takes minutes instead of a full rebuild.\n\n**Learning.** Cloning well-designed sites is one of the fastest ways to level up your eye for layout, hierarchy, and conversion design.\n\nWhether you're trying to clone a website free for a personal project or running a paid client engagement, the workflow is the same.\n\nFor a practical URL-first starting point, use [Kloner’s website cloner](/), then compare the [duplicate a website guide](/blog/duplicate-a-website) and [Clone a website from a URL](/blog/clone-website-from-url) for the workflow that fits your goal.\n\n## How to Clone a Website: Step-by-Step\n\nHere's the production-ready process that turns a reference URL into an editable site you can actually ship.\n\n**1. Choose your reference site strategically.** Pick a site with an intent that matches your goal — a SaaS landing page if you're building SaaS, a lead-gen page if you're capturing leads. The closer the intent match, the less structural rework you'll need later.\n\n**2. Use a dedicated website cloner tool.** Don't copy-paste from DevTools. Use a tool like [Kloner.app](https://kloner.app) that generates a clean structural baseline from a URL — responsive containers, component-separated sections, and editable markup.\n\n**3. Normalize the output immediately.** As soon as you have a draft, clean it up: replace fixed widths with responsive max-width containers, extract repeated UI into reusable components (FeatureCard, TestimonialBlock, PricingTier), and remove any absolute positioning that will break on different screen sizes.\n\n**4. Run the content stress test.** Before touching styling, confirm the clone survives real content: make the headline twice as long, add or remove feature cards, swap images with different aspect ratios. If anything breaks, fix the layout structure now.\n\n**5. Replace everything that's not yours.** Swap every brand-specific element: colors, fonts, logos, images, copy, microcopy, and CTAs. This is what makes the clone legally and ethically yours — and what makes it convert for *your* audience instead of someone else's.\n\n**6. Add SEO basics.** Unique H1, meta title, meta description, internal links, and a sitemap. These small steps compound into real organic traffic over time.\n\n**7. Deploy and iterate.** Ship to a preview URL, get feedback, and iterate fast. The goal is a working baseline you can improve — not a pixel-perfect launch.\n\n**Ready to clone your first site? [Try a Kloner website preview →](https://kloner.app)**\n\n## Cloning a Website on WordPress\n\nWordPress is the most common platform people want to clone *onto* — and also the most common source site people want to clone *from*. Here's how the process differs.\n\n**Cloning a WordPress site as a destination:** If you want your cloned layout to live in WordPress, you'll need a page builder (Elementor, Beaver Builder, or the block editor) to recreate the structural sections. Kloner can generate the HTML/CSS baseline; you then port each section into blocks. This is more manual but keeps you inside the WordPress ecosystem.\n\n**Cloning from a WordPress source:** WordPress sites often use page builders that generate nested shortcodes and div soup. A tool like Kloner normalizes this into clean components, stripping out the platform-specific markup and giving you a portable structure.\n\n**Using a WordPress site duplicator plugin:** If your goal is to clone an existing WordPress site you own (staging to production, multisite setup, or client handoff), plugins like Duplicator or WP Migrate handle database and file migration. This is a different use case — it's not design cloning, it's environment copying. For design cloning across platforms, a URL-based tool is cleaner.\n\nFor a deeper dive into the WordPress-specific workflow, see [Clone a website from a URL](https://kloner.app/blog/clone-website-from-url).\n\n## Common Mistakes to Avoid\n\n**Cloning with DevTools copy-paste.** The result is a single brittle HTML blob with hardcoded pixels, inline styles, and missing assets. It looks right for ten minutes, then collapses.\n\n**Skipping the content stress test.** A clone that only looks good with the original content will break the moment you write your own copy. Always test with longer, shorter, and different content before you style anything.\n\n**Leaving original brand assets in place.** Logos, images, fonts, and color palettes that belong to another company create legal risk and confuse your audience. Replace them immediately.\n\n**Cloning complex sites without simplifying.** Not every section of a reference site belongs in your MVP. Cut aggressively — only keep the sections that serve your specific conversion goal.\n\n**Ignoring performance.** Cloned pages often carry too much CSS and JavaScript from the original. Audit and strip unused code before you deploy.\n\n## FAQ\n\n### Is it legal to clone a website?\n\nCloning a website's layout and structure is generally acceptable — layout itself is not copyrightable. What is not acceptable is copying proprietary code, brand assets, trademarked logos, written content, or images. Always replace all brand-specific elements and rewrite all copy before publishing.\n\n### How do I clone a website for free?\n\nKloner offers limited free preview access for supported public website URLs. Editing and publishing depend on your plan. Review [pricing](/price), and check hosting, domain, and integration costs separately before committing to a workflow.\n\n### What is the best tool to clone a website?\n\nThe best website cloner for most use cases is one that generates editable, component-based output rather than a frozen HTML snapshot. Kloner.app is purpose-built for this: it takes a URL, produces a clean structural baseline, and lets you iterate with an agent. For WordPress-to-WordPress cloning, Duplicator handles environment migration.\n\n## Conclusion\n\nCloning a website the right way is about pattern capture, not content theft. When you extract proven layout structure, normalize it into editable components, replace every brand-specific element, and ship something original — you get to market faster without the design risk of starting from zero. The key steps: choose a reference with the right intent, use a proper website cloner tool, stress-test the layout with real content, and never skip the replace-everything pass. For more on turning cloned layouts into production-ready products, read our guide on [How to clone a website](https://kloner.app/blog/how-to-clone-a-website).\n\n**[Try the Kloner website cloner →](https://kloner.app/)**\n\n## Choose the destination before rebuilding\n\nA website clone is a visual starting point; an environment duplicate is a backup or staging copy. Decide which you need before selecting your workflow. For a site you administer, platform-native staging may preserve data and configuration that a public URL cannot provide.\n\nFor a React or Next.js destination, organize the visible page into reusable components such as navigation, hero, cards, pricing, and footer. Test longer headings and different content lengths before adding more pages. For WordPress, Webflow, or another page builder, recreate those sections using the destination's own templates or blocks; do not assume generated code imports directly into every platform.\n\n## Make a website clone useful for your project\n\nFor a redesign, keep a checklist of existing content and routes before changing the layout. For a landing page, write the offer and primary action for your own audience. For a portfolio exercise, explain your contribution and replace reference branding and assets. A reference's appearance does not establish that its layout will convert for your visitors.\n\nA template offers a generic structure; a URL reference offers a specific visual starting point. In either case, the finished website needs your content, working links, responsive checks, and tested forms. Use [Kloner's website cloner](/) to begin with a supported public page, then review the preview before editing or deployment.\n",
 
-Ever land on a website so well-structured it converts on sight and think — I need that layout for my own project? You're not alone. Knowing how to clone a website is one of the highest-leverage skills for founders, agencies, and growth teams. But most people go about it the wrong way: copy-pasting raw HTML from DevTools, only to end up with a brittle, uneditable mess. This guide shows you the right approach — capturing layout patterns and structure, replacing everything that belongs to someone else, and shipping something you actually own.
-
-## What Does It Mean to Clone a Website?
-
-Cloning a website means recreating its layout, structure, and UX patterns — not copying its brand assets, proprietary code, or content. When you clone a site, you're borrowing the *architecture*: the hero section, feature grid, social proof block, pricing table, and footer. You're not copying logos, product claims, or backend logic.
-
-Think of it like how architects study landmark buildings. You absorb proven structure, then design something original. A website clone is a starting point — a scaffold — not a final product. Tools like [Kloner.app](https://kloner.app) are built for this exact workflow: take a URL, extract the structural baseline, and give you something clean and editable to build from. Whether you want to duplicate a website for MVP testing or use a website cloner to launch a landing page fast, the goal is the same: pattern capture, not content theft.
-
-## Why Cloning a Website Matters
-
-Understanding how to clone a website properly unlocks serious speed advantages across a range of real-world use cases.
-
-**MVP validation.** Instead of designing from scratch, you start with a layout that's already been market-tested. That cuts your time-to-launch from weeks to days.
-
-**Reduced design risk.** Proven layouts reduce guesswork. If a competitor's page converts, the underlying structure is worth studying and borrowing.
-
-**Client work and agencies.** When a client says "make it look like this," cloning the structure is the fastest legitimate path to a credible first draft.
-
-**Faster iteration loops.** When your clone lives in reusable components, swapping copy, sections, and CTAs takes minutes instead of a full rebuild.
-
-**Learning.** Cloning well-designed sites is one of the fastest ways to level up your eye for layout, hierarchy, and conversion design.
-
-Whether you're trying to clone a website free for a personal project or running a paid client engagement, the workflow is the same.
-
-For a practical URL-first starting point, use [Kloner’s website cloner](/), then compare the [duplicate a website guide](/blog/duplicate-a-website) and [clone a website from a URL guide](/blog/clone-website-from-url) for the workflow that fits your goal.
-
-## How to Clone a Website: Step-by-Step
-
-Here's the production-ready process that turns a reference URL into an editable site you can actually ship.
-
-**1. Choose your reference site strategically.** Pick a site with an intent that matches your goal — a SaaS landing page if you're building SaaS, a lead-gen page if you're capturing leads. The closer the intent match, the less structural rework you'll need later.
-
-**2. Use a dedicated website cloner tool.** Don't copy-paste from DevTools. Use a tool like [Kloner.app](https://kloner.app) that generates a clean structural baseline from a URL — responsive containers, component-separated sections, and editable markup.
-
-**3. Normalize the output immediately.** As soon as you have a draft, clean it up: replace fixed widths with responsive max-width containers, extract repeated UI into reusable components (FeatureCard, TestimonialBlock, PricingTier), and remove any absolute positioning that will break on different screen sizes.
-
-**4. Run the content stress test.** Before touching styling, confirm the clone survives real content: make the headline twice as long, add or remove feature cards, swap images with different aspect ratios. If anything breaks, fix the layout structure now.
-
-**5. Replace everything that's not yours.** Swap every brand-specific element: colors, fonts, logos, images, copy, microcopy, and CTAs. This is what makes the clone legally and ethically yours — and what makes it convert for *your* audience instead of someone else's.
-
-**6. Add SEO basics.** Unique H1, meta title, meta description, internal links, and a sitemap. These small steps compound into real organic traffic over time.
-
-**7. Deploy and iterate.** Ship to a preview URL, get feedback, and iterate fast. The goal is a working baseline you can improve — not a pixel-perfect launch.
-
-**Ready to clone your first site? [Try Kloner.app free →](https://kloner.app)**
-
-## Cloning a Website on WordPress
-
-WordPress is the most common platform people want to clone *onto* — and also the most common source site people want to clone *from*. Here's how the process differs.
-
-**Cloning a WordPress site as a destination:** If you want your cloned layout to live in WordPress, you'll need a page builder (Elementor, Beaver Builder, or the block editor) to recreate the structural sections. Kloner can generate the HTML/CSS baseline; you then port each section into blocks. This is more manual but keeps you inside the WordPress ecosystem.
-
-**Cloning from a WordPress source:** WordPress sites often use page builders that generate nested shortcodes and div soup. A tool like Kloner normalizes this into clean components, stripping out the platform-specific markup and giving you a portable structure.
-
-**Using a WordPress site duplicator plugin:** If your goal is to clone an existing WordPress site you own (staging to production, multisite setup, or client handoff), plugins like Duplicator or WP Migrate handle database and file migration. This is a different use case — it's not design cloning, it's environment copying. For design cloning across platforms, a URL-based tool is cleaner.
-
-For a deeper dive into the WordPress-specific workflow, see [how to clone a website from a URL into clean components](https://kloner.app/blog/clone-a-website-from-a-url).
-
-## Common Mistakes to Avoid
-
-**Cloning with DevTools copy-paste.** The result is a single brittle HTML blob with hardcoded pixels, inline styles, and missing assets. It looks right for ten minutes, then collapses.
-
-**Skipping the content stress test.** A clone that only looks good with the original content will break the moment you write your own copy. Always test with longer, shorter, and different content before you style anything.
-
-**Leaving original brand assets in place.** Logos, images, fonts, and color palettes that belong to another company create legal risk and confuse your audience. Replace them immediately.
-
-**Cloning complex sites without simplifying.** Not every section of a reference site belongs in your MVP. Cut aggressively — only keep the sections that serve your specific conversion goal.
-
-**Ignoring performance.** Cloned pages often carry too much CSS and JavaScript from the original. Audit and strip unused code before you deploy.
-
-## FAQ
-
-### Is it legal to clone a website?
-
-Cloning a website's layout and structure is generally acceptable — layout itself is not copyrightable. What is not acceptable is copying proprietary code, brand assets, trademarked logos, written content, or images. Always replace all brand-specific elements and rewrite all copy before publishing.
-
-### How do I clone a website for free?
-
-Several tools offer free tiers for website cloning, including Kloner.app. The free workflow: use a URL-based cloner to generate a structural baseline, normalize into components, replace all brand assets and copy, then deploy to a free host like Vercel or Netlify. You get a fully owned site at zero ongoing cost.
-
-### What is the best tool to clone a website?
-
-The best website cloner for most use cases is one that generates editable, component-based output rather than a frozen HTML snapshot. Kloner.app is purpose-built for this: it takes a URL, produces a clean structural baseline, and lets you iterate with an agent. For WordPress-to-WordPress cloning, Duplicator handles environment migration.
-
-## Conclusion
-
-Cloning a website the right way is about pattern capture, not content theft. When you extract proven layout structure, normalize it into editable components, replace every brand-specific element, and ship something original — you get to market faster without the design risk of starting from zero. The key steps: choose a reference with the right intent, use a proper website cloner tool, stress-test the layout with real content, and never skip the replace-everything pass. For more on turning cloned layouts into production-ready products, read our guide on [AI website cloning from idea to production](https://kloner.app/blog/ai-website-cloning-to-production).
-
-**[Try the Kloner website cloner →](https://kloner.app/)**`,
+    updatedAt: "2026-10-05",
   },
   {
     slug: "clone-website-free",
-    title: "Clone Website Free: Best Tools and Safe Methods",
+    title: "Free Website Cloning: Preview Access, Options, and Limits",
     description:
-      "Want to clone a website free? Learn the safest methods, best free tools including Kloner, and how to go from URL to editable site without paying a cent.",
+      "Compare free website preview access, static download tools, and WordPress staging. Understand what Kloner includes before editing or publishing.",
     publishedAt: "2026-04-09",
     tags: ["clone website free", "website cloning", "kloner"],
-    markdown: `# Clone Website Free: Best Tools and Safe Methods
+    markdown: "# Free Website Cloning: Preview Access, Options, and Limits\n\nA free website cloning workflow can mean a limited preview, a static download, or a staging copy of a site you own. These outputs serve different purposes. Before choosing a tool, decide whether you need to inspect a design, edit a website, or duplicate an existing hosting environment.\n\n## What Kloner includes for free\n\n[Kloner's website cloner](/) offers limited free preview access for supported public website URLs. You can use that starting point to assess the generated layout. Editing and publishing depend on your plan; a free preview does not promise a complete, permanently hosted website at no cost. Check [current pricing](/price) for access and plan limits before starting a project.\n\n## Three workflows to compare\n\n- **Editable website preview:** use a supported URL to generate a visual starting point. Review layout, available assets, and responsive behavior before deciding how to proceed.\n- **Static download:** archive browser-accessible files from a site you own. A saved page may need path repairs and does not transfer private APIs, databases, checkout, or authentication.\n- **WordPress staging:** when you have administrative and hosting access, use an appropriate backup or staging workflow to duplicate the environment. This is different from recreating a visible page from its public URL.\n\nFor the output differences, read [website cloner versus website downloader](/blog/website-cloner-vs-website-downloader). For WordPress-specific work, use the [WordPress cloning guide](/blog/clone-wordpress-website).\n\n## Try a website preview from a URL\n\n1. Choose a public page you own or have permission to use.\n2. Paste its URL into [Kloner](/) and generate a supported preview within your available access.\n3. Compare the navigation, hero, sections, images, and mobile layout with your reference.\n4. Identify the changes you need, including your own branding and content.\n5. Review the plan requirements before editing or publishing. Test forms and integrations separately before launch.\n\nThe [Clone a website from a URL](/blog/clone-website-from-url) explains the review process in more detail.\n\n## Costs beyond the preview\n\nA hosting provider may offer a free tier, but eligibility and usage limits are separate from Kloner's plan. A custom domain, third-party services, licensed assets, or higher hosting usage can add costs. Review each service's terms for your project instead of assuming that free preview access covers the entire workflow.\n\n## Frequently asked questions\n\n### Can I clone a website for free with Kloner?\n\nKloner offers limited free preview access. Editing and publishing depend on your plan. See [pricing](/price) for the current limits.\n\n### Does a public URL include the site's backend?\n\nNo. A public page does not provide private application code, account data, payment settings, or the original database. Build and test those features with services you control.\n\n### Which workflow fits a redesign?\n\nAn editable visual starting point can help with a redesign. A backup or staging tool is more appropriate when you need a full copy of an environment you administer. Choose based on the output you need, not the word “free.”\n",
 
-The ability to clone a website free of charge has never been more accessible — but free covers a huge range of quality. Some free tools give you a frozen HTML snapshot that collapses the moment you edit it. Others, like Kloner.app, offer a genuine free tier that produces clean, editable output you can actually ship. This guide breaks down the real options, what you actually get for free, and the workflow that takes you from reference URL to live site without spending a cent.
-
-## What Does It Mean to Clone a Website Free?
-
-When people search for ways to clone a website free, they usually mean one of three things: free to try (preview only), free with a hosted plan and limitations, or free as in generating exportable code you can self-host at zero ongoing cost.
-
-A free website clone tool that produces a preview only is useful for seeing what a cloned layout looks like, but if you can't export or deploy it, you're still stuck. A hosted free plan gives you a live URL but typically adds platform branding and limits customization. The most powerful version of free is generating clean, exportable code that you deploy yourself on free infrastructure like Vercel or Netlify.
-
-Kloner.app's free tier falls into the second and third categories: you get a usable preview and a path to clean output, making it one of the more useful free website cloner options available. Whether you want to duplicate a website for testing or build a full website clone for a client, starting free reduces risk.
-
-## Why Free Website Cloning Matters
-
-Free tiers matter because they lower the barrier to validating ideas before committing budget. Here's where cloning a website free delivers the most value.
-
-**Founders testing markets.** Before spending on design or development, clone a proven landing page structure, replace the copy, and test conversion. If it works, invest more. If it doesn't, you've lost nothing.
-
-**Students and learners.** Cloning real sites is one of the best ways to learn frontend development and design. Free access means the learning loop has no financial friction.
-
-**Agencies pitching clients.** A free clone gives you a credible first draft for a pitch without billing hours before the project is confirmed.
-
-**Side projects and MVPs.** Most side projects don't need a paid tool until they're generating revenue. A free website clone workflow keeps costs at zero until there's a reason to spend.
-
-## How to Clone a Website Free: Step-by-Step
-
-Here's the workflow to go from zero to a live, free, cloned website using Kloner.app.
-
-**1. Identify your reference URL.** Pick a site whose layout matches your goal — SaaS landing page, portfolio, lead gen. The more aligned the intent, the less structural rework later.
-
-**2. Create a free Kloner.app account.** Sign up at [Kloner.app](https://kloner.app) — no credit card required for the free tier. You get access to the core clone-from-URL workflow immediately.
-
-**3. Paste the URL and generate.** Kloner analyzes the reference site and generates a structural baseline — hero, sections, components, nav, footer — as editable output.
-
-**4. Normalize and stress-test.** Even with free tools, take five minutes to make the headline longer, remove a section, and add a card. If the layout holds, move on. If it breaks, adjust the container rules.
-
-**5. Replace all brand assets.** Swap colors, fonts, logos, images, and copy. This is non-negotiable whether you're using a free or paid tool — it's what makes the result legally yours.
-
-**6. Deploy for free.** Export the output and deploy to Vercel, Netlify, or GitHub Pages — all free for personal and small projects. Your cloned site is now live, owned by you, and costs nothing per month.
-
-**Ready to clone your first site? [Try Kloner.app free →](https://kloner.app)**
-
-## Free Website Cloning on WordPress
-
-WordPress has its own ecosystem of free cloning tools, which makes it a special case worth addressing.
-
-**Free WordPress duplicator plugins.** Plugins like Duplicator (free tier), UpdraftPlus, and WP Migrate Lite let you copy a WordPress site you own to a new host or staging environment. These are free and widely used for cloning WordPress sites within the WordPress ecosystem.
-
-**Limitations of free WordPress clone plugins.** Most free plugin tiers cap the database size, don't support automated backups, and require manual setup on the destination server. For a full clone WordPress website workflow across different hosts, you'll often hit a paywall faster than expected.
-
-**Cross-platform free cloning.** If you want to clone a WordPress site's design onto a non-WordPress stack, a tool like Kloner is more practical than trying to port WordPress-specific theme files. Kloner generates clean HTML/CSS/JS output independent of the source CMS.
-
-For a deeper look at the WordPress-specific workflow, see [website cloning for quick MVPs](https://kloner.app/blog/website-cloning-for-quick-mvps).
-
-## Common Mistakes to Avoid
-
-**Assuming free means full-featured.** Most free tiers have real limits — export caps, watermarks, or preview-only output. Read the limits before committing to a workflow that depends on free access at scale.
-
-**Using HTTrack or wget for design cloning.** These tools download a static snapshot of a site — great for archiving, terrible for building something editable. The output is not maintainable code.
-
-**Not stress-testing the free output.** Free-tier output is sometimes less polished than paid output. Always run the content stress test before investing time in customization.
-
-**Skipping the asset replacement pass.** Even for free projects, shipping a site with someone else's logos or images is a legal and ethical problem. Free does not mean unrestricted.
-
-## FAQ
-
-### Can I really clone a website for free?
-
-Yes. Tools like Kloner.app offer free tiers that generate editable site structures from a URL. Combine that with free hosting (Vercel, Netlify) and you can have a cloned, deployed site at zero cost. The free tier has limits on project volume and advanced features, but for a single MVP or portfolio project it's fully capable.
-
-### Is cloning a website free and legal?
-
-Cloning a site's layout and structure is generally legal — visual layouts are not copyrightable in most jurisdictions. What is illegal is copying trademarked logos, proprietary code, written content, or images. Always replace brand assets and rewrite copy before publishing anything cloned.
-
-### What free tools can I use to clone a website?
-
-Kloner.app (free tier), HTTrack (for offline archiving only), Duplicator (for WordPress-to-WordPress), and browser DevTools (for manual reference). For producing an editable, deployable result, Kloner is the most practical free option for non-WordPress projects.
-
-## Conclusion
-
-Cloning a website free is genuinely possible with the right tools and workflow. The key is choosing a tool that produces editable, maintainable output — not a frozen snapshot — and pairing it with free hosting to keep ongoing costs at zero. Start with a reference URL that matches your goal, use Kloner.app's free tier to generate your baseline, stress-test the layout, replace all brand assets, and deploy to Vercel or Netlify. You'll have a live, owned site without spending a cent. For more on turning free clones into production assets, see our guide on [AI website cloning from idea to production](https://kloner.app/blog/ai-website-cloning-to-production).
-
-**[Try the Kloner website cloner →](https://kloner.app/)**`,
+    updatedAt: "2026-10-05",
   },
   {
     slug: "clone-wordpress-site",
@@ -2202,7 +2034,7 @@ There are three main methods. Choose based on your technical comfort, server acc
 
 **6. Test thoroughly.** Check pages, menus, media, and plugin functionality before going live.
 
-**Ready to clone your first site? [Try Kloner.app free →](https://kloner.app)**
+**Ready to clone your first site? [Try a Kloner website preview →](https://kloner.app)**
 
 ### Method 2: Manual migration (for full control)
 
@@ -2222,7 +2054,7 @@ The most important thing most tutorials skip: URL replacement. WordPress stores 
 
 **Large sites.** Free plugin tiers often have file size limits. Sites with large media libraries may need to use the Pro version of Duplicator or handle media separately.
 
-For design-focused cloning — borrowing layout patterns from a WordPress site for a non-WordPress project — see our guide on [cloning a website from a URL into clean components](https://kloner.app/blog/clone-a-website-from-a-url).
+For design-focused cloning — borrowing layout patterns from a WordPress site for a non-WordPress project — see our guide on [Clone a website from a URL](https://kloner.app/blog/clone-website-from-url).
 
 ## Common Mistakes to Avoid
 
@@ -2252,7 +2084,7 @@ The core functionality of Duplicator is free. The Pro version adds features like
 
 ## Conclusion
 
-Cloning a WordPress site is a standard, well-supported workflow with multiple reliable methods available. For most site owners, a plugin like Duplicator is the fastest path — create a package, transfer it, run the installer, update URLs, and you're done. For development teams on managed hosts, built-in staging tools eliminate even that friction. The key is knowing which type of clone you need: full environment cloning for staging and migration, or design cloning for new projects. For the latter, a URL-based tool like Kloner gives you cleaner, more portable output than trying to reverse-engineer WordPress theme files. See our broader guide on [AI website cloning from idea to production](https://kloner.app/blog/ai-website-cloning-to-production) for the full picture.
+Cloning a WordPress site is a standard, well-supported workflow with multiple reliable methods available. For most site owners, a plugin like Duplicator is the fastest path — create a package, transfer it, run the installer, update URLs, and you're done. For development teams on managed hosts, built-in staging tools eliminate even that friction. The key is knowing which type of clone you need: full environment cloning for staging and migration, or design cloning for new projects. For the latter, a URL-based tool like Kloner gives you cleaner, more portable output than trying to reverse-engineer WordPress theme files. See our broader guide on [How to clone a website](https://kloner.app/blog/how-to-clone-a-website) for the full picture.
 
 **[Try the Kloner website cloner →](https://kloner.app/)**`,
   },
@@ -2307,7 +2139,7 @@ Speed, risk reduction, and learning are the three core reasons.
 
 **8. Deploy and iterate.** Push to a preview URL, collect feedback, and improve. The goal is a working first version, not a finished product.
 
-**Ready to clone your first site? [Try Kloner.app free →](https://kloner.app)**
+**Ready to clone your first site? [Try a Kloner website preview →](https://kloner.app)**
 
 ## Copying a Website on Squarespace or Wix
 
@@ -2347,7 +2179,7 @@ Yes. Tools like Kloner.app and website builders like Wix and Squarespace let you
 
 ## Conclusion
 
-Knowing how to copy a website the right way is a foundational skill for anyone building on the web. The key distinction is copying layout patterns — not proprietary code, content, or brand assets — and using tools that produce clean, editable output rather than frozen snapshots. Follow the eight-step workflow, stress-test your layout with real content, replace everything that belongs to someone else, and add the SEO basics before you deploy. The result is a fast, validated starting point that's entirely yours. For more, read our guide on [AI website cloning from idea to production](https://kloner.app/blog/ai-website-cloning-to-production).
+Knowing how to copy a website the right way is a foundational skill for anyone building on the web. The key distinction is copying layout patterns — not proprietary code, content, or brand assets — and using tools that produce clean, editable output rather than frozen snapshots. Follow the eight-step workflow, stress-test your layout with real content, replace everything that belongs to someone else, and add the SEO basics before you deploy. The result is a fast, validated starting point that's entirely yours. For more, read our guide on [How to clone a website](https://kloner.app/blog/how-to-clone-a-website).
 
 **[Try the Kloner website cloner →](https://kloner.app/)**`,
   },
@@ -2402,7 +2234,7 @@ The case for using a dedicated website cloner over manual approaches is about sp
 
 **8. Ship to a preview URL.** Get feedback from real users before a full launch. Iterate based on what you learn.
 
-**Ready to clone your first site? [Try Kloner.app free →](https://kloner.app)**
+**Ready to clone your first site? [Try a Kloner website preview →](https://kloner.app)**
 
 ## Website Cloners for Specific Platforms
 
@@ -2414,7 +2246,7 @@ Not all website cloners work the same way across platforms. Here's what to expec
 
 **Static sites.** Static sites (built with Next.js, Astro, or plain HTML) are the easiest to clone structurally. The output from a URL-based cloner maps most cleanly to static-site component structures.
 
-For more on platform-specific cloning decisions, see our guide on [how to clone a website from a URL into clean components](https://kloner.app/blog/clone-a-website-from-a-url).
+For more on platform-specific cloning decisions, see our guide on [Clone a website from a URL](https://kloner.app/blog/clone-website-from-url).
 
 ## Common Mistakes to Avoid
 
@@ -2497,7 +2329,7 @@ The reasons to clone a website rather than design from scratch are consistent ac
 
 **8. Deploy to a preview URL.** Share with people who match your target audience. Get their genuine reaction. Iterate before the full launch.
 
-**Ready to clone your first site? [Try Kloner.app free →](https://kloner.app)**
+**Ready to clone your first site? [Try a Kloner website preview →](https://kloner.app)**
 
 ## Clone a Website on Specific Platforms
 
@@ -2537,7 +2369,7 @@ In common usage, the terms are interchangeable. Both refer to recreating a websi
 
 ## Conclusion
 
-Cloning a website the right way in 2026 means using AI-assisted tools to capture structural patterns fast, normalizing the output into maintainable components, and replacing every brand-specific element before you ship. It's a speed technique, not a shortcut — the work of creating your own content, testing your own conversion hypothesis, and iterating based on real feedback still has to happen. But it happens from a much stronger starting point than a blank canvas. For more, read our guide on [AI website cloning from idea to production](https://kloner.app/blog/ai-website-cloning-to-production).
+Cloning a website the right way in 2026 means using AI-assisted tools to capture structural patterns fast, normalizing the output into maintainable components, and replacing every brand-specific element before you ship. It's a speed technique, not a shortcut — the work of creating your own content, testing your own conversion hypothesis, and iterating based on real feedback still has to happen. But it happens from a much stronger starting point than a blank canvas. For more, read our guide on [How to clone a website](https://kloner.app/blog/how-to-clone-a-website).
 
 **[Try the Kloner website cloner →](https://kloner.app/)**`,
   },
@@ -2590,7 +2422,7 @@ The case is consistent: speed, validated patterns, and lower design risk.
 
 **8. Test on mobile and ship to a preview URL.**
 
-**Ready to clone your first site? [Try Kloner.app free →](https://kloner.app)**
+**Ready to clone your first site? [Try a Kloner website preview →](https://kloner.app)**
 
 ## Clone Any Website — Platform Limits to Know
 
@@ -2604,7 +2436,7 @@ Some website types produce better clone outputs than others.
 
 **Shopify stores.** Shopify's Liquid templates produce standard HTML for the storefront. The layout clones well, but any Shopify-specific app functionality won't transfer to a non-Shopify environment.
 
-For more on platform-specific workflows, see our guide on [how to clone a website from a URL into clean components](https://kloner.app/blog/clone-a-website-from-a-url).
+For more on platform-specific workflows, see our guide on [Clone a website from a URL](https://kloner.app/blog/clone-website-from-url).
 
 ## Common Mistakes to Avoid
 
@@ -2632,7 +2464,7 @@ Kloner.app is built for URL-based structural cloning — paste any publicly acce
 
 ## Conclusion
 
-The claim to clone any website comes with important nuances: you can capture the layout structure of almost any publicly accessible site, but you cannot capture backend logic, private data, or proprietary assets. What you get is a structural scaffold that compresses design time dramatically and lets you start from validated patterns. Used responsibly — with full content replacement and your own SEO basics — this is one of the most powerful tools available to founders and agencies building fast. For more, see our guide on [AI website cloning from idea to production](https://kloner.app/blog/ai-website-cloning-to-production).
+The claim to clone any website comes with important nuances: you can capture the layout structure of almost any publicly accessible site, but you cannot capture backend logic, private data, or proprietary assets. What you get is a structural scaffold that compresses design time dramatically and lets you start from validated patterns. Used responsibly — with full content replacement and your own SEO basics — this is one of the most powerful tools available to founders and agencies building fast. For more, see our guide on [How to clone a website](https://kloner.app/blog/how-to-clone-a-website).
 
 **[Try the Kloner website cloner →](https://kloner.app/)**`,
   },
@@ -2685,7 +2517,7 @@ The most common scenarios where duplicating a WordPress site is the right move.
 
 **6. Test and clean up.** Verify all pages, media, and plugin functionality. Delete installer.php immediately — leaving it accessible is a security risk.
 
-**Ready to clone your first site? [Try Kloner.app free →](https://kloner.app)**
+**Ready to clone your first site? [Try a Kloner website preview →](https://kloner.app)**
 
 ## WordPress Site Duplicator: Key Considerations
 
@@ -2723,7 +2555,7 @@ Yes. A full WordPress site duplicator package includes the complete wp-content d
 
 ## Conclusion
 
-A WordPress site duplicator is an essential tool for anyone managing WordPress sites professionally. For environment duplication — staging, migration, client handoff — Duplicator or your host's built-in tools cover the workflow completely. For design cloning — extracting layout patterns from a WordPress site for use in a new project — a URL-based cloner like Kloner.app produces cleaner, more portable output. Knowing which type of duplication you need and choosing the right tool saves significant time and prevents frustrating errors. For a broader perspective on website cloning, see our guide on [AI website cloning from idea to production](https://kloner.app/blog/ai-website-cloning-to-production).
+A WordPress site duplicator is an essential tool for anyone managing WordPress sites professionally. For environment duplication — staging, migration, client handoff — Duplicator or your host's built-in tools cover the workflow completely. For design cloning — extracting layout patterns from a WordPress site for use in a new project — a URL-based cloner like Kloner.app produces cleaner, more portable output. Knowing which type of duplication you need and choosing the right tool saves significant time and prevents frustrating errors. For a broader perspective on website cloning, see our guide on [How to clone a website](https://kloner.app/blog/how-to-clone-a-website).
 
 **[Try the Kloner website cloner →](https://kloner.app/)**`,
   },
@@ -2731,7 +2563,7 @@ A WordPress site duplicator is an essential tool for anyone managing WordPress s
     slug: "clone-wordpress-website",
     title: "How to Clone a WordPress Site (2026): Full Guide",
     h1: "Clone WordPress Website: Methods, Tools, and Pitfalls",
-    metaDescription: "Clone any WordPress site — theme, layout and content — without plugins. Step-by-step guide using Kloner's AI website cloner. No code required.",
+    metaDescription: "Compare WordPress staging and migration with recreating a public website layout. Learn what requires hosting access and what a URL can provide.",
     description:
       "Everything you need to clone a WordPress website — staging, migration, design cloning, and the tools that handle each use case correctly.",
     publishedAt: "2026-04-09",
@@ -2778,7 +2610,7 @@ The same distinction applies when comparing WordPress duplicator plugins: they a
 
 **6. Verify and secure.** Test all pages, check media, verify plugin functionality, and delete installer.php immediately.
 
-**Ready to clone your first site? [Try Kloner.app free →](https://kloner.app)**
+**Ready to clone your first site? [Try a Kloner website preview →](https://kloner.app)**
 
 ### Option B: Hosting panel clone (easiest for managed hosts)
 
@@ -2794,7 +2626,7 @@ Use [Kloner.app](https://kloner.app) — paste the WordPress site's URL, generat
 
 **wp-config.php.** After migration, wp-config.php must be updated with the new database credentials. Duplicator handles this during installation; manual migrations require editing the file directly.
 
-For design-focused cloning across platforms, see our guide on [how to clone apps and sites into clean components](https://kloner.app/blog/how-to-clone-apps).
+For design-focused cloning across platforms, see our guide on [Recreate a public web interface](https://kloner.app/blog/clone-web-app-ui).
 
 ## Common Pitfalls to Avoid
 
@@ -2822,15 +2654,17 @@ For a small to medium site (under 1GB), the plugin-based workflow takes 30–60 
 
 ## Conclusion
 
-Cloning a WordPress website is a well-solved problem with reliable tooling for every major scenario. For staging and migration, Duplicator or your host's built-in tools handle the complete workflow. For design extraction — borrowing layout patterns for a new project — Kloner.app gives you more portable, maintainable output. Choose the right tool for your specific use case and you'll save hours of troubleshooting. For a broader perspective on website cloning, see our guide on [AI website cloning from idea to production](https://kloner.app/blog/ai-website-cloning-to-production).
+Cloning a WordPress website is a well-solved problem with reliable tooling for every major scenario. For staging and migration, Duplicator or your host's built-in tools handle the complete workflow. For design extraction — borrowing layout patterns for a new project — Kloner.app gives you more portable, maintainable output. Choose the right tool for your specific use case and you'll save hours of troubleshooting. For a broader perspective on website cloning, see our guide on [How to clone a website](https://kloner.app/blog/how-to-clone-a-website).
 
 **[Try the Kloner website cloner →](https://kloner.app/)**`,
+
+    updatedAt: "2026-10-05",
   },
   {
     slug: "duplicate-a-website",
     title: "How to Duplicate a Website in Minutes (2026 Guide)",
     h1: "Duplicate Website: Tools, Methods, and Use Cases",
-    metaDescription: "Learn how to duplicate a website step by step — copy any site's design, layout and content with Kloner's AI website cloner. No code needed.",
+    metaDescription: "Choose between duplicating a website environment for staging and recreating its visible design. Compare workflows, access requirements, and limitations.",
     description:
       "Learn how to duplicate a website for staging, redesign, or new projects. Covers the best tools for WordPress duplication and AI-powered layout cloning.",
     publishedAt: "2026-04-09",
@@ -2887,9 +2721,9 @@ A website clone, a site duplicate, and a cloned site all refer to versions of th
 
 **5. Add SEO metadata and deploy.**
 
-**Ready to clone your first site? [Try Kloner.app free →](https://kloner.app)**
+**Ready to clone your first site? [Try a Kloner website preview →](https://kloner.app)**
 
-For the related workflows, see [how to clone a website](/blog/how-to-clone-a-website), [duplicate a website](/blog/duplicate-a-website), and [Kloner’s website cloner](/).
+For the related workflows, see [How to clone a website](/blog/how-to-clone-a-website), [duplicate a website](/blog/duplicate-a-website), and [Kloner’s website cloner](/).
 
 ## Duplicating a Website on Popular Platforms
 
@@ -2921,7 +2755,7 @@ For WordPress: use Duplicator or your host's built-in staging tool. For other pl
 
 ### Can I duplicate a website for free?
 
-Yes. Duplicator's free tier handles most WordPress environment duplications. Kloner.app's free tier handles structural layout duplication. Free hosting (Vercel, Netlify) handles deployment of non-WordPress duplicates.
+For a WordPress environment, compare staging or backup tools supported by your host. Kloner offers limited free preview access for supported public URLs; editing and publishing depend on your [plan](/price). Hosting and domain costs are separate.
 
 ### How long does it take to duplicate a website?
 
@@ -2929,9 +2763,11 @@ A WordPress environment duplication with Duplicator takes 30–60 minutes for a 
 
 ## Conclusion
 
-Duplicating a website is one of the most practical skills in web development, and the right workflow depends on knowing which type of duplication you need. For full environment duplication — staging, migration, client handoff — Duplicator or your host's native tools are the reliable standard. For layout duplication — using a proven site's structure as the foundation for a new project — Kloner.app gives you a clean, editable, component-based baseline in minutes. For more on the full picture, see our guide on [AI website cloning from idea to production](https://kloner.app/blog/ai-website-cloning-to-production).
+Duplicating a website is one of the most practical skills in web development, and the right workflow depends on knowing which type of duplication you need. For full environment duplication — staging, migration, client handoff — Duplicator or your host's native tools are the reliable standard. For layout duplication — using a proven site's structure as the foundation for a new project — Kloner.app gives you a clean, editable, component-based baseline in minutes. For more on the full picture, see our guide on [How to clone a website](https://kloner.app/blog/how-to-clone-a-website).
 
 **[Try the Kloner website cloner →](https://kloner.app/)**`,
+
+    updatedAt: "2026-10-05",
   },
   {
     slug: "website-clone",
@@ -2982,7 +2818,7 @@ Tools like Kloner.app are purpose-built for this workflow. You feed in a referen
 
 **8. Deploy to a preview URL and get feedback.** Share with five people who match your target audience. Iterate before the full launch.
 
-**Ready to clone your first site? [Try Kloner.app free →](https://kloner.app)**
+**Ready to clone your first site? [Try a Kloner website preview →](https://kloner.app)**
 
 ## Website Clones for Specific Use Cases
 
@@ -3020,7 +2856,7 @@ Yes. Kloner.app has a free tier for generating structural baselines. Free hostin
 
 ## Conclusion
 
-A website clone is one of the fastest legitimate paths from idea to live site. The key is using it as a scaffold rather than treating the clone as the finished product. Generate a clean baseline with Kloner.app, normalize into components, stress-test with real content, replace every brand element, add your SEO fundamentals, and ship to a preview URL for real feedback. For more, see our guide on [AI website cloning from idea to production](https://kloner.app/blog/ai-website-cloning-to-production).
+A website clone is one of the fastest legitimate paths from idea to live site. The key is using it as a scaffold rather than treating the clone as the finished product. Generate a clean baseline with Kloner.app, normalize into components, stress-test with real content, replace every brand element, add your SEO fundamentals, and ship to a preview URL for real feedback. For more, see our guide on [How to clone a website](https://kloner.app/blog/how-to-clone-a-website).
 
 **[Try the Kloner website cloner →](https://kloner.app/)**`,
   },
@@ -3073,7 +2909,7 @@ Tools like Kloner.app are purpose-built for clone site creation: paste a referen
 
 **8. Deploy and iterate.** Push to a preview URL. Get real feedback from people who match your target audience.
 
-**Ready to clone your first site? [Try Kloner.app free →](https://kloner.app)**
+**Ready to clone your first site? [Try a Kloner website preview →](https://kloner.app)**
 
 ## Clone Site on WordPress vs. a Code Stack
 
@@ -3083,7 +2919,7 @@ Tools like Kloner.app are purpose-built for clone site creation: paste a referen
 
 **Clone site onto a no-code builder.** If the destination is Webflow, Squarespace, or Wix, use the clone baseline as a visual reference rather than code output. Break the reference into sections and recreate each using the platform's block system.
 
-For a detailed comparison, see our guide on [clone a website from a URL into clean components](https://kloner.app/blog/clone-a-website-from-a-url).
+For a detailed comparison, see our guide on [Clone a website from a URL](https://kloner.app/blog/clone-website-from-url).
 
 ## Common Mistakes to Avoid
 
@@ -3172,7 +3008,7 @@ If a tool makes you re-build everything manually, it is not really saving time.
 
 ## Related reading
 
-- [AI Website Cloning: From Idea to Production](/blog/ai-website-cloning-to-production)
+- [How to clone a website](/blog/how-to-clone-a-website)
 - [Website Cloning for Quick MVPs](/blog/website-cloning-for-quick-mvps)
 
 A website copier online is most valuable when it helps you move from reference to editable project in one short loop. The faster you can replace the borrowed structure with your own brand and content, the sooner the page becomes real.
@@ -3290,8 +3126,8 @@ If you are working from a public site, always replace brand assets, copy, and id
 
 ## Related reading
 
-- [AI Website Cloning: From Idea to Production](/blog/ai-website-cloning-to-production)
-- [Clone Site: The Fast Way to a Deployable First Version](/blog/clone-site)
+- [How to clone a website](/blog/how-to-clone-a-website)
+- [How to clone a website](/blog/how-to-clone-a-website)
 
 A website downloader is a useful tool in the right context, but it is not the same thing as a build workflow. If your real goal is to ship something editable, a cloning tool will usually save you more time.
 `,
@@ -3341,7 +3177,7 @@ If that sounds like your workflow, the deeper guide [Website Cloning for Quick M
 
 ## Related reading
 
-- [AI Website Cloning: From Idea to Production](/blog/ai-website-cloning-to-production)
+- [How to clone a website](/blog/how-to-clone-a-website)
 - [Best AI Website Builder for Cloning](/blog/best-ai-website-builder-for-cloning)
 
 Website cloning is best when it compresses the boring part of starting, not the important part of building. That is how you get speed without inheriting unnecessary mess.
@@ -3398,7 +3234,7 @@ For most teams, the middle path works best: copy the structure, change the conte
 
 ## Related reading
 
-- [Clone Site: The Fast Way to a Deployable First Version](/blog/clone-site)
+- [How to clone a website](/blog/how-to-clone-a-website)
 - [Website Copier Online: Clone a Site From a URL Without the Mess](/blog/website-copier-online)
 
 A site copier is useful when it gives you momentum without locking you into the wrong shape. The value is not in the copy itself. It is in how quickly that copy becomes a real project.
@@ -3489,7 +3325,7 @@ Choose a website downloader when you need a local reference or archive and do no
 
 Choose a website cloner when you want to recreate the page structure, edit the result, turn it into a clean project, and move toward deployment.
 
-For the second workflow, start with [Kloner’s website cloner](/), then read [how to clone a website from a URL](/blog/clone-a-website-from-a-url) for a practical walkthrough.
+For the second workflow, start with [Kloner’s website cloner](/), then read [Clone a website from a URL](/blog/clone-website-from-url) for a practical walkthrough.
 
 The difference is not the word used for the tool. It is the amount of useful work left after the first capture. A downloader preserves a moment; a good cloning workflow helps you build what comes next.
 `,
@@ -3609,7 +3445,7 @@ It may not be enough for an application with user accounts, dynamic data, server
 
 Kloner supports an editable preview and deployment workflow for supported projects. Review the generated result first, make the content and identity your own, and then use the available deployment integration when you are ready to publish.
 
-For the broader URL workflow, see [how to clone a website from a URL](/blog/clone-website-from-url). If you want the short version, start at [Kloner’s website cloner](/), paste a permitted public URL, and use the preview as the beginning of your own project.
+For the broader URL workflow, see [Clone a website from a URL](/blog/clone-website-from-url). If you want the short version, start at [Kloner’s website cloner](/), paste a permitted public URL, and use the preview as the beginning of your own project.
 
 When comparing tools, use the [website cloner versus website downloader](/blog/website-cloner-vs-website-downloader) guide to decide whether you need an editable project or a static snapshot.
 
@@ -3620,7 +3456,7 @@ Cloning a website to HTML is valuable when it reduces blank-page work without hi
     slug: "clone-website-from-url",
     title: "How to Clone a Website From a URL (2026): Step-by-Step",
     h1: "How to Clone a Website From a URL: A Practical Workflow",
-    metaDescription: "Paste any URL and get an editable clone of the website in seconds. Kloner's AI website cloner rebuilds the page — no code, no manual copying.",
+    metaDescription: "Follow a public URL through website preview, layout review, customization, responsive testing, and deployment preparation with Kloner.",
     description:
       "A practical guide to cloning a permitted public website from a URL, reviewing the result, replacing source branding, and preparing it for launch.",
     publishedAt: "2026-09-03",
@@ -3699,16 +3535,18 @@ That limitation is useful to understand early. The goal is to accelerate the int
 
 ## Use Kloner as the starting point
 
-Kloner turns a permitted URL into an editable preview so you can review, customize, and deploy a new project. Start with the [Kloner website cloner](/), then compare this workflow with the more detailed [guide to cloning a website from a URL](/blog/clone-a-website-from-a-url) and [how to clone a website](/blog/how-to-clone-a-website).
+Kloner turns a permitted URL into an editable preview so you can review, customize, and deploy a new project. Start with the [Kloner website cloner](/), then compare this workflow with the more detailed [Clone a website from a URL](/blog/clone-website-from-url) and [How to clone a website](/blog/how-to-clone-a-website).
 
 The most reliable process is simple: choose a permitted reference, inspect the generated structure, replace the source identity, test the behavior, and publish only when the result belongs to your project.
 `,
+
+    updatedAt: "2026-10-05",
   },
   {
     slug: "ai-website-cloner",
-    title: "AI Website Cloner: Clone Any Site With AI (2026)",
+    title: "How AI Recreates Website Layouts: Capabilities and Limits",
     h1: "AI Website Cloner: What It Recreates and What You Still Control",
-    metaDescription: "Kloner's AI website cloner rebuilds any website from a URL into an editable copy. See how AI cloning works, with templates and examples.",
+    metaDescription: "Understand how AI reconstructs a public website layout, what it can observe, and which content, interactions, and backend features need your review.",
     description:
       "Learn how an AI website cloner turns a public URL into an editable starting point, where automation helps, and what still requires human review.",
     publishedAt: "2026-09-03",
@@ -3786,10 +3624,12 @@ It is less appropriate to treat a URL as a one-click export of a private applica
 
 ## Start with an editable reference
 
-Use [Kloner’s AI website cloner](/) to start from a permitted public URL, inspect the editable preview, make the project your own, and deploy it when it meets your requirements. For a more concrete sequence, read [how to clone a website from a URL](/blog/clone-website-from-url) and [AI website cloning to production](/blog/ai-website-cloning-to-production).
+Use [Kloner’s AI website cloner](/) to start from a permitted public URL, inspect the editable preview, make the project your own, and deploy it when it meets your requirements. For a more concrete sequence, read [Clone a website from a URL](/blog/clone-website-from-url) and [How to clone a website](/blog/how-to-clone-a-website).
 
 AI is most valuable here as an accelerator for the first version. The final quality still comes from your review, content decisions, testing, and ownership of the result.
 `,
+
+    updatedAt: "2026-10-05",
   },
   {
     slug: "clone-website-to-react",
@@ -3847,7 +3687,7 @@ Forms deserve special attention. Confirm their action, validation, error state, 
 
 Kloner’s current web generation is based on Next.js, a React framework. That means a generated web project can be edited as a React-based application while also using the conventions and tooling provided by Next.js. The available output and integrations depend on the project workflow; do not assume that every URL can be converted into a complete application with no manual work.
 
-If you need a plain static baseline, compare this approach with [cloning a website to HTML](/blog/clone-website-to-html). If you want the broader process, start with [Kloner’s website cloner](/) and review [how to clone a website](/blog/how-to-clone-a-website).
+If you need a plain static baseline, compare this approach with [cloning a website to HTML](/blog/clone-website-to-html). If you want the broader process, start with [Kloner’s website cloner](/) and review [How to clone a website](/blog/how-to-clone-a-website).
 
 ## Test before deployment
 
@@ -3865,9 +3705,15 @@ React is valuable in this workflow because it gives the recreated interface an e
 ];
 
 // These routes are intentionally no longer part of the published blog collection.
-// next.config.mjs owns their permanent redirects; filtering here keeps them out of
+// Relevant replacements have redirects in next.config.mjs; others return 404. Filtering keeps them out of
 // generated params, the blog index, and the sitemap as well.
 const RETIRED_BLOG_SLUGS = new Set([
+  "app-cloner",
+  "ai-app-cloner",
+  "how-to-clone-apps",
+  "website-clone",
+  "clone-site",
+
   "website-cloner",
   "clone-a-website-from-a-url",
   "clone-wordpress-site",

@@ -36,6 +36,22 @@ const nextConfig = {
     },
     async redirects() {
         return [
+            { source: '/blog/app-cloner', destination: '/blog/clone-web-app-ui', permanent: true },
+            { source: '/blog/ai-app-cloner', destination: '/blog/clone-web-app-ui', permanent: true },
+            { source: '/blog/how-to-clone-apps', destination: '/blog/clone-web-app-ui', permanent: true },
+            { source: '/blog/website-clone', destination: '/blog/how-to-clone-a-website', permanent: true },
+            { source: '/blog/clone-site', destination: '/blog/how-to-clone-a-website', permanent: true },
+            { source: '/blog/ai-website-cloning-to-production', destination: '/blog/how-to-clone-a-website', permanent: true },
+            { source: '/blog/productionizing-ai-clones-fast', destination: '/blog/how-to-clone-a-website', permanent: true },
+            { source: '/blog/market-hypotheses-with-cloned-demos', destination: '/blog/clone-website-for-mvp', permanent: true },
+            { source: '/blog/validate-a-market-with-a-fast-mvp', destination: '/blog/clone-website-for-mvp', permanent: true },
+            { source: '/blog/best-website-builder-for-small-business', destination: '/blog/best-ai-website-builder-for-cloning', permanent: true },
+
+            {
+                source: '/tools',
+                destination: '/',
+                permanent: true,
+            },
             {
                 source: '/website-cloner',
                 destination: '/',
@@ -94,66 +110,6 @@ const nextConfig = {
             {
                 source: '/blog/website-downloader',
                 destination: '/blog/website-cloner-vs-website-downloader',
-                permanent: true,
-            },
-            {
-                source: '/blog/best-website-builder-for-small-business',
-                destination: '/blog',
-                permanent: true,
-            },
-            {
-                source: '/blog/webflow-website-builder-vs-kloner',
-                destination: '/blog',
-                permanent: true,
-            },
-            {
-                source: '/blog/ai-agent-feedback-loops',
-                destination: '/blog',
-                permanent: true,
-            },
-            {
-                source: '/blog/analytics-for-ai-clone-ops',
-                destination: '/blog',
-                permanent: true,
-            },
-            {
-                source: '/blog/preview-infrastructure-for-ai-clones',
-                destination: '/blog',
-                permanent: true,
-            },
-            {
-                source: '/blog/demo-operations-playbook',
-                destination: '/blog',
-                permanent: true,
-            },
-            {
-                source: '/blog/productionizing-ai-clones-fast',
-                destination: '/blog',
-                permanent: true,
-            },
-            {
-                source: '/blog/ai-website-cloning-to-production',
-                destination: '/blog',
-                permanent: true,
-            },
-            {
-                source: '/blog/market-hypotheses-with-cloned-demos',
-                destination: '/blog',
-                permanent: true,
-            },
-            {
-                source: '/blog/user-research-with-ai-demo-clones',
-                destination: '/blog',
-                permanent: true,
-            },
-            {
-                source: '/blog/ai-agents-for-product-and-growth-teams',
-                destination: '/blog',
-                permanent: true,
-            },
-            {
-                source: '/blog/validate-a-market-with-a-fast-mvp',
-                destination: '/blog',
                 permanent: true,
             },
             {

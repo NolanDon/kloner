@@ -16,7 +16,7 @@ const inter = Inter({
 
 export const metadata: Metadata = {
   title: {
-    default: "Kloner – AI Website Cloner, Builder and Preview Tool",
+    default: "Kloner – AI Website Cloner",
     template: "%s | Kloner",
   },
   description:
@@ -26,7 +26,7 @@ export const metadata: Metadata = {
     canonical: "https://kloner.app",
   },
   openGraph: {
-    title: "Kloner – AI Website Builder and Preview Tool",
+    title: "Kloner – AI Website Cloner",
     description:
       "Website cloner for high-fidelity layouts: capture, edit, and redeploy fast. Start a free preview and launch sites faster.",
     url: "https://kloner.app",
@@ -43,7 +43,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "Kloner – AI Website Builder and Preview Tool",
+    title: "Kloner – AI Website Cloner",
     description:
       "Website cloner for high-fidelity layouts: capture, edit, and redeploy fast. Start a free preview and launch sites faster.",
       images: ["/images/opengraph.jpg"],

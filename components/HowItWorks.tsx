@@ -221,7 +221,7 @@ function EditBlocksModal() {
               <div className="flex-1 rounded-xl bg-white border border-neutral-200 px-3 py-2">
                 <div className="text-[11px] font-semibold text-neutral-600">You</div>
                 <div className="text-sm text-neutral-800 leading-5">
-                  Also add auth and a database, and make it look more premium.
+                  Replace the hero image, use my brand colors, and improve the mobile spacing.
                 </div>
               </div>
             </div>
@@ -233,14 +233,14 @@ function EditBlocksModal() {
               <div className="flex-1 rounded-xl bg-white border border-[rgba(255,141,33,0.22)] px-3 py-2">
                 <div className="text-[11px] font-semibold text-[rgba(255,141,33,1)]">Kloner Agent</div>
                 <div className="text-sm text-neutral-800 leading-5">
-                  Added login, a simple DB model, and updated the UI spacing/typography for a cleaner look.
+                  Updated the hero image, applied your brand colors, and refined the spacing for smaller screens.
                 </div>
                 <div className="mt-2 flex flex-wrap gap-2">
                   <span className="rounded-full border border-neutral-200 bg-neutral-50 px-2.5 py-1 text-[11px] font-medium text-neutral-700">
-                    Auth added
+                    Image updated
                   </span>
                   <span className="rounded-full border border-neutral-200 bg-neutral-50 px-2.5 py-1 text-[11px] font-medium text-neutral-700">
-                    DB connected
+                    Colors applied
                   </span>
                   <span className="rounded-full border border-neutral-200 bg-neutral-50 px-2.5 py-1 text-[11px] font-medium text-neutral-700">
                     UI refined

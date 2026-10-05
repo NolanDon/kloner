@@ -14,6 +14,7 @@ import {
   getSiteUrl,
 } from "@/lib/blog";
 import { buildMetaDescription } from "@/lib/seo";
+import { stripLeadingMarkdownTitle } from "@/lib/blogMarkdown";
 
 export function generateStaticParams() {
   return getAllBlogPosts().map((p) => ({ slug: p.slug }));
@@ -61,32 +62,6 @@ export async function generateMetadata({
   };
 }
 
-function stripLeadingTitle(markdown: string, title: string): string {
-  const input = String(markdown || "");
-  const lines = input.split("\n");
-  const firstContentLine = lines.findIndex((line) => line.trim().length > 0);
-  if (firstContentLine === -1) return input;
-
-  const firstLine = lines[firstContentLine]!.trim();
-  const normalizedTitle = String(title || "")
-    .trim()
-    .toLowerCase();
-  const normalizedHeading = firstLine
-    .replace(/^#{1,6}\s+/, "")
-    .trim()
-    .toLowerCase();
-
-  if (!firstLine.startsWith("#") || normalizedHeading !== normalizedTitle) {
-    return input;
-  }
-
-  const nextLines = [
-    ...lines.slice(0, firstContentLine),
-    ...lines.slice(firstContentLine + 1),
-  ];
-
-  return nextLines.join("\n").replace(/^\s*\n/, "");
-}
 
 export default async function BlogPostPage({
   params,
@@ -220,13 +195,13 @@ export default async function BlogPostPage({
           </div>
 
           <article className="mx-auto mt-8 max-w-5xl px-1 sm:px-2 lg:px-4">
-            <Markdown markdown={stripLeadingTitle(post.markdown, post.h1 || post.title)} />
+            <Markdown markdown={stripLeadingMarkdownTitle(post.markdown)} />
           </article>
 
           <div className="mx-auto mt-10 max-w-5xl px-1 sm:px-2 lg:px-4">
             <BlogUrlCta
               title="Start your version from a URL"
-              description="If you’ve read this far, you can turn any public reference into a signup-ready project in a few seconds."
+              description="Start with a supported public website URL and review the generated preview. Editing and publishing depend on your plan."
             />
           </div>
 

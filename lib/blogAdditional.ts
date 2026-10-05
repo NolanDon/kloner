@@ -122,17 +122,14 @@ const drafts: Draft[] = [
   },
   {
     slug: "clone-web-app-ui",
-    title: "Clone a Web App UI From a URL: A Frontend-First Workflow",
-    description: "Recreate a permitted web app interface by mapping screens, states, components, and responsive behavior before connecting real services.",
+    title: "Recreate a Public Web Interface: Screens, States, and Limits",
+    description: "Use a public website as a visual reference for an editable web interface. Review screens, UI states, and the boundary between layout and private services.",
     publishedAt: "2026-09-24",
-    tags: ["clone web app UI", "web app cloner", "frontend"],
-    intro: "Cloning a web app UI is primarily an exercise in observing screens and states. A URL can expose an interface a visitor may see, but not private APIs, database rules, account data, or server decisions. A frontend-first workflow keeps that boundary clear.",
-    sections: [
-      ["Make a screen inventory", "Record reachable screens and the actions between them. Include navigation, tables, filters, dialogs, forms, empty states, errors, and loading indicators. If you copy only the happy path, the result will fail as soon as somebody interacts with it."],
-      ["Separate state from data", "Start with fixtures representing the states you need to design. Define the data shape and events a real service would provide. Review network requests and links so cloned forms, API calls, analytics, and source-domain actions cannot leak into the new project."],
-      ["Test beyond the screenshot", "Check keyboard navigation, focus order, mobile widths, long values, permissions, and failures. A dashboard that looks accurate at 1440 pixels can still be unusable on a laptop or when a name is twice as long as the sample."],
-      ["Use scaffolding", "If you have a permitted public reference, [Kloner](/) can help create an editable starting point. Treat it as scaffolding, then connect only your own services and content."],
-    ],
+    tags: ["public web interface","website layout","frontend"],
+    intro: "Kloner is a website cloner. It uses supported public website URLs as visual references for editable projects. It does not duplicate installed Android or iOS apps, modify APK files, or recover a private application. If your reference is a public web interface, start by mapping the screens and states you can actually observe.",
+    sections: [["Make a screen inventory","Record public screens and the actions between them. Include navigation, tables, filters, dialogs, forms, empty states, errors, and loading indicators. A public URL provides a visible reference, not access to protected screens or account data."],["Turn the reference into an editable baseline","Start with a permitted public URL in [Kloner’s website cloner](/). Review the generated layout and component structure. Replace the reference identity, imagery, text, and calls to action with your own content before sharing it."],["Separate state from services","Use clearly identified fixtures to design loading, empty, error, and success states. Define what a service would need to return. Authentication, permissions, database rules, billing, and private APIs require your own implementation; visual similarity does not mean those systems have been copied."],["Prioritize the user journey","Review navigation, the primary action, and the main content view first. Test longer labels and different list lengths. Connect your own services only when you know the intended behavior, and remove source-domain requests, analytics IDs, and form destinations."],["Test beyond the screenshot","Check keyboard navigation, focus order, mobile widths, long values, and failure states. Test real forms and data integrations separately from the layout. A dashboard that looks accurate at one viewport may still be unusable on a smaller screen."],["Choose the right workflow","For website layout recreation, use the [Clone a website from a URL](/blog/clone-website-from-url). For a static archive, compare [website cloning and downloading](/blog/website-cloner-vs-website-downloader). Kloner offers limited free preview access; editing and publishing depend on your [plan](/price)."]],
+
+    updatedAt: "2026-10-05",
   },
   {
     slug: "clone-wordpress-theme-from-url",

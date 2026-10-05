@@ -14,87 +14,13 @@ const CORE_LINKS: LinkItem[] = [
   { label: "Kloner Vercel EULA", href: "/legal/kloner-vercel-eula" },
 ];
 
-// Keeping key blog URLs here ensures they have guaranteed incoming internal links
-// (via the footer) even if a crawler misses the blog index for any reason.
-//
-// Includes the URLs reported as orphans in recent SEO audits.
+// A small set of distinct, maintained website guides complements the product pages.
 const AFFECTED_BLOG_POSTS: LinkItem[] = [
+  { label: "How to clone a website", href: "/blog/how-to-clone-a-website" },
   { label: "Clone a website from a URL", href: "/blog/clone-website-from-url" },
-  { label: "AI website cloner", href: "/blog/ai-website-cloner" },
-  { label: "Clone a website to React", href: "/blog/clone-website-to-react" },
-  {
-    label: "Website cloner vs website downloader",
-    href: "/blog/website-cloner-vs-website-downloader",
-  },
-  { label: "Clone a website to HTML", href: "/blog/clone-website-to-html" },
-  { label: "Clone a website from a URL", href: "/blog/clone-a-website-from-a-url" },
-  { label: "Clone your next SaaS in minutes", href: "/blog/clone-your-next-saas-in-minutes" },
-  { label: "Productionizing AI clones fast", href: "/blog/productionizing-ai-clones-fast" },
-  { label: "Best AI website builder for cloning", href: "/blog/best-ai-website-builder-for-cloning" },
-  { label: "Website cloning for quick MVPs", href: "/blog/website-cloning-for-quick-mvps" },
-  { label: "App cloner", href: "/blog/app-cloner" },
-  { label: "AI app cloner", href: "/blog/ai-app-cloner" },
-  { label: "How to clone apps", href: "/blog/how-to-clone-apps" },
-  {
-    label: "AI landing page builder best practices",
-    href: "/blog/ai-landing-page-builder-best-practices",
-  },
-  {
-    label: "Market hypotheses with cloned demos",
-    href: "/blog/market-hypotheses-with-cloned-demos",
-  },
-  { label: "Analytics for AI clone ops", href: "/blog/analytics-for-ai-clone-ops" },
-  { label: "User research with AI demo clones", href: "/blog/user-research-with-ai-demo-clones" },
-  {
-    label: "Performance checklist for cloned sites",
-    href: "/blog/performance-checklist-for-cloned-sites",
-  },
-  {
-    label: "AI website cloning to production",
-    href: "/blog/ai-website-cloning-to-production",
-  },
-  {
-    label: "Preview infrastructure for AI clones",
-    href: "/blog/preview-infrastructure-for-ai-clones",
-  },
-  {
-    label: "AI agents for product and growth teams",
-    href: "/blog/ai-agents-for-product-and-growth-teams",
-  },
-  { label: "AI agent feedback loops", href: "/blog/ai-agent-feedback-loops" },
-  {
-    label: "Validate a market with a fast MVP",
-    href: "/blog/validate-a-market-with-a-fast-mvp",
-  },
-  { label: "Demo operations playbook", href: "/blog/demo-operations-playbook" },
-  { label: "Wix Website Builder vs Kloner", href: "/blog/wix-website-builder-vs-kloner" },
-  { label: "Webflow Website Builder vs Kloner", href: "/blog/webflow-website-builder-vs-kloner" },
-  {
-    label: "How to Create a Website for Free",
-    href: "/blog/how-to-create-a-website-for-free",
-  },
-  { label: "Free AI Website Builder", href: "/blog/free-ai-website-builder" },
-  { label: "AI Website Builder", href: "/blog/ai-website-builder" },
-  {
-    label: "Best Website Builder for Small Business",
-    href: "/blog/best-website-builder-for-small-business",
-  },
-  {
-    label: "Durable AI Website Builder vs Kloner",
-    href: "/blog/durable-ai-website-builder-vs-kloner",
-  },
-  {
-    label: "Hostinger AI Website Builder vs Kloner",
-    href: "/blog/hostinger-ai-website-builder-vs-kloner",
-  },
-  {
-    label: "Framer AI Website Builder vs Kloner",
-    href: "/blog/framer-ai-website-builder-vs-kloner",
-  },
-  {
-    label: "Squarespace Website Builder vs Kloner",
-    href: "/blog/squarespace-website-builder-vs-kloner",
-  },
+  { label: "Free website preview and plan limits", href: "/blog/clone-website-free" },
+  { label: "Website cloner vs website downloader", href: "/blog/website-cloner-vs-website-downloader" },
+  { label: "Clone a WordPress website", href: "/blog/clone-wordpress-website" },
 ];
 
 function InlineLinks({ links }: { links: LinkItem[] }) {

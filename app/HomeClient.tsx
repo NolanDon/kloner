@@ -2,6 +2,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import Link from "next/link";
 import NavBar from "@/components/NavBar";
 import Hero from "@/components/Hero";
 const StatsStrip = dynamic(() => import("@/components/StatsStrip"));
@@ -21,7 +22,7 @@ export default function HomeClient() {
 
             <main className="h-screen snap-y snap-mandatory scroll-smooth motion-reduce:snap-none motion-reduce:scroll-auto">
                 <section id="hero" className="snap-start snap-always min-h-screen flex flex-col">
-                    <Hero heading="AI Website Cloner — Clone Any Website from a URL" />
+                    <Hero heading="AI Website Cloner — Clone a Website from a URL" subhead="Paste a public website URL to recreate its layout, preview the result, and customize text, images, and sections with AI. Deploy your finished website when it’s ready." />
                 </section>
 
                 <section id="preview" className="snap-start snap-always min-h-screen flex flex-col">
@@ -54,6 +55,12 @@ export default function HomeClient() {
 
                 <section id="parallax" className="snap-start snap-always min-h-screen flex flex-col">
                     <ParallaxTypeHero />
+                </section>
+
+                <section aria-label="Website cloning guides" className="snap-start bg-white px-6 py-8">
+                    <p className="mx-auto max-w-3xl text-center text-neutral-600">
+                        Need a walkthrough? <Link href="/blog/clone-website-from-url" className="underline underline-offset-4">Learn how to clone a website from a URL</Link> or review <Link href="/blog/clone-website-free" className="underline underline-offset-4">free preview access and plan limits</Link>.
+                    </p>
                 </section>
 
                 <section id="footer" className="snap-start snap-always flex flex-col">

@@ -18,21 +18,20 @@ const metrics: Metric[] = [
   {
     value: '01',
     title: 'Save time',
-    metric: 'avg 40 hrs',
-    text: 'Start from templates instead of blank pages and cut the heavy setup work.',
+    metric: 'Start from a URL',
+    text: 'Use a supported public website as a starting point, then review and refine the generated layout.',
   },
   {
     value: '02',
     title: 'Save money',
-    metric: 'avg $1000',
-    text: 'Ship polished sites without paying premium platform fees for every project.',
+    metric: 'Preview first',
+    text: 'Try limited free preview access and check your plan before editing or publishing.',
   },
   {
     value: '03',
-    title: 'Boost your output',
-    metric: '',
-    text: 'Handle five roles from one place, without extra overhead.',
-    roles: ['Designer', 'Marketer', 'Frontend dev', 'Backend dev', 'Product dev'],
+    title: 'Make it yours',
+    metric: 'Edit your website',
+    text: 'Customize text, images, colors, and sections for your own website.',
   },
 ];
 
@@ -123,9 +122,7 @@ export default function Stories() {
         <div className="mb-8 flex items-center justify-between gap-4 sm:mb-6">
           <h2 className="mt-1 flex flex-wrap items-center justify-start gap-x-3 gap-y-1 text-base text-neutral-600 sm:text-lg">
             <span className="block text-[16px] uppercase tracking-[0.1em] text-neutral-500">
-              Join
-              <span className="mx-1 text-[rgba(255,141,33,1)]">5,000+</span>
-              Kloner members shipping sites in minutes
+              Build your next website with Kloner
             </span>
             <span className="relative inline-block h-[72px] w-[72px] sm:h-[92px] sm:w-[92px]">
               <Image

@@ -17,3 +17,7 @@ certificates
 .github/prompts/backend-embedding-sanitization.prompt.md
 next-env.d.ts
 .env.example
+
+# Private SEO audit snapshots and Search Console exports
+docs/seo/*.json
+components/performance.zip
