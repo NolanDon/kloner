@@ -22,7 +22,7 @@ export default function HomeClient() {
 
             <main className="h-screen snap-y snap-mandatory scroll-smooth motion-reduce:snap-none motion-reduce:scroll-auto">
                 <section id="hero" className="snap-start snap-always min-h-screen flex flex-col">
-                    <Hero heading="AI Website Cloner — Clone a Website from a URL" subhead="Paste a public website URL to recreate its layout, preview the result, and customize text, images, and sections with AI. Deploy your finished website when it’s ready." />
+                    <Hero heading="AI Website Cloner — Clone a Website from a URL" subhead="Paste a URL. Customize your website with AI. Launch." />
                 </section>
 
                 <section id="preview" className="snap-start snap-always min-h-screen flex flex-col">

@@ -100,7 +100,7 @@ export default function HeroContent({
         </h1>
 
         <p className="mt-[clamp(0.75rem,2.2vh,1.5rem)] text-white/90 text-base sm:text-lg md:text-xl max-w-xl mx-auto font-medium">
-          {subhead ?? "Paste a URL to clone a website, preview the editable result, customize it with AI, and deploy."}
+          {subhead ?? "Paste a URL. Customize your website with AI. Launch."}
         </p>
 
         <form onSubmit={onSubmit} className="mt-[clamp(1rem,3.2vh,2.5rem)] w-full max-w-2xl mx-auto space-y-3">
@@ -144,14 +144,14 @@ export default function HeroContent({
 
           <div
             id={error ? errorId : hintId}
-            className="mt-3 sm:mt-4 text-xs sm:text-sm text-white font-medium"
+            className={error ? "mt-3 sm:mt-4 text-xs sm:text-sm text-white font-medium" : "sr-only"}
             aria-live="polite"
           >
             {error ?? "Clone a public website • Preview the result • Customize and launch"}
           </div>
         </form>
         <p className="mt-3 text-sm text-white/80">
-          Limited free preview access. Editing and publishing depend on your plan. <a href="/price" className="underline underline-offset-4">View pricing</a>.
+          Limited free preview · <a href="/price" className="underline underline-offset-4">Pricing</a>
         </p>
 
         <div className="mt-[clamp(1rem,3.8vh,3rem)] flex justify-center">
