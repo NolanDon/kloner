@@ -4,9 +4,10 @@ jest.mock("next/server", () => {
     return {
         __esModule: true,
         NextResponse: {
-            json: (body: any, init?: { status?: number }) => {
+            json: (body: any, init?: { status?: number; headers?: Record<string, string> }) => {
                 return {
                     status: init?.status ?? 200,
+                    headers: new Headers(init?.headers),
                     async json() {
                         return body;
                     },
@@ -17,6 +18,8 @@ jest.mock("next/server", () => {
 });
 
 const callBackend = jest.fn();
+const captureCriticalEvent = jest.fn();
+jest.mock("@/lib/observability", () => ({ captureCriticalEvent: (...args: any[]) => captureCriticalEvent(...args) }));
 const peekUserCredit = jest.fn();
 const consumeUserCredit = jest.fn();
 const getAuthoritativeUserTier = jest.fn();
@@ -89,6 +92,8 @@ jest.mock("@/src/lib/publicHttpUrl", () => {
 
 describe("POST /api/generate-app-from-url", () => {
     beforeEach(() => {
+        captureCriticalEvent.mockReset();
+        captureCriticalEvent.mockResolvedValue(undefined);
         callBackend.mockReset();
         peekUserCredit.mockReset();
         consumeUserCredit.mockReset();
@@ -110,6 +115,19 @@ describe("POST /api/generate-app-from-url", () => {
             url: "https://backend.example/api/v1/generate-app-from-url",
         });
         jest.resetModules();
+    });
+
+    it("preserves rescan diagnostics, logs one warning, and never charges rejected generation", async () => {
+        callBackend.mockResolvedValueOnce({ status: 409, json: { code: "ARCHIVE_RESCAN_REQUIRED", error: "We need to scan this site again before generation. Please retry.", rescanRecommended: true, retryable: true }, reqId: "backend-request", url: "https://backend.example/api/v1/generate-app-from-url" });
+        const { POST } = await import("./route");
+        const res: any = await POST({ headers: new Headers(), json: async () => ({ url: "https://krea.ai/", name: "Krea" }) } as any);
+        expect(res.status).toBe(409);
+        expect(await res.json()).toMatchObject({ code: "ARCHIVE_RESCAN_REQUIRED", retryable: true, rescanRecommended: true, reqId: "backend-request" });
+        expect(res.headers.get("x-observability-skip-status-alert")).toBe("1");
+        expect(captureCriticalEvent).toHaveBeenCalledTimes(1);
+        expect(captureCriticalEvent.mock.calls[0][0]).toMatchObject({ severity: "warning", message: "App generation rejected: backend_rejected_generation" });
+        expect(consumeUserCredit).not.toHaveBeenCalled();
+        expect(appRefSet).not.toHaveBeenCalled();
     });
 
     it("returns the early paywall before checking credits or calling the backend", async () => {

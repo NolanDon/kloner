@@ -13,5 +13,6 @@ describe("scan alert classification", () => {
     it("retains real errors and distinguishes polling timeouts", () => {
         expect(classifyScanAlert({ message: "zip failed" }).severity).toBe("critical");
         expect(classifyScanAlert({ message: "Archive scan timed out before the archive was ready." })).toMatchObject({ statusCode: 504, severity: "error" });
+        expect(classifyScanAlert({ message: "We couldn't confirm that your scan finished after 10 minutes." })).toMatchObject({ statusCode: 504, severity: "error" });
     });
 });

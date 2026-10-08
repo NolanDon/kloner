@@ -12,7 +12,7 @@ export function classifyScanAlert({ code = "", message = "", statusCode = 502, b
     if (backendStatus === "ready" && /terminal error without a backend diagnostic/i.test(message)) {
         return { severity: "info" as const, statusCode: 200, classification: "stale_ui_state" };
     }
-    if (/timed out|couldn't confirm.*5 minutes/i.test(message)) {
+    if (/timed out|couldn't confirm.*\d+ minutes|snapshot_budget_exceeded/i.test(message)) {
         return { severity: "error" as const, statusCode: 504, classification: "timeout" };
     }
     return { severity: statusCode >= 500 ? "critical" as const : "warning" as const, statusCode, classification: "unclassified" };

@@ -81,15 +81,16 @@ async function reportZipGenerationFailure(args: {
 
   await captureCriticalEvent({
     source: "internal",
-    severity: "error",
+    severity: args.statusCode < 500 ? "warning" : "error",
     route: "/api/generate-app-from-url",
     method: args.req.method,
     statusCode: args.statusCode,
     userId: args.uid,
     requestId: args.reqId,
     url: args.url,
-    message: `Zip generation failed: ${args.reason}`,
-    errorName: "ZipGenerationFailure",
+    message: `App generation ${args.reason === "backend_rejected_generation" ? "rejected" : "failed"}: ${args.reason}`,
+    errorName: "AppGenerationFailure",
+    action: args.reason === "backend_rejected_generation" ? "app_generation_rejected" : "app_generation_failed",
     service: "generate-app-from-url",
     extra: {
       requestContext: {
@@ -562,8 +563,12 @@ export async function POST(req: NextRequest) {
             `Backend refused app generation (HTTP ${upstreamStatus})`,
           upstreamStatus,
           reqId: appResponse.reqId,
+          code: typeof appData.code === "string" ? appData.code : null,
+          retryable: appData.retryable === true,
+          rescanRecommended: appData.rescanRecommended === true,
+          nextAction: appData.rescanRecommended === true ? "rescan_url" : null,
         },
-        { status: upstreamStatus >= 400 ? upstreamStatus : 502 },
+        { status: upstreamStatus >= 400 ? upstreamStatus : 502, headers: appData.code === "ARCHIVE_RESCAN_REQUIRED" ? { "x-observability-skip-status-alert": "1" } : undefined },
       );
 
     } catch (e: any) {
