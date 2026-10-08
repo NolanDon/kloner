@@ -142,7 +142,9 @@ function computeDeployRetryDelayMs(attempt: number): number {
     const rawDelay = DEPLOY_RETRY_BASE_DELAY_MS * Math.pow(2, normalizedAttempt - 1);
     return Math.min(DEPLOY_RETRY_MAX_DELAY_MS, rawDelay);
 }
-const CAPTURE_STALL_TIMEOUT_MS = 6 * 60 * 1000;
+const ARCHIVE_READINESS_WAIT_MS = 10 * 60 * 1000;
+const ARCHIVE_READINESS_WAIT_MESSAGE = "Your website is taking longer than expected to prepare. We haven't confirmed it's ready yet. Return to your dashboard and try opening it again in a few minutes.";
+const CAPTURE_STALL_TIMEOUT_MS = ARCHIVE_READINESS_WAIT_MS;
 const RENDER_STALL_TIMEOUT_MS = 5 * 60 * 1000;
 const CAPTURE_ISSUE_NOTICE_MS = 10 * 1000;
 const FRONTEND_TIMEOUT_DEDUPE_TTL_MS = 10 * 60 * 1000;
@@ -8453,7 +8455,7 @@ export default function PreviewPage(): JSX.Element {
             updatedAtMs: number | null;
         }> => {
             const startAt = Date.now();
-            const timeoutMs = 240_000;
+            const timeoutMs = ARCHIVE_READINESS_WAIT_MS;
             const pollIntervalMs = 2_000;
 
             while (Date.now() - startAt < timeoutMs) {
@@ -8541,7 +8543,8 @@ export default function PreviewPage(): JSX.Element {
                 await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
             }
 
-            throw new Error("Archive scan timed out before the archive was ready.");
+            // Reaching the browser's wait limit does not mean the scan has failed.
+            throw new Error(ARCHIVE_READINESS_WAIT_MESSAGE);
         };
 
         if (!draft.skipPreviewCreditGate && !canUsePreviewCredit()) {
@@ -8693,7 +8696,7 @@ export default function PreviewPage(): JSX.Element {
                     ? error.message
                     : "Failed to create app. Please try again.";
             setErr(message);
-            push(message, "err");
+            push(message, message === ARCHIVE_READINESS_WAIT_MESSAGE ? "warn" : "err");
             updateScanState({
                 phase: "error",
                 status: "error",
@@ -9782,7 +9785,7 @@ export default function PreviewPage(): JSX.Element {
             captureLockStartedAtRef.current = 0;
             setInfo("");
             if (!shouldSendFrontendTimeoutAlert("url_capture_stalled", currentTarget)) return;
-            setErr("We couldn't finish capturing this URL. Please re-enter the URL above and try again.");
+            setErr(ARCHIVE_READINESS_WAIT_MESSAGE);
 
             void (async () => {
                 try {
@@ -9801,7 +9804,7 @@ export default function PreviewPage(): JSX.Element {
                             service: "dashboard-view",
                             statusCode: 504,
                             status: "queued_timeout",
-                            message: "URL capture stayed queued/processing for more than 6 minutes without completion.",
+                            message: "URL capture stayed queued/processing for more than 10 minutes without confirmed completion.",
                             previewUrl: currentTarget,
                             ageMs: Date.now() - startedAt,
                             tags: ["url-capture", "queue", "timeout", "frontend"],
@@ -13696,7 +13699,10 @@ export default function PreviewPage(): JSX.Element {
         );
     }, [isDev]);
 
-    const urlProcessingPopupTitle = urlProcessingFailure
+    const urlProcessingWaitLimitReached = (urlProcessingFailure?.message || urlProcessingHandoff?.errorMessage) === ARCHIVE_READINESS_WAIT_MESSAGE;
+    const urlProcessingPopupTitle = urlProcessingWaitLimitReached
+        ? "Taking longer than expected"
+        : urlProcessingFailure
         ? "URL processing failed"
         : urlProcessingHandoff?.phase === "error"
             ? (String(urlProcessingHandoff.errorMessage || "").toLowerCase().includes("timed out")
@@ -13751,6 +13757,7 @@ export default function PreviewPage(): JSX.Element {
                 title={urlProcessingPopupTitle}
                 message={urlProcessingPopupMessage}
                 error={urlProcessingFailure?.message || (urlProcessingHandoff?.phase === "error" ? urlProcessingHandoff?.errorMessage || "URL processing failed." : null)}
+                errorLabel={urlProcessingWaitLimitReached ? "Please check back shortly" : undefined}
                 archiveZipBytes={urlProcessingHandoff?.archiveZipBytes ?? pendingCreatedApp?.archiveZipBytes ?? null}
                 stage={
                     urlProcessingFailure || urlProcessingHandoff?.phase === "error"

@@ -9,6 +9,7 @@ type UrlProcessingPopupProps = {
     title?: string;
     message?: string;
     error?: string | null;
+    errorLabel?: string;
     attemptLabel?: string | null;
     onDismiss?: () => void;
     onPrimaryAction?: () => void;
@@ -58,6 +59,7 @@ export default function UrlProcessingPopup({
     title = "Processing your URL",
     message = "This can take a few minutes.",
     error = null,
+    errorLabel = "Error",
     attemptLabel = null,
     onDismiss,
     onPrimaryAction,
@@ -160,7 +162,7 @@ export default function UrlProcessingPopup({
                         <div className="grid grid-cols-[minmax(0,1fr),auto] items-start gap-4">
                             <div className="min-w-0 text-center">
                                 <div className="text-[10px] uppercase tracking-[0.24em] text-neutral-400">
-                                    {error ? "Error" : stage === "navigating" ? "Opening" : stage === "ready" ? "Ready" : "Working"}
+                                    {error ? errorLabel : stage === "navigating" ? "Opening" : stage === "ready" ? "Ready" : "Working"}
                                 </div>
                                 <div className="relative mt-1 min-h-[2.25rem] sm:min-h-[2.5rem]">
                                     <AnimatePresence mode="wait" initial={false}>
