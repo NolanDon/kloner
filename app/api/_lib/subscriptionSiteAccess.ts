@@ -1,7 +1,7 @@
 import { Resend } from "resend";
 import { getAdminDb } from "./auth";
 import { loadVercelIntegration } from "./vercel-integration";
-import { captureAuditEvent } from "@/lib/observability";
+import { captureAuditEvent, captureCriticalEvent } from "@/lib/observability";
 
 const SITE_ACCESS_FLAG = "STRIPE_ENFORCE_LIVE_SITE_ACCESS";
 
@@ -82,7 +82,12 @@ async function getVercelProject(params: {
             signal: AbortSignal.timeout(30_000),
         },
     );
-    if (!res.ok) return null;
+    if (!res.ok) {
+        if (res.status === 404) return null;
+        const body = await res.json().catch(() => ({}));
+        const code = typeof body?.error?.code === "string" ? body.error.code : "unknown";
+        throw new Error(`Vercel project lookup failed (HTTP ${res.status}, code=${code}, project=${params.projectId}, team=${params.teamId || "personal"})`);
+    }
     return res.json().catch(() => null);
 }
 
@@ -288,15 +293,16 @@ export async function suspendUserLiveSites(uid: string, reason: string): Promise
 
     const domainList = inspectedProjects.flatMap((project) => project.domains || []);
     const projectList = inspectedProjects.map((project) => project.projectId);
-    await captureAuditEvent({
+    if (projects.length > 0) await (failed > 0 ? captureCriticalEvent : captureAuditEvent)({
         source: "vercel",
-        severity: "info",
+        severity: failed > 0 ? "error" : "info",
+        statusCode: failed > 0 ? 502 : 200,
         route: "/api/billing/subscription-site-access",
         method: "PATCH",
-        action: "billing.liveSites.pause_completed",
+        action: failed > 0 ? "billing.liveSites.pause_failed" : "billing.liveSites.pause_completed",
         userId: uid,
         service: "vercel-project-access",
-        message: `Live-site pause completed for canceled user ${uid}: ${suspendedProjects.length} succeeded, ${failed} failed out of ${projects.length}. Results: ${projectResults.map((project) => `${project.projectId}=${project.status}${project.error ? ` (${project.error})` : ""}`).join("; ") || "none"}`,
+        message: `Live-site pause ${failed > 0 ? "incomplete" : "completed"} for canceled user ${uid}: ${suspendedProjects.length} succeeded, ${failed} failed out of ${projects.length}. Results: ${projectResults.map((project) => `${project.projectId}=${project.status}${project.error ? ` (${project.error})` : ""}`).join("; ") || "none"}`,
         extra: {
             reason,
             projectIds: projectList,

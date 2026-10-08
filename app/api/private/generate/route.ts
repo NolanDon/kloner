@@ -39,7 +39,7 @@ async function captureUrlScanFailure(params: {
 }) {
     await captureCriticalEvent({
         source: "internal",
-        severity: "critical",
+        severity: params.statusCode >= 500 ? "critical" : "warning",
         statusCode: params.statusCode,
         route: "/api/private/generate",
         method: "POST",

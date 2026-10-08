@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { classifyScanAlert } from "@/lib/scanAlertClassification";
 import { requireSessionAndMaybeCsrf } from "@/app/api/_lib/route-guard";
 import { captureCriticalEvent } from "@/lib/observability";
 import type { ObservabilitySeverity } from "@/lib/observability";
@@ -63,7 +64,7 @@ export async function POST(req: NextRequest) {
             const code = cleanText(body?.code, 200);
             const status = cleanText(body?.status, 80) || "unknown";
             const action = cleanText(body?.action, 120) || "preview_timeout_12min";
-            const severity = cleanSeverity(body?.severity);
+            let severity = cleanSeverity(body?.severity);
             const route = cleanText(body?.route, 300) || "/dashboard/view";
             const service = cleanText(body?.service, 200) || "webcontainer-runner";
             const message =
@@ -76,7 +77,7 @@ export async function POST(req: NextRequest) {
             const machineId = cleanText(body?.machineId, 120);
             const ageMs = cleanNumber(body?.ageMs);
             const elapsedMs = cleanNumber(body?.elapsedMs);
-            const statusCode = cleanNumber(body?.statusCode) || ((severity === "info" || severity === "warning") ? 200 : 504);
+            let statusCode = cleanNumber(body?.statusCode) || ((severity === "info" || severity === "warning") ? 200 : 504);
             const tags = cleanTags(body?.tags) || ["preview", "timeout", "frontend"];
             const requestId = cleanText(body?.requestId, 200);
             const jobId = cleanText(body?.jobId, 200);
@@ -112,6 +113,14 @@ export async function POST(req: NextRequest) {
                 hasBearer: Boolean(authedReq.headers.get("authorization")),
             };
 
+            let classification: string | undefined;
+            if (action === "url_capture_terminal_error") {
+                const scanAlert = classifyScanAlert({ code: backendCode || code, message: backendMessage || message, statusCode, backendStatus });
+                severity = scanAlert.severity;
+                statusCode = scanAlert.statusCode;
+                classification = scanAlert.classification;
+            }
+
             const enrichedMessage = [
                 message,
                 browser ? `browser=${browser}` : "",
@@ -129,6 +138,7 @@ export async function POST(req: NextRequest) {
                 method: "POST",
                 action,
                 userId: uid,
+                requestId: requestId || backendRequestId || undefined,
                 message: enrichedMessage,
                 service,
                 tags,
@@ -136,6 +146,7 @@ export async function POST(req: NextRequest) {
                 extra: {
                     appId: appId || undefined,
                     code: code || undefined,
+                    classification,
                     status,
                     browser: browser || undefined,
                     reason: reason || undefined,

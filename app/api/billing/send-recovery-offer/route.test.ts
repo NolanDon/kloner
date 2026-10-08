@@ -25,7 +25,6 @@ jest.mock("../../_lib/auth", () => ({
     __esModule: true,
     verifySession: async () => ({ uid: "uid_1" }),
     getAdminDb: () => ({
-        runTransaction: async (fn: any) => fn({ get: (ref: any) => ref.get(), set: (ref: any, data: any, opts: any) => ref.set(data, opts) }),
         collection: (name: string) => ({
             doc: (id: string) => {
                 const key = `${name}/${id}`;
