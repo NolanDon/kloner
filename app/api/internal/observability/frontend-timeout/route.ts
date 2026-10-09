@@ -114,7 +114,7 @@ export async function POST(req: NextRequest) {
             };
 
             let classification: string | undefined;
-            if (action === "url_capture_terminal_error") {
+            if (action === "url_capture_terminal_error" || action === "url_capture_stale") {
                 const scanAlert = classifyScanAlert({ code: backendCode || code, message: backendMessage || message, statusCode, backendStatus });
                 severity = scanAlert.severity;
                 statusCode = scanAlert.statusCode;

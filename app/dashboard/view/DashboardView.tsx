@@ -9,6 +9,7 @@ import React, {
     useRef,
     memo,
 } from "react";
+import { scanSourceMatchesUrl } from "@/src/lib/scanSourceIdentity";
 import Image from "next/image";
 import { createPortal, flushSync } from "react-dom";
 import { toast } from "react-hot-toast";
@@ -370,7 +371,7 @@ function pickActiveUrlDoc<T extends { id: string; url?: string | null; updatedAt
     const validDocs = docs.filter((doc) => !!validateAndNormalizePublicHttpUrl(String(doc?.url || "")));
     if (!validDocs.length) return null;
 
-    if (activeJob) {
+    if (activeJob && (!targetUrl || scanSourceMatchesUrl(activeJob, targetUrl))) {
         const matched = validDocs
             .filter((doc) => matchesScanJob(doc, activeJob))
             .sort(compareUrlDocRecency);
@@ -384,6 +385,7 @@ function pickActiveUrlDoc<T extends { id: string; url?: string | null; updatedAt
             .filter((doc) => normUrl(String(doc.url || "")) === normUrl(normalizedTarget))
             .sort(compareUrlDocRecency);
         if (targetDocs.length) return targetDocs[0];
+        return null;
     }
 
     return [...validDocs].sort(compareUrlDocRecency)[0] ?? null;
@@ -8758,8 +8760,10 @@ export default function PreviewPage(): JSX.Element {
     }, [activeUrlScanJob]);
 
     useEffect(() => {
-        activeUrlScanJobRef.current = activeUrlScanJob;
-    }, [activeUrlScanJob]);
+        const matchesTarget = !activeUrlScanJob || scanSourceMatchesUrl(activeUrlScanJob, targetUrl);
+        activeUrlScanJobRef.current = matchesTarget ? activeUrlScanJob : null;
+        if (!matchesTarget) setActiveUrlScanJob(null);
+    }, [activeUrlScanJob, targetUrl]);
 
     const markUrlCaptureTerminalError = useCallback(
         async (uid: string, rawUrl: string, lastError: string, nextStatus: "error" | "stale" = "error") => {
@@ -9434,7 +9438,8 @@ export default function PreviewPage(): JSX.Element {
     }, [docData]);
 
     const activeUrlStatus = useMemo<UrlStatusUi | null>(() => {
-        const sourceCandidate: any = docData
+        const currentJob = scanSourceMatchesUrl(activeUrlScanJob, targetUrl) ? activeUrlScanJob : null;
+        const sourceCandidate: any = scanSourceMatchesUrl(docData, targetUrl) && docData
             ? {
                 status: docData.status,
                 screenshotPaths: docData.screenshotPaths,
@@ -9451,13 +9456,13 @@ export default function PreviewPage(): JSX.Element {
                 uid: (docData as any)?.uid || null,
                 url: (docData as any)?.url || activeUrlDoc?.url || null,
             }
-            : activeUrlScanJob || null;
+            : currentJob || null;
 
         if (!sourceCandidate) return null;
 
-        const source = matchesScanJob(sourceCandidate, activeUrlScanJob) ? sourceCandidate : activeUrlScanJob || sourceCandidate;
+        const source = matchesScanJob(sourceCandidate, currentJob) ? sourceCandidate : currentJob || sourceCandidate;
         return normalizeUrlStatus(source?.status, shotMetaCount, source?.updatedAt, source?.lastError);
-    }, [docData, shotMetaCount, activeUrlScanJob]);
+    }, [docData, shotMetaCount, activeUrlScanJob, targetUrl]);
 
     const lockMatches = useMemo(() => {
         return !!targetUrl && (startLockRequested || captureLockUrl === targetUrl);
@@ -9858,7 +9863,16 @@ export default function PreviewPage(): JSX.Element {
                         service: "dashboard-view",
                         statusCode: 504,
                         status: "stale",
-                            message: `URL capture for ${targetUrl} entered stale state before completion.`,
+                        message: `URL capture for ${targetUrl} entered stale state before completion.`,
+                        code: "URL_CAPTURE_STALE",
+                        requestId: scanSourceMatchesUrl(docData, targetUrl) ? (docData as any)?.requestId : undefined,
+                        backend: scanSourceMatchesUrl(docData, targetUrl) ? {
+                            status: docData?.status,
+                            code: (docData as any)?.lastErrorCode,
+                            message: (docData as any)?.lastError,
+                            requestId: (docData as any)?.requestId,
+                            jobId: (docData as any)?.jobId,
+                        } : {},
                         previewUrl: targetUrl,
                         tags: ["url-capture", "stale", "frontend"],
                     }),
@@ -9867,7 +9881,7 @@ export default function PreviewPage(): JSX.Element {
                 // ignore telemetry failures
             }
         })();
-    }, [targetUrl, captureStatus, err, startRequested, shouldSendFrontendTimeoutAlert]);
+    }, [targetUrl, captureStatus, err, startRequested, shouldSendFrontendTimeoutAlert, docData]);
 
     useEffect(() => {
         const rawTarget = urlProcessingFailure?.url || urlProcessingHandoff?.sourceUrl || targetUrl || "";
@@ -9887,8 +9901,11 @@ export default function PreviewPage(): JSX.Element {
         const normalizedUrl = normUrl(rawTarget);
         if (!normalizedUrl || !shouldSendFrontendTimeoutAlert("url_capture_terminal_error", normalizedUrl)) return;
 
-        const doc = (docData || {}) as any;
-        const scanJob = (activeUrlScanJob || {}) as any;
+        const doc = (scanSourceMatchesUrl(docData, rawTarget) ? docData : {}) as any;
+        const scanJob = (scanSourceMatchesUrl(activeUrlScanJob, rawTarget) ? activeUrlScanJob : {}) as any;
+        // The previous selection can remain in React state for one render, or
+        // arrive late from an unsubscribed asynchronous Firestore callback.
+        if (terminalError && !handoffError && !doc.url && !scanJob.url) return;
         const genericMessages = new Set([
             "something went wrong. please rescan the url and try again.",
             "something went wrong while generating this url. please retry.",
@@ -10567,6 +10584,7 @@ export default function PreviewPage(): JSX.Element {
 
     useEffect(() => {
         let unsubUrlDoc: Unsubscribe | null = null;
+        let cancelled = false;
 
         (async () => {
             const currentContext = {
@@ -10606,6 +10624,7 @@ export default function PreviewPage(): JSX.Element {
                     where("url", "==", targetUrl)
                 );
                 const snap = await getDocs(qy);
+                if (cancelled) return;
                 const selectUrlDoc = (docs: typeof snap.docs): QueryDocumentSnapshot<DocumentData> | null => {
                     const candidates = docs
                         .map((d) => ({
@@ -10631,6 +10650,7 @@ export default function PreviewPage(): JSX.Element {
                             const resolved = /^https?:\/\//i.test(initialArchiveSource)
                                 ? initialArchiveSource
                                 : await resolveStorageUrl(initialArchiveSource);
+                            if (cancelled) return;
                             setArchiveDownloadUrl(resolved || initialArchiveSource);
                         }
                     }
@@ -10647,6 +10667,7 @@ export default function PreviewPage(): JSX.Element {
                     });
 
                     await loadShotsForDoc(user, targetUrl, initial).catch(() => null);
+                    if (cancelled) return;
                 } else {
                     setDocSnap(null);
                     setDocData(null);
@@ -10658,6 +10679,7 @@ export default function PreviewPage(): JSX.Element {
                 unsubUrlDoc = onSnapshot(
                     qy,
                     async (freshSnap) => {
+                        if (cancelled) return;
                         const selected = selectUrlDoc(freshSnap.docs);
                         if (!selected) {
                             setDocSnap(null);
@@ -10677,6 +10699,7 @@ export default function PreviewPage(): JSX.Element {
                                 const resolved = /^https?:\/\//i.test(archiveSource)
                                     ? archiveSource
                                     : await resolveStorageUrl(archiveSource);
+                                if (cancelled) return;
                                 setArchiveDownloadUrl(resolved || archiveSource);
                             }
                         } else {
@@ -10703,6 +10726,7 @@ export default function PreviewPage(): JSX.Element {
                         }
                     },
                     (err) => {
+                        if (cancelled) return;
                         console.warn("[firestore] url doc snapshot failed", err);
                         const code = String((err as any)?.code || "").toLowerCase();
                         if (code.includes("permission-denied")) {
@@ -10713,15 +10737,17 @@ export default function PreviewPage(): JSX.Element {
                     },
                 );
             } catch (e: any) {
+                if (cancelled) return;
                 setErr(
                     e?.message || "Failed to load screenshots."
                 );
             } finally {
-                setLoading(false);
+                if (!cancelled) setLoading(false);
             }
         })();
 
         return () => {
+            cancelled = true;
             unsubUrlDoc?.();
         };
     }, [user, targetUrl, urlDocReloadNonce, handleSessionExpired, snapshotRetryNonce, activeUrlScanJobIdentityKey]);

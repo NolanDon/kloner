@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAdminDb } from "@/app/api/_lib/auth";
 import { requireSessionAndMaybeCsrf } from "@/app/api/_lib/route-guard";
 import { assertAppBuilderScope } from "@/app/api/_lib/appBuilderScope";
+import { WORKSPACE_RESTORE_COLLECTION } from "@/app/api/_lib/workspaceRestorePoints";
+import { callBackend } from "@/src/lib/callBackend";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -61,6 +63,14 @@ export async function POST(req: NextRequest, { params }: any) {
                 return NextResponse.json({ ok: false, error: "App not found" }, { status: 404 });
             }
             if (!rpSnap.exists) {
+                const workspaceDoc = await appRef.collection(WORKSPACE_RESTORE_COLLECTION).doc(restoreId).get();
+                if (workspaceDoc.exists) {
+                    const result = await callBackend(authedReq, {
+                        path: `/app-embeddings/agent-v3/restore-points/${encodeURIComponent(restoreId)}/revert`,
+                        method: "POST", timeoutMs: 180_000, userCtx: { uid }, body: { appId, restorePointId: restoreId },
+                    });
+                    return NextResponse.json(result.json, { status: result.status });
+                }
                 return NextResponse.json({ ok: false, error: "Restore point not found" }, { status: 404 });
             }
 

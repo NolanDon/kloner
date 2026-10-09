@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAdminDb } from "@/app/api/_lib/auth";
 import { requireSessionAndMaybeCsrf } from "@/app/api/_lib/route-guard";
 import { assertAppBuilderScope } from "@/app/api/_lib/appBuilderScope";
+import { WORKSPACE_RESTORE_COLLECTION, workspaceRestoreDetails, workspaceRestoreMetadata } from "@/app/api/_lib/workspaceRestorePoints";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -40,6 +41,8 @@ export async function GET(req: NextRequest, { params }: any) {
         if (restoreId) {
             const doc = await col.doc(restoreId).get();
             if (!doc.exists) {
+                const workspaceDoc = await col.parent!.collection(WORKSPACE_RESTORE_COLLECTION).doc(restoreId).get();
+                if (workspaceDoc.exists) return NextResponse.json(await workspaceRestoreDetails(workspaceDoc));
                 return NextResponse.json({ ok: false, error: "Restore point not found" }, { status: 404 });
             }
 
@@ -74,7 +77,11 @@ export async function GET(req: NextRequest, { params }: any) {
             };
         });
 
-        return NextResponse.json({ ok: true, restorePoints: items }, { status: 200 });
+        const workspace = await col.parent!.collection(WORKSPACE_RESTORE_COLLECTION).orderBy("createdAt", "desc").limit(25).get();
+        const time = (value: any) => typeof value?.toMillis === "function" ? value.toMillis() : Date.parse(value) || 0;
+        const combined = [...items, ...workspace.docs.map(workspaceRestoreMetadata)]
+            .sort((a, b) => time(b.createdAt) - time(a.createdAt)).slice(0, 25);
+        return NextResponse.json({ ok: true, restorePoints: combined }, { status: 200 });
     });
 }
 

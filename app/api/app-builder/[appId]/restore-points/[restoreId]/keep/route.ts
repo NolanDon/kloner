@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAdminDb } from "@/app/api/_lib/auth";
 import { requireSessionAndMaybeCsrf } from "@/app/api/_lib/route-guard";
 import { assertAppBuilderScope } from "@/app/api/_lib/appBuilderScope";
+import { WORKSPACE_RESTORE_COLLECTION } from "@/app/api/_lib/workspaceRestorePoints";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -33,6 +34,12 @@ export async function POST(
 
             const snap = await rpRef.get();
             if (!snap.exists) {
+                const workspaceRef = rpRef.parent.parent!.collection(WORKSPACE_RESTORE_COLLECTION).doc(restoreId);
+                const workspaceDoc = await workspaceRef.get();
+                if (workspaceDoc.exists) {
+                    await workspaceRef.set({ kept: true }, { merge: true });
+                    return NextResponse.json({ ok: true });
+                }
                 return NextResponse.json({ ok: false, error: "Restore point not found" }, { status: 404 });
             }
 

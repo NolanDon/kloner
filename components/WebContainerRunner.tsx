@@ -2120,15 +2120,15 @@ export default function WebContainerRunner({ appId, files, filesReady = true, is
       appId,
       code: pollingCodeRef.current || undefined,
       action: 'preview_embed_policy_blocked',
-      severity: 'error',
-      statusCode: 403,
-      status: 'iframe_cookie_blocked',
+      severity: 'warning',
+      statusCode: 409,
+      status: 'iframe_load_unconfirmed',
       reason: args.reason,
       message: args.message,
       previewUrl: args.previewUrl || previewUrlRef.current,
       alertKeyOverride: `preview_embed_policy_blocked:${user?.uid || 'anonymous'}:${appId}:${String(args.reason || 'unknown').toLowerCase()}`,
       backendStatusData: {
-        status: 'iframe_cookie_blocked',
+        status: 'iframe_load_unconfirmed',
         uiStage: 'embedded_iframe',
         debug: {
           timeoutReason: String(args.reason || '').toLowerCase() || null,
@@ -5412,7 +5412,7 @@ export default function NavBar() {
             reportCookieIframeBlocked({
               previewUrl,
               reason: 'iframe_load_timeout_cookie_likely',
-              message: 'Preview couldn’t load in iframe due to likely routing-cookie block.',
+              message: 'The embedded preview did not confirm loading after the backend reported ready. Cookie blocking is unconfirmed.',
             });
             scheduleAutomaticPreviewRestart('iframe_load_timeout_cookie_likely', 6000);
           } else {

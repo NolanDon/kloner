@@ -1,5 +1,6 @@
 // app/api/app-builder/[appId]/deploy/route.ts
 import { NextRequest, NextResponse } from "next/server";
+import { createVercelProject } from "@/src/lib/vercelProjectCreation";
 import { createHash } from "crypto";
 import { getAdminDb } from "../../../_lib/auth";
 import { requireSessionAndMaybeCsrf } from "../../../_lib/route-guard";
@@ -354,14 +355,9 @@ export async function POST(
                   )}`
                 : "https://api.vercel.com/v10/projects";
 
-            const projectRes = await fetch(projectUrl, {
-                method: "POST",
-                headers: {
-                    Authorization: `Bearer ${accessToken}`,
-                    "Content-Type": "application/json",
-                },
-                body: JSON.stringify({
-                    name: resolvedName,
+            const { response: projectRes, json: projectJson } = await createVercelProject({
+                url: projectUrl, token: accessToken, name: resolvedName, appId,
+                settings: {
                     ...(deploymentFramework ? { framework: deploymentFramework } : {}),
                     ...(deploymentFramework === "nextjs"
                         ? {
@@ -371,11 +367,8 @@ export async function POST(
                         }
                         : {}),
                     rootDirectory: null,
-                }),
-                signal: AbortSignal.timeout(30_000),
+                },
             });
-
-            const projectJson = await projectRes.json().catch(() => ({} as any));
 
             if (!projectRes.ok) {
                 return NextResponse.json(
