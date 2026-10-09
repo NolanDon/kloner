@@ -52,7 +52,7 @@ Official provider reference used for team/project semantics: [Vercel REST API](h
 
 ## Release and remaining limits
 
-Pre-release checks passed: backend `npm run predeploy` (611 passed, 1 skipped; lint and 169-file syntax check passed), frontend 13 focused/regression suites (59 tests passed), `tsc --noEmit` and production `next build`. Release evidence will be appended after main pushes and Fly verification. No success claim is based solely on saved files, a queued restart, HTTP 200 from a challenge page, or a present ZIP file. Access-blocked domains remain blocked; old failed jobs were not rewritten as successful. Historical customer preview readiness is not automatically repaired by deploying hub code: the next legitimate V3 edit/retry invokes the recovery path. Current edited-project ZIP export remains an explicit product limitation.
+Pre-release checks passed: backend `npm run predeploy` (611 passed, 1 skipped; lint and 169-file syntax check passed), frontend 13 focused/regression suites (59 tests passed), `tsc --noEmit` and production `next build`. Main push and verified Fly release details are recorded below. No success claim is based solely on saved files, a queued restart, HTTP 200 from a challenge page, or a present ZIP file. Access-blocked domains remain blocked; old failed jobs were not rewritten as successful. Historical customer preview readiness is not automatically repaired by deploying hub code: the next legitimate V3 edit/retry invokes the recovery path. Current edited-project ZIP export remains an explicit product limitation.
 
 ## Complete message ledger
 
@@ -138,3 +138,24 @@ UTC timestamps; each row links to the source message. Repeated layers are delibe
 | [76](https://app.slack.com/archives/C0AGW6Z3A9J/p1791566418033669) | 2026-10-09 17:20:18 | `url_capture_terminal_error` | 502 | False corrected-domain diagnostic; URL/job isolation fixed |
 | [77](https://app.slack.com/archives/C0AGW6Z3A9J/p1791579136445509) | 2026-10-09 20:52:16 | `snapshot_v3_blocked` | 403 | True target access block; retain |
 | [78](https://app.slack.com/archives/C0AGW6Z3A9J/p1791579139006049) | 2026-10-09 20:52:19 | `url_capture_stale` | 504 | Misleading stale 504; backend diagnostic classification fixed |
+
+### Final-image Fly smoke test
+
+Ran all 10 fixtures on temporary Fly machine `e820500cd29018` in `ord`, using the exact final image. Seven public-site captures produced healthy ZIPs, the two real access blocks remained 403, and the SVG input returned the expected 422. The QA machine was destroyed after results were saved. One initial VM launch hit registry `MANIFEST_UNKNOWN` immediately after image push; a retry succeeded before production rollout.
+
+| URL | Outcome | ZIP bytes / diagnostic |
+| --- | --- | --- |
+| `https://www.espn.com/nba/team/_/name/orl/orlando-magic` | Healthy capture | 219147 |
+| `https://league-ledger.com/` | Healthy capture | 1860926 |
+| `https://www.rottentomatoes.com/tv/game_of_thrones` | Healthy capture | 9431130 |
+| `https://dog-site-seven.vercel.app/` | Healthy capture | 912376 |
+| `https://mycoveggie.gr/` | Valid rejection | 403 `SNAPSHOT_CAPTURE_BLOCKED` |
+| `https://massiverepair.com/` | Healthy capture | 4694398 |
+| `https://epicredm.com/` | Healthy capture | 3431073 |
+| `https://starpets.gg/` | Healthy capture | 7279037 |
+| `https://demo82.leotheme.com/prestashop/leo_agista_elementor_demo/home-4.html` | Valid rejection | 403 `SNAPSHOT_CAPTURE_BLOCKED` |
+| `https://cdn.jsdelivr.net/gh/pineapple-petezah/homework/main.svg` | Valid rejection | 422 `UNSUPPORTED_SNAPSHOT_DOCUMENT` |
+
+Code commits: backend `4cf2004`, frontend `b5e3da5`, both pushed to `origin/main` after tests passed. A final targeted preview recovery suite passed all 42 tests and controller lint after correcting recovery-state metadata.
+
+Final runtime image: `registry.fly.io/tracksite-hub:deployment-01M4HFZ4PC971GVB6K295XJ78W` (`sha256:af12a6c7242084c3412e85a8e317747a48f37b550629b769a88ed060de76a638`). Production rolling deployment completed successfully. At 2026-10-09 23:36 UTC, all nine production machines used this image: hub `784ed164b19208` started, one worker started, seven workers stopped. Fly HTTP service check passed, and `/api/v1/health` returned `{ "ok": true, "service": "tracksite-hub-backend" }`. No QA machine remains. Preserved existing VM sizes; the stopped 512 MB/1 CPU worker was returned to that original size after Fly applied its general deployment VM default. Code commits remain the runtime source references; subsequent commits update this report only. Frontend changes are pushed to main and production-build validated; its Vercel rollout was not independently verified.
