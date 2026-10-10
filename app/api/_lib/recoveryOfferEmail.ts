@@ -2,17 +2,27 @@ type RecoveryOfferEmailVariant = "checkout" | "winback";
 
 type RecoveryOfferEmailArgs = {
     name?: string | null;
+    seed?: string;
     linkUrl: string;
     unsubUrl: string;
     variant: RecoveryOfferEmailVariant;
 };
 
-function safeName(name?: string | null): string {
-    return (name || "there").trim() || "there";
+function escapeHtml(value: string): string {
+    return value.replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
 }
 
-function subjectForVariant(variant: RecoveryOfferEmailVariant): string {
-    return variant === "winback" ? "Still want to build this?" : "A quick note about your checkout";
+function safeName(name?: string | null): string {
+    const first = (name || "").replace(/[\r\n\t]/g, " ").trim().split(/\s+/)[0] || "";
+    return /^[\p{L}][\p{L}\p{M}'’-]{0,29}$/u.test(first) ? first : "there";
+}
+
+function subjectForVariant(variant: RecoveryOfferEmailVariant, name: string, seed = ""): string {
+    const subjects = variant === "checkout"
+        ? [`Psssst, ${name} — your Kloner checkout`, `Hey ${name}, did checkout get in the way?`, `Your Kloner checkout, with a little help from me`]
+        : [`Psssst, ${name} — still curious about Kloner?`, `Hey ${name}, want to give Kloner another look?`, `A little help getting started with Kloner`];
+    const hash = [...seed].reduce((n, c) => (n * 31 + c.charCodeAt(0)) >>> 0, 0);
+    return subjects[hash % subjects.length]!;
 }
 
 function introForVariant(variant: RecoveryOfferEmailVariant, name: string): string {
@@ -20,7 +30,7 @@ function introForVariant(variant: RecoveryOfferEmailVariant, name: string): stri
         return `Hey ${name}, I noticed you signed up but haven’t had much of a chance to dig in yet.`;
     }
 
-    return `Hey ${name}, I saw you were close to finishing up.`;
+    return `Hey ${name}, sorry to pop into your inbox. It looks like your Kloner checkout wasn’t finished.`;
 }
 
 function bodyForVariant(variant: RecoveryOfferEmailVariant): string {
@@ -39,7 +49,7 @@ export function buildRecoveryOfferEmail(args: RecoveryOfferEmailArgs) {
     const MUTED = "#6b7280";
 
     const name = safeName(args.name);
-    const subject = subjectForVariant(args.variant);
+    const subject = subjectForVariant(args.variant, name, args.seed);
     const intro = introForVariant(args.variant, name);
     const body = bodyForVariant(args.variant);
 
@@ -48,7 +58,7 @@ export function buildRecoveryOfferEmail(args: RecoveryOfferEmailArgs) {
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>${subject}</title>
+    <title>${escapeHtml(subject)}</title>
 </head>
 <body style="margin:0;padding:0;background:#ffffff;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:${TEXT};">
     <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
@@ -62,13 +72,14 @@ export function buildRecoveryOfferEmail(args: RecoveryOfferEmailArgs) {
                     </tr>
                     <tr>
                         <td style="padding:24px 24px 28px 24px;background:#ffffff;font-size:15px;line-height:1.7;">
-                            <p style="margin:0 0 16px 0;color:${TEXT};">${intro}</p>
+                            <p style="margin:0 0 16px 0;color:${TEXT};">${escapeHtml(intro)}</p>
                             <p style="margin:0 0 16px 0;color:${TEXT};">${body}</p>
+                            <p style="margin:0 0 16px 0;">If something got stuck, just reply. I’m happy to help you figure it out.</p>
                             <p style="margin:0 0 24px 0;">
-                                <a href="${args.linkUrl}" style="display:inline-block;padding:10px 18px;border-radius:999px;background:${ACCENT};color:#ffffff;text-decoration:none;font-weight:700;box-shadow:0 10px 24px rgba(255,141,33,0.22);">Claim 40% off</a>
+                                <a href="${escapeHtml(args.linkUrl)}" style="display:inline-block;padding:10px 18px;border-radius:999px;background:${ACCENT};color:#ffffff;text-decoration:none;font-weight:700;box-shadow:0 10px 24px rgba(255,141,33,0.22);">Claim 40% off</a>
                             </p>
                             <p style="margin:0 0 16px 0;padding:12px 14px;border-radius:14px;background:${ACCENT_SOFT};border:1px solid #f9d2b4;color:${TEXT};font-size:13px;">
-                                No pressure if now isn’t the right time. <a href="${args.unsubUrl}" style="color:${ACCENT_DARK};text-decoration:underline;font-weight:600;">Unsubscribe from these emails</a>.
+                                No pressure if now isn’t the right time. <a href="${escapeHtml(args.unsubUrl)}" style="color:${ACCENT_DARK};text-decoration:underline;font-weight:600;">Unsubscribe from these emails</a>.
                             </p>
                             <p style="margin:0 0 4px 0;color:${MUTED};font-size:13px;">— Nolan</p>
                         </td>
@@ -80,7 +91,7 @@ export function buildRecoveryOfferEmail(args: RecoveryOfferEmailArgs) {
 </body>
 </html>`;
 
-    const text = `${intro}\n\n${body}\n\nClaim 40% off:\n${args.linkUrl}\n\nNo pressure if now isn’t the right time. Unsubscribe from these emails:\n${args.unsubUrl}\n\n— Nolan`;
+    const text = `${intro}\n\n${body}\n\nIf something got stuck, just reply. I’m happy to help you figure it out.\n\nClaim 40% off:\n${args.linkUrl}\n\nNo pressure if now isn’t the right time. Unsubscribe from these emails:\n${args.unsubUrl}\n\n— Nolan`;
 
     return { subject, html, text };
 }

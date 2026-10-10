@@ -258,6 +258,7 @@ async function sendRecoveryOfferEmail(params: {
   const unsubUrl = makeUnsubUrl({ uid: params.uid, kind: "journey" });
   const offer = buildRecoveryOfferEmail({
     name: params.name,
+    seed: params.uid,
     linkUrl,
     unsubUrl,
     variant: "checkout",
@@ -267,13 +268,15 @@ async function sendRecoveryOfferEmail(params: {
     db,
     userRef,
     variant: "checkout",
-    send: () => resend.emails.send({
+    payload: {
       from,
+      replyTo: "support@kloner.app",
       to: params.email,
       subject: offer.subject,
       text: offer.text,
       html: offer.html,
-    }),
+    },
+    send: (payload, options) => resend.emails.send(payload!, options),
   });
 }
 
@@ -1048,6 +1051,7 @@ export async function POST(req: NextRequest) {
         break;
       }
 
+      case "checkout.session.async_payment_failed":
       case "checkout.session.expired": {
         const session = event.data.object as Stripe.Checkout.Session;
         const firebaseUid = session.metadata?.firebaseUid as string | undefined;
@@ -1055,6 +1059,12 @@ export async function POST(req: NextRequest) {
 
         if (firebaseUid && plan === "pro") {
           try {
+            if (event.type === "checkout.session.async_payment_failed") {
+              await db.collection("kloner_users").doc(firebaseUid).set({ offers: {
+                recoveryCheckoutFailedSessionId: session.id,
+                recoveryCheckoutFailedAt: Date.now(),
+              } }, { merge: true });
+            }
             const authUser = await admin.auth().getUser(firebaseUid);
             const email = authUser.email?.trim() || "";
             if (email) {
@@ -1081,11 +1091,6 @@ export async function POST(req: NextRequest) {
       case "checkout.session.async_payment_succeeded": {
         const session = event.data.object as Stripe.Checkout.Session;
         await applyAiCreditTopupFromCheckoutSession(session);
-        break;
-      }
-
-      case "checkout.session.async_payment_failed": {
-        // No-op for top-ups; user can retry.
         break;
       }
 

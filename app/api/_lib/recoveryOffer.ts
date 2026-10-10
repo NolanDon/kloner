@@ -66,6 +66,7 @@ export function hasSentRecoveryOfferEmail(userData: Record<string, any> | null |
     const offers = (userData as any)?.offers;
     if (offers && typeof offers === "object" && !Array.isArray(offers)) {
         if ((offers as any).exitOffer40RecoveryEmailSentAt) return true;
+        // Legacy markers cannot be resent safely without provider reconciliation.
         if ((offers as any).exitOffer40RecoveryEmailSessionId) return true;
         if ((offers as any).winback40RecoveryEmailSentAt) return true;
     }
@@ -153,8 +154,15 @@ export async function hasActiveOrTrialingStripeSubscription(
     });
 
     return subs.data.some((sub) => {
-        if (sub.status === "active") return true;
-        if (sub.status !== "trialing") return false;
-        return sub.cancel_at_period_end !== true;
+        return sub.status === "active" || sub.status === "trialing";
     });
+}
+
+// Customer creation alone is not evidence of an abandoned subscription checkout
+// (customers also buy topups). Avoid interrupting a newer, still-open checkout.
+export async function hasAbandonedSubscriptionCheckout(stripe: Stripe, customerId: string, nowMs = Date.now(), failedSessionId?: string): Promise<boolean> {
+    const sessions = await stripe.checkout.sessions.list({ customer: customerId, limit: 100 });
+    const subscriptions = sessions.data.filter(s => s.mode === "subscription");
+    if (subscriptions.some(s => s.status === "open" && s.expires_at * 1000 > nowMs)) return false;
+    return subscriptions.some(s => s.payment_status === "unpaid" && (s.status === "expired" || (Boolean(failedSessionId) && s.id === failedSessionId)));
 }

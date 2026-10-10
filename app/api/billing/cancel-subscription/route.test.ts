@@ -34,6 +34,10 @@ function createFirestoreMock() {
     const store = new Map<string, any>();
 
     const db = {
+        runTransaction: async (fn: any) => fn({
+            get: (ref: any) => ref.get(),
+            create: (ref: any, data: any) => ref.set(data),
+        }),
         collection: (name: string) => ({
             doc: (id: string) => {
                 const key = `${name}/${id}`;
@@ -160,7 +164,7 @@ describe("POST /api/billing/cancel-subscription", () => {
         expect(body.trialEnd).toBe(456);
         expect(body.status).toBe("trialing");
 
-        expect(updateMock).toHaveBeenCalledWith("sub_1", { cancel_at_period_end: true });
+        expect(updateMock).toHaveBeenCalledWith("sub_1", { cancel_at_period_end: true }, { idempotencyKey: "uid_1:sub_1:cancel" });
 
         const userDoc = store.get("kloner_users/uid_1") || {};
         expect(userDoc.stripeSubscriptionId).toBe("sub_1");
@@ -235,6 +239,7 @@ describe("POST /api/billing/cancel-subscription", () => {
                     cancel_at_period_end: false,
                     discounts: [{ coupon: "coupon_40_once" }],
                 }),
+                { idempotencyKey: "uid_1:sub_1:retention" },
             );
             expect((updateMock.mock.calls[0] as any[])[1]).not.toHaveProperty("cancel_at");
             expect(store.get("kloner_users/uid_1")?.billingRetentionOfferUsedAt).toBeTruthy();

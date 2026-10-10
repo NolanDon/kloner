@@ -9,6 +9,7 @@ import {
     hasSentRecoveryOfferEmail,
     hasActiveOrTrialingStripeSubscription,
     hasLikelyActivePaidAccess,
+    hasAbandonedSubscriptionCheckout,
 } from "@/app/api/_lib/recoveryOffer";
 import { buildRecoveryOfferEmail } from "@/app/api/_lib/recoveryOfferEmail";
 import { deliverRecoveryOfferEmail } from "@/app/api/_lib/recoveryOfferDelivery";
@@ -111,10 +112,16 @@ async function sendRecoveryBatch(limit: number) {
         skippedActivePaid: 0,
         skippedActiveStripe: 0,
         skippedMissingEmail: 0,
+        skippedDeliveryUnavailable: 0,
+        skippedNoAbandonedCheckout: 0,
         errors: 0,
     };
 
-    let cursor: any = null;
+    const stateDoc = db.collection("kloner_email_job_state").doc("recovery_scan");
+    const stateRef = (stateDoc as any).ref || stateDoc;
+    let cursor: any = (await stateRef.get()).data()?.cursor || null;
+    const deadline = Date.now() + 240_000;
+    let completed = false;
     let lastSendAt = 0;
 
     while (true) {
@@ -127,9 +134,10 @@ async function sendRecoveryBatch(limit: number) {
         }
 
         const snap = await query.get();
-        if (snap.empty) break;
+        if (snap.empty) { completed = true; break; }
 
         for (const docSnap of snap.docs) {
+            if (Date.now() >= deadline) return { ...stats, hasMore: true };
             stats.scanned += 1;
 
             try {
@@ -163,6 +171,12 @@ async function sendRecoveryBatch(limit: number) {
                     }
                 }
 
+                if (customerId && !(await hasAbandonedSubscriptionCheckout(stripe, customerId, Date.now(), data.offers?.recoveryCheckoutFailedSessionId))) {
+                    stats.skipped += 1;
+                    stats.skippedNoAbandonedCheckout += 1;
+                    continue;
+                }
+
                 const authUser = await auth.getUser(docSnap.id).catch(() => null);
                 const email = getUserEmail(data) || authUser?.email?.trim() || "";
                 if (!email) {
@@ -176,6 +190,7 @@ async function sendRecoveryBatch(limit: number) {
                 const variant = customerId ? "checkout" : "winback";
                 const offer = buildRecoveryOfferEmail({
                     name: getUserName(data, authUser),
+                    seed: docSnap.id,
                     linkUrl,
                     unsubUrl,
                     variant,
@@ -183,39 +198,31 @@ async function sendRecoveryBatch(limit: number) {
 
                 const sent = await deliverRecoveryOfferEmail({
                     db, userRef: docSnap.ref, variant,
-                    send: async () => {
+                    payload: { from, replyTo: "support@kloner.app", to: email, subject: offer.subject, text: offer.text, html: offer.html },
+                    send: async (payload, options) => {
                         // Pace the batch so a backlog does not burst into Resend.
                         const delay = 600 - (Date.now() - lastSendAt);
                         if (delay > 0) await new Promise((resolve) => setTimeout(resolve, delay));
                         lastSendAt = Date.now();
-                        return resend.emails.send({
-                            from, to: email, subject: offer.subject, text: offer.text, html: offer.html,
-                        });
+                        return resend.emails.send(payload!, options);
                     },
                 });
                 if (sent) stats.sent += 1;
-                else { stats.skipped += 1; stats.skippedAlreadySent += 1; }
+                else { stats.skipped += 1; stats.skippedDeliveryUnavailable += 1; }
             } catch (err) {
                 stats.errors += 1;
-                await docSnap.ref.set(
-                    {
-                        offers: {
-                            recoveryEmailLastAttemptAt: Date.now(),
-                            recoveryEmailStatus: "error",
-                            recoveryEmailError: err instanceof Error ? err.message : String(err),
-                        },
-                    },
-                    { merge: true },
-                ).catch(() => null);
                 console.error("[send-journey-emails] failed to send", err);
+            } finally {
+                await stateRef.set({ cursor: docSnap.id, updatedAt: Date.now() }, { merge: true });
             }
         }
 
         cursor = snap.docs[snap.docs.length - 1] || null;
-        if (snap.size < limit) break;
+        if (snap.size < limit) { completed = true; break; }
     }
 
-    return stats;
+    if (completed) await stateRef.set({ cursor: null, updatedAt: Date.now() }, { merge: true });
+    return { ...stats, hasMore: !completed };
 }
 
 // Explicit smoke test on the same authenticated endpoint. It sends only to an

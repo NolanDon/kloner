@@ -1,7 +1,6 @@
 # Recovery email operations
 
-`vercel.json` schedules `GET /api/private/send-journey-emails` daily at
-14:00 UTC. Vercel installs the cron on a production deployment; preview
+`vercel.json` schedules `GET /api/private/send-journey-emails` every 15 minutes. Vercel installs the cron on a production deployment; preview
 builds do not run it. The route allows up to 300 seconds for a batch.
 
 Configure these environment variables on the production Vercel project:
@@ -15,15 +14,24 @@ Configure these environment variables on the production Vercel project:
   The sender's domain must be verified in Resend.
 
 Users with a Stripe customer ID are checked for an active subscription and
-receive **A quick note about your checkout** after at least 30 minutes of
-inactivity, at the next daily run. Other inactive signups receive
-**Still want to build this?**, with a default minimum inactivity of one hour.
+are verified against actual expired, unpaid subscription Checkout Sessions and
+receive a personalized checkout reminder after at least 30 minutes of
+inactivity, at the next eligible run. Other inactive signups receive
+a personalized Kloner invitation, with a default minimum inactivity of one hour.
 Journey-email opt-outs and active paid users are excluded. Checkout-return
 requests and expired-checkout webhooks can also trigger the checkout email.
 The cron covers users who close the tab and events skipped for recent activity.
+It persists its cursor after each user and stops after 240 seconds, resuming on
+the next run. An active trial is excluded even when scheduled to cancel.
+Checkout subjects have three stable variants assigned by user ID; the sent
+subject and template version are saved for later provider analysis. Replies
+go to support@kloner.app.
 
 All triggers share a five-minute delivery lease. A sent timestamp is recorded
-only after Resend returns an email ID. Rejected sends can retry; failed cron
+only after Resend returns an email ID. Retries reuse a provider idempotency key and the exact saved payload, including
+signed URLs. An uncertain request older than 23 hours is held as `needs_review`
+because Resend keys expire after 24 hours. Confirmed rate-limit, quota, and validation rejections can retry beyond that
+window; uncertain outcomes need reconciliation; failed cron
 runs return HTTP 500 and expired-checkout failures return HTTP 500 to Stripe.
 
 After deploying, inspect the job in Vercel's Cron Jobs page and its function
@@ -37,6 +45,13 @@ The old checkout handlers wrote sent markers before contacting Resend.
 Existing markers cannot reliably distinguish a delivered email from a failed
 attempt. Audit those against Resend before clearing any: this change preserves
 old markers to avoid sending duplicate offers to past recipients.
+
+Production finding on Oct 10: the live endpoint returned `CRON_SECRET is not
+configured`; this variable must be set in the production Vercel project and
+deployed before automation can work. The inspected live Stripe destination
+was disabled and did not subscribe to checkout.session.expired. Restore only
+when the owner confirms that disabling it was unintentional. Sub-daily Vercel
+crons require a plan that supports that frequency (Hobby allows daily only).
 
 Vercel setup reference: https://vercel.com/docs/cron-jobs/manage-cron-jobs
 

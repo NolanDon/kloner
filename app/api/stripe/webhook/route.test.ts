@@ -323,7 +323,7 @@ describe("POST /api/stripe/webhook", () => {
     );
   });
 
-  it("checkout.session.expired sends a one-time recovery email for abandoned pro checkout", async () => {
+  it.each(["checkout.session.expired", "checkout.session.async_payment_failed"])("%s sends a one-time recovery email for abandoned pro checkout", async (eventType) => {
     firestoreStore.set("kloner_users/uid_abc", {
       stripeCustomerId: "cus_abc",
       notificationPrefs: {
@@ -333,7 +333,7 @@ describe("POST /api/stripe/webhook", () => {
 
     const constructEvent = jest.fn(() => ({
       id: "evt_expired",
-      type: "checkout.session.expired",
+      type: eventType,
       livemode: false,
       data: {
         object: {
@@ -376,7 +376,7 @@ describe("POST /api/stripe/webhook", () => {
     expect(body.received).toBe(true);
     expect(resendSend).toHaveBeenCalledTimes(1);
     const payload = resendSend.mock.calls[0]?.[0];
-    expect(payload.subject).toBe("A quick note about your checkout");
+    expect(payload.subject).toMatch(/checkout/i);
     expect(String(payload.text)).toContain("/api/billing/recovery-checkout?t=");
     expect(String(payload.text)).toContain("/api/email/unsubscribe?t=");
     const userDoc = firestoreStore.get("kloner_users/uid_abc") || {};

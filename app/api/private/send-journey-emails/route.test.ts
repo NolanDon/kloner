@@ -2,6 +2,7 @@ export {};
 
 const resendSend = jest.fn();
 const store = new Map<string, Record<string, any>>();
+const checkoutList = jest.fn(async () => ({ data: [{ mode: "subscription", status: "expired", payment_status: "unpaid", expires_at: 0 }] }));
 const stripeList = jest.fn(async () => ({ data: [] }));
 
 function makeDocSnap(collection: string, id: string) {
@@ -106,6 +107,7 @@ jest.mock("resend", () => ({
 jest.mock("@/lib/stripe", () => ({
     __esModule: true,
     getStripe: () => ({
+        checkout: { sessions: { list: checkoutList } },
         subscriptions: {
             list: stripeList,
         },
@@ -119,6 +121,7 @@ describe("GET /api/private/send-journey-emails", () => {
         store.clear();
         resendSend.mockReset().mockResolvedValue({ data: { id: "email_1" } });
         stripeList.mockReset().mockResolvedValue({ data: [] });
+        checkoutList.mockReset().mockResolvedValue({ data: [{ mode: "subscription", status: "expired", payment_status: "unpaid", expires_at: 0 }] });
         process.env.CRON_SECRET = "cron_secret";
         process.env.INTERNAL_API_KEY = "internal_secret";
         process.env.RESEND_API_KEY = "resend_test";
@@ -176,7 +179,7 @@ describe("GET /api/private/send-journey-emails", () => {
         expect(body.skipped).toBe(3);
         expect(resendSend).toHaveBeenCalledTimes(1);
         const payload = resendSend.mock.calls[0]?.[0];
-        expect(payload.subject).toBe("Still want to build this?");
+        expect(payload.subject).toMatch(/Kloner/);
         expect(String(payload.text)).toContain("Claim 40% off");
         expect(String(payload.text)).toContain("/api/billing/recovery-checkout?t=");
 
@@ -202,7 +205,7 @@ describe("GET /api/private/send-journey-emails", () => {
         }) as any;
         const res: any = await GET(req);
         expect((await res.json()).sent).toBe(1);
-        expect(resendSend.mock.calls[0][0].subject).toBe("A quick note about your checkout");
+        expect(resendSend.mock.calls[0][0].subject).toMatch(/checkout/i);
         expect(store.get("kloner_users/checkout_1")?.offers.exitOffer40RecoveryEmailId).toBe("email_1");
         await GET(req);
         expect(resendSend).toHaveBeenCalledTimes(1);
@@ -245,7 +248,7 @@ describe("GET /api/private/send-journey-emails", () => {
         expect(res.status).toBe(200);
         expect(await res.json()).toMatchObject({ testMode: true, sent: 1, emailId: "email_1" });
         expect(resendSend).toHaveBeenCalledTimes(1);
-        expect(resendSend.mock.calls[0][0]).toMatchObject({ to: "owner@example.com", subject: "A quick note about your checkout" });
+        expect(resendSend.mock.calls[0][0]).toMatchObject({ to: "owner@example.com", subject: expect.stringMatching(/checkout/i) });
         expect(store.get("kloner_users/test_user")?.offers).toEqual({});
         expect(store.get("kloner_users/eligible_customer")?.offers).toBeUndefined();
         expect(stripeList).not.toHaveBeenCalled();
@@ -276,4 +279,43 @@ describe("GET /api/private/send-journey-emails", () => {
         expect(res.status).toBe(401);
         expect(resendSend).not.toHaveBeenCalled();
     });
+});
+
+it("keeps customers with a newer open checkout or only topups out of recovery", async () => {
+    store.clear();
+    process.env.CRON_SECRET = "cron_secret";
+    store.set("kloner_users/no_abandonment", { stripeCustomerId: "cus_new" });
+    stripeList.mockResolvedValue({ data: [] });
+    checkoutList.mockResolvedValueOnce({ data: [] });
+    const { GET } = await import("./route");
+    const req = new Request("https://example.com/api/private/send-journey-emails", { headers: { authorization: "Bearer cron_secret" } }) as any;
+    resendSend.mockClear();
+    expect(await (await GET(req) as any).json()).toMatchObject({ sent: 0, skippedNoAbandonedCheckout: 1 });
+    checkoutList.mockResolvedValueOnce({ data: [{ mode: "subscription", status: "open", payment_status: "unpaid", expires_at: Date.now() / 1000 + 1800 }] });
+    expect(await (await GET(req) as any).json()).toMatchObject({ sent: 0, skippedNoAbandonedCheckout: 1 });
+    expect(resendSend).not.toHaveBeenCalled();
+});
+
+it("excludes a trial scheduled to cancel while Stripe still says it is trialing", async () => {
+    store.clear();
+    process.env.CRON_SECRET = "cron_secret";
+    store.set("kloner_users/canceling_trial", { stripeCustomerId: "cus_trial" });
+    stripeList.mockResolvedValueOnce({ data: [{ status: "trialing", cancel_at_period_end: true }] } as any);
+    resendSend.mockClear();
+    const { GET } = await import("./route");
+    expect(await (await GET(new Request("https://example.com/api/private/send-journey-emails", { headers: { authorization: "Bearer cron_secret" } }) as any) as any).json()).toMatchObject({ sent: 0, skippedActiveStripe: 1 });
+    expect(resendSend).not.toHaveBeenCalled();
+});
+
+it("resumes after the persisted cursor, then wraps for a later pass", async () => {
+    store.clear();
+    process.env.CRON_SECRET = "cron_secret";
+    store.set("kloner_email_job_state/recovery_scan", { cursor: "a_already_processed" });
+    store.set("kloner_users/a_already_processed", { stripeStatus: "active" });
+    store.set("kloner_users/z_next", { stripeStatus: "active" });
+    const { GET } = await import("./route");
+    const req = new Request("https://example.com/api/private/send-journey-emails", { headers: { authorization: "Bearer cron_secret" } }) as any;
+    expect(await (await GET(req) as any).json()).toMatchObject({ scanned: 1 });
+    expect(store.get("kloner_email_job_state/recovery_scan")?.cursor).toBeNull();
+    expect(await (await GET(req) as any).json()).toMatchObject({ scanned: 2 });
 });

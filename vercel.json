@@ -2,11 +2,17 @@
   "buildCommand": "npm run build",
   "outputDirectory": ".next",
   "framework": "nextjs",
-  "regions": ["sin1"],
+  "regions": [
+    "sin1"
+  ],
   "crons": [
     {
       "path": "/api/cron/daily-url-scan-report",
       "schedule": "0 0 * * *"
+    },
+    {
+      "path": "/api/private/send-journey-emails",
+      "schedule": "*/15 * * * *"
     }
   ],
   "functions": {
@@ -14,12 +20,6 @@
       "maxDuration": 30
     }
   },
-  "crons": [
-    {
-      "path": "/api/private/send-journey-emails",
-      "schedule": "0 14 * * *"
-    }
-  ],
   "env": {
     "BACKEND_URL": "https://tracksite-hub.fly.dev"
   }

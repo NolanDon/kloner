@@ -97,6 +97,7 @@ export async function POST(req: NextRequest) {
             const unsubUrl = makeUnsubUrl({ uid: decoded.uid, kind: "journey" });
             const offer = buildRecoveryOfferEmail({
                 name: authUser.displayName || null,
+                seed: decoded.uid,
                 linkUrl,
                 unsubUrl,
                 variant: "checkout",
@@ -106,13 +107,15 @@ export async function POST(req: NextRequest) {
                 db,
                 userRef,
                 variant: "checkout",
-                send: () => resend.emails.send({
+                payload: {
                     from,
+                    replyTo: "support@kloner.app",
                     to: email,
                     subject: offer.subject,
                     text: offer.text,
                     html: offer.html,
-                }),
+                },
+                send: (payload, options) => resend.emails.send(payload!, options),
             });
 
             return NextResponse.json({ ok: true, sent }, { headers: { "Cache-Control": "no-store" } });
