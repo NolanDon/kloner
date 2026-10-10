@@ -20,7 +20,7 @@ import {
 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useVercelIntegration } from "@/src/hooks/useVercelIntegration";
-import { ensureSessionAndCsrf } from "@/lib/auth-client";
+import { bootstrapServerSession, ensureSessionAndCsrf } from "@/lib/auth-client";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import { useModal } from "@/components/ui/ModalContext";
 
@@ -745,29 +745,37 @@ export default function SettingsPage(): JSX.Element {
   const canDisconnectVercel =
     isVercelConnected && !isVercelChecking && !disconnectBusy;
 
-  function handleConnectVercel() {
+  async function handleConnectVercel() {
     if (!VERCEL_INTEGRATION_SLUG || !user) {
       console.error("Missing integration slug or user not signed in");
       return;
     }
 
-    const bytes = new Uint8Array(16);
-    crypto.getRandomValues(bytes);
-    const state = Array.from(bytes)
-      .map((b) => b.toString(16).padStart(2, "0"))
-      .join("");
+    setDeploymentsError(null);
+    try {
+      if (!(await bootstrapServerSession({ forceRefresh: true, reason: "vercel_oauth_start" }))) {
+        throw new Error("Sign in again before connecting Vercel.");
+      }
+      const bytes = new Uint8Array(16);
+      crypto.getRandomValues(bytes);
+      const state = Array.from(bytes)
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("");
 
-    localStorage.setItem("kloner_vercel_latest_csrf", state);
+      localStorage.setItem("kloner_vercel_latest_csrf", state);
 
-    document.cookie = [
-      `vercel_oauth_state=${state}`,
-      "Path=/",
-      "Max-Age=600",
-      "SameSite=Lax",
-    ].join("; ");
+      document.cookie = [
+        `vercel_oauth_state=${state}`,
+        "Path=/",
+        "Max-Age=600",
+        "SameSite=Lax",
+      ].join("; ");
 
-    const link = `https://vercel.com/integrations/${VERCEL_INTEGRATION_SLUG}/new?state=${state}`;
-    window.location.assign(link);
+      const link = `https://vercel.com/integrations/${VERCEL_INTEGRATION_SLUG}/new?state=${state}`;
+      window.location.assign(link);
+    } catch {
+      setDeploymentsError("We couldn’t confirm your session. Sign in again, then reconnect Vercel.");
+    }
   }
 
   async function handleDisconnectVercel() {

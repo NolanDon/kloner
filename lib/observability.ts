@@ -1,4 +1,5 @@
 import { createHash } from "crypto";
+import { redactDiagnosticUrl } from "./diagnostic-url";
 import { getAdminDb } from "@/app/api/_lib/auth";
 
 export type ObservabilitySeverity = "critical" | "error" | "warning" | "info";
@@ -9,6 +10,7 @@ export type ObservabilityEvent = {
     source: "vercel" | "fly" | "frontend" | "internal";
     severity: ObservabilitySeverity;
     alwaysNotifySlack?: boolean;
+    component?: "browser" | "nextjs-server" | "fly-backend" | "internal";
     statusCode?: number;
     route?: string;
     method?: string;
@@ -58,8 +60,12 @@ function isProxyOrigin(event: Pick<ObservabilityEvent, "route" | "service" | "so
 }
 
 function getAlertLabel(event: Pick<ObservabilityEvent, "route" | "service" | "source" | "extra">): string {
+    if ((event as ObservabilityEvent).component === "nextjs-server") return "[SERVER / VERCEL]";
+    if ((event as ObservabilityEvent).component === "fly-backend") return "[BACKEND / FLY]";
     if (isFrontendOrigin(event)) return FRONTEND_LABEL;
     if (isProxyOrigin(event)) return PROXY_LABEL;
+    if (event.source === "vercel") return "[SERVER / VERCEL]";
+    if (event.source === "fly") return "[BACKEND / FLY]";
     return "";
 }
 
@@ -92,7 +98,10 @@ function getProjectLabel() {
     return (process.env.OBS_PROJECT_NAME || "kloner").trim();
 }
 
-function buildSlackDedupeId(event: Pick<StoredEvent, "source" | "action" | "statusCode" | "userId" | "url" | "page" | "message" | "errorName">): string {
+function buildSlackDedupeId(event: Pick<StoredEvent, "source" | "action" | "statusCode" | "userId" | "url" | "page" | "message" | "errorName" | "extra">): string {
+    if (event.action === "vercel.oauth.callback" && typeof event.extra?.oauthIncidentKey === "string") {
+        return createHash("sha256").update(`oauth|${event.source}|${event.extra.oauthIncidentKey}`).digest("hex");
+    }
     const material = [
         event.source,
         event.action || "",
@@ -262,7 +271,8 @@ function cleanContextValue(value: unknown, max = 200): string {
     if (typeof value !== "string" && typeof value !== "number" && typeof value !== "boolean") return "";
     const trimmed = String(value).trim();
     if (!trimmed) return "";
-    return trimmed.length > max ? `${trimmed.slice(0, max - 1)}…` : trimmed;
+    const clipped = trimmed.length > max ? `${trimmed.slice(0, max - 1)}…` : trimmed;
+    return clipped.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
 function shouldIncludeVerboseSlackDetails(): boolean {
@@ -306,7 +316,7 @@ function shouldUseUrlScanSummary(event: Pick<StoredEvent, "route" | "service" | 
 
 function toSlackBlocks(event: StoredEvent, eventId: string) {
     const route = event.route || event.page || "n/a";
-    const user = event.userId || "anonymous";
+    const user = event.userId || (event.extra?.identityStatus ? `unverified (${event.extra.identityStatus})` : "anonymous");
     const reqId = event.requestId || "n/a";
     const status = typeof event.statusCode === "number" ? String(event.statusCode) : "n/a";
     const env = event.environment || envName();
@@ -316,6 +326,7 @@ function toSlackBlocks(event: StoredEvent, eventId: string) {
     );
     const details = [
         `*Source:* ${event.source}`,
+        `*Component:* ${event.component || (event.source === "vercel" ? "Next.js server on Vercel" : event.source === "fly" ? "Fly backend" : event.source === "frontend" ? "Browser frontend" : "Internal application")}`,
         `*Route/Page:* ${route}`,
         `*Action:* ${event.action || "n/a"}`,
         `*Method:* ${event.method || "n/a"}`,
@@ -329,7 +340,11 @@ function toSlackBlocks(event: StoredEvent, eventId: string) {
 
     const extra = (event.extra && typeof event.extra === "object") ? event.extra : {};
     const verboseSlackDetails = shouldIncludeVerboseSlackDetails();
-    const contextFields = verboseSlackDetails
+    const oauthDetails = event.action === "vercel.oauth.callback";
+    const contextFields = oauthDetails
+        ? Object.entries(extra).filter(([key]) => !["oauthIncidentKey", "requestContext"].includes(key))
+            .map(([key, value]) => [key, cleanContextValue(value, 220)] as [string, string]).filter(([, value]) => Boolean(value))
+        : verboseSlackDetails
         ? [
             ["Caller", cleanContextValue((extra as any).callerType || (extra as any).caller || (extra as any).requestContext?.callerType, 80)],
             ["IP", cleanContextValue((extra as any).ip || (extra as any).clientIp || (extra as any).requestContext?.ip, 80)],
@@ -383,13 +398,10 @@ function toSlackBlocks(event: StoredEvent, eventId: string) {
     ];
 
     if (contextBlock) {
-        blocks.push({
-            type: "section",
-            text: {
-                type: "mrkdwn",
-                text: truncate(contextBlock, MAX_TEXT_CHARS),
-            },
-        });
+        const parts = oauthDetails ? chunkString(contextBlock, MAX_TEXT_CHARS) : [truncate(contextBlock, MAX_TEXT_CHARS)];
+        for (const part of parts) {
+            blocks.push({ type: "section", text: { type: "mrkdwn", text: part } });
+        }
     }
 
     if (event.url && verboseSlackDetails) {
@@ -527,6 +539,7 @@ async function storeEvent(event: StoredEvent): Promise<string> {
 function sanitizeEvent(event: ObservabilityEvent): StoredEvent {
     return {
         ...event,
+        url: event.url ? redactDiagnosticUrl(event.url) : undefined,
         message: truncate(asOneLine(event.message || "Unknown error"), MAX_MESSAGE_CHARS),
         stack: truncate(normalizeMultiline(event.stack || ""), MAX_STACK_CHARS),
         occurredAt: toIsoDate(event.occurredAt),
@@ -542,6 +555,7 @@ function sanitizeEvent(event: ObservabilityEvent): StoredEvent {
             page: event.page || event.route,
             message: truncate(asOneLine(event.message || ""), 160),
             errorName: event.errorName,
+            extra: event.extra,
         }),
     };
 }
@@ -577,12 +591,13 @@ export async function captureCriticalEvent(event: ObservabilityEvent) {
     if (!shouldCaptureEvent(normalized)) return { delivered: false, reason: "below_threshold" as const };
 
     try {
+        // Keep each occurrence for investigation; deduplicate only the Slack alert.
+        const eventId = await storeEvent(normalized);
         const shouldSendSlack = await reserveSlackDedupe(normalized);
         if (!shouldSendSlack) {
-            return { delivered: false as const, reason: "duplicate" as const };
+            return { delivered: false as const, reason: "duplicate" as const, eventId };
         }
 
-        const eventId = await storeEvent(normalized);
         await postToSlack(normalized, eventId);
         return { delivered: true as const, eventId };
     } catch (err) {

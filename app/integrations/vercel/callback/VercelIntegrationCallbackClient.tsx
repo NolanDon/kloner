@@ -4,6 +4,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
+import { redactDiagnosticUrl } from "@/lib/diagnostic-url";
 
 const ACCENT = "#FF8D21";
 
@@ -147,6 +148,8 @@ export function VercelIntegrationCallbackClient() {
 
     useEffect(() => {
         if (isSuccess) return;
+        // The server already recorded callbacks carrying a request reference.
+        if (searchParams.get("requestId")) return;
 
         const dedupeKey = `${status}:${reason || "unknown"}:${searchParams.toString()}`;
         if (reportedErrorKeyRef.current === dedupeKey) return;
@@ -167,7 +170,8 @@ export function VercelIntegrationCallbackClient() {
                 status,
                 reason: reason || null,
                 returnTo: getCookieValue("vercel_oauth_return") || null,
-                search: searchParams.toString(),
+                search: new URL(redactDiagnosticUrl(`https://kloner.app/integrations/vercel/callback?${searchParams.toString()}`)).search.slice(1),
+                serverRequestId: searchParams.get("requestId") || null,
             },
         };
 

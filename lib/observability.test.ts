@@ -298,4 +298,36 @@ describe("observability Slack formatting", () => {
         );
         expect(contextBlock.text.text).toContain("URL: https://example.com/tried-url");
     });
+
+
+it("labels server faults explicitly and displays factual OAuth context without requiring verbose mode", async () => {
+    const { captureCriticalEvent } = await import("./observability");
+    await captureCriticalEvent({
+        source: "vercel", component: "nextjs-server", severity: "error", statusCode: 401,
+        action: "vercel.oauth.callback", route: "/api/vercel/oauth/callback", message: "Missing session cookie",
+        requestId: "oauth-req", url: "https://kloner.app/api/vercel/oauth/callback?code=secret-code&state=secret-state",
+        extra: { identityStatus: "no session cookie", hasSession: false, hasStateCookie: false, authFailureCode: "SESSION_COOKIE_MISSING", ip: "192.0.2.1", oauthIncidentKey: "same-flow" },
+    });
+    const body = JSON.parse((global.fetch as jest.Mock).mock.calls.at(-1)![1].body);
+    expect(body.text).toContain("[SERVER / VERCEL]");
+    const blocks = JSON.stringify(body.blocks);
+    expect(blocks).toContain("unverified (no session cookie)");
+    expect(blocks).toContain("SESSION_COOKIE_MISSING");
+    expect(blocks).toContain("hasSession: false");
+    expect(blocks).not.toContain("secret-code");
+    expect(blocks).not.toContain("secret-state");
+});
+
+it("retains every occurrence even when the Slack alert is deduplicated", async () => {
+    const { captureCriticalEvent } = await import("./observability");
+    createMock.mockResolvedValueOnce(undefined).mockRejectedValueOnce({ code: 6 });
+    const event = { source: "vercel" as const, severity: "error" as const, statusCode: 401, action: "vercel.oauth.callback", message: "Missing session", extra: { oauthIncidentKey: "flow-with-repeated-requests" } };
+    const writesBefore = setMock.mock.calls.length;
+    const sendsBefore = (global.fetch as jest.Mock).mock.calls.length;
+    await captureCriticalEvent(event);
+    expect(await captureCriticalEvent(event)).toMatchObject({ delivered: false, reason: "duplicate" });
+    expect(setMock.mock.calls.length - writesBefore).toBe(2);
+    expect((global.fetch as jest.Mock).mock.calls.length - sendsBefore).toBe(1);
+});
+
 });

@@ -1,209 +1,173 @@
-// app/api/vercel/oauth/callback/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { verifySession, getAdminDb } from "../../../_lib/auth";
+import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
+import { verifySession, getAdminDb, SESSION_COOKIE_NAME } from "../../../_lib/auth";
 import { FieldValue } from "firebase-admin/firestore";
-import { captureCriticalEvent, captureException } from "@/lib/observability";
+import { captureCriticalEvent } from "@/lib/observability";
+import { redactDiagnosticUrl } from "@/lib/diagnostic-url";
 import { encryptString } from "../../../_lib/crypto";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+function digest(value: string) {
+    return createHash("sha256").update(value).digest("hex").slice(0, 16);
+}
+
+function matchesState(a: string, b: string) {
+    const left = Buffer.from(a);
+    const right = Buffer.from(b);
+    return left.length === right.length && timingSafeEqual(left, right);
+}
+
 export async function GET(req: NextRequest) {
+    const base = process.env.NODE_ENV === "production"
+        ? process.env.OAUTH_REDIRECT_BASE_PROD || "https://kloner.app"
+        : process.env.OAUTH_REDIRECT_BASE_DEV || "http://localhost:3000";
+    const url = new URL(req.url);
+    const code = url.searchParams.get("code");
+    const state = url.searchParams.get("state");
+    const cookieState = req.cookies.get("vercel_oauth_state")?.value;
+    const teamId = url.searchParams.get("teamId") || undefined;
+    const configurationId = url.searchParams.get("configurationId") || undefined;
+    const header = (key: string) => (req.headers.get(key) || "").slice(0, 500);
+    const requestId = header("x-vercel-id") || header("x-request-id") || randomUUID();
+    const requestIdSource = header("x-vercel-id") ? "x-vercel-id" : header("x-request-id") ? "client x-request-id (unverified)" : "generated";
+    const ipHeader = ["x-vercel-forwarded-for", "x-forwarded-for", "x-real-ip"].find(key => header(key));
+    const ip = ipHeader ? header(ipHeader).split(",")[0].trim() : "not recorded by request headers";
+    const hasSession = Boolean(req.cookies.get(SESSION_COOKIE_NAME)?.value);
+    let uid: string | undefined;
+    let email: string | undefined;
+    let identityStatus = hasSession ? "session not yet verified" : "no session cookie";
 
-    const isProd = process.env.NODE_ENV === "production";
-
-    const base = isProd ? (process.env.OAUTH_REDIRECT_BASE_PROD || "https://kloner.app") : process.env.OAUTH_REDIRECT_BASE_DEV
-
-    // delete-me
-    // const base = process.env.OAUTH_REDIRECT_BASE_PROD || "https://kloner.app";
-
-    const redirectWithStatus = (
-        status: "success" | "error",
-        reason?: string,
-    ) => {
-        const returnCookie = req.cookies.get("vercel_oauth_return")?.value;
-
-        // If we have an explicit return target and the flow was successful,
-        // send the user straight back there (e.g. /dashboard/view?vercel=connected).
-        if (status === "success" && returnCookie) {
-            let target: URL;
+    const redirectWithStatus = (status: "success" | "error", reason?: string) => {
+        let target = new URL("/integrations/vercel/callback", base);
+        if (status === "success") {
             try {
-                target = new URL(returnCookie, base);
-            } catch {
-                target = new URL("/integrations/vercel/callback", base);
-                target.searchParams.set("status", status);
-                if (reason) target.searchParams.set("reason", reason);
-            }
-
-            const res = NextResponse.redirect(target.toString(), { status: 302 });
-            res.cookies.set("vercel_oauth_state", "", { maxAge: 0, path: "/" });
-            res.cookies.set("vercel_oauth_return", "", { maxAge: 0, path: "/" });
-            return res;
+                const returnPath = decodeURIComponent(req.cookies.get("vercel_oauth_return")?.value || "");
+                const candidate = new URL(returnPath, base);
+                if (returnPath.startsWith("/") && !returnPath.startsWith("//") && candidate.origin === new URL(base).origin) target = candidate;
+            } catch { /* Use the default callback page. */ }
         }
-
-        // default behaviour (existing callback page)
-        const next = new URL("/integrations/vercel/callback", base);
-        next.searchParams.set("status", status);
-        if (reason) next.searchParams.set("reason", reason);
-
-        const res = NextResponse.redirect(next.toString(), { status: 302 });
-        res.cookies.set("vercel_oauth_state", "", { maxAge: 0, path: "/" });
-        if (returnCookie) {
-            res.cookies.set("vercel_oauth_return", "", { maxAge: 0, path: "/" });
+        target.searchParams.set("status", status);
+        if (reason) target.searchParams.set("reason", reason);
+        target.searchParams.set("requestId", requestId);
+        const res = NextResponse.redirect(target.toString(), { status: 302 });
+        res.headers.set("x-kloner-request-id", requestId);
+        res.headers.set("Cache-Control", "no-store");
+        for (const cookie of ["vercel_oauth_state", "vercel_oauth_return"]) {
+            res.cookies.set(cookie, "", { maxAge: 0, path: "/" });
         }
         return res;
     };
 
-    const reportOauthIssue = async (statusCode: number, reason: string, message: string, extra?: Record<string, unknown>) => {
+    const report = async (statusCode: number, reason: string, message: string, details: Record<string, unknown> = {}) => {
+        const context = {
+            identityStatus,
+            hasSession,
+            hasCode: Boolean(code),
+            hasQueryState: Boolean(state),
+            hasStateCookie: Boolean(cookieState),
+            stateMatches: Boolean(state && cookieState && matchesState(state, cookieState)),
+            stateFingerprint: state ? digest(state) : "missing",
+            queryTeamId: teamId || "missing (unverified query parameter)",
+            queryConfigurationId: configurationId || "missing",
+            flowSourceClaim: url.searchParams.get("source") || "missing",
+            ip,
+            ipSource: ipHeader || "none",
+            userAgent: header("user-agent") || "missing",
+            fetchSite: header("sec-fetch-site") || "missing",
+            origin: header("origin") ? redactDiagnosticUrl(header("origin")) : "missing",
+            referer: header("referer") ? redactDiagnosticUrl(header("referer")) : "missing",
+            requestIdSource,
+            reason,
+            httpResponseStatus: 302,
+            ...(email ? { verifiedUserEmail: email } : {}),
+            ...details,
+            // Group the same flow's failures for five minutes; retain every event.
+            oauthIncidentKey: [reason, state ? digest(state) : "missing", teamId || "", digest(ip), digest(header("user-agent")), uid || "unverified", Math.floor(Date.now() / 300_000)].join("|"),
+        };
+        console.warn("[vercel-oauth] callback rejected", { requestId, userId: uid || "unverified", ...context });
         await captureCriticalEvent({
-            source: "vercel",
+            source: "vercel", component: "nextjs-server",
             severity: statusCode >= 500 ? "critical" : "error",
-            statusCode,
-            route: req.nextUrl?.pathname,
-            method: "GET",
-            action: "vercel.oauth.callback",
-            message,
-            service: "vercel-oauth",
-            url: req.url,
-            extra: {
-                reason,
-                ...extra,
-            },
+            statusCode, route: "/api/vercel/oauth/callback", method: "GET",
+            action: "vercel.oauth.callback", message, service: "vercel-oauth",
+            userId: uid, requestId, url: redactDiagnosticUrl(req.url), extra: context,
         });
     };
 
     try {
-        const url = new URL(req.url);
-        const code = url.searchParams.get("code");
-        const state = url.searchParams.get("state");
-        const teamId = url.searchParams.get("teamId") || undefined;
-        const configurationId =
-            url.searchParams.get("configurationId") || undefined;
-
-        const cookieState = req.cookies.get("vercel_oauth_state")?.value;
-
-        if (!code) {
-            console.warn("[vercel-oauth] missing code param");
-            await reportOauthIssue(400, "token", "Missing code param");
-            return redirectWithStatus("error", "token");
-        }
-
-        if (cookieState && state !== cookieState) {
-            console.warn("[vercel-oauth] state mismatch", {
-                code: !!code,
-                state,
-                cookieState,
-            });
-            await reportOauthIssue(400, "state", "OAuth state mismatch");
-            return redirectWithStatus("error", "state");
-        }
-
         let decoded;
         try {
             decoded = await verifySession(req);
         } catch (err) {
-            console.error("[vercel-oauth] verifySession failed", err);
-            await reportOauthIssue(401, "auth", "verifySession failed");
-            return redirectWithStatus("error", "auth");
+            const error = err as { status?: number; authCode?: string; authVerificationUnavailable?: boolean };
+            const authCode = error?.authCode || "unknown";
+            const infrastructureFailure = error?.status !== 401 || error?.authVerificationUnavailable === true || ["auth/internal-error", "auth/invalid-credential", "auth/insufficient-permission", "auth/project-not-found"].includes(authCode);
+            identityStatus = !hasSession ? "no session cookie" : infrastructureFailure ? "session verification unavailable" : "session cookie rejected";
+            await report(infrastructureFailure ? 500 : 401, infrastructureFailure ? "internal" : "auth",
+                infrastructureFailure ? "OAuth session verification failed due to a server error" : hasSession ? "OAuth callback rejected: session cookie could not be verified" : "OAuth callback rejected: no Kloner session cookie",
+                { authFailureCode: !hasSession ? "SESSION_COOKIE_MISSING" : authCode });
+            return redirectWithStatus("error", infrastructureFailure ? "internal" : "auth");
+        }
+        uid = decoded.uid;
+        email = typeof decoded.email === "string" ? decoded.email : undefined;
+        identityStatus = "verified Kloner session";
+
+        if (!code) {
+            await report(400, "token", "OAuth callback rejected: missing authorization code");
+            return redirectWithStatus("error", "token");
+        }
+        if (!state || !cookieState || !matchesState(state, cookieState)) {
+            await report(403, "state", "OAuth callback rejected: missing or mismatched OAuth state");
+            return redirectWithStatus("error", "state");
         }
 
-        const uid = decoded.uid as string;
-
-        // CRITICAL: must equal Vercel Integration Redirect URL and /start redirect_uri
         const redirectUri = process.env.VERCEL_OAUTH_REDIRECT_URI;
-        if (!redirectUri) {
-            console.error(
-                "[vercel-oauth] VERCEL_OAUTH_REDIRECT_URI env missing during token exchange",
-            );
-            await reportOauthIssue(500, "config", "VERCEL_OAUTH_REDIRECT_URI env missing");
+        const clientId = process.env.VERCEL_OAUTH_CLIENT_ID;
+        const clientSecret = process.env.VERCEL_OAUTH_CLIENT_SECRET;
+        if (!redirectUri || !clientId || !clientSecret) {
+            await report(500, "config", "Vercel OAuth configuration is incomplete", {
+                hasRedirectUri: Boolean(redirectUri), hasClientId: Boolean(clientId), hasClientSecret: Boolean(clientSecret),
+            });
             return redirectWithStatus("error", "config");
         }
-
-        const body = new URLSearchParams({
-            code,
-            client_id: process.env.VERCEL_OAUTH_CLIENT_ID || "",
-            client_secret: process.env.VERCEL_OAUTH_CLIENT_SECRET || "",
-            redirect_uri: redirectUri,
-        });
-
         let json: any;
         try {
-            const tokenRes = await fetch(
-                "https://api.vercel.com/v2/oauth/access_token",
-                {
-                    method: "POST",
-                    headers: { "content-type": "application/x-www-form-urlencoded" },
-                    body,
-                },
-            );
-
+            const tokenRes = await fetch("https://api.vercel.com/v2/oauth/access_token", {
+                method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" },
+                body: new URLSearchParams({ code, client_id: clientId, client_secret: clientSecret, redirect_uri: redirectUri }),
+                signal: AbortSignal.timeout(15_000),
+            });
             if (!tokenRes.ok) {
-                const text = await tokenRes.text();
-                console.error(
-                    "[vercel-oauth] token exchange failed",
-                    tokenRes.status,
-                    text,
-                );
-                await reportOauthIssue(502, "token", "Token exchange failed", {
-                    providerStatus: tokenRes.status,
-                });
+                await report(502, "token", "Vercel OAuth token exchange failed", { providerStatus: tokenRes.status });
                 return redirectWithStatus("error", "token");
             }
-
             json = await tokenRes.json();
-        } catch (err) {
-            console.error("[vercel-oauth] token exchange threw", err);
-            await reportOauthIssue(502, "token", "Token exchange threw");
+        } catch {
+            await report(502, "token", "Vercel OAuth token exchange unavailable or timed out");
             return redirectWithStatus("error", "token");
         }
-
-        const db = getAdminDb();
-        const now = FieldValue.serverTimestamp();
-        const accessToken = typeof json.access_token === "string" ? json.access_token.trim() : "";
-
+        const accessToken = typeof json?.access_token === "string" ? json.access_token.trim() : "";
         if (!accessToken) {
-            console.error("[vercel-oauth] token exchange response missing access_token", json);
-            await reportOauthIssue(502, "token", "Token exchange returned no access token");
+            await report(502, "token", "Vercel OAuth response omitted the access token");
             return redirectWithStatus("error", "token");
         }
-
         try {
-            const userRef = db.collection("kloner_users").doc(uid);
-            const vercelRef = userRef.collection("integrations").doc("vercel");
-
-            await vercelRef.set(
-                {
-                    accessToken: encryptString(accessToken),
-                    tokenType: json.token_type,
-                    vercelUserId: json.user_id ?? null,
-                    vercelTeamId: teamId ?? json.team_id ?? null,
-                    configurationId: configurationId ?? null,
-                    scope: json.scope ?? null,
-                    updatedAt: now,
-                    createdAt: now,
-                    connected: true,
-                },
-                { merge: true },
-            );
-        } catch (err) {
-            console.error("[vercel-oauth] Firestore write failed", err, { uid });
-            await reportOauthIssue(500, "db", "Firestore write failed", { uid });
+            const now = FieldValue.serverTimestamp();
+            await getAdminDb().collection("kloner_users").doc(uid!).collection("integrations").doc("vercel").set({
+                accessToken: encryptString(accessToken), tokenType: json.token_type ?? null,
+                vercelUserId: json.user_id ?? null, vercelTeamId: json.team_id ?? teamId ?? null,
+                configurationId: configurationId ?? null, scope: json.scope ?? null,
+                updatedAt: now, createdAt: now, connected: true,
+            }, { merge: true });
+        } catch {
+            await report(500, "db", "Vercel OAuth integration could not be saved");
             return redirectWithStatus("error", "db");
         }
-
         return redirectWithStatus("success");
-    } catch (err) {
-        console.error("[vercel-oauth] unexpected error", err);
-        await captureException({
-            source: "vercel",
-            error: err,
-            route: req.nextUrl?.pathname,
-            method: "GET",
-            action: "vercel.oauth.callback",
-            statusCode: 500,
-            service: "vercel-oauth",
-            url: req.url,
-        });
+    } catch {
+        await report(500, "internal", "Unexpected Vercel OAuth callback failure");
         return redirectWithStatus("error", "internal");
     }
 }

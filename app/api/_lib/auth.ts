@@ -116,10 +116,15 @@ export async function verifySession(req: NextRequest) {
 
     try {
         return await auth.verifySessionCookie(token, true);
-    } catch {
+    } catch (error) {
+        const rawCode = (error as { code?: unknown })?.code;
+        const authCode = typeof rawCode === "string" && /^auth\/[a-z-]+$/.test(rawCode) ? rawCode : "unknown";
         throw Object.assign(
             new Error("Unauthorized (invalid/expired session)"),
-            { status: 401 }
+            { status: 401, authCode, authVerificationUnavailable: ![
+                "auth/session-cookie-expired", "auth/session-cookie-revoked", "auth/id-token-expired", "auth/id-token-revoked",
+                "auth/argument-error", "auth/invalid-argument", "auth/invalid-session-cookie", "auth/user-disabled", "auth/user-not-found", "auth/tenant-id-mismatch",
+            ].includes(authCode) }
         );
     }
 }

@@ -97,7 +97,7 @@ import {
     rendersEqual,
 } from "./page.helpers";
 import { CREDIT_LIMITS, UserTier } from "@/src/lib/credits";
-import { ensureSessionAndCsrf, resetAuthClientCaches } from "@/lib/auth-client";
+import { bootstrapServerSession, ensureSessionAndCsrf, resetAuthClientCaches } from "@/lib/auth-client";
 import type { UrlDoc } from "@/app/dashboard/types";
 import { useVercelIntegration } from "@/src/hooks/useVercelIntegration";
 import { archiveRender, filterRendersForBuilder, resolveStorageUrl, useResolvedImg } from "@/src/lib/renders";
@@ -12536,7 +12536,7 @@ export default function PreviewPage(): JSX.Element {
 
     // ───────── connect to Vercel from inside the wizard ─────────
 
-    function handleConnectVercelFromWizard() {
+    async function handleConnectVercelFromWizard() {
         const u = auth.currentUser;
         if (!VERCEL_INTEGRATION_SLUG || !u) {
             console.error("Missing integration slug or user not signed in");
@@ -12547,6 +12547,9 @@ export default function PreviewPage(): JSX.Element {
         setVercelInlineConnecting(true);
 
         try {
+            if (!(await bootstrapServerSession({ forceRefresh: true, reason: "vercel_oauth_start" }))) {
+                throw new Error("Sign in again before connecting Vercel.");
+            }
             const bytes = new Uint8Array(16);
             crypto.getRandomValues(bytes);
             const state = Array.from(bytes)
@@ -12591,12 +12594,12 @@ export default function PreviewPage(): JSX.Element {
             window.location.assign(link);
         } catch (e) {
             console.error("Inline Vercel connect failed to start", e);
-            setVercelInlineError("Could not open Vercel. Try again in a moment.");
+            setVercelInlineError("Could not start the connection. Sign in again and retry.");
             setVercelInlineConnecting(false);
         }
     }
 
-    function handleConnectVercelForAppDeployWizard() {
+    async function handleConnectVercelForAppDeployWizard() {
         const u = auth.currentUser;
         if (!VERCEL_INTEGRATION_SLUG || !u) {
             console.error("Missing integration slug or user not signed in");
@@ -12607,6 +12610,9 @@ export default function PreviewPage(): JSX.Element {
         setAppDeployWizardError(null);
 
         try {
+            if (!(await bootstrapServerSession({ forceRefresh: true, reason: "vercel_oauth_start" }))) {
+                throw new Error("Sign in again before connecting Vercel.");
+            }
             const bytes = new Uint8Array(16);
             crypto.getRandomValues(bytes);
             const state = Array.from(bytes)
@@ -12651,7 +12657,7 @@ export default function PreviewPage(): JSX.Element {
             window.location.assign(link);
         } catch (e) {
             console.error("Inline Vercel connect failed to start", e);
-            setAppDeployWizardError("Could not open Vercel. Try again in a moment.");
+            setAppDeployWizardError("Could not start the connection. Sign in again and retry.");
         }
     }
 
