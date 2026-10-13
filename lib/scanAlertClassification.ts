@@ -1,5 +1,17 @@
 export function classifyScanAlert({ code = "", message = "", statusCode = 502, backendStatus = "" }: { code?: string; message?: string; statusCode?: number; backendStatus?: string }) {
     const diagnostic = `${code} ${message}`;
+    if (code === "EDITOR_ACCESS_REVOKED") {
+        return { severity: "warning" as const, statusCode: 403, classification: "editor_access_rejected" };
+    }
+    if (code === "EDITOR_SESSION_REFRESH_FAILED") {
+        return { severity: "error" as const, statusCode: 502, classification: "editor_session_refresh_failed" };
+    }
+    if (code === "EDITOR_NAVIGATION_TIMEOUT" || /Opening your editor timed out after 5 minutes/i.test(message)) {
+        return { severity: "error" as const, statusCode: 504, classification: "editor_navigation_timeout" };
+    }
+    if (code === "EDITOR_NAVIGATION_FAILED") {
+        return { severity: "error" as const, statusCode: 502, classification: "editor_navigation_failed" };
+    }
     if (/UNSUPPORTED_SNAPSHOT_DOCUMENT|snapshot_v[23]_unsupported_document/i.test(diagnostic)) {
         return { severity: "warning" as const, statusCode: 422, classification: "unsupported_document" };
     }

@@ -43,6 +43,7 @@ export type DashboardUrlProcessingSession = {
     archiveZipBytes: number | null;
     errorMessage?: string | null;
     phase: "processing" | "ready" | "navigating" | "error";
+    errorCode?: string | null;
     phaseStartedAt: number;
 };
 
@@ -71,7 +72,8 @@ export function canContinueUrlProcessingSession(
     hasFailure = false,
 ): boolean {
     return Boolean(!hasFailure && session?.appId &&
-        (session.phase === "ready" || session.phase === "navigating"));
+        (session.phase === "ready" || session.phase === "navigating" ||
+            (session.phase === "error" && ["EDITOR_NAVIGATION_TIMEOUT", "EDITOR_NAVIGATION_FAILED", "EDITOR_SESSION_REFRESH_FAILED"].includes(session.errorCode || ""))));
 }
 
 export function isUrlGenerationConfirmedReady(generation: any): boolean {
@@ -220,6 +222,7 @@ export function buildTimedOutUrlProcessingSession(
     return {
         ...session,
         phase: "error",
+        errorCode: session.phase === "navigating" ? "EDITOR_NAVIGATION_TIMEOUT" : "URL_PROCESSING_TIMEOUT",
         errorMessage: session.phase === "processing"
             ? `We couldn't confirm that your scan finished after ${URL_PROCESSING_SCAN_TIMEOUT_MS / 60_000} minutes. Return to the dashboard to check its status before trying again.`
             : "Opening your editor timed out after 5 minutes. Return to the dashboard and open your completed app again.",

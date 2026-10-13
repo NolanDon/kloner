@@ -114,15 +114,16 @@ export async function POST(req: NextRequest) {
             };
 
             let classification: string | undefined;
-            if (action === "url_capture_terminal_error" || action === "url_capture_stale") {
-                const scanAlert = classifyScanAlert({ code: backendCode || code, message: backendMessage || message, statusCode, backendStatus });
+            const editorFailure = action === "url_editor_navigation_error" || /^EDITOR_/.test(code) || /Opening your editor timed out after 5 minutes/i.test(message);
+            if (action === "url_capture_terminal_error" || action === "url_capture_stale" || editorFailure) {
+                const scanAlert = classifyScanAlert({ code: editorFailure ? code : backendCode || code, message: editorFailure ? message : backendMessage || message, statusCode, backendStatus });
                 severity = scanAlert.severity;
                 statusCode = scanAlert.statusCode;
                 classification = scanAlert.classification;
             }
 
             const enrichedMessage = [
-                message,
+                editorFailure ? message.replace(/^URL capture failed for /, "Editor opening failed for ") : message,
                 browser ? `browser=${browser}` : "",
                 reason ? `reason=${reason}` : "",
                 payloadUserAgent ? `ua=${payloadUserAgent}` : "",
@@ -136,7 +137,7 @@ export async function POST(req: NextRequest) {
                 statusCode,
                 route,
                 method: "POST",
-                action,
+                action: editorFailure ? "url_editor_navigation_error" : action,
                 userId: uid,
                 requestId: requestId || backendRequestId || undefined,
                 message: enrichedMessage,
@@ -156,8 +157,10 @@ export async function POST(req: NextRequest) {
                     requestId: requestId || undefined,
                     jobId: jobId || undefined,
                     backendStatus: backendStatus || undefined,
-                    backendCode: backendCode || code || undefined,
-                    backendMessage: backendMessage || undefined,
+                    uiCode: editorFailure ? code || undefined : undefined,
+                    uiMessage: editorFailure ? message : undefined,
+                    backendCode: editorFailure ? undefined : backendCode || code || undefined,
+                    backendMessage: editorFailure ? undefined : backendMessage || undefined,
                     backendRequestId: backendRequestId || requestId || undefined,
                     backendJobId: backendJobId || jobId || undefined,
                     requestContext,

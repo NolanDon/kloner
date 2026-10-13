@@ -67,4 +67,19 @@ describe("POST /api/internal/observability/frontend-timeout", () => {
             }),
         });
     });
+    it.each(["url_editor_navigation_error", "url_capture_terminal_error"])("identifies editor timeouts without inventing backend errors: %s", async action => {
+        const { POST } = await import("./route");
+        const req: any = { headers: new Headers(), json: async () => ({ action, appId: "completed-app", statusCode: 502,
+            code: action === "url_editor_navigation_error" ? "EDITOR_NAVIGATION_TIMEOUT" : "URL_CAPTURE_TERMINAL_ERROR",
+            message: "URL capture failed for https://remowers.shop/: Opening your editor timed out after 5 minutes. Return to the dashboard and open your completed app again.",
+            backend: { status: "ready", code: "URL_CAPTURE_TERMINAL_ERROR", message: "Opening your editor timed out after 5 minutes." } }) };
+        await POST(req);
+        const event = captureCriticalEventMock.mock.calls[0][0];
+        expect(event).toMatchObject({ action: "url_editor_navigation_error", statusCode: 504, severity: "error", extra: { appId: "completed-app", classification: "editor_navigation_timeout", backendStatus: "ready" } });
+        expect(event.message).toMatch(/^Editor opening failed for /);
+        expect(event.extra.backendMessage).toBeUndefined();
+        expect(event.extra.backendCode).toBeUndefined();
+        expect(event.extra.uiMessage).toContain("Opening your editor");
+    });
+
 });

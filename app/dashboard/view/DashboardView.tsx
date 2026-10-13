@@ -120,6 +120,7 @@ import {
     submitDashboardUrlDraft,
     isArchiveSizeLimitPaywallResponse,
 } from "./draftFlow";
+import { requestEditorNavigation, type EditorNavigationResult } from "./editorNavigation";
 import UrlProcessingPopup from "@/components/UrlProcessingPopup";
 import { extractArchivedPageIdsFromRender, fetchRenderForDeployment, getArchivedRoutesForRender, persistArchivedPageIds, scrubArchivedRoutes, secureHtmlForPreviewIframe, withArchivedPageIds } from "@/components/helpers";
 import { useModal } from "@/components/ui/ModalContext";
@@ -4533,6 +4534,7 @@ export default function PreviewPage(): JSX.Element {
     const previousAppBuilderOpenRef = useRef(false);
     const urlProcessingAutoContinueTimerRef = useRef<number | null>(null);
     const urlProcessingAutoContinueSessionRef = useRef<string | null>(null);
+    const urlEditorNavigationAbortRef = useRef<AbortController | null>(null);
 
     const clearUrlProcessingNavigationTimers = useCallback(() => {
         if (urlProcessingAutoContinueTimerRef.current !== null) {
@@ -4572,42 +4574,48 @@ export default function PreviewPage(): JSX.Element {
     const openAppBuilderWithCookieGate = useCallback(async (
         appId: string | null,
         initialViewMode: "ai" | "custom" = "ai",
-        opts?: { bypassBlockedUrlGenerationGuard?: boolean; forceReload?: boolean },
-    ) => {
+        opts?: { bypassBlockedUrlGenerationGuard?: boolean; forceReload?: boolean; signal?: AbortSignal },
+    ): Promise<EditorNavigationResult> => {
         const nextId = typeof appId === "string" ? appId.trim() : "";
-        if (!nextId) return;
+        if (!nextId) return { ok: false, code: "EDITOR_NAVIGATION_FAILED", message: "No completed app was selected." };
         if (!opts?.bypassBlockedUrlGenerationGuard && blockedUrlGenerationAppId && nextId === blockedUrlGenerationAppId) {
             setAppBuilderOpen(false);
             setPendingAppBuilderAppId(null);
             setCurrentAppId(null);
             setAppBuilderInitialViewMode("ai");
-            return;
+            return { ok: false, code: "EDITOR_ACCESS_REVOKED", message: "This app is not available to open." };
         }
         if (isTrialAccessRevoked) {
             void showAlert(
                 "Your trial was cancelled, so existing projects are locked in the dashboard.",
                 "Access locked",
             );
-            return;
+            return { ok: false, code: "EDITOR_ACCESS_REVOKED", message: "Your trial was cancelled, so existing projects are locked in the dashboard." };
         }
         const nextUrl = buildAppBuilderUrl(nextId, initialViewMode);
-        if (!nextUrl) return;
+        if (!nextUrl) return { ok: false, code: "EDITOR_NAVIGATION_FAILED", message: "The editor destination could not be created." };
 
         if (opts?.forceReload) {
-            window.location.assign(nextUrl);
-            return;
+            return requestEditorNavigation({
+                accessRevoked: isTrialAccessRevoked,
+                signal: opts.signal,
+                refreshSession: () => bootstrapServerSession({ forceRefresh: true, timeoutMs: 12_000 }),
+                navigate: () => window.location.assign(nextUrl),
+            });
         }
 
         router.push(nextUrl, { scroll: false });
+        return { ok: true };
     }, [blockedUrlGenerationAppId, buildAppBuilderUrl, isTrialAccessRevoked, router, showAlert]);
 
     const openAppBuilderPreviewFirstWithCookieGate = useCallback((appId: string | null, opts?: { forceReload?: boolean }) => {
         void openAppBuilderWithCookieGate(appId, workspaceAutonomyV3IsDefault || isMobileViewport ? "ai" : "custom", opts?.forceReload ? { forceReload: true } : undefined);
     }, [isMobileViewport, openAppBuilderWithCookieGate, workspaceAutonomyV3IsDefault]);
 
-    const openAppBuilderFromDashboardCard = useCallback((appId: string | null, opts?: { forceReload?: boolean }) => {
-        void openAppBuilderWithCookieGate(appId, workspaceAutonomyV3IsDefault || isMobileViewport ? "ai" : "custom", {
+    const openAppBuilderFromDashboardCard = useCallback((appId: string | null, opts?: { forceReload?: boolean; signal?: AbortSignal }) => {
+        return openAppBuilderWithCookieGate(appId, workspaceAutonomyV3IsDefault || isMobileViewport ? "ai" : "custom", {
             bypassBlockedUrlGenerationGuard: true,
+            signal: opts?.signal,
             ...(opts?.forceReload ? { forceReload: true } : null),
         });
     }, [isMobileViewport, openAppBuilderWithCookieGate, workspaceAutonomyV3IsDefault]);
@@ -7075,28 +7083,37 @@ export default function PreviewPage(): JSX.Element {
         urlProcessingHandoff?.appId,
     ]);
 
-    const handleContinueUrlProcessingEditorOpen = useCallback(() => {
+    const urlEditorNavigationInFlightRef = useRef(false);
+    const handleContinueUrlProcessingEditorOpen = useCallback(async () => {
         const session = urlProcessingHandoff;
         const appIdToOpen = session?.appId || pendingCreatedApp?.id || null;
-        if (!session || !appIdToOpen ||
+        if (!session || !appIdToOpen || urlEditorNavigationInFlightRef.current ||
             !canContinueUrlProcessingSession(session, Boolean(urlProcessingFailure))) return;
 
-        pendingCreatedAppLaunchRequestedRef.current = appIdToOpen;
-        setUrlProcessingHandoff((current) => {
-            if (!current || current.appId !== appIdToOpen) return current;
-            return {
-                ...current,
-                phase: "navigating",
-                phaseStartedAt: Date.now(),
-            };
-        });
+        urlEditorNavigationInFlightRef.current = true;
+        const controller = new AbortController();
+        urlEditorNavigationAbortRef.current = controller;
         setInfo("Opening your editor…");
-        openAppBuilderFromDashboardCard(appIdToOpen, { forceReload: true });
+        try {
+            const result = await openAppBuilderFromDashboardCard(appIdToOpen, { forceReload: true, signal: controller.signal });
+            if (controller.signal.aborted) return;
+            pendingCreatedAppLaunchRequestedRef.current = result.ok ? appIdToOpen : null;
+            setUrlProcessingHandoff((current) => {
+                if (!current || current.appId !== appIdToOpen) return current;
+                return { ...current, phase: result.ok ? "navigating" : "error",
+                    errorCode: result.ok ? null : result.code,
+                    errorMessage: result.ok ? null : result.message,
+                    phaseStartedAt: Date.now() };
+            });
+        } finally {
+            urlEditorNavigationInFlightRef.current = false;
+            if (urlEditorNavigationAbortRef.current === controller) urlEditorNavigationAbortRef.current = null;
+        }
     }, [openAppBuilderFromDashboardCard, pendingCreatedApp?.id, setInfo, urlProcessingFailure, urlProcessingHandoff]);
 
     useEffect(() => {
         const session = urlProcessingHandoff;
-        if (!session?.appId || urlProcessingFailure ||
+        if (!session?.appId || urlProcessingFailure || session.errorCode?.startsWith("EDITOR_") ||
             session.phase === "ready" || session.phase === "navigating") return;
         const app = apps.find((item) => item.id === session.appId) as any;
         const generation = app?.generation;
@@ -7117,9 +7134,12 @@ export default function PreviewPage(): JSX.Element {
     }, [apps, urlProcessingFailure, urlProcessingHandoff]);
 
     const handleReturnToDashboardFromUrlProcessing = useCallback(() => {
+        urlEditorNavigationAbortRef.current?.abort();
         clearUrlProcessingNavigationTimers();
         pendingCreatedAppLaunchRequestedRef.current = null;
         setUrlProcessingPopupSuppressed(true);
+        setUrlProcessingHandoff(null);
+        setPendingCreatedApp(null);
         router.replace("/dashboard/view", { scroll: false });
         push(urlProcessingFailure || urlProcessingHandoff?.phase === "error"
             ? "Returned to the dashboard. Check the scan status before trying again."
@@ -7202,6 +7222,7 @@ export default function PreviewPage(): JSX.Element {
 
     useEffect(() => {
         return () => {
+            urlEditorNavigationAbortRef.current?.abort();
             clearUrlProcessingNavigationTimers();
         };
     }, [clearUrlProcessingNavigationTimers]);
@@ -9899,7 +9920,9 @@ export default function PreviewPage(): JSX.Element {
         if (terminalError && startRequested && !err) return;
 
         const normalizedUrl = normUrl(rawTarget);
-        if (!normalizedUrl || !shouldSendFrontendTimeoutAlert("url_capture_terminal_error", normalizedUrl)) return;
+        const editorFailure = Boolean(urlProcessingHandoff?.errorCode?.startsWith("EDITOR_"));
+        const alertAction = editorFailure ? "url_editor_navigation_error" : "url_capture_terminal_error";
+        if (!normalizedUrl || !shouldSendFrontendTimeoutAlert(alertAction, normalizedUrl)) return;
 
         const doc = (scanSourceMatchesUrl(docData, rawTarget) ? docData : {}) as any;
         const scanJob = (scanSourceMatchesUrl(activeUrlScanJob, rawTarget) ? activeUrlScanJob : {}) as any;
@@ -9911,6 +9934,7 @@ export default function PreviewPage(): JSX.Element {
             "something went wrong while generating this url. please retry.",
         ]);
         const diagnosticMessage = [
+            editorFailure ? urlProcessingHandoff?.errorMessage : null,
             doc.lastError,
             doc.error,
             scanJob.error,
@@ -9923,7 +9947,7 @@ export default function PreviewPage(): JSX.Element {
             .find((value) => value && !genericMessages.has(value.toLowerCase())) || "";
         const requestId = String(doc.requestId || scanJob.requestId || "").trim();
         const jobId = String(doc.jobId || scanJob.jobId || "").trim();
-        const code = String(doc.lastErrorCode || "").trim();
+        const code = String((editorFailure ? urlProcessingHandoff?.errorCode : doc.lastErrorCode) || "").trim();
         const stage = String(doc.stage || scanJob.stage || "").trim();
         const message = diagnosticMessage || [
             "URL capture reached a terminal error without a backend diagnostic.",
@@ -9946,13 +9970,14 @@ export default function PreviewPage(): JSX.Element {
                     },
                     credentials: "include",
                     body: JSON.stringify({
-                        action: "url_capture_terminal_error",
-                        alertKey: `url_capture_terminal_error:${normalizedUrl}`,
+                        action: editorFailure ? "url_editor_navigation_error" : "url_capture_terminal_error",
+                        alertKey: `${editorFailure ? "url_editor_navigation_error" : "url_capture_terminal_error"}:${normalizedUrl}`,
+                        appId: editorFailure ? urlProcessingHandoff?.appId : undefined,
                         route: "/dashboard/view",
                         service: "dashboard-view",
                         statusCode: 502,
                         status: terminalError ? "error" : "processing_error",
-                        message: `URL capture failed for ${rawTarget}: ${message}`,
+                        message: `${editorFailure ? "Editor opening failed" : "URL capture failed"} for ${rawTarget}: ${message}`,
                         previewUrl: rawTarget,
                         code: code || "URL_CAPTURE_TERMINAL_ERROR",
                         requestId: requestId || undefined,
@@ -9960,8 +9985,8 @@ export default function PreviewPage(): JSX.Element {
                         backend: {
                             status: doc.status || null,
                             uiStage: stage || null,
-                            code: code || null,
-                            message: diagnosticMessage || null,
+                            code: editorFailure ? doc.lastErrorCode || null : code || null,
+                            message: editorFailure ? doc.lastError || null : diagnosticMessage || null,
                             requestId: requestId || null,
                             jobId: jobId || null,
                         },
@@ -9972,7 +9997,7 @@ export default function PreviewPage(): JSX.Element {
                 // Observability must never interfere with the user's error UI.
             }
         })();
-    }, [activeUrlScanJob, captureStatus, docData, err, ensureSessionAndCsrf, shouldSendFrontendTimeoutAlert, startRequested, targetUrl, urlProcessingFailure, urlProcessingHandoff?.phase, urlProcessingHandoff?.errorMessage, urlProcessingHandoff?.sourceUrl]);
+    }, [activeUrlScanJob, captureStatus, docData, err, ensureSessionAndCsrf, shouldSendFrontendTimeoutAlert, startRequested, targetUrl, urlProcessingFailure, urlProcessingHandoff?.phase, urlProcessingHandoff?.errorCode, urlProcessingHandoff?.appId, urlProcessingHandoff?.errorMessage, urlProcessingHandoff?.sourceUrl]);
 
     useEffect(() => {
         const normalizedUrl = targetUrl ? normUrl(targetUrl) : "";
@@ -13734,6 +13759,8 @@ export default function PreviewPage(): JSX.Element {
     const urlProcessingWaitLimitReached = (urlProcessingFailure?.message || urlProcessingHandoff?.errorMessage) === ARCHIVE_READINESS_WAIT_MESSAGE;
     const urlProcessingPopupTitle = urlProcessingWaitLimitReached
         ? "Taking longer than expected"
+        : urlProcessingHandoff?.errorCode?.startsWith("EDITOR_")
+        ? "Your app is ready — the editor couldn’t open"
         : urlProcessingFailure
         ? "URL processing failed"
         : urlProcessingHandoff?.phase === "error"
@@ -13777,7 +13804,7 @@ export default function PreviewPage(): JSX.Element {
     }, []);
     const shouldShowUrlProcessingContinueAction = Boolean(
         canContinueUrlProcessingSession(urlProcessingHandoff, Boolean(urlProcessingFailure)) &&
-        urlProcessingContinueFallbackVisible &&
+        (urlProcessingContinueFallbackVisible || urlProcessingHandoff?.phase === "error") &&
         !urlProcessingPopupSuppressed &&
         urlProcessingHandoff?.appId
     );
@@ -13815,7 +13842,7 @@ export default function PreviewPage(): JSX.Element {
                 primaryActionLabel={urlProcessingUpgradeRequired
                     ? "Upgrade"
                     : shouldShowUrlProcessingContinueAction
-                        ? "Continue to editor"
+                        ? (urlProcessingHandoff?.phase === "error" ? "Retry opening editor" : "Continue to editor")
                         : urlProcessingFailure || urlProcessingHandoff?.phase === "error"
                             ? "Return to dashboard"
                         : null}

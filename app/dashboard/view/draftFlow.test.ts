@@ -35,6 +35,18 @@ describe("dashboard draft flow", () => {
         expect(isUrlGenerationConfirmedReady({ status: "failed", finished: true })).toBe(false);
         expect(isUrlGenerationConfirmedReady({ status: "ready", finished: true, needsRescan: true })).toBe(false);
     });
+    it("allows retrying editor failures on a completed app but never scan or access failures", () => {
+        const ready = { appId: "app-1", draftId: null, draftAppId: null, sourceUrl: "https://remowers.shop/", archiveZipUrl: null, archiveZipBytes: null, phase: "navigating" as const, phaseStartedAt: 1000 };
+        const timedOut = buildTimedOutUrlProcessingSession(ready);
+        expect(timedOut.errorCode).toBe("EDITOR_NAVIGATION_TIMEOUT");
+        expect(canContinueUrlProcessingSession(timedOut)).toBe(true);
+        expect(canContinueUrlProcessingSession({ ...timedOut, errorCode: "EDITOR_SESSION_REFRESH_FAILED" })).toBe(true);
+        expect(canContinueUrlProcessingSession({ ...timedOut, errorCode: "EDITOR_ACCESS_REVOKED" })).toBe(false);
+        expect(canContinueUrlProcessingSession({ ...timedOut, errorCode: "URL_PROCESSING_TIMEOUT" })).toBe(false);
+        expect(canContinueUrlProcessingSession({ ...timedOut, appId: null })).toBe(false);
+        expect(canContinueUrlProcessingSession(timedOut, true)).toBe(false);
+    });
+
     it("keeps draft delete enabled during pending or locked states when not deleting", () => {
         expect(
             shouldDisableDraftDeleteButton({

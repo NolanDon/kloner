@@ -291,6 +291,9 @@ function compactExtraSummary(extra: ExtraData, eventUrl?: string): Array<[string
 
 function urlScanExtraSummary(extra: ExtraData, eventUrl?: string): Array<[string, string]> {
     return [
+        ["App", cleanContextValue((extra as any).appId, 200)],
+        ["Browser code", cleanContextValue((extra as any).uiCode, 120)],
+        ["Browser reason", cleanContextValue((extra as any).uiMessage, 500)],
         ["Backend status", cleanContextValue((extra as any).backendStatus ?? (extra as any).upstreamStatus ?? (extra as any).statusCode, 80)],
         ["Backend code", cleanContextValue((extra as any).backendCode ?? (extra as any).upstreamCode ?? (extra as any).responseCode ?? (extra as any).code, 120)],
         ["Backend req", cleanContextValue((extra as any).backendRequestId ?? (extra as any).upstreamRequestId ?? (extra as any).reqId, 120)],
