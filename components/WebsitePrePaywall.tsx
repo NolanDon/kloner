@@ -224,7 +224,7 @@ export function WebsitePrePaywall({
                             </div>
 
                             <div className="mt-6 border-t border-neutral-200 pt-4">
-                                <div className="relative overflow-hidden rounded-[24px] border border-neutral-200 bg-white shadow-[0_14px_36px_rgba(0,0,0,0.08)]">
+                                <div className="relative h-[260px] overflow-hidden rounded-[24px] border border-transparent bg-white shadow-[0_18px_42px_rgba(0,0,0,0.13)]">
                                     <motion.div
                                         animate={{ x: `${-activeSlide * 100}%` }}
                                         transition={{ type: "spring", stiffness: 120, damping: 22, mass: 0.9 }}
@@ -237,11 +237,11 @@ export function WebsitePrePaywall({
                                                 aria-hidden={index !== activeSlide}
                                             >
                                                 {slide.kind === "checklist" ? (
-                                                    <div className="flex h-full min-h-[170px] flex-col justify-center gap-3 px-5 py-5 sm:min-h-[210px] sm:px-6 sm:py-6">
+                                                    <div className="grid h-[260px] grid-cols-2 content-center gap-x-5 gap-y-4 px-5 py-7 sm:gap-x-8 sm:px-8 sm:py-8">
                                                         <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#FF8D21]">
                                                             {slide.title}
                                                         </div>
-                                                        <div className="space-y-4">
+                                                        <div className="col-span-2 grid grid-cols-1 gap-x-5 gap-y-3 sm:grid-cols-2 sm:gap-x-8">
                                                             {benefits.map((item) => (
                                                                 <div
                                                                     key={item}
@@ -258,7 +258,7 @@ export function WebsitePrePaywall({
                                                         </div>
                                                     </div>
                                                 ) : (
-                                                    <div className="px-4 py-4 sm:px-5 sm:py-5">
+                                                    <div className="flex h-[260px] items-center px-6 py-7 sm:px-10 sm:py-8">
                                                         <div className="w-full rounded-[24px]">
                                                             <div className="mb-3 flex items-center gap-3">
                                                                 <div className="relative h-11 w-11 overflow-hidden rounded-full border border-neutral-200 bg-neutral-100">
