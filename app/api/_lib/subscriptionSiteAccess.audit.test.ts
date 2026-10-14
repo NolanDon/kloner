@@ -2,8 +2,9 @@ export {};
 const critical = jest.fn(async (_event: any) => ({ delivered: true }));
 const audit = jest.fn(async (_event: any) => ({ delivered: true }));
 let projects: any[] = [];
+let userData: any = {};
 const userRef: any = {
-    get: async () => ({ exists: true, data: () => ({}) }),
+    get: async () => ({ exists: true, data: () => userData }),
     set: jest.fn(async () => {}),
     collection: (name: string) => ({
         doc: () => ({}),
@@ -17,7 +18,15 @@ jest.mock("@/lib/observability", () => ({ captureAuditEvent: (event: any) => aud
 describe("billing pause audit reporting", () => {
     const originalFetch = global.fetch;
     afterEach(() => { global.fetch = originalFetch; });
-    beforeEach(() => { critical.mockClear(); audit.mockClear(); projects = []; });
+    beforeEach(() => { critical.mockClear(); audit.mockClear(); projects = []; userData = {}; });
+
+    it("does not repeat a completed live-site suspension on tier reads", async () => {
+        userData = { billingSiteAccess: { state: "suspended", method: "blank_deployment" } };
+        global.fetch = jest.fn() as any;
+        const { suspendUserLiveSites } = await import("./subscriptionSiteAccess");
+        expect(await suspendUserLiveSites("user-debug", "subscription_cancelled")).toEqual({ suspended: 0, failed: 0 });
+        expect(global.fetch).not.toHaveBeenCalled();
+    });
 
     it("keeps a missing provider project visible as an incomplete operation", async () => {
         projects = [{ vercelProjectId: "prj_missing" }];

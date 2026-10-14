@@ -226,6 +226,12 @@ export async function suspendUserLiveSites(uid: string, reason: string): Promise
     const userRef = await getUserRootRef(uid);
     const currentUserSnap = await userRef.get();
     const currentAccess = currentUserSnap.exists ? (currentUserSnap.data() as any)?.billingSiteAccess : null;
+    // Reads of /api/billing/tier can happen frequently while a dashboard is
+    // open. Once a blank deployment pause completed, do not repeat all Vercel
+    // lookups and deployments on every read. Partial operations remain retryable.
+    if (currentAccess?.state === "suspended" && currentAccess?.method === "blank_deployment") {
+        return { suspended: 0, failed: 0 };
+    }
     const integrationRef = userRef.collection("integrations").doc("vercel");
     const integration = await loadVercelIntegration(integrationRef);
     // A canceled user may never have connected Vercel. There is no live site to
