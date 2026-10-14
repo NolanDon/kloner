@@ -228,12 +228,13 @@ export function WebsitePrePaywall({
                                     <motion.div
                                         animate={{ x: `${-activeSlide * 100}%` }}
                                         transition={{ type: "spring", stiffness: 120, damping: 22, mass: 0.9 }}
-                                        className="flex w-full"
+                                        className="flex w-full items-start"
                                     >
                                         {carouselSlides.map((slide, index) => (
                                             <div
                                                 key={`${slide.kind}-${index}`}
-                                                className="w-full shrink-0"
+                                                className={`w-full shrink-0 ${index === activeSlide ? "" : "h-0 overflow-hidden"}`}
+                                                aria-hidden={index !== activeSlide}
                                             >
                                                 {slide.kind === "checklist" ? (
                                                     <div className="flex h-full min-h-[170px] flex-col justify-center gap-3 px-5 py-5 sm:min-h-[210px] sm:px-6 sm:py-6">
@@ -257,9 +258,9 @@ export function WebsitePrePaywall({
                                                         </div>
                                                     </div>
                                                 ) : (
-                                                    <div className="flex h-full min-h-[170px] items-center justify-center px-4 sm:min-h-[210px] sm:px-0">
-                                                        <div className="w-full max-w-[440px] rounded-[24px]">
-                                                            <div className="mb-4 flex items-center gap-3">
+                                                    <div className="px-4 py-4 sm:px-5 sm:py-5">
+                                                        <div className="w-full rounded-[24px]">
+                                                            <div className="mb-3 flex items-center gap-3">
                                                                 <div className="relative h-11 w-11 overflow-hidden rounded-full border border-neutral-200 bg-neutral-100">
                                                                     <Image
                                                                         src={slide.avatar}
@@ -274,7 +275,7 @@ export function WebsitePrePaywall({
                                                                     <div className="text-xs text-neutral-500">{slide.title}</div>
                                                                 </div>
                                                             </div>
-                                                            <p className="text-[15px] leading-6 text-neutral-700 sm:text-[16px] sm:leading-7 pb-8">
+                                                            <p className="text-[15px] leading-6 text-neutral-700 sm:text-[16px] sm:leading-7">
                                                                 “{slide.quote}”
                                                             </p>
                                                         </div>

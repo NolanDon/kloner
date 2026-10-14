@@ -21,7 +21,7 @@ function readFloatEnv(raw: string | undefined, fallback: number): number {
 export const STRIPE_TRIAL_DAYS = Math.max(0, readIntEnv(process.env.NEXT_PUBLIC_STRIPE_TRIAL_DAYS, 7));
 
 export const TRIAL_CTA_LABEL =
-    STRIPE_TRIAL_DAYS > 0 ? "Start for free" : "Subscribe now";
+    STRIPE_TRIAL_DAYS > 0 ? "Start for free today" : "Subscribe now";
 
 export const BASIC_MONTHLY_PRICE_USD = Math.max(
     1,
