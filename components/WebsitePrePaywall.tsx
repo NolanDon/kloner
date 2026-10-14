@@ -7,7 +7,7 @@ import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import logo from "@/public/images/orange_logo.png";
-import { BASIC_MONTHLY_PRICE_USD, TRIAL_CTA_LABEL } from "@/src/lib/billingAccess";
+import { BASIC_MONTHLY_PRICE_USD, STRIPE_TRIAL_DAYS, TRIAL_CTA_LABEL } from "@/src/lib/billingAccess";
 
 type WebsitePrePaywallProps = {
     open: boolean;
@@ -249,13 +249,16 @@ export function WebsitePrePaywall({
 
                             <div className="mt-5 flex flex-col gap-3">
                                 <p className="text-center text-[11px] text-neutral-500 sm:text-xs">
+                                    {STRIPE_TRIAL_DAYS > 0 && primaryLabel === TRIAL_CTA_LABEL
+                                        ? `${STRIPE_TRIAL_DAYS}-day free trial. `
+                                        : null}
                                     {footerNote}
                                 </p>
 
                                 <button
                                     type="button"
                                     onClick={onStartCheckout}
-                                    className="inline-flex flex-1 items-center justify-center rounded-full bg-[#FF8D21] px-5 py-3.5 text-[15px] font-semibold tracking-tight text-white shadow-[0_14px_30px_rgba(255,141,33,0.22)] transition hover:translate-y-[-1px] hover:bg-[#D96E11] sm:px-6 sm:py-4 sm:text-[17px]"
+                                    className="inline-flex min-h-16 w-full items-center justify-center rounded-full bg-[#FF8D21] px-6 py-4 text-xl font-bold tracking-tight text-white shadow-[0_14px_30px_rgba(255,141,33,0.22)] transition hover:translate-y-[-1px] hover:bg-[#D96E11] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D96E11] focus-visible:ring-offset-2 disabled:cursor-wait disabled:opacity-70 sm:min-h-[72px] sm:px-8 sm:py-5 sm:text-2xl"
                                     disabled={checkoutBusy}
                                 >
                                     {checkoutBusy ? "Redirecting to Stripe…" : primaryLabel}
