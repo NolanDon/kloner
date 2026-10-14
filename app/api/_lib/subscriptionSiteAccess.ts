@@ -228,7 +228,10 @@ export async function suspendUserLiveSites(uid: string, reason: string): Promise
     const currentAccess = currentUserSnap.exists ? (currentUserSnap.data() as any)?.billingSiteAccess : null;
     const integrationRef = userRef.collection("integrations").doc("vercel");
     const integration = await loadVercelIntegration(integrationRef);
-    if (!integration.accessToken) throw new Error("Vercel integration is not connected.");
+    // A canceled user may never have connected Vercel. There is no live site to
+    // suspend in that case, so treat it as a successful no-op instead of logging
+    // an error on every billing-tier read.
+    if (!integration.accessToken) return { suspended: 0, failed: 0 };
     const accessToken = integration.accessToken;
 
     const projects = await collectUserProjects(uid, userRef);
