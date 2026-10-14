@@ -26,6 +26,7 @@ type WebsitePrePaywallProps = {
 };
 
 const carouselAutoAdvanceMs = [7200, 5600, 5600];
+const paywallCardHeightPx = 280;
 
 const websitePaywallShowcaseImages = [
     "/images/showcase/showcase1.jpg",
@@ -66,7 +67,7 @@ export function WebsitePrePaywall({
         "Deploy 40+ websites per month",
         "One-click publishing",
         "AI task force to build and design your websites",
-        // "Higher queue priority for faster outputs",
+        "Higher queue priority for faster outputs",
         "24/7 Human support included",
         `Subscriptions starting at only $${BASIC_MONTHLY_PRICE_USD.toFixed(2)}/mo.`,
     ],
@@ -224,7 +225,7 @@ export function WebsitePrePaywall({
                             </div>
 
                             <div className="mt-6 border-t border-neutral-200 pt-4">
-                                <div className="relative h-[260px] overflow-hidden rounded-[24px] border border-transparent bg-white shadow-[0_18px_42px_rgba(0,0,0,0.13)]">
+                                <div style={{ height: paywallCardHeightPx }} className="relative overflow-hidden rounded-[24px] border border-transparent bg-white shadow-[0_18px_42px_rgba(0,0,0,0.13)]">
                                     <motion.div
                                         animate={{ x: `${-activeSlide * 100}%` }}
                                         transition={{ type: "spring", stiffness: 120, damping: 22, mass: 0.9 }}
@@ -237,7 +238,7 @@ export function WebsitePrePaywall({
                                                 aria-hidden={index !== activeSlide}
                                             >
                                                 {slide.kind === "checklist" ? (
-                                                    <div className="grid h-[260px] grid-cols-2 content-center gap-x-5 gap-y-4 px-5 py-7 sm:gap-x-8 sm:px-8 sm:py-8">
+                                                    <div style={{ height: paywallCardHeightPx }} className="grid grid-cols-2 content-center gap-x-5 gap-y-4 px-5 py-7 sm:gap-x-8 sm:px-8 sm:py-8">
                                                         <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#FF8D21]">
                                                             {slide.title}
                                                         </div>
@@ -247,7 +248,7 @@ export function WebsitePrePaywall({
                                                                     key={item}
                                                                     className="flex items-start gap-2 text-[13px] leading-relaxed text-neutral-800 sm:text-sm"
                                                                 >
-                                                                    <span className="mt-[1px] inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold text-[#FF8D21]">
+                                                                    <span className="mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-base font-semibold text-[#FF8D21]">
                                                                         ✓
                                                                     </span>
                                                                     <span className={/starting at/i.test(item) ? "font-semibold text-neutral-900" : ""}>
@@ -258,7 +259,7 @@ export function WebsitePrePaywall({
                                                         </div>
                                                     </div>
                                                 ) : (
-                                                    <div className="flex h-[260px] items-center px-6 py-7 sm:px-10 sm:py-8">
+                                                    <div style={{ height: paywallCardHeightPx }} className="flex items-center px-6 pb-7 pt-4 sm:px-10 sm:pb-8 sm:pt-5">
                                                         <div className="w-full rounded-[24px]">
                                                             <div className="mb-3 flex items-center gap-3">
                                                                 <div className="relative h-11 w-11 overflow-hidden rounded-full border border-neutral-200 bg-neutral-100">
