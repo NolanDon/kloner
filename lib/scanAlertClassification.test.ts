@@ -18,6 +18,13 @@ describe("scan alert classification", () => {
         expect(classifyScanAlert({ backendStatus: "ready", message: "URL capture reached a terminal error without a backend diagnostic." })).toMatchObject({ statusCode: 200, severity: "info" });
         expect(classifyScanAlert({ backendStatus: "ready", message: "Failed to apply archive" })).toMatchObject({ statusCode: 502, severity: "critical" });
     });
+    it("recognizes the observed Yaga UI-ready fallback without concealing real diagnostics", () => {
+        const message = "URL capture reached a terminal error without a backend diagnostic.; captureStatus=ready";
+        expect(classifyScanAlert({ code: "URL_CAPTURE_TERMINAL_ERROR", message })).toMatchObject({ classification: "stale_ui_state", severity: "info", statusCode: 200 });
+        expect(classifyScanAlert({ code: "HTML_FILE_EMPTY_BEFORE_PERSIST", message })).toMatchObject({ severity: "critical" });
+        expect(classifyScanAlert({ message: "Failed to apply archive; captureStatus=ready" })).toMatchObject({ severity: "critical" });
+        expect(classifyScanAlert({ message: "URL capture reached a terminal error without a backend diagnostic.; captureStatus=processing" })).toMatchObject({ severity: "critical" });
+    });
     it("retains real errors and distinguishes polling timeouts", () => {
         expect(classifyScanAlert({ message: "zip failed" }).severity).toBe("critical");
         expect(classifyScanAlert({ message: "Archive scan timed out before the archive was ready." })).toMatchObject({ statusCode: 504, severity: "error" });

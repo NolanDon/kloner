@@ -30,7 +30,9 @@ export function classifyScanAlert({ code = "", message = "", statusCode = 502, b
     if (/RATE_LIMITED|snapshot_v[23]_rate_limited/i.test(diagnostic)) {
         return { severity: "warning" as const, statusCode: 429, classification: "upstream_rate_limit" };
     }
-    if (backendStatus === "ready" && /terminal error without a backend diagnostic/i.test(message)) {
+    const diagnosticFreeReadyState = (backendStatus === "ready" || /\bcaptureStatus=ready(?:[;\s]|$)/i.test(message)) &&
+        (!code || code === "URL_CAPTURE_TERMINAL_ERROR") && /terminal error without a backend diagnostic/i.test(message);
+    if (diagnosticFreeReadyState) {
         return { severity: "info" as const, statusCode: 200, classification: "stale_ui_state" };
     }
     if (/timed out|couldn't confirm.*\d+ minutes|snapshot_budget_exceeded/i.test(message)) {
