@@ -5601,7 +5601,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
         const response = await revertWorkspaceAutonomyAgentV3(appId, pointId, await withCsrfHeaders());
         const result = response.data;
         if (!response.ok || result?.ok !== true || typeof result.inverseRestorePointId !== "string") {
-            throw new Error(String(result?.error || response.error || "I couldn't verify the restored preview. Please retry."));
+            throw Object.assign(new Error(String(result?.error || response.error || "I couldn't verify the restored preview. Please retry.")), { code: result?.code, requestId: result?.requestId });
         }
         await refreshV3Preview(`restore:${pointId}`).catch(() => {});
         return result.inverseRestorePointId;

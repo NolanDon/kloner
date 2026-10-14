@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { formatWorkspaceRestoreError } from "@/src/lib/workspaceRestoreError";
 import { WorkspaceAgentLoader } from "./WorkspaceAgentActivity";
 
 export type WorkspaceRestoreState = { pointId: string; undone?: boolean; kept?: boolean };
@@ -23,7 +24,7 @@ export default function WorkspaceRestoreControls({ state, disabled, restore, onC
             const inverse = await restore(state.pointId);
             onChange({ pointId: inverse, undone: !state.undone, kept: false });
         } catch (e) {
-            setError(e instanceof Error ? e.message : "I couldn't restore that change. Please try again.");
+            setError(formatWorkspaceRestoreError(e));
         } finally { inFlight.current = false; setBusy(false); }
     };
     return <div className="mt-3 space-y-2">
