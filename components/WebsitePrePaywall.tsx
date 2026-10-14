@@ -3,7 +3,7 @@
 import type { ReactNode } from "react";
 import Image from "next/image";
 import { motion } from "framer-motion";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import logo from "@/public/images/orange_logo.png";
@@ -13,7 +13,7 @@ type WebsitePrePaywallProps = {
     open: boolean;
     onClose: () => void;
     onStartCheckout: () => void;
-    onManageSubscription?: () => void;
+    confirmExit?: boolean;
     checkoutBusy?: boolean;
     zIndexClassName?: string;
     dismissible?: boolean;
@@ -56,7 +56,7 @@ export function WebsitePrePaywall({
     open,
     onClose,
     onStartCheckout,
-    onManageSubscription,
+    confirmExit = false,
     checkoutBusy = false,
     zIndexClassName = "z-[2147483647]",
     dismissible = true,
@@ -88,6 +88,20 @@ export function WebsitePrePaywall({
         [],
     );
     const [activeSlide, setActiveSlide] = useState(0);
+    const [showExitConfirmation, setShowExitConfirmation] = useState(false);
+    const exitDialogRef = useRef<HTMLDialogElement>(null);
+    const exitTitleId = useId();
+    const exitDescriptionId = useId();
+
+    useEffect(() => {
+        const dialog = exitDialogRef.current;
+        if (open && showExitConfirmation) {
+            if (dialog && !dialog.open) dialog.showModal();
+        } else {
+            dialog?.close();
+            setShowExitConfirmation(false);
+        }
+    }, [open, showExitConfirmation]);
 
     useEffect(() => {
         if (!open) return;
@@ -132,6 +146,43 @@ export function WebsitePrePaywall({
             exit={{ opacity: 0 }}
             transition={{ duration: 0.34, ease: "easeOut" }}
         >
+            <dialog
+                ref={exitDialogRef}
+                aria-labelledby={exitTitleId}
+                aria-describedby={exitDescriptionId}
+                onKeyDown={(event) => event.stopPropagation()}
+                onCancel={(event) => {
+                    event.preventDefault();
+                    if (!checkoutBusy) setShowExitConfirmation(false);
+                }}
+                className="m-auto w-[calc(100%-2rem)] max-w-sm rounded-2xl border border-neutral-200 bg-white p-6 text-neutral-900 shadow-2xl backdrop:bg-black/50"
+            >
+                <h3 id={exitTitleId} className="text-xl font-semibold">Leave your project?</h3>
+                <p id={exitDescriptionId} className="mt-2 text-sm leading-relaxed text-neutral-600">
+                    Unlock your project to keep editing. {STRIPE_TRIAL_DAYS > 0 ? "You can start for free today!" : "Choose a plan to keep building."}
+                </p>
+                <div className="mt-5 flex flex-col gap-3">
+                    <button
+                        type="button"
+                        onClick={onStartCheckout}
+                        disabled={checkoutBusy}
+                        className="min-h-12 rounded-full bg-[#FF8D21] px-5 py-3 font-semibold text-white hover:bg-[#D96E11] disabled:cursor-wait disabled:opacity-70"
+                    >
+                        {checkoutBusy ? "Redirecting to Stripe…" : primaryLabel}
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => {
+                            setShowExitConfirmation(false);
+                            onClose();
+                        }}
+                        disabled={checkoutBusy}
+                        className="py-1 text-sm text-neutral-600 underline underline-offset-4 disabled:opacity-70"
+                    >
+                        Exit editor
+                    </button>
+                </div>
+            </dialog>
             <motion.div
                 className="absolute inset-0 bg-black/55 backdrop-blur-2xl backdrop-saturate-150"
                 initial={{ opacity: 0 }}
@@ -267,7 +318,7 @@ export function WebsitePrePaywall({
                                 {secondaryLabel ? (
                                     <button
                                         type="button"
-                                        onClick={onClose}
+                                        onClick={() => confirmExit ? setShowExitConfirmation(true) : onClose()}
                                         className="inline-flex items-center justify-center px-1 py-0 text-[13px] font-semibold tracking-tight text-neutral-600 underline underline-offset-4 transition hover:text-neutral-900 sm:text-sm"
                                         disabled={checkoutBusy}
                                     >
@@ -275,22 +326,6 @@ export function WebsitePrePaywall({
                                     </button>
                                 ) : null}
 
-                                {onManageSubscription ? (
-                                    <button
-                                        type="button"
-                                        onClick={onManageSubscription}
-                                        className="inline-flex items-center justify-center text-[12px] font-medium tracking-tight text-neutral-500 transition hover:text-neutral-800"
-                                    >
-                                        Manage subscription in Settings <span className="ml-1" aria-hidden="true">→</span>
-                                    </button>
-                                ) : (
-                                    <a
-                                        href="/dashboard/settings"
-                                        className="inline-flex items-center justify-center text-[12px] font-medium tracking-tight text-neutral-500 transition hover:text-neutral-800"
-                                    >
-                                        Manage subscription in Settings <span className="ml-1" aria-hidden="true">→</span>
-                                    </a>
-                                )}
                             </div>
 
                             <div className="mt-6 border-t border-neutral-200 pt-4">

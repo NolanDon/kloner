@@ -3664,15 +3664,6 @@ export default function AppBuilderEditor({
     }, [appId]);
 
     const closeRequestInFlightRef = useRef(false);
-    const manageSubscriptionFromPaywall = useCallback(async () => {
-        const confirmed = await showConfirm(
-            "Leave the App Builder?",
-            "Leave App Builder",
-        );
-        if (!confirmed) return;
-        allowNextNavigationRef.current = true;
-        window.location.assign("/dashboard/settings");
-    }, [showConfirm]);
     const requestClose = useCallback(async () => {
         if (closeRequestInFlightRef.current) return;
         closeRequestInFlightRef.current = true;
@@ -8779,13 +8770,13 @@ export default function AppBuilderEditor({
                     onStartCheckout={() => {
                         requestDeployCheckout();
                     }}
-                    onManageSubscription={agentMode === "v3" ? () => void manageSubscriptionFromPaywall() : undefined}
                     checkoutBusy={trialCheckoutBusy || localTrialCheckoutBusy}
                     zIndexClassName="z-[9999999999]"
                     title="Unlock your project"
                     description="Upgrade to unlock editing, keep your momentum, and turn your changes into a live website with one click."
                     primaryLabel={TRIAL_CTA_LABEL}
                     secondaryLabel="No thanks, exit editor"
+                    confirmExit
                     footerNote="Cancel anytime before renewal."
                     dismissible={false}
                 />
@@ -8796,7 +8787,6 @@ export default function AppBuilderEditor({
                     onStartCheckout={() => {
                         requestDeployCheckout();
                     }}
-                    onManageSubscription={agentMode === "v3" ? () => void manageSubscriptionFromPaywall() : undefined}
                     checkoutBusy={trialCheckoutBusy || localTrialCheckoutBusy}
                     zIndexClassName="z-[20001]"
                     title={upgradePaywallCopy.title}

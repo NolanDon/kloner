@@ -7134,6 +7134,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                     description="Upgrade to unlock editing, keep your momentum, and turn your changes into a live website with one click."
                     primaryLabel={TRIAL_CTA_LABEL}
                     secondaryLabel="No thanks, exit editor"
+                    confirmExit
                     footerNote="Cancel anytime before renewal."
                     dismissible={false}
                 />
