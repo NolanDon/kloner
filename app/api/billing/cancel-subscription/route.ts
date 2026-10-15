@@ -297,6 +297,24 @@ async function handler(req: NextRequest, uid: string) {
             idempotencyKey: `${uid}:${subId}:${retentionOfferRequested ? "retention" : atPeriodEnd ? "cancel" : "resume"}`,
         })) as unknown as Record<string, any>;
     } catch (error: any) {
+        // Stripe treats an already-canceled subscription as immutable. A
+        // repeated cancel click is idempotent from the user's perspective, so
+        // reuse the current object and continue mirroring its state instead of
+        // surfacing Stripe's invalid-update error as a 500.
+        const canceledUpdate =
+            !retentionOfferRequested &&
+            typeof error?.message === "string" &&
+            /canceled subscription can only update its cancellation_details and metadata/i.test(error.message);
+        if (canceledUpdate) {
+            try {
+                updatedRaw = (await stripe.subscriptions.retrieve(subId)) as unknown as Record<string, any>;
+            } catch (retrieveError) {
+                error = retrieveError;
+            }
+        }
+        if (canceledUpdate && updatedRaw) {
+            // Continue through the normal Firestore mirror and credit handling.
+        } else {
         if (retentionOfferRequested) {
             await userRef.set(
                 {
@@ -345,6 +363,7 @@ async function handler(req: NextRequest, uid: string) {
         }
 
         throw error;
+        }
     }
 
     const stripeStatus = typeof updatedRaw.status === "string" ? updatedRaw.status : null;
