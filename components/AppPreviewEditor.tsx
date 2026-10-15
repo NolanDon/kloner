@@ -883,7 +883,7 @@ import { db, storage } from "@/lib/firebase"; // or wherever your db is
 import type { User as FirebaseUser } from "firebase/auth";
 import type { RenderDoc } from "@/app/dashboard/view/DashboardView";
 import { useAuth } from "@/src/hooks/useAuth";
-import { TRIAL_CTA_LABEL } from "@/src/lib/billingAccess";
+import { BASIC_MONTHLY_PRICE_USD, TRIAL_CTA_LABEL } from "@/src/lib/billingAccess";
 import type { UserTier } from "@/src/lib/credits";
 import { Camera, Check, ChevronDown, ChevronLeft, ChevronRight, Code2, Eye, EyeOff, FileText, Images, Lock, Loader2, Maximize2, MessageSquare, Minimize2, Monitor, Palette, Pencil, Pipette, Redo2, Rocket, RotateCcw, RotateCw, SlidersHorizontal, Smartphone, Tablet, Trash2Icon, Undo2, X } from "lucide-react";
 import { compressImageForUpload } from "@/src/lib/clientImageCompression";
@@ -1419,7 +1419,6 @@ export function AppPreviewEditorCore({
     const [prefetchedAiHistoryLoading, setPrefetchedAiHistoryLoading] = useState<boolean>(false);
     const canUsePremiumImagesTab = userTier === "pro" || userTier === "agency";
     const shouldLockImagesTab = !authLoading && !canUsePremiumImagesTab;
-    const accessPaywallTitle = "Unlock your project, keep building";
 
     function normalizeAiEditCreatedAt(raw: any): string {
         if (!raw) return "";
@@ -7130,12 +7129,12 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                     }}
                     checkoutBusy={exporting || localTrialCheckoutBusy}
                     zIndexClassName="z-[30000]"
-                    title={accessPaywallTitle}
-                    description="Upgrade to unlock editing, keep your momentum, and turn your changes into a live website with one click."
-                    primaryLabel={TRIAL_CTA_LABEL}
+                    title="Your website is ready to edit"
+                    description="Start your 7-day free trial to unlock editing, customize your website, and publish when you're ready."
+                    primaryLabel="Start my 7-day free trial →"
                     secondaryLabel="No thanks, exit editor"
                     confirmExit
-                    footerNote="Cancel anytime before renewal."
+                    footerNote={`Then $${BASIC_MONTHLY_PRICE_USD.toFixed(2)}/month. Cancel anytime.`}
                     dismissible={false}
                 />
 

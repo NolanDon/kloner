@@ -8772,12 +8772,12 @@ export default function AppBuilderEditor({
                     }}
                     checkoutBusy={trialCheckoutBusy || localTrialCheckoutBusy}
                     zIndexClassName="z-[9999999999]"
-                    title="Unlock your project"
-                    description="Upgrade to unlock editing, keep your momentum, and turn your changes into a live website with one click."
-                    primaryLabel={TRIAL_CTA_LABEL}
+                    title="Your website is ready to edit"
+                    description="Start your 7-day free trial to unlock editing, customize your website, and publish when you're ready."
+                    primaryLabel="Start my 7-day free trial →"
                     secondaryLabel="No thanks, exit editor"
                     confirmExit
-                    footerNote="Cancel anytime before renewal."
+                    footerNote={`Then $${BASIC_MONTHLY_PRICE_USD.toFixed(2)}/month. Cancel anytime.`}
                     dismissible={false}
                 />
 
