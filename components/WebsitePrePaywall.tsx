@@ -26,6 +26,14 @@ type WebsitePrePaywallProps = {
 };
 
 const paywallCardHeightPx = 280;
+const paywallBenefitIcons = [
+    "/images/paywall-icons/website.webp",
+    "/images/paywall-icons/publish.webp",
+    "/images/paywall-icons/ai.webp",
+    "/images/paywall-icons/priority.webp",
+    "/images/paywall-icons/support.webp",
+    "/images/paywall-icons/pricing.webp",
+];
 
 const websitePaywallShowcaseImages = [
     "/images/showcase/showcase1.jpg",
@@ -192,19 +200,17 @@ export function WebsitePrePaywall({
                                                 aria-hidden={index !== activeSlide}
                                             >
                                                 <>
-                                                    <div style={{ height: paywallCardHeightPx }} className="grid grid-cols-2 content-center gap-x-6 gap-y-5 px-2 py-5 sm:gap-x-12 sm:gap-y-6 sm:px-7 sm:py-8">
-                                                        <div className="col-span-2 mb-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#FF8D21]">
+                                                    <div style={{ height: paywallCardHeightPx }} className="flex flex-col justify-center gap-3 px-2 py-5 sm:px-7 sm:py-8">
+                                                        <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#FF8D21]">
                                                             {slide.title}
                                                         </div>
-                                                        <div className="col-span-2 grid grid-cols-1 gap-x-5 gap-y-3 sm:grid-cols-2 sm:gap-x-8">
-                                                            {benefits.map((item) => (
+                                                        <div className="flex flex-col gap-2">
+                                                            {benefits.map((item, itemIndex) => (
                                                                 <div
                                                                     key={item}
-                                                                    className="flex items-start gap-3 text-[13px] leading-relaxed text-neutral-800 sm:text-sm"
+                                                                    className="flex items-center gap-3 text-[13px] leading-snug text-neutral-800 sm:text-sm"
                                                                 >
-                                                                    <span className="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center text-xl font-medium leading-none text-[#FF8D21]">
-                                                                        ✓
-                                                                    </span>
+                                                                    <Image src={paywallBenefitIcons[itemIndex % paywallBenefitIcons.length]} alt="" width={22} height={22} className="h-[22px] w-[22px] shrink-0 object-contain" />
                                                                     <span className={/starting at/i.test(item) ? "font-semibold text-neutral-900" : ""}>
                                                                         {item}
                                                                     </span>
