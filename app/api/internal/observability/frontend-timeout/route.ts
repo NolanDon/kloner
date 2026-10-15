@@ -124,6 +124,12 @@ export async function POST(req: NextRequest) {
 
             const enrichedMessage = [
                 editorFailure ? message.replace(/^URL capture failed for /, "Editor opening failed for ") : message,
+                action === "url_capture_stalled" && typeof ageMs === "number"
+                    ? `elapsed=${Math.round(ageMs / 1000)}s`
+                    : "",
+                action.startsWith("url_capture") && backendStatus
+                    ? `backendStatus=${backendStatus}`
+                    : "",
                 browser ? `browser=${browser}` : "",
                 reason ? `reason=${reason}` : "",
                 payloadUserAgent ? `ua=${payloadUserAgent}` : "",
