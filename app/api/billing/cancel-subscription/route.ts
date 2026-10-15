@@ -287,7 +287,7 @@ async function handler(req: NextRequest, uid: string) {
         );
     }
 
-    let updatedRaw: Record<string, any>;
+    let updatedRaw: Record<string, any> = {};
     try {
         updatedRaw = (await stripe.subscriptions.update(subId, {
             cancel_at_period_end: retentionOfferRequested ? false : atPeriodEnd,
