@@ -215,7 +215,7 @@ export function WebsitePrePaywall({
 
                     <div className="max-h-[calc(100dvh-2.25rem)] overflow-y-auto overscroll-contain sm:max-h-[calc(100dvh-3rem)]">
                         <div className="p-4 sm:p-6 lg:p-7">
-                            <div className="max-w-lg pr-14">
+                            <div className="mx-auto max-w-lg text-center">
                                 <h3 className="text-2xl tracking-tight text-neutral-900 sm:text-[2.15rem]">
                                     {title}
                                 </h3>
@@ -239,7 +239,7 @@ export function WebsitePrePaywall({
                                             >
                                                 {slide.kind === "checklist" ? (
                                                     <div style={{ height: paywallCardHeightPx }} className="grid grid-cols-2 content-center gap-x-5 gap-y-4 px-5 py-4 sm:gap-x-8 sm:px-8 sm:py-8">
-                                                        <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#FF8D21]">
+                                                        <div className="col-span-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#FF8D21]">
                                                             {slide.title}
                                                         </div>
                                                         <div className="col-span-2 grid grid-cols-1 gap-x-5 gap-y-3 sm:grid-cols-2 sm:gap-x-8">
@@ -331,16 +331,16 @@ export function WebsitePrePaywall({
                             </div>
 
                             <div className="mt-6 border-t border-neutral-200 pt-4">
-                                <div className="mb-2.5 flex items-center justify-center gap-3 text-center">
+                                <div className="mb-2.5 flex items-center justify-center gap-1 text-center">
                                     <span className="text-[11px] uppercase tracking-[0.1em] text-neutral-500 sm:text-[11px]">
                                         See what <span className="text-[15px] font-bold text-[rgba(255,141,33,1)]">5000+</span> Kloner members have built with
                                     </span>
-                                    <span className="relative inline-block h-[40px] w-[40px] sm:h-[56px] sm:w-[56px]">
+                                    <span className="relative inline-block h-[48px] w-[48px] sm:h-[64px] sm:w-[64px]">
                                         <Image
                                             src={logo}
                                             alt="Kloner logo"
                                             fill
-                                            sizes="(max-width: 640px) 40px, 56px"
+                                            sizes="(max-width: 640px) 48px, 64px"
                                             className="object-contain"
                                         />
                                     </span>
