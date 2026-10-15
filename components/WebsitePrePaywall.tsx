@@ -65,7 +65,7 @@ export function WebsitePrePaywall({
     description = "Build websites with databases, products, and AI integrations, access way more features, then publish them from the same dashboard.",
     benefits = [
         "Deploy 40+ websites per month",
-        "One-click publishing",
+        "Unlocks one-click publishing",
         "AI task force to build and design your websites",
         "Higher queue priority for faster outputs",
         "24/7 Human support included",
@@ -238,7 +238,7 @@ export function WebsitePrePaywall({
                                                 aria-hidden={index !== activeSlide}
                                             >
                                                 {slide.kind === "checklist" ? (
-                                                    <div style={{ height: paywallCardHeightPx }} className="grid grid-cols-2 content-center gap-x-5 gap-y-4 px-5 py-7 sm:gap-x-8 sm:px-8 sm:py-8">
+                                                    <div style={{ height: paywallCardHeightPx }} className="grid grid-cols-2 content-center gap-x-5 gap-y-4 px-5 py-4 sm:gap-x-8 sm:px-8 sm:py-8">
                                                         <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#FF8D21]">
                                                             {slide.title}
                                                         </div>
