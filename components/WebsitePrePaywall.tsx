@@ -3,7 +3,7 @@
 import type { ReactNode } from "react";
 import Image from "next/image";
 import { motion } from "framer-motion";
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import logo from "@/public/images/orange_logo.png";
@@ -25,7 +25,6 @@ type WebsitePrePaywallProps = {
     footerNote?: string;
 };
 
-const carouselAutoAdvanceMs = [7200, 5600, 5600];
 const paywallCardHeightPx = 280;
 
 const websitePaywallShowcaseImages = [
@@ -34,23 +33,6 @@ const websitePaywallShowcaseImages = [
     "/images/showcase/showcase3.jpg",
     "/images/showcase/showcase4.jpg",
     "/images/showcase/showcase5.jpg",
-];
-
-const testimonialSlides = [
-    {
-        name: "RJ",
-        title: "Product Manager @ Stealth",
-        avatar: "/images/avatars/portfolio1.jpg",
-        quote:
-            "the manual editing saved me a ridiculous amount of time. I like the prompt feature but for small quick edits i love that i can just go in and type new copywrite",
-    },
-    {
-        name: "Jordan B",
-        title: "Solopreneur",
-        avatar: "/images/avatars/portfolio2.jpg",
-        quote:
-            "the whole app has been a legit LIFESAVER for me. I run a small team and were burning money waiting on revisions and now I can get client sites out way faster than i expected",
-    },
 ];
 
 export function WebsitePrePaywall({
@@ -75,20 +57,8 @@ export function WebsitePrePaywall({
     secondaryLabel = "No thanks, continue with limited features",
     footerNote = "Cancel anytime before renewal.",
 }: WebsitePrePaywallProps) {
-    const carouselSlides = useMemo(
-        () => [
-            {
-                kind: "checklist" as const,
-                title: "What you unlock",
-            },
-            ...testimonialSlides.map((slide) => ({
-            kind: "testimonial" as const,
-            ...slide,
-            })),
-        ],
-        [],
-    );
-    const [activeSlide, setActiveSlide] = useState(0);
+    const carouselSlides = [{ kind: "checklist" as const, title: "What you unlock" }];
+    const activeSlide = 0;
     const [showExitConfirmation, setShowExitConfirmation] = useState(false);
     const exitDialogRef = useRef<HTMLDialogElement>(null);
     const exitTitleId = useId();
@@ -119,22 +89,6 @@ export function WebsitePrePaywall({
             docEl.style.overflow = prevHtmlOverflow;
             body.style.overflow = prevBodyOverflow;
         };
-    }, [open]);
-
-    useEffect(() => {
-        if (!open) return;
-
-        const currentDuration = carouselAutoAdvanceMs[activeSlide] ?? 5200;
-        const timer = window.setTimeout(() => {
-            setActiveSlide((current) => (current + 1) % carouselSlides.length);
-        }, currentDuration);
-
-        return () => window.clearTimeout(timer);
-    }, [activeSlide, carouselSlides.length, open]);
-
-    useEffect(() => {
-        if (!open) return;
-        setActiveSlide(0);
     }, [open]);
 
     if (!open) return null;
@@ -215,17 +169,17 @@ export function WebsitePrePaywall({
 
                     <div className="max-h-[calc(100dvh-2.25rem)] overflow-y-auto overscroll-contain sm:max-h-[calc(100dvh-3rem)]">
                         <div className="p-4 sm:p-6 lg:p-7">
-                            <div className="mx-auto max-w-lg text-center">
-                                <h3 className="text-2xl tracking-tight text-neutral-900 sm:text-[2.15rem]">
+                            <div className="mx-auto max-w-xl px-4 text-center sm:px-8">
+                                <h3 className="text-2xl leading-tight tracking-tight text-neutral-900 sm:text-[2.15rem]">
                                     {title}
                                 </h3>
-                                <p className="mt-4 text-sm leading-relaxed text-neutral-600 sm:text-[15px]">
+                                <p className="mt-5 text-sm leading-relaxed text-neutral-600 sm:text-[15px]">
                                     {description}
                                 </p>
                             </div>
 
                             <div className="mt-6 border-t border-neutral-200 pt-4">
-                                <div style={{ height: paywallCardHeightPx }} className="relative overflow-hidden rounded-[24px] border border-transparent bg-white shadow-[0_18px_42px_rgba(0,0,0,0.13)]">
+                                <div style={{ height: paywallCardHeightPx }} className="relative overflow-hidden bg-transparent">
                                     <motion.div
                                         animate={{ x: `${-activeSlide * 100}%` }}
                                         transition={{ type: "spring", stiffness: 120, damping: 22, mass: 0.9 }}
@@ -237,18 +191,18 @@ export function WebsitePrePaywall({
                                                 className={`w-full shrink-0 ${index === activeSlide ? "" : "h-0 overflow-hidden"}`}
                                                 aria-hidden={index !== activeSlide}
                                             >
-                                                {slide.kind === "checklist" ? (
-                                                    <div style={{ height: paywallCardHeightPx }} className="grid grid-cols-2 content-center gap-x-5 gap-y-4 px-5 py-4 sm:gap-x-8 sm:px-8 sm:py-8">
-                                                        <div className="col-span-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#FF8D21]">
+                                                <>
+                                                    <div style={{ height: paywallCardHeightPx }} className="grid grid-cols-2 content-center gap-x-6 gap-y-5 px-2 py-5 sm:gap-x-12 sm:gap-y-6 sm:px-7 sm:py-8">
+                                                        <div className="col-span-2 mb-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#FF8D21]">
                                                             {slide.title}
                                                         </div>
                                                         <div className="col-span-2 grid grid-cols-1 gap-x-5 gap-y-3 sm:grid-cols-2 sm:gap-x-8">
                                                             {benefits.map((item) => (
                                                                 <div
                                                                     key={item}
-                                                                    className="flex items-start gap-2 text-[13px] leading-relaxed text-neutral-800 sm:text-sm"
+                                                                    className="flex items-start gap-3 text-[13px] leading-relaxed text-neutral-800 sm:text-sm"
                                                                 >
-                                                                    <span className="mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-base font-semibold text-[#FF8D21]">
+                                                                    <span className="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center text-xl font-medium leading-none text-[#FF8D21]">
                                                                         ✓
                                                                     </span>
                                                                     <span className={/starting at/i.test(item) ? "font-semibold text-neutral-900" : ""}>
@@ -258,45 +212,11 @@ export function WebsitePrePaywall({
                                                             ))}
                                                         </div>
                                                     </div>
-                                                ) : (
-                                                    <div style={{ height: paywallCardHeightPx }} className="flex items-center px-6 pb-7 pt-4 sm:px-10 sm:pb-8 sm:pt-5">
-                                                        <div className="w-full rounded-[24px]">
-                                                            <div className="mb-3 flex items-center gap-3">
-                                                                <div className="relative h-11 w-11 overflow-hidden rounded-full border border-neutral-200 bg-neutral-100">
-                                                                    <Image
-                                                                        src={slide.avatar}
-                                                                        alt={`${slide.name} profile photo`}
-                                                                        fill
-                                                                        sizes="44px"
-                                                                        className="object-cover"
-                                                                    />
-                                                                </div>
-                                                                <div>
-                                                                    <div className="text-sm font-semibold text-neutral-900">{slide.name}</div>
-                                                                    <div className="text-xs text-neutral-500">{slide.title}</div>
-                                                                </div>
-                                                            </div>
-                                                            <p className="text-[15px] leading-6 text-neutral-700 sm:text-[16px] sm:leading-7">
-                                                                “{slide.quote}”
-                                                            </p>
-                                                        </div>
-                                                    </div>
-                                                )}
+                                                </>
                                             </div>
                                         ))}
                                     </motion.div>
 
-                                </div>
-                                <div className="mt-4 flex items-center justify-center gap-3 pb-1">
-                                    {carouselSlides.map((slide, index) => (
-                                        <button
-                                            key={`${slide.kind}-dot-${index}`}
-                                            type="button"
-                                            onClick={() => setActiveSlide(index)}
-                                            className={`h-3 rounded-full transition-all shadow-sm ${index === activeSlide ? "w-8 bg-[#FF8D21]" : "w-3 bg-neutral-300 hover:bg-neutral-400"}`}
-                                            aria-label={`Show slide ${index + 1}`}
-                                        />
-                                    ))}
                                 </div>
                             </div>
 
