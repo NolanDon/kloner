@@ -204,13 +204,13 @@ export function WebsitePrePaywall({
                                                         <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#FF8D21]">
                                                             {slide.title}
                                                         </div>
-                                                        <div className="flex flex-col gap-2">
+                                                        <div className="flex flex-col gap-3">
                                                             {benefits.map((item, itemIndex) => (
                                                                 <div
                                                                     key={item}
                                                                     className="flex items-center gap-3 text-[13px] leading-snug text-neutral-800 sm:text-sm"
                                                                 >
-                                                                    <Image src={paywallBenefitIcons[itemIndex % paywallBenefitIcons.length]} alt="" width={22} height={22} className="h-[22px] w-[22px] shrink-0 object-contain" />
+                                                                    <Image src={paywallBenefitIcons[itemIndex % paywallBenefitIcons.length]} alt="" width={27} height={27} className="h-[27px] w-[27px] shrink-0 object-contain" />
                                                                     <span className={/starting at/i.test(item) ? "font-semibold text-neutral-900" : ""}>
                                                                         {item}
                                                                     </span>
