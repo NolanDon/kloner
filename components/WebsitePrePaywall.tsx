@@ -180,7 +180,7 @@ export function WebsitePrePaywall({
                         disabled={checkoutBusy}
                         className="py-1 text-sm text-neutral-600 underline underline-offset-4 disabled:opacity-70"
                     >
-                        Exit editor
+                        Yes, exit editor
                     </button>
                 </div>
             </dialog>
