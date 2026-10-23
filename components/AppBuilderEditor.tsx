@@ -2295,6 +2295,7 @@ export default function AppBuilderEditor({
     const [isSaving, setIsSaving] = useState(false);
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [isDeploying, setIsDeploying] = useState(false);
+    const deployInFlightRef = useRef(false);
     const [isDownloadingCode, setIsDownloadingCode] = useState(false);
     const [downloadBillingState, setDownloadBillingState] = useState("free");
     const [isSharingPreview, setIsSharingPreview] = useState(false);
@@ -6574,9 +6575,11 @@ export default function AppBuilderEditor({
     }, [app?.files]);
 
     const handleDeploy = async () => {
-        if (!app || isDeploying) return;
+        if (!app || isDeploying || deployInFlightRef.current) return;
+        deployInFlightRef.current = true;
         if (deployLocked) {
             openDeployUpgradePaywall();
+            deployInFlightRef.current = false;
             return;
         }
 
@@ -6586,13 +6589,15 @@ export default function AppBuilderEditor({
                 "Publish this website now?\n\nThis will make your website publicly accessible on a live URL that you can share with anyone.",
                 "Deploy",
             );
-            if (!confirmed) return;
+            if (!confirmed) { deployInFlightRef.current = false; return; }
 
             if (onDeploy) {
                 onDeploy({ id: app.id, name: app.name });
+                deployInFlightRef.current = false;
                 return;
             }
             void showAlert("First deploy is handled in the dashboard deploy wizard.", "Deploy");
+            deployInFlightRef.current = false;
             return;
         }
 
@@ -6600,9 +6605,9 @@ export default function AppBuilderEditor({
             "Deploy your latest changes live now?",
             "Deploy",
         );
-        if (!confirmed) return;
+        if (!confirmed) { deployInFlightRef.current = false; return; }
 
-        void runVercelDeployLive();
+        try { await runVercelDeployLive(); } finally { deployInFlightRef.current = false; }
     };
 
     const handleSharePreview = async () => {
@@ -7749,7 +7754,7 @@ export default function AppBuilderEditor({
 
                                 <button
                                     onClick={handleDeploy}
-                                    disabled={isDeploying}
+                                    disabled={isDeploying || deployInFlightRef.current}
                                     data-tour-deploy
                                     className="inline-flex h-8 items-center gap-1.5 rounded-full border border-[#FF8D21] bg-[#FF8D21] px-2 py-1 text-[12px] font-semibold text-white shadow-md transition hover:opacity-90 disabled:opacity-60 xl:px-3 xl:text-[13px]"
                                     title="Deploy"
