@@ -2757,7 +2757,7 @@ export default function AppBuilderEditor({
         ? createPortal(
             isMobile || !previewHydrationAnchorRect ? (
                 <div
-                    className={`fixed inset-0 z-[22050] flex items-center justify-center px-4 transition-opacity duration-300 ease-out ${previewHydrationLoaderVisible ? "opacity-100" : "opacity-0"}`}
+                    className={`fixed inset-0 z-[22050] flex items-center justify-center px-4 transition-opacity duration-300 ease-out ${previewHydrationLoaderVisible ? "opacity-100" : "pointer-events-none opacity-0"}`}
                     role="status"
                     aria-live="polite"
                     aria-busy="true"
@@ -2769,7 +2769,7 @@ export default function AppBuilderEditor({
                 </div>
             ) : (
                 <div
-                    className={`fixed z-[22050] flex items-center justify-center px-4 transition-opacity duration-300 ease-out ${previewHydrationLoaderVisible ? "opacity-100" : "opacity-0"}`}
+                    className={`fixed z-[22050] flex items-center justify-center px-4 transition-opacity duration-300 ease-out ${previewHydrationLoaderVisible ? "opacity-100" : "pointer-events-none opacity-0"}`}
                     style={{
                         top: previewHydrationAnchorRect.top,
                         left: previewHydrationAnchorRect.left,
@@ -7379,7 +7379,7 @@ export default function AppBuilderEditor({
                     </div>
                 ) : null}
                 {/* Header */}
-                <div className="relative z-30 flex flex-nowrap items-center justify-between gap-2 overflow-visible border-b bg-gray-50 p-2.5 sm:p-4">
+                <div className="relative z-[22051] flex flex-nowrap items-center justify-between gap-2 overflow-visible border-b bg-gray-50 p-2.5 sm:p-4">
                     <div className="relative z-20 flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
                         {isRenaming ? (
                             <div className="flex min-w-0 max-w-full items-center gap-1.5 sm:gap-2">
