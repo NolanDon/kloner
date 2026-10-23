@@ -3607,7 +3607,7 @@ function AppCard({
                                         onArchive(app.id);
                                     }}
                                     disabled={isDeleting || isArchiving || disableActions || isPendingCreation}
-                                    className="inline-flex h-8 w-8 items-center justify-center rounded-2xl border border-neutral-300 bg-white text-neutral-700 shadow-sm transition-all duration-300 ease-out hover:border-neutral-400 disabled:cursor-not-allowed disabled:opacity-50"
+                                    className="inline-flex h-8 w-8 items-center justify-center rounded-2xl border border-neutral-300 bg-white text-neutral-700 shadow-sm transition-all duration-300 ease-out hover:border-[#FF8D21] hover:bg-[#FF8D21] hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
                                     title="Move this app into your archive"
                                     aria-label={isArchiving ? "Archiving app" : "Archive app"}
                                 >
