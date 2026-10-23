@@ -163,6 +163,29 @@ export async function hasActiveOrTrialingStripeSubscription(
 export async function hasAbandonedSubscriptionCheckout(stripe: Stripe, customerId: string, nowMs = Date.now(), failedSessionId?: string): Promise<boolean> {
     const sessions = await stripe.checkout.sessions.list({ customer: customerId, limit: 100 });
     const subscriptions = sessions.data.filter(s => s.mode === "subscription");
-    if (subscriptions.some(s => s.status === "open" && s.expires_at * 1000 > nowMs)) return false;
-    return subscriptions.some(s => s.payment_status === "unpaid" && (s.status === "expired" || (Boolean(failedSessionId) && s.id === failedSessionId)));
+    // A customer may retry checkout before Stripe expires an older session. Never
+    // send a recovery email while any subscription checkout remains open.
+    if (subscriptions.some(s => s.status === "open")) return false;
+
+    const failedSession = failedSessionId
+        ? subscriptions.find(s => s.id === failedSessionId && s.payment_status === "unpaid")
+        : null;
+    const expiredSession = subscriptions
+        .filter(s => s.status === "expired" && s.payment_status === "unpaid" && s.expires_at * 1000 <= nowMs)
+        .sort((a, b) => b.created - a.created)[0] || null;
+    const abandonedSession = failedSession || expiredSession;
+    if (!abandonedSession) return false;
+
+    // A newer completed session can still be processing an asynchronous payment.
+    // Wait for Stripe to confirm success or failure before treating the older
+    // expired session as the customer's current checkout outcome.
+    const hasNewerPendingSession = subscriptions.some(s =>
+        s.created > abandonedSession.created &&
+        s.status === "complete" &&
+        s.payment_status === "unpaid" &&
+        s.id !== failedSessionId
+    );
+    if (hasNewerPendingSession) return false;
+
+    return true;
 }

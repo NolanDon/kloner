@@ -2,6 +2,7 @@ node_modules
 .next
 .env.local
 *.md
+!docs/editor-reliability-audit-2026-10-23.md
 app/.DS_Store
 serviceAccount.json
 public/images/transparent_logo.png

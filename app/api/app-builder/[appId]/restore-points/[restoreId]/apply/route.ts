@@ -83,7 +83,9 @@ export async function POST(req: NextRequest, { params }: any) {
 
             // Manual restore points are full snapshots (best-effort within guardrails).
             // Apply them by replacing the entire files map, so files created after the snapshot are removed.
-            const isSnapshot = String(rp?.source || "").toLowerCase() === "manual" || rp?.snapshot === true;
+            // Historical manual captures could contain only requested paths or be
+            // silently truncated. Only an explicit snapshot flag permits deletion.
+            const isSnapshot = rp?.snapshot === true;
 
             const app = appSnap.data() as any;
             const files = (app?.files || {}) as Record<string, { content: string; lastModified: number }>;
@@ -111,7 +113,7 @@ export async function POST(req: NextRequest, { params }: any) {
             // Apply restore
             let nextFiles: Record<string, { content: string; lastModified: number }> = files;
             if (isSnapshot) {
-                nextFiles = {};
+                nextFiles = Object.fromEntries(Object.entries(files).filter(([path]) => isEnvPath(path)));
             }
 
             for (const p of paths) {
@@ -125,10 +127,10 @@ export async function POST(req: NextRequest, { params }: any) {
                 }
             }
 
-            await appRef.update({ files: nextFiles, updatedAt: new Date() });
-
             const inverseRef = appRef.collection("restore_points").doc();
-            await inverseRef.set({
+            const batch = db.batch();
+            batch.update(appRef, { files: nextFiles, updatedAt: new Date() });
+            batch.set(inverseRef, {
                 label: `Undo: ${safeString(rp?.label, 200) || "restore"}`,
                 source: "undo",
                 kept: false,
@@ -138,6 +140,7 @@ export async function POST(req: NextRequest, { params }: any) {
                 before: inverse,
                 undoOf: restoreId,
             });
+            await batch.commit();
 
             return NextResponse.json(
                 {

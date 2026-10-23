@@ -353,6 +353,14 @@ describe("POST /api/stripe/webhook", () => {
         default: function StripeCtor() {
           return {
             subscriptions: { list: async () => ({ data: [] }) },
+            checkout: { sessions: { list: async () => ({ data: [{
+              id: "cs_expired",
+              mode: "subscription",
+              status: eventType === "checkout.session.expired" ? "expired" : "complete",
+              payment_status: "unpaid",
+              created: 1,
+              expires_at: 0,
+            }] }) } },
             webhooks: { constructEvent },
             invoices: { retrieve: async () => ({}) },
           };
@@ -391,6 +399,14 @@ describe("POST /api/stripe/webhook", () => {
       default: function StripeCtor() {
         return {
           subscriptions: { list: async () => ({ data: [] }) },
+          checkout: { sessions: { list: async () => ({ data: [{
+            id: "cs_retry",
+            mode: "subscription",
+            status: "expired",
+            payment_status: "unpaid",
+            created: 1,
+            expires_at: 0,
+          }] }) } },
           webhooks: { constructEvent: () => ({
             id: "evt_expired_retry", type: "checkout.session.expired", livemode: false,
             data: { object: { id: "cs_retry", customer: "cus_abc", metadata: { firebaseUid: "uid_abc", plan: "pro" } } },

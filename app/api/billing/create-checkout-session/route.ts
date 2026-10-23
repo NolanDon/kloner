@@ -213,7 +213,7 @@ async function handler({ req, uid }: { req: NextRequest; uid: string }) {
     }
 
     // Trial is configurable and defaults to 7 days.
-    const trialCandidate = plan === "pro" && STRIPE_TRIAL_DAYS > 0;
+    const trialCandidate = plan === "pro" && STRIPE_TRIAL_DAYS > 0 && body.purchaseIntent !== "code_download";
     const earlyPaywallCountry = shouldRequireEarlyGenerationPaywall(req).required;
 
     const isProd = process.env.NODE_ENV === "production";

@@ -8601,6 +8601,9 @@ export default function PreviewPage(): JSX.Element {
             await refreshUserTierNow();
 
             const csrf = await ensureSessionAndCsrf().catch(() => null);
+            if (!csrf) {
+                throw new Error("Your sign-in session is still loading. Please wait a moment and try the scan again.");
+            }
             let archiveReady = await readArchiveSnapshot();
 
             if (!isReusableArchiveSnapshot(archiveReady)) {
@@ -9102,6 +9105,9 @@ export default function PreviewPage(): JSX.Element {
             void (async () => {
                 try {
                     const csrf = await ensureSessionAndCsrf().catch(() => null);
+                    if (!csrf) {
+                        throw new Error("Your sign-in session is still loading. Please wait a moment and try the scan again.");
+                    }
 
                     const colRef = collection(db, "kloner_users", user.uid, "kloner_urls");
                     const qy = query(colRef, where("url", "==", target));
@@ -9164,7 +9170,7 @@ export default function PreviewPage(): JSX.Element {
                     captureBlockedFailureForUrlRef.current = "";
                     const res = await fetch("/api/private/generate", {
                         method: "POST",
-                        headers: { "content-type": "application/json" },
+                        headers: { "content-type": "application/json", "x-csrf": csrf },
                         credentials: "include",
                         body: JSON.stringify({ url: target }),
                     });

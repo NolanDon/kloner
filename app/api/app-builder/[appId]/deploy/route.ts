@@ -9,6 +9,7 @@ import { upsertVercelProjectEnvVar } from "../../../_lib/vercel-env";
 import { decryptString, type EncryptedBlobV1 } from "../../../_lib/crypto";
 import { loadVercelIntegration } from "../../../_lib/vercel-integration";
 import { refreshTierFromStripeForUid } from "../../../_lib/billing";
+import { loadProjectFileBytes } from "../../../_lib/projectDownload";
 import { hydrateAppBuilderFiles } from "../../../_lib/htmlStorage";
 import { captureCriticalEvent } from "@/lib/observability";
 
@@ -61,8 +62,11 @@ function estimateUtf8Bytes(value: unknown): number {
     }
 }
 
-function sha1Hex(text: string): string {
-    return createHash("sha1").update(text, "utf8").digest("hex");
+function sha1Hex(text: string | Uint8Array): string {
+    const hash = createHash("sha1");
+    if (typeof text === "string") hash.update(text, "utf8");
+    else hash.update(Buffer.from(text));
+    return hash.digest("hex");
 }
 
 function readPackageJsonFramework(files: Record<string, { content: string }>): "nextjs" | "vite" | null {
@@ -108,18 +112,19 @@ function detectDeploymentFramework(files: Record<string, { content: string }>): 
     return null;
 }
 
-async function uploadVercelFile(accessToken: string, filePath: string, content: string): Promise<{ file: string; sha: string; size: number }> {
+async function uploadVercelFile(accessToken: string, filePath: string, content: string | Uint8Array): Promise<{ file: string; sha: string; size: number }> {
     const sha = sha1Hex(content);
-    const size = Buffer.byteLength(content, "utf8");
+    const bytes = typeof content === "string" ? Buffer.from(content, "utf8") : Buffer.from(content);
+    const size = bytes.length;
 
     const uploadRes = await fetch("https://api.vercel.com/v2/now/files", {
         method: "POST",
         headers: {
             Authorization: `Bearer ${accessToken}`,
-            "Content-Type": "text/plain",
+            "Content-Type": "application/octet-stream",
             "x-vercel-digest": sha,
         },
-        body: content,
+        body: bytes,
         signal: AbortSignal.timeout(90_000),
     });
 
@@ -131,7 +136,7 @@ async function uploadVercelFile(accessToken: string, filePath: string, content: 
     return { file: filePath, sha, size };
 }
 
-async function uploadVercelFiles(accessToken: string, files: Array<{ file: string; content: string }>): Promise<Array<{ file: string; sha: string; size: number }>> {
+async function uploadVercelFiles(accessToken: string, files: Array<{ file: string; content: string | Uint8Array }>): Promise<Array<{ file: string; sha: string; size: number }>> {
     const results: Array<{ file: string; sha: string; size: number }> = [];
     const batchSize = 8;
 
@@ -283,18 +288,16 @@ export async function POST(
         }
 
         const appName = data.name || `app-${appId}`;
-        const files = await hydrateAppBuilderFiles({
-            db,
-            uid,
-            appId,
-            files: (data.files || {}) as any,
-            fileManifest: (data as any).fileManifest || null,
-            fileStorageCollection: typeof (data as any).fileStorageCollection === "string" ? (data as any).fileStorageCollection : null,
-            fileStorageMode: typeof (data as any).fileStorageMode === "string" ? (data as any).fileStorageMode : null,
-            containerCode: typeof (data as any).containerCode === "string" ? (data as any).containerCode : null,
-            htmlStoragePath: (data as any).htmlStoragePath || null,
-            htmlEditIndex: (data as any).htmlEditIndex,
-        });
+        const projectBytes = await loadProjectFileBytes({ db, uid, appId, app: data });
+        const files: Record<string, { content: string }> = Object.fromEntries(
+            Object.entries(projectBytes).map(([path, bytes]) => [path, { content: Buffer.from(bytes).toString("utf8") }]),
+        );
+        // Environment variables are synced separately and never uploaded as files.
+        const envPaths = Object.keys(data.files || {}).filter(path => /(?:^|\/)\.env\.local$/i.test(path));
+        if (envPaths.length) {
+            const envFiles = await hydrateAppBuilderFiles({ db, uid, appId, files: Object.fromEntries(envPaths.map(path => [path, data.files[path]])) });
+            Object.assign(files, envFiles);
+        }
 
         let vercelProjectId: string | null = data.vercelProjectId ?? null;
         let vercelProjectName: string | null = data.vercelProjectName ?? null;
@@ -498,7 +501,7 @@ export async function POST(
         }
 
         // ───────────────── prepare files for deployment ─────────────────
-        const deploymentSourceFiles: Array<{ file: string; content: string }> = [];
+        const deploymentSourceFiles: Array<{ file: string; content: string | Uint8Array }> = [];
 
         // Add package.json if not present
         if (deploymentFramework === "nextjs" && !files["package.json"]) {
@@ -539,7 +542,7 @@ export async function POST(
             const fileInfo = fileData as { content: string; lastModified: number };
             deploymentSourceFiles.push({
                 file: filePath,
-                content: fileInfo.content,
+                content: projectBytes[filePath] || fileInfo.content,
             });
         }
 

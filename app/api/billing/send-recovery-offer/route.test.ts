@@ -73,6 +73,20 @@ jest.mock("resend", () => ({
     },
 }));
 
+jest.mock("@/lib/stripe", () => ({
+    getStripe: () => ({
+        subscriptions: { list: async () => ({ data: [] }) },
+        checkout: { sessions: { list: async () => ({ data: [{
+            id: "cs_expired",
+            mode: "subscription",
+            status: "expired",
+            payment_status: "unpaid",
+            created: 1,
+            expires_at: 0,
+        }] }) } },
+    }),
+}));
+
 describe("POST /api/billing/send-recovery-offer", () => {
     beforeEach(() => {
         jest.resetModules();
@@ -86,6 +100,7 @@ describe("POST /api/billing/send-recovery-offer", () => {
 
     it("sends a one-time recovery email when journey emails are enabled", async () => {
         store.set("kloner_users/uid_1", {
+            stripeCustomerId: "cus_1",
             notificationPrefs: { journeyEmails: true },
             offers: {},
         });
@@ -111,7 +126,7 @@ describe("POST /api/billing/send-recovery-offer", () => {
     });
 
     it("does not mark a rejected email as sent and allows a retry", async () => {
-        store.set("kloner_users/uid_1", { offers: {} });
+        store.set("kloner_users/uid_1", { stripeCustomerId: "cus_1", offers: {} });
         resendSend.mockResolvedValueOnce({ error: { message: "Resend unavailable" } });
         const { POST } = await import("./route");
         await expect(POST({} as any)).rejects.toThrow("Resend unavailable");
@@ -143,7 +158,7 @@ describe("POST /api/billing/send-recovery-offer", () => {
         expect(resendSend).not.toHaveBeenCalled();
     });
 
-    it("sends immediately when the checkout cancel return is explicit", async () => {
+    it("does not send immediately on checkout cancel return while the user is active", async () => {
         store.set("kloner_users/uid_1", {
             notificationPrefs: { journeyEmails: true },
             offers: {},
@@ -159,8 +174,9 @@ describe("POST /api/billing/send-recovery-offer", () => {
         const body = await res.json();
 
         expect(res.status).toBe(200);
-        expect(body.sent).toBe(true);
-        expect(resendSend).toHaveBeenCalledTimes(1);
+        expect(body.sent).toBe(false);
+        expect(body.skipped).toBe("active_recently");
+        expect(resendSend).not.toHaveBeenCalled();
     });
 
     it("skips sending when the user unsubscribed from journey emails", async () => {

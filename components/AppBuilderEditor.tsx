@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
 import Editor from "@monaco-editor/react";
 import Image from "next/image";
-import { Folder, File, Upload, X, RefreshCw, MessageSquare, Code, Check, RotateCcw, Database, Rocket, Monitor, SlidersHorizontal, Images, Send, Pencil, Loader2, Share2, ExternalLink, Copy, ChevronDown, ChevronRight, AlertTriangle, Search, Paintbrush, MoreVertical } from "lucide-react";
+import { Folder, File, Upload, Download, X, RefreshCw, MessageSquare, Code, Check, RotateCcw, Database, Rocket, Monitor, SlidersHorizontal, Images, Send, Pencil, Loader2, Share2, ExternalLink, Copy, ChevronDown, ChevronRight, AlertTriangle, Search, Paintbrush, MoreVertical } from "lucide-react";
 import AppBuilderEditorAgentChat from "./AppBuilderEditorAgentChat";
 import AppBuilderEditorAgentChatV3 from "./AppBuilderEditorAgentChatV3";
 import { AppBuilderEditorTour } from "./AppBuilderEditorTour";
@@ -202,10 +202,17 @@ const DEPLOY_UPGRADE_PAYWALL_COPY: UpgradePaywallCopy = {
         "AI task force to build and design your websites",
         // "Higher queue priority for faster outputs",
         "24/7 Human support included",
-        `Subscriptions starting at only $${BASIC_MONTHLY_PRICE_USD.toFixed(2)}/mo.`,
     ],
     primaryLabel: TRIAL_CTA_LABEL,
     footerNote: "Cancel anytime before renewal.",
+};
+
+const DOWNLOAD_UPGRADE_PAYWALL_COPY: UpgradePaywallCopy = {
+    title: "Upgrade to download your code",
+    description: "Code downloads require a paid subscription and are not included in the free trial. Upgrading starts your paid plan and billing immediately.",
+    benefits: ["Download your current project as a ZIP", "Includes your latest editor changes", "Keep building and publishing your websites"],
+    primaryLabel: "Upgrade now — billing starts today",
+    footerNote: "Downloads unlock with an active paid subscription.",
 };
 
 const FREE_PLAN_UPGRADE_PAYWALL_COPY: UpgradePaywallCopy = {
@@ -217,7 +224,6 @@ const FREE_PLAN_UPGRADE_PAYWALL_COPY: UpgradePaywallCopy = {
         "Priority rendering and faster queues",
         "Access way more features",
         "AI task force to build and design your websites",
-        `Subscriptions starting at only $${BASIC_MONTHLY_PRICE_USD.toFixed(2)}/mo.`,
     ],
     primaryLabel: TRIAL_CTA_LABEL,
     footerNote: "Cancel anytime before renewal.",
@@ -2288,6 +2294,8 @@ export default function AppBuilderEditor({
     const [isSaving, setIsSaving] = useState(false);
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [isDeploying, setIsDeploying] = useState(false);
+    const [isDownloadingCode, setIsDownloadingCode] = useState(false);
+    const [downloadBillingState, setDownloadBillingState] = useState("free");
     const [isSharingPreview, setIsSharingPreview] = useState(false);
     const [isPreviewBuilding, setIsPreviewBuilding] = useState(false);
     const [isCustomSidebarOpen, setIsCustomSidebarOpen] = useState(true);
@@ -3931,7 +3939,7 @@ export default function AppBuilderEditor({
         }
     }, []);
 
-    const startLocalTrialCheckout = useCallback(async () => {
+    const startLocalTrialCheckout = useCallback(async (paidOnly = false) => {
         if (trialCheckoutBusy || localTrialCheckoutBusy) return;
         if (typeof window === "undefined") return;
 
@@ -3946,6 +3954,9 @@ export default function AppBuilderEditor({
 
             if (csrfRes.status === 401) {
                 const next = encodeURIComponent(window.location.pathname + window.location.search);
+                // Checkout/login is an intentional full-page navigation. Suppress
+                // the unsaved-editor beforeunload prompt for this flow.
+                allowNextNavigationRef.current = true;
                 window.location.href = `/login?next=${next}`;
                 return;
             }
@@ -3963,6 +3974,7 @@ export default function AppBuilderEditor({
                 cache: "no-store",
                 body: JSON.stringify({
                     plan: "pro",
+                    purchaseIntent: paidOnly ? "code_download" : undefined,
                     returnAppId: appId,
                     returnStep: 3,
                 }),
@@ -3970,6 +3982,7 @@ export default function AppBuilderEditor({
 
             if (res.status === 401) {
                 const next = encodeURIComponent(window.location.pathname + window.location.search);
+                allowNextNavigationRef.current = true;
                 window.location.href = `/login?next=${next}`;
                 return;
             }
@@ -3980,6 +3993,10 @@ export default function AppBuilderEditor({
                 return;
             }
 
+            // Stripe checkout is an intentional full-page navigation. The themed
+            // paywall has already confirmed the action, so do not show a second
+            // browser-native “Leave site?” dialog.
+            allowNextNavigationRef.current = true;
             window.location.href = data.url;
         } catch (err) {
             console.error("startLocalTrialCheckout failed", err);
@@ -4000,6 +4017,66 @@ export default function AppBuilderEditor({
 
         void startLocalTrialCheckout();
     }, [onRequestDeployCheckout, startLocalTrialCheckout]);
+
+    const handleDownloadCode = async () => {
+        if (isDownloadingCode) return;
+        setIsDownloadingCode(true);
+        try {
+            const csrf = await ensureSessionAndCsrf();
+            const response = await fetch(`/api/app-builder/${encodeURIComponent(appId)}/download`, {
+                method: "POST", credentials: "include",
+                headers: { "content-type": "application/json", ...(csrf ? { "x-csrf": csrf } : {}) },
+                body: JSON.stringify({ currentFile: currentFile ? { path: currentFile, content: code } : undefined }),
+            });
+            if (response.status === 402) {
+                const data = await response.json().catch(() => ({}));
+                setDownloadBillingState(data.billingState || "free");
+                setUpgradePaywallCopy(DOWNLOAD_UPGRADE_PAYWALL_COPY);
+                setShowDeployUpgradePaywall(true);
+                return;
+            }
+            if (!response.ok) {
+                const data = await response.json().catch(() => ({}));
+                throw new Error(data.error || "Could not download your project. Please retry.");
+            }
+            const url = URL.createObjectURL(await response.blob());
+            const link = document.createElement("a");
+            link.href = url;
+            link.download = (response.headers.get("content-disposition")?.match(/filename="([^"]+)"/)?.[1]) || "project.zip";
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            window.setTimeout(() => URL.revokeObjectURL(url), 30_000);
+        } catch (error) {
+            void showAlert(error instanceof Error ? error.message : "Could not download your project.", "Download code");
+        } finally {
+            setIsDownloadingCode(false);
+        }
+    };
+
+    const upgradeForCodeDownload = async () => {
+        if (downloadBillingState !== "trialing") {
+            await startLocalTrialCheckout(true);
+            return;
+        }
+        if (localTrialCheckoutBusy) return;
+        setLocalTrialCheckoutBusy(true);
+        try {
+            const csrf = await ensureSessionAndCsrf();
+            const response = await fetch("/api/billing/activate-subscription", {
+                method: "POST", credentials: "include",
+                headers: { "content-type": "application/json", ...(csrf ? { "x-csrf": csrf } : {}) },
+            });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(data.error || "Could not activate your paid subscription.");
+            setShowDeployUpgradePaywall(false);
+            await handleDownloadCode();
+        } catch (error) {
+            void showAlert(error instanceof Error ? error.message : "Please update your subscription in account settings.", "Subscription");
+        } finally {
+            setLocalTrialCheckoutBusy(false);
+        }
+    };
 
     const restartLocalPreview = useCallback(async (forceFresh: boolean = false) => {
         if (isPreviewBuilding) return;
@@ -7659,6 +7736,18 @@ export default function AppBuilderEditor({
                                 ) : null}
 
                                 <button
+                                    type="button"
+                                    onClick={() => void handleDownloadCode()}
+                                    disabled={isDownloadingCode || !filesHydrated}
+                                    className="inline-flex h-8 items-center gap-1.5 rounded-full border border-neutral-300 bg-white px-2 py-1 text-[12px] font-semibold text-neutral-700 shadow-md hover:bg-neutral-50 disabled:opacity-60 xl:px-3"
+                                    title="Download code"
+                                    aria-label="Download code"
+                                >
+                                    {isDownloadingCode ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+                                    <span className="hidden xl:inline">{isDownloadingCode ? "Downloading…" : "Download code"}</span>
+                                </button>
+
+                                <button
                                     onClick={handleDeploy}
                                     disabled={isDeploying}
                                     data-tour-deploy
@@ -8785,6 +8874,10 @@ export default function AppBuilderEditor({
                     open={showDeployUpgradePaywall}
                     onClose={() => setShowDeployUpgradePaywall(false)}
                     onStartCheckout={() => {
+                        if (upgradePaywallCopy === DOWNLOAD_UPGRADE_PAYWALL_COPY) {
+                            void upgradeForCodeDownload();
+                            return;
+                        }
                         requestDeployCheckout();
                     }}
                     checkoutBusy={trialCheckoutBusy || localTrialCheckoutBusy}

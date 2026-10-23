@@ -67,7 +67,26 @@ export async function bootstrapServerSession(
 
     const state = getState();
 
-    const u = auth?.currentUser ?? null;
+    let u = auth?.currentUser ?? null;
+    // Firebase restores persisted browser auth asynchronously. A page can
+    // already render its signed-in user state while this singleton still has
+    // no currentUser; wait for that initial restore before giving up.
+    if (!u && auth && typeof (auth as any).authStateReady === "function") {
+        let timeout: ReturnType<typeof globalThis.setTimeout> | undefined;
+        try {
+            await Promise.race([
+                (auth as any).authStateReady(),
+                new Promise((resolve) => {
+                    timeout = globalThis.setTimeout(resolve, timeoutMs);
+                }),
+            ]);
+        } catch {
+            // The current user check below decides whether a session can be made.
+        } finally {
+            if (timeout) globalThis.clearTimeout(timeout);
+        }
+        u = auth.currentUser ?? null;
+    }
     if (!u) return false;
 
     // If user changed, always re-bootstrap once.
@@ -151,7 +170,7 @@ export async function ensureSessionAndCsrf(): Promise<string | null> {
             if (r.token) return r.token;
 
             // If unauthorized, we likely don't have the server session cookie yet.
-            if (r.status === 401 && auth?.currentUser) {
+            if (r.status === 401 && auth) {
                 const ok = await bootstrapServerSession({
                     forceRefresh: false,
                     minIntervalMs: 10 * 60_000,

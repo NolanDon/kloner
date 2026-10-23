@@ -7,7 +7,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import logo from "@/public/images/orange_logo.png";
-import { BASIC_MONTHLY_PRICE_USD, STRIPE_TRIAL_DAYS, TRIAL_CTA_LABEL } from "@/src/lib/billingAccess";
+import { STRIPE_TRIAL_DAYS, TRIAL_CTA_LABEL } from "@/src/lib/billingAccess";
 
 type WebsitePrePaywallProps = {
     open: boolean;
@@ -32,7 +32,6 @@ const paywallBenefitIcons = [
     "/images/paywall-icons/ai.webp",
     "/images/paywall-icons/priority.webp",
     "/images/paywall-icons/support.webp",
-    "/images/paywall-icons/pricing.webp",
 ];
 
 const websitePaywallShowcaseImages = [
@@ -59,7 +58,6 @@ export function WebsitePrePaywall({
         "AI task force to build and design your websites",
         "Higher queue priority for faster outputs",
         "24/7 Human support included",
-        `Subscriptions starting at only $${BASIC_MONTHLY_PRICE_USD.toFixed(2)}/mo.`,
     ],
     primaryLabel = TRIAL_CTA_LABEL,
     secondaryLabel = "No thanks, continue with limited features",

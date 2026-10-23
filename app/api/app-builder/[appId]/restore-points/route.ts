@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { callBackend } from "@/src/lib/callBackend";
 import { getAdminDb } from "@/app/api/_lib/auth";
 import { requireSessionAndMaybeCsrf } from "@/app/api/_lib/route-guard";
 import { assertAppBuilderScope } from "@/app/api/_lib/appBuilderScope";
@@ -98,49 +99,14 @@ export async function POST(req: NextRequest, { params }: any) {
                 ? Array.from(new Set((body.paths as unknown[]).map((path) => safeString(path, 400)).filter((path): path is string => Boolean(path))))
                 : [];
 
-            const db = getAdminDb();
-            const appRef = db
-                .collection("kloner_users")
-                .doc(uid)
-                .collection("kloner_apps")
-                .doc(appId);
-
-            const snap = await appRef.get();
-            if (!snap.exists) {
-                return NextResponse.json({ ok: false, error: "App not found" }, { status: 404 });
-            }
-
-            const app = snap.data() as any;
-            const files = (app?.files || {}) as Record<string, { content: string; lastModified: number }>;
-
-            // If the caller provides explicit paths, capture only those files so the restore point
-            // reflects the current edit instead of the whole app snapshot.
-            const capturePaths: string[] = requestedPaths.length > 0 ? requestedPaths : Object.keys(files);
-            const MAX_FILES = 200;
-            const MAX_TOTAL = 1_500_000; // ~1.5MB
-
-            const before: Record<string, string | null> = {};
-            let total = 0;
-
-            for (const path of capturePaths.slice(0, MAX_FILES)) {
-                const file = files[path];
-                const content = typeof file?.content === "string" ? file.content : "";
-                total += content.length;
-                if (total > MAX_TOTAL) break;
-                before[path] = content;
-            }
-
-            const docRef = appRef.collection("restore_points").doc();
-            await docRef.set({
-                label,
-                source: "manual",
-                kept: false,
-                createdAt: new Date(),
-                paths: Object.keys(before),
-                before,
+            // Capture through the same binary-safe, sharded backend used by agent
+            // undo. No inline document limits or partial full-snapshot truncation.
+            const result = await callBackend(authedReq, {
+                path: "/app-embeddings/agent-v3/restore-points",
+                method: "POST", timeoutMs: 180_000, userCtx: { uid },
+                body: { appId, paths: requestedPaths, label },
             });
-
-            return NextResponse.json({ ok: true, restorePointId: docRef.id }, { status: 200 });
+            return NextResponse.json(result.json, { status: result.status });
         },
         { csrf: true, methods: ["POST"] }
     );

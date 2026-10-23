@@ -17,6 +17,7 @@
     "@vercel/blob": "^2.0.0",
     "@webcontainer/api": "^1.6.1",
     "driver.js": "^1.4.0",
+    "fflate": "^0.8.3",
     "firebase": "^12.9.0",
     "firebase-admin": "^13.6.0",
     "framer-motion": "^11.18.2",

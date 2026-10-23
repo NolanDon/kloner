@@ -18,6 +18,8 @@ import {
 import {
   canSendRecoveryOfferEmail,
   hasActiveOrTrialingStripeSubscription,
+  hasSentRecoveryOfferEmail,
+  hasAbandonedSubscriptionCheckout,
   hasLikelyActivePaidAccess,
 } from "@/app/api/_lib/recoveryOffer";
 import { deliverRecoveryOfferEmail } from "@/app/api/_lib/recoveryOfferDelivery";
@@ -229,14 +231,41 @@ async function sendRecoveryOfferEmail(params: {
   name?: string | null;
   stripe: Stripe;
   customerId?: string | null;
+  eventId: string;
+  failedSessionId?: string;
 }) {
   const userRef = db.collection("kloner_users").doc(params.uid);
   const snap = await userRef.get();
   const data = snap.exists ? (snap.data() as any) : {};
-  const activityGate = canSendRecoveryOfferEmail(data);
-  if (!activityGate.ok) return;
+  const logSkip = (reason: string) => console.info("[stripe-webhook] recovery email skipped", {
+    eventId: params.eventId,
+    sessionId: params.sessionId,
+    uid: params.uid,
+    reason,
+  });
 
-  if (hasLikelyActivePaidAccess(data)) return;
+  // Stripe's event confirms an abandoned session, while recent app activity may
+  // mean the customer is actively retrying. The inactivity and live-session
+  // checks below keep the recovery email from interrupting that retry.
+  if (data?.notificationPrefs?.journeyEmails === false) {
+    logSkip("unsubscribed");
+    return;
+  }
+  if (hasSentRecoveryOfferEmail(data)) {
+    logSkip("already_sent_or_legacy_marker");
+    return;
+  }
+
+  const activityGate = canSendRecoveryOfferEmail(data);
+  if (!activityGate.ok) {
+    logSkip(activityGate.reason || "recent_activity");
+    return;
+  }
+
+  if (hasLikelyActivePaidAccess(data)) {
+    logSkip("active_paid_access");
+    return;
+  }
 
   const customerId =
     typeof params.customerId === "string" && params.customerId.trim()
@@ -250,7 +279,24 @@ async function sendRecoveryOfferEmail(params: {
       params.stripe,
       customerId,
     );
-    if (activeSub) return;
+    if (activeSub) {
+      logSkip("active_or_trialing_stripe_subscription");
+      return;
+    }
+
+    const stillAbandoned = await hasAbandonedSubscriptionCheckout(
+      params.stripe,
+      customerId,
+      Date.now(),
+      params.failedSessionId,
+    );
+    if (!stillAbandoned) {
+      logSkip("newer_open_or_no_current_abandoned_checkout");
+      return;
+    }
+  } else {
+    logSkip("missing_stripe_customer");
+    return;
   }
 
   const from = process.env.WELCOME_EMAIL_FROM || RECOVERY_SENDER;
@@ -264,7 +310,7 @@ async function sendRecoveryOfferEmail(params: {
     variant: "checkout",
   });
   const resend = getResend();
-  await deliverRecoveryOfferEmail({
+  const delivered = await deliverRecoveryOfferEmail({
     db,
     userRef,
     variant: "checkout",
@@ -278,6 +324,7 @@ async function sendRecoveryOfferEmail(params: {
     },
     send: (payload, options) => resend.emails.send(payload!, options),
   });
+  if (!delivered) logSkip("delivery_not_claimed_or_already_recorded");
 }
 
 // ------------------------
@@ -1074,16 +1121,32 @@ export async function POST(req: NextRequest) {
                 email,
                 name: authUser.displayName || null,
                 stripe,
+                eventId: event.id,
+                failedSessionId: event.type === "checkout.session.async_payment_failed" ? session.id : undefined,
                 customerId:
                   typeof session.customer === "string"
                     ? session.customer
                     : null,
+              });
+            } else {
+              console.info("[stripe-webhook] recovery email skipped", {
+                eventId: event.id,
+                sessionId: session.id,
+                uid: firebaseUid,
+                reason: "missing_auth_email",
               });
             }
           } catch (err) {
             console.error("[stripe-webhook] recovery email failed", err);
             return NextResponse.json({ error: "Recovery email failed" }, { status: 500 });
           }
+        } else {
+          console.info("[stripe-webhook] recovery email event did not qualify", {
+            eventId: event.id,
+            sessionId: session.id,
+            hasFirebaseUid: Boolean(firebaseUid),
+            plan,
+          });
         }
         break;
       }

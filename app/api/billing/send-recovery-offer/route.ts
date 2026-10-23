@@ -6,6 +6,7 @@ import { makeRecoveryCheckoutUrl, makeUnsubUrl } from "@/app/api/private/email-l
 import {
     canSendRecoveryOfferEmail,
     hasActiveOrTrialingStripeSubscription,
+    hasAbandonedSubscriptionCheckout,
     hasLikelyActivePaidAccess,
 } from "@/app/api/_lib/recoveryOffer";
 import { buildRecoveryOfferEmail } from "@/app/api/_lib/recoveryOfferEmail";
@@ -30,13 +31,6 @@ export async function POST(req: NextRequest) {
         req,
         async ({ req }) => {
             const decoded = await verifySession(req);
-            let body: any = {};
-            try {
-                body = await req.json();
-            } catch {
-                body = {};
-            }
-            const immediateCheckoutCancel = body?.immediate === true;
             const db = getAdminDb();
             const userRef = db.collection("kloner_users").doc(decoded.uid);
             const snap = await userRef.get();
@@ -48,20 +42,14 @@ export async function POST(req: NextRequest) {
 
             const canSend = canSendRecoveryOfferEmail(userData);
             if (!canSend.ok) {
-                if (immediateCheckoutCancel && canSend.reason === "active_recently") {
-                    // An explicit Stripe cancel return is a checkout abandonment signal.
-                    // Send immediately; unsubscribe and active-subscription checks below
-                    // still apply.
-                } else {
-                    return NextResponse.json(
-                        {
-                            ok: true,
-                            sent: false,
-                            skipped: canSend.reason || "inactive",
-                        },
-                        { headers: { "Cache-Control": "no-store" } }
-                    );
-                }
+                return NextResponse.json(
+                    {
+                        ok: true,
+                        sent: false,
+                        skipped: canSend.reason || "inactive",
+                    },
+                    { headers: { "Cache-Control": "no-store" } }
+                );
             }
 
             if (hasLikelyActivePaidAccess(userData)) {
@@ -75,15 +63,28 @@ export async function POST(req: NextRequest) {
                 typeof userData?.stripeCustomerId === "string" && userData.stripeCustomerId.trim()
                     ? userData.stripeCustomerId.trim()
                     : null;
-            if (customerId) {
-                const stripe = getStripe();
-                const hasActiveSub = await hasActiveOrTrialingStripeSubscription(stripe, customerId);
-                if (hasActiveSub) {
-                    return NextResponse.json(
-                        { ok: true, sent: false, skipped: "active_subscription" },
-                        { headers: { "Cache-Control": "no-store" } }
-                    );
-                }
+            if (!customerId) {
+                return NextResponse.json(
+                    { ok: true, sent: false, skipped: "missing_stripe_customer" },
+                    { headers: { "Cache-Control": "no-store" } }
+                );
+            }
+
+            const stripe = getStripe();
+            const hasActiveSub = await hasActiveOrTrialingStripeSubscription(stripe, customerId);
+            if (hasActiveSub) {
+                return NextResponse.json(
+                    { ok: true, sent: false, skipped: "active_subscription" },
+                    { headers: { "Cache-Control": "no-store" } }
+                );
+            }
+
+            const abandonedCheckout = await hasAbandonedSubscriptionCheckout(stripe, customerId);
+            if (!abandonedCheckout) {
+                return NextResponse.json(
+                    { ok: true, sent: false, skipped: "checkout_not_expired_or_retry_in_progress" },
+                    { headers: { "Cache-Control": "no-store" } }
+                );
             }
 
             const authUser = await getAdminAuth().getUser(decoded.uid);
