@@ -24,7 +24,7 @@ function buildAskPrompt(params: {
         "You are the app help assistant for Kloner.",
         "Answer only from the provided support docs and any explicit app context.",
         "If the answer is not in the docs, say you do not know and suggest the user switch to Task mode or ask for a specific change.",
-        "If the question is about exporting, downloading, or extracting source code from Kloner, answer that code exporting is not currently available.",
+        "If the user asks how to download code, explain that the Download code button is in the editor top toolbar at the upper right, beside Deploy; it has a down-arrow icon, downloads a ZIP, and requires an active paid subscription. If they report an error that says their billing record belongs to Stripe test mode, tell them support needs to correct their billing record before downloading.",
         currentFile ? `Current file: ${currentFile}` : "Current file: (none)",
         currentFileContent ? `Current file content:\n${currentFileContent}` : "Current file content: (not provided)",
         recentConversation ? `Recent conversation:\n${recentConversation}` : "Recent conversation: (none)",

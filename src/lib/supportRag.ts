@@ -18,8 +18,7 @@ const CODE_EXPORT_HINTS = [
 const CODE_EXPORT_POLICY_DOC: SupportDoc = {
     id: "code-export-policy",
     text:
-        "Kloner does not currently offer code exporting. If a user asks to export, download, or move the source code out of Kloner, answer clearly that code export is not available right now. " +
-        "You can suggest continuing to edit inside Kloner, deploying the app, or asking for help with a specific change instead.",
+        "Users can download their project source code from inside the App Builder editor. Direct them to the top toolbar at the upper-right of the editor and click the button labeled Download code (down-arrow icon), beside Deploy. The download is a ZIP file and requires an active paid subscription. If the button is disabled, wait for the project files to finish loading. If a download fails, ask them to retry and share the exact error shown.",
 };
 
 function tokenize(text: string): string[] {

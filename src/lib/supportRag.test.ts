@@ -2,7 +2,7 @@ import { buildSupportDocsContext, buildSupportPolicyContext, rankSupportDocs } f
 
 describe("supportRag", () => {
     const docs = [
-        { id: "download", text: "Downloads are not supported in the app.", embedding: [1, 0, 0] },
+        { id: "download", text: "Download the project from the Download code button in the editor toolbar.", embedding: [1, 0, 0] },
         { id: "images", text: "Images can be uploaded from the custom tab.", embedding: [0, 1, 0] },
         { id: "billing", text: "Escalations are managed by the internal support team.", embedding: [0, 0, 1] },
     ];
@@ -16,13 +16,13 @@ describe("supportRag", () => {
     it("builds a context blob from the top matching docs", () => {
         const context = buildSupportDocsContext("how do i download the app", docs, undefined, 2);
         expect(context).toContain("### download");
-        expect(context).toContain("Downloads are not supported");
+        expect(context).toContain("Download code button");
         expect(context).not.toContain("### billing");
     });
 
     it("adds the export-code policy snippet for export questions", () => {
         const context = buildSupportPolicyContext("can I export the code from Kloner?");
         expect(context).toContain("code-export-policy");
-        expect(context).toContain("does not currently offer code exporting");
+        expect(context).toContain("Download code button");
     });
 });

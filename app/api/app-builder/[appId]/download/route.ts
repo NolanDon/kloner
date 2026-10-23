@@ -15,7 +15,19 @@ export async function POST(req: NextRequest, { params }: any) {
         assertAppBuilderScope(authedReq, uid, appId);
         const db = getAdminDb();
         // Refresh from Stripe so a cached paid tier or trial claim cannot grant exports.
-        await refreshTierFromStripeForUid(uid);
+        try {
+            await refreshTierFromStripeForUid(uid);
+        } catch (error: any) {
+            const message = String(error?.message || "");
+            if (/similar object exists in test mode/i.test(message)) {
+                console.error("[project-download] Stripe customer mode mismatch", { uid, appId });
+                return NextResponse.json({
+                    code: "BILLING_CUSTOMER_MODE_MISMATCH",
+                    error: "Your billing record cannot be verified because it belongs to Stripe test mode. Contact support to correct the billing record before downloading code.",
+                }, { status: 409 });
+            }
+            throw error;
+        }
         const userRef = db.collection("kloner_users").doc(uid);
         const user = (await userRef.get()).data() || {};
         if (!canDownloadProject(user)) return NextResponse.json({
