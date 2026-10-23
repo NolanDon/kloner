@@ -28,25 +28,13 @@ export default function UniformModal({
   cancelText = "Cancel",
 }: UniformModalProps) {
   const titleId = useId();
-  const [portalRoot, setPortalRoot] = useState<HTMLDivElement | null>(null);
+  const [portalReady, setPortalReady] = useState(false);
 
   useEffect(() => {
-    if (!isOpen) return;
-
-    // Mount after the editor/paywall portals, just like the editor close popup.
-    // A dedicated root keeps the dialog out of animated ancestor stacking contexts.
-    const root = document.createElement("div");
-    root.dataset.klonerModalRoot = "true";
-    Object.assign(root.style, {
-      position: "fixed",
-      inset: "0",
-      zIndex: "2147483647",
-      pointerEvents: "auto",
-    });
-    document.body.appendChild(root);
-    setPortalRoot(root);
-    return () => root.remove();
-  }, [isOpen]);
+    // Portal directly to body so production wrappers, transforms, and stacking
+    // contexts cannot clip or cover confirmations.
+    setPortalReady(true);
+  }, []);
 
   // Handle escape key
   useEffect(() => {
@@ -156,7 +144,9 @@ export default function UniformModal({
 
   // Navigation confirmations must appear above editor and paywall portals,
   // outside any stacking context created by the app shell.
-  return isOpen && portalRoot ? createPortal(modal, portalRoot) : null;
+  return isOpen && portalReady && typeof document !== "undefined"
+    ? createPortal(modal, document.body)
+    : null;
 }
 
 // Utility functions to replace window.alert and window.confirm
