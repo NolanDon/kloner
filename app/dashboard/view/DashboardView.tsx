@@ -3503,8 +3503,7 @@ function AppCard({
                     {isDraftCard ? (
                         <>
                             <div
-                                className="relative flex justify-center transition-all duration-500 ease-out md:translate-y-3 md:scale-90 md:opacity-0 md:pointer-events-none md:blur-[1px] md:group-hover:translate-y-0 md:group-hover:scale-100 md:group-hover:opacity-100 md:group-hover:pointer-events-auto md:group-hover:blur-0"
-                                style={{ transitionDelay: "0ms" }}
+                                className="relative flex justify-center"
                             >
                                 <span className="pointer-events-none absolute -bottom-6 left-1/2 -translate-x-1/2 whitespace-nowrap text-[10px] font-medium text-neutral-800 opacity-100 transition-opacity duration-150 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
                                     Archive
@@ -3521,8 +3520,7 @@ function AppCard({
                             </div>
 
                             <div
-                                className="relative flex justify-center transition-all duration-500 ease-out md:translate-y-3 md:scale-90 md:opacity-0 md:pointer-events-none md:blur-[1px] md:group-hover:translate-y-0 md:group-hover:scale-100 md:group-hover:opacity-100 md:group-hover:pointer-events-auto md:group-hover:blur-0"
-                                style={{ transitionDelay: "120ms" }}
+                                className="relative flex justify-center"
                             >
                                 <span className="pointer-events-none absolute -bottom-6 left-1/2 -translate-x-1/2 whitespace-nowrap text-[10px] font-medium text-neutral-800 opacity-100 transition-opacity duration-150 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
                                     {draftEditIsBusy ? "Opening…" : "View"}
@@ -3549,8 +3547,7 @@ function AppCard({
                             </div>
 
                             <div
-                                className="relative flex justify-center transition-all duration-500 ease-out md:translate-y-3 md:scale-90 md:opacity-0 md:pointer-events-none md:blur-[1px] md:group-hover:translate-y-0 md:group-hover:scale-100 md:group-hover:opacity-100 md:group-hover:pointer-events-auto md:group-hover:blur-0"
-                                style={{ transitionDelay: "240ms" }}
+                                className="relative flex justify-center"
                             >
                                 <span className="pointer-events-none absolute -bottom-6 left-1/2 -translate-x-1/2 whitespace-nowrap text-[10px] font-medium text-neutral-800 opacity-100 transition-opacity duration-150 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
                                     Delete
@@ -3577,8 +3574,7 @@ function AppCard({
                     ) : (
                         <>
                             <div
-                                className="relative flex justify-center transition-all duration-500 ease-out md:translate-y-3 md:scale-90 md:opacity-0 md:pointer-events-none md:blur-[1px] md:group-hover:translate-y-0 md:group-hover:scale-100 md:group-hover:opacity-100 md:group-hover:pointer-events-auto md:group-hover:blur-0"
-                                style={{ transitionDelay: "0ms" }}
+                                className="relative flex justify-center"
                             >
                                 <span className="pointer-events-none absolute -bottom-6 left-1/2 -translate-x-1/2 whitespace-nowrap text-[10px] font-medium text-neutral-800 opacity-100 transition-opacity duration-150 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
                                     {appViewIsBusy ? "Opening…" : "View"}
@@ -3599,8 +3595,7 @@ function AppCard({
                             </div>
 
                             <div
-                                className="relative flex justify-center transition-all duration-500 ease-out md:translate-y-3 md:scale-90 md:opacity-0 md:pointer-events-none md:blur-[1px] md:group-hover:translate-y-0 md:group-hover:scale-100 md:group-hover:opacity-100 md:group-hover:pointer-events-auto md:group-hover:blur-0"
-                                style={{ transitionDelay: "0ms" }}
+                                className="relative flex justify-center"
                             >
                                 <span className="pointer-events-none absolute -bottom-6 left-1/2 -translate-x-1/2 whitespace-nowrap text-[10px] font-medium text-neutral-800 opacity-100 transition-opacity duration-150 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
                                     Archive
@@ -3625,8 +3620,7 @@ function AppCard({
                             </div>
 
                             <div
-                                className="relative flex justify-center transition-all duration-500 ease-out md:translate-y-3 md:scale-90 md:opacity-0 md:pointer-events-none md:blur-[1px] md:group-hover:translate-y-0 md:group-hover:scale-100 md:group-hover:opacity-100 md:group-hover:pointer-events-auto md:group-hover:blur-0"
-                                style={{ transitionDelay: "240ms" }}
+                                className="relative flex justify-center"
                             >
                                 <span className="pointer-events-none absolute -bottom-6 left-1/2 -translate-x-1/2 whitespace-nowrap text-[10px] font-medium text-neutral-800 opacity-100 transition-opacity duration-150 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
                                     Delete
@@ -4241,7 +4235,8 @@ export default function PreviewPage(): JSX.Element {
 
         const ok = await showConfirm(
             "Delete this app? This action cannot be undone.",
-            "Delete App"
+            "Delete App",
+            { confirmText: "Delete app" }
         );
         if (!ok) return;
 
@@ -4294,7 +4289,8 @@ export default function PreviewPage(): JSX.Element {
 
         const ok = await showConfirm(
             "Delete this draft? This action cannot be undone.",
-            "Delete Draft"
+            "Delete Draft",
+            { confirmText: "Delete draft" }
         );
         if (!ok) return;
 
@@ -14237,7 +14233,7 @@ export default function PreviewPage(): JSX.Element {
                                 <AppCard
                                     key={(app as any).draftId || app.id}
                                     app={app}
-                                    isDeleting={!!deletingDraftApp[(app as any).draftId || app.id]}
+                                    isDeleting={!!deletingDraftApp[(app as any).draftId || app.id] || !!deletingApp[app.id]}
                                     isArchiving={!!archivingApp[app.id]}
                                     isPendingCreation={draftPending || draftScanPending}
                                     pendingRetryable={false}
