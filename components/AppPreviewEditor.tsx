@@ -5173,7 +5173,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
         <div
             ref={containerRef}
             tabIndex={-1}
-            className="h-full w-full bg-white flex flex-col"
+            className="relative h-full w-full bg-white flex flex-col"
         >
             {shouldRunPreviewTour && !hasCompletedPreviewTour && !previewTourDontShowAgain ? (
                 <PreviewEditorTour

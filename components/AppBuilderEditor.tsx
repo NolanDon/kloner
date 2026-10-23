@@ -16,6 +16,7 @@ import KlonerLoader, { WorkspaceLoadingPanel, WorkspaceLoadingScreen } from "./K
 import WebContainerRunner from "./WebContainerRunner";
 import { WorkspaceAgentLoader } from "./WorkspaceAgentActivity";
 import { bootstrapServerSession, ensureSessionAndCsrf, resetAuthClientCaches } from "@/lib/auth-client";
+import { shouldBypassEditorNavigationGuard } from "@/lib/editorNavigation";
 import { useVercelIntegration } from "@/src/hooks/useVercelIntegration";
 import { auth, db, storage } from "@/lib/firebase";
 import { BASIC_MONTHLY_PRICE_USD, TRIAL_CTA_LABEL } from "@/src/lib/billingAccess";
@@ -3603,8 +3604,7 @@ export default function AppBuilderEditor({
             // Paywall account-management links are already an explicit escape
             // hatch from the editor. Let them navigate directly instead of
             // opening the editor leave confirmation underneath the paywall.
-            if (anchor.dataset.klonerNavigationBypass === "true") return;
-            if (anchor.target && anchor.target !== "_self") return;
+            if (shouldBypassEditorNavigationGuard(anchor)) return;
             const hrefAttr = (anchor.getAttribute("href") || "").trim();
             if (!hrefAttr || hrefAttr.startsWith("#")) return;
 
