@@ -222,6 +222,27 @@ function extractDownstreamFailureDetails(
     };
 }
 
+function getUnexpectedBinaryScanResponse(r: { upstream?: any; raw?: string }): {
+    contentType: string;
+    reason: string;
+    rawSummary: string;
+} | null {
+    const contentType = String(r.upstream?.headers?.get?.("content-type") || "").split(";")[0].trim().toLowerCase();
+    const raw = typeof r.raw === "string" ? r.raw : "";
+    const isWebp = raw.length >= 12 && raw.slice(0, 4) === "RIFF" && raw.slice(8, 12) === "WEBP";
+    const isBinaryMedia = /^(?:image|audio|video)\//.test(contentType) || contentType === "application/octet-stream";
+
+    if (!isWebp && !isBinaryMedia) return null;
+
+    const detectedType = contentType || (isWebp ? "image/webp" : "application/octet-stream");
+    return {
+        contentType: detectedType,
+        reason: `Scan backend returned ${detectedType} instead of scan results.`,
+        // Keep binary response contents out of logs, Slack alerts, and user-facing errors.
+        rawSummary: `[binary response omitted; content-type=${detectedType}${isWebp ? "; signature=RIFF/WEBP" : ""}]`,
+    };
+}
+
 function jsonNoStatusAlert(body: any, init: { status: number; headers?: Record<string, string> }) {
     return NextResponse.json(body, {
         ...init,
@@ -388,6 +409,7 @@ export async function POST(req: NextRequest) {
                 //  - if payload.totalPlanned exists, it must be > 0 (we actually captured something)
                 const hasErrorFlag = Boolean((payload as any).error);
                 const okField = (payload as any).ok;
+                const unexpectedBinaryResponse = getUnexpectedBinaryScanResponse(r);
                 const totalPlanned =
                     typeof (payload as any).totalPlanned === "number"
                         ? (payload as any).totalPlanned
@@ -395,6 +417,7 @@ export async function POST(req: NextRequest) {
 
                 const logicalOk =
                     r.upstream.ok &&
+                    !unexpectedBinaryResponse &&
                     !hasErrorFlag &&
                     okField !== false &&
                     (totalPlanned === null || totalPlanned > 0);
@@ -406,11 +429,24 @@ export async function POST(req: NextRequest) {
                             ? r.status
                             : 502;
 
-                    const downstream = extractDownstreamFailureDetails(r, payload);
-                    const domainVerification = status >= 500
+                    const downstream = unexpectedBinaryResponse
+                        ? {
+                            reason: unexpectedBinaryResponse.reason,
+                            code: "UNEXPECTED_BINARY_SCAN_RESPONSE",
+                            requestId: r.reqId || null,
+                            source: "generate-screenshots",
+                            message: unexpectedBinaryResponse.reason,
+                            statusText: r.upstream?.statusText || null,
+                            raw: unexpectedBinaryResponse.rawSummary,
+                            body: null,
+                        }
+                        : extractDownstreamFailureDetails(r, payload);
+                    const domainVerification = status >= 500 && !unexpectedBinaryResponse
                         ? buildDomainVerificationMessage(normalizedUrl)
                         : null;
-                    const userError = domainVerification?.userMessage || downstream.reason;
+                    const userError = unexpectedBinaryResponse
+                        ? "The scan service returned an image instead of scan results. Please try again."
+                        : domainVerification?.userMessage || downstream.reason;
 
                     await captureUrlScanFailure({
                         uid: decoded.uid,
@@ -449,6 +485,7 @@ export async function POST(req: NextRequest) {
                             code: domainVerification?.code || downstream.code || (status >= 500 ? "DOWNSTREAM_FAILURE" : "URL_SCAN_FAILED"),
                             upstreamStatus: r.status,
                             upstreamStatusText: downstream.statusText,
+                            upstreamContentType: unexpectedBinaryResponse?.contentType || null,
                             upstreamCode: downstream.code,
                             upstreamRequestId: downstream.requestId,
                             upstreamSource: downstream.source,

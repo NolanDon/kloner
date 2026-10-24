@@ -187,4 +187,34 @@ describe("POST /api/private/generate", () => {
         });
     });
 
+    it("rejects binary image responses instead of treating them as successful scan results", async () => {
+        const binaryPayload = `RIFF${String.fromCharCode(0).repeat(4)}WEBP${String.fromCharCode(0).repeat(32)}`;
+        callBackend.mockResolvedValueOnce({
+            status: 200,
+            upstream: {
+                ok: true,
+                statusText: "OK",
+                headers: { get: (name: string) => name.toLowerCase() === "content-type" ? "image/webp" : null },
+            },
+            json: { ok: true, data: binaryPayload },
+            raw: binaryPayload,
+            reqId: "req_binary_1",
+        });
+
+        const { POST } = await import("./route");
+        const req: any = { json: async () => ({ url: "https://moqup.app/" }) };
+        const res: any = await POST(req);
+        const body = await res.json();
+
+        expect(res.status).toBe(502);
+        expect(body).toMatchObject({
+            code: "UNEXPECTED_BINARY_SCAN_RESPONSE",
+            userMessage: "The scan service returned an image instead of scan results. Please try again.",
+            upstreamContentType: "image/webp",
+        });
+        expect(JSON.stringify(body)).not.toContain("WEBP");
+        expect(consumeUserCredit).not.toHaveBeenCalled();
+        expect(captureCriticalEventMock).toHaveBeenCalledTimes(1);
+        expect(JSON.stringify(captureCriticalEventMock.mock.calls[0]?.[0])).not.toContain(binaryPayload);
+    });
 });
