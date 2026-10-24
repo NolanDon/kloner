@@ -326,7 +326,7 @@ export function AppBuilderEditorTour({
                             <button
                                 type="button"
                                 onClick={finish}
-                                className={`text-xs font-semibold text-neutral-500 transition hover:text-neutral-900 ${showSkip ? "" : "pointer-events-none opacity-0"}`}
+                                className={`builder-tour-skip text-xs font-semibold text-neutral-500 transition hover:text-neutral-900 ${showSkip ? "" : "pointer-events-none opacity-0"}`}
                                 aria-hidden={!showSkip}
                                 tabIndex={showSkip ? 0 : -1}
                             >
@@ -334,7 +334,7 @@ export function AppBuilderEditorTour({
                             </button>
                         </div>
 
-                        <div className="text-xs text-black/50 mr-2">{index + 1}/{steps.length}</div>
+                        <div className="tour-step-counter text-xs text-black/50 mr-2">{index + 1}/{steps.length}</div>
 
                         <div className="flex items-center gap-2">
                             <button
@@ -352,7 +352,7 @@ export function AppBuilderEditorTour({
                             >
                                 <span>{index >= steps.length - 1 ? "Done" : "Next"}</span>
                                 {!isMobile && index > 0 ? (
-                                    <kbd className="bg-black/5 text-xs px-2 py-0.5 rounded" aria-hidden>
+                                    <kbd className="tour-spacebar-key border text-xs px-2.5 py-1 rounded-md font-semibold" aria-hidden>
                                         Spacebar
                                     </kbd>
                                 ) : null}

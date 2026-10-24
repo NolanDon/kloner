@@ -178,7 +178,7 @@ function EditBlocksModal() {
 
       <div className="flex-1 rounded-xl border border-neutral-200 bg-neutral-50 p-3 overflow-hidden flex flex-col">
         <div className="relative flex-1 overflow-hidden">
-          <div ref={scrollerRef} className="h-full space-y-2 overflow-y-auto pr-1">
+          <div ref={scrollerRef} className="h-full space-y-2 overflow-y-auto pr-1 demo-chat-scroller">
             <div className="flex items-start gap-2">
               <div className="mt-0.5 h-6 w-6 rounded-full bg-neutral-900 text-white grid place-items-center text-[11px] font-semibold">
                 U
@@ -250,8 +250,8 @@ function EditBlocksModal() {
             </div>
           </div>
 
-          <div className="pointer-events-none absolute inset-x-0 top-0 h-6 bg-gradient-to-b from-neutral-50 to-transparent" />
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-6 bg-gradient-to-t from-neutral-50 to-transparent" />
+          <div className="pointer-events-none absolute inset-x-0 top-0 h-6 bg-gradient-to-b from-neutral-50 to-transparent demo-chat-fade-top" />
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-6 bg-gradient-to-t from-neutral-50 to-transparent demo-chat-fade-bottom" />
         </div>
 
         <div className="mt-3 rounded-xl border border-neutral-200 bg-white px-3 py-2">
@@ -326,7 +326,7 @@ function Card({
       className="w-full max-w-[520px] space-y-4"
     >
       <div className="flex items-center gap-3 mt-5">
-        <span className="inline-flex sm:flex-col items-center lg:text-center rounded-full px-2.5 py-1 text-[11px] font-semibold border border-black/15 text-black/70">
+        <span className="how-step-number inline-flex sm:flex-col items-center lg:text-center rounded-full px-2.5 py-1 text-[11px] font-semibold border border-black/15 text-black/70">
           {step}
         </span>
         <h3 className="text-2xl md:text-3xl whitespace-nowrap text-black my-5">

@@ -441,10 +441,10 @@ export default function PriceClient(): JSX.Element {
                                 <article
                                     key={tier.name}
                                     className={
-                                        "overflow-hidden rounded-[30px] border bg-white transition-transform " + cardClass
+                                        "pricing-tier-card overflow-hidden rounded-[30px] border bg-white transition-transform " + cardClass
                                     }
                                 >
-                                    <div className={"px-5 py-4 " + headerClass}>
+                                    <div className={"pricing-tier-header px-5 py-4 " + (isPro ? "pricing-tier-header-pro " : "") + headerClass}>
                                         <div className="flex items-center justify-between gap-3">
                                             <div>
                                                 <p className={"text-[10px] font-semibold uppercase tracking-[0.22em] " + (isPro ? "text-white/85" : "text-neutral-500")}>
@@ -485,7 +485,7 @@ export default function PriceClient(): JSX.Element {
                                             </p>
                                         ) : null}
 
-                                        <div className="mt-5 overflow-hidden rounded-2xl border border-neutral-200 bg-neutral-50/80">
+                                        <div className="pricing-tier-features mt-5 overflow-hidden rounded-2xl border border-neutral-200 bg-neutral-50/80">
                                             {rows.map((row, index) => (
                                                 <div
                                                     key={row.label}
@@ -506,7 +506,7 @@ export default function PriceClient(): JSX.Element {
                                             type="button"
                                             onClick={() => handleClick(tier.name)}
                                             disabled={isLoading}
-                                            className={"mt-5 w-full rounded-full px-4 py-3 text-sm font-semibold transition " + buttonClass + (isLoading ? " opacity-70 cursor-not-allowed" : "")}
+                                            className={"pricing-tier-button mt-5 min-h-[58px] w-full rounded-full px-6 py-4 text-base font-semibold transition " + (isAgency ? "pricing-tier-agency-button " : "") + buttonClass + (isLoading ? " opacity-70 cursor-not-allowed" : "")}
                                             style={isPro ? { backgroundColor: ACCENT } : undefined}
                                         >
                                             {isLoading ? "Redirecting to Stripe…" : tier.cta}

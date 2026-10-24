@@ -30,7 +30,7 @@ const metrics: Metric[] = [
   {
     value: '03',
     title: 'Make it yours',
-    metric: 'Edit your website',
+    metric: 'Edit & Tweak',
     text: 'Customize text, images, colors, and sections for your own website.',
   },
 ];

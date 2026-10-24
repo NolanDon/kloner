@@ -184,7 +184,7 @@ export default function MembershipSticky({ heading = 'What your website cloner i
           {/* LEFT (sticky) */}
           <div className="lg:col-span-4">
             <div className="md:sticky top-24">
-              <h2 className="text-4xl md:text-6xl md:mb-10 text-black/80 bg-white pt-40 md:py-15 mt-20">
+              <h2 className="text-4xl md:text-6xl md:mb-10 text-black/80 bg-transparent px-0 py-0 mt-20 leading-[1.08]">
                 {heading}
               </h2>
 

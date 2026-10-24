@@ -528,7 +528,7 @@ function BlockToolbar({
             <div
                 style={style}
                 className={[
-                    "cursor-default border border-neutral-200 bg-white text-neutral-800 shadow-2xl",
+                    "floating-block-toolbar cursor-default border border-neutral-200 bg-white text-neutral-800 shadow-2xl",
                     docked
                         ? "flex w-full flex-col overflow-hidden rounded-none border-0 shadow-none"
                         : "overflow-visible text-[10px] leading-tight w-[260px] rounded-2xl sm:w-[260px] sm:rounded-2xl max-sm:w-[min(96vw,560px)] max-sm:rounded-2xl",

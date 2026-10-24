@@ -7255,7 +7255,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
     const showChatEmptyState = (chatHistoryResolved || chatHistoryLoadTimedOut) && !showIntroTyping && messages.length === 0 && !isLoading;
 
     return (
-        <div className="flex flex-col h-full min-h-0 bg-gray-50 overflow-hidden">
+        <div className="app-builder-chat-theme flex flex-col h-full min-h-0 bg-gray-50 overflow-hidden">
             {/* Header */}
             <div className="flex items-center justify-between p-3 border-b bg-white flex-shrink-0">
                 <div className="flex items-center gap-2">
@@ -7433,7 +7433,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
             ) : null}
 
             {/* Messages */}
-            <div data-app-builder-chat-scroll="true" className="flex-1 min-h-0 overflow-y-auto px-4 py-5 pb-40 space-y-4 bg-[radial-gradient(circle_at_top,_rgba(255,141,33,0.10),_transparent_36%),linear-gradient(180deg,rgba(255,250,247,0.96),rgba(255,255,255,1))]">
+            <div data-app-builder-chat-scroll="true" className="app-builder-chat-scroll flex-1 min-h-0 overflow-y-auto px-4 py-5 pb-40 space-y-4 bg-[radial-gradient(circle_at_top,_rgba(255,141,33,0.10),_transparent_36%),linear-gradient(180deg,rgba(255,250,247,0.96),rgba(255,255,255,1))]">
                 {showInitialChatLoader ? (
                     <div className="flex min-h-[220px] items-center justify-center px-4 py-10">
                         <div className="w-full max-w-sm rounded-3xl border border-[#FF8D21]/15 bg-white/90 px-5 py-5 text-left shadow-[0_16px_40px_rgba(15,23,42,0.08)] backdrop-blur-sm">
@@ -7490,9 +7490,10 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                     >
 
                         <div
+                            data-chat-role={message.role}
                             className={`relative min-w-0 max-w-[82%] rounded-[1.35rem] px-4 py-3 shadow-[0_12px_28px_rgba(15,23,42,0.08)] ${message.role === "user"
-                                ? "border border-[#FF8D21]/20 bg-[linear-gradient(135deg,#FF8D21_0%,#FF8A5C_100%)] text-white"
-                                : "border border-[#FF8D21]/14 bg-[linear-gradient(180deg,rgba(255,251,248,0.98),rgba(255,255,255,0.95))] text-neutral-900"
+                                ? "app-builder-chat-bubble border border-[#FF8D21]/20 bg-[linear-gradient(135deg,#FF8D21_0%,#FF8A5C_100%)] text-white"
+                                : "app-builder-chat-bubble border border-[#FF8D21]/14 bg-[linear-gradient(180deg,rgba(255,251,248,0.98),rgba(255,255,255,0.95))] text-neutral-900"
                                 }`}
                         >
                             {message.editPlanFailure ? (
@@ -8140,7 +8141,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                 {agentMode === "v3" && (isLoading || Boolean(activeEditPlanJob && !isEditPlanJobTerminalStatus(String(activeEditPlanJob.status)))) && <WorkspaceAgentLoader />}
                 {agentMode !== "v3" && isLoading && !activeEditPlanJob && (
                     <div className="flex justify-start">
-                        <div className="max-w-[82%] rounded-2xl border border-gray-200 bg-white p-3 shadow-[0_10px_24px_rgba(15,23,42,0.05)]">
+                        <div className="app-builder-agent-loader-bubble max-w-[82%] rounded-2xl border border-gray-200 bg-white p-3 shadow-[0_10px_24px_rgba(15,23,42,0.05)]">
                             <div className="flex items-center gap-2">
                                 <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-accent"></div>
                                 <span className="text-sm text-gray-700">Working on it</span>
@@ -8150,7 +8151,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                 )}
                 {showPreparingChangeSummaryBubble && !isLoading && !editPlanApplyLoaderMessage && (
                     <div className="flex justify-start">
-                        <div className="max-w-[82%] rounded-2xl border border-gray-200 bg-white p-3 shadow-[0_10px_24px_rgba(15,23,42,0.05)]">
+                        <div className="app-builder-agent-loader-bubble max-w-[82%] rounded-2xl border border-gray-200 bg-white p-3 shadow-[0_10px_24px_rgba(15,23,42,0.05)]">
                             <div className="flex items-center gap-2">
                                 <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-accent"></div>
                                 <span className="text-sm text-gray-700">Preparing change summary...</span>
@@ -8160,7 +8161,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                 )}
                 {editPlanApplyLoaderMessage && !isLoading && (
                     <div className="flex justify-start">
-                        <div className="max-w-[82%] rounded-2xl border border-gray-200 bg-white p-3 shadow-[0_10px_24px_rgba(15,23,42,0.05)]">
+                        <div className="app-builder-agent-loader-bubble max-w-[82%] rounded-2xl border border-gray-200 bg-white p-3 shadow-[0_10px_24px_rgba(15,23,42,0.05)]">
                             <div className="flex items-center gap-2">
                                 <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-accent"></div>
                                 <span className="text-sm text-gray-700">{editPlanApplyLoaderMessage}</span>
@@ -8170,7 +8171,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                 )}
                 {showIntroTyping && messages.length > 0 ? (
                     <div className="flex justify-start">
-                        <div className="rounded-[1.35rem] border border-[#FF8D21]/14 bg-[linear-gradient(180deg,rgba(255,251,248,0.98),rgba(255,255,255,0.95))] px-4 py-2 text-sm text-neutral-700 shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
+                        <div className="app-builder-agent-loader-bubble rounded-[1.35rem] border border-[#FF8D21]/14 bg-[linear-gradient(180deg,rgba(255,251,248,0.98),rgba(255,255,255,0.95))] px-4 py-2 text-sm text-neutral-700 shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
                             typing...
                         </div>
                     </div>
@@ -8968,7 +8969,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                 ) : null}
 
                 {PRODUCTION_AGENT_CHAT_BLOCKED ? (
-                    <div className="mb-3 rounded-[1.5rem] border border-slate-200 bg-[linear-gradient(180deg,rgba(248,250,252,0.98),rgba(255,255,255,1))] px-4 py-4 shadow-[0_12px_32px_rgba(15,23,42,0.08)]">
+                    <div className="app-builder-chat-notice app-builder-chat-notice-paused mb-3 rounded-[1.5rem] border border-slate-200 bg-[linear-gradient(180deg,rgba(248,250,252,0.98),rgba(255,255,255,1))] px-4 py-4 shadow-[0_12px_32px_rgba(15,23,42,0.08)]">
                         <div className="flex items-start gap-3">
                             <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-slate-100 text-slate-700 ring-1 ring-slate-200">
                                 <AlertTriangle className="h-5 w-5" />
@@ -8987,7 +8988,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                         </div>
                     </div>
                 ) : showPreviewLoadingNotice ? (
-                    <div className="mb-3 rounded-[1.5rem] border border-amber-200 bg-[linear-gradient(180deg,rgba(255,247,237,0.98),rgba(255,255,255,1))] px-4 py-4 shadow-[0_12px_32px_rgba(251,146,60,0.10)]">
+                    <div className="app-builder-chat-notice app-builder-chat-notice-loading mb-3 rounded-[1.5rem] border border-amber-200 bg-[linear-gradient(180deg,rgba(255,247,237,0.98),rgba(255,255,255,1))] px-4 py-4 shadow-[0_12px_32px_rgba(251,146,60,0.10)]">
                         <div className="flex items-start gap-3">
                             <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-amber-100 text-amber-700 ring-1 ring-amber-200">
                                 <AlertTriangle className="h-5 w-5" />
@@ -9003,7 +9004,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                         </div>
                     </div>
                 ) : hasPreviewIssue ? (
-                    <div className="mb-3 rounded-[1.5rem] border border-rose-200 bg-[linear-gradient(180deg,rgba(255,241,242,0.98),rgba(255,255,255,1))] px-4 py-4 shadow-[0_12px_32px_rgba(244,63,94,0.10)]">
+                    <div className="app-builder-chat-notice app-builder-chat-notice-error mb-3 rounded-[1.5rem] border border-rose-200 bg-[linear-gradient(180deg,rgba(255,241,242,0.98),rgba(255,255,255,1))] px-4 py-4 shadow-[0_12px_32px_rgba(244,63,94,0.10)]">
                         <div className="flex items-start gap-3">
                             <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-rose-100 text-rose-700 ring-1 ring-rose-200">
                                 <AlertTriangle className="h-5 w-5" />
@@ -9081,13 +9082,13 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                 {requestPageOptions.length > 0 ? (
                     <div className="mb-2 flex items-center gap-2">
                         <details className="group relative shrink-0">
-                            <summary className="flex h-8 cursor-pointer list-none items-center gap-1.5 rounded-full border border-neutral-200 bg-white px-3 text-[12px] font-semibold text-neutral-700 shadow-sm transition hover:bg-neutral-50">
+                            <summary className="request-page-picker-trigger flex h-8 cursor-pointer list-none items-center gap-1.5 rounded-full border border-neutral-200 bg-white px-3 text-[12px] font-semibold text-neutral-700 shadow-sm transition hover:bg-neutral-50">
                                 <Search className="h-3.5 w-3.5 text-neutral-500" aria-hidden="true" />
                                 <span className="max-w-[10rem] truncate">{selectedRequestPageLabel}</span>
                                 <ChevronDown className="h-3.5 w-3.5 text-neutral-400 transition group-open:rotate-180" aria-hidden="true" />
                             </summary>
 
-                            <div className="absolute bottom-full left-0 z-20 mb-2 w-[min(22rem,calc(100vw-2rem))] rounded-2xl border border-neutral-200 bg-white p-2 shadow-[0_18px_48px_rgba(15,23,42,0.12)]">
+                            <div className="request-page-picker-menu absolute bottom-full left-0 z-20 mb-2 w-[min(22rem,calc(100vw-2rem))] rounded-2xl border border-neutral-200 bg-white p-2 shadow-[0_18px_48px_rgba(15,23,42,0.12)]">
                                 <div className="flex items-center gap-2 rounded-xl border border-neutral-200 bg-neutral-50 px-2.5 py-2">
                                     <Search className="h-3.5 w-3.5 shrink-0 text-neutral-400" aria-hidden="true" />
                                     <input
@@ -9115,7 +9116,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                             setRequestPageOverrides([]);
                                             setRequestPageSearch("");
                                         }}
-                                        className={`mb-1 flex w-full items-start justify-between gap-3 rounded-xl px-3 py-2 text-left text-sm transition ${requestPageOverrides.length === 0 ? "bg-orange-50 text-neutral-900" : "hover:bg-neutral-50"}`}
+                                        className={`request-page-picker-option mb-1 flex w-full items-start justify-between gap-3 rounded-xl px-3 py-2 text-left text-sm transition ${requestPageOverrides.length === 0 ? "request-page-picker-option-active bg-orange-50 text-neutral-900" : "hover:bg-neutral-50"}`}
                                     >
                                         <div className="min-w-0">
                                             <div className="font-semibold">Auto: current page</div>
@@ -9143,7 +9144,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                                     setRequestPageSearch("");
                                                 }}
                                                 disabled={!active && atLimit}
-                                                className={`flex w-full items-start justify-between gap-3 rounded-xl px-3 py-2 text-left text-sm transition ${active ? "bg-orange-50 text-neutral-900" : "hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-60"}`}
+                                                className={`request-page-picker-option flex w-full items-start justify-between gap-3 rounded-xl px-3 py-2 text-left text-sm transition ${active ? "request-page-picker-option-active bg-orange-50 text-neutral-900" : "hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-60"}`}
                                             >
                                                 <div className="min-w-0">
                                                     <div className="font-semibold">{page.label}</div>
@@ -9158,7 +9159,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                         <div className="px-3 py-3 text-sm text-neutral-500">No matching pages.</div>
                                     ) : null}
 
-                                    <div className="px-3 pb-1 pt-2 text-[11px] text-neutral-500">
+                                    <div className="request-page-picker-help px-3 pb-1 pt-2 text-[11px] text-neutral-500">
                                         Select up to 3 pages. Auto uses the visible page.
                                     </div>
                                 </div>

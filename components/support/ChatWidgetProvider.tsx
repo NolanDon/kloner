@@ -1,7 +1,7 @@
 // components/support/ChatWidgetProvider.tsx
 "use client";
 
-import { MessagesSquare, SquareX } from "lucide-react";
+import { MessagesSquare, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@/src/hooks/useAuth";
 
@@ -24,6 +24,11 @@ type ApiSendResponse = {
 
 const STORAGE_KEY = "kloner_support_chat_id";
 const CONNECTING_TEXT = "__CONNECTING__";
+const HUMAN_REQUEST_QUESTION_THRESHOLD = 3;
+
+function isAiFallbackAnswer(text: string): boolean {
+    return /\b(?:i (?:do not|don't|dont) know|not clearly (?:covered|stated|answered)|not (?:in|covered by) (?:the )?docs|contact support|(?:i'm|i am) having trouble reaching the ai|unable to answer from (?:the )?docs)\b/i.test(text);
+}
 
 function sanitizeUserFacingError(message: unknown): string {
     const raw = typeof message === "string" ? message : "";
@@ -341,6 +346,12 @@ export default function ChatWidgetProvider() {
 
     const isConnectingToHuman = mode === "agent" && status === "pending";
     const canRequestHuman = !!user && !authLoading;
+    const userQuestionCount = messages.filter((message) => message.sender === "user").length;
+    const aiReturnedFallback = messages.some(
+        (message) => message.sender === "ai" && isAiFallbackAnswer(message.text),
+    );
+    const shouldOfferHuman =
+        userQuestionCount >= HUMAN_REQUEST_QUESTION_THRESHOLD || aiReturnedFallback;
 
     return (
         <>
@@ -361,55 +372,69 @@ export default function ChatWidgetProvider() {
                 }
             `}</style>
 
-            <button
-                type="button"
-                onClick={() => setOpen((o) => !o)}
-                aria-label={open ? "Close chat" : "Open chat"}
-                aria-expanded={open}
-                className="fixed bottom-6 right-6 z-[2147483647] rounded-full bg-accent text-white px-4 py-2 text-sm shadow-lg hover:brightness-80 focus:outline-none"
-            >
-                {open ? <SquareX aria-hidden="true" focusable="false" /> : <MessagesSquare aria-hidden="true" focusable="false" />}
-            </button>
+            {!open && (
+                <button
+                    type="button"
+                    onClick={() => setOpen(true)}
+                    aria-label="Open chat"
+                    aria-expanded={false}
+                    className="fixed bottom-6 right-6 z-[2147483647] rounded-full bg-accent text-white px-4 py-2 text-sm shadow-lg hover:brightness-80 focus:outline-none"
+                >
+                    <MessagesSquare aria-hidden="true" focusable="false" />
+                </button>
+            )}
 
 
             {open && (
-                <div className="fixed bottom-16 right-6 z-[2147483647] w-[320px] max-w-[90vw] rounded-2xl border border-neutral-200 bg-white shadow-xl flex flex-col overflow-hidden">
-                    <div className="px-4 py-3 border-b border-neutral-200 flex items-center justify-between">
+                <div className="fixed bottom-20 right-6 z-[2147483647] flex h-[min(680px,calc(100dvh-7rem))] w-[min(480px,calc(100vw-2rem))] flex-col overflow-hidden rounded-3xl border border-neutral-200 bg-white shadow-2xl">
+                    <div className="flex items-center justify-between border-b border-neutral-200 px-6 py-5">
                         <div>
-                            <div className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                            <div className="text-sm font-semibold uppercase tracking-wide text-neutral-500">
                                 Support
                             </div>
-                            <div className="text-sm font-medium text-neutral-900">
+                            <div className="text-lg font-semibold text-neutral-900">
                                 {mode === "ai" ? "AI assistant" : "Live agent"}
                                 {chatClosed ? " · Closed" : isConnectingToHuman ? " · Connecting" : ""}
                             </div>
                         </div>
 
-                        {chatId && (
-                            <button
-                                type="button"
-                                onClick={handleLeaveChat}
-                                className="text-[11px] font-medium text-neutral-400 hover:text-neutral-600"
-                            >
-                                Leave chat
-                            </button>
-                        )}
+                        <div className="flex items-center gap-3">
+                            {chatId && (
+                                <button
+                                    type="button"
+                                    onClick={handleLeaveChat}
+                                    className="text-sm font-medium text-neutral-500 hover:text-neutral-800"
+                                >
+                                    Leave chat
+                                </button>
+                            )}
 
-                        {mode === "ai" && !chatClosed && canRequestHuman && (
+                            {mode === "ai" && !chatClosed && canRequestHuman && shouldOfferHuman && (
+                                <button
+                                    type="button"
+                                    onClick={handleEscalate}
+                                    disabled={!chatId || escalating}
+                                    className="text-sm font-semibold text-blue-600 hover:text-blue-700 disabled:opacity-60"
+                                >
+                                    Talk to human
+                                </button>
+                            )}
+
                             <button
                                 type="button"
-                                onClick={handleEscalate}
-                                disabled={!chatId || escalating}
-                                className="text-xs font-semibold text-blue-600 hover:text-blue-700 disabled:opacity-60"
+                                onClick={() => setOpen(false)}
+                                aria-label="Close chat"
+                                title="Close chat"
+                                className="inline-flex h-11 w-11 items-center justify-center rounded-full text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF8D21]"
                             >
-                                Talk to human
+                                <X className="h-6 w-6" aria-hidden="true" />
                             </button>
-                        )}
+                        </div>
                     </div>
 
-                    <div className="flex-1 min-h-[180px] max-h-[340px] overflow-y-auto px-3 py-2 space-y-2 text-sm">
+                    <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5 space-y-4 text-base leading-relaxed">
                         {messages.length === 0 && (
-                            <div className="text-xs text-neutral-500 mt-2">
+                            <div className="text-base text-neutral-500 mt-2">
                                 Ask anything about cloning, editing, or deploying a site. An AI
                                 assistant will answer first and you can switch to a human if you
                                 need.
@@ -427,16 +452,16 @@ export default function ChatWidgetProvider() {
                                     className={isUser ? "flex justify-end" : "flex justify-start"}
                                 >
                                     <div
-                                        className={`max-w-[80%] rounded-2xl px-3 py-2 ${isUser
+                                        className={`max-w-[88%] rounded-2xl px-4 py-3 ${isUser
                                             ? "bg-accent text-white"
                                             : isSystem
-                                                ? "bg-neutral-100 text-neutral-700 text-xs"
+                                                ? "bg-neutral-100 text-neutral-700 text-sm"
                                                 : "bg-neutral-100 text-neutral-900"
                                             }`}
                                     >
                                         {isConnecting ? (
                                             <div className="flex items-center gap-2">
-                                                <span className="text-[11px] text-neutral-600">
+                                                <span className="text-sm text-neutral-600">
                                                     Connecting to a human
                                                 </span>
                                                 <ConnectingDots />
@@ -451,7 +476,7 @@ export default function ChatWidgetProvider() {
 
                         {loading && (
                             <div className="flex justify-start">
-                                <div className="max-w-[80%] rounded-2xl px-3 py-2 bg-neutral-100 text-neutral-700 text-xs">
+                                <div className="max-w-[88%] rounded-2xl px-4 py-3 bg-neutral-100 text-neutral-700 text-sm">
                                     Typing…
                                 </div>
                             </div>
@@ -461,20 +486,20 @@ export default function ChatWidgetProvider() {
                     </div>
 
                     {error && (
-                        <div className="px-3 py-1 text-[11px] text-red-600 border-t border-neutral-200">
+                        <div className="px-6 py-3 text-sm text-red-600 border-t border-neutral-200">
                             {error}
                         </div>
                     )}
 
                     <form
-                        className="flex items-center gap-2 px-3 py-2 border-t border-neutral-200"
+                        className="flex items-center gap-3 px-5 py-4 border-t border-neutral-200"
                         onSubmit={(e) => {
                             e.preventDefault();
                             void handleSend();
                         }}
                     >
                         <input
-                            className="flex-1 placeholder:text-[16px] md:placeholder:text-[11px] text-[16px] md:text-sm border border-neutral-200 rounded-xl px-3 py-2 outline-none focus:border-neutral-400"
+                            className="min-w-0 flex-1 placeholder:text-base text-base border border-neutral-200 rounded-2xl px-4 py-4 outline-none focus:border-neutral-400"
                             placeholder={
                                 chatClosed
                                     ? "Chat closed. Click Leave chat to start a new one."
@@ -491,7 +516,7 @@ export default function ChatWidgetProvider() {
                         <button
                             type="submit"
                             disabled={loading || !input.trim()}
-                            className="text-sm font-semibold text-blue-600 hover:text-blue-700 disabled:opacity-50"
+                            className="rounded-xl px-4 py-3 text-base font-semibold text-blue-600 hover:bg-blue-50 hover:text-blue-700 disabled:opacity-50"
                         >
                             Send
                         </button>

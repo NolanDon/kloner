@@ -69,7 +69,7 @@ export default function UniformModal({
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 z-[2147483647] flex items-center justify-center bg-black/40 p-4"
+          className="uniform-modal-backdrop fixed inset-0 z-[2147483647] flex items-center justify-center bg-black/40 p-4"
           role="dialog"
           aria-modal="true"
           aria-labelledby={titleId}
@@ -82,7 +82,7 @@ export default function UniformModal({
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 10, scale: 0.98 }}
             transition={{ duration: 0.18, ease: "easeOut" }}
-            className="w-full max-w-md rounded-2xl border border-neutral-200 bg-white shadow-2xl"
+            className="uniform-modal-panel w-full max-w-md rounded-2xl border border-neutral-200 bg-white shadow-2xl"
           >
             <div className="flex items-start justify-between gap-4 border-b border-neutral-200 px-5 py-4">
               <div className="space-y-1">

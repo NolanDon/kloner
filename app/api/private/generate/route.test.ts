@@ -165,7 +165,7 @@ describe("POST /api/private/generate", () => {
             source: "internal",
             service: "url-generate-proxy",
             action: "url_scan_failed",
-            message: "URL scan failed: Internal server error",
+            message: "A user couldn't scan example.com.",
             route: "/api/private/generate",
             extra: expect.objectContaining({
                 backendStatus: 500,
@@ -186,4 +186,5 @@ describe("POST /api/private/generate", () => {
             }),
         });
     });
+
 });

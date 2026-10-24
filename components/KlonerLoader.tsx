@@ -45,6 +45,38 @@ function clampProgress(value: number | null | undefined) {
     return Math.max(0, Math.min(100, Math.round(value)));
 }
 
+function LoaderBats() {
+    return (
+        <span className="kloner-loader-bats" aria-hidden="true">
+            <svg className="kloner-loader-bat kloner-loader-bat-one" viewBox="0 0 24 14" fill="currentColor">
+                <path d="M1 2 6 5l3-4 3 4 5-3-2 9-6-3-6 3L1 2Z" />
+            </svg>
+            <svg className="kloner-loader-bat kloner-loader-bat-two" viewBox="0 0 24 14" fill="currentColor">
+                <path d="M1 2 6 5l3-4 3 4 5-3-2 9-6-3-6 3L1 2Z" />
+            </svg>
+            <svg className="kloner-loader-bat kloner-loader-bat-three" viewBox="0 0 24 14" fill="currentColor">
+                <path d="M1 2 6 5l3-4 3 4 5-3-2 9-6-3-6 3L1 2Z" />
+            </svg>
+            <svg className="kloner-loader-bat kloner-loader-bat-four" viewBox="0 0 24 14" fill="currentColor">
+                <path d="M1 2 6 5l3-4 3 4 5-3-2 9-6-3-6 3L1 2Z" />
+            </svg>
+        </span>
+    );
+}
+
+function LoaderDots() {
+    return (
+        <div className="kloner-loader-mark">
+            <LoaderBats />
+            <div className="kloner-dots" aria-hidden="true">
+                <span className="kloner-dot" />
+                <span className="kloner-dot" />
+                <span className="kloner-dot" />
+            </div>
+        </div>
+    );
+}
+
 export function MilestoneProgress({
     progress,
     milestones = [20, 40, 60, 80, 100],
@@ -101,11 +133,7 @@ export function HydrationDotsLoader({
 }: HydrationDotsLoaderProps) {
     return (
         <div className={`flex flex-col items-center text-center ${className}`}>
-            <div className="kloner-dots" aria-hidden="true">
-                <span className="kloner-dot" />
-                <span className="kloner-dot" />
-                <span className="kloner-dot" />
-            </div>
+            <LoaderDots />
             <div className="mt-3 text-sm leading-5 tracking-[-0.01em] text-neutral-900">
                 {label}
             </div>
@@ -130,22 +158,18 @@ export function WorkspaceLoadingPanel({
 
     return (
         <motion.div
-            className={`flex flex-col items-center text-center ${className}`}
+            className={`kloner-workspace-loading-panel flex flex-col items-center text-center ${className}`}
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 8 }}
             transition={{ duration: 0.22, ease: "easeOut" }}
         >
-            <div className="kloner-dots" aria-hidden="true">
-                <span className="kloner-dot" />
-                <span className="kloner-dot" />
-                <span className="kloner-dot" />
-            </div>
+            <LoaderDots />
             <div className="mt-3 text-sm leading-5 tracking-[-0.01em] text-neutral-900">
                 {title}
             </div>
             {progressItems?.length ? (
-                <div className="mt-5 w-full max-w-md rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-left shadow-sm">
+                    <div className="kloner-workspace-loading-progress mt-5 w-full max-w-md rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-left shadow-sm">
                     <div className="flex items-center justify-between text-[11px] uppercase tracking-[0.18em] text-neutral-400">
                         <span>Preview files</span>
                         <span>{doneCount}/{totalCount}</span>
@@ -154,7 +178,7 @@ export function WorkspaceLoadingPanel({
                         {progressItems.map((item) => (
                             <div
                                 key={`${item.label}-${item.detail || "item"}`}
-                                className="flex items-start gap-3 rounded-xl border border-neutral-100 bg-neutral-50 px-3 py-2"
+                                className="kloner-workspace-loading-progress-item flex items-start gap-3 rounded-xl border border-neutral-100 bg-neutral-50 px-3 py-2"
                             >
                                 <span
                                     className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold ${
@@ -209,7 +233,7 @@ export function WorkspaceLoadingScreen({
 
     return (
         <motion.div
-            className={`fixed inset-0 z-[9999] grid place-items-center px-4 ${className}`}
+            className={`kloner-workspace-loading-screen fixed inset-0 z-[9999] grid place-items-center px-4 ${className}`}
             role="status"
             aria-live="polite"
             aria-busy={timedOut ? "false" : "true"}
@@ -219,12 +243,8 @@ export function WorkspaceLoadingScreen({
             transition={{ duration: 0.28, ease: "easeOut" }}
         >
             {timedOut ? (
-                <div className="w-full max-w-md rounded-3xl border border-neutral-200 bg-white px-6 py-6 text-center shadow-[0_24px_80px_rgba(15,23,42,0.12)]">
-                    <div className="kloner-dots mx-auto" aria-hidden="true">
-                        <span className="kloner-dot" />
-                        <span className="kloner-dot" />
-                        <span className="kloner-dot" />
-                    </div>
+                <div className="kloner-workspace-loading-timeout w-full max-w-md rounded-3xl border border-neutral-200 bg-white px-6 py-6 text-center shadow-[0_24px_80px_rgba(15,23,42,0.12)]">
+                    <LoaderDots />
                     <div className="mt-3 text-[11px] uppercase tracking-[0.22em] text-neutral-400">
                         {title}
                     </div>
@@ -291,15 +311,25 @@ export default function KlonerLoader({
         </motion.div>
     );
 
+    const brandedSpinner = (
+        <div className="kloner-loader-mark">
+            <LoaderBats />
+            {spinner}
+        </div>
+    );
+
     if (icon) {
         return spinner;
     }
 
     if (inline) {
         return (
-            <div className="mt-2 sm:mt-3 mb-4 mx-2 sm:mx-3 md:mx-4 min-h-[160px] rounded-2xl border border-neutral-200 bg-white px-6 py-8 shadow-sm grid place-items-center">
+            <div className="mt-2 sm:mt-3 mb-4 mx-2 sm:mx-3 md:mx-4 min-h-[160px] rounded-2xl border border-neutral-200 px-6 py-8 shadow-sm grid place-items-center" style={{ backgroundColor: "var(--surface)" }}>
                 {showMilestones ? (
                     <div className="w-full max-w-md">
+                        <div className="relative mx-auto h-4 w-16">
+                            <LoaderBats />
+                        </div>
                         <MilestoneProgress progress={progress} milestones={milestones} />
                         {(label || sublabel) ? (
                             <div className="mt-4 text-center">
@@ -310,7 +340,7 @@ export default function KlonerLoader({
                     </div>
                 ) : (
                     <>
-                        {spinner}
+                        {brandedSpinner}
                         {(label || sublabel) ? (
                             <div className="mt-3 text-center">
                                 {label ? <div className="text-sm text-neutral-900">{label}</div> : null}
@@ -324,8 +354,8 @@ export default function KlonerLoader({
     }
 
     return (
-        <div className="fixed inset-0 z-[9999] grid place-items-center bg-white">
-            {spinner}
+        <div className="kloner-loader-screen fixed inset-0 z-[9999] grid place-items-center" style={{ backgroundColor: "var(--page-bg)" }}>
+            {brandedSpinner}
         </div>
     );
 }

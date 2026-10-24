@@ -313,6 +313,20 @@ function normalizePreviewFailureDetails(rawStatusData: any) {
   };
 }
 
+function readKlonerThemePreference(): "light" | "dark" {
+  if (typeof document !== "undefined") {
+    const current = document.documentElement.dataset.theme;
+    if (current === "light" || current === "dark") return current;
+  }
+  try {
+    const saved = typeof window !== "undefined" ? window.localStorage.getItem("kloner-theme") : null;
+    if (saved === "light" || saved === "dark") return saved;
+  } catch {
+    // Storage may be unavailable in privacy-restricted contexts.
+  }
+  return "dark";
+}
+
 function formatPreviewFailureSection(value: unknown): string {
   try {
     return JSON.stringify(value, null, 2);
@@ -569,6 +583,7 @@ export default function WebContainerRunner({ appId, files, filesReady = true, is
   const [startAttempt, setStartAttempt] = useState(0);
   const [manualStartNonce, setManualStartNonce] = useState(0);
   const [loadingStatus, setLoadingStatus] = useState('');
+  const [previewTheme, setPreviewTheme] = useState<"light" | "dark">(readKlonerThemePreference);
   const [isApplyRefreshing, setIsApplyRefreshing] = useState(false);
   const [isManualRefreshPending, setIsManualRefreshPending] = useState(false);
   const manualRefreshLockRef = useRef(false);
@@ -641,6 +656,16 @@ export default function WebContainerRunner({ appId, files, filesReady = true, is
     refreshAt: 0,
     rebuildAt: 0,
   });
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const root = document.documentElement;
+    const syncTheme = () => setPreviewTheme(readKlonerThemePreference());
+    syncTheme();
+    const observer = new MutationObserver(syncTheme);
+    observer.observe(root, { attributes: true, attributeFilter: ["data-theme"] });
+    return () => observer.disconnect();
+  }, []);
 
   const PREVIEW_IFRAME_WARN_MS = parsePreviewTimeoutMs(
     process.env.NEXT_PUBLIC_PREVIEW_IFRAME_WARN_MS || process.env.PREVIEW_IFRAME_WARN_MS,
@@ -2769,6 +2794,19 @@ export default function NavBar() {
       if (segs.length >= 2 && segs[0] === 'preview') {
         const base = `/${segs[0]}/${segs[1]}`;
         u.pathname = normalized === '/' ? base : `${base}${normalized}`;
+        return u.toString();
+      }
+      return url;
+    } catch {
+      return url;
+    }
+  };
+
+  const withPreviewTheme = (url: string, theme: "light" | "dark") => {
+    try {
+      const u = new URL(url, typeof window !== "undefined" ? window.location.origin : undefined);
+      if (u.pathname.startsWith("/preview/") || u.pathname.startsWith("/__preview")) {
+        u.searchParams.set("kloner_theme", theme);
         return u.toString();
       }
       return url;
@@ -5476,7 +5514,7 @@ export default function NavBar() {
     hmrWsStatus === 'ok' ||
     previewInteractiveByStatus;
   const showPreviewSurface = Boolean(previewUrl) && !error && !compileErrorState && !terminalPreviewStatus && (externalPreviewMode || canRenderEmbeddedFrame);
-  const activePreviewUrl = withPreviewPath(previewUrl || '', navigatePath || '');
+  const activePreviewUrl = withPreviewTheme(withPreviewPath(previewUrl || '', navigatePath || ''), previewTheme);
   const showApplyRefreshingOverlay = showPreviewSurface && isApplyRefreshing;
   const terminalPreviewStatusData = terminalPreviewStatus ? (currentStatusData || lastBackendStatusRef.current || null) : null;
   const showTerminalPreviewErrorCard = Boolean(error) || terminalPreviewStatus;
@@ -5760,7 +5798,7 @@ export default function NavBar() {
   }, [appId, debugPreviewScenario, onCompileErrorFixRequest]);
 
   return (
-    <div className="h-full flex flex-col bg-white text-black/90 border border-black/10 rounded-2xl shadow">
+    <div className="app-builder-webcontainer-shell h-full flex flex-col text-black/90 rounded-2xl shadow" style={{ backgroundColor: "var(--page-bg)" }}>
       {compileErrorState && !error ? (
         <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/20 px-4">
           <div className="w-full max-w-2xl rounded-2xl border border-black/10 bg-white shadow-2xl">
@@ -5830,7 +5868,7 @@ export default function NavBar() {
       {showPreviewSurface ? (
         <div className="relative w-full h-full">
           {showApplyRefreshingOverlay ? (
-            <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/85 backdrop-blur-[1px]">
+            <div className="absolute inset-0 z-20 flex items-center justify-center backdrop-blur-[1px]" style={{ backgroundColor: "var(--preview-refresh-backdrop)" }}>
               <div className="flex flex-col items-center text-center">
                 <div className="kloner-dots" aria-hidden="true"><span className="kloner-dot" /><span className="kloner-dot" /><span className="kloner-dot" /></div>
                 <div className="mt-3">
@@ -6395,7 +6433,7 @@ export default function NavBar() {
           })()}
         </div>
       ) : (
-        <div className="flex-1 flex items-center justify-center px-4">
+        <div className="app-builder-preview-status-loading flex-1 flex items-center justify-center px-4" style={{ backgroundColor: "var(--page-bg)" }}>
           <div className="w-full max-w-[320px] text-center">
             {isPolling && !terminalPreviewStatus ? (
               <div className="flex flex-col items-center">

@@ -683,14 +683,14 @@ export default function LoginPage(): JSX.Element {
     };
 
     return (
-        <main className="min-h-[100dvh] overflow-hidden bg-[radial-gradient(circle_at_top_left,_rgba(255,141,33,0.12),_transparent_36%),radial-gradient(circle_at_bottom_right,_rgba(15,23,42,0.08),_transparent_30%),linear-gradient(180deg,_#fffaf6_0%,_#fff_58%,_#fff7f1_100%)] text-black">
+        <main className="login-theme min-h-[100dvh] overflow-hidden bg-[radial-gradient(circle_at_top_left,_rgba(255,141,33,0.12),_transparent_36%),radial-gradient(circle_at_bottom_right,_rgba(15,23,42,0.08),_transparent_30%),linear-gradient(180deg,_#fffaf6_0%,_#fff_58%,_#fff7f1_100%)] text-black">
             <Link href="/" className="absolute left-4 top-4 z-20 hidden items-center justify-center transition hover:opacity-90 sm:inline-flex sm:left-6 sm:top-6">
                 <Image src="/images/orange_logo.png" alt="Kloner home" width={144} height={144} className="h-20 w-20 object-contain sm:h-20 sm:w-20 lg:h-24 lg:w-24" priority />
             </Link>
 
             <section className="grid min-h-[100dvh] w-full grid-cols-1 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,0.78fr)]">
                 <div className="relative order-1 flex items-center justify-center px-4 pb-8 pt-4 sm:px-6 lg:order-1 lg:px-10 lg:py-10">
-                    <div className="w-full max-w-xl rounded-[32px] border border-black/5 bg-white/90 p-5 shadow-[0_24px_80px_rgba(15,23,42,0.12)] backdrop-blur-xl sm:p-6 lg:rounded-none lg:border-0 lg:bg-transparent lg:p-0 lg:shadow-none">
+                    <div className="login-theme__outer w-full max-w-xl rounded-[32px] border border-black/5 bg-white/90 p-5 shadow-[0_24px_80px_rgba(15,23,42,0.12)] backdrop-blur-xl sm:p-6 lg:rounded-none lg:border-0 lg:bg-transparent lg:p-0 lg:shadow-none">
                         <div className="mb-4 flex items-center justify-start lg:hidden">
                             <button
                                 type="button"
@@ -780,7 +780,7 @@ export default function LoginPage(): JSX.Element {
                             </div>
                         ) : null}
 
-                        <div className="rounded-[28px] border border-black/5 bg-white p-4 shadow-[0_16px_50px_rgba(15,23,42,0.08)] sm:p-6">
+                        <div className="login-theme__card rounded-[28px] border border-black/5 bg-white p-4 shadow-[0_16px_50px_rgba(15,23,42,0.08)] sm:p-6">
                             <form onSubmit={submitEmail} className="space-y-3">
                                 <div className="space-y-1.5">
                                     <label className="block text-xs font-medium text-neutral-600">

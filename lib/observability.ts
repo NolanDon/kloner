@@ -10,6 +10,7 @@ export type ObservabilityEvent = {
     source: "vercel" | "fly" | "frontend" | "internal";
     severity: ObservabilitySeverity;
     alwaysNotifySlack?: boolean;
+    slackColor?: string;
     component?: "browser" | "nextjs-server" | "fly-backend" | "internal";
     statusCode?: number;
     route?: string;
@@ -61,11 +62,11 @@ function isProxyOrigin(event: Pick<ObservabilityEvent, "route" | "service" | "so
 
 function getAlertLabel(event: Pick<ObservabilityEvent, "route" | "service" | "source" | "extra">): string {
     if ((event as ObservabilityEvent).component === "nextjs-server") return "[SERVER / VERCEL]";
-    if ((event as ObservabilityEvent).component === "fly-backend") return "[BACKEND / FLY]";
+    if ((event as ObservabilityEvent).component === "fly-backend") return "[BACKEND]";
     if (isFrontendOrigin(event)) return FRONTEND_LABEL;
     if (isProxyOrigin(event)) return PROXY_LABEL;
     if (event.source === "vercel") return "[SERVER / VERCEL]";
-    if (event.source === "fly") return "[BACKEND / FLY]";
+    if (event.source === "fly") return "[BACKEND]";
     return "";
 }
 
@@ -94,19 +95,24 @@ function getSlackChannel() {
     return (process.env.SLACK_ERROR_CHANNEL || "").trim();
 }
 
-function getProjectLabel() {
+function getProjectLabel(event?: Pick<ObservabilityEvent, "source" | "component">) {
+    if (event?.source === "fly" || event?.component === "fly-backend") return "kloner-backend";
     return (process.env.OBS_PROJECT_NAME || "kloner").trim();
 }
 
-function buildSlackDedupeId(event: Pick<StoredEvent, "source" | "action" | "statusCode" | "userId" | "url" | "page" | "message" | "errorName" | "extra">): string {
+function buildSlackDedupeId(event: Pick<StoredEvent, "source" | "action" | "statusCode" | "userId" | "requestId" | "url" | "page" | "message" | "errorName" | "extra">): string {
     if (event.action === "vercel.oauth.callback" && typeof event.extra?.oauthIncidentKey === "string") {
         return createHash("sha256").update(`oauth|${event.source}|${event.extra.oauthIncidentKey}`).digest("hex");
     }
+    const requestId = event.action === "url_scan_failed"
+        ? String(event.requestId || "")
+        : "";
     const material = [
         event.source,
         event.action || "",
         event.statusCode || "",
         event.userId || "",
+        requestId,
         event.url || event.page || "",
         event.errorName || "",
         event.message || "",
@@ -291,14 +297,15 @@ function compactExtraSummary(extra: ExtraData, eventUrl?: string): Array<[string
 
 function urlScanExtraSummary(extra: ExtraData, eventUrl?: string): Array<[string, string]> {
     return [
-        ["App", cleanContextValue((extra as any).appId, 200)],
-        ["Browser code", cleanContextValue((extra as any).uiCode, 120)],
-        ["Browser reason", cleanContextValue((extra as any).uiMessage, 500)],
+        ["Failure reason", cleanContextValue((extra as any).failureReason, 220)],
+        ["Pages captured", cleanContextValue((extra as any).totalPlanned, 80)],
         ["Backend status", cleanContextValue((extra as any).backendStatus ?? (extra as any).upstreamStatus ?? (extra as any).statusCode, 80)],
         ["Backend code", cleanContextValue((extra as any).backendCode ?? (extra as any).upstreamCode ?? (extra as any).responseCode ?? (extra as any).code, 120)],
         ["Backend req", cleanContextValue((extra as any).backendRequestId ?? (extra as any).upstreamRequestId ?? (extra as any).reqId, 120)],
         ["Backend source", cleanContextValue((extra as any).backendSource ?? (extra as any).upstreamSource ?? (extra as any).service, 120)],
         ["Backend reason", cleanContextValue((extra as any).backendMessage ?? (extra as any).upstreamMessage ?? (extra as any).responseError ?? (extra as any).reason ?? (extra as any).message, 220)],
+        ["Browser code", cleanContextValue((extra as any).uiCode, 120)],
+        ["Browser reason", cleanContextValue((extra as any).uiMessage, 500)],
         ["URL", cleanContextValue((extra as any).url || eventUrl || (extra as any).requestContext?.url, 220)],
     ].filter(([, value]) => Boolean(value)) as Array<[string, string]>;
 }
@@ -323,10 +330,27 @@ function toSlackBlocks(event: StoredEvent, eventId: string) {
     const reqId = event.requestId || "n/a";
     const status = typeof event.statusCode === "number" ? String(event.statusCode) : "n/a";
     const env = event.environment || envName();
-    const title = withAlertLabel(
-        event,
-        `${severityEmoji(event.severity)} ${getProjectLabel()} ${event.severity.toUpperCase()}${event.statusCode ? ` (${event.statusCode})` : ""}`,
-    );
+    const isUrlScan = event.action?.startsWith("url_scan_");
+    const scanResultLabel = event.action === "url_scan_started"
+        ? "SCAN STARTED"
+        : event.action === "url_scan_succeeded"
+            ? "SCAN SUCCEEDED"
+            : event.action === "url_scan_accepted"
+                ? "SCAN ACCEPTED"
+                : "SCAN FAILED";
+    const scanEmoji = event.action === "url_scan_started"
+        ? ":mag:"
+        : event.action === "url_scan_succeeded"
+            ? ":white_check_mark:"
+            : event.action === "url_scan_accepted"
+                ? ":hourglass_flowing_sand:"
+                : ":x:";
+    const title = isUrlScan
+        ? `[SCAN] ${scanEmoji} kloner ${scanResultLabel}`
+        : withAlertLabel(
+            event,
+            `${severityEmoji(event.severity)} ${getProjectLabel(event)} ${event.severity.toUpperCase()}${event.statusCode ? ` (${event.statusCode})` : ""}`,
+        );
     const details = [
         `*Source:* ${event.source}`,
         `*Component:* ${event.component || (event.source === "vercel" ? "Next.js server on Vercel" : event.source === "fly" ? "Fly backend" : event.source === "frontend" ? "Browser frontend" : "Internal application")}`,
@@ -362,7 +386,7 @@ function toSlackBlocks(event: StoredEvent, eventId: string) {
         : (shouldUseUrlScanSummary(event)
             ? urlScanExtraSummary(extra, event.url)
             : compactExtraSummary(extra, event.url)
-        ).slice(0, MAX_SLACK_CONTEXT_FIELDS);
+        ).slice(0, shouldUseUrlScanSummary(event) ? 7 : MAX_SLACK_CONTEXT_FIELDS);
 
     const contextBlock = contextFields.length
         ? [
@@ -479,11 +503,19 @@ async function postToSlack(event: StoredEvent, eventId: string) {
     if (shouldSuppressSlackWebhook(event)) return;
 
     const body: Record<string, unknown> = {
-        text: withAlertLabel(event, `${event.severity.toUpperCase()}${typeof event.statusCode === "number" ? ` (${event.statusCode})` : ""} ${event.message}`),
-        blocks: toSlackBlocks(event, eventId),
+        text: event.action?.startsWith("url_scan_")
+            ? event.message
+            : withAlertLabel(event, `${event.severity.toUpperCase()}${typeof event.statusCode === "number" ? ` (${event.statusCode})` : ""} ${event.message}`),
         unfurl_links: false,
         unfurl_media: false,
     };
+
+    const blocks = toSlackBlocks(event, eventId);
+    if (event.slackColor) {
+        body.attachments = [{ color: event.slackColor, blocks }];
+    } else {
+        body.blocks = blocks;
+    }
 
     const channel = getSlackChannel();
     if (channel) {
@@ -554,6 +586,7 @@ function sanitizeEvent(event: ObservabilityEvent): StoredEvent {
             action: event.action,
             statusCode: event.statusCode,
             userId: event.userId,
+            requestId: event.requestId,
             url: event.url,
             page: event.page || event.route,
             message: truncate(asOneLine(event.message || ""), 160),

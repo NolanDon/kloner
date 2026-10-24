@@ -99,7 +99,7 @@ export default function Footer({ showSeoLinks = true }: { showSeoLinks?: boolean
               "
               style={{
                 backgroundImage:
-                  "linear-gradient(90deg, #a86f49 0%, #df9d64 30%, #f1ba7b 60%, #f8dcba 100%)",
+                  "linear-gradient(90deg, #9a8064 0%, #b49a7c 30%, #d4c1a5 65%, #eadcc5 100%)",
                 backgroundSize: "100% 100%",
                 backgroundRepeat: "no-repeat",
               }}

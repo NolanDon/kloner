@@ -606,7 +606,7 @@ export function PreviewEditorTour({ startToken = 0, autoStart = true, onComplete
                         </div>
 
                         <div className="flex items-center gap-2">
-                            <div className="text-xs text-black/50 mr-2">{index + 1}/{steps.length}</div>
+                            <div className="tour-step-counter text-xs text-black/50 mr-2">{index + 1}/{steps.length}</div>
                             {index === steps.length - 1 ? (
                                 <button
                                     type="button"
@@ -615,7 +615,7 @@ export function PreviewEditorTour({ startToken = 0, autoStart = true, onComplete
                                     className="inline-flex w-fit shrink-0 items-center gap-2 whitespace-nowrap rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-white shadow-sm pointer-events-auto"
                                 >
                                     <span>Complete</span>
-                                    <kbd className="shrink-0 rounded bg-black/5 px-2 py-0.5 text-xs" aria-hidden>
+                                    <kbd className="tour-spacebar-key shrink-0 rounded-md border px-2.5 py-1 text-xs font-semibold" aria-hidden>
                                         Spacebar
                                     </kbd>
                                 </button>
@@ -627,7 +627,7 @@ export function PreviewEditorTour({ startToken = 0, autoStart = true, onComplete
                                     className="inline-flex w-fit shrink-0 items-center gap-2 whitespace-nowrap rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-white shadow-sm pointer-events-auto"
                                 >
                                     <span>Next</span>
-                                    <kbd className="shrink-0 rounded bg-black/5 px-2 py-0.5 text-xs" aria-hidden>
+                                    <kbd className="tour-spacebar-key shrink-0 rounded-md border px-2.5 py-1 text-xs font-semibold" aria-hidden>
                                         Spacebar
                                     </kbd>
                                 </button>

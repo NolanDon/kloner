@@ -224,7 +224,7 @@ export default function PreviewDashboard({
     const deployCtaLabel = isDeployedState ? "Deployed" : "Deploy";
 
     return (
-        <section className="section bg-white text-neutral-800">
+        <section className="starts-with-labs section bg-white text-neutral-800">
             <div className="container-soft">
                 <FeaturesStrip />
 
@@ -235,7 +235,7 @@ export default function PreviewDashboard({
                     className="text-center px-2 pb-8"
                 >
                     <div className="flex flex-col items-center gap-3">
-                        <h2 className="text-4xl sm:text-5xl md:text-6xl text-neutral-950 leading-[1.05]">
+                        <h2 className="text-4xl sm:text-5xl md:text-6xl text-neutral-950 leading-[1.05] dark-readable-heading">
                             Clone a website from a URL
                         </h2>
                         <ClickyCursor size={30} />
@@ -347,7 +347,7 @@ export default function PreviewDashboard({
                                     </div>
 
                                     {/* subtle fade separator under sticky header */}
-                                    <div className="pointer-events-none h-6 bg-gradient-to-b from-white/80 to-transparent" />
+                                    <div className="pointer-events-none h-6 bg-gradient-to-b from-white/80 to-transparent demo-browser-header-fade" />
                                     </div>
                                 )}
 
@@ -539,7 +539,7 @@ function SequenceCursor({
                         : { duration: 0.2, ease: "easeOut" }
                 }
             >
-                <MousePointer className="h-7 w-7 fill-white text-neutral-900 drop-shadow-[0_2px_3px_rgba(0,0,0,0.2)]" />
+                <MousePointer className="sequence-demo-cursor h-7 w-7 fill-white text-neutral-900 drop-shadow-[0_2px_3px_rgba(0,0,0,0.2)]" />
                 {clickPhase ? (
                     <>
                         <motion.span

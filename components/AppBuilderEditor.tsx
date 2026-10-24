@@ -2758,7 +2758,8 @@ export default function AppBuilderEditor({
         ? createPortal(
             isMobile || !previewHydrationAnchorRect ? (
                 <div
-                    className={`fixed inset-0 z-[22050] flex items-center justify-center px-4 transition-opacity duration-300 ease-out ${previewHydrationLoaderVisible ? "opacity-100" : "pointer-events-none opacity-0"}`}
+                    className={`app-builder-preview-hydration-overlay fixed inset-0 z-[22050] flex items-center justify-center px-4 transition-opacity duration-300 ease-out ${previewHydrationLoaderVisible ? "opacity-100" : "pointer-events-none opacity-0"}`}
+                    style={{ backgroundColor: "var(--preview-hydration-backdrop)" }}
                     role="status"
                     aria-live="polite"
                     aria-busy="true"
@@ -2770,12 +2771,13 @@ export default function AppBuilderEditor({
                 </div>
             ) : (
                 <div
-                    className={`fixed z-[22050] flex items-center justify-center px-4 transition-opacity duration-300 ease-out ${previewHydrationLoaderVisible ? "opacity-100" : "pointer-events-none opacity-0"}`}
+                    className={`app-builder-preview-hydration-overlay fixed z-[22050] flex items-center justify-center px-4 transition-opacity duration-300 ease-out ${previewHydrationLoaderVisible ? "opacity-100" : "pointer-events-none opacity-0"}`}
                     style={{
                         top: previewHydrationAnchorRect.top,
                         left: previewHydrationAnchorRect.left,
                         width: previewHydrationAnchorRect.width,
                         height: previewHydrationAnchorRect.height,
+                        backgroundColor: "var(--preview-hydration-backdrop)",
                     }}
                     role="status"
                     aria-live="polite"
@@ -7196,12 +7198,12 @@ export default function AppBuilderEditor({
     if (error) {
         return (
             <div
-                className="fixed inset-0 z-[20000] flex items-center justify-center bg-black/40 p-4"
+                className="app-builder-load-error-overlay fixed inset-0 z-[20000] flex items-center justify-center bg-black/40 p-4"
                 onMouseDown={(e) => {
                     if (e.target === e.currentTarget) onCloseRef.current?.();
                 }}
             >
-                <div className="w-full max-w-md rounded-2xl border border-neutral-200 bg-white shadow-2xl">
+                <div className="app-builder-load-error-modal w-full max-w-md rounded-2xl border border-neutral-200 bg-white shadow-2xl">
                     <div className="flex items-start justify-between gap-4 border-b border-neutral-200 px-5 py-4">
                         <div className="space-y-1">
                             <div className="text-sm font-semibold text-neutral-900">Failed to load app</div>
@@ -7259,7 +7261,7 @@ export default function AppBuilderEditor({
     if (activeGeneration.status === "error" && !dismissedGenerationError) {
         return (
             <div className="fixed inset-0 z-[16000] flex items-center justify-center bg-black/70 px-4 py-6 backdrop-blur-sm">
-                <div className="relative w-full max-w-lg overflow-hidden rounded-3xl border border-neutral-200 bg-white shadow-[0_28px_80px_rgba(15,23,42,0.22)]">
+                <div className="app-builder-generation-error-modal relative w-full max-w-lg overflow-hidden rounded-3xl border border-neutral-200 bg-white shadow-[0_28px_80px_rgba(15,23,42,0.22)]">
                     <button
                         type="button"
                         onClick={() => setDismissedGenerationError(true)}
@@ -7269,7 +7271,7 @@ export default function AppBuilderEditor({
                         <X className="h-4 w-4" />
                     </button>
 
-                    <div className="border-b border-neutral-200 bg-[linear-gradient(180deg,rgba(255,141,33,0.10),rgba(255,255,255,1))] px-5 py-4 sm:px-6">
+                    <div className="app-builder-generation-error-header border-b border-neutral-200 bg-[linear-gradient(180deg,rgba(255,141,33,0.10),rgba(255,255,255,1))] px-5 py-4 sm:px-6">
                         <div className="mt-3 text-[22px] font-semibold tracking-[-0.02em] text-neutral-950">
                             Generation failed
                         </div>
@@ -7357,7 +7359,8 @@ export default function AppBuilderEditor({
             ) : null}
             <motion.div
                 key="app-builder-shell"
-                className={`relative h-full w-full bg-white flex flex-col ${loading || isDeletingApp ? "pointer-events-none" : ""}`}
+                className={`relative h-full w-full flex flex-col ${loading || isDeletingApp ? "pointer-events-none" : ""}`}
+                style={{ backgroundColor: "var(--page-bg)" }}
                 initial={false}
                 animate={{
                     opacity: loading ? 0 : 1,
@@ -7367,7 +7370,7 @@ export default function AppBuilderEditor({
                 transition={{ duration: 0.24, ease: "easeOut" }}
             >
                 {isDeletingApp ? (
-                    <div className="absolute inset-0 z-[18000] flex items-center justify-center bg-white/85 backdrop-blur-[4px]">
+                    <div className="absolute inset-0 z-[18000] flex items-center justify-center backdrop-blur-[4px]" style={{ backgroundColor: "var(--preview-status-backdrop)" }}>
                         <div className="flex items-center gap-3 rounded-full border border-neutral-200 bg-white px-4 py-2.5 shadow-sm">
                             <span
                                 className="inline-block rounded-full border-2 border-neutral-300"
@@ -7477,11 +7480,11 @@ export default function AppBuilderEditor({
 
                                     <div className="px-4 py-3 text-sm">
                                         <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-neutral-500">UI scale</div>
-                                        <div className="mt-2 inline-flex items-center gap-1 rounded-full border border-neutral-200 bg-neutral-50 px-2 py-1">
+                                        <div className="ui-scale-control mt-2 inline-flex items-center gap-1 rounded-full border border-neutral-200 bg-neutral-50 px-2 py-1">
                                             <button
                                                 type="button"
                                                 onClick={() => setCustomPreviewScale((s) => Math.max(0.5, +(s - 0.05).toFixed(2)))}
-                                                className="inline-flex h-7 w-7 items-center justify-center rounded-full text-neutral-700 hover:bg-neutral-100"
+                                                className="ui-scale-button inline-flex h-7 w-7 items-center justify-center rounded-full text-neutral-700 hover:bg-neutral-100"
                                                 title="Zoom out"
                                             >
                                                 −
@@ -7492,7 +7495,7 @@ export default function AppBuilderEditor({
                                             <button
                                                 type="button"
                                                 onClick={() => setCustomPreviewScale((s) => Math.min(1.25, +(s + 0.05).toFixed(2)))}
-                                                className="inline-flex h-7 w-7 items-center justify-center rounded-full text-neutral-700 hover:bg-neutral-100"
+                                                className="ui-scale-button inline-flex h-7 w-7 items-center justify-center rounded-full text-neutral-700 hover:bg-neutral-100"
                                                 title="Zoom in"
                                             >
                                                 +
@@ -7596,11 +7599,11 @@ export default function AppBuilderEditor({
                             ) : null}
 
                             {(
-                                <div data-tour-ui-scale className="inline-flex shrink-0 items-center gap-0.5 rounded-full border border-neutral-300 bg-white px-1.5 py-1 shadow-sm xl:gap-1 xl:px-2">
+                                <div data-tour-ui-scale className="ui-scale-control inline-flex shrink-0 items-center gap-0.5 rounded-full border border-neutral-300 bg-white px-1.5 py-1 shadow-sm xl:gap-1 xl:px-2">
                                     <button
                                         type="button"
                                         onClick={() => setCustomPreviewScale((s) => Math.max(0.5, +(s - 0.05).toFixed(2)))}
-                                        className="inline-flex h-6 w-6 items-center justify-center rounded-md text-neutral-700 hover:bg-neutral-100"
+                                        className="ui-scale-button inline-flex h-6 w-6 items-center justify-center rounded-md text-neutral-700 hover:bg-neutral-100"
                                         title="Zoom out"
                                     >
                                         −
@@ -7611,7 +7614,7 @@ export default function AppBuilderEditor({
                                     <button
                                         type="button"
                                         onClick={() => setCustomPreviewScale((s) => Math.min(1.25, +(s + 0.05).toFixed(2)))}
-                                        className="inline-flex h-6 w-6 items-center justify-center rounded-md text-neutral-700 hover:bg-neutral-100"
+                                        className="ui-scale-button inline-flex h-6 w-6 items-center justify-center rounded-md text-neutral-700 hover:bg-neutral-100"
                                         title="Zoom in"
                                     >
                                         +
@@ -7796,12 +7799,12 @@ export default function AppBuilderEditor({
                 <div className="flex flex-1 min-h-0" data-app-builder-container>
                     {/* Left Panel - AI Chat and Controls */}
                     <div 
-                        className={`${showLeftPanel ? "flex" : "hidden"} flex-col bg-gray-50 flex-shrink-0 min-h-0 overflow-hidden w-full md:w-auto ${!isVisualEditorMode ? "md:border-r" : ""}`}
+                        className={`app-builder-editor-panel ${showLeftPanel ? "flex" : "hidden"} flex-col bg-gray-50 flex-shrink-0 min-h-0 overflow-hidden w-full md:w-auto ${!isVisualEditorMode ? "md:border-r" : ""}`}
                         style={!isMobile && !isVisualEditorMode ? { width: `${leftPanelWidth}px` } : isVisualEditorMode ? { width: "100%" } : undefined}
                     >
                         {/* View Mode Toggle */}
                         <div
-                            className={`p-3 border-b sticky top-0 z-10 bg-gray-50 ${
+                            className={`app-builder-mode-row p-3 border-b sticky top-0 z-10 bg-gray-50 ${
                                 isVisualEditorMode
                                     ? isCustomSidebarOpen
                                         ? "w-[min(92vw,520px)]"
@@ -7809,7 +7812,7 @@ export default function AppBuilderEditor({
                                     : ""
                             }`}
                         >
-                            <div className="inline-flex w-fit gap-2 overflow-x-auto overflow-y-visible scrollbar-hide min-w-0 rounded-[1.5rem] border border-neutral-200 bg-white/70 p-1 shadow-[0_10px_30px_rgba(15,23,42,0.04)] backdrop-blur">
+                            <div className="app-builder-view-mode-tabs inline-flex w-fit gap-2 overflow-x-auto overflow-y-visible scrollbar-hide min-w-0 rounded-[1.5rem] border border-neutral-200 bg-white/70 p-1 shadow-[0_10px_30px_rgba(15,23,42,0.04)] backdrop-blur">
                                 <motion.button
                                     onClick={() => { void requestViewModeChange("ai"); }}
                                     disabled={isModeSwitching}
@@ -8203,7 +8206,7 @@ export default function AppBuilderEditor({
                                             transition={{ duration: 0.24, ease: "easeOut" }}
                                         >
                                             {shouldHoldCustomPreviewHtml ? (
-                                                <div className="flex h-full min-h-[420px] items-center justify-center bg-white">
+                                                <div className="app-builder-preview-loading flex h-full min-h-[420px] items-center justify-center" style={{ backgroundColor: "var(--page-bg)" }}>
                                                     <WorkspaceLoadingPanel
                                                         title="Loading preview"
                                                         progressItems={previewLoadingItems}
@@ -8262,13 +8265,13 @@ export default function AppBuilderEditor({
                                     ) : (
                                         <motion.div
                                             key="preview-loading"
-                                            className="flex h-full min-h-[420px] items-center justify-center bg-white"
+                                            className="app-builder-preview-loading flex h-full min-h-[420px] items-center justify-center bg-white"
                                             initial={{ opacity: 0, y: 8 }}
                                             animate={{ opacity: 1, y: 0 }}
                                             exit={{ opacity: 0, y: 8 }}
                                             transition={{ duration: 0.24, ease: "easeOut" }}
                                         >
-                                            <div className="flex flex-col items-center gap-4 rounded-2xl border border-neutral-200 bg-white px-6 py-8 shadow-sm">
+                                            <div className="app-builder-preview-loading-card flex flex-col items-center gap-4 rounded-2xl border border-neutral-200 bg-white px-6 py-8 shadow-sm">
                                                 <KlonerLoader />
                                                 <div className="text-center">
                                                     <div className="text-sm font-semibold text-neutral-900">
@@ -8299,7 +8302,7 @@ export default function AppBuilderEditor({
                     <div className={`${showRightPanel && !isVisualEditorMode ? "flex" : "hidden"} flex-1 flex flex-col min-h-0`}>
                         {showDeployBanner ? (
                             <div
-                                className={`border-b px-4 py-3 sm:px-4 ${effectiveDeployBanner?.kind === "error"
+                                className={`app-builder-deploy-banner ${effectiveDeployBanner?.kind === "error" ? "app-builder-deploy-banner-error" : "app-builder-deploy-banner-success"} border-b px-4 py-3 sm:px-4 ${effectiveDeployBanner?.kind === "error"
                                     ? "border-amber-200 bg-[linear-gradient(180deg,rgba(255,251,240,0.98),rgba(255,255,255,1))] shadow-[0_18px_46px_rgba(15,23,42,0.10)]"
                                     : "border-emerald-200 bg-emerald-50/80 shadow-[0_18px_46px_rgba(16,185,129,0.10)]"
                                 }`}
@@ -8405,8 +8408,8 @@ export default function AppBuilderEditor({
                         </div>
 
                         {/* App Content */}
-                        <div data-tour-builder-preview className="relative flex-1 bg-white">
-                            {(isRefreshing || isPreviewBuilding) && <div role="status" aria-label="Rebuilding preview" className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-3 bg-white/90 backdrop-blur-sm">
+                        <div data-tour-builder-preview className="app-builder-preview-canvas relative flex-1" style={{ backgroundColor: "var(--page-bg)" }}>
+                            {(isRefreshing || isPreviewBuilding) && <div role="status" aria-label="Rebuilding preview" className="app-builder-preview-rebuilding absolute inset-0 z-30 flex flex-col items-center justify-center gap-3 backdrop-blur-sm" style={{ backgroundColor: "var(--preview-status-backdrop)" }}>
                                 <WorkspaceAgentLoader />
                                 <span className="text-sm text-neutral-600">Getting your preview ready…</span>
                             </div>}
@@ -8463,7 +8466,7 @@ export default function AppBuilderEditor({
                                         />
                                     </div>
                                 ) : (
-                                    <div ref={previewHydrationAnchorRef} className="relative h-full w-full bg-[radial-gradient(circle_at_top,rgba(255,141,33,0.08),transparent_42%),linear-gradient(180deg,rgba(255,255,255,0.98),rgba(250,250,250,1))]">
+                                    <div ref={previewHydrationAnchorRef} className="app-builder-preview-boot-canvas relative h-full w-full bg-[radial-gradient(circle_at_top,rgba(255,141,33,0.08),transparent_42%),linear-gradient(180deg,rgba(255,255,255,0.98),rgba(250,250,250,1))]">
                                     </div>
                                 )
                             ) : previewSrc ? (
@@ -8475,8 +8478,8 @@ export default function AppBuilderEditor({
                                     referrerPolicy="no-referrer"
                                 />
                             ) : (
-                                <div className="h-full w-full bg-[radial-gradient(circle_at_top,rgba(255,141,33,0.08),transparent_42%),linear-gradient(180deg,rgba(255,255,255,0.98),rgba(250,250,250,1))] flex items-center justify-center px-4">
-                                    <div className="w-full max-w-md rounded-[28px] border border-neutral-200 bg-white/95 p-6 text-center shadow-[0_24px_70px_rgba(15,23,42,0.08)] backdrop-blur-sm">
+                                <div className="app-builder-preview-empty-canvas h-full w-full bg-[radial-gradient(circle_at_top,rgba(255,141,33,0.08),transparent_42%),linear-gradient(180deg,rgba(255,255,255,0.98),rgba(250,250,250,1))] flex items-center justify-center px-4">
+                                    <div className="app-builder-preview-empty-card w-full max-w-md rounded-[28px] border border-neutral-200 bg-white/95 p-6 text-center shadow-[0_24px_70px_rgba(15,23,42,0.08)] backdrop-blur-sm">
                                         <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-[rgba(255,141,33,0.10)] text-[#FF8D21] ring-1 ring-[rgba(255,141,33,0.16)]">
                                             <Monitor className="h-7 w-7" />
                                         </div>

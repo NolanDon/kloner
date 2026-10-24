@@ -27,7 +27,10 @@ import { auth } from "@/lib/firebase";
 import { resetAuthClientCaches } from "@/lib/auth-client";
 import Image from "next/image";
 import logo from "@/public/images/logo.png";
+import orangeLogo from "@/public/images/orange_logo.png";
 import { useUrlOverlay } from "@/components/UrlOverlayProvider";
+import ThemeToggle from "@/components/ThemeToggle";
+import KlonerPumpkinAccent from "@/components/KlonerPumpkinAccent";
 
 const ACCENT = "#FF8D21";
 
@@ -37,7 +40,6 @@ type BrandShape = { nav: NavItem[]; cta: { href: string } };
 export default function NavBar(): JSX.Element {
   const [scrolled, setScrolled] = useState(false);
   const [open, setOpen] = useState(false);
-  const [active, setActive] = useState<NavItem | null>(null);
   const [mOpen, setMOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
 
@@ -157,21 +159,31 @@ export default function NavBar(): JSX.Element {
     >
       <div className="mx-auto max-w-6xl">
         <div
-          className={`relative flex items-center gap-3 px-3 py-2 md:px-1 mx-2 ${shellClasses}`}
+          className={`site-navbar relative flex items-center gap-3 px-3 py-2 md:px-1 mx-2 ${shellClasses}`}
           style={{ height: "4rem" }}
         >
           <Link
             href="/"
-            className="ml-5 flex items-center gap-2 font-black tracking-tight text-xl md:text-2xl shrink-0"
+            className="ml-5 flex items-center gap-0 font-black tracking-tight text-xl md:text-2xl shrink-0"
           >
-            <div className="relative h-[65px] w-[65px] md:h-[72px] md:w-[72px]">
+            <KlonerPumpkinAccent />
+            <div className="relative h-[90px] w-[90px]">
               <Image
                 src={logo}
                 alt="kloner logo"
                 fill
-                sizes="72px"
+                sizes="90px"
                 priority
-                className="object-contain"
+                className="site-navbar-logo site-navbar-logo-light object-contain"
+              />
+              <Image
+                src={orangeLogo}
+                alt=""
+                fill
+                sizes="90px"
+                priority
+                aria-hidden="true"
+                className="site-navbar-logo site-navbar-logo-dark object-contain"
               />
             </div>
           </Link>
@@ -207,14 +219,14 @@ export default function NavBar(): JSX.Element {
                     href={i.href}
                     className="relative hover:text-white transition whitespace-nowrap"
                     onMouseEnter={() => {
-                      setActive(i);
-                      setOpen(true);
+                      if (i.label === "Docs") setOpen(true);
+                      else setOpen(false);
                     }}
                     onFocus={() => {
-                      setActive(i);
-                      setOpen(true);
+                      setOpen(i.label === "Docs");
                     }}
-                    aria-expanded={Boolean(open && active?.label === i.label)}
+                    aria-haspopup={i.label === "Docs" ? "menu" : undefined}
+                    aria-expanded={i.label === "Docs" ? Boolean(open) : undefined}
                   >
                     {i.label}
                   </Link>
@@ -231,6 +243,7 @@ export default function NavBar(): JSX.Element {
 
           {/* Right side */}
           <div className="ml-auto flex items-center gap-2 md:gap-4">
+            <ThemeToggle className="text-white" />
             {/* Mobile hamburger */}
             <button
               aria-label={mOpen ? "Close menu" : "Open menu"}
@@ -335,7 +348,7 @@ export default function NavBar(): JSX.Element {
                 className="absolute left-4 right-4 top-full mt-3 hidden lg:block"
                 onMouseEnter={() => setOpen(true)}
               >
-                <MegaPanel active={active} />
+                <MegaPanel />
               </motion.div>
             )}
           </AnimatePresence>
@@ -546,47 +559,28 @@ function MenuLink({ href, label }: { href: string; label: string }) {
   );
 }
 
-function MegaPanel({ active }: { active: NavItem | null }): JSX.Element {
+function MegaPanel(): JSX.Element {
   return (
-    <div className="rounded-3xl border border-white/10 bg-white/95 backdrop-blur shadow-2xl overflow-hidden">
-      <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1.4fr)_repeat(3,minmax(0,1fr))] gap-8 p-6 md:p-8 text-neutral-800">
-        <Link
-          href={active?.href || "/#how"}
-          className="hidden md:block rounded-2xl overflow-hidden ring-1 ring-black/10 bg-white shadow-sm"
-          aria-label="Explore"
-        >
-          <AnimatedPromoCard />
-          <div className="p-4">
-            <div className="text-xs text-neutral-500">Clone any site</div>
-            <div className="mt-1 text-sm">Drop a link. Customize. Deploy.</div>
+    <div className="ml-auto max-w-3xl rounded-2xl border border-white/10 bg-white/95 backdrop-blur shadow-2xl overflow-hidden">
+      <div className="grid gap-6 p-5 text-neutral-800 sm:grid-cols-[1fr_auto] sm:p-6">
+        <div className="grid gap-x-8 gap-y-5 sm:grid-cols-2">
+          <div className="space-y-3">
+            <div className="text-xs font-semibold text-neutral-500 tracking-wider">GET STARTED</div>
+            <SimpleLink href="/dashboard/docs#quick-start" label="10-minute Quickstart" />
+            <SimpleLink href="/dashboard/docs#features" label="Capture and preview" />
+            <SimpleLink href="/dashboard/docs#export-options" label="Export and library" />
           </div>
-        </Link>
-
-        <div className="space-y-4">
-          <div className="text-sm text-neutral-500 tracking-wider">PRODUCT</div>
-          <SimpleLink href="/#how" label="How it Works" />
-          <SimpleLink href="/price" label="Pricing" />
-          <SimpleLink href="/dashboard/docs" label="Docs overview" />
-          <SimpleLink href="/dashboard/docs#features" label="Capture → Preview flow" />
-          <SimpleLink href="/dashboard/docs#quick-start" label="10-minute Quickstart" />
+          <div className="space-y-3">
+            <div className="text-xs font-semibold text-neutral-500 tracking-wider">GUIDES</div>
+            <SimpleLink href="/dashboard/docs#credits" label="Credits and plans" />
+            <SimpleLink href="/dashboard/docs#safety" label="Safety and fairness" />
+            <SimpleLink href="/dashboard/docs#routing-guides" label="Routing guides" />
+            <SimpleLink href="/dashboard/docs#deploy-checklists" label="Deploy checklists" />
+          </div>
         </div>
-
-        <div className="space-y-4">
-          <div className="text-sm text-neutral-500 tracking-wider">LEARN</div>
-          <SimpleLink href="/dashboard/docs#credits" label="Credit system" />
-          <SimpleLink href="/dashboard/docs#plans" label="Plan overview" />
-          <SimpleLink href="/dashboard/docs#safety" label="Safety & fairness" />
-          <SimpleLink href="/dashboard/docs#export-options" label="Export & library" />
-          <SimpleLink href="/#faq" label="FAQs" />
-        </div>
-
-        <div className="space-y-4">
-          <div className="text-sm text-neutral-500 tracking-wider">OTHER</div>
-          <SimpleLink href="/terms" label="Terms & Conditions" />
-          <SimpleLink href="/privacy" label="Privacy Policy" />
-          <SimpleLink href="/dashboard/docs#routing-guides" label="Routing Guides" />
-          <SimpleLink href="/community-builds" label="SEO Templates" />
-          <SimpleLink href="/dashboard/docs#deploy-checklists" label="Deploy Checklists" />
+        <div className="flex gap-4 border-t border-neutral-200 pt-4 text-xs sm:flex-col sm:border-l sm:border-t-0 sm:pl-6 sm:pt-0">
+          <SimpleLink href="/terms" label="Terms" />
+          <SimpleLink href="/privacy" label="Privacy" />
         </div>
       </div>
     </div>
@@ -597,14 +591,14 @@ function SimpleLink({ href, label }: { href: string; label: string }) {
   return (
     <a
       href={href}
-      className="block hover:text-neutral-800 text-neutral-700 rounded-pill transition text-[13px]"
+      className="block text-neutral-700 transition hover:text-neutral-950 text-[13px]"
     >
       {label}
     </a>
   );
 }
 
-export function AnimatedPromoCard(): JSX.Element {
+function AnimatedPromoCard(): JSX.Element {
   return (
     <div className="relative w-full max-w-sm rounded-2xl border border-neutral-200 bg-gradient-to-br from-orange-50/70 via-white to-white shadow-sm overflow-hidden h-[220px]">
       <div className="pointer-events-none absolute -inset-x-1/2 -top-1/3 h-1/2 rotate-12 bg-white/50 blur-2xl animate-[sheen_5s_linear_infinite]" />

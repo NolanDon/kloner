@@ -5065,7 +5065,8 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
         ? createPortal(
             isCompactLayout || !filesHydrationAnchorRect ? (
                 <div
-                    className="pointer-events-none fixed inset-0 z-[22050] flex items-center justify-center px-4"
+                    className="app-preview-hydration-overlay pointer-events-none fixed inset-0 z-[22050] flex items-center justify-center px-4"
+                    style={{ backgroundColor: "var(--preview-hydration-backdrop)" }}
                     role="status"
                     aria-live="polite"
                     aria-busy="true"
@@ -5074,12 +5075,13 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                 </div>
             ) : (
                 <div
-                    className="pointer-events-none fixed z-[22050] flex items-center justify-center px-4"
+                    className="app-preview-hydration-overlay pointer-events-none fixed z-[22050] flex items-center justify-center px-4"
                     style={{
                         top: filesHydrationAnchorRect.top,
                         left: filesHydrationAnchorRect.left,
                         width: filesHydrationAnchorRect.width,
                         height: filesHydrationAnchorRect.height,
+                        backgroundColor: "var(--preview-hydration-backdrop)",
                     }}
                     role="status"
                     aria-live="polite"
@@ -5173,7 +5175,8 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
         <div
             ref={containerRef}
             tabIndex={-1}
-            className="relative h-full w-full bg-white flex flex-col"
+            className="relative h-full w-full flex flex-col"
+            style={{ backgroundColor: "var(--page-bg)" }}
         >
             {shouldRunPreviewTour && !hasCompletedPreviewTour && !previewTourDontShowAgain ? (
                 <PreviewEditorTour
@@ -7509,7 +7512,7 @@ export default function AppPreviewEditor({
         (!htmlPaths.length && !isHtmlDiscoveryFallbackReady)
     ) {
         return (
-            <div className="pointer-events-none fixed inset-0 z-[22050] grid place-items-center px-4">
+            <div className="app-preview-hydration-overlay pointer-events-none fixed inset-0 z-[22050] grid place-items-center px-4" style={{ backgroundColor: "var(--preview-hydration-backdrop)" }}>
                 <WorkspaceLoadingPanel
                     title={isFilesStillHydrating ? "Loading project files" : "Preparing preview"}
                 />
@@ -7519,7 +7522,7 @@ export default function AppPreviewEditor({
 
     if (!htmlPaths.length) {
         return (
-            <div className="pointer-events-none fixed inset-0 z-[22050] grid place-items-center px-4">
+            <div className="app-preview-hydration-overlay pointer-events-none fixed inset-0 z-[22050] grid place-items-center px-4" style={{ backgroundColor: "var(--preview-hydration-backdrop)" }}>
                 <WorkspaceLoadingPanel
                     title={isFilesStillHydrating ? "Loading project files" : "Preparing preview"}
                 />

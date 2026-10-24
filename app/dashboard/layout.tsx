@@ -34,6 +34,8 @@ import {
   Crown,
 } from "lucide-react";
 import KlonerLoader from "@/components/KlonerLoader";
+import ThemeToggle from "@/components/ThemeToggle";
+import KlonerPumpkinAccent from "@/components/KlonerPumpkinAccent";
 import { type UserTier } from "@/src/lib/credits";
 
 const ACCENT = "#FF8D21";
@@ -220,7 +222,7 @@ function NavItem({
     }
   };
 
-  const baseClass = `flex items-center gap-2 rounded-lg px-3 py-2 text-sm ${
+  const baseClass = `dashboard-sidebar-item flex items-center gap-2 rounded-lg px-3 py-2 text-sm ${
     active
       ? "cursor-default bg-neutral-50 text-neutral-800 ring-1 ring-neutral-200"
       : "text-neutral-700 hover:bg-neutral-50"
@@ -396,8 +398,9 @@ function SidebarShell({
       <div className="px-5 pt-5">
         <Link
           href="/"
-          className="flex items-center gap-2 font-black tracking-tight text-xl md:text-2xl shrink-0"
+          className="flex items-center gap-0.5 font-black tracking-tight text-xl md:text-2xl shrink-0"
         >
+          <KlonerPumpkinAccent />
           <div className="relative h-[90px] w-[90px]">
             <Image
               src={logo}
@@ -418,6 +421,12 @@ function SidebarShell({
       />
 
       <nav className="flex-1 p-3 text-sm overflow-y-auto">
+        <div className="mb-1">
+          <SectionLabel>Theme</SectionLabel>
+          <div className="space-y-1">
+            <ThemeToggle variant="switch" />
+          </div>
+        </div>
         {navSections.map((section) => (
           <div key={section.label} className="mb-1">
             <SectionLabel>{section.label}</SectionLabel>
@@ -554,13 +563,16 @@ function MobileHeader({
           </div>
         </Link>
 
-        <button
-          onClick={() => setOpen(true)}
-          aria-label="Open quick menu"
-          className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-700 shadow-sm"
-        >
-          <MoreHorizontal className="h-4 w-4" />
-        </button>
+        <div className="flex items-center gap-2">
+          <ThemeToggle className="h-9 w-9 text-neutral-700" />
+          <button
+            onClick={() => setOpen(true)}
+            aria-label="Open quick menu"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-700 shadow-sm"
+          >
+            <MoreHorizontal className="h-4 w-4" />
+          </button>
+        </div>
       </div>
 
       <AnimatePresence>

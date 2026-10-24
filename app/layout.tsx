@@ -61,6 +61,13 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className={inter.variable}>
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `try { var savedTheme = localStorage.getItem('kloner-theme'); var t = savedTheme === 'light' || savedTheme === 'dark' ? savedTheme : 'dark'; document.documentElement.dataset.theme = t; document.documentElement.style.colorScheme = t; } catch (e) { document.documentElement.dataset.theme = 'dark'; document.documentElement.style.colorScheme = 'dark'; }`,
+          }}
+        />
+      </head>
       <body className="bg-white scroll-smooth">
         <StyledJsxRegistry>
           <AuthProviderServer>

@@ -28,6 +28,7 @@ export default function Hero({ eyebrow, heading, subhead }: { eyebrow?: string; 
               className="absolute inset-0 h-full w-full object-cover select-none pointer-events-none"
             />
             <div className="absolute inset-0 bg-gradient-to-b from-black/10 via-black/30 to-black/10" />
+            <div aria-hidden="true" className="hero-theme-overlay absolute inset-0 pointer-events-none" />
           </div>
 
           <HeroContent displayClassName="font-black tracking-tight" eyebrow={eyebrow} heading={heading} subhead={subhead} />

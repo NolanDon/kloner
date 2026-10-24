@@ -4,7 +4,7 @@ import { callBackend } from "@/src/lib/callBackend";
 import { verifySession } from "../../_lib/auth";
 import { requireSessionAndMaybeCsrf } from "../../_lib/route-guard";
 import { getAuthoritativeUserTier } from "../../_lib/userTier";
-import { captureCriticalEvent } from "@/lib/observability";
+import { captureAuditEvent, captureCriticalEvent } from "@/lib/observability";
 import type { UserTier } from "@/src/lib/credits";
 import { getPublicHttpUrlRejectionReason, validateAndNormalizePublicHttpUrl } from "@/src/lib/publicHttpUrl";
 import {
@@ -37,9 +37,13 @@ async function captureUrlScanFailure(params: {
     };
     extra?: Record<string, unknown>;
 }) {
+    const host = (() => {
+        try { return new URL(params.targetUrl).hostname; } catch { return "this website"; }
+    })();
     await captureCriticalEvent({
         source: "internal",
-        severity: params.statusCode >= 500 ? "critical" : "warning",
+        severity: params.statusCode >= 500 ? "critical" : "error",
+        slackColor: "#D83A4E",
         statusCode: params.statusCode,
         route: "/api/private/generate",
         method: "POST",
@@ -47,12 +51,73 @@ async function captureUrlScanFailure(params: {
         userId: params.uid,
         requestId: params.requestId,
         service: "url-generate-proxy",
-        message: `URL scan failed: ${params.reason}`,
+        message: `A user couldn't scan ${host}.`,
         url: params.targetUrl,
         tags: ["url-scan", "generate", "backend-failure"],
         extra: {
             ...(params.extra || {}),
+            result: "failed",
+            failureReason: params.reason,
             downstream: params.downstream || null,
+        },
+    });
+}
+
+async function captureUrlScanStart(params: { uid?: string; targetUrl: string; requestId?: string }) {
+    const host = (() => {
+        try { return new URL(params.targetUrl).hostname; } catch { return "this website"; }
+    })();
+    if (typeof captureAuditEvent !== "function") return;
+    void captureAuditEvent({
+        source: "internal",
+        severity: "info",
+        slackColor: "#3A86D8",
+        route: "/api/private/generate",
+        method: "POST",
+        action: "url_scan_started",
+        userId: params.uid,
+        requestId: params.requestId,
+        service: "url-generate-proxy",
+        message: `A user started a scan of ${host}.`,
+        url: params.targetUrl,
+        tags: ["url-scan", "generate"],
+        extra: { result: "started" },
+    });
+}
+
+async function captureUrlScanSuccess(params: {
+    uid?: string;
+    targetUrl: string;
+    requestId?: string;
+    statusCode: number;
+    totalPlanned: number | null;
+    backendCode?: string | null;
+    backendSource?: string | null;
+}) {
+    const host = (() => {
+        try { return new URL(params.targetUrl).hostname; } catch { return "this website"; }
+    })();
+    if (typeof captureAuditEvent !== "function") return;
+    void captureAuditEvent({
+        source: "internal",
+        severity: "info",
+        slackColor: "#2EAD70",
+        statusCode: params.statusCode,
+        route: "/api/private/generate",
+        method: "POST",
+        action: "url_scan_succeeded",
+        userId: params.uid,
+        requestId: params.requestId,
+        service: "url-generate-proxy",
+        message: `A user scanned ${host} successfully.`,
+        url: params.targetUrl,
+        tags: ["url-scan", "generate"],
+        extra: {
+            result: "succeeded",
+            totalPlanned: params.totalPlanned,
+            backendStatus: params.statusCode,
+            backendCode: params.backendCode || null,
+            backendSource: params.backendSource || null,
         },
     });
 }
@@ -248,6 +313,12 @@ export async function POST(req: NextRequest) {
                 );
             }
 
+            await captureUrlScanStart({
+                uid: decoded.uid,
+                targetUrl: normalizedUrl,
+                requestId: req.headers?.get?.("x-request-id") || undefined,
+            });
+
             try {
                 const r = await callBackend(req, {
                     path: "/generate-screenshots",
@@ -275,6 +346,22 @@ export async function POST(req: NextRequest) {
                     r.status === 202 && (payload as any)?.code === "TIMEOUT_ACCEPTED";
 
                 if (timedOutBeforeAck) {
+                    if (typeof captureAuditEvent === "function") void captureAuditEvent({
+                        source: "internal",
+                        severity: "info",
+                        slackColor: "#3A86D8",
+                        statusCode: 202,
+                        route: "/api/private/generate",
+                        method: "POST",
+                        action: "url_scan_accepted",
+                        userId: decoded.uid,
+                        requestId: r.reqId,
+                        service: "url-generate-proxy",
+                        message: `The scan of ${new URL(normalizedUrl).hostname} is still running; the backend accepted it for processing.`,
+                        url: normalizedUrl,
+                        tags: ["url-scan", "generate"],
+                        extra: { result: "accepted", backendStatus: r.status, backendCode: (payload as any)?.code || null },
+                    });
                     return NextResponse.json(
                         {
                             ok: true,
@@ -392,6 +479,16 @@ export async function POST(req: NextRequest) {
                     // If this fails you effectively gave a free run; acceptable.
                 }
 
+                await captureUrlScanSuccess({
+                    uid: decoded.uid,
+                    targetUrl: normalizedUrl,
+                    requestId: r.reqId,
+                    statusCode: r.status,
+                    totalPlanned,
+                    backendCode: (payload as any)?.code || null,
+                    backendSource: (payload as any)?.source || null,
+                });
+
                 return NextResponse.json(payload, {
                     status: 200,
                     headers: {
@@ -403,6 +500,7 @@ export async function POST(req: NextRequest) {
                 await captureUrlScanFailure({
                     uid: decoded.uid,
                     targetUrl: normalizedUrl,
+                    requestId: e?.requestId || e?.reqId || req.headers?.get?.("x-request-id") || undefined,
                     reason: e?.message || "Proxy failed",
                     statusCode: 502,
                     downstream: {

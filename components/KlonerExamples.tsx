@@ -209,14 +209,6 @@ export default function DeckImageCarousel({
                             );
                         })}
                     </div>
-
-                    {/* Right: community builds link */}
-                    <a
-                        href="/community-builds"
-                        className="ml-auto hidden md:inline-flex items-center rounded-full border border-black/10 bg-white px-4 py-2 text-sm text-black/70 hover:text-black hover:shadow-sm"
-                    >
-                        Explore all community builds
-                    </a>
                 </div>
 
                 <div className="relative flex w-full items-center justify-center">

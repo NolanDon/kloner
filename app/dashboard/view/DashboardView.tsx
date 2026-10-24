@@ -1531,7 +1531,7 @@ function MiniDashboardEntry({
     return (
         <div
             className={
-                "rounded-3xl border border-neutral-200 bg-gradient-to-br from-white via-neutral-50 to-neutral-100 shadow-sm " +
+                "dashboard-url-header rounded-3xl border border-neutral-200 bg-gradient-to-br from-white via-neutral-50 to-neutral-100 shadow-sm " +
                 (isCompact ? "px-4 py-4 sm:px-6 sm:py-7" : "px-4 py-5 sm:px-8 sm:py-10")
             }
         >
@@ -1557,7 +1557,7 @@ function MiniDashboardEntry({
                         </h2>
                     </div>
 
-                    <div className={"my-4 flex flex-wrap gap-2 " + (isCompact ? "text-[11px]" : "text-xs")}>
+                    <div className="my-4 flex flex-wrap gap-2 text-sm">
                         {/* <span className="inline-flex items-center rounded-full bg-neutral-100 px-2.5 py-1 text-neutral-700">
                             Screenshot credits:&nbsp;
                             <span className="font-semibold text-neutral-900">
@@ -1567,7 +1567,7 @@ function MiniDashboardEntry({
                             </span>
                         </span> */}
 
-                        <span className="inline-flex items-center rounded-full bg-neutral-100 px-2.5 py-1 text-neutral-700">
+                        <span className="inline-flex items-center rounded-full bg-neutral-100 px-3.5 py-2 text-neutral-700">
                             Scan credits:&nbsp;
                             <span className="font-semibold text-neutral-900">
                                 {previewRemaining === null || !previewLimitDisplay
@@ -1576,9 +1576,9 @@ function MiniDashboardEntry({
                             </span>
                         </span>
 
-                        <span className="inline-flex items-center rounded-full bg-neutral-100 px-2.5 py-1 text-neutral-700">
+                        <span className="inline-flex items-center rounded-full bg-neutral-100 px-3.5 py-2 text-neutral-700">
                             <span className="mr-1 inline-flex items-center">
-                                <CoinLottieBadge className="h-8 w-8" />
+                                <CoinLottieBadge className="h-6 w-6" />
                             </span>
                             AI credits:&nbsp;
                             <span className="font-semibold text-neutral-900">
@@ -1595,16 +1595,17 @@ function MiniDashboardEntry({
                                 type="button"
                                 role="switch"
                                 aria-checked={devEarlyGenerationPaywallEnabled}
+                                data-state={devEarlyGenerationPaywallEnabled ? "on" : "off"}
                                 onClick={onToggleDevEarlyGenerationPaywall}
-                                className="inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-amber-900 transition hover:bg-amber-100"
+                                className="dev-paywall-switch inline-flex min-h-10 items-center gap-3 rounded-full border px-3.5 py-2 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF8D21] focus-visible:ring-offset-2"
                                 title="Development-only test switch"
                             >
                                 <span>Force early paywall</span>
                                 <span
                                     aria-hidden="true"
-                                    className={`relative inline-flex h-4 w-7 shrink-0 rounded-full transition ${devEarlyGenerationPaywallEnabled ? "bg-[#FF8D21]" : "bg-neutral-300"}`}
+                                    className="dev-paywall-switch__track relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors"
                                 >
-                                    <span className={`absolute top-0.5 h-3 w-3 rounded-full bg-white shadow transition ${devEarlyGenerationPaywallEnabled ? "left-3.5" : "left-0.5"}`} />
+                                    <span className={`dev-paywall-switch__thumb absolute left-0.5 h-5 w-5 rounded-full shadow-sm transition-transform ${devEarlyGenerationPaywallEnabled ? "translate-x-5" : "translate-x-0"}`} />
                                 </span>
                             </button>
                         ) : null}
@@ -1615,72 +1616,66 @@ function MiniDashboardEntry({
             </div>
 
             <form onSubmit={(e) => void handleSubmit(e)} className="mt-4">
-                <div
-                    className={
-                        "relative flex items-center bg-white/95 backdrop-blur-md p-2 pl-4 sm:pl-6 shadow-[0_12px_30px_rgba(0,0,0,0.08)] ring-1 ring-neutral-200 transition-all duration-300 ease-out " +
-                        (isCompact
-                            ? "rounded-full h-[48px] sm:h-[52px]"
-                            : "rounded-full h-[64px] sm:h-[72px]")
-                    }
-                >
-                    <span className={"hidden sm:inline text-neutral-400 font-medium mr-1 " + (isCompact ? "text-sm" : "text-lg")}>
-                        https://
-                    </span>
+                <div className="dashboard-url-input-shell rounded-full bg-white/95 p-2 shadow-[0_20px_50px_rgba(0,0,0,0.18)] ring-1 ring-neutral-200/70 backdrop-blur-md transition-all duration-300 ease-out">
+                    <div className="flex items-stretch gap-2">
+                        <div className="flex min-h-[60px] flex-1 items-center rounded-full px-4 sm:px-6">
+                            <span className="hidden sm:inline text-neutral-400 text-base sm:text-lg font-medium mr-1">
+                                https://
+                            </span>
 
-                    <input
-                        ref={inputRef}
-                        value={url}
-                        onChange={(e) => {
-                            const value = e.target.value;
-                            setUrl(value);
-                            const cleaned = value.trim();
-                            setError(cleaned ? getPublicHttpUrlRejectionReason(cleaned) : null);
-                        }}
-                        onPaste={(e) => {
-                            const pasted = e.clipboardData.getData("text");
-                            if (!pasted) return;
-                            e.preventDefault();
-                            const cleaned = pasted.trim();
-                            setUrl(pasted);
-                            setError(cleaned ? getPublicHttpUrlRejectionReason(cleaned) : null);
-                        }}
-                        placeholder="example.com"
-                        disabled={isSubmissionDisabled}
-                        className={
-                            "flex-1 bg-transparent outline-none text-neutral-700 placeholder:text-neutral-400 font-medium " +
-                            (isCompact ? "text-[13px] sm:text-sm" : "text-[15px] sm:text-base")
-                        }
-                        autoComplete="off"
-                    />
+                            <input
+                                ref={inputRef}
+                                value={url}
+                                onChange={(e) => {
+                                    const value = e.target.value;
+                                    setUrl(value);
+                                    const cleaned = value.trim();
+                                    setError(cleaned ? getPublicHttpUrlRejectionReason(cleaned) : null);
+                                }}
+                                onPaste={(e) => {
+                                    const pasted = e.clipboardData.getData("text");
+                                    if (!pasted) return;
+                                    e.preventDefault();
+                                    const cleaned = pasted.trim();
+                                    setUrl(pasted);
+                                    setError(cleaned ? getPublicHttpUrlRejectionReason(cleaned) : null);
+                                }}
+                                placeholder="example.com"
+                                disabled={isSubmissionDisabled}
+                                className="flex-1 bg-transparent outline-none text-neutral-700 text-base sm:text-lg placeholder:text-neutral-400 font-medium"
+                                autoComplete="off"
+                            />
+                        </div>
 
-                    <button
-                        type="submit"
-                        disabled={isSubmissionDisabled || !url.trim()}
-                        onMouseDown={handleSubmitPointerDown}
-                        className={
-                            "grid h-8 w-8 shrink-0 place-items-center rounded-full text-white transition-all active:scale-95 px-0 md:h-full md:w-auto md:px-10 " +
-                            (isSubmissionVisuallyLocked || !url.trim()
-                                ? "opacity-60 cursor-not-allowed"
-                                : "")
-                        }
-                        style={{ backgroundColor: ACCENT }}
-                        aria-label="Preview from URL"
-                    >
-                        {showQueuedScanStatus ? (
-                            <>
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                                <span className="sr-only">
-                                    {creationBusy || pressingSubmit ? "Cloning" : queueActive && captureStatus === "queued" ? "Queued" : "Processing"}
-                                </span>
-                            </>
-                        ) : (
-                            <>
-                                <ArrowRight className="h-4 w-4 md:hidden" />
-                                <span className="hidden md:inline">Clone</span>
-                                <span className="sr-only">Clone</span>
-                            </>
-                        )}
-                    </button>
+                        <button
+                            type="submit"
+                            disabled={isSubmissionDisabled || !url.trim()}
+                            onMouseDown={handleSubmitPointerDown}
+                            className={
+                                "inline-flex min-h-[52px] shrink-0 items-center justify-center rounded-full text-white transition-all active:scale-95 px-5 " +
+                                (isSubmissionVisuallyLocked || !url.trim()
+                                    ? "opacity-60 cursor-not-allowed"
+                                    : "")
+                            }
+                            style={{ backgroundColor: ACCENT }}
+                            aria-label="Preview from URL"
+                        >
+                            {showQueuedScanStatus ? (
+                                <>
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                    <span className="sr-only">
+                                        {creationBusy || pressingSubmit ? "Cloning" : queueActive && captureStatus === "queued" ? "Queued" : "Processing"}
+                                    </span>
+                                </>
+                            ) : (
+                                <>
+                                    <ArrowRight className="h-4 w-4 md:hidden" />
+                                    <span className="hidden md:inline">Clone</span>
+                                    <span className="sr-only">Clone</span>
+                                </>
+                            )}
+                        </button>
+                    </div>
                 </div>
 
                 {error ? <div className="mt-2 text-sm text-red-700">{error}</div> : null}
@@ -3540,7 +3535,7 @@ function AppCard({
                                                 ? "Opening draft"
                                                 : "View draft"
                                     }
-                                    className="inline-flex h-8 w-8 items-center justify-center rounded-2xl border border-neutral-300 bg-white text-neutral-700 shadow-sm transition-all duration-300 ease-out hover:border-[#FF8D21] hover:bg-[#FF8D21] hover:text-white disabled:cursor-not-allowed disabled:pointer-events-none disabled:opacity-60"
+                                    className="dashboard-card-action inline-flex h-8 w-8 items-center justify-center rounded-2xl border border-neutral-300 bg-white text-neutral-700 shadow-sm transition-all duration-300 ease-out hover:border-[#FF8D21] hover:bg-[#FF8D21] hover:text-white disabled:cursor-not-allowed disabled:pointer-events-none disabled:opacity-60"
                                 >
                                     {draftEditIsBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <BrushIcon className="h-3.5 w-3.5" />}
                                 </button>
@@ -3565,7 +3560,7 @@ function AppCard({
                                     disabled={isDeleting}
                                     aria-label="Delete draft"
                                     title="Delete draft"
-                                    className="inline-flex h-8 w-8 items-center justify-center rounded-2xl border border-neutral-300 bg-white text-neutral-700 shadow-sm transition-all duration-300 ease-out hover:border-red-500 hover:bg-red-600 hover:text-white disabled:pointer-events-none disabled:opacity-60"
+                                    className="dashboard-card-action dashboard-card-action-delete inline-flex h-8 w-8 items-center justify-center rounded-2xl border border-neutral-300 bg-white text-neutral-700 shadow-sm transition-all duration-300 ease-out hover:border-red-500 hover:bg-red-600 hover:text-white disabled:pointer-events-none disabled:opacity-60"
                                 >
                                     <Trash2 className="h-3.5 w-3.5" />
                                 </button>
@@ -3586,7 +3581,7 @@ function AppCard({
                                         handleAppView();
                                     }}
                                     disabled={isDeleting || accessLocked || disableActions || isBrokenDraftCard || isPendingCreation || appViewIsBusy}
-                                    className="inline-flex h-8 w-8 items-center justify-center rounded-2xl border border-neutral-300 bg-white text-neutral-700 shadow-sm transition-all duration-300 ease-out hover:border-[#FF8D21] hover:bg-[#FF8D21] hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+                                    className="dashboard-card-action inline-flex h-8 w-8 items-center justify-center rounded-2xl border border-neutral-300 bg-white text-neutral-700 shadow-sm transition-all duration-300 ease-out hover:border-[#FF8D21] hover:bg-[#FF8D21] hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
                                     title={accessLocked ? "Trial access was cancelled, so this app is locked in the dashboard" : appViewIsBusy ? "Opening app" : suppressLivePromotionIssue ? "View app" : appIssue?.message || "View app"}
                                     aria-label={appViewIsBusy ? "Opening app" : suppressLivePromotionIssue ? "View app" : appIssue?.message || "View app"}
                                 >
@@ -3607,7 +3602,7 @@ function AppCard({
                                         onArchive(app.id);
                                     }}
                                     disabled={isDeleting || isArchiving || disableActions || isPendingCreation}
-                                    className="inline-flex h-8 w-8 items-center justify-center rounded-2xl border border-neutral-300 bg-white text-neutral-700 shadow-sm transition-all duration-300 ease-out hover:border-[#FF8D21] hover:bg-[#FF8D21] hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+                                    className="dashboard-card-action inline-flex h-8 w-8 items-center justify-center rounded-2xl border border-neutral-300 bg-white text-neutral-700 shadow-sm transition-all duration-300 ease-out hover:border-[#FF8D21] hover:bg-[#FF8D21] hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
                                     title="Move this app into your archive"
                                     aria-label={isArchiving ? "Archiving app" : "Archive app"}
                                 >
@@ -3634,7 +3629,7 @@ function AppCard({
                                     disabled={isDeleting || disableActions || isPendingCreation}
                                     aria-label={isDeleting ? "Deleting app" : "Delete app"}
                                     title={isDeleting ? "Deleting app" : "Delete"}
-                                    className={`inline-flex h-8 w-8 items-center justify-center rounded-2xl border shadow-sm transition-all duration-300 ease-out disabled:pointer-events-none disabled:opacity-70 ${
+                                    className={`dashboard-card-action dashboard-card-action-delete inline-flex h-8 w-8 items-center justify-center rounded-2xl border shadow-sm transition-all duration-300 ease-out disabled:pointer-events-none disabled:opacity-70 ${
                                         isDeleting
                                             ? "border-red-500 bg-red-600 text-white"
                                             : "border-neutral-300 bg-white text-neutral-700 hover:border-red-500 hover:bg-red-600 hover:text-white"
@@ -14132,7 +14127,10 @@ export default function PreviewPage(): JSX.Element {
                     />
                 ) : null}
 
-                <section ref={createWebsitesSectionRef} className="mt-10 rounded-3xl border border-neutral-200 bg-white/70 px-4 py-5 sm:px-5 sm:py-6 shadow-sm">
+                <section
+                    ref={createWebsitesSectionRef}
+                    className={`mt-10 rounded-3xl ${Object.values(deletingApp).some(Boolean) || Object.values(deletingDraftApp).some(Boolean) ? "border border-transparent" : "border border-neutral-200"} bg-white/70 px-4 py-5 shadow-sm sm:px-5 sm:py-6`}
+                >
                     <div className="mb-3 flex items-center gap-3">
                         <div className="inline-flex items-center gap-2 rounded-full border border-neutral-200 bg-white/80 px-3 py-1.5 text-xs sm:text-sm text-neutral-700 shadow-sm">
                             <span className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-500 shadow-sm">

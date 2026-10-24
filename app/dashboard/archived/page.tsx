@@ -34,7 +34,7 @@ function ArchiveCard({ r, onUnarchive, onDiscard, isDeleting }: ArchiveCardProps
         "Untitled preview";
 
     return (
-        <div className="relative flex flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm">
+        <div className="archive-card-shell relative flex flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm">
             <button
                 onClick={() => onDiscard(r.id)}
                 disabled={isDeleting}
@@ -64,7 +64,7 @@ function ArchiveCard({ r, onUnarchive, onDiscard, isDeleting }: ArchiveCardProps
                         draggable={false}
                     />
                 ) : (
-                    <div className="grid h-40 w-full place-items-center text-xs text-neutral-500">
+                    <div className="archive-preview-placeholder grid h-40 w-full place-items-center text-xs text-neutral-500">
                         No snapshot available
                     </div>
                 )}
@@ -130,7 +130,7 @@ function ArchivedAppCard({
     const name = app.name || app.id.slice(0, 10);
 
     return (
-        <div className="relative flex flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm">
+        <div className="archive-card-shell relative flex flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm">
             <button
                 onClick={() => onDelete(app.id)}
                 disabled={isDeleting}
@@ -149,7 +149,7 @@ function ArchivedAppCard({
                 <DeleteIcon className="h-3.5 w-3.5 text-red-600 transition-colors" />
             </button>
 
-            <div className="relative grid h-40 w-full place-items-center bg-gradient-to-br from-neutral-50 to-neutral-100">
+            <div className="archive-preview-placeholder relative grid h-40 w-full place-items-center bg-gradient-to-br from-neutral-50 to-neutral-100">
                 <span
                     className="absolute left-2 top-2 rounded-md bg-amber-200/95 px-2 py-0.5 text-[10px] font-semibold text-amber-900 shadow"
                     title="Archived apps are hidden from the main dashboard"
