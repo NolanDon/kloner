@@ -87,7 +87,7 @@ function MiniGroundedTherapy() {
   return (
     <CardShell>
       <Image
-        src="/images/included-section/5.jpg"
+        src="/images/editor-demo/grounded_therapy.webp"
         alt="Grounded Therapy website preview"
         fill
         sizes="(min-width: 1280px) 760px, (min-width: 1024px) 60vw, 100vw"
