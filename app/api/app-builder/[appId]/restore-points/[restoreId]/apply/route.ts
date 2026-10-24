@@ -48,6 +48,8 @@ export async function POST(req: NextRequest, { params }: any) {
             const appId = safeString(routeParams?.appId, 200);
             const restoreId = safeString(routeParams?.restoreId, 200);
             assertAppBuilderScope(authedReq, uid, appId);
+            const body = await authedReq.json().catch(() => ({} as any));
+            const rollbackToCheckpoint = body?.rollbackToCheckpoint === true;
 
             const db = getAdminDb();
             const appRef = db
@@ -67,7 +69,8 @@ export async function POST(req: NextRequest, { params }: any) {
                 if (workspaceDoc.exists) {
                     const result = await callBackend(authedReq, {
                         path: `/app-embeddings/agent-v3/restore-points/${encodeURIComponent(restoreId)}/revert`,
-                        method: "POST", timeoutMs: 180_000, userCtx: { uid }, body: { appId, restorePointId: restoreId },
+                        method: "POST", timeoutMs: 180_000, userCtx: { uid },
+                        body: { appId, restorePointId: restoreId, ...(rollbackToCheckpoint ? { rollbackToCheckpoint: true } : {}) },
                     });
                     return NextResponse.json(result.json, { status: result.status });
                 }

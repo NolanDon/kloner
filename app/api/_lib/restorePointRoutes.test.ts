@@ -58,6 +58,20 @@ test("V3 apply forwards guarded restore conflicts instead of writing the legacy 
     expect(callBackend).toHaveBeenCalledWith(req, expect.objectContaining({ userCtx: { uid: "owner" }, body: { appId: "owned-app", restorePointId: "rp" }, path: "/app-embeddings/agent-v3/restore-points/rp/revert" }));
     expect(writes).not.toHaveBeenCalled();
 });
+test("confirmed checkpoint rollback is forwarded to V3 without changing the default guarded apply", async () => {
+    setup();
+    (callBackend as jest.Mock).mockResolvedValue({ status: 200, json: { ok: true } });
+    const req = new NextRequest("https://kloner.app/api/restore/apply", {
+        method: "POST",
+        body: JSON.stringify({ rollbackToCheckpoint: true }),
+        headers: { "content-type": "application/json" },
+    });
+    const result = await apply(req, { params });
+    expect(result.status).toBe(200);
+    expect(callBackend).toHaveBeenCalledWith(req, expect.objectContaining({
+        body: { appId: "owned-app", restorePointId: "rp", rollbackToCheckpoint: true },
+    }));
+});
 test("keep updates the V3 record; actually missing restore points still return 404", async () => {
     const writes = setup();
     const req = new NextRequest("https://kloner.app/api/restore/keep", { method: "POST" });

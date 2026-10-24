@@ -5312,6 +5312,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
             statusMessage?: string;
             redoQuery?: string | null;
             redoCurrentPath?: string | null;
+            rollbackToCheckpoint?: boolean;
         },
     ): Promise<{ ok: boolean; errorMessage?: string }> => {
         if (!restoreId || isRestoreBusy) return { ok: false, errorMessage: "Could not undo — try again." };
@@ -5344,7 +5345,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
             if (!v1Res.ok && v1Res.status === 404) {
                 res = await fetchWithScopeRetry(
                     `/api/app-builder/${appId}/restore-points/${restoreId}/apply`,
-                    { method: "POST", headers, body: JSON.stringify({}) },
+                    { method: "POST", headers, body: JSON.stringify(options?.rollbackToCheckpoint ? { rollbackToCheckpoint: true } : {}) },
                     { retryLabel: "apply restore point" }
                 );
                 data = await res.json().catch(() => null);
@@ -5361,6 +5362,8 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
 
             const newId = typeof data?.newRestorePointId === "string"
                 ? data.newRestorePointId
+                : typeof data?.inverseRestorePointId === "string"
+                    ? data.inverseRestorePointId
                 : typeof data?.restorePointId === "string"
                     ? data.restorePointId
                     : null;
@@ -7363,6 +7366,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                                         if (!confirmRollback) return;
                                                         void applyRestorePoint(rp.id, {
                                                             statusMessage: "Project rolled back to the selected timeline checkpoint. Rebuilding preview now.",
+                                                            rollbackToCheckpoint: true,
                                                         });
                                                     }}
                                                     disabled={!canRevert}

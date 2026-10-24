@@ -20,7 +20,7 @@ export async function POST(req: NextRequest, context: { params: Promise<{ restor
             method: "POST",
             timeoutMs: 180_000,
             userCtx: { uid },
-            body: { appId, restorePointId },
+            body: { appId, restorePointId, ...(body.rollbackToCheckpoint === true ? { rollbackToCheckpoint: true } : {}) },
         });
         return NextResponse.json(result.json, { status: result.status });
     });
