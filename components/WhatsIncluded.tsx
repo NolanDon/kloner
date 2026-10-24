@@ -119,7 +119,6 @@ type CardData = {
 
 const CARDS: CardData[] = [
   { title: 'Customize with AI', sub: 'Select page elements and adjust the layout, spacing, and style directly.', Mini: MiniAiEditor },
-  { title: 'Grounded Therapy', sub: 'A real website preview, ready to refine and make your own.', Mini: MiniGroundedTherapy },
   { title: 'Manual customization', sub: 'Fine-tune typography, colors, spacing, images, and more in the visual editor.', Mini: MiniCustomEditor },
 ];
 
@@ -140,7 +139,7 @@ export default function MembershipSticky({ heading = 'What your website cloner i
                 {heading}
               </h2>
 
-              <div className="mt-20">
+              <div className="mt-10">
                 <p className="mt-[-40px] md:mt-3 max-w-md text-lg leading-relaxed text-neutral-600 md:text-xl">
                   Start from a public URL, review the supported website structure and available assets, edit the result with AI, and deploy when it is ready.
                 </p>
@@ -151,7 +150,7 @@ export default function MembershipSticky({ heading = 'What your website cloner i
                 onClick={openUrlOverlay}
                 className="mt-10 inline-flex items-center gap-2 rounded-full bg-accent px-6 py-4 text-white shadow-sm transition-all duration-200 hover:scale-[1.04] hover:shadow-[0_10px_24px_rgba(255,141,33,0.28)] active:scale-[0.98]"
               >
-                Start free preview <span aria-hidden>›</span>
+                Clone your site <span aria-hidden>›</span>
               </button>
             </div>
           </div>

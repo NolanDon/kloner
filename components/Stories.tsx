@@ -168,15 +168,14 @@ export default function Stories() {
 
         <div className="mb-10 grid gap-3 sm:mb-12 sm:gap-5 md:grid-cols-[0.72fr_1fr] md:items-end md:gap-10">
           <SectionReveal>
-            <h3 className="max-w-xl text-3xl font-semibold leading-tight tracking-tight text-neutral-900 sm:text-4xl md:text-5xl">
+            <h2 className="max-w-xl text-4xl leading-tight tracking-tight text-neutral-900 sm:text-4xl md:text-6xl">
               Your website, edited live.
-            </h3>
-          </SectionReveal>
-          <SectionReveal delay={0.08}>
-            <p className="max-w-2xl text-base leading-relaxed text-neutral-600 sm:text-lg">
+            </h2>
+             <p className="max-w-2xl text-base leading-relaxed text-neutral-600 sm:text-lg mt-10">
               Refine copy, images, colors, and layout in the in-app editor, then see every change in your live preview before you launch.
             </p>
           </SectionReveal>
+       
         </div>
 
         <LaptopEditorPlaceholder />
