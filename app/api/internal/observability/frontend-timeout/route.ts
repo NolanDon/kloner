@@ -122,17 +122,20 @@ export async function POST(req: NextRequest) {
                 classification = scanAlert.classification;
             }
 
+            const previewTimeout = statusCode === 504 && /preview|iframe|poll_timeout/i.test(`${action} ${reason} ${status}`);
+            if (previewTimeout) {
+                severity = "error";
+                classification = "preview_connection_timeout";
+            }
+
             const enrichedMessage = [
-                editorFailure ? message.replace(/^URL capture failed for /, "Editor opening failed for ") : message,
+                previewTimeout ? "A user could not open their preview before the connection timed out." : editorFailure ? message.replace(/^URL capture failed for /, "Editor opening failed for ") : message,
                 action === "url_capture_stalled" && typeof ageMs === "number"
                     ? `elapsed=${Math.round(ageMs / 1000)}s`
                     : "",
                 action.startsWith("url_capture") && backendStatus
                     ? `backendStatus=${backendStatus}`
                     : "",
-                browser ? `browser=${browser}` : "",
-                reason ? `reason=${reason}` : "",
-                payloadUserAgent ? `ua=${payloadUserAgent}` : "",
             ]
                 .filter(Boolean)
                 .join(" | ");
@@ -154,6 +157,7 @@ export async function POST(req: NextRequest) {
                     appId: appId || undefined,
                     code: code || undefined,
                     classification,
+                    ...(previewTimeout ? { diagnosticMessage: message } : {}),
                     status,
                     browser: browser || undefined,
                     reason: reason || undefined,

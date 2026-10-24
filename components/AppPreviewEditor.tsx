@@ -7339,6 +7339,7 @@ export default function AppPreviewEditor({
     isFilesHydrationActive,
     deployLocked = false,
     accessLocked = false,
+    showTour,
     previewOpenToken,
     onRequestDeployCheckout,
     showRightSidebarToggle = true,
@@ -7599,6 +7600,7 @@ export default function AppPreviewEditor({
                     isFilesHydrationActive={isFilesHydrationActive}
                     deployLocked={deployLocked}
                     accessLocked={accessLocked}
+                    showTour={showTour}
                     previewOpenToken={previewOpenToken}
                     onRequestDeployCheckout={onRequestDeployCheckout}
                     showRightSidebarToggle={showRightSidebarToggle}

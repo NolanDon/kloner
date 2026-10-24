@@ -13,6 +13,8 @@ type KlonerLoaderProps = {
     progress?: number | null;
     milestones?: number[];
     showMilestones?: boolean;
+    framed?: boolean;
+    showBats?: boolean;
 };
 
 type HydrationDotsLoaderProps = {
@@ -285,6 +287,8 @@ export default function KlonerLoader({
     progress,
     milestones = [20, 40, 60, 80, 100],
     showMilestones = false,
+    framed = true,
+    showBats = true,
 }: KlonerLoaderProps = {}) {
     const spinner = (
         <motion.div
@@ -313,7 +317,7 @@ export default function KlonerLoader({
 
     const brandedSpinner = (
         <div className="kloner-loader-mark">
-            <LoaderBats />
+            {showBats ? <LoaderBats /> : null}
             {spinner}
         </div>
     );
@@ -324,12 +328,12 @@ export default function KlonerLoader({
 
     if (inline) {
         return (
-            <div className="mt-2 sm:mt-3 mb-4 mx-2 sm:mx-3 md:mx-4 min-h-[160px] rounded-2xl border border-neutral-200 px-6 py-8 shadow-sm grid place-items-center" style={{ backgroundColor: "var(--surface)" }}>
+            <div className={`mt-2 sm:mt-3 mb-4 mx-2 sm:mx-3 md:mx-4 min-h-[160px] px-6 py-8 grid place-items-center ${framed ? "rounded-2xl border border-neutral-200 shadow-sm" : ""}`} style={framed ? { backgroundColor: "var(--surface)" } : undefined}>
                 {showMilestones ? (
                     <div className="w-full max-w-md">
-                        <div className="relative mx-auto h-4 w-16">
+                        {showBats ? <div className="relative mx-auto h-4 w-16">
                             <LoaderBats />
-                        </div>
+                        </div> : null}
                         <MilestoneProgress progress={progress} milestones={milestones} />
                         {(label || sublabel) ? (
                             <div className="mt-4 text-center">

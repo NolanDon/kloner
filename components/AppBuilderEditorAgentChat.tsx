@@ -68,6 +68,8 @@ import { resolveEditPlanCreditCharge } from "@/src/lib/editPlanCreditConsumption
 import { resolveAppBuilderChatRoute, type AppBuilderChatMode, type AppBuilderChatRoute } from "@/src/lib/appBuilderChatIntent";
 import CoinLottieBadge from "@/components/tools/CoinLottieBadge";
 import { requestPreviewForceFresh, requestWorkspacePreviewRefresh } from "@/components/previewRefresh";
+import { isWorkspacePreviewConnectionFailure, workspacePreviewConnectionMessage } from "@/src/lib/workspaceHealth";
+import { summarizeRestorePointDiff, buildRestorePointDiffPreview } from "@/src/lib/restorePointDiff";
 import { stripWorkspaceInternalSummaryMetadata } from "@/src/lib/workspaceAgentSummary";
 
 type SummarySearchFeedbackContext = {
@@ -371,7 +373,7 @@ type RestorePointDetail = {
     kept?: boolean;
     paths?: string[];
     before?: Record<string, string | null>;
-    after?: Record<string, string>;
+    after?: Record<string, string | null>;
 };
 
 type EditHistoryRestorePoint = {
@@ -1033,63 +1035,6 @@ function buildCompileFixPrefill(ctx: CompileErrorQuickFixContext): string {
     ].join("\n");
 }
 
-function normalizeLines(text: string): string[] {
-    return String(text || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
-}
-
-function countLineDelta(beforeText: string, afterText: string): { added: number; removed: number } {
-    const before = normalizeLines(beforeText);
-    const after = normalizeLines(afterText);
-
-    let prefix = 0;
-    while (prefix < before.length && prefix < after.length && before[prefix] === after[prefix]) {
-        prefix += 1;
-    }
-
-    let suffix = 0;
-    while (
-        suffix < before.length - prefix &&
-        suffix < after.length - prefix &&
-        before[before.length - 1 - suffix] === after[after.length - 1 - suffix]
-    ) {
-        suffix += 1;
-    }
-
-    const removed = Math.max(0, before.length - prefix - suffix);
-    const added = Math.max(0, after.length - prefix - suffix);
-    return { added, removed };
-}
-
-function summarizeRestorePointDiff(detail: RestorePointDetail | null | undefined): Array<{ path: string; added: number; removed: number; beforeLines: number; afterLines: number }> {
-    if (!detail?.before && !detail?.after) return [];
-
-    const paths = Array.from(new Set([
-        ...(detail.paths || []),
-        ...Object.keys(detail.before || {}),
-        ...Object.keys(detail.after || {}),
-    ])).filter(Boolean);
-
-    return paths.map((path) => {
-        const beforeText = String(detail.before?.[path] ?? "");
-        const afterText = String(detail.after?.[path] ?? "");
-        const delta = countLineDelta(beforeText, afterText);
-        return {
-            path,
-            added: delta.added,
-            removed: delta.removed,
-            beforeLines: normalizeLines(beforeText).length,
-            afterLines: normalizeLines(afterText).length,
-        };
-    });
-}
-
-function buildRestorePointDiffPreview(detail: RestorePointDetail | null | undefined, path: string): { before: string; after: string } | null {
-    if (!detail) return null;
-    const before = String(detail.before?.[path] ?? "");
-    const after = String(detail.after?.[path] ?? "");
-    if (before === after) return null;
-    return { before, after };
-}
 
 export default function AppBuilderEditorAgentChat({ appId, files, currentFile, onFileEdit, onFilesReplace, onRestoreApplied, creditError, previewReady, previewIssue, previewIssueActionLabel, onPreviewIssueAction, onPreviewIssueFixRequest, onUserMessageSent, onIntroSequenceComplete, onRequestUpgradePaywall, topupModalTrigger, welcomeContext, agentMode = "v2" }: AppBuilderEditorAgentChatProps) {
     const { user, userTier } = useAuth();
@@ -5698,32 +5643,20 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                             `Exact diagnostic code: ${repairContext.code}`,
                             `Exact diagnostic:\n${technicalOutput || "The health check failed without additional output."}`,
                         ].join("\n\n");
-                        const infrastructureFailure = new Set([
-                            "NO_ACTIVE_PREVIEW",
-                            "MACHINE_NOT_READY",
-                            "MACHINE_NOT_FOUND",
-                            "MACHINE_UNREACHABLE",
-                            "HEALTH_CHECK_EXEC_FAILED",
-                            "HEALTH_CHECK_START_FAILED",
-                            "HEALTH_CHECK_TIMEOUT",
-                            "RESTART_FAILED",
-                            "RESTART_TIMEOUT",
-                            "RESTART_STATUS_UNAVAILABLE",
-                        ]).has(String(repairContext.code || ""));
+                        const infrastructureFailure = isWorkspacePreviewConnectionFailure(repairContext.code);
                         commitV3TerminalMessage({
                             id: `v3_health_failed_${job.jobId || Date.now()}`,
                             workspaceRestore: failedResult?.restorePointId ? { pointId: failedResult.restorePointId } : undefined,
                             content: infrastructureFailure
-                                ? (failedFiles.length > 0
-                                    ? "I saved the requested files, but the live preview could not be resolved after the restart, so I did not mark the change complete. Refresh or reopen the preview and retry; the saved change can be reverted from its restore point."
-                                    : "I could not resolve the live preview after the restart, so I did not mark the change complete. Refresh or reopen the preview and retry.")
+                                ? workspacePreviewConnectionMessage(failedFiles.length > 0)
                                 : (failedFiles.length > 0
-                                    ? "I saved the requested change, but the preview still has a code problem and cannot be considered healthy yet. You can ask AI to inspect and repair it. Open the technical details below if you want to see the exact compiler output."
-                                    : "The project has a code problem, so I could not confirm the change safely. You can ask AI to inspect and repair it. Open the technical details below to see the exact compiler output."),
+                                    ? "Your changes are saved, but I couldn’t verify the project after trying to repair it. You can retry the repair or undo this edit."
+                                    : "I couldn’t verify the project after trying to repair it. You can retry the repair."),
                             ...(infrastructureFailure ? {
                                 restorePointId: repairContext.restorePointId || undefined,
-                                editPlanRetryPrompt: lastEditPlanPromptRef.current?.trim() || "Retry change",
-                                editPlanRebuildPrompt: true,
+                                workspaceRepairPrompt: "Reconnect the saved preview.",
+                                workspaceRepairContext: repairContext,
+                                workspaceRepairStatus: "PENDING",
                             } : {
                                 restorePointId: repairContext.restorePointId || undefined,
                                 workspaceRepairPrompt: repairPrompt,
@@ -7282,14 +7215,25 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                 <div className="flex items-center gap-2">
                     <button
                         type="button"
+                        className="inline-flex shrink-0 items-center gap-1 rounded-full border border-neutral-200 px-2 py-1 text-xs font-medium text-neutral-700 sm:hidden"
+                        onClick={() => setTopupModalOpen(true)}
+                        disabled={topupBusy}
+                        aria-label={`AI credits: ${aiCreditsRemaining ?? "loading"}. Add credits`}
+                    >
+                        <CoinLottieBadge className="h-5 w-5" />
+                        <span>{aiCreditsRemaining ?? "—"}</span>
+                        <span aria-hidden="true">+</span>
+                    </button>
+                    <button
+                        type="button"
                         onClick={() => setShowRestorePointsPanel((prev) => !prev)}
-                        className="inline-flex items-center gap-1.5 rounded-full border border-neutral-200 bg-white px-3 py-1.5 text-xs font-medium text-neutral-700 shadow-sm transition hover:bg-neutral-50"
+                        className="inline-flex items-center gap-1.5 rounded-full border border-neutral-200 bg-white px-2 py-1.5 text-xs font-medium text-neutral-700 shadow-sm transition hover:bg-neutral-50 sm:px-3"
                         aria-expanded={showRestorePointsPanel}
                         aria-label="Toggle timeline"
                         title="Timeline"
                     >
                         <FileText className="h-3.5 w-3.5" />
-                        <span>Timeline</span>
+                        <span className="hidden sm:inline">Timeline</span>
                         {restorePoints.length > 0 ? (
                             <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-neutral-100 px-1.5 text-[10px] text-neutral-600">
                                 {restorePoints.length}
@@ -7433,7 +7377,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
             ) : null}
 
             {/* Messages */}
-            <div data-app-builder-chat-scroll="true" className="app-builder-chat-scroll flex-1 min-h-0 overflow-y-auto px-4 py-5 pb-40 space-y-4 bg-[radial-gradient(circle_at_top,_rgba(255,141,33,0.10),_transparent_36%),linear-gradient(180deg,rgba(255,250,247,0.96),rgba(255,255,255,1))]">
+            <div data-app-builder-chat-scroll="true" className="app-builder-chat-scroll flex-1 min-h-0 overflow-y-auto px-4 py-5 pb-4 space-y-4 bg-[radial-gradient(circle_at_top,_rgba(255,141,33,0.10),_transparent_36%),linear-gradient(180deg,rgba(255,250,247,0.96),rgba(255,255,255,1))]">
                 {showInitialChatLoader ? (
                     <div className="flex min-h-[220px] items-center justify-center px-4 py-10">
                         <div className="w-full max-w-sm rounded-3xl border border-[#FF8D21]/15 bg-white/90 px-5 py-5 text-left shadow-[0_16px_40px_rgba(15,23,42,0.08)] backdrop-blur-sm">
@@ -7464,7 +7408,10 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                         return null;
                     }
 
-                    const messageText = String(message.content || "").trim();
+                    const connectionFailure = isWorkspacePreviewConnectionFailure(message.workspaceRepairContext?.code);
+                    const messageText = connectionFailure && message.workspaceRepairPrompt
+                        ? workspacePreviewConnectionMessage(Boolean(message.workspaceRestore || message.restorePointId))
+                        : String(message.content || "").trim();
                     const hasStructuredBody = Boolean(
                         message.debugDetails ||
                         message.migrationProposalId ||
@@ -7532,13 +7479,13 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                 onChange={(state) => updateWorkspaceRestoreState(message.id, state)}
                             /> : null}
                             {message.role === "assistant" && message.workspaceRepairPrompt ? (
-                                <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50/80 p-3">
+                                <div className="app-builder-workspace-repair mt-3 rounded-2xl border border-amber-200 bg-amber-50/80 p-3">
                                     <div className="flex items-start gap-2">
                                         <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" aria-hidden="true" />
                                         <div className="min-w-0 flex-1">
-                                            <div className="text-xs font-semibold text-amber-950">The project needs a code fix</div>
+                                            <div className="text-xs font-semibold text-amber-950">{connectionFailure ? "Preview connection interrupted" : "The repair could not be verified"}</div>
                                             <div className="mt-1 text-xs leading-5 text-amber-900">
-                                                You don’t need to understand this technical error. AI can inspect the project and try a bounded repair.
+                                                {connectionFailure ? "Your saved files are available. Retry the preview without changing the code." : "I already tried to repair the project. You can retry that repair or undo the saved change."}
                                             </div>
                                             {message.workspaceRepairContext ? (
                                                 <details className="mt-2 rounded-xl border border-amber-200 bg-white/70 px-2.5 py-2">
@@ -7557,15 +7504,20 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                             ) : null}
                                             <div className="mt-3 flex flex-wrap items-center gap-2">
                                                 {message.workspaceRepairStatus === "RUNNING" ? (
-                                                    <span className="text-xs font-semibold text-amber-800">AI is inspecting and repairing the project…</span>
+                                                    <span className="text-xs font-semibold text-amber-800">{connectionFailure ? "Reconnecting the preview…" : "I’m inspecting and repairing the project…"}</span>
                                                 ) : message.workspaceRepairStatus === "DONE" ? (
-                                                    <span className="text-xs font-semibold text-emerald-700">Repair request sent.</span>
+                                                    <span className="text-xs font-semibold text-emerald-700">{connectionFailure ? "Preview restart requested." : "Repair request sent."}</span>
                                                 ) : (
                                                     <button
                                                         type="button"
                                                         disabled={isLoading}
                                                         onClick={() => {
                                                             if (isLoading) return;
+                                                            if (connectionFailure) {
+                                                                requestPreviewForceFresh({ appId, reason: "agent-preview-connection-recovery" });
+                                                                setMessages((prev) => prev.map((item) => item.id === message.id ? { ...item, workspaceRepairStatus: "DONE" as const } : item));
+                                                                return;
+                                                            }
                                                             const prompt = String(message.workspaceRepairPrompt || "").trim();
                                                             if (!prompt) return;
                                                             setMessages((prev) => prev.map((item) => item.id === message.id
@@ -7584,7 +7536,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                                         }}
                                                         className="inline-flex items-center rounded-full bg-[#FF8D21] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#D96E11] disabled:cursor-not-allowed disabled:opacity-50"
                                                     >
-                                                        Fix with AI
+                                                        {connectionFailure ? "Retry preview" : "Retry repair"}
                                                     </button>
                                                 )}
                                                 {message.restorePointId ? (
@@ -8718,7 +8670,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
             ) : null}
 
             {/* Input */}
-            <div className="p-4 border-t bg-white rounded-lg flex-shrink-0">
+            <div className="app-builder-chat-composer p-2.5 sm:p-4 border-t bg-white rounded-lg flex-shrink-0">
                 {/* {showCreditsAccuracyNotice ? (
                     <div className="mb-2 flex items-start justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50/70 px-3 py-2">
                         <div className="text-sm leading-5 text-amber-800">
@@ -8742,7 +8694,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                     </div>
                 ) : null} */}
 
-                <div className="mb-2 flex items-center justify-between">
+                <div className="mb-2 hidden items-center justify-between sm:flex">
                     <div className="inline-flex items-center gap-1.5 text-[12px] text-gray-700">
                         <CoinLottieBadge className="h-8 w-8 shrink-0" />
                         {aiCreditsRemaining == null
@@ -8988,16 +8940,17 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                         </div>
                     </div>
                 ) : showPreviewLoadingNotice ? (
-                    <div className="app-builder-chat-notice app-builder-chat-notice-loading mb-3 rounded-[1.5rem] border border-amber-200 bg-[linear-gradient(180deg,rgba(255,247,237,0.98),rgba(255,255,255,1))] px-4 py-4 shadow-[0_12px_32px_rgba(251,146,60,0.10)]">
-                        <div className="flex items-start gap-3">
-                            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-amber-100 text-amber-700 ring-1 ring-amber-200">
-                                <AlertTriangle className="h-5 w-5" />
+                    <div role="status" className="app-builder-chat-notice app-builder-chat-notice-loading mb-2 rounded-xl border border-amber-200 bg-[linear-gradient(180deg,rgba(255,247,237,0.98),rgba(255,255,255,1))] px-2.5 py-2 shadow-[0_12px_32px_rgba(251,146,60,0.10)] sm:mb-3 sm:rounded-[1.5rem] sm:px-4 sm:py-4">
+                        <div className="flex items-center gap-2 sm:items-start sm:gap-3">
+                            <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-700 ring-1 ring-amber-200 sm:h-11 sm:w-11 sm:rounded-2xl">
+                                <AlertTriangle className="h-4 w-4 sm:h-5 sm:w-5" />
                             </div>
                             <div className="min-w-0 flex-1">
-                                <div className="flex flex-wrap items-center gap-2">
+                                <p className="text-xs text-neutral-700 sm:hidden">Preview loading · You can keep chatting.</p>
+                                <div className="hidden flex-wrap items-center gap-2 sm:flex">
                                     <p className="text-sm font-semibold text-neutral-900">Preview not ready yet</p>
                                 </div>
-                                <p className="mt-1 text-sm leading-relaxed text-neutral-700">
+                                <p className="mt-1 hidden text-sm leading-relaxed text-neutral-700 sm:block">
                                     Preview is still loading. You can keep chatting while it hydrates
                                 </p>
                             </div>
@@ -9213,6 +9166,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                 ) : null}
 
                 <div className="flex items-stretch overflow-hidden rounded-[1.35rem] border border-[#FF8D21]/18 bg-white shadow-[0_12px_30px_rgba(15,23,42,0.08)]">
+                    <div className="relative min-w-0 flex-1">
                     <textarea
                         ref={inputRef}
                         value={input}
@@ -9241,26 +9195,27 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                         }}
                         onKeyPress={handleKeyPress}
                         placeholder="Ask me to change something..."
-                        className="flex-1 resize-none bg-transparent px-4 py-3 text-sm text-neutral-900 placeholder:text-neutral-400 focus:outline-none"
-                        rows={3}
+                        className="block w-full min-h-[76px] resize-none bg-transparent px-3 pt-2.5 pb-6 text-base text-neutral-900 placeholder:text-neutral-400 focus:outline-none sm:min-h-[104px] sm:px-4 sm:pt-3 sm:text-sm"
+                        rows={2}
                         maxLength={MAX_EDITOR_PROMPT_CHARS}
                         disabled={isLoading || chatDisabled}
                     />
+                    <span className="pointer-events-none absolute bottom-1.5 right-3 text-[10px] leading-4 text-neutral-500" aria-label="Character count">{input.length}/{MAX_EDITOR_PROMPT_CHARS}</span>
+                    </div>
                     <button
                         type="button"
                         onClick={() => {
                             void sendMessage();
                         }}
                         disabled={!input.trim() || isLoading || chatDisabled}
-                        className="flex w-16 items-center justify-center border-l border-[#FF8D21]/12 bg-[linear-gradient(180deg,rgba(255,141,33,0.98),rgba(234,168,120,0.96))] text-white transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
+                        className="app-builder-chat-send flex w-12 shrink-0 items-center justify-center bg-[#FF8D21] text-white shadow-none transition-colors hover:bg-[#D96E11] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#B95505] disabled:cursor-not-allowed disabled:opacity-50 sm:w-16"
                         aria-label="Send message"
                     >
                         <Send className="h-6 w-6" />
                     </button>
                 </div>
-                <div className="mt-2 flex items-center justify-between gap-3 text-xs text-neutral-500">
-                    <span className="hidden sm:inline">Press Enter to send, Shift+Enter for new line</span>
-                    <span>{input.length}/{MAX_EDITOR_PROMPT_CHARS}</span>
+                <div className="mt-2 hidden text-xs text-neutral-500 sm:block">
+                    <span>Press Enter to send, Shift+Enter for new line</span>
                 </div>
             </div>
         </div>

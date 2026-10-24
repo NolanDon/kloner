@@ -581,6 +581,21 @@ body {
     box-shadow: 0 10px 24px rgba(0, 0, 0, 0.24) !important;
 }
 
+:root[data-theme="dark"] .app-builder-workspace-repair {
+    background: #2d2923;
+    border-color: #67513a;
+    color: #e8decb;
+}
+
+:root[data-theme="dark"] .app-builder-workspace-repair :is(.text-amber-950, .text-amber-900, .text-amber-800) {
+    color: #e8decb;
+}
+
+:root[data-theme="dark"] .app-builder-workspace-repair details {
+    background: #24211d;
+    border-color: #67513a;
+}
+
 :root[data-theme="dark"] .app-builder-chat-theme [class~="bg-white"],
 :root[data-theme="dark"] .app-builder-chat-theme [class~="bg-white/70"],
 :root[data-theme="dark"] .app-builder-chat-theme [class~="bg-white/80"],

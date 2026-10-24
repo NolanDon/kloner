@@ -83,3 +83,18 @@ describe("POST /api/internal/observability/frontend-timeout", () => {
     });
 
 });
+
+test('a frontend preview timeout is an error with a human sentence and structured diagnostics', async () => {
+    captureCriticalEventMock.mockClear();
+    const { POST } = await import('./route');
+    await POST({ headers: new Headers(), json: async () => ({
+        action: 'preview_timeout_12min', severity: 'critical', statusCode: 504, status: 'poll_timeout',
+        message: 'Preview polling exceeded 12-minute hard timeout in WebContainerRunner while connecting to machine abc.',
+        machineId: 'abc', userAgent: 'Chrome Android', reason: 'poll_timeout',
+    }) } as any);
+    expect(captureCriticalEventMock.mock.calls[0][0]).toMatchObject({
+        severity: 'error', statusCode: 504,
+        message: 'A user could not open their preview before the connection timed out.',
+        extra: { classification: 'preview_connection_timeout', diagnosticMessage: expect.stringContaining('12-minute'), userAgent: 'Chrome Android' },
+    });
+});

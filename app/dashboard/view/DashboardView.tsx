@@ -14192,6 +14192,8 @@ export default function PreviewPage(): JSX.Element {
                     {draftAppsLoading && !draftAppsInitialLoadComplete ? (
                         <KlonerLoader
                             inline
+                            framed={false}
+                            showBats={false}
                         />
                     ) : visibleApps.length === 0 && renders.length === 0 ? (
                         <div className="mt-4 rounded-3xl bg-white/80 px-5 py-6 text-center shadow-sm">

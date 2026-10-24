@@ -347,10 +347,7 @@ function toSlackBlocks(event: StoredEvent, eventId: string) {
                 : ":x:";
     const title = isUrlScan
         ? `[SCAN] ${scanEmoji} kloner ${scanResultLabel}`
-        : withAlertLabel(
-            event,
-            `${severityEmoji(event.severity)} ${getProjectLabel(event)} ${event.severity.toUpperCase()}${event.statusCode ? ` (${event.statusCode})` : ""}`,
-        );
+        : `${severityEmoji(event.severity)} ${getAlertLabel(event)} ${getProjectLabel(event)} ${event.severity.toUpperCase()}${event.statusCode ? ` (${event.statusCode})` : ""}`.replace(/\s+/g, " ").trim();
     const details = [
         `*Source:* ${event.source}`,
         `*Component:* ${event.component || (event.source === "vercel" ? "Next.js server on Vercel" : event.source === "fly" ? "Fly backend" : event.source === "frontend" ? "Browser frontend" : "Internal application")}`,
@@ -363,7 +360,7 @@ function toSlackBlocks(event: StoredEvent, eventId: string) {
         `*Env:* ${env}`,
         `*Service:* ${event.service || "n/a"}`,
         `*Time:* ${event.occurredAt}`,
-    ].join("\n");
+    ].join(" | ");
 
     const extra = (event.extra && typeof event.extra === "object") ? event.extra : {};
     const verboseSlackDetails = shouldIncludeVerboseSlackDetails();

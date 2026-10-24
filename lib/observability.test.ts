@@ -129,7 +129,7 @@ describe("observability Slack formatting", () => {
         expect(messageBlock.text.text).not.toContain("[FRONTEND]");
     });
 
-    it("prepends [PROXY] for url-generate proxy failures and surfaces downstream details", async () => {
+    it("uses the scan header and preserves proxy diagnostics for scan failures", async () => {
         const { captureCriticalEvent } = await import("./observability");
 
         await captureCriticalEvent({
@@ -156,10 +156,10 @@ describe("observability Slack formatting", () => {
         const fetchArgs = (global.fetch as jest.Mock).mock.calls[0];
         const body = JSON.parse(String(fetchArgs[1].body));
 
-        expect(body.text).toContain("[PROXY]");
+        expect(body.text).toBe("URL scan failed: Internal server error");
 
         const headerBlock = body.blocks.find((b: any) => b.type === "header");
-        expect(headerBlock.text.text).toContain("[PROXY]");
+        expect(headerBlock.text.text).toContain("[SCAN]");
 
         const messageBlock = body.blocks.find(
             (b: any) => b.type === "section" && typeof b.text?.text === "string" && b.text.text.includes("*Message:*"),
@@ -223,7 +223,7 @@ describe("observability Slack formatting", () => {
         const body = JSON.parse(String(fetchArgs[1].body));
 
         expect(body.text).toContain("Unable to reach target URL");
-        expect(body.text).toContain("422");
+        expect(JSON.stringify(body.blocks)).toContain("422");
     });
 
     it("keeps Slack payloads compact by default", async () => {
@@ -330,4 +330,16 @@ it("retains every occurrence even when the Slack alert is deduplicated", async (
     expect((global.fetch as jest.Mock).mock.calls.length - sendsBefore).toBe(1);
 });
 
+});
+
+test('frontend error headers use the backend order: emoji, source label, service, severity', async () => {
+    process.env.SLACK_ERROR_WEBHOOK_URL = 'https://hooks.slack.test/services/a/b/c';
+    const original = global.fetch;
+    global.fetch = jest.fn(async () => ({ ok: true, status: 200, text: async () => 'ok' })) as any;
+    try {
+        const { captureCriticalEvent } = await import('./observability');
+        await captureCriticalEvent({ source: 'frontend', severity: 'error', statusCode: 504, requestId: 'header-order-504', action: 'preview_timeout_12min', message: 'A user could not open their preview.', alwaysNotifySlack: true });
+        const payload = JSON.parse((global.fetch as jest.Mock).mock.calls[0][1].body);
+        expect(payload.blocks.find((b: any) => b.type === 'header').text.text).toMatch(/^:x: \[FRONTEND\].* ERROR \(504\)$/);
+    } finally { global.fetch = original; }
 });
