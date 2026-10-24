@@ -140,7 +140,7 @@ export default function ParallaxTypeHero({
                                                     className="w-full bg-transparent outline-none text-neutral-700 text-base sm:text-lg placeholder:text-neutral-400 font-medium"
                                                 />
                                             </div>
-                                            <button type="submit" disabled={!url || !!error} className="inline-flex min-h-[48px] w-12 shrink-0 items-center justify-center rounded-full bg-[#FF8D21] text-white transition-all hover:bg-[#D96E11] disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto sm:px-5" aria-label="Clone website from URL">
+                                            <button type="submit" disabled={!url || !!error} className="inline-flex min-h-[48px] w-12 shrink-0 items-center justify-center rounded-full bg-[#FF8D21] text-white shadow-sm transition-all duration-200 hover:scale-[1.04] hover:shadow-[0_10px_24px_rgba(255,141,33,0.28)] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:scale-100 sm:w-auto sm:px-5" aria-label="Clone website from URL">
                                                 <ArrowRightSquare className="h-5 w-5 sm:hidden" aria-hidden />
                                                 <span className="hidden text-sm sm:inline sm:text-base">Clone</span>
                                             </button>
@@ -149,7 +149,7 @@ export default function ParallaxTypeHero({
                                     <div className="text-xs sm:text-sm text-white font-medium" aria-live="polite">{error ?? 'Clone a public website • Preview the result • Customize and launch'}</div>
                                 </form>
                             ) : (
-                                <div onClick={() => router.push('/login?mode=signup')} className="group relative inline-flex items-center gap-3 whitespace-nowrap h-12 px-7 rounded-full shrink-0 text-white text-[15px] bg-accent hover:bg-accent2 shadow-[0_6px_18px_rgba(0,0,0,0.25)] hover:shadow-[0_14px_40px_rgba(0,0,0,0.35)] transition-all duration-200" aria-label={subcopy}>
+                                <div onClick={() => router.push('/login?mode=signup')} className="group relative inline-flex items-center gap-3 whitespace-nowrap h-12 px-7 rounded-full shrink-0 text-white text-[15px] bg-accent shadow-[0_6px_18px_rgba(0,0,0,0.25)] transition-all duration-200 hover:scale-[1.04] hover:shadow-[0_10px_24px_rgba(255,141,33,0.34)] active:scale-[0.98]" aria-label={subcopy}>
                                     <span className="relative px-2 py-5">{subcopy}</span>
                                 </div>
                             )}

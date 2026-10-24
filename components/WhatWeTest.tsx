@@ -131,7 +131,7 @@ export default function WhatWeTest() {
         <button
           type="button"
           onClick={openUrlOverlay}
-          className="inline-flex items-center gap-2 rounded-full bg-accent px-6 py-4 text-white hover:bg-accent2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#FF8D21]"
+          className="inline-flex items-center gap-2 rounded-full bg-accent px-6 py-4 text-white shadow-sm transition-all duration-200 hover:scale-[1.04] hover:shadow-[0_10px_24px_rgba(255,141,33,0.28)] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#FF8D21]"
           aria-label="Start your project"
         >
           Start your project <span aria-hidden>›</span>

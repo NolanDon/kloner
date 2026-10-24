@@ -159,8 +159,8 @@ export default function NavBar(): JSX.Element {
     >
       <div className="mx-auto max-w-6xl">
         <div
-          className={`site-navbar relative flex items-center gap-3 px-3 py-2 md:px-1 mx-2 ${shellClasses}`}
-          style={{ height: "4rem" }}
+          className={`site-navbar relative flex items-center gap-3 px-3 py-2.5 md:px-1 mx-2 ${shellClasses}`}
+          style={{ height: "4.25rem" }}
         >
           <Link
             href="/"
@@ -415,7 +415,7 @@ export default function NavBar(): JSX.Element {
                           setMOpen(false);
                           openUrlOverlay();
                         }}
-                        className="inline-flex items-center justify-center gap-2 rounded-2xl border border-[#FF8D21] bg-[#FF8D21] px-3 py-3 text-sm font-semibold text-white hover:bg-[#D96E11]"
+                        className="inline-flex items-center justify-center gap-2 rounded-2xl border border-[#FF8D21] bg-[#FF8D21] px-3 py-3 text-sm font-semibold text-white shadow-sm transition-all duration-200 hover:scale-[1.03] hover:shadow-[0_8px_20px_rgba(255,141,33,0.28)] active:scale-[0.98]"
                       >
                         <ScanSearch className="h-4 w-4" />
                         Start project

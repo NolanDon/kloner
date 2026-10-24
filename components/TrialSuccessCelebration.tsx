@@ -147,7 +147,7 @@ export default function TrialSuccessCelebration({ open, onDismiss }: TrialSucces
                                         handleDismiss();
                                     }}
                                     onClick={handleDismiss}
-                                    className="inline-flex items-center justify-center rounded-full bg-[#FF8D21] px-5 py-3 text-sm font-semibold text-white shadow-[0_16px_36px_rgba(255,141,33,0.24)] transition hover:bg-[#D96E11]"
+                                    className="inline-flex items-center justify-center rounded-full bg-[#FF8D21] px-5 py-3 text-sm font-semibold text-white shadow-[0_16px_36px_rgba(255,141,33,0.24)] transition-all duration-200 hover:scale-[1.04] hover:shadow-[0_18px_40px_rgba(255,141,33,0.34)] active:scale-[0.98]"
                                 >
                                     Let&apos;s go!
                                 </button>

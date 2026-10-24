@@ -285,7 +285,7 @@ export default function MembershipHero() {
                         <div className="mt-5 md:mt-6">
                             <a
                                 onClick={openUrlOverlay}
-                                className="inline-flex w-full sm:w-auto items-center justify-center gap-2 rounded-full px-6 py-3 text-white bg-accent hover:bg-accent2 transition"
+                                className="inline-flex w-full sm:w-auto items-center justify-center gap-2 rounded-full px-6 py-3 text-white bg-accent shadow-sm transition-all duration-200 hover:scale-[1.04] hover:shadow-[0_10px_24px_rgba(255,141,33,0.28)] active:scale-[0.98]"
                             >
                                 Start for free today
                             </a>

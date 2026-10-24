@@ -3,7 +3,7 @@
 
 import { motion, useScroll, useTransform, MotionValue } from "framer-motion";
 import React, { useRef, useState, useEffect } from "react";
-import { CheckCircle2, ChevronDown } from "lucide-react";
+import { Bot, CheckCircle2, ChevronDown, Send } from "lucide-react";
 
 /* ----------------------------- Mini “modals” ----------------------------- */
 
@@ -11,10 +11,9 @@ function UrlInputModal() {
   return (
     <div className="w-full h-40 md:h-56 rounded-2xl border border-black/10 bg-white shadow-md p-4 md:p-5 min-h-60">
       <div className="text-xs text-neutral-500 mb-2 flex items-center gap-2">
-        <span className="inline-block h-2.5 w-2.5 rounded-full bg-emerald-500" />
         <span>Drop a link</span>
       </div>
-      <div className="rounded-xl ring-1 ring-neutral-200 bg-neutral-50 px-3 py-3 text-sm text-neutral-700 flex items-center gap-2">
+      <div className="rounded-full ring-1 ring-neutral-200 bg-neutral-50 px-4 py-3 text-sm text-neutral-700 flex items-center gap-2">
         <span className="text-neutral-400">URL:</span>
         <span className="font-medium text-neutral-800 truncate">
           https://example.com
@@ -164,26 +163,24 @@ function EditBlocksModal() {
   }, []);
 
   return (
-    <div className="w-full h-40 md:h-56 min-w-[250px] rounded-2xl border border-black/10 bg-white shadow-md p-4 md:p-5 min-h-60 overflow-hidden flex flex-col">
-      <div className="flex items-center justify-between mb-3">
-        <div className="inline-flex items-center gap-2 text-xs font-medium text-neutral-600">
-          <span className="inline-block h-2.5 w-2.5 rounded-full bg-emerald-500" />
-          <span>AI Agent</span>
-        </div>
-
-        <span className="rounded-full border border-neutral-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-neutral-700 shadow-sm">
-          Live editing
+    <div className="how-demo-chat w-full h-60 md:h-72 min-w-[250px] rounded-2xl border border-black/10 bg-white shadow-md overflow-hidden flex flex-col">
+      <div className="how-demo-chat-header flex items-center gap-2.5 border-b border-black/10 px-4 py-3">
+        <span className="grid h-8 w-8 place-items-center rounded-full bg-[rgba(255,141,33,0.12)] text-[rgba(255,141,33,1)]">
+          <Bot className="h-4 w-4" aria-hidden="true" />
         </span>
+        <div className="min-w-0 leading-tight">
+          <div className="text-sm font-semibold text-neutral-800">AI Agent</div>
+          <div className="text-[11px] text-neutral-500">Kloner assistant</div>
+        </div>
       </div>
 
-      <div className="flex-1 rounded-xl border border-neutral-200 bg-neutral-50 p-3 overflow-hidden flex flex-col">
-        <div className="relative flex-1 overflow-hidden">
-          <div ref={scrollerRef} className="h-full space-y-2 overflow-y-auto pr-1 demo-chat-scroller">
+      <div className="relative flex-1 overflow-hidden px-3 py-3">
+          <div ref={scrollerRef} className="h-full space-y-3 overflow-y-auto pr-1 demo-chat-scroller">
             <div className="flex items-start gap-2">
               <div className="mt-0.5 h-6 w-6 rounded-full bg-neutral-900 text-white grid place-items-center text-[11px] font-semibold">
                 U
               </div>
-              <div className="flex-1 rounded-xl bg-white border border-neutral-200 px-3 py-2">
+              <div className="flex-1 rounded-2xl rounded-tl-md bg-neutral-50 border border-neutral-200 px-3 py-2">
                 <div className="text-[11px] font-semibold text-neutral-600">You</div>
                 <div className="text-sm text-neutral-800 leading-5">
                   Make the hero headline shorter, add a pricing section, and connect the CTA to signup.
@@ -195,7 +192,7 @@ function EditBlocksModal() {
               <div className="mt-0.5 h-6 w-6 rounded-full bg-[rgba(255,141,33,1)] text-white grid place-items-center text-[11px] font-semibold">
                 K
               </div>
-              <div className="flex-1 rounded-xl bg-white border border-[rgba(255,141,33,0.22)] px-3 py-2">
+              <div className="flex-1 rounded-2xl rounded-tl-md bg-[rgba(255,141,33,0.07)] border border-[rgba(255,141,33,0.22)] px-3 py-2">
                 <div className="text-[11px] font-semibold text-[rgba(255,141,33,1)]">Kloner Agent</div>
                 <div className="text-sm text-neutral-800 leading-5">
                   Done. I tightened the headline, generated a pricing section, and wired the primary CTA to your signup flow.
@@ -218,7 +215,7 @@ function EditBlocksModal() {
               <div className="mt-0.5 h-6 w-6 rounded-full bg-neutral-900 text-white grid place-items-center text-[11px] font-semibold">
                 U
               </div>
-              <div className="flex-1 rounded-xl bg-white border border-neutral-200 px-3 py-2">
+              <div className="flex-1 rounded-2xl rounded-tl-md bg-neutral-50 border border-neutral-200 px-3 py-2">
                 <div className="text-[11px] font-semibold text-neutral-600">You</div>
                 <div className="text-sm text-neutral-800 leading-5">
                   Replace the hero image, use my brand colors, and improve the mobile spacing.
@@ -230,7 +227,7 @@ function EditBlocksModal() {
               <div className="mt-0.5 h-6 w-6 rounded-full bg-[rgba(255,141,33,1)] text-white grid place-items-center text-[11px] font-semibold">
                 K
               </div>
-              <div className="flex-1 rounded-xl bg-white border border-[rgba(255,141,33,0.22)] px-3 py-2">
+              <div className="flex-1 rounded-2xl rounded-tl-md bg-[rgba(255,141,33,0.07)] border border-[rgba(255,141,33,0.22)] px-3 py-2">
                 <div className="text-[11px] font-semibold text-[rgba(255,141,33,1)]">Kloner Agent</div>
                 <div className="text-sm text-neutral-800 leading-5">
                   Updated the hero image, applied your brand colors, and refined the spacing for smaller screens.
@@ -250,14 +247,16 @@ function EditBlocksModal() {
             </div>
           </div>
 
-          <div className="pointer-events-none absolute inset-x-0 top-0 h-6 bg-gradient-to-b from-neutral-50 to-transparent demo-chat-fade-top" />
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-6 bg-gradient-to-t from-neutral-50 to-transparent demo-chat-fade-bottom" />
-        </div>
+          <div className="pointer-events-none absolute inset-x-0 top-0 h-6 bg-gradient-to-b from-white to-transparent demo-chat-fade-top" />
+      </div>
 
-        <div className="mt-3 rounded-xl border border-neutral-200 bg-white px-3 py-2">
-          <div className="text-[11px] text-neutral-500">Ask the agent…</div>
-          <div className="mt-1 h-4 w-5/6 rounded-md bg-neutral-200" />
+      <div className="how-demo-chat-composer flex items-center gap-2 border-t border-black/10 px-3 py-3">
+        <div className="flex h-10 min-w-0 flex-1 items-center rounded-full border border-neutral-200 bg-neutral-50 px-4 text-sm text-neutral-500">
+          Ask the agent…
         </div>
+        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[rgba(255,141,33,1)] text-white">
+          <Send className="h-4 w-4" aria-hidden="true" />
+        </span>
       </div>
     </div>
   );

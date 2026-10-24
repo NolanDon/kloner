@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { ArrowRight, ExternalLink, X } from "lucide-react";
+import Image from "next/image";
 
 type UrlProcessingPopupProps = {
     open: boolean;
@@ -284,17 +285,14 @@ export default function UrlProcessingPopup({
                                     style={{ width: `${progress}%` }}
                                     aria-hidden="true"
                                 />
-                                <svg
+                                <Image
                                     className="url-processing-pumpkin absolute top-1/2 z-10 h-6 w-7 -translate-y-1/2"
+                                    src="/images/pumpkin-accent.webp"
+                                    width={192}
+                                    height={173}
+                                    alt=""
                                     style={{ left: `clamp(14px, ${progress}%, calc(100% - 14px))` }}
-                                    viewBox="0 0 52 44"
-                                    fill="none"
-                                    aria-hidden="true"
-                                >
-                                    <path d="M24 10c-1-5 1-7 5-8 1 4 0 7-3 9" fill="#6F8B49" />
-                                    <path d="M25 10c-8-5-17 1-18 12-1 9 5 16 12 16 3 0 5-1 7-3 2 2 5 3 8 3 7 0 13-7 12-16-1-11-10-17-18-12-1 1-2 1-3 0Z" fill="#FF8D21" stroke="#E67712" strokeWidth="1.5" />
-                                    <path d="M18 11c-4 5-4 17 0 24M26 10c-3 6-3 19 0 26m8-25c4 5 4 18 0 25" stroke="#D9680C" strokeWidth="1.5" strokeLinecap="round" />
-                                </svg>
+                                />
                             </div>
                         ) : null}
 

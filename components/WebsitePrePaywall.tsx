@@ -127,7 +127,7 @@ export function WebsitePrePaywall({
                         type="button"
                         onClick={onStartCheckout}
                         disabled={checkoutBusy}
-                        className="min-h-12 rounded-full bg-[#FF8D21] px-5 py-3 font-semibold text-white hover:bg-[#D96E11] disabled:cursor-wait disabled:opacity-70"
+                        className="min-h-12 rounded-full bg-[#FF8D21] px-5 py-3 font-semibold text-white shadow-sm transition-all duration-200 hover:scale-[1.03] hover:shadow-[0_8px_20px_rgba(255,141,33,0.28)] active:scale-[0.98] disabled:cursor-wait disabled:opacity-70 disabled:hover:scale-100"
                     >
                         {checkoutBusy ? "Redirecting to Stripe…" : primaryLabel}
                     </button>
@@ -235,7 +235,7 @@ export function WebsitePrePaywall({
                                 <button
                                     type="button"
                                     onClick={onStartCheckout}
-                                    className="inline-flex min-h-16 w-full items-center justify-center rounded-full bg-[#FF8D21] px-6 py-4 text-xl font-bold tracking-tight text-white shadow-[0_14px_30px_rgba(255,141,33,0.22)] transition hover:translate-y-[-1px] hover:bg-[#D96E11] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D96E11] focus-visible:ring-offset-2 disabled:cursor-wait disabled:opacity-70 sm:min-h-[72px] sm:px-8 sm:py-5 sm:text-2xl"
+                                    className="inline-flex min-h-16 w-full items-center justify-center rounded-full bg-[#FF8D21] px-6 py-4 text-xl font-bold tracking-tight text-white shadow-[0_14px_30px_rgba(255,141,33,0.22)] transition-all duration-200 hover:scale-[1.02] hover:shadow-[0_18px_36px_rgba(255,141,33,0.3)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF8D21] focus-visible:ring-offset-2 disabled:cursor-wait disabled:opacity-70 disabled:hover:scale-100 sm:min-h-[72px] sm:px-8 sm:py-5 sm:text-2xl"
                                     disabled={checkoutBusy}
                                 >
                                     {checkoutBusy ? "Redirecting to Stripe…" : primaryLabel}

@@ -157,7 +157,7 @@ export default function UrlOverlay({ open, onClose }: UrlOverlayProps) {
                                     <button
                                         type="submit"
                                         disabled={!url || !!error}
-                                        className="inline-flex min-h-[48px] w-12 shrink-0 items-center justify-center rounded-full bg-[#FF8D21] text-white transition-all active:scale-95 hover:bg-[#D96E11] disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto sm:px-5"
+                                        className="inline-flex min-h-[48px] w-12 shrink-0 items-center justify-center rounded-full bg-[#FF8D21] text-white shadow-sm transition-all duration-200 hover:scale-[1.04] hover:shadow-[0_10px_24px_rgba(255,141,33,0.28)] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:scale-100 sm:w-auto sm:px-5"
                                         aria-label="Clone website from URL"
                                     >
                                         <ArrowRightSquare className="h-5 w-5 sm:hidden" aria-hidden />

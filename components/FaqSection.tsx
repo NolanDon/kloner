@@ -6,8 +6,8 @@ import { Plus } from 'lucide-react';
 import { WEBSITE_CLONER_FAQ, type WebsiteClonerFaqItem } from '@/lib/websiteClonerFaq';
 
 type QA = WebsiteClonerFaqItem;
-function QAItem({ item }: { item: QA }) {
-    const [open, setOpen] = useState(false);
+function QAItem({ item, initiallyOpen = false }: { item: QA; initiallyOpen?: boolean }) {
+    const [open, setOpen] = useState(initiallyOpen);
     const contentId = useId();
 
     return (
@@ -19,7 +19,7 @@ function QAItem({ item }: { item: QA }) {
                 aria-controls={contentId}
                 onClick={() => setOpen((v) => !v)}
             >
-                <span className="text-neutral-800">{item.q}</span>
+                <span className="text-lg leading-relaxed text-neutral-800 md:text-xl">{item.q}</span>
                 <Plus
                     aria-hidden
                     className={`h-4 w-4 shrink-0 transition-transform text-neutral-400 ${open ? 'rotate-45' : ''}`}
@@ -44,7 +44,7 @@ function QAItem({ item }: { item: QA }) {
 
 export default function FAQSection() {
     return (
-        <section id="faqs" className="bg-white text-neutral-800 pt-40 pb-24 md:pb-40">
+        <section id="faqs" className="bg-white text-neutral-800 pt-40 md:pt-80 pb-24 md:pb-40">
             <div className="container-soft">
                 {/* Header */}
                 <div className="mx-auto max-w-4xl mb-10 md:mb-12 flex items-start justify-between gap-6">
@@ -58,8 +58,8 @@ export default function FAQSection() {
                 </div>
 
                 <ul className="mx-auto max-w-4xl">
-                    {WEBSITE_CLONER_FAQ.map((item) => (
-                        <QAItem key={item.q} item={item} />
+                    {WEBSITE_CLONER_FAQ.map((item, index) => (
+                        <QAItem key={item.q} item={item} initiallyOpen={index === 0} />
                     ))}
                 </ul>
 

@@ -22,7 +22,10 @@ export default function HomeClient() {
 
             <main className="h-screen snap-y snap-mandatory scroll-smooth motion-reduce:snap-none motion-reduce:scroll-auto">
                 <section id="hero" className="snap-start snap-always min-h-screen flex flex-col">
-                    <Hero heading="AI Website Cloner — Clone a Website from a URL" subhead="Paste a URL. Customize your website with AI. Launch." />
+                    <Hero
+                        heading={<>AI Website Cloner<br />Clone a Website from a URL</>}
+                        subhead="Clone a website from a URL, customize it with AI, and launch your new site."
+                    />
                 </section>
 
                 <section id="preview" className="snap-start snap-always min-h-screen flex flex-col">
@@ -54,7 +57,7 @@ export default function HomeClient() {
                 </section>
 
                 <section id="parallax" className="snap-start snap-always min-h-screen flex flex-col">
-                    <ParallaxTypeHero />
+                    <ParallaxTypeHero showUrlInput />
                 </section>
 
                 <section aria-label="Website cloning guides" className="snap-start bg-white px-6 py-8">

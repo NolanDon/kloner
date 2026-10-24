@@ -177,12 +177,12 @@ export default function DeckImageCarousel({
                             <span className="text-[16px] uppercase tracking-[0.1em] text-neutral-500">
                                 Built With
                             </span>
-                            <span className="relative inline-block h-[120px] w-[120px]">
+                            <span className="relative inline-block h-[72px] w-[72px] shrink-0 sm:h-[92px] sm:w-[92px]">
                                 <Image
                                     src={logo}
                                     alt="Kloner logo"
                                     fill
-                                    sizes="120px"
+                                    sizes="(min-width: 640px) 92px, 72px"
                                     className="object-contain"
                                 />
                             </span>

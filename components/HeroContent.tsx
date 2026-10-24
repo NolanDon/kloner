@@ -100,7 +100,7 @@ export default function HeroContent({
         </h1>
 
         <p className="mt-[clamp(0.75rem,2.2vh,1.5rem)] text-white/90 text-base sm:text-lg md:text-xl max-w-xl mx-auto font-medium">
-          {subhead ?? "Paste a URL. Customize your website with AI. Launch."}
+          {subhead ?? "Clone a website from a URL, customize it with AI, and launch your new site."}
         </p>
 
         <form onSubmit={onSubmit} className="mt-[clamp(1rem,3.2vh,2.5rem)] w-full max-w-2xl mx-auto space-y-3">
@@ -134,7 +134,7 @@ export default function HeroContent({
               <button
                 type="submit"
                 disabled={!url || !!error}
-                className="inline-flex min-h-[52px] shrink-0 items-center justify-center rounded-full bg-[#FF8D21] px-5 text-[15px] text-white whitespace-nowrap transition-all active:scale-95 hover:bg-[#D96E11] disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex min-h-[52px] shrink-0 items-center justify-center rounded-full bg-[#FF8D21] px-5 text-[15px] text-white whitespace-nowrap shadow-sm transition-all duration-200 hover:scale-[1.04] hover:shadow-[0_10px_24px_rgba(255,141,33,0.28)] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:scale-100"
                 aria-label="Clone website from URL"
               >
                 <span>Clone</span>

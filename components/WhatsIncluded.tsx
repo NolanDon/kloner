@@ -1,155 +1,110 @@
 // components/MembershipSticky.tsx
 'use client';
 
-import React, { useRef } from 'react';
-import { motion, useInView } from 'framer-motion';
+import React from 'react';
 import { useUrlOverlay } from './UrlOverlayProvider';
 import Image from 'next/image';
 
 /* ----------------------------------------------------------------
    Shared bits
 ------------------------------------------------------------------*/
-const spring = { type: 'spring', stiffness: 260, damping: 22 };
-const soft = { duration: 0.6, ease: 'easeOut' };
-
-function CardShell({ children }: { children: React.ReactNode }) {
+function CardShell({ children, wide = false }: { children: React.ReactNode; wide?: boolean }) {
   return (
-    <div className="relative aspect-[4/3] w-full overflow-hidden bg-neutral-50">
+    <div className={`relative w-full overflow-hidden bg-neutral-50 ${wide ? "aspect-[1.85/1]" : "aspect-[4/3]"}`}>
       {children}
     </div>
   );
 }
 
 function FeatureFrame({
-  i,
   title,
   sub,
   children,
 }: {
-  i: number;
   title: string;
   sub: string;
   children: React.ReactNode;
 }) {
-  const ref = useRef<HTMLDivElement>(null);
-  const inView = useInView(ref, { amount: 0.35, once: true });
-
   return (
-    <motion.div
-      ref={ref}
-      initial={{ opacity: 0, y: 12 }}
-      animate={inView ? { opacity: 1, y: 0 } : undefined}
-      transition={{ ...soft, delay: i * 0.05 }}
-      className="overflow-hidden rounded-2xl shadow-xl"
-    >
+    <article className="overflow-hidden rounded-2xl shadow-xl">
       {children}
-      <div className="p-4 border border-neutral-200" id="included">
+      <div className="border border-neutral-200 p-4">
         <div className="text-2xl text-neutral-800">{title}</div>
         <div className="mt-1 text-xs text-neutral-400">{sub}</div>
       </div>
-    </motion.div>
+    </article>
   );
 }
 
 /* ----------------------------------------------------------------
-   1) Clean capture  → placeholder image
+   Editor screenshots and the Grounded Therapy site preview
 ------------------------------------------------------------------*/
-function MiniData() {
+function ThemedEditorScreenshot({
+  lightSrc,
+  darkSrc,
+  alt,
+}: {
+  lightSrc: string;
+  darkSrc: string;
+  alt: string;
+}) {
+  return (
+    <CardShell wide>
+      <Image
+        src={lightSrc}
+        alt={alt}
+        fill
+        sizes="(min-width: 1280px) 760px, (min-width: 1024px) 60vw, 100vw"
+        quality={78}
+        loading="lazy"
+        className="theme-editor-screenshot theme-editor-screenshot-light object-contain"
+      />
+      <Image
+        src={darkSrc}
+        alt=""
+        aria-hidden="true"
+        fill
+        sizes="(min-width: 1280px) 760px, (min-width: 1024px) 60vw, 100vw"
+        quality={78}
+        loading="lazy"
+        className="theme-editor-screenshot theme-editor-screenshot-dark object-contain"
+      />
+    </CardShell>
+  );
+}
+
+function MiniAiEditor() {
+  return (
+    <ThemedEditorScreenshot
+      lightSrc="/images/editor-demo/ai-editor-light.webp"
+      darkSrc="/images/editor-demo/ai-editor-dark.webp"
+      alt="Kloner AI chat editor beside a live website preview"
+    />
+  );
+}
+
+function MiniGroundedTherapy() {
   return (
     <CardShell>
       <Image
         src="/images/included-section/5.jpg"
-        alt="Clean capture preview"
+        alt="Grounded Therapy website preview"
         fill
-        sizes="(min-width: 1024px) 66vw, 100vw"
-        className="absolute inset-0 h-full w-full object-cover rounded-md"
-      />
-    </CardShell>
-  );
-}
-
-/* ----------------------------------------------------------------
-   2) (Unused in CARDS) Import + map routes — left intact
-------------------------------------------------------------------*/
-function MiniUpload() {
-  return (
-    <CardShell>
-      <Image
-        src="/images/included-section/2.jpg"
-        alt="Import and route mapping"
-        fill
-        sizes="(min-width: 1024px) 66vw, 100vw"
+        sizes="(min-width: 1280px) 760px, (min-width: 1024px) 60vw, 100vw"
+        loading="lazy"
         className="absolute inset-0 h-full w-full object-cover"
       />
     </CardShell>
   );
 }
 
-/* ----------------------------------------------------------------
-   3) Export-ready  → placeholder image
-------------------------------------------------------------------*/
-function MiniPlan() {
+function MiniCustomEditor() {
   return (
-    <CardShell>
-      <Image
-        src="/images/included-section/1.jpg"
-        alt="Export-ready checklist"
-        fill
-        sizes="(min-width: 1024px) 66vw, 100vw"
-        className="absolute inset-0 h-full w-full object-cover"
-      />
-    </CardShell>
-  );
-}
-
-/* ----------------------------------------------------------------
-   4) Live preview edits  → placeholder image
-------------------------------------------------------------------*/
-function MiniConcierge() {
-  return (
-    <CardShell>
-      <Image
-        src="/images/included-section/4.jpg"
-        alt="Live preview edits"
-        fill
-        sizes="(min-width: 1024px) 66vw, 100vw"
-        className="absolute inset-0 h-full w-full object-cover"
-      />
-    </CardShell>
-  );
-}
-
-/* ----------------------------------------------------------------
-   5) Add-ons  → placeholder image
-------------------------------------------------------------------*/
-function MiniAddons() {
-  return (
-    <CardShell>
-      <Image
-        src="/images/included-section/3.jpg"
-        alt="Add-ons marketplace"
-        fill
-        sizes="(min-width: 1024px) 66vw, 100vw"
-        className="absolute inset-0 h-full w-full object-cover"
-      />
-    </CardShell>
-  );
-}
-
-/* ----------------------------------------------------------------
-   6) One-click deploy  → placeholder image
-------------------------------------------------------------------*/
-function MiniClinic() {
-  return (
-    <CardShell>
-      <Image
-        src="/images/included-section/6.jpg"
-        alt="One-click deploy providers"
-        fill
-        sizes="(min-width: 1024px) 66vw, 100vw"
-        className="absolute inset-0 h-full w-full object-cover"
-      />
-    </CardShell>
+    <ThemedEditorScreenshot
+      lightSrc="/images/editor-demo/manual-editor-light.webp"
+      darkSrc="/images/editor-demo/manual-editor-dark.webp"
+      alt="Kloner manual editor with visual controls and a live website preview"
+    />
   );
 }
 
@@ -163,12 +118,9 @@ type CardData = {
 };
 
 const CARDS: CardData[] = [
-  { title: 'Simple dashboard', sub: 'Keep every site copy project organized in one place.', Mini: MiniPlan },
-  { title: 'Website accuracy', sub: 'Capture the structure clearly so the clone feels familiar right away.', Mini: MiniData },
-  { title: 'Editable previews', sub: 'Rescan and refine until the copied layout feels right.', Mini: MiniUpload },
-  { title: 'Full customization', sub: 'Change text, visuals, blocks, and code until the site is yours.', Mini: MiniClinic },
-  // { title: 'Quick actions', sub: 'Jump straight to deployment or customization with instant tools.', Mini: MiniAddons },
-  // { title: 'Capture Engine', sub: 'Built by strong engineers with the power to capture long, multi-section pages.', Mini: MiniConcierge },
+  { title: 'Customize with AI', sub: 'Select page elements and adjust the layout, spacing, and style directly.', Mini: MiniAiEditor },
+  { title: 'Grounded Therapy', sub: 'A real website preview, ready to refine and make your own.', Mini: MiniGroundedTherapy },
+  { title: 'Manual customization', sub: 'Fine-tune typography, colors, spacing, images, and more in the visual editor.', Mini: MiniCustomEditor },
 ];
 
 /* ----------------------------------------------------------------
@@ -178,7 +130,7 @@ export default function MembershipSticky({ heading = 'What your website cloner i
   const { openUrlOverlay } = useUrlOverlay();
 
   return (
-    <section className="bg-white text-neutral-800 pt-30">
+    <section className="bg-white text-neutral-800 pt-30 md:pt-60">
       <div className="container-soft">
         <div className="relative grid grid-cols-1 gap-8 lg:grid-cols-12 lg:gap-12">
           {/* LEFT (sticky) */}
@@ -189,25 +141,26 @@ export default function MembershipSticky({ heading = 'What your website cloner i
               </h2>
 
               <div className="mt-20">
-                <p className="mt-[-40px] md:mt-3 max-w-md text-neutral-600">
+                <p className="mt-[-40px] md:mt-3 max-w-md text-lg leading-relaxed text-neutral-600 md:text-xl">
                   Start from a public URL, review the supported website structure and available assets, edit the result with AI, and deploy when it is ready.
                 </p>
               </div>
 
-              <div
+              <button
+                type="button"
                 onClick={openUrlOverlay}
-                className="mt-10 inline-flex bg-accent hover:bg-accent2 items-center gap-2 rounded-full px-6 py-4 text-white"
+                className="mt-10 inline-flex items-center gap-2 rounded-full bg-accent px-6 py-4 text-white shadow-sm transition-all duration-200 hover:scale-[1.04] hover:shadow-[0_10px_24px_rgba(255,141,33,0.28)] active:scale-[0.98]"
               >
                 Start free preview <span aria-hidden>›</span>
-              </div>
+              </button>
             </div>
           </div>
 
           {/* RIGHT (scrolling cards) */}
           <div className="lg:col-span-8 pt-20 md:pt-60">
             <div className="grid gap-6 lg:gap-8">
-              {CARDS.map((c, i) => (
-                <FeatureFrame key={c.title} i={i} title={c.title} sub={c.sub}>
+              {CARDS.map((c) => (
+                <FeatureFrame key={c.title} title={c.title} sub={c.sub}>
                   <c.Mini />
                 </FeatureFrame>
               ))}

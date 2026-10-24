@@ -249,7 +249,7 @@ export default function PreviewDashboard({
                     <button
                         type="button"
                         onClick={openUrlOverlay}
-                        className="group inline-flex items-center rounded-full bg-[#FF8D21] px-4 py-2 text-sm text-white mt-5 whitespace-nowrap transition-[padding] duration-200 ease-out hover:bg-[#D96E11]"
+                        className="group inline-flex items-center rounded-full bg-[#FF8D21] px-4 py-2 text-sm text-white mt-5 whitespace-nowrap shadow-sm transition-all duration-200 ease-out hover:scale-[1.04] hover:shadow-[0_8px_20px_rgba(255,141,33,0.28)] active:scale-[0.98]"
                     >
                         <span>Clone a website</span>
 
@@ -322,9 +322,9 @@ export default function PreviewDashboard({
                                                         aria-label={previewPressed || phase === "deploying" ? "Cloning website" : "Clone website"}
                                                         aria-busy={previewPressed || phase === "deploying"}
                                                         className={[
-                                                            "absolute inset-y-2 right-2 h-auto w-10 rounded-full px-0 inline-flex items-center justify-center gap-2 transition-colors duration-200 disabled:cursor-not-allowed sm:static sm:h-full sm:w-[190px] sm:shrink-0 sm:inset-y-auto sm:px-10 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-orange-200",
+                                                            "absolute inset-y-2 right-2 h-auto w-10 rounded-full px-0 inline-flex items-center justify-center gap-2 transition-all duration-200 disabled:cursor-not-allowed disabled:hover:scale-100 sm:static sm:h-full sm:w-[190px] sm:shrink-0 sm:inset-y-auto sm:px-10 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-orange-200",
                                                             previewEnabled
-                                                                ? "bg-[#FF8D21] text-white hover:bg-[#D96E11] cursor-pointer"
+                                                                ? "bg-[#FF8D21] text-white shadow-sm hover:scale-[1.03] hover:shadow-[0_8px_20px_rgba(255,141,33,0.28)] active:scale-[0.98] cursor-pointer"
                                                                 : "bg-neutral-100 text-neutral-400 ring-1 ring-neutral-200",
                                                             previewReadyFlash ? "ring-4 ring-orange-200" : "",
                                                         ].join(" ")}

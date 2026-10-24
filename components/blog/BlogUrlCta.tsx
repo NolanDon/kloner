@@ -136,7 +136,7 @@ export default function BlogUrlCta({ title, description }: BlogUrlCtaProps) {
               <button
                 type="submit"
                 disabled={!url || !!error || isSubmitting}
-                className="inline-flex min-h-[42px] w-11 shrink-0 items-center justify-center rounded-full bg-[#FF8D21] text-white transition-all hover:bg-[#D96E11] active:scale-95 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto sm:px-4"
+                className="inline-flex min-h-[42px] w-11 shrink-0 items-center justify-center rounded-full bg-[#FF8D21] text-white shadow-sm transition-all duration-200 hover:scale-[1.04] hover:shadow-[0_8px_20px_rgba(255,141,33,0.28)] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:scale-100 sm:w-auto sm:px-4"
                 aria-label="Clone website from URL"
               >
                 {isSubmitting ? (
