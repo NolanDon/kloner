@@ -79,6 +79,19 @@ export default function MoqupReferralBanner() {
     setVisible(false);
   };
 
+  const reportMoqupClick = () => {
+    const page = window.location.pathname;
+    void fetch("/api/marketing/moqup-banner-click", {
+      method: "POST",
+      credentials: "same-origin",
+      keepalive: true,
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ page }),
+    }).catch(() => {
+      // Tracking must never interfere with the outbound navigation.
+    });
+  };
+
   if (!visible) return null;
 
   return (
@@ -97,7 +110,7 @@ export default function MoqupReferralBanner() {
           <span className="moqup-referral-eyebrow">AI SOCIAL MEDIA MANAGER</span>
           <p>Turn your website URL into a month of on-brand social posts.</p>
         </div>
-        <a className="moqup-referral-cta" href={MOQUP_URL} target="_blank" rel="noopener noreferrer">
+        <a className="moqup-referral-cta" href={MOQUP_URL} target="_blank" rel="noopener noreferrer" onClick={reportMoqupClick}>
           Try Moqup <span aria-hidden="true">↗</span>
         </a>
         <button
