@@ -560,6 +560,70 @@ const drafts: Draft[] = [
       { question: "Can I put clones in my portfolio?", answer: "Yes, if you clearly label them as practice, use original or authorized materials, credit inspiration where appropriate, and do not present the original site's identity or work as your own." },
     ],
   },
+  {
+    slug: "clone-website-to-react",
+    title: "How to Clone a Website to React (2026 Guide)",
+    h1: "How to Clone a Website to React",
+    metaDescription: "Turn a website into clean React components: start from a permitted URL, map sections to components, extract design tokens, and rebuild state and interactions properly.",
+    description: "Clone a website into React the right way: editable components, design tokens, and a rebuild plan that keeps the result maintainable.",
+    publishedAt: "2026-10-25",
+    tags: ["clone website to React", "React", "web design"],
+    faqs: [
+      {
+        question: "Is it legal to clone a website into React?",
+        answer: "It depends on what you copy and whether you have permission. Cloning a site you own, or a site you have permission to rebuild, is normal development work. Copying another brand's copy, images, logo, or trademarked assets into your own product is not. The safe workflow is to clone the structure, then replace every brand-specific element with your own content before you publish."
+      },
+      {
+        question: "Does Kloner export React code directly?",
+        answer: "Use Kloner to generate an editable preview from a permitted URL, then rebuild that structure as React components. The preview gives you the layout baseline, sections, and styling to work from. The component architecture, props, state, and data fetching are decisions you make in your own codebase."
+      },
+      {
+        question: "How is cloning to React different from cloning to Next.js?",
+        answer: "React is the component layer: how the UI is structured, rendered, and updated. Next.js adds routing, server rendering, and data fetching conventions on top of React. If your target is a Next.js production app, read our Next.js guide as well. If you only need the frontend components, plain React is the smaller, clearer target."
+      }
+    ],
+    intro: "Cloning a website to React is worth doing only if the result is a codebase you can actually maintain. A pile of copied HTML pasted into JSX files is not a React app. It is a snapshot that breaks the first time you change content, reorder a section, or view it on a different screen size. The goal is different: take a visual reference, understand its structure, and rebuild it as components with clear props, real design tokens, and state handled on purpose.",
+    sections: [
+      ["What a good React clone looks like", "A good result reads like code a teammate wrote. The page is split into components that match the design: a Header, a Hero, a feature grid, a pricing section, and a Footer, each receiving data through props instead of hardcoding text. Repeated patterns become one component used several times, not five copies with slightly different class names. Colors, font sizes, spacing, and radii live in tokens or a theme, so changing the brand color means changing one value, not running a find and replace across fifty files. If your clone has one giant component with inline styles everywhere, you have copied a screenshot in code form. Stop and split it before you add features."],
+      ["Start from a permitted URL", "Only clone sites you own or have explicit permission to rebuild. That rule is not just legal caution, it also keeps the project honest: you can ask the owner for assets, copy, and brand files instead of scraping them. Start from that URL in [Kloner](/) and generate the editable preview. Study the preview the way you would study a design file. Identify the header, hero, content sections, forms, and footer, and note how each one changes between desktop and mobile. Write down what is structure, what is content, and what is behavior before you write any component code. That inventory is the plan for the whole rebuild."],
+      ["Map sections to components", "Work section by section, not page by page. A hero becomes a Hero component with props for headline, subheadline, and calls to action. A card grid becomes a Card component rendered from an array of data, so adding a sixth card is a data change, not a code change. Navigation becomes a Header component with its mobile menu state handled in one place. Keep presentational components separate from data: the component should not know where its content comes from, only what shape it receives. That separation is what makes the clone editable later, when real content replaces the reference content."],
+      ["Extract design tokens before you style anything", "Before writing styles, build a small token inventory from the reference: colors, font families and sizes, spacing scale, border radii, shadows, and container widths. Put those tokens in one file and reference them from every component. This step feels slow and saves the most time. Without it, every component invents its own slightly different gray, its own slightly different padding, and the result drifts further from the reference with each new section. With tokens in place, the whole page stays consistent, and a rebrand later is a token change rather than a rewrite."],
+      ["Handle state and interactions separately", "A clone of a page is a clone of its UI, not its product. Login flows, search, checkout, form validation, permissions, loading states, and error states do not transfer from a visual reference. They need explicit design and implementation in your React app. List every interactive element in the reference: menus, tabs, accordions, modals, forms, and anything that changes on hover or click. For each one, decide the state it needs and where that state lives. A menu that only needs local open and closed state belongs in the component. A cart, a multi-step form, or anything shared across pages needs state lifted higher. Skipping this step is how clones end up looking right and behaving wrong."],
+      ["Final checks before you ship", "Compare the result with the reference at matching viewport sizes, and check wrapping, image crops, mobile navigation, and long content. Replace all copied copy, photography, logos, and icons with material you own or are licensed to use. Check performance: oversized images and duplicated CSS are the usual suspects when a cloned page loads slowly. Run a basic accessibility pass: real buttons instead of clickable divs, labels on form fields, and keyboard navigation for menus and modals. Then run the SEO pass from our [SEO checklist after cloning a website](/blog/clone-website-seo-checklist) so the new page is set up to be found, not just to look right."]
+    ]
+  },
+  {
+    slug: "cost-to-clone-a-website",
+    title: "How Much Does It Cost to Clone a Website in 2026?",
+    h1: "How Much Does It Cost to Clone a Website?",
+    metaDescription: "Cloning a website costs from a free preview plus your time, to a few hundred dollars for a freelancer clone, or more for a full rebuild. What drives the price, and how to keep it down.",
+    description: "Real price ranges for cloning a website: DIY with an AI cloner, freelancer tiers, and the hidden costs people forget.",
+    publishedAt: "2026-10-25",
+    tags: ["cost to clone a website", "website cloning", "freelance"],
+    faqs: [
+      {
+        question: "Can I clone a website for free?",
+        answer: "You can start for free: generate a preview from a permitted URL and study the structure at no cost. Editing, customizing, and publishing depend on your plan, and your own time is the real cost of a DIY clone. A free preview is enough to decide whether a rebuild is worth doing before you spend anything."
+      },
+      {
+        question: "Does cloning a website include the backend?",
+        answer: "No. Cloning reproduces the visible frontend: layout, styling, and structure. Login systems, databases, payments, search, and other backend behavior must be built or connected separately. Any quote that seems to promise a full working product for the price of a frontend copy deserves a second look."
+      },
+      {
+        question: "Is cloning cheaper than rebuilding from scratch?",
+        answer: "Usually, yes, for the frontend portion, because the design decisions are already made and visible. You skip the blank-page phase and the rounds of layout exploration. The savings shrink when the site is large, highly interactive, or needs a different backend, because that work costs the same whether you clone or rebuild."
+      }
+    ],
+    intro: "The cost of cloning a website depends on what you mean by cloning. A single landing page copied for structure is a small job. A twenty page site with forms, checkout, and a backend is a rebuild wearing a clone's name, and it is priced like one. This guide separates the real price ranges from the fantasy ones, using marketplace listings checked in October 2026, so you can budget honestly whether you do it yourself or hire it out.",
+    sections: [
+      ["The short answer", "Doing it yourself with an AI cloner costs a subscription plus your time: start with a free preview, then pay for the plan that covers editing and publishing. Hiring a freelancer for a small clone costs roughly 30 to 400 dollars based on marketplace tiers we checked, with most simple jobs landing in the 50 to 250 dollar range. Packaged cloning services advertise 99 to 999 dollars depending on how many features they include. A full agency rebuild is a different budget entirely and is normally quoted as a project, not a fixed price. If someone promises an exact replica of a large site with full backend behavior for 50 dollars, that promise is the product being sold, not the website."],
+      ["What drives the price", "Five things move the price more than anything else. Page count: a one page landing page and a twenty page site are different jobs, and per-page pricing is the norm. Interactivity: forms, search, filters, carts, and logins each add real work, because behavior must be built, not copied. Backend: anything that stores data or takes payment is a separate build on top of the frontend copy. Revisions: unlimited revisions sound generous and are priced in, usually as a higher tier. Assets: photography, fonts, and icons may need licenses or replacements, which is a cost people discover late. A quote that does not ask about these five things is not a quote, it is a guess."],
+      ["The DIY cost breakdown", "The DIY route has three costs: the tool, your time, and the extras. The tool starts with a free preview, and editing and publishing depend on the plan you choose. Your time is the big one: a single landing page can go from preview to clean, customized result in a focused session, while a multi-page site is a multi-day project even with a good starting point. The extras are hosting, a domain, and any licensed assets you replace. The DIY route is cheapest when the site is small, the backend is simple or nonexistent, and you are comfortable finishing the last twenty percent yourself: replacing copy, fixing responsive details, and running the launch checks."],
+      ["The hiring cost breakdown", "Freelancer marketplace tiers tell a consistent story. Starter tiers around 30 to 90 dollars typically cover a simple clone with a few pages and limited revisions, delivered in about three days. Mid tiers around 100 to 250 dollars add pages, customization, and more revisions, usually in five to seven days. Higher tiers around 250 to 400 dollars cover larger sites with more pages and unlimited revisions, in up to two weeks. Read what each tier actually includes: page count, revision count, responsive design, and whether source code is included. A tier that omits source code or responsive design is not cheaper, it is incomplete."],
+      ["Hidden costs people forget", "Four costs surprise people after the clone is done. Content replacement: the clone ships with someone else's words and images, and writing your own copy and sourcing your own images takes real time or real money. Font and image licenses: a font or photo that was fine on the reference site may not be licensed for yours. Hosting and domain: small, but recurring, and easy to forget in a project budget. SEO setup: a cloned page with no titles, descriptions, or internal links will not rank, so budget the launch pass from our [SEO checklist after cloning a website](/blog/clone-website-seo-checklist). None of these are large alone. Together they are often a third of the project cost."],
+      ["How to keep the cost down", "Clone for structure, not for a finished product. Use the clone as the layout baseline, then rebuild the content, branding, and interactions as your own. Do one page at a time, starting with the page that matters most, instead of cloning everything before customizing anything. Decide early what you will not clone: an admin panel, a feature nobody uses, or a page with no traffic are all scope you can cut. And replace copy and assets as you go, not at the end, because a clone full of placeholder content hides the problems you will have to fix later. The cheapest clone is the smallest one that still answers the question you are building it for."]
+    ]
+  },
 ];
 
 // All editorial entries are published through the normal blog collection.
