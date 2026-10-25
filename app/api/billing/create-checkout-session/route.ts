@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getStripe } from "@/lib/stripe";
 import { STRIPE_TRIAL_DAYS } from "@/src/lib/billingAccess";
 import admin from "firebase-admin";
-import { linkCustomerToUid } from "../../_lib/billing";
+import { linkCustomerToUid, refreshTierFromStripeForUid } from "../../_lib/billing";
 import { requireSessionAndMaybeCsrf } from "../../_lib/route-guard";
 import { captureCriticalEvent, captureException } from "@/lib/observability";
 import { resolveMonthlyPriceId } from "@/app/api/_lib/monthlyPrice";
@@ -315,18 +315,8 @@ async function handler({ req, uid }: { req: NextRequest; uid: string }) {
         }
     }
 
-    const activeOrTrialing = existingSubs.data.filter((sub) => {
-        if (sub.status === "active") return true;
-        if (sub.status !== "trialing") return false;
-
-        // If a trial was already cancelled, let the user continue with a normal paid checkout
-        // on the same account. The new checkout will not include a trial.
-        if (sub.cancel_at_period_end === true) return false;
-
-        return true;
-    });
-
-    if (activeOrTrialing.length > 0) {
+    const activeSubscription = existingSubs.data.find((sub) => sub.status === "active");
+    if (activeSubscription) {
         return NextResponse.json(
             {
                 error: "You already have an active subscription. Please manage your existing subscription instead.",
@@ -335,6 +325,13 @@ async function handler({ req, uid }: { req: NextRequest; uid: string }) {
             { status: 400 }
         );
     }
+
+    // A trial already has a subscription in Stripe, so creating another Checkout
+    // subscription fails. Convert the existing trial to the selected paid plan
+    // instead, starting billing immediately after the user explicitly chose a plan.
+    const trialSubscription = existingSubs.data.find(
+        (sub) => sub.status === "trialing" && sub.cancel_at_period_end !== true,
+    );
 
     // Anti-abuse: one free trial per customer lifecycle.
     // If this customer has any prior subscription history (including canceled),
@@ -361,6 +358,60 @@ async function handler({ req, uid }: { req: NextRequest; uid: string }) {
             : `${appOrigin}/dashboard/view?billing=success`;
 
     const cancelUrl = `${appOrigin}/dashboard/view?billing=cancelled&recovery=1`;
+
+    if (trialSubscription) {
+        const subscriptionItem = trialSubscription.items?.data?.[0];
+        if (!subscriptionItem?.id) {
+            return NextResponse.json(
+                { error: "We couldn’t update your trial subscription. Please manage it in account settings." },
+                { status: 409 },
+            );
+        }
+
+        const currentPriceId =
+            typeof subscriptionItem.price === "string"
+                ? subscriptionItem.price
+                : subscriptionItem.price?.id;
+        const update: any = {
+            trial_end: "now",
+            cancel_at_period_end: false,
+            payment_behavior: "error_if_incomplete",
+            proration_behavior: "none",
+        };
+        if (currentPriceId !== priceId) {
+            update.items = [{ id: subscriptionItem.id, price: priceId }];
+        }
+
+        try {
+            const updatedSubscription = await stripe.subscriptions.update(
+                trialSubscription.id,
+                update,
+                { idempotencyKey: `trial-upgrade:${uid}:${trialSubscription.id}:${plan}` },
+            );
+            if (updatedSubscription.status !== "active") {
+                return NextResponse.json(
+                    { error: "Your subscription wasn’t activated. Please check your payment method and try again." },
+                    { status: 402 },
+                );
+            }
+            await refreshTierFromStripeForUid(uid);
+            return NextResponse.json({ url: successUrl, upgradedTrial: true }, { status: 200 });
+        } catch (err: any) {
+            await notifyStripeSubscriptionError({
+                action: "billing.createCheckoutSession.upgradeTrial",
+                uid,
+                error: err,
+                extra: { plan, customerId, subscriptionId: trialSubscription.id, priceId },
+            });
+            return NextResponse.json(
+                {
+                    error: "We couldn’t charge your saved payment method to start the paid plan. Update your payment method in account settings, then try again.",
+                    paymentActionRequired: true,
+                },
+                { status: 402 },
+            );
+        }
+    }
 
     // Expire abandoned sessions promptly so close-the-tab abandonments reach the
     // recovery-email webhook instead of waiting for Stripe's default 24 hours.

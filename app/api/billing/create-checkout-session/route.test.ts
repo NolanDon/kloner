@@ -26,11 +26,13 @@ jest.mock("../../_lib/route-guard", () => {
 });
 
 const linkCustomerToUid = jest.fn<Promise<void>, [string, string]>(async () => {});
+const refreshTierFromStripeForUid = jest.fn<Promise<any>, [string]>(async () => ({}));
 
 jest.mock("../../_lib/billing", () => {
     return {
         __esModule: true,
         linkCustomerToUid: (customerId: string, uid: string) => linkCustomerToUid(customerId, uid),
+        refreshTierFromStripeForUid: (uid: string) => refreshTierFromStripeForUid(uid),
     };
 });
 
@@ -97,6 +99,7 @@ describe("POST /api/billing/create-checkout-session", () => {
         jest.resetModules();
         process.env = { ...OLD_ENV } as any;
         linkCustomerToUid.mockClear();
+        refreshTierFromStripeForUid.mockClear();
     });
 
     afterAll(() => {
@@ -305,7 +308,7 @@ describe("POST /api/billing/create-checkout-session", () => {
         expect(payload.subscription_data?.trial_period_days).toBeUndefined();
     });
 
-    it("blocks duplicate checkout if customer already has active/trialing subscription", async () => {
+    it("blocks duplicate checkout if customer already has an active subscription", async () => {
         (process.env as any).NODE_ENV = "production";
         process.env.NEXT_PUBLIC_APP_ORIGIN = "https://kloner.app";
         process.env.STRIPE_PRICE_PRO_PROD = "price_live_pro";
@@ -325,7 +328,7 @@ describe("POST /api/billing/create-checkout-session", () => {
             __esModule: true,
             getStripe: () => ({
                 subscriptions: {
-                    list: async () => ({ data: [{ status: "trialing" }] }),
+                    list: async () => ({ data: [{ status: "active" }] }),
                 },
                 customers: {
                     create: async () => ({ id: "cus_1" }),
@@ -355,6 +358,75 @@ describe("POST /api/billing/create-checkout-session", () => {
         expect(res.status).toBe(400);
         expect(body.existingSubscription).toBe(true);
         expect(typeof body.error).toBe("string");
+    });
+
+    it("converts an existing trial to the selected paid plan instead of creating a duplicate checkout", async () => {
+        (process.env as any).NODE_ENV = "production";
+        process.env.NEXT_PUBLIC_APP_ORIGIN = "https://kloner.app";
+        process.env.STRIPE_PRICE_AGENCY_PROD = "price_live_agency";
+
+        const { db } = createFirestoreMock({ stripeCustomerId: "cus_1" });
+        jest.doMock("firebase-admin", () => ({
+            __esModule: true,
+            default: {
+                apps: [{}],
+                firestore: () => db,
+                auth: () => ({ getUser: async () => ({ email: "a@b.com" }) }),
+            },
+        }));
+
+        const updateSubscription = jest.fn(async () => ({ status: "active" }));
+        const sessionsCreate = jest.fn(async () => ({ url: "https://stripe/checkout" }));
+        jest.doMock("@/lib/stripe", () => ({
+            __esModule: true,
+            getStripe: () => ({
+                subscriptions: {
+                    list: async () => ({
+                        data: [{
+                            id: "sub_trial",
+                            status: "trialing",
+                            cancel_at_period_end: false,
+                            items: { data: [{ id: "si_trial", price: { id: "price_live_pro" } }] },
+                        }],
+                    }),
+                    update: updateSubscription,
+                },
+                customers: {
+                    create: async () => ({ id: "cus_1" }),
+                    update: async () => ({}),
+                },
+                promotionCodes: {
+                    list: async () => ({ data: [] }),
+                },
+                checkout: { sessions: { create: sessionsCreate } },
+            }),
+        }));
+
+        const { POST } = await import("./route");
+        const req = {
+            url: "https://example.com/api/billing/create-checkout-session",
+            json: async () => ({ plan: "agency", returnAppId: "app_1", returnStep: 3 }),
+        } as any;
+
+        const res: any = await POST(req);
+        const body = await res.json();
+
+        expect(res.status).toBe(200);
+        expect(body.upgradedTrial).toBe(true);
+        expect(body.url).toContain("billing=success");
+        expect(updateSubscription).toHaveBeenCalledWith(
+            "sub_trial",
+            expect.objectContaining({
+                trial_end: "now",
+                cancel_at_period_end: false,
+                payment_behavior: "error_if_incomplete",
+                proration_behavior: "none",
+                items: [{ id: "si_trial", price: "price_live_agency" }],
+            }),
+            { idempotencyKey: "trial-upgrade:uid_1:sub_trial:agency" },
+        );
+        expect(refreshTierFromStripeForUid).toHaveBeenCalledWith("uid_1");
+        expect(sessionsCreate).not.toHaveBeenCalled();
     });
 
     it("allows paid checkout when the only existing subscription is a cancelled trial", async () => {
