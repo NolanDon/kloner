@@ -129,15 +129,8 @@ export default async function BlogPostPage({
 
       <section className="pt-24 pb-20 px-4 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-5xl">
-          <header className="relative mt-4 overflow-hidden rounded-[2rem] border border-neutral-200 bg-white shadow-sm">
-            <div
-              className="absolute inset-0"
-              aria-hidden
-              style={{
-                background:
-                  "radial-gradient(1200px circle at 30% -20%, rgba(255,141,33,0.14), transparent 55%), linear-gradient(135deg, rgba(255,255,255,0.98), rgba(250,250,249,0.98), rgba(244,244,245,0.94))",
-              }}
-            />
+          <header className="blog-article-hero relative mt-4 overflow-hidden rounded-[2rem] border border-neutral-200 bg-white shadow-sm">
+            <div className="blog-article-hero-backdrop absolute inset-0" aria-hidden />
 
             <div className="relative px-6 py-8 sm:px-8 sm:py-10 lg:px-10">
               <div className="flex items-start justify-between gap-6 flex-wrap">

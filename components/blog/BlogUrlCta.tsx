@@ -94,8 +94,8 @@ export default function BlogUrlCta({ title, description }: BlogUrlCtaProps) {
   }
 
   return (
-    <section className="relative overflow-hidden rounded-[2rem] border border-[#FF8D21]/18 bg-[#FF8D21] shadow-sm">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.12),transparent_40%),linear-gradient(180deg,rgba(255,255,255,0.04),rgba(255,255,255,0))]" />
+    <section className="blog-url-cta relative overflow-hidden rounded-[2rem] border border-[#FF8D21]/18 bg-[#FF8D21] shadow-sm">
+      <div className="blog-url-cta-gloss absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.12),transparent_40%),linear-gradient(180deg,rgba(255,255,255,0.04),rgba(255,255,255,0))]" />
       <div className="relative px-4 py-4 sm:px-5 sm:py-5">
         <div className="max-w-2xl">
           <h2 className="text-2xl font-semibold tracking-tight text-white sm:text-[28px]">
@@ -111,7 +111,7 @@ export default function BlogUrlCta({ title, description }: BlogUrlCtaProps) {
             Website URL
           </label>
 
-          <div className="rounded-full bg-white p-1.5 shadow-[0_14px_30px_rgba(0,0,0,0.10)] ring-1 ring-white/35 backdrop-blur-md">
+          <div className="blog-url-cta-input-shell rounded-full bg-white p-1.5 shadow-[0_14px_30px_rgba(0,0,0,0.10)] ring-1 ring-white/35 backdrop-blur-md">
             <div className="flex items-stretch gap-1.5">
               <div className="flex min-h-[42px] flex-1 items-center rounded-full px-4 sm:px-5">
                 <span className="hidden mr-1 text-lg font-medium text-neutral-500 sm:inline">
