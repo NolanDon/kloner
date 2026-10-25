@@ -378,7 +378,7 @@ export default function ChatWidgetProvider() {
                     onClick={() => setOpen(true)}
                     aria-label="Open chat"
                     aria-expanded={false}
-                    className="fixed bottom-6 right-6 z-[2147483647] rounded-full bg-accent text-white px-4 py-2 text-sm shadow-lg hover:brightness-80 focus:outline-none"
+                    className="kloner-support-chat-launcher fixed bottom-6 right-6 z-[2147483647] rounded-full bg-accent text-white px-4 py-2 text-sm shadow-lg hover:brightness-80 focus:outline-none"
                 >
                     <MessagesSquare aria-hidden="true" focusable="false" />
                 </button>

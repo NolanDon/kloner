@@ -167,12 +167,12 @@ export default function NavBar(): JSX.Element {
             className="ml-5 flex items-center gap-0 font-black tracking-tight text-xl md:text-2xl shrink-0"
           >
             <KlonerPumpkinAccent />
-            <div className="relative h-[90px] w-[90px]">
+            <div className="relative h-[72px] w-[72px] md:h-[90px] md:w-[90px]">
               <Image
                 src={logo}
                 alt="kloner logo"
                 fill
-                sizes="90px"
+                sizes="(min-width: 768px) 90px, 72px"
                 priority
                 className="site-navbar-logo site-navbar-logo-light object-contain"
               />
@@ -180,7 +180,7 @@ export default function NavBar(): JSX.Element {
                 src={orangeLogo}
                 alt=""
                 fill
-                sizes="90px"
+                sizes="(min-width: 768px) 90px, 72px"
                 priority
                 aria-hidden="true"
                 className="site-navbar-logo site-navbar-logo-dark object-contain"

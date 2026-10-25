@@ -2,6 +2,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo } from "react";
+import { createPortal } from "react-dom";
 import Image from "next/image";
 import { WorkspaceAgentLoader, WorkspaceAgentProgress } from "./WorkspaceAgentActivity";
 import WorkspaceRestoreControls, { type WorkspaceRestoreState } from "./WorkspaceRestoreControls";
@@ -198,7 +199,6 @@ type DatabaseConnection = {
 };
 
 const MAX_EDITOR_PROMPT_CHARS = 600;
-const WORKSPACE_AUTONOMY_V3_AGENT_NAME = "Copper Otter";
 
 function getWorkspaceAutonomyV3PollDelayMs(elapsedMs: number): number {
     if (elapsedMs < 10_000) return 3_000;
@@ -7197,7 +7197,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                         className="font-medium text-sm"
                         title={agentMode === "v3" ? "Workspace Autonomy V3 is active for this editor" : undefined}
                     >
-                        {agentMode === "v3" ? WORKSPACE_AUTONOMY_V3_AGENT_NAME : "Agent"}
+                        Agent
                     </h3>
                     <span
                         className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-blue-200 bg-blue-50 text-blue-600"
@@ -8734,9 +8734,9 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                     </div>
                 ) : null}
 
-                {topupModalOpen ? (
-                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-                        <div className="relative w-full max-w-lg rounded-2xl border border-black/10 bg-white shadow-xl">
+                {topupModalOpen && typeof document !== "undefined" ? createPortal(
+                    <div className="fixed inset-0 z-[2147483647] flex items-start justify-center overflow-y-auto overscroll-contain bg-black/50 px-4 py-4 sm:items-center sm:py-8" role="dialog" aria-modal="true" aria-label="Top up AI credits">
+                        <div className="relative my-auto max-h-[calc(100dvh-2rem)] w-full max-w-lg overflow-y-auto rounded-2xl border border-black/10 bg-white shadow-xl sm:max-h-[calc(100dvh-4rem)]">
                             <button
                                 type="button"
                                 onClick={() => setTopupModalOpen(false)}
@@ -8917,7 +8917,8 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                 </div>
                             </div>
                         </div>
-                    </div>
+                    </div>,
+                    document.body,
                 ) : null}
 
                 {PRODUCTION_AGENT_CHAT_BLOCKED ? (

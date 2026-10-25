@@ -160,6 +160,23 @@ body {
     filter: drop-shadow(0 2px 3px rgba(255, 141, 33, 0.18));
 }
 
+@media (max-width: 767px) {
+    .site-navbar .kloner-pumpkin-accent {
+        width: 2.8rem;
+        height: 2.4rem;
+    }
+
+    .site-navbar .kloner-pumpkin {
+        width: 2rem;
+        height: 1.7rem;
+    }
+
+    body:has(.app-builder-editor-root) .kloner-support-chat-launcher,
+    body:has(.app-preview-editor-no-ai) .kloner-support-chat-launcher {
+        display: none !important;
+    }
+}
+
 .kloner-bat {
     position: absolute;
     z-index: 2;

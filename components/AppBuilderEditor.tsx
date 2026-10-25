@@ -7344,7 +7344,7 @@ export default function AppBuilderEditor({
     }
 
     return (
-        <div className="fixed inset-0 z-[16000]">
+        <div className="app-builder-editor-root fixed inset-0 z-[16000]">
             {isGenerationProcessing && previewMode !== "webcontainer" ? (
                 <motion.div
                     key="generation-processing"
