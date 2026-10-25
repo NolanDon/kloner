@@ -7,6 +7,7 @@ import AffiliateRefCapture from "@/components/AffiliateRefCapture";
 import { Suspense } from "react";
 import StyledJsxRegistry from "./registry";
 import { Inter } from "next/font/google";
+import MoqupReferralBanner from "@/components/MoqupReferralBanner";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -64,7 +65,7 @@ export default function RootLayout({
       <head>
         <script
           dangerouslySetInnerHTML={{
-            __html: `try { var savedTheme = localStorage.getItem('kloner-theme'); var t = savedTheme === 'light' || savedTheme === 'dark' ? savedTheme : 'dark'; document.documentElement.dataset.theme = t; document.documentElement.style.colorScheme = t; } catch (e) { document.documentElement.dataset.theme = 'dark'; document.documentElement.style.colorScheme = 'dark'; }`,
+            __html: `try { var savedTheme = localStorage.getItem('kloner-theme'); var t = savedTheme === 'light' || savedTheme === 'dark' ? savedTheme : 'dark'; document.documentElement.dataset.theme = t; document.documentElement.style.colorScheme = t; ${process.env.NODE_ENV === "development" ? "" : "var promoDismissedUntil = Number(localStorage.getItem('kloner-moqup-banner-dismissed-until')); if (Number.isFinite(promoDismissedUntil) && promoDismissedUntil > Date.now()) { document.documentElement.dataset.moqupPromoDismissed = 'true'; document.documentElement.style.setProperty('--moqup-banner-offset', '0px'); }"} } catch (e) { document.documentElement.dataset.theme = 'dark'; document.documentElement.style.colorScheme = 'dark'; }`,
           }}
         />
       </head>
@@ -72,6 +73,7 @@ export default function RootLayout({
         <StyledJsxRegistry>
           <AuthProviderServer>
             <AppClientProviders>
+              <MoqupReferralBanner />
               <Suspense fallback={null}>
                 <AffiliateRefCapture />
               </Suspense>

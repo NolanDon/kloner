@@ -154,7 +154,7 @@ export default function NavBar(): JSX.Element {
 
   return (
     <div
-      className="p-3 md:p-4 fixed left-0 right-0 top-4 md:top-5 z-50"
+      className="site-navbar-wrap p-3 md:p-4 fixed left-0 right-0 z-50"
       onMouseLeave={() => setOpen(false)}
     >
       <div className="mx-auto max-w-6xl">
@@ -167,12 +167,12 @@ export default function NavBar(): JSX.Element {
             className="ml-5 flex items-center gap-0 font-black tracking-tight text-xl md:text-2xl shrink-0"
           >
             <KlonerPumpkinAccent />
-            <div className="relative h-[72px] w-[72px] md:h-[90px] md:w-[90px]">
+            <div className="relative h-[64px] w-[64px] md:h-[90px] md:w-[90px]">
               <Image
                 src={logo}
                 alt="kloner logo"
                 fill
-                sizes="(min-width: 768px) 90px, 72px"
+                sizes="(min-width: 768px) 90px, 64px"
                 priority
                 className="site-navbar-logo site-navbar-logo-light object-contain"
               />
@@ -180,7 +180,7 @@ export default function NavBar(): JSX.Element {
                 src={orangeLogo}
                 alt=""
                 fill
-                sizes="(min-width: 768px) 90px, 72px"
+                sizes="(min-width: 768px) 90px, 64px"
                 priority
                 aria-hidden="true"
                 className="site-navbar-logo site-navbar-logo-dark object-contain"
