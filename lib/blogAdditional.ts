@@ -648,6 +648,42 @@ const drafts: Draft[] = [
       { question: "Can I publish the edited clone?", answer: "Yes, once the copy and assets are yours and the launch checks pass. Start with a free preview, and note that editing and publishing depend on your plan." },
     ],
   },
+  {
+    slug: "how-to-host-a-cloned-website",
+    title: "How to Host a Cloned Website (2026 Guide)",
+    h1: "How to Host a Cloned Website",
+    metaDescription: "Host a cloned website the right way: clean the export, pick a static host, connect a custom domain with HTTPS, and run launch checks before you share the link.",
+    description: "From a finished preview to a live URL: clean the export, choose a static host, connect your domain, and check the site before launch.",
+    publishedAt: "2026-10-26",
+    tags: ["how to host a cloned website", "static hosting", "website deployment"],
+    faqs: [
+      {
+        question: "Can I host a cloned website for free?",
+        answer: "For a small static site, often yes. Several static hosts offer free tiers for personal and small projects. Check their bandwidth and build limits before you rely on one for a busy site, and confirm that a custom domain is included if you need one."
+      },
+      {
+        question: "Do I need a server to host a cloned website?",
+        answer: "Not for the frontend. A cloned frontend is a set of static files, and any static host can serve them. You only need a server or backend service for behavior behind the page, such as logins, payments, search, or a database."
+      },
+      {
+        question: "What happens to forms and logins from the original site?",
+        answer: "They do not transfer. A clone reproduces the visible frontend, so forms must be rebuilt to submit to your own destination and logins must run on your own system. If a behavior is out of scope, remove the element instead of shipping a button that does nothing."
+      },
+      {
+        question: "Does Kloner host my finished site?",
+        answer: "Start with a free preview to review the rebuild, and note that editing and publishing depend on your plan. When the site is ready for its own domain, a static host is the usual home for the finished frontend."
+      }
+    ],
+    intro: "A cloned website is not live until it has a home. The preview you review during a rebuild is a workspace, not a website: it exists so you can check the layout, replace the content, and decide whether the result is worth publishing. Hosting is the step that turns that finished frontend into a public URL, and it is simpler than most people expect, because a cloned frontend is usually just static files. This guide covers the order that works: clean the site, pick a host, deploy, connect a domain, and run launch checks before you share the link.",
+    sections: [
+      ["Host the finished site, not the preview", "Hosting means putting files on a server that answers public requests at your URL. A cloned frontend is mostly static files: HTML, CSS, JavaScript, and images. Any host that serves static files can publish it, and you do not need to rent and configure a server yourself. What a static host cannot do is run the original site's backend. Logins, checkouts, databases, search, and analytics are behavior, not files, and none of that transfers with a visual clone. Before you pick a host, be clear about which parts of your site are static files and which parts you still need to build. That split decides everything else."],
+      ["Clean the export before you deploy", "Deploying a dirty export publishes someone else's brand, and fixing it after launch is slower than fixing it now. Replace every brand-specific element: copy, images, logos, trademarks, and product claims. Point every link at your own pages, not back to the original site. Remove the original site's analytics, chat widgets, and tracking scripts, and install your own accounts fresh if you use those tools. Rebuild forms to submit to your own destination with your own confirmation message. If you have not finished this pass, work through our guide on [how to edit a cloned website](/blog/how-to-edit-a-cloned-website) first. A host will publish whatever you give it, so the cleanup has to happen before the deploy, not after."],
+      ["Pick a host for a static site", "For a static frontend, the short list is GitHub Pages, Netlify, Vercel, and Cloudflare Pages. All four serve static files, issue HTTPS certificates, and support custom domains. The main choice is workflow: a repo-connected deploy rebuilds and republishes on every push, which suits a site you update often, while a manual upload of a folder suits a one-off page you will rarely touch. If you need more control, a virtual server or object storage can host the same files, but you take on configuration, certificates, and updates yourself. Pick based on four questions: does it support your custom domain, does it include HTTPS, does it offer deploy previews, and does it handle your build step if you have one. For most cloned sites, the simplest host that answers yes to all four is the right one."],
+      ["Deploy in four steps", "First, prepare the folder you will deploy: the built output if your site has a build step, or the plain HTML, CSS, JavaScript, and images if it does not. Second, connect that folder to the host, either by linking a repository or by uploading the folder directly. Third, set the publish directory in the host dashboard and confirm that your index file sits at the root of that directory, so the homepage loads at the domain instead of at a subpath. Fourth, open the live URL and click through it: the homepage, one inner page, the navigation on a phone, and every form. A deploy that nobody has clicked through is not finished. If a page 404s, the usual cause is a wrong publish directory or an index file buried one folder too deep."],
+      ["Connect a custom domain and HTTPS", "A host subdomain is fine for testing, but a real launch wants your own domain. Add the domain in the host dashboard, then add the DNS record the host gives you at your domain registrar: usually one record for the root domain and one for the www version. DNS changes can take minutes or hours to spread, so wait before you conclude something is broken. Confirm that HTTPS is active and that the host redirects the www version to the root version, or the reverse, consistently. Mixed setups, where some pages load on www and others do not, confuse visitors and split your search presence. One canonical version, served over HTTPS everywhere, is the goal."],
+      ["Run launch checks, then share the link", "Editing ends with a launch pass, and hosting is no exception. Run the SEO pass first: a unique title and description for every page, one clear heading structure, and internal links between your pages, following our [SEO checklist after cloning a website](/blog/clone-website-seo-checklist). Then check performance: oversized images are the usual suspect when a cloned page loads slowly. Then check accessibility: real buttons instead of clickable divs, labels on form fields, and keyboard navigation for menus. Proofread once more, test on two real devices, and confirm the site says nothing that is not true about your product. If you are still weighing the effort, our guide to the [cost of cloning a website](/blog/cost-to-clone-a-website) helps you judge whether the rebuild was worth it. When that pass is clean, share the link."],
+    ],
+  },
 ];
 
 // All editorial entries are published through the normal blog collection.
