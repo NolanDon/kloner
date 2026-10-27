@@ -276,7 +276,7 @@ const drafts: Draft[] = [
   {
     slug: "clone-website-with-tailwind",
     title: "How to Clone a Website With Tailwind CSS Without Creating Utility Soup",
-    description: "Use Tailwind CSS to recreate a permitted website with responsive utilities, reusable components, and a maintainable class strategy.",
+    description: "Clone a website with Tailwind CSS: recreate the layout with responsive utilities and reusable components, without ending up with utility soup.",
     publishedAt: "2026-09-24",
     tags: ["clone website with Tailwind", "Tailwind CSS", "frontend"],
     intro: "Tailwind CSS can make reconstruction fast because layout and responsive rules stay close to markup. It can also create a hard-to-edit project if every element receives unique utilities with no shared components or design tokens.",
@@ -388,7 +388,7 @@ const drafts: Draft[] = [
   {
     slug: "clone-website-to-vue",
     title: "How to Clone a Website to Vue (2026 Guide)",
-    metaDescription: "Clone any website into a Vue project — use Kloner for an editable visual baseline, then adapt the design to Vue components. Step-by-step guide.",
+    metaDescription: "Clone a website to Vue: start from an editable visual baseline, then adapt the design to Vue components, step by step.",
     description: "Use Kloner to create an editable website baseline, then adapt the design and layout into Vue components with your own Vue project.",
     publishedAt: "2026-10-01",
     tags: ["clone website to Vue", "Vue", "website cloning"],
@@ -409,7 +409,7 @@ const drafts: Draft[] = [
   {
     slug: "clone-website-to-angular",
     title: "How to Clone a Website to Angular (2026 Guide)",
-    metaDescription: "Turn any website into an Angular project — use Kloner for an editable visual baseline, then adapt the design to Angular components.",
+    metaDescription: "Clone a website to Angular: start from an editable visual baseline, then adapt the design to Angular components.",
     description: "Use Kloner to create an editable website baseline, then adapt the design and layout into Angular components in your own project.",
     publishedAt: "2026-10-01",
     tags: ["clone website to Angular", "Angular", "website cloning"],
