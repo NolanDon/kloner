@@ -312,7 +312,6 @@ export default function KlonerLoader({
 
     const brandedSpinner = (
         <div className="kloner-loader-mark">
-            {showBats ? <LoaderBats /> : null}
             {spinner}
         </div>
     );
