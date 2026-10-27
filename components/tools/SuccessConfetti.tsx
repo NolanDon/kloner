@@ -85,7 +85,7 @@ export default function SuccessConfetti({ open, title, message, onDismiss }: Suc
       return;
     }
 
-    const timeout = window.setTimeout(onDismiss, 1900);
+    const timeout = window.setTimeout(onDismiss, 3800);
     return () => window.clearTimeout(timeout);
   }, [onDismiss, open]);
 
@@ -105,7 +105,7 @@ export default function SuccessConfetti({ open, title, message, onDismiss }: Suc
 
       <div className="absolute bottom-4 right-4 pointer-events-auto w-[min(22rem,calc(100vw-2rem))] simple-fade-in sm:bottom-6 sm:right-6">
         <div className="relative overflow-hidden rounded-[24px] border border-neutral-200 bg-white shadow-[0_24px_96px_rgba(15,23,42,0.18)]">
-          <div className="absolute inset-0 bg-gradient-to-br from-[#fff7f1] via-white to-[#fff0e8]" aria-hidden />
+          <div className="success-confetti-gradient absolute inset-0 bg-gradient-to-br from-[#fff7f1] via-white to-[#fff0e8]" aria-hidden />
           <div className="relative p-4 sm:p-5">
             <button
               type="button"
@@ -117,7 +117,7 @@ export default function SuccessConfetti({ open, title, message, onDismiss }: Suc
             </button>
 
             <div className="flex items-start gap-3 pr-10">
-              <div className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-emerald-100 bg-emerald-50 text-emerald-600">
+              <div className="success-confetti-icon inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-emerald-100 bg-emerald-50 text-emerald-600">
                 <CheckCircle2 className="h-5 w-5" />
               </div>
 

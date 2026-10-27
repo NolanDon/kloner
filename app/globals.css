@@ -591,6 +591,16 @@ body {
     backdrop-filter: blur(18px) saturate(125%);
 }
 
+:root[data-theme="dark"] .success-confetti-gradient {
+    background-image: linear-gradient(to bottom right, #2e241c, #24221f, #2a1e15) !important;
+}
+
+:root[data-theme="dark"] .success-confetti-icon {
+    background-color: rgba(6, 78, 59, 0.45) !important;
+    border-color: rgba(16, 185, 129, 0.45) !important;
+    color: #6ee7b7 !important;
+}
+
 .stats-strip-card {
     border-color: #e5e7eb;
     background: #ffffff;
