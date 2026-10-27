@@ -98,6 +98,32 @@ export default function Markdown({ markdown }: Props) {
             {children}
           </blockquote>
         ),
+        table: ({ children, ...props }) => (
+          <div className="mt-6 overflow-x-auto">
+            <table
+              className="w-full border-collapse text-[15.5px] leading-7"
+              {...props}
+            >
+              {children}
+            </table>
+          </div>
+        ),
+        th: ({ children, ...props }) => (
+          <th
+            className="border border-neutral-200 bg-neutral-100 px-4 py-3 text-left align-top font-semibold"
+            {...props}
+          >
+            {children}
+          </th>
+        ),
+        td: ({ children, ...props }) => (
+          <td
+            className="border border-neutral-200 px-4 py-3 align-top"
+            {...props}
+          >
+            {children}
+          </td>
+        ),
       }}
     >
       {markdown}
