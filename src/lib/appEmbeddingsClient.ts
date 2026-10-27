@@ -1053,8 +1053,8 @@ export async function fetchEmbeddingEditPlanJobStatus(
             status: 0,
             data: null,
             error: isAbort
-                ? "Job status request timed out; the worker may still be running."
-                : error instanceof Error ? error.message : "Job status request failed",
+                ? "I’m having trouble checking your update. I’ll keep trying."
+                : "I’m having trouble checking your update right now.",
             retryAfter: null,
             code: isAbort ? "JOB_STATUS_TIMEOUT" : "JOB_STATUS_FETCH_FAILED",
             requestId: null,

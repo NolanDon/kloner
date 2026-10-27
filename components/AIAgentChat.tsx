@@ -3760,8 +3760,6 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
             {/* Header */}
             <div className="flex items-center justify-between p-3 border-b bg-white flex-shrink-0">
                 <div className="flex items-center gap-2">
-                    <Bot className="w-5 h-6 text-accent" />
-                    <h3 className="font-medium text-sm">Agent</h3>
                     {process.env.NODE_ENV !== "production" ? (
                         <span
                             className="inline-flex items-center rounded-full border border-neutral-200 bg-neutral-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-neutral-600"
@@ -4823,7 +4821,7 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                     </div>
                     <button
                         type="button"
-                        className="px-3 py-1 text-xs font-semibold bg-accent text-white rounded-full hover:bg-accent-dark disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-1.5"
+                        className="px-2 text-xs font-semibold bg-accent text-white rounded-full hover:bg-accent-dark disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-1.5"
                         onClick={() => {
                             if (topupBusy) return;
                             setTopupModalOpen(true);

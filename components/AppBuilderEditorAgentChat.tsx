@@ -138,6 +138,7 @@ type EditPlanRequestMeta = {
 
 type Message = {
     attachments?: AgentImageAttachment[];
+    acknowledged?: boolean;
     id: string;
     role: "user" | "assistant";
     content: string;
@@ -1046,14 +1047,28 @@ function buildCompileFixPrefill(ctx: CompileErrorQuickFixContext): string {
     ].join("\n");
 }
 
+const NEXT_EDIT_SUGGESTION_SETS = [
+    ["Polish the mobile layout", "Make the main call to action clearer", "Check for broken links"],
+    ["Replace placeholder images with my own", "Make the navigation easier to use", "Improve spacing between sections"],
+    ["Make the colors feel more consistent", "Improve the heading and body fonts", "Make buttons easier to spot"],
+    ["Simplify the homepage", "Make the footer more useful", "Check that the layout works on small screens"],
+    ["Update the page titles and descriptions", "Make the contact details easy to find", "Improve contrast and readability"],
+    ["Bring the important content higher up", "Make the forms easier to complete", "Remove leftover placeholder text"],
+    ["Give the homepage a clearer first impression", "Make the images fit their sections better", "Add a clear next step to each page"],
+    ["Make the menu work better on mobile", "Tidy up inconsistent button styles", "Check for sections that feel crowded"],
+];
+
 
 export default function AppBuilderEditorAgentChat({ appId, files, currentFile, onFileEdit, onFilesReplace, onRestoreApplied, creditError, previewReady, previewIssue, previewIssueActionLabel, onPreviewIssueAction, onPreviewIssueFixRequest, onUserMessageSent, onIntroSequenceComplete, onRequestUpgradePaywall, topupModalTrigger, welcomeContext, agentMode = "v2" }: AppBuilderEditorAgentChatProps) {
     const [imageAttachments, setImageAttachments] = useState<AgentImageAttachment[]>([]);
     const [uploadingImage, setUploadingImage] = useState(false);
     const [attachmentError, setAttachmentError] = useState<string | null>(null);
+    const [isDraggingImageOverChat, setIsDraggingImageOverChat] = useState(false);
+    const chatDragDepthRef = useRef(0);
     const attachmentInputRef = useRef<HTMLInputElement>(null);
     const sendRequestRef = useRef<(options: any) => Promise<void>>(async () => {});
     const [showSuggestions, setShowSuggestions] = useState(false);
+    const [suggestionSetIndex, setSuggestionSetIndex] = useState(0);
     const suggestionsDismissed = useRef(false);
     const { user, userTier } = useAuth();
     const { showConfirm, showAlert } = useModal();
@@ -1462,70 +1477,74 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
             && applyRetryInfo.state === "retrying";
 
         if (isRetryingApply) {
-            const attemptLabel = applyRetryInfo.attempt !== null && applyRetryInfo.maxAttempts !== null
-                ? `${applyRetryInfo.attempt} of ${applyRetryInfo.maxAttempts}`
-                : applyRetryInfo.attempt !== null
-                    ? `${applyRetryInfo.attempt}`
-                    : "current";
-            const retryInLabel = applyRetryInfo.nextRetryAfterSeconds !== null
-                ? ` in ${applyRetryInfo.nextRetryAfterSeconds}s`
-                : " shortly";
-            const detail = applyRetryInfo.lastFailureMessage
-                ? `\nLast issue: ${applyRetryInfo.lastFailureMessage}`
-                : "";
-            return `Applying changes to preview failed temporarily. Retrying (attempt ${attemptLabel})${retryInLabel}.${detail}`;
+            return "The preview hasn’t updated yet. I’m trying again and will let you know when it’s ready.";
         }
 
         const narrative = (() => {
             if (isWorkspaceAutonomyV3) {
                 const stage = String((job as any)?.stage || "").toLowerCase();
+                const requestKey = String(job.jobId || job.requestId || job.statusUrl || "update");
+                const pickLine = (lines: string[]) => {
+                    const seed = `${requestKey}:${stage || status}`;
+                    const hash = Array.from(seed).reduce((value, character) => (Math.imul(value, 31) + character.charCodeAt(0)) >>> 0, 7);
+                    return lines[hash % lines.length];
+                };
                 if (status === "queued") {
-                    if (Number((job as any)?.queuedForSeconds || 0) >= 30) return "The worker is taking longer than usual to start. I’m continuing to monitor this request in the background.";
-                    return "Got it — your update is next. I’ll keep you posted.";
+                    if (Number((job as any)?.queuedForSeconds || 0) >= 30) {
+                        return pickLine([
+                            "I’m still here with your request. It’s taking a bit longer than usual to begin, and I’ll keep checking until I can show you what happened.",
+                            "Your update is taking a little longer to get underway. I’m keeping an eye on it and will share the result here.",
+                            "I haven’t forgotten your request. It’s taking a little longer to get started, so I’m staying with it.",
+                        ]);
+                    }
+                    return pickLine([
+                        "Thanks, I’m getting started on that now.",
+                        "All right, I’m taking a look at your site and finding the best way to make this change.",
+                        "Got your request. I’m looking through the page so the update fits with the rest of your site.",
+                        "On it. I’m getting things ready and will show you the result here.",
+                        "That sounds good. I’m finding the right place to make the change now.",
+                    ]);
                 }
-                if (stage === "workspace_loaded") return "I’ve opened your project. Let me find the right place for this change.";
-                if (stage === "agent_reasoning") return "I’m working out how this fits with the rest of your site.";
-                if (stage === "agent_tools") return "I’m checking the details and making the changes.";
-                if (stage === "agent_retry") return "I’m verifying the edit because the first reasoning pass did not produce a usable file change.";
-                if (stage === "recovered_mutation") return "I found a safe source-level recovery for the requested change and I’m validating it now.";
-                if (stage === "restarting") return "Your changes are saved. I’m bringing the preview back up.";
-                if (stage === "preview_recovery") return "The preview health channel was temporarily unavailable. I’m restarting it once and checking again.";
-                if (stage === "health_checks") return "I’m checking that your site still opens with the update.";
-                if (stage === "repairing") return "A health check found an issue. I’m reasoning through a bounded repair attempt.";
-                if (stage === "finalizing") return "Just finishing up. I’ve also saved a way to undo this.";
-                if (status === "completed") return "The workspace change is complete and the project checks have finished.";
+                if (stage === "checking_progress") return "I’m still working on your update. It’s taking a little longer to get a clear result, so I’m checking again.";
+                if (stage === "workspace_loaded") return "I’ve got your site open. I’m looking for the best place to make that change.";
+                if (stage === "agent_reasoning") return "I’m figuring out how your request fits with the rest of the page.";
+                if (stage === "agent_tools") return "I’ve found where to make the change. I’m working on it now.";
+                if (stage === "agent_retry") return "I’m checking the update and adjusting my approach so it matches what you asked for.";
+                if (stage === "recovered_mutation") return "I found another way to make that change, and I’m checking that it looks right.";
+                if (stage === "restarting") return "Your changes are saved. I’m refreshing the preview so you can see them.";
+                if (stage === "preview_recovery") return "The preview needs a moment to come back. I’m getting it ready and checking the page again.";
+                if (stage === "health_checks") return "I’m making sure the updated site still opens and looks right.";
+                if (stage === "repairing") return "I spotted something that needs attention. I’m fixing it before I call this done.";
+                if (stage === "finalizing") return "The update is nearly ready. I’ve also saved a way to undo it if you prefer the previous version.";
+                if (status === "completed") return "Your update is finished, and I’ve checked that your site still opens.";
                 if (status === "failed") {
-                    const error = (job as any)?.error;
-                    const detail = typeof error === "string"
-                        ? error.trim()
-                        : typeof error?.message === "string"
-                            ? error.message.trim()
-                            : "";
-                    return detail
-                        ? `The workspace agent could not complete this change.\n\n${detail}`
-                        : "The workspace agent could not complete this change.";
+                    return "I couldn’t finish this update. Please check your preview before trying again.";
                 }
-                if (status === "expired") return "The workspace agent expired before it could finish.";
-                return "I’m working through the project and validating the change.";
+                if (status === "expired") return "I couldn’t get started this time. Please send your request again.";
+                return pickLine([
+                    "I’m working through your request and making sure the change feels right.",
+                    "I’m putting the finishing touches on your update and checking the result.",
+                    "I’m still with you. I’m making the change and will show you how it turned out.",
+                ]);
             }
 
             switch (status) {
                 case "queued":
-                    return "I’ve queued this edit plan. I’m waiting for a worker to pick it up.";
+                    return "I’ve received your request and am getting started.";
                 case "picked_up":
-                    return "The worker picked up the edit plan. I’m waiting for it to start applying.";
+                    return "I’m starting your update now.";
                 case "working":
-                    return "I’m applying the edit plan in the background now.";
+                    return "I’m making your update now.";
                 case "processing":
-                    return "I’m applying the edit plan in the background now.";
+                    return "I’m making your update now.";
                 case "completed":
-                    return "The edit plan finished.";
+                    return "Your update is finished.";
                 case "failed":
-                    return "The edit plan failed.";
+                    return "I couldn’t finish this update. Please check your preview before trying again.";
                 case "expired":
-                    return "The edit plan expired before a worker could finish it.";
+                    return "I couldn’t get started this time. Please send your request again.";
                 default:
-                    return "I’m tracking the edit plan in the background.";
+                    return "I’m working on your update.";
             }
         })();
 
@@ -4301,7 +4320,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
             "preview restart failed or timed out. you can retry apply, or refresh/rebuild the preview.",
             "I created you a restore point above, so you can undo this change if needed.",
         ];
-        return messages
+        const visibleMessages = messages
             .map((message, index) => ({ message, index }))
             .filter(({ message }) => !suppressedTexts.includes(String(message.content || "").trim().toLowerCase()))
             .sort((a, b) => {
@@ -4311,6 +4330,18 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                 return a.index - b.index;
             })
             .map((entry) => entry.message);
+
+        let assistantHasReplied = false;
+        return [...visibleMessages]
+            .reverse()
+            .map((message) => {
+                if (message.role === "assistant") {
+                    assistantHasReplied = true;
+                    return message;
+                }
+                return { ...message, acknowledged: assistantHasReplied };
+            })
+            .reverse();
     }, [messages]);
 
     const activeEditPlanProposal = activeEditPlanJob?.result?.proposal
@@ -4576,6 +4607,28 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
             // save can otherwise lose the Reapply state during a rerender or
             // before the user navigates away from the editor.
             void saveChatNow(next);
+            return next;
+        });
+    }, [saveChatNow]);
+
+    const updateWorkspaceRestoreProgress = useCallback((sourceMessageId: string, phase: "progress" | "success" | "failure", content: string, operationId: string) => {
+        const progressId = `workspace_restore_${sourceMessageId}_${operationId}`;
+        setMessages((prev) => {
+            const existing = prev.some((item) => item.id === progressId);
+            const next = existing
+                ? prev.map((item) => item.id === progressId
+                    ? { ...item, content, workspaceProgress: phase === "progress" }
+                    : item)
+                : [...prev, {
+                    id: progressId,
+                    role: "assistant" as const,
+                    content,
+                    timestamp: new Date(),
+                    type: "text" as const,
+                    workspaceProgress: phase === "progress",
+                }];
+            // Keep the final result in the conversation if the user leaves the editor.
+            if (phase !== "progress") void saveChatNow(next);
             return next;
         });
     }, [saveChatNow]);
@@ -5578,23 +5631,48 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
     }, []);
 
     const refreshV3Preview = useCallback(async (revision: string) => {
-        try {
-            const response = await fetch(`/api/app-builder/${encodeURIComponent(appId)}/files`, { credentials: "include", cache: "no-store" });
-            const json = await response.json().catch(() => null);
-            if (response.ok && json?.files) onFilesReplace?.(json.files);
-        } finally {
-            requestWorkspacePreviewRefresh(appId, revision);
-        }
+        // Ask the preview to reload as soon as the backend confirms the update.
+        // Fetching the editor's full file list can be slow for larger projects,
+        // so keep that sync from delaying the visible preview refresh.
+        requestWorkspacePreviewRefresh(appId, revision);
+        const response = await fetch(`/api/app-builder/${encodeURIComponent(appId)}/files`, {
+            credentials: "include",
+            cache: "no-store",
+        }).catch(() => null);
+        if (!response?.ok) return;
+        const json = await response.json().catch(() => null);
+        if (json?.files) onFilesReplace?.(json.files);
     }, [appId, onFilesReplace]);
 
     const restoreV3Change = useCallback(async (pointId: string): Promise<string> => {
-        const response = await revertWorkspaceAutonomyAgentV3(appId, pointId, await withCsrfHeaders());
-        const result = response.data;
-        if (!response.ok || result?.ok !== true || typeof result.inverseRestorePointId !== "string") {
-            throw Object.assign(new Error(String(result?.error || response.error || "I couldn't verify the restored preview. Please retry.")), { code: result?.code, requestId: result?.requestId });
+        let lastError: unknown = null;
+        for (let attempt = 0; attempt < 8; attempt += 1) {
+            const response = await revertWorkspaceAutonomyAgentV3(appId, pointId, await withCsrfHeaders());
+            const result = response.data;
+            if (response.ok && result?.ok === true && typeof result.inverseRestorePointId === "string") {
+                // The backend has already verified the restored preview. Start
+                // the iframe and file-list refresh immediately without making
+                // the chat wait for the larger file-list request to finish.
+                void refreshV3Preview(`restore:${pointId}`).catch(() => {});
+                return result.inverseRestorePointId;
+            }
+            lastError = Object.assign(new Error(String(result?.error || response.error || "Undo could not be confirmed.")), {
+                code: result?.code || response.code,
+                requestId: result?.requestId || response.requestId,
+                status: response.status,
+            });
+
+            // Restore requests are idempotent: the server replays a completed
+            // restore point, and an incomplete restore can safely be applied
+            // again. Retry timeouts, server errors, and an in-flight lease.
+            const retryable = response.status === 0 || response.status >= 500 || response.status === 504
+                || (result?.code || response.code) === "RESTORE_IN_PROGRESS"
+                || (result?.code || response.code) === "RESTORE_PREVIEW_FAILED";
+            const retryLimit = (result?.code || response.code) === "RESTORE_PREVIEW_FAILED" ? 3 : 8;
+            if (!retryable || attempt + 1 >= retryLimit) break;
+            await new Promise((resolve) => window.setTimeout(resolve, Math.min(10_000, 1800 * (attempt + 1))));
         }
-        await refreshV3Preview(`restore:${pointId}`).catch(() => {});
-        return result.inverseRestorePointId;
+        throw lastError instanceof Error ? lastError : new Error("Undo could not be confirmed.");
     }, [appId, refreshV3Preview, withCsrfHeaders]);
 
     const runWorkspaceAutonomyAgentV3 = useCallback(async (params: { query: string; currentPath: string | null; responseLanguage?: AgentLanguage; repairContext?: WorkspaceAutonomyRepairContext | null; conversationHistory?: Array<{ role: "user" | "assistant"; content: string }>; attachments?: AgentImageAttachment[]; paletteChangeId?: string }) => {
@@ -5650,15 +5728,27 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
 
         setV3Job(queued.data);
         const startedAt = Date.now();
+        let statusReadFailures = 0;
         // A restart can take up to 60s and the bounded project health command
-        // can take up to 120s. Keep the execution window above that sum, but
-        // fail fast while still queued so a missing worker never leaves the
-        // user staring at an indefinite "Working on it" loader.
+        // can take up to 120s. Keep the execution window above that sum. A
+        // temporary failure to read progress must not be treated as a failed edit.
         const pollUntilTerminal = async () => {
             while (Date.now() - startedAt < 900_000) {
                 if (!isCurrentRun()) return;
                 const snapshot = await fetchEmbeddingEditPlanJobStatus(statusUrl, {});
-                if (!snapshot.ok || !snapshot.data) throw new Error(snapshot.error || "Workspace Autonomy V3 status lookup failed.");
+                if (!snapshot.ok || !snapshot.data) {
+                    statusReadFailures += 1;
+                    const currentJob = v3ActiveJobRef.current;
+                    if (currentJob && String(currentJob.stage || "").toLowerCase() !== "checking_progress") {
+                        setV3Job({ ...currentJob, stage: "checking_progress" });
+                    }
+                    // A missed progress check does not mean the edit failed.
+                    // Keep the pending state and retry with a short backoff.
+                    const retryDelayMs = Math.min(15_000, 3_000 * (2 ** Math.min(statusReadFailures - 1, 2)));
+                    await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+                    continue;
+                }
+                statusReadFailures = 0;
 
                 const job = setV3Job(snapshot.data);
                 if (!job) return;
@@ -5670,7 +5760,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                     if (status === "expired") {
                         commitV3TerminalMessage({
                             id: `v3_expired_${job.jobId || Date.now()}`,
-                            content: "The workspace agent did not start before the queue window expired, so no project files were changed. Please retry this request.",
+                            content: "I couldn’t get started this time, so no changes were made. Please send your request again.",
                             editPlanRetryPrompt: lastEditPlanPromptRef.current?.trim() || "Retry change",
                         });
                         return;
@@ -5726,21 +5816,24 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                         });
                         return;
                     }
-                    const suffix = failedFiles.length > 0
-                        ? ` ${failedFiles.length} file${failedFiles.length === 1 ? "" : "s"} were saved and can be reverted${failedResult?.restorePointId ? ` with restore point ${failedResult.restorePointId}` : ""}.`
-                        : "";
-                    throw new Error(`${(job as any)?.error?.message || (job as any)?.error || `Workspace Autonomy V3 ${status}.`}${failedDetail ? ` Detail: ${failedDetail}.` : ""}${suffix}`);
+                    const rawError = String((job as any)?.error?.message || (job as any)?.error || failedDetail || "").trim();
+                    commitV3TerminalMessage({
+                        id: `v3_failed_${job.jobId || Date.now()}`,
+                        content: failedFiles.length > 0
+                            ? "Some changes were saved, but I couldn’t confirm they work yet. Check the preview; you can undo the saved changes below."
+                            : "I couldn’t finish this update, and no changes were saved. Please try again.",
+                        workspaceRestore: failedResult?.restorePointId ? { pointId: failedResult.restorePointId } : undefined,
+                        debugDetails: rawError || undefined,
+                    });
+                    return;
                 }
                 const rawResult = rawJob?.result || rawJob?.job?.result || null;
                 if (!rawResult || !Array.isArray(rawResult.changedFiles)) {
                     const reportCode = String(job.reportCode || rawJob?.reportCode || "").trim();
                     commitV3TerminalMessage({
                         id: `v3_incomplete_${job.jobId || Date.now()}`,
-                        content: [
-                            "Change not confirmed.",
-                            "The server reached a terminal state but returned no verifiable V3 result, so this request is marked failed. Do not assume the project changed. Please retry.",
-                            reportCode ? `Report: ${reportCode}` : "",
-                        ].filter(Boolean).join("\n\n"),
+                        content: "I couldn’t confirm whether your update finished. Check the preview before sending the request again. If it hasn’t changed, refresh the editor and try once more.",
+                        debugDetails: reportCode ? `Result report: ${reportCode}` : undefined,
                     });
                     return;
                 }
@@ -5753,7 +5846,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                     : summary;
                 if (hasChanges) await refreshV3Preview(`job:${job.jobId || requestId}`).catch(() => {});
                 const completionText = hasChanges
-                    ? `${friendlySummary}\n\nI’m refreshing your preview so you can review it. You can undo this change below.`
+                    ? `${friendlySummary}\n\nYou can undo this change below.`
                     : summary || "Your project already has that change, so there was nothing new to save.";
 
                 commitV3TerminalMessage({
@@ -5768,7 +5861,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                 await new Promise((resolve) => setTimeout(resolve, getWorkspaceAutonomyV3PollDelayMs(Date.now() - startedAt)));
             }
 
-            throw new Error("Workspace Autonomy V3 exceeded its bounded execution window while waiting for a terminal result.");
+            throw new Error("I couldn’t confirm whether your update finished. Check the preview before sending the request again. If it hasn’t changed, refresh the editor and try once more.");
         };
 
         let detachedFromChat = false;
@@ -5780,7 +5873,8 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
             setActiveEditPlanJob(null);
             commitV3TerminalMessage({
                 id: `v3_background_failed_${requestId}`,
-                content: `The workspace agent could not complete this change.\n\n${message}`,
+                content: "I couldn’t confirm whether your update finished. Check the preview before sending the request again. If it hasn’t changed, refresh the editor and try once more.",
+                debugDetails: message,
             });
         });
 
@@ -5796,7 +5890,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
             detachedFromChat = true;
             commitV3TerminalMessage({
                 id: `v3_background_${requestId}`,
-                content: "This is taking longer than expected. The workspace agent is still working in the background, so I have not marked the change successful. I’ll keep monitoring the project and show the final result here.",
+                content: "This is taking longer than expected. I’m still working on your update and will show the result here. Please keep this editor open.",
             });
         }
     }, [appId, bootstrapAppScope, commitV3TerminalMessage, dispatchAiAgentEvent, refreshV3Preview, user?.uid, withCsrfHeaders]);
@@ -6108,6 +6202,11 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
             } catch (error: any) {
                 const errorMessage = String(error?.message || error || "Workspace Autonomy V3 failed.");
                 const activeV3Job = v3ActiveJobRef.current;
+                const friendlyError = errorMessage.startsWith("I couldn't reconnect this project session")
+                    ? errorMessage
+                    : activeV3Job?.statusUrl
+                        ? "I couldn’t confirm whether your update finished. Check the preview before sending the request again. If it hasn’t changed, refresh the editor and try once more."
+                        : "I couldn’t start that update. Please check your connection and try again.";
                 if (activeV3Job?.statusUrl) {
                     // The polling status bubble is already the user-facing
                     // progress surface. Replace it once with the terminal
@@ -6117,12 +6216,14 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                     setActiveEditPlanJob(null);
                     commitV3TerminalMessage({
                         id: `v3_failed_${activeV3Job.jobId || Date.now()}`,
-                        content: errorMessage,
+                        content: friendlyError,
+                        debugDetails: errorMessage,
                     });
                 } else {
                     commitV3TerminalMessage({
                         id: `v3_failed_${Date.now()}`,
-                        content: errorMessage,
+                        content: friendlyError,
+                        debugDetails: errorMessage,
                     });
                 }
             } finally {
@@ -7286,6 +7387,14 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
     }, [messages.length, input, isLoading, chatDisabled]);
 
     useEffect(() => {
+        if (!showSuggestions) return;
+        const timer = window.setInterval(() => {
+            setSuggestionSetIndex(index => (index + 1) % NEXT_EDIT_SUGGESTION_SETS.length);
+        }, 8000);
+        return () => window.clearInterval(timer);
+    }, [showSuggestions]);
+
+    useEffect(() => {
         if (typeof window === "undefined") return;
 
         const onCompileFix = (event: Event) => {
@@ -7367,17 +7476,10 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                     <Bot className="w-5 h-6 text-accent" />
                     <h3
                         className="font-medium text-sm"
-                        title={agentMode === "v3" ? "Workspace Autonomy V3 is active for this editor" : undefined}
                     >
                         Agent
                     </h3>
-                    <span
-                        className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-blue-200 bg-blue-50 text-blue-600"
-                        title={projectFramework.reason}
-                        aria-label={projectFramework.label}
-                    >
-                        <Info className="h-3 w-3" />
-                    </span>
+
                     {creditError ? (
                         <div className="ml-2 text-[11px] text-red-600 max-w-[220px] truncate" title={creditError}>
                             {creditError}
@@ -7549,7 +7651,48 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
             ) : null}
 
             {/* Messages */}
-            <div data-app-builder-chat-scroll="true" className="app-builder-chat-scroll flex-1 min-h-0 overflow-y-auto px-4 py-5 pb-4 space-y-4 bg-[radial-gradient(circle_at_top,_rgba(255,141,33,0.10),_transparent_36%),linear-gradient(180deg,rgba(255,250,247,0.96),rgba(255,255,255,1))]">
+            <div
+                data-app-builder-chat-scroll="true"
+                onDragEnter={(event) => {
+                    if (agentMode !== "v3" || !Array.from(event.dataTransfer.types).includes("Files")) return;
+                    event.preventDefault();
+                    chatDragDepthRef.current += 1;
+                    setIsDraggingImageOverChat(true);
+                }}
+                onDragOver={(event) => {
+                    if (agentMode !== "v3" || !Array.from(event.dataTransfer.types).includes("Files")) return;
+                    event.preventDefault();
+                    event.dataTransfer.dropEffect = "copy";
+                }}
+                onDragLeave={(event) => {
+                    if (agentMode !== "v3") return;
+                    chatDragDepthRef.current = Math.max(0, chatDragDepthRef.current - 1);
+                    if (chatDragDepthRef.current === 0 && !event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                        setIsDraggingImageOverChat(false);
+                    }
+                }}
+                onDrop={(event) => {
+                    if (agentMode !== "v3") return;
+                    const droppedFiles = Array.from(event.dataTransfer.files || []);
+                    if (!droppedFiles.length) return;
+                    event.preventDefault();
+                    event.stopPropagation();
+                    chatDragDepthRef.current = 0;
+                    setIsDraggingImageOverChat(false);
+                    const images = droppedFiles.filter((file) => file.type.startsWith("image/"));
+                    if (!images.length) {
+                        setAttachmentError("Please drop an image to attach it to the chat.");
+                        return;
+                    }
+                    void uploadChatImages(images);
+                }}
+                className={`app-builder-chat-scroll relative flex-1 min-h-0 overflow-y-auto px-4 py-5 pb-4 space-y-4 bg-[radial-gradient(circle_at_top,_rgba(255,141,33,0.10),_transparent_36%),linear-gradient(180deg,rgba(255,250,247,0.96),rgba(255,255,255,1))] ${isDraggingImageOverChat ? "ring-2 ring-inset ring-[#FF8D21]" : ""}`}
+            >
+                {isDraggingImageOverChat ? (
+                    <div className="sticky top-0 z-30 mx-auto w-fit rounded-full border border-[#FF8D21]/40 bg-white px-4 py-2 text-sm font-semibold text-neutral-800 shadow-lg" role="status">
+                        Drop image to attach it
+                    </div>
+                ) : null}
                 {showInitialChatLoader ? (
                     <div className="flex min-h-[220px] items-center justify-center px-4 py-10">
                         <div className="w-full max-w-sm rounded-3xl border border-[#FF8D21]/15 bg-white/90 px-5 py-5 text-left shadow-[0_16px_40px_rgba(15,23,42,0.08)] backdrop-blur-sm">
@@ -7615,6 +7758,15 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                 : "app-builder-chat-bubble border border-[#FF8D21]/14 bg-[linear-gradient(180deg,rgba(255,251,248,0.98),rgba(255,255,255,0.95))] text-neutral-900"
                                 }`}
                         >
+                            {message.role === "user" && message.acknowledged ? (
+                                <span
+                                    className="absolute -bottom-2 -right-2 z-10 inline-flex h-7 min-w-7 items-center justify-center rounded-full bg-[#252525] px-1 text-[15px] leading-none shadow-[0_2px_8px_rgba(0,0,0,0.28)]"
+                                    title="AI replied"
+                                    aria-label="AI replied to this message"
+                                >
+                                    👍
+                                </span>
+                            ) : null}
                             {message.attachments?.length ? <div className="mb-3 flex flex-wrap gap-2">{message.attachments.map(image => <a key={image.id} href={`/api/app-builder/${appId}/chat-attachments?id=${image.id}`} target="_blank" rel="noopener noreferrer"><img src={`/api/app-builder/${appId}/chat-attachments?id=${image.id}`} alt={image.name} className="max-h-40 max-w-[220px] rounded-xl object-contain" /></a>)}</div> : null}
                             {message.editPlanFailure ? (
                                 <div className="space-y-2">
@@ -7650,6 +7802,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                 disabled={isLoading || Boolean(activeEditPlanJob && !isEditPlanJobTerminalStatus(String(activeEditPlanJob.status)))}
                                 restore={restoreV3Change}
                                 onChange={(state) => updateWorkspaceRestoreState(message.id, state)}
+                                onProgress={(phase, content, operationId) => updateWorkspaceRestoreProgress(message.id, phase, content, operationId)}
                             /> : null}
                             {message.role === "assistant" && message.workspaceRepairPrompt ? (
                                 <div className="app-builder-workspace-repair mt-3 rounded-2xl border border-amber-200 bg-amber-50/80 p-3">
@@ -8263,6 +8416,25 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                     </div>
                     );
                 })}
+                {showSuggestions ? (
+                    <div className="hidden justify-start md:flex">
+                        <div data-chat-role="assistant" className="app-builder-chat-bubble relative max-w-[82%] rounded-[1.35rem] border border-[#FF8D21]/14 bg-[linear-gradient(180deg,rgba(255,251,248,0.98),rgba(255,255,255,0.95))] px-4 py-3 text-neutral-900 shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
+                            <div className="mb-2 flex items-center justify-between gap-4 text-sm font-medium" style={{ color: "var(--text-primary)" }}>
+                                <span>A few ideas for your next edit</span>
+                                <button type="button" aria-label="Dismiss suggestions" onClick={() => { suggestionsDismissed.current = true; setShowSuggestions(false); }} className="rounded p-1 text-neutral-500 transition hover:bg-black/5 hover:text-neutral-900">
+                                    <X className="h-3.5 w-3.5" />
+                                </button>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                                {NEXT_EDIT_SUGGESTION_SETS[suggestionSetIndex].map((suggestion) => (
+                                    <button key={suggestion} type="button" onClick={() => { setInput(suggestion); setShowSuggestions(false); inputRef.current?.focus(); }} className="rounded-full border px-2.5 py-1.5 text-xs transition hover:border-[#FF8D21]" style={{ borderColor: "var(--border-subtle)", color: "var(--text-primary)" }}>
+                                        {suggestion}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                ) : null}
                 {agentMode === "v3" && (isLoading || Boolean(activeEditPlanJob && !isEditPlanJobTerminalStatus(String(activeEditPlanJob.status)))) && <WorkspaceAgentLoader />}
                 {agentMode !== "v3" && isLoading && !activeEditPlanJob && (
                     <div className="flex justify-start">
@@ -8876,7 +9048,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                     </div>
                     <button
                         type="button"
-                        className="px-3 py-1 text-xs font-semibold bg-accent text-white rounded-full hover:bg-accent-dark disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-1.5"
+                        className="px-2 text-xs font-semibold bg-accent text-white rounded-full hover:bg-accent-dark disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-1.5"
                         onClick={() => {
                             if (topupBusy) return;
                             setTopupModalOpen(true);
@@ -9339,11 +9511,24 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                     </div>
                 ) : null}
 
-                {showSuggestions ? <div className="mb-3 rounded-xl border p-3" style={{borderColor:"var(--border-subtle)"}}><div className="mb-2 flex justify-between text-xs" style={{color:"var(--text-secondary)"}}><span>A few ideas for your next edit</span><button aria-label="Dismiss suggestions" onClick={() => { suggestionsDismissed.current = true; setShowSuggestions(false); }}><X className="h-3 w-3" /></button></div><div className="flex flex-wrap gap-2">{["Polish the mobile layout", "Make the main call to action clearer", "Check for broken links"].map(suggestion => <button key={suggestion} onClick={() => { setInput(suggestion); setShowSuggestions(false); inputRef.current?.focus(); }} className="rounded-full border px-2.5 py-1.5 text-xs hover:border-[#FF8D21]" style={{borderColor:"var(--border-subtle)",color:"var(--text-primary)"}}>{suggestion}</button>)}</div></div> : null}
                 {attachmentError ? <p role="alert" className="mb-2 text-sm text-red-600">{attachmentError}</p> : null}
                 {imageAttachments.length ? <div className="mb-2 flex gap-2">{imageAttachments.map(image => <div key={image.id} className="relative"><img alt={image.name} src={`/api/app-builder/${appId}/chat-attachments?id=${image.id}`} className="h-16 w-20 rounded-xl border object-cover" /><button type="button" aria-label={`Remove ${image.name}`} className="absolute -right-1 -top-1 rounded-full bg-neutral-800 p-1 text-white" onClick={() => setImageAttachments(current => current.filter(item => item.id !== image.id))}><X className="h-3 w-3" /></button></div>)}</div> : null}
-                <div onDragOver={event => { if (agentMode === "v3") event.preventDefault(); }} onDrop={event => { if (agentMode !== "v3") return; event.preventDefault(); void uploadChatImages(Array.from(event.dataTransfer.files)); }} onPaste={event => { const images = Array.from(event.clipboardData.files).filter(file => file.type.startsWith("image/")); if (agentMode === "v3" && images.length) { event.preventDefault(); void uploadChatImages(images); } }} className="flex items-stretch overflow-hidden rounded-[1.35rem] border border-[#FF8D21]/18 bg-white shadow-[0_12px_30px_rgba(15,23,42,0.08)]">
-                    {agentMode === "v3" ? <><input ref={attachmentInputRef} type="file" multiple accept="image/png,image/jpeg,image/webp,image/avif" className="hidden" onChange={event => { void uploadChatImages(Array.from(event.target.files || [])); event.target.value = ""; }} /><button type="button" title="Attach an image, or drop one here" aria-label="Attach an image" disabled={uploadingImage || isLoading || chatDisabled || imageAttachments.length >= 3} onClick={() => attachmentInputRef.current?.click()} className="self-end px-2 pb-4 text-neutral-500 hover:text-[#FF8D21] disabled:opacity-40"><Paperclip className={`h-5 w-5 ${uploadingImage ? "animate-pulse" : ""}`} /></button></> : null}
+                <div
+                    onDragOver={(event) => { if (agentMode === "v3" && Array.from(event.dataTransfer.types).includes("Files")) event.preventDefault(); }}
+                    onDrop={(event) => {
+                        if (agentMode !== "v3") return;
+                        const droppedFiles = Array.from(event.dataTransfer.files || []);
+                        if (!droppedFiles.length) return;
+                        event.preventDefault();
+                        event.stopPropagation();
+                        const images = droppedFiles.filter((file) => file.type.startsWith("image/"));
+                        if (!images.length) setAttachmentError("Please drop an image to attach it to the chat.");
+                        else void uploadChatImages(images);
+                    }}
+                    onPaste={event => { const images = Array.from(event.clipboardData.files).filter(file => file.type.startsWith("image/")); if (agentMode === "v3" && images.length) { event.preventDefault(); void uploadChatImages(images); } }}
+                    className="relative flex items-stretch overflow-hidden rounded-[1.35rem] border border-[#FF8D21]/18 bg-white shadow-[0_12px_30px_rgba(15,23,42,0.08)]"
+                >
+                    {agentMode === "v3" ? <><input ref={attachmentInputRef} type="file" multiple accept="image/png,image/jpeg,image/webp,image/avif" className="hidden" onChange={event => { void uploadChatImages(Array.from(event.target.files || [])); event.target.value = ""; }} /><button type="button" title="Attach an image, or drop one here" aria-label="Attach an image" disabled={uploadingImage || isLoading || chatDisabled || imageAttachments.length >= 3} onClick={() => attachmentInputRef.current?.click()} className="absolute bottom-2.5 left-2.5 z-10 p-1 text-neutral-500 hover:text-[#FF8D21] disabled:opacity-40"><Paperclip className={`h-5 w-5 ${uploadingImage ? "animate-pulse" : ""}`} /></button></> : null}
                     <div className="relative min-w-0 flex-1">
                     <textarea
                         ref={inputRef}
