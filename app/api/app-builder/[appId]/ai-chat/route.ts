@@ -3,11 +3,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAdminDb } from "../../../_lib/auth";
 import { requireSessionAndMaybeCsrf } from "../../../_lib/route-guard";
 import { assertAppBuilderScope } from "../../../_lib/appBuilderScope";
+import { normalizeAgentImages, type AgentImageAttachment } from "@/src/lib/agentAttachments";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 type StoredMessage = {
+    attachments?: AgentImageAttachment[];
     id: string;
     role: "user" | "assistant";
     content: string;
@@ -41,6 +43,7 @@ function normalizeMessages(input: unknown): StoredMessage[] {
             content,
             type,
             timestampMs,
+            attachments: normalizeAgentImages(m.attachments),
             restorePointId: typeof m.restorePointId === "string" ? m.restorePointId : null,
             restoreActionLabel: typeof m.restoreActionLabel === "string" ? m.restoreActionLabel : null,
             workspaceRestore: m.workspaceRestore && typeof m.workspaceRestore.pointId === "string" && m.workspaceRestore.pointId.length <= 200

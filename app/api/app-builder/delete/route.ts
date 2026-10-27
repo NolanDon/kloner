@@ -141,6 +141,7 @@ export async function POST(req: NextRequest) {
             }
 
             await Promise.allSettled(storagePaths.map((path) => deleteStoragePath(path)));
+            await getBucket().deleteFiles({ prefix: `agent-inputs/${uid}/${appId}/` }).catch(() => undefined);
             await deleteUserBlobAssetsForApp(uid, appId);
 
             // Cleanup: older bugs wrote app docs into a top-level collection.

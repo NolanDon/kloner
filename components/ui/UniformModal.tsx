@@ -69,7 +69,7 @@ export default function UniformModal({
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="uniform-modal-backdrop fixed inset-0 z-[2147483647] flex items-center justify-center bg-black/40 p-4"
+          className="uniform-modal-backdrop fixed inset-0 z-[2147483647] pointer-events-auto flex items-center justify-center bg-black/40 p-4"
           role="dialog"
           aria-modal="true"
           aria-labelledby={titleId}

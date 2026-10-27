@@ -283,29 +283,35 @@ function extractLastModified(record: unknown): number {
     return toTimestamp(record.lastModified || record.updatedAt || record.createdAt);
 }
 
-async function normalizeInlineFiles(files: AppBuilderFiles | Record<string, unknown> | undefined | null): Promise<AppBuilderFiles> {
-    const out: AppBuilderFiles = {};
-    for (const [path, value] of Object.entries((files || {}) as Record<string, unknown>)) {
-        if (typeof value === "string") {
-            out[path] = { content: value, lastModified: Date.now() };
-            continue;
-        }
+// Bound independent storage reads and reuse them only within this hydration.
+// A process-wide cache could return stale source after an edit or restore.
+async function mapStorageReads<T, R>(values: T[], read: (value: T) => Promise<R>): Promise<R[]> {
+    const results = new Array<R>(values.length);
+    let cursor = 0;
+    await Promise.all(Array.from({ length: Math.min(8, values.length) }, async () => {
+        while (cursor < values.length) { const index = cursor++; results[index] = await read(values[index]); }
+    }));
+    return results;
+}
+type StorageReads = Map<string, Promise<string | null>>;
+function readStorageOnce(path: string, encoding: string, reads: StorageReads): Promise<string | null> {
+    const key = `${encoding}:${path}`;
+    if (!reads.has(key)) reads.set(key, readStorageText(path, encoding));
+    return reads.get(key)!;
+}
 
-        if (!isPlainObject(value)) continue;
+async function normalizeInlineFiles(files: AppBuilderFiles | Record<string, unknown> | undefined | null, reads: StorageReads = new Map()): Promise<AppBuilderFiles> {
+    const out: AppBuilderFiles = {};
+    const entries = await mapStorageReads(Object.entries((files || {}) as Record<string, unknown>), async ([path, value]) => {
+        if (typeof value === "string") return [path, { content: value, lastModified: Date.now() }] as const;
+        if (!isPlainObject(value)) return null;
         const record = value as Record<string, unknown>;
         const encoding = getEntryEncoding(record);
         const storagePath = getEntryStoragePath(record);
-        let content = extractRecordText(record, encoding);
-        if (!content && storagePath) {
-            content = (await readStorageText(storagePath, encoding)) || "";
-        }
-        const lastModified = extractLastModified(record);
-
-        out[path] = {
-            content,
-            lastModified,
-        };
-    }
+        const content = extractRecordText(record, encoding) || (storagePath ? await readStorageOnce(storagePath, encoding, reads) : "") || "";
+        return [path, { content, lastModified: extractLastModified(record) }] as const;
+    });
+    for (const entry of entries) if (entry) out[entry[0]] = entry[1];
 
     return out;
 }
@@ -372,7 +378,9 @@ function getResolvedRecordContent(record: unknown, fallbackEncoding = "utf8"): s
 async function hydrateManifestEntry(params: {
     entry: AppBuilderManifestEntry;
     shardRecord?: unknown;
+    reads?: StorageReads;
 }): Promise<AppBuilderFileRecord> {
+    const reads = params.reads || new Map();
     const entry = params.entry || {};
     const shardRecord = params.shardRecord || null;
     const encoding = getEntryEncoding(entry);
@@ -391,7 +399,7 @@ async function hydrateManifestEntry(params: {
     }
 
     if (!content && storagePath) {
-        const storageText = await readStorageText(storagePath, encoding);
+        const storageText = await readStorageOnce(storagePath, encoding, reads);
         if (storageText) {
             content = storageText;
         }
@@ -400,7 +408,7 @@ async function hydrateManifestEntry(params: {
     if (!content && shardRecord) {
         const shardStoragePath = getEntryStoragePath(shardRecord);
         if (shardStoragePath && shardStoragePath !== storagePath) {
-            const storageText = await readStorageText(shardStoragePath, encoding);
+            const storageText = await readStorageOnce(shardStoragePath, encoding, reads);
             if (storageText) content = storageText;
         }
     }
@@ -540,7 +548,8 @@ export async function hydrateAppBuilderFiles(params: {
     htmlStoragePath?: string | null;
     htmlEditIndex?: unknown;
 }): Promise<AppBuilderFiles> {
-    const inlineFiles = await normalizeInlineFiles(params.files);
+    const reads: StorageReads = new Map();
+    const inlineFiles = await normalizeInlineFiles(params.files, reads);
     const nextFiles: AppBuilderFiles = { ...inlineFiles };
 
     const manifestEntries: AppBuilderManifestEntry[] = [];
@@ -563,33 +572,15 @@ export async function hydrateAppBuilderFiles(params: {
             })
             : new Map<string, any>();
 
-    for (const entry of manifestEntries) {
+    const hydratedEntries = await mapStorageReads(manifestEntries, async (entry) => {
         const path = getEntryPath(entry).replace(/^\/+/, "");
-        if (!path) continue;
-
-        const shardRecord = shardIndex.get(path) || null;
-        const hydrated = await hydrateManifestEntry({ entry, shardRecord });
+        if (!path) return null;
         const current = nextFiles[path];
-        const existingContent = String(current?.content || "").trim();
-
-        if (entry.inline === true && existingContent) {
-            nextFiles[path] = {
-                content: current!.content,
-                lastModified: current?.lastModified || hydrated.lastModified,
-            };
-            continue;
-        }
-
-        nextFiles[path] = hydrated.content || existingContent
-            ? {
-                content: hydrated.content || current?.content || "",
-                lastModified: hydrated.lastModified || current?.lastModified || Date.now(),
-            }
-            : {
-                content: "",
-                lastModified: hydrated.lastModified || current?.lastModified || Date.now(),
-            };
-    }
+        if (entry.inline === true && String(current?.content || "").trim()) return [path, current!] as const;
+        const hydrated = await hydrateManifestEntry({ entry, shardRecord: shardIndex.get(path) || null, reads });
+        return [path, { content: hydrated.content || current?.content || "", lastModified: hydrated.lastModified || current?.lastModified || Date.now() }] as const;
+    });
+    for (const item of hydratedEntries) if (item) nextFiles[item[0]] = item[1];
 
     // Preserve any extra inline files that are not described in the manifest.
     for (const [path, record] of Object.entries(inlineFiles)) {
@@ -620,7 +611,8 @@ export async function hydrateAppBuilderFilesByPaths(params: {
     htmlEditIndex?: unknown;
     paths?: string[];
 }): Promise<AppBuilderFiles> {
-    const inlineFiles = await normalizeInlineFiles(params.files);
+    const reads: StorageReads = new Map();
+    const inlineFiles = await normalizeInlineFiles(params.files, reads);
     const requestedPaths = Array.from(
         new Set(
             (params.paths || [])
@@ -662,7 +654,7 @@ export async function hydrateAppBuilderFilesByPaths(params: {
         const entry = manifestByPath.get(path);
         const shardRecord = shardIndex.get(path) || null;
         if (entry || shardRecord) {
-            nextFiles[path] = await hydrateManifestEntry({ entry: entry || ({ path } as AppBuilderManifestEntry), shardRecord });
+            nextFiles[path] = await hydrateManifestEntry({ entry: entry || ({ path } as AppBuilderManifestEntry), shardRecord, reads });
             continue;
         }
 

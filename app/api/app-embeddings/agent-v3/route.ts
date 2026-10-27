@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireSessionAndMaybeCsrf } from "../../_lib/route-guard";
 import { assertAppBuilderScope } from "../../_lib/appBuilderScope";
 import { callBackend } from "@/src/lib/callBackend";
+import { normalizeAgentImages } from "@/src/lib/agentAttachments";
+import { normalizeAgentLanguage } from "@/src/lib/agentLanguage";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -28,8 +30,11 @@ export async function POST(req: NextRequest) {
                 appId,
                 query,
                 requestText: query,
+                responseLanguage: normalizeAgentLanguage(body.responseLanguage) || "en",
                 currentPath: asString(body.currentPath, 500) || null,
                 selectedFiles: Array.isArray(body.selectedFiles) ? body.selectedFiles.slice(0, 20) : [],
+                attachments: normalizeAgentImages(body.attachments),
+                paletteChangeId: asString(body.paletteChangeId, 80) || null,
                 repairContext: body.repairContext && typeof body.repairContext === "object" ? body.repairContext : null,
                 conversationHistory: Array.isArray(body.conversationHistory)
                     ? body.conversationHistory

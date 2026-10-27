@@ -6362,6 +6362,7 @@ export default function PreviewPage(): JSX.Element {
             }
         }
 
+        let generationAppIdForRecovery = "";
         try {
             function appNameFromUrl(raw: string): string {
                 try {
@@ -6464,6 +6465,7 @@ export default function PreviewPage(): JSX.Element {
 
             let appId: string;
             if (mode === "url" && url) {
+                generationAppIdForRecovery = opts?.draftAppId || pendingCreatedAppId;
                 // Use the new URL generation endpoint
                 const csrf = await ensureSessionAndCsrf().catch(() => null);
                 const generationType = opts?.generationFormat || "nextjs";
@@ -6961,6 +6963,19 @@ export default function PreviewPage(): JSX.Element {
         } catch (error) {
             const message = getUserFacingErrorMessage(error, "Failed to create app. Please try again.");
             console.error("Failed to create app:", error);
+            if (mode === "url" && generationAppIdForRecovery && /load failed|failed to fetch|fetch failed|networkerror|network request failed/i.test(String((error as any)?.message || ""))) {
+                // A lost HTTP response does not cancel the backend job. Recover
+                // its known app identity before offering a second generation.
+                const saved = await getDoc(doc(db, "kloner_users", user.uid, "kloner_apps", generationAppIdForRecovery)).catch(() => null);
+                const state = saved?.exists() ? saved.data() : null;
+                if (state && !["failed", "error"].includes(String(state.generationStatus || ""))) {
+                    setUrlProcessingFailure(null);
+                    setErr("");
+                    setInfo("Reconnecting to your saved project…");
+                    setUrlProcessingHandoff(current => ({ ...current, appId: generationAppIdForRecovery, draftId: current?.draftId ?? null, draftAppId: current?.draftAppId ?? generationAppIdForRecovery, archiveZipUrl: current?.archiveZipUrl ?? null, archiveZipBytes: current?.archiveZipBytes ?? null, sourceUrl: url || "", phase: "processing", phaseStartedAt: current?.phaseStartedAt || Date.now() }));
+                    return generationAppIdForRecovery;
+                }
+            }
             if (isGenerationTierBlockedMessage(message)) {
                 if (isDraftPromotionRequest) {
                     setUrlProcessingHandoff(null);
@@ -9064,7 +9079,7 @@ export default function PreviewPage(): JSX.Element {
 
             setCaptureLockUrl(target);
             captureLockStartedAtRef.current = Date.now();
-            captureLockMinUntilRef.current = Date.now() + 60_000;
+            captureLockMinUntilRef.current = Date.now();
             captureStallReportedForUrlRef.current = "";
             captureStaleReportedForUrlRef.current = "";
             setCaptureTerminalFailureUrl("");
@@ -9211,7 +9226,7 @@ export default function PreviewPage(): JSX.Element {
                             generateSucceededRef.current = startRequestKey;
                             setCaptureTerminalFailureUrl("");
                             setHideCaptureQueueStatus(false);
-                        captureLockMinUntilRef.current = Date.now() + 60_000;
+                        captureLockMinUntilRef.current = Date.now();
                         setCaptureLockUrl(target);
                         captureLockStartedAtRef.current = Date.now();
                         setInfo((current) => current || "Starting scan…");
@@ -9758,7 +9773,7 @@ export default function PreviewPage(): JSX.Element {
         if (captureStatus && captureStatus !== "queued" && captureStatus !== "processing") {
             const remaining = captureLockMinUntilRef.current - Date.now();
             if (remaining > 0) {
-                // Hold the queued UI until the 60s minimum display time has elapsed.
+                // Release as soon as authoritative scan state is terminal.
                 const t = setTimeout(() => {
                     captureLockMinUntilRef.current = 0;
                     setCaptureLockUrl(null);

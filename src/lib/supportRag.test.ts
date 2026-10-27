@@ -23,6 +23,6 @@ describe("supportRag", () => {
     it("adds the export-code policy snippet for export questions", () => {
         const context = buildSupportPolicyContext("can I export the code from Kloner?");
         expect(context).toContain("code-export-policy");
-        expect(context).toContain("Download code button");
+        expect(context).toContain("button labeled Download code");
     });
 });

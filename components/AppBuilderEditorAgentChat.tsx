@@ -4,6 +4,8 @@
 import { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo } from "react";
 import { createPortal } from "react-dom";
 import Image from "next/image";
+import { Paperclip } from "lucide-react";
+import { normalizeAgentImages, type AgentImageAttachment } from "@/src/lib/agentAttachments";
 import { WorkspaceAgentLoader, WorkspaceAgentProgress } from "./WorkspaceAgentActivity";
 import WorkspaceRestoreControls, { type WorkspaceRestoreState } from "./WorkspaceRestoreControls";
 import { Send, Bot, RotateCcw, Database, FileText, RefreshCw, X, AlertTriangle, ChevronDown, ChevronUp, ExternalLink, Copy, Check, Info, ThumbsUp, ThumbsDown, Search } from "lucide-react";
@@ -72,6 +74,14 @@ import { requestPreviewForceFresh, requestWorkspacePreviewRefresh } from "@/comp
 import { isWorkspacePreviewConnectionFailure, workspacePreviewConnectionMessage } from "@/src/lib/workspaceHealth";
 import { summarizeRestorePointDiff, buildRestorePointDiffPreview } from "@/src/lib/restorePointDiff";
 import { stripWorkspaceInternalSummaryMetadata } from "@/src/lib/workspaceAgentSummary";
+import {
+    detectAgentLanguage,
+    languagePreferenceAnswer,
+    languagePreferencePrompt,
+    normalizeAgentLanguage,
+    type AgentLanguage,
+} from "@/src/lib/agentLanguage";
+import { requestWithAppScopeRecovery } from "@/src/lib/appScopeRecovery";
 
 type SummarySearchFeedbackContext = {
     appId: string;
@@ -127,6 +137,7 @@ type EditPlanRequestMeta = {
 };
 
 type Message = {
+    attachments?: AgentImageAttachment[];
     id: string;
     role: "user" | "assistant";
     content: string;
@@ -1037,6 +1048,13 @@ function buildCompileFixPrefill(ctx: CompileErrorQuickFixContext): string {
 
 
 export default function AppBuilderEditorAgentChat({ appId, files, currentFile, onFileEdit, onFilesReplace, onRestoreApplied, creditError, previewReady, previewIssue, previewIssueActionLabel, onPreviewIssueAction, onPreviewIssueFixRequest, onUserMessageSent, onIntroSequenceComplete, onRequestUpgradePaywall, topupModalTrigger, welcomeContext, agentMode = "v2" }: AppBuilderEditorAgentChatProps) {
+    const [imageAttachments, setImageAttachments] = useState<AgentImageAttachment[]>([]);
+    const [uploadingImage, setUploadingImage] = useState(false);
+    const [attachmentError, setAttachmentError] = useState<string | null>(null);
+    const attachmentInputRef = useRef<HTMLInputElement>(null);
+    const sendRequestRef = useRef<(options: any) => Promise<void>>(async () => {});
+    const [showSuggestions, setShowSuggestions] = useState(false);
+    const suggestionsDismissed = useRef(false);
     const { user, userTier } = useAuth();
     const { showConfirm, showAlert } = useModal();
     const PRO_MONTHLY_PRICE_USD = BASIC_MONTHLY_PRICE_USD;
@@ -1183,6 +1201,28 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
     const [chatHistoryLoadTimedOut, setChatHistoryLoadTimedOut] = useState(false);
     const [chatHasHistory, setChatHasHistory] = useState(false);
     const [input, setInput] = useState("");
+    const agentLanguagePreferenceRef = useRef<AgentLanguage | null>(null);
+    const languageProfileLoadedRef = useRef(false);
+    const languagePreferencePromptedRef = useRef(false);
+    const languagePreferencePendingRef = useRef<AgentLanguage | null>(null);
+    useEffect(() => {
+        if (!user?.uid) return;
+        let cancelled = false;
+        languageProfileLoadedRef.current = false;
+        void fetch("/api/profile/agent-language", { credentials: "include", cache: "no-store" })
+            .then(async (response) => response.ok ? response.json() : null)
+            .then((profile) => {
+                if (cancelled || !profile) return;
+                const preference = normalizeAgentLanguage(profile.language);
+                agentLanguagePreferenceRef.current = preference;
+                languagePreferencePromptedRef.current = profile.prompted === true;
+            })
+            .catch(() => {})
+            .finally(() => {
+                if (!cancelled) languageProfileLoadedRef.current = true;
+            });
+        return () => { cancelled = true; };
+    }, [user?.uid]);
     const [requestPageOverrides, setRequestPageOverrides] = useState<string[]>([]);
     const [requestPageSearch, setRequestPageSearch] = useState("");
     const [chatMode, setChatMode] = useState<AppBuilderChatMode>("auto");
@@ -2923,6 +2963,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                         content,
                         type,
                         timestamp: ts,
+                        attachments: normalizeAgentImages(m.attachments),
                         restorePointId: typeof m.restorePointId === "string" ? m.restorePointId : undefined,
                         restoreActionLabel: typeof m.restoreActionLabel === "string" ? m.restoreActionLabel : undefined,
                         workspaceRestore: m.workspaceRestore && typeof m.workspaceRestore.pointId === "string" ? m.workspaceRestore : undefined,
@@ -4429,6 +4470,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                 restorePointId: m.restorePointId ?? null,
                 restoreActionLabel: m.restoreActionLabel ?? null,
                 workspaceRestore: m.workspaceRestore ?? null,
+                attachments: m.attachments || [],
                 supabaseContinuationPrompt: m.supabaseContinuationPrompt ?? null,
                 supabaseContinuationStatus: m.supabaseContinuationStatus ?? null,
                 dbSetupPrompt: m.dbSetupPrompt ?? null,
@@ -5555,7 +5597,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
         return result.inverseRestorePointId;
     }, [appId, refreshV3Preview, withCsrfHeaders]);
 
-    const runWorkspaceAutonomyAgentV3 = useCallback(async (params: { query: string; currentPath: string | null; repairContext?: WorkspaceAutonomyRepairContext | null; conversationHistory?: Array<{ role: "user" | "assistant"; content: string }> }) => {
+    const runWorkspaceAutonomyAgentV3 = useCallback(async (params: { query: string; currentPath: string | null; responseLanguage?: AgentLanguage; repairContext?: WorkspaceAutonomyRepairContext | null; conversationHistory?: Array<{ role: "user" | "assistant"; content: string }>; attachments?: AgentImageAttachment[]; paletteChangeId?: string }) => {
         v3ActiveJobRef.current = null;
         const requestId = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
             ? crypto.randomUUID()
@@ -5564,16 +5606,34 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
         v3RunTokenRef.current = runToken;
         const isCurrentRun = () => v3RunTokenRef.current === runToken;
         const headers = await withCsrfHeaders();
-        const queued = await fetchWorkspaceAutonomyAgentV3(
+        await bootstrapAppScope();
+        const requestAgent = () => fetchWorkspaceAutonomyAgentV3(
             {
                 appId,
                 query: params.query,
+                responseLanguage: params.responseLanguage || "en",
                 currentPath: params.currentPath,
                 repairContext: params.repairContext || null,
                 conversationHistory: params.conversationHistory || [],
+                attachments: params.attachments || [],
+                paletteChangeId: params.paletteChangeId,
             },
             { ...headers, "x-request-id": requestId, "x-client-request-id": requestId },
         );
+        const recovery = await requestWithAppScopeRecovery(requestAgent, bootstrapAppScope);
+        const queued = recovery.result;
+        if (recovery.attemptedRecovery) {
+            dispatchAiAgentEvent("app_scope_recovery", {
+                appId,
+                userId: user?.uid || null,
+                retryLabel: "workspace agent request",
+                scopeRecovered: recovery.recovered,
+                phase: "v3_request_recover",
+            });
+        }
+        if (queued.status === 403 && ["MISSING_APP_SCOPE", "INVALID_APP_SCOPE"].includes(String(queued.code || "").toUpperCase())) {
+            throw new Error("I couldn't reconnect this project session, so I didn't start the requested change. Click Refresh to reconnect the editor, then send it again.");
+        }
         if (!queued.ok || !queued.data) throw new Error(queued.error || "Workspace Autonomy V3 could not start.");
 
         const statusUrl = queued.data.statusUrl || queued.data.job?.statusUrl;
@@ -5739,7 +5799,24 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                 content: "This is taking longer than expected. The workspace agent is still working in the background, so I have not marked the change successful. I’ll keep monitoring the project and show the final result here.",
             });
         }
-    }, [appId, commitV3TerminalMessage, refreshV3Preview, withCsrfHeaders]);
+    }, [appId, bootstrapAppScope, commitV3TerminalMessage, dispatchAiAgentEvent, refreshV3Preview, user?.uid, withCsrfHeaders]);
+
+    const uploadChatImages = async (images: File[]) => {
+        if (uploadingImage || isLoading || chatDisabled) return;
+        setUploadingImage(true); setAttachmentError(null);
+        try {
+            await bootstrapAppScope();
+            const headers = new Headers(await withCsrfHeaders()); headers.delete("content-type");
+            for (const image of images.slice(0, Math.max(0, 3 - imageAttachments.length))) {
+                const form = new FormData(); form.append("image", image);
+                const response = await fetchWithScopeRetry(`/api/app-builder/${appId}/chat-attachments`, { method: "POST", headers, body: form }, { retryLabel: "attach image" });
+                const result = await response.json();
+                if (!response.ok) throw new Error(result.error || "The image could not be uploaded.");
+                setImageAttachments(current => [...current, ...normalizeAgentImages([result])].slice(0, 3));
+            }
+        } catch (error) { setAttachmentError(error instanceof Error ? error.message : "The image could not be uploaded."); }
+        finally { setUploadingImage(false); }
+    };
 
     const sendMessage = async (opts?: {
         forcedInput?: string;
@@ -5749,8 +5826,9 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
         allowWhenChatDisabled?: boolean;
         hideUserMessage?: boolean;
         bypassInitialSearch?: boolean;
+        paletteChangeId?: string;
     }) => {
-        const rawMessageInput = typeof opts?.forcedInput === "string" ? opts.forcedInput : input;
+        const rawMessageInput = (typeof opts?.forcedInput === "string" ? opts.forcedInput : input) || (imageAttachments.length ? "Inspect this image and describe the issue or intended change. Ask whether I want it fixed before editing." : "");
         const messageInput = rawMessageInput.length > MAX_EDITOR_PROMPT_CHARS
             ? rawMessageInput.slice(0, MAX_EDITOR_PROMPT_CHARS)
             : rawMessageInput;
@@ -5768,6 +5846,56 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
             if (typeof opts?.forcedInput !== "string") {
                 setInput(messageInput);
             }
+        }
+
+        if (user?.uid && !languageProfileLoadedRef.current) {
+            const profileResponse = await fetch("/api/profile/agent-language", { credentials: "include", cache: "no-store" }).catch(() => null);
+            const profile = profileResponse?.ok ? await profileResponse.json().catch(() => null) : null;
+            if (profile) {
+                const preference = normalizeAgentLanguage(profile.language);
+                agentLanguagePreferenceRef.current = preference;
+                languagePreferencePromptedRef.current = profile.prompted === true;
+            }
+            languageProfileLoadedRef.current = true;
+        }
+
+        const pendingLanguage = languagePreferencePendingRef.current;
+        const languageAnswer = pendingLanguage ? languagePreferenceAnswer(messageInput) : null;
+        if (pendingLanguage && languageAnswer) {
+            setInput("");
+            setMessages((previous) => [...previous,
+                { id: `user_${Date.now()}`, role: "user", content: messageInput, timestamp: new Date(), type: "text" },
+            ]);
+            try {
+                const nextLanguage: AgentLanguage = languageAnswer === "yes" ? pendingLanguage : "en";
+                const response = await fetch("/api/profile/agent-language", {
+                    method: "PATCH",
+                    credentials: "include",
+                    headers: { ...(await withCsrfHeaders()), "content-type": "application/json" },
+                    body: JSON.stringify({ language: nextLanguage, prompted: true }),
+                });
+                if (!response.ok) throw new Error("Could not save the language preference.");
+                agentLanguagePreferenceRef.current = nextLanguage;
+                languagePreferencePromptedRef.current = true;
+                languagePreferencePendingRef.current = null;
+                const yesConfirmation: Partial<Record<AgentLanguage, string>> = {
+                    ko: "좋아요. 앞으로 한국어로 답변할게요.", ja: "わかりました。今後は日本語で返信します。", zh: "好的，之后我会用中文回复。",
+                    es: "De acuerdo. A partir de ahora responderé en español.", fr: "D’accord. Je vous répondrai désormais en français.", de: "Alles klar. Ich antworte künftig auf Deutsch.",
+                    pt: "Combinado. Vou responder em português daqui em diante.", ru: "Хорошо, теперь я буду отвечать по-русски.", ar: "حسنًا، سأجيبك بالعربية من الآن فصاعدًا.", hi: "ठीक है, अब मैं हिंदी में जवाब दूँगा।",
+                };
+                const noConfirmation: Partial<Record<AgentLanguage, string>> = {
+                    ko: "알겠습니다. 앞으로는 영어로 답변할게요.", ja: "わかりました。今後は英語で返信します。", zh: "好的，之后我会用英语回复。",
+                    es: "Entendido. A partir de ahora responderé en inglés.", fr: "Compris. Je répondrai en anglais à partir de maintenant.", de: "Verstanden. Ich antworte künftig auf Englisch.",
+                    pt: "Entendido. Vou responder em inglês daqui em diante.", ru: "Понял. Теперь я буду отвечать по-английски.", ar: "حسنًا، سأجيبك بالإنجليزية من الآن فصاعدًا.", hi: "ठीक है, अब मैं अंग्रेज़ी में जवाब दूँगा।",
+                };
+                const confirmation = languageAnswer === "yes"
+                    ? yesConfirmation[pendingLanguage] || "Got it. I’ll reply in your preferred language from now on."
+                    : noConfirmation[pendingLanguage] || "Got it. I’ll keep replying in English.";
+                setMessages((previous) => [...previous, { id: `language_pref_${Date.now()}`, role: "assistant", content: confirmation, timestamp: new Date(), type: "text" }]);
+            } catch {
+                setMessages((previous) => [...previous, { id: `language_pref_error_${Date.now()}`, role: "assistant", content: pendingLanguage === "ko" ? "언어 설정을 저장하지 못했어요. 잠시 후 다시 답해 주세요." : "I couldn't save that language preference. Please try again." , timestamp: new Date(), type: "text" }]);
+            }
+            return;
         }
 
         const compileFixPrefill = activeCompileFixContext ? buildCompileFixPrefill(activeCompileFixContext) : "";
@@ -5918,9 +6046,10 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
         const userMessage: Message = {
             id: `user_${Date.now()}`,
             role: "user",
-            content: messageInput,
+            content: typeof opts?.forcedInput === "string" ? messageInput : input.trim() || "Can you take a look at this image?",
             timestamp: new Date(),
-            type: "text"
+            type: "text",
+            attachments: imageAttachments,
         };
 
         if (!hideUserMessage) {
@@ -5941,14 +6070,41 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                         content: String(entry.content || "").trim().slice(0, 2400),
                     }))
                     .filter((entry) => entry.content.length > 0);
+                const detectedLanguage = detectAgentLanguage(messageInput);
+                const responseLanguage = agentLanguagePreferenceRef.current || detectedLanguage || "en";
+                const shouldAskLanguagePreference = !agentLanguagePreferenceRef.current
+                    && !languagePreferencePromptedRef.current
+                    && detectedLanguage != null;
                 await runWorkspaceAutonomyAgentV3({
                     query: messageInput,
+                    responseLanguage,
                     currentPath: typeof opts?.forcedCurrentPath === "string"
                         ? (opts.forcedCurrentPath.trim() || null)
                         : selectedRequestCurrentPath,
                     repairContext: opts?.forcedWorkspaceRepairContext || null,
                     conversationHistory,
+                    attachments: imageAttachments.length ? imageAttachments : [...messages].slice(-4).reverse().find(message => message.role === "user" && message.attachments?.length)?.attachments || [],
+                    paletteChangeId: opts?.paletteChangeId,
                 });
+                if (shouldAskLanguagePreference && detectedLanguage) {
+                    languagePreferencePendingRef.current = detectedLanguage;
+                    languagePreferencePromptedRef.current = true;
+                    setMessages((previous) => [...previous, {
+                        id: `language_prompt_${Date.now()}`,
+                        role: "assistant",
+                        content: languagePreferencePrompt(detectedLanguage),
+                        timestamp: new Date(),
+                        type: "text",
+                    }]);
+                    const headers = await withCsrfHeaders();
+                    await fetch("/api/profile/agent-language", {
+                        method: "PATCH",
+                        credentials: "include",
+                        headers: { ...headers, "content-type": "application/json" },
+                        body: JSON.stringify({ prompted: true }),
+                    }).catch(() => null);
+                }
+                setImageAttachments([]);
             } catch (error: any) {
                 const errorMessage = String(error?.message || error || "Workspace Autonomy V3 failed.");
                 const activeV3Job = v3ActiveJobRef.current;
@@ -7107,11 +7263,27 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
         }
     };
 
+    sendRequestRef.current = sendMessage;
     useEffect(() => {
-        if (!isLoading) {
-            return;
-        }
-    }, [isLoading]);
+        const handler = (event: Event) => {
+            const detail = (event as CustomEvent).detail;
+            if (detail?.appId !== appId || agentMode !== "v3") return;
+            // The preset request is an internal implementation detail. Apply it
+            // through the normal agent pipeline without echoing its prompt into chat.
+            void sendRequestRef.current({ forcedInput: detail.summary, paletteChangeId: detail.paletteChangeId, hideUserMessage: true });
+        };
+        window.addEventListener("kloner:palette-apply", handler);
+        return () => window.removeEventListener("kloner:palette-apply", handler);
+    }, [appId, agentMode]);
+    useEffect(() => {
+        window.dispatchEvent(new CustomEvent("kloner:agent-busy", { detail: { appId, busy: isLoading || Boolean(activeEditPlanJob && isActiveEditPlanJobStatus(activeEditPlanJob.status)) } }));
+    }, [appId, isLoading, activeEditPlanJob]);
+    useEffect(() => {
+        setShowSuggestions(false);
+        if (isLoading || chatDisabled || input.trim() || suggestionsDismissed.current) return;
+        const timer = window.setTimeout(() => setShowSuggestions(true), 75_000);
+        return () => window.clearTimeout(timer);
+    }, [messages.length, input, isLoading, chatDisabled]);
 
     useEffect(() => {
         if (typeof window === "undefined") return;
@@ -7443,6 +7615,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                 : "app-builder-chat-bubble border border-[#FF8D21]/14 bg-[linear-gradient(180deg,rgba(255,251,248,0.98),rgba(255,255,255,0.95))] text-neutral-900"
                                 }`}
                         >
+                            {message.attachments?.length ? <div className="mb-3 flex flex-wrap gap-2">{message.attachments.map(image => <a key={image.id} href={`/api/app-builder/${appId}/chat-attachments?id=${image.id}`} target="_blank" rel="noopener noreferrer"><img src={`/api/app-builder/${appId}/chat-attachments?id=${image.id}`} alt={image.name} className="max-h-40 max-w-[220px] rounded-xl object-contain" /></a>)}</div> : null}
                             {message.editPlanFailure ? (
                                 <div className="space-y-2">
                                     <div className="inline-flex items-center gap-2 text-sm font-semibold text-neutral-900">
@@ -9166,7 +9339,11 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                     </div>
                 ) : null}
 
-                <div className="flex items-stretch overflow-hidden rounded-[1.35rem] border border-[#FF8D21]/18 bg-white shadow-[0_12px_30px_rgba(15,23,42,0.08)]">
+                {showSuggestions ? <div className="mb-3 rounded-xl border p-3" style={{borderColor:"var(--border-subtle)"}}><div className="mb-2 flex justify-between text-xs" style={{color:"var(--text-secondary)"}}><span>A few ideas for your next edit</span><button aria-label="Dismiss suggestions" onClick={() => { suggestionsDismissed.current = true; setShowSuggestions(false); }}><X className="h-3 w-3" /></button></div><div className="flex flex-wrap gap-2">{["Polish the mobile layout", "Make the main call to action clearer", "Check for broken links"].map(suggestion => <button key={suggestion} onClick={() => { setInput(suggestion); setShowSuggestions(false); inputRef.current?.focus(); }} className="rounded-full border px-2.5 py-1.5 text-xs hover:border-[#FF8D21]" style={{borderColor:"var(--border-subtle)",color:"var(--text-primary)"}}>{suggestion}</button>)}</div></div> : null}
+                {attachmentError ? <p role="alert" className="mb-2 text-sm text-red-600">{attachmentError}</p> : null}
+                {imageAttachments.length ? <div className="mb-2 flex gap-2">{imageAttachments.map(image => <div key={image.id} className="relative"><img alt={image.name} src={`/api/app-builder/${appId}/chat-attachments?id=${image.id}`} className="h-16 w-20 rounded-xl border object-cover" /><button type="button" aria-label={`Remove ${image.name}`} className="absolute -right-1 -top-1 rounded-full bg-neutral-800 p-1 text-white" onClick={() => setImageAttachments(current => current.filter(item => item.id !== image.id))}><X className="h-3 w-3" /></button></div>)}</div> : null}
+                <div onDragOver={event => { if (agentMode === "v3") event.preventDefault(); }} onDrop={event => { if (agentMode !== "v3") return; event.preventDefault(); void uploadChatImages(Array.from(event.dataTransfer.files)); }} onPaste={event => { const images = Array.from(event.clipboardData.files).filter(file => file.type.startsWith("image/")); if (agentMode === "v3" && images.length) { event.preventDefault(); void uploadChatImages(images); } }} className="flex items-stretch overflow-hidden rounded-[1.35rem] border border-[#FF8D21]/18 bg-white shadow-[0_12px_30px_rgba(15,23,42,0.08)]">
+                    {agentMode === "v3" ? <><input ref={attachmentInputRef} type="file" multiple accept="image/png,image/jpeg,image/webp,image/avif" className="hidden" onChange={event => { void uploadChatImages(Array.from(event.target.files || [])); event.target.value = ""; }} /><button type="button" title="Attach an image, or drop one here" aria-label="Attach an image" disabled={uploadingImage || isLoading || chatDisabled || imageAttachments.length >= 3} onClick={() => attachmentInputRef.current?.click()} className="self-end px-2 pb-4 text-neutral-500 hover:text-[#FF8D21] disabled:opacity-40"><Paperclip className={`h-5 w-5 ${uploadingImage ? "animate-pulse" : ""}`} /></button></> : null}
                     <div className="relative min-w-0 flex-1">
                     <textarea
                         ref={inputRef}
@@ -9208,7 +9385,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                         onClick={() => {
                             void sendMessage();
                         }}
-                        disabled={!input.trim() || isLoading || chatDisabled}
+                        disabled={(!input.trim() && !imageAttachments.length) || uploadingImage || isLoading || chatDisabled}
                         className="app-builder-chat-send flex w-12 shrink-0 items-center justify-center bg-[#FF8D21] text-white shadow-none transition-colors hover:bg-[#D96E11] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#B95505] disabled:cursor-not-allowed disabled:opacity-50 sm:w-16"
                         aria-label="Send message"
                     >

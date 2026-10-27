@@ -1,4 +1,6 @@
 export type AppEmbeddingSearchRequest = {
+    attachments?: import("./agentAttachments").AgentImageAttachment[];
+    paletteChangeId?: string;
     appId: string;
     query: string;
     currentPath?: string | null;
@@ -12,6 +14,7 @@ export type AppEmbeddingSearchRequest = {
     } | null;
     maxChunks?: number;
     requestText?: string;
+    responseLanguage?: import("./agentLanguage").AgentLanguage;
     framework?: string | null;
     frameworkLabel?: string | null;
     frameworkConfidence?: string | null;
@@ -1287,6 +1290,7 @@ export async function fetchEmbeddingSearch(
             appId: request.appId,
             query: request.query,
             requestText: request.requestText ?? request.query,
+            responseLanguage: request.responseLanguage || "en",
             currentPath: request.currentPath || null,
             selectedFiles,
             ...(request.debugCurrentPath ? { debugCurrentPath: request.debugCurrentPath } : {}),
@@ -1337,6 +1341,8 @@ export async function fetchWorkspaceAutonomyAgentV3(
             selectedFiles: normalizeSelectedFiles(request.selectedFiles, request.selectedFile, request.currentPath),
             ...(request.repairContext ? { repairContext: request.repairContext } : {}),
             ...(Array.isArray(request.conversationHistory) ? { conversationHistory: request.conversationHistory } : {}),
+            ...(request.attachments?.length ? { attachments: request.attachments } : {}),
+            ...(request.paletteChangeId ? { paletteChangeId: request.paletteChangeId } : {}),
         },
         headers,
     );

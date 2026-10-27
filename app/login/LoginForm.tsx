@@ -12,7 +12,6 @@ import {
     browserLocalPersistence,
     browserSessionPersistence,
     inMemoryPersistence,
-    indexedDBLocalPersistence,
     onAuthStateChanged,
     signInWithEmailAndPassword,
     createUserWithEmailAndPassword,
@@ -101,9 +100,10 @@ function normalizeError(e: unknown): string {
 }
 
 async function ensureBestAuthPersistence(): Promise<void> {
-    // Prefer IndexedDB, then progressively fall back for restricted browsers/privacy modes.
+    // Match the app-wide Auth initialization: never open IndexedDB for Auth,
+    // since a full browser storage partition can reject indexedDB.open before
+    // this login flow gets a chance to fall back.
     const candidates = [
-        indexedDBLocalPersistence,
         browserLocalPersistence,
         browserSessionPersistence,
         inMemoryPersistence,

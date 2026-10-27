@@ -989,7 +989,7 @@ function BlockToolbar({
                                         onMouseDown={(e) => e.stopPropagation()}
                                     >
                                         <Trash2 className="h-3.5 w-3.5" />
-                                        <span>Remove</span>
+                                        <span>Remove Image</span>
                                     </button>
                                 </div>
 
@@ -1076,6 +1076,8 @@ export function FloatingBlockToolbar({
     const iframePrevPointerEventsRef = useRef<string | null>(null);
 
     const [isMobile, setIsMobile] = useState(false);
+    const [mounted, setMounted] = useState(false);
+    useEffect(() => { setMounted(true); }, []);
     const [bottomBarH, setBottomBarH] = useState(72);
     const [dockedBounds, setDockedBounds] = useState<{ top: number; bottom: number } | null>(null);
 
@@ -1193,6 +1195,7 @@ export function FloatingBlockToolbar({
     const isDockedOpen = dockedOpen;
     const shouldRenderDockedShell = isDocked && (locked || showDockToggle || isDockedOpen || !!selectionMeta);
 
+    if (!mounted) return null;
     if (!isDocked && (!selectionMeta || !selectionMeta.has || !(selectionMeta as any).rect)) return null;
     if (isDocked && !shouldRenderDockedShell) return null;
 

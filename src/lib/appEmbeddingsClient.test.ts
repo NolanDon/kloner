@@ -309,6 +309,7 @@ describe("appEmbeddingsClient", () => {
             appId: "app-1",
             query: "when i click close on the chrome extension popup hide it",
             requestText: "when i click close on the chrome extension popup hide it",
+            responseLanguage: "en",
             currentPath: "public/index.html",
             selectedFiles: [],
             debugCurrentPath: {
@@ -344,6 +345,7 @@ describe("appEmbeddingsClient", () => {
             appId: "app-1",
             query: "fix the header",
             requestText: "fix the header",
+            responseLanguage: "en",
             currentPath: "app/page.tsx",
             selectedFiles: ["components/Header.tsx"],
             maxChunks: 10,
@@ -425,6 +427,7 @@ describe("appEmbeddingsClient", () => {
             appId: "app-1",
             query: "update the layout",
             requestText: "update the layout",
+            responseLanguage: "en",
             currentPath: "src/app.tsx",
             selectedFiles: [
                 "docs/guide.md",
@@ -458,6 +461,7 @@ describe("appEmbeddingsClient", () => {
             appId: "app-1",
             query: "refactor the page",
             requestText: "refactor the page",
+            responseLanguage: "en",
             currentPath: "app/page.tsx",
             selectedFiles: ["components/Header.tsx"],
             maxChunks: 10,

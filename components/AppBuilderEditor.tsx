@@ -14,6 +14,7 @@ import AppPreviewEditor from "./AppPreviewEditor";
 import WebsitePrePaywall from "./WebsitePrePaywall";
 import KlonerLoader, { WorkspaceLoadingPanel, WorkspaceLoadingScreen } from "./KlonerLoader";
 import WebContainerRunner from "./WebContainerRunner";
+import EditorColorSchemes from "./EditorColorSchemes";
 import { WorkspaceAgentLoader } from "./WorkspaceAgentActivity";
 import { bootstrapServerSession, ensureSessionAndCsrf, resetAuthClientCaches } from "@/lib/auth-client";
 import { shouldBypassEditorNavigationGuard } from "@/lib/editorNavigation";
@@ -7796,7 +7797,7 @@ export default function AppBuilderEditor({
                     </div>
                 ) : null}
 
-                <div className="flex flex-1 min-h-0" data-app-builder-container>
+                <div className="flex flex-1 min-h-0" data-app-builder-container border-t>
                     {/* Left Panel - AI Chat and Controls */}
                     <div 
                         className={`app-builder-editor-panel ${showLeftPanel ? "flex" : "hidden"} flex-col bg-gray-50 flex-shrink-0 min-h-0 overflow-hidden w-full md:w-auto ${!isVisualEditorMode ? "md:border-r" : ""}`}
@@ -7804,7 +7805,7 @@ export default function AppBuilderEditor({
                     >
                         {/* View Mode Toggle */}
                         <div
-                            className={`app-builder-mode-row p-3 border-b sticky top-0 z-10 bg-gray-50 ${
+                            className={`app-builder-mode-row flex items-center gap-2 p-3 sticky top-0 z-10 bg-gray-50 ${
                                 isVisualEditorMode
                                     ? isCustomSidebarOpen
                                         ? "w-[min(92vw,520px)]"
@@ -7812,7 +7813,7 @@ export default function AppBuilderEditor({
                                     : ""
                             }`}
                         >
-                            <div className="app-builder-view-mode-tabs inline-flex w-fit gap-2 overflow-x-auto overflow-y-visible scrollbar-hide min-w-0 rounded-[1.5rem] border border-neutral-200 bg-white/70 p-1 shadow-[0_10px_30px_rgba(15,23,42,0.04)] backdrop-blur">
+                            <div className="app-builder-view-mode-tabs inline-flex flex-1 min-w-0 gap-2 overflow-x-auto overflow-y-visible scrollbar-hide rounded-[1.5rem] border border-neutral-200 bg-white/70 p-1 shadow-[0_10px_30px_rgba(15,23,42,0.04)] backdrop-blur">
                                 <motion.button
                                     onClick={() => { void requestViewModeChange("ai"); }}
                                     disabled={isModeSwitching}
@@ -7906,9 +7907,8 @@ export default function AppBuilderEditor({
                                     </motion.button>
                                 {/* ) : null} */}
                             </div>
-
+                            {agentMode === "v3" ? <EditorColorSchemes appId={appId} ready={previewMode !== "webcontainer" || isWebPreviewReady} /> : null}
                         </div>
-
                         {/* AI Chat or Code View */}
                         <div className="flex-1 min-h-0 overflow-hidden">
                             <div data-tour-chat-panel className={viewMode === "ai" ? "h-full" : "hidden"}>

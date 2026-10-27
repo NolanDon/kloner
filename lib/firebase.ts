@@ -1,7 +1,15 @@
 // lib/firebase.ts
 import { initializeApp, getApps, getApp, type FirebaseApp } from "firebase/app";
 import { getFirestore, initializeFirestore, type Firestore } from "firebase/firestore";
-import { getAuth, type Auth } from "firebase/auth";
+import {
+    browserLocalPersistence,
+    browserPopupRedirectResolver,
+    browserSessionPersistence,
+    getAuth,
+    inMemoryPersistence,
+    initializeAuth,
+    type Auth,
+} from "firebase/auth";
 import { getStorage, type FirebaseStorage } from "firebase/storage";
 import { getAnalytics, isSupported, type Analytics } from "firebase/analytics";
 
@@ -50,7 +58,23 @@ export const db: Firestore = (() => {
 
     return getFirestore(app);
 })();
-export const auth: Auth = getAuth(app);
+export const auth: Auth = (() => {
+    // Firebase getAuth() selects IndexedDB as its first browser persistence.
+    // On devices with a full/corrupt browser storage partition, opening that
+    // database can raise an uncaught QuotaExceededError before the login page's
+    // later setPersistence fallback runs. Keep Firebase Auth durable with
+    // localStorage, then sessionStorage/memory, without opening IndexedDB.
+    try {
+        return initializeAuth(app, {
+            persistence: [browserLocalPersistence, browserSessionPersistence, inMemoryPersistence],
+            popupRedirectResolver: browserPopupRedirectResolver,
+        });
+    } catch (error) {
+        // Next.js HMR or another import may have initialized Auth already.
+        // Reuse that singleton instead of breaking the app during refresh.
+        return getAuth(app);
+    }
+})();
 export const storage: FirebaseStorage = getStorage(app);
 
 /* ---------------------------- analytics (client) ---------------------------- */

@@ -27,12 +27,14 @@ test("leave confirmation mounts above the paywall outside the scaled editor and 
   const { container } = renderEditor(onLeave);
   fireEvent.click(screen.getByText("Manage subscription in Settings"));
   const dialog = await screen.findByRole("dialog", { name: "Leave App Builder" });
-  const root = dialog.parentElement!;
+  const root = dialog;
   const paywall = screen.getByTestId("paywall");
   expect(root.parentElement).toBe(document.body);
   expect(container.contains(dialog)).toBe(false);
-  expect(Number(root.style.zIndex)).toBeGreaterThan(Number(paywall.style.zIndex));
-  expect(root.style.pointerEvents).toBe("auto");
+  // Tailwind utilities are not emitted into jsdom's inline styles. Assert the
+  // explicit top-layer utility rather than reading style.zIndex (always 0).
+  expect(root.className).toContain("z-[2147483647]");
+  expect(root.className).toContain("pointer-events-auto");
   expect(paywall.compareDocumentPosition(root) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: "OK" }));
   await waitFor(() => expect(onLeave).toHaveBeenCalledTimes(1));

@@ -106,7 +106,7 @@ export async function GET(
         if (rewrittenHtml.includes('<head>')) {
           rewrittenHtml = rewrittenHtml.replace(
             '<head>',
-            '<head><script src="/proxy/next-router-shim.js"></script>'
+            '<head><script src="/proxy/next-router-shim.js"></script><script src="/proxy/editor-color-preview.js"></script>'
           );
         }
         
