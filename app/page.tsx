@@ -5,14 +5,14 @@ import { WEBSITE_CLONER_FAQ } from "@/lib/websiteClonerFaq";
 export const metadata: Metadata = {
   title: { absolute: "Website Cloner — Clone a Website from a URL | Kloner" },
   description:
-    "Kloner is an AI website cloner that turns a public URL into an editable website preview. Customize the layout, text, and images, then deploy your site.",
+    "Turn a public URL into an editable website preview with Kloner. Start with a free preview, customize it, then deploy your site.",
   alternates: {
     canonical: "https://kloner.app/",
   },
   openGraph: {
     title: "Website Cloner — Clone a Website from a URL | Kloner",
     description:
-      "Kloner is an AI website cloner that turns a public URL into an editable website preview. Customize the layout, text, and images, then deploy your site.",
+      "Turn a public URL into an editable website preview with Kloner. Start with a free preview, customize it, then deploy your site.",
     url: "https://kloner.app/",
     siteName: "Kloner",
     type: "website",
@@ -29,7 +29,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "Website Cloner — Clone a Website from a URL | Kloner",
     description:
-      "Kloner is an AI website cloner that turns a public URL into an editable website preview. Customize the layout, text, and images, then deploy your site.",
+      "Turn a public URL into an editable website preview with Kloner. Start with a free preview, customize it, then deploy your site.",
     images: ["/images/opengraph.jpg"],
   },
 };
