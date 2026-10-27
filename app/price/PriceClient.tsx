@@ -66,7 +66,7 @@ const tiers: Tier[] = [
         price: "$0",
         period: "/week",
         highlight: false,
-        blurb: "No website generations. Copy community templates to get started.",
+        blurb: "Free preview credits every month and community templates to get started. Building pages needs a paid plan.",
         topFeatures: [
             "30 screenshot credits (3 site captures /mo)",
             "No website generations",
