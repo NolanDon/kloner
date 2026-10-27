@@ -58,6 +58,21 @@ const nextConfig = {
                 permanent: true,
             },
             {
+                source: '/tools/mla-citation-generator',
+                destination: '/',
+                permanent: true,
+            },
+            {
+                source: '/tools/phone-number-generator',
+                destination: '/',
+                permanent: true,
+            },
+            {
+                source: '/tools/anagram-generator',
+                destination: '/',
+                permanent: true,
+            },
+            {
                 source: '/blog/website-cloner',
                 destination: '/',
                 permanent: true,
