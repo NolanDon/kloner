@@ -29,7 +29,7 @@ export default function TermsPage(): JSX.Element {
                             Terms and Conditions
                         </h1>
                         <p className="mt-2 text-sm text-neutral-600">
-                            Last updated: 14 November 2025
+                            Last updated: 29 October 2026
                         </p>
                     </div>
 
@@ -67,6 +67,25 @@ export default function TermsPage(): JSX.Element {
                                 approve any cloned or generated projects you create. You are
                                 solely responsible for how you use any previews, screenshots,
                                 generated content, or exported projects produced by Kloner.
+                            </p>
+                        </section>
+
+                        <section>
+                            <h2 className="text-base font-semibold text-neutral-900">
+                                2A. AI Features and Generated Output
+                            </h2>
+                            <p className="mt-2">
+                                Kloner may use AI systems to analyze pages, generate or edit code and content, and assist with other
+                                features. AI output can be inaccurate, incomplete, non-unique, or unsuitable for your purpose. You are
+                                responsible for reviewing, testing, and securing output before you use, publish, or rely on it. Do not rely
+                                on generated output as legal, financial, medical, or other professional advice, or for high-risk uses without
+                                appropriate independent review and safeguards.
+                            </p>
+                            <p className="mt-2">
+                                To provide an AI feature, we may send the prompt, relevant project files, source URL, or other information
+                                needed for your request to the AI and infrastructure providers described in our Privacy Policy. Provider
+                                terms may also apply. We do not promise that output is accurate, unique, free of third-party rights, or
+                                suitable for a particular purpose.
                             </p>
                         </section>
 
@@ -247,6 +266,40 @@ export default function TermsPage(): JSX.Element {
                                 operational or security reasons, or if we suspect abuse or
                                 misuse of the service.
                             </p>
+                            <p className="mt-2">
+                                Prices, billing intervals, included usage, and any applicable renewal or cancellation terms are shown at
+                                checkout or in your account. You authorize the payment processor to charge the payment method you provide
+                                for charges you incur. Unless applicable law requires otherwise or the checkout terms say otherwise, fees
+                                are non-refundable. You remain responsible for taxes and government charges that apply to your purchase,
+                                excluding taxes on Kloner’s net income. If a price or plan changes, we will give notice where required by
+                                law before the change applies to a renewal or future purchase.
+                            </p>
+                        </section>
+
+                        <section>
+                            <h2 className="text-base font-semibold text-neutral-900">
+                                8A. Your Content and Responsibilities
+                            </h2>
+                            <p className="mt-2">
+                                You retain your rights in the prompts, files, URLs, project materials, and other content you submit to
+                                Kloner. You give Kloner a limited, worldwide license to host, copy, transmit, modify as technically
+                                necessary, and otherwise process that content only to provide, secure, and support the service,
+                                and as described in our Privacy Policy. This license ends when the relevant content is deleted, except for
+                                copies retained in backups or as needed for legal, security, or operational purposes.
+                            </p>
+                            <p className="mt-2">
+                                You are responsible for ensuring you have the rights and permissions to submit content and for any personal
+                                information you process through Kloner. Do not submit payment card numbers, government identification
+                                numbers, health information, biometric data, or other highly sensitive personal information unless Kloner
+                                has expressly agreed in writing to support that data. Kloner is not designed as a regulated system of
+                                record for such information.
+                            </p>
+                            <p className="mt-2">
+                                You are responsible for websites and applications you create or deploy using Kloner, including their
+                                security, content, legal compliance, privacy notices, consents, and responses to requests from their users.
+                                If you connect a third-party service, your use of it is also subject to that provider’s terms, and you are
+                                responsible for the permissions and configuration you choose.
+                            </p>
                         </section>
 
                         <section>
@@ -272,8 +325,11 @@ export default function TermsPage(): JSX.Element {
                             </h2>
                             <p className="mt-2">
                                 Our handling of personal data is described in our Privacy
-                                Policy. By using the service you consent to the collection and
-                                use of information as described there.
+                                Policy, which explains what we collect, why we use it, the
+                                providers who may process it, international transfers, and
+                                privacy choices and rights. We process personal data on the
+                                legal bases that apply under the relevant law; this section
+                                does not replace any consent that the law specifically requires.
                             </p>
                             <p className="mt-2">
                                 You are responsible for any personal data you upload or process
@@ -366,12 +422,17 @@ export default function TermsPage(): JSX.Element {
                             <p className="mt-2">
                                 We may modify, suspend, or discontinue any part of the service
                                 at any time. We may also update these Terms from time to time.
-                                When we do, we will post the updated version on this page and
-                                update the “Last updated” date.
+                                We will post the updated version on this page and update the
+                                “Last updated” date. For material changes, we will provide
+                                notice by email, in the service, or by another reasonable
+                                means before they take effect where required by law.
                             </p>
                             <p className="mt-2">
-                                If you continue using the service after changes are posted, you
-                                are accepting the updated Terms.
+                                Where permitted by law, continued use after updated Terms take
+                                effect means you accept them. If you do not agree, stop using
+                                Kloner and close your account. Where the law requires renewed
+                                affirmative acceptance, we will ask you to accept the revised
+                                Terms.
                             </p>
                         </section>
 

@@ -392,12 +392,8 @@ export default function LoginPage(): JSX.Element {
     const [pw, setPw] = useState<string>("");
     const [showPw, setShowPw] = useState<boolean>(false);
 
-    const [acceptedTerms, setAcceptedTerms] = useState<boolean>(false);
     const [pendingUrl, setPendingUrl] = useState<string>("");
     const [pendingPrompt, setPendingPrompt] = useState<string>("");
-
-    const termsAcceptanceError =
-        mode === "signup" && err === "You must accept the Terms and Privacy Policy to create an account.";
 
     useEffect(() => {
         const reason = (search.get("reason") || "").trim().toLowerCase();
@@ -568,11 +564,6 @@ export default function LoginPage(): JSX.Element {
         setErr("");
         setResetSuccess("");
 
-        if (mode === "signup" && !acceptedTerms) {
-            setErr("You must accept the Terms and Privacy Policy to create an account.");
-            return;
-        }
-
         setLoading(true);
         try {
             await ensureBestAuthPersistence();
@@ -619,11 +610,6 @@ export default function LoginPage(): JSX.Element {
         e.preventDefault();
         setErr("");
         setResetSuccess("");
-
-        if (mode === "signup" && !acceptedTerms) {
-            setErr("You must accept the Terms and Privacy Policy to create an account.");
-            return;
-        }
 
         setLoading(true);
         try {
@@ -827,43 +813,16 @@ export default function LoginPage(): JSX.Element {
                                 </div>
 
                                 {mode === "signup" && (
-                                    <div className={`mt-2 rounded-2xl border px-3 py-2.5 ${termsAcceptanceError ? "border-red-300 bg-red-50/70" : "border-neutral-200 bg-neutral-50"}`}>
-                                        <label className="flex items-start gap-2 text-xs text-neutral-700">
-                                            <input
-                                                type="checkbox"
-                                                checked={acceptedTerms}
-                                                onChange={(e) => setAcceptedTerms(e.target.checked)}
-                                                className={`mt-0.5 h-3.5 w-3.5 rounded ${termsAcceptanceError ? "border-red-400 text-[#FF8D21] focus:ring-red-300" : "border-neutral-300"}`}
-                                            />
-                                            <span className={termsAcceptanceError ? "text-red-800" : ""}>
-                                                I have read and agree to the{" "}
-                                                <a
-                                                    href="/terms"
-                                                    className={`font-medium underline underline-offset-2 ${termsAcceptanceError ? "text-red-700" : ""}`}
-                                                    style={{ color: termsAcceptanceError ? undefined : ACCENT }}
-                                                    target="_blank"
-                                                    rel="noreferrer"
-                                                >
-                                                    Terms and Conditions
-                                                </a>{" "}
-                                                and{" "}
-                                                <a
-                                                    href="/privacy"
-                                                    className={`font-medium underline underline-offset-2 ${termsAcceptanceError ? "text-red-700" : ""}`}
-                                                    style={{ color: termsAcceptanceError ? undefined : ACCENT }}
-                                                    target="_blank"
-                                                    rel="noreferrer"
-                                                >
-                                                    Privacy Policy
-                                                </a>
-                                                .
-                                            </span>
-                                        </label>
-                                        {termsAcceptanceError ? (
-                                            <p className="mt-2 text-[11px] font-medium text-red-700">
-                                                Accept the terms to continue.
-                                            </p>
-                                        ) : null}
+                                    <div className="mt-2 text-center text-xs leading-5 text-neutral-500">
+                                        By signing up, you agree to our{" "}
+                                        <a href="/terms" className="font-medium underline underline-offset-2" style={{ color: ACCENT }} target="_blank" rel="noreferrer">
+                                            Terms of Service
+                                        </a>{" "}
+                                        and{" "}
+                                        <a href="/privacy" className="font-medium underline underline-offset-2" style={{ color: ACCENT }} target="_blank" rel="noreferrer">
+                                            Privacy Policy
+                                        </a>
+                                        .
                                     </div>
                                 )}
 
@@ -939,7 +898,7 @@ export default function LoginPage(): JSX.Element {
                             </div>
                         </div>
 
-                        <div className="mt-4 text-center text-xs text-neutral-500">
+                        {mode === "signin" && <div className="mt-4 text-center text-xs text-neutral-500">
                             By continuing you agree to the{" "}
                             <a
                                 href="/terms"
@@ -961,7 +920,7 @@ export default function LoginPage(): JSX.Element {
                                 Privacy Policy
                             </a>
                             .
-                        </div>
+                        </div>}
                     </div>
                 </div>
 
