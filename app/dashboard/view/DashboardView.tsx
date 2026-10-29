@@ -4672,9 +4672,6 @@ export default function PreviewPage(): JSX.Element {
     }, [deployWizardError, deployWizardPermissionError]);
     const [deployWizardRetryCount, setDeployWizardRetryCount] = useState(0);
     const [deployWizardRetryLockedUntil, setDeployWizardRetryLockedUntil] = useState(0);
-    const appDeployWizardUpgradePrimaryLabel = STRIPE_TRIAL_DAYS > 0
-        ? `Start your ${STRIPE_TRIAL_DAYS}-day free trial & deploy →`
-        : "Upgrade to deploy →";
     const billingSuccessHandledRef = useRef(false);
 
     useEffect(() => {
@@ -13610,7 +13607,7 @@ export default function PreviewPage(): JSX.Element {
     }
 
     const startProCheckout = useCallback(
-        async () => {
+        async (paidOnly = false) => {
             if (checkoutBusy) return;
             setCheckoutBusy(true);
 
@@ -13650,6 +13647,7 @@ export default function PreviewPage(): JSX.Element {
                     credentials: "include",
                     body: JSON.stringify({
                         plan: "pro",
+                        ...(paidOnly ? { purchaseIntent: "code_download" } : {}),
                         returnRenderId: deployWizardRenderId,
                         returnStep: 2,
                     }),
@@ -13682,7 +13680,7 @@ export default function PreviewPage(): JSX.Element {
     );
 
     const startProCheckoutForAppDeploy = useCallback(
-        async (opts?: { returnAppId?: string | null }) => {
+        async (opts?: { returnAppId?: string | null; paidOnly?: boolean }) => {
             if (checkoutBusy) return;
             setCheckoutBusy(true);
 
@@ -13727,6 +13725,7 @@ export default function PreviewPage(): JSX.Element {
                     credentials: "include",
                     body: JSON.stringify({
                         plan: "pro",
+                        ...(opts?.paidOnly ? { purchaseIntent: "code_download" } : {}),
                         returnAppId: checkoutReturnAppId,
                         returnStep: 3,
                     }),
@@ -14292,7 +14291,7 @@ export default function PreviewPage(): JSX.Element {
                                         !!lockUntilByRender[r.id] && lockUntilByRender[r.id] > Date.now()
                                     }
                                     isDeploying={deployingRenderId === r.id}
-                                    deployLocked={userTier === "free"}
+                                    deployLocked={billingState !== "active"}
                                     accessLocked={isTrialAccessRevoked}
                                     urlHash={(docData?.urlHash as string | undefined) ?? null}
                                     continueRender={continueRender}
@@ -14402,7 +14401,7 @@ export default function PreviewPage(): JSX.Element {
                                     setAppBuilderInitialViewMode("ai");
                                 }}
                                 onDeploy={(app) => openAppDeployWizard(app)}
-                                deployLocked={userTier === "free"}
+                                deployLocked={billingState !== "active"}
                                 accessLocked={isFreeTierNotTrialing}
                                 showTour={isTourEligible || isFreeTierNotTrialing || shouldForcePreviewTourInDev}
                                 onRequestDeployCheckout={() => {
@@ -14858,15 +14857,15 @@ export default function PreviewPage(): JSX.Element {
                                             <WebsitePrePaywall
                                                 open={appDeployWizardOpen && appDeployWizardStep === 2 && appDeployWizardUpgradePaywallOpen}
                                                 onClose={closeAppDeployWizard}
-                                                onStartCheckout={() => void startProCheckoutForAppDeploy()}
+                                                onStartCheckout={() => void startProCheckoutForAppDeploy({ paidOnly: true })}
                                                 checkoutBusy={checkoutBusy}
                                                 dismissible={false}
                                                 zIndexClassName="z-[18060]"
-                                                title="Upgrade to deploy this website"
-                                                description="Your current plan is blocking live deployment. Upgrade to continue and publish from the dashboard."
-                                                primaryLabel={appDeployWizardUpgradePrimaryLabel}
+                                                title="A full account is required to deploy"
+                                                description="Deployment requires an active paid subscription and is not included in the free trial. Upgrading starts your paid plan and billing immediately."
+                                                primaryLabel="Upgrade now — billing starts today"
                                                 secondaryLabel={undefined}
-                                                footerNote="Your upgrade unlocks deploy access right away."
+                                                footerNote="Deployment unlocks with an active paid subscription."
                                             />
                                         ) : null}
 
@@ -15889,7 +15888,7 @@ export default function PreviewPage(): JSX.Element {
                         }}
                         onStartCheckout={() => {
                             setShowCreditsPaywall(null);
-                            void startProCheckout();
+                            void startProCheckout(showCreditsPaywall === "deploy");
                         }}
                             checkoutBusy={checkoutBusy}
                             title={
@@ -15898,7 +15897,7 @@ export default function PreviewPage(): JSX.Element {
                                     : showCreditsPaywall === "archive_size"
                                     ? "Upgrade to capture sites of this size"
                                     : showCreditsPaywall === "deploy"
-                                    ? "Upgrade to publish"
+                                    ? "A full account is required to deploy"
                                     : userTier === "free"
                                         ? "You’ve hit the limit on your free plan"
                                         : `You’ve hit the limit on your ${userTier} plan`
@@ -15924,10 +15923,12 @@ export default function PreviewPage(): JSX.Element {
                                         ? "This website is too large for the Free plan. Upgrade to capture sites of this size."
                                         : showCreditsPaywall === "preview"
                                         ? "You have used all monthly generation credits. Upgrade to websites and unlock one-click deploy."
-                                        : "Publish your website live from the editor. Upgrade to unlock one-click deploy and higher monthly credits."
+                                        : showCreditsPaywall === "deploy"
+                                            ? "Deployment requires an active paid subscription and is not included in the free trial. Upgrading starts your paid plan and billing immediately."
+                                            : "Publish your website live from the editor. Upgrade to unlock one-click deploy and higher monthly credits."
                             }
-                            primaryLabel={TRIAL_CTA_LABEL}
-                            footerNote="Cancel anytime before renewal."
+                            primaryLabel={showCreditsPaywall === "deploy" ? "Upgrade now — billing starts today" : TRIAL_CTA_LABEL}
+                            footerNote={showCreditsPaywall === "deploy" ? "Deployment unlocks with an active paid subscription." : "Cancel anytime before renewal."}
                             zIndexClassName="z-[12049]"
                         />
                     )

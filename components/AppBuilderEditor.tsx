@@ -195,26 +195,17 @@ type UpgradePaywallCopy = {
     footerNote: string;
 };
 
-const DEPLOY_UPGRADE_PAYWALL_COPY: UpgradePaywallCopy = {
-    title: "Upgrade to publish",
-    description: "Publish your website live from the editor. Upgrade to unlock one-click deploy and higher monthly credits.",
-    benefits: [
-        "Deploy 40+ websites per month",
-        "One-click publishing",
-        "AI task force to build and design your websites",
-        // "Higher queue priority for faster outputs",
-        "24/7 Human support included",
-    ],
-    primaryLabel: TRIAL_CTA_LABEL,
-    footerNote: "Cancel anytime before renewal.",
-};
-
 const DOWNLOAD_UPGRADE_PAYWALL_COPY: UpgradePaywallCopy = {
     title: "Upgrade to download your code",
     description: "Code downloads require a paid subscription and are not included in the free trial. Upgrading starts your paid plan and billing immediately.",
     benefits: ["Download your current project as a ZIP", "Includes your latest editor changes", "Keep building and publishing your websites"],
     primaryLabel: "Upgrade now — billing starts today",
     footerNote: "Downloads unlock with an active paid subscription.",
+};
+
+const DEPLOY_UPGRADE_PAYWALL_COPY: UpgradePaywallCopy = {
+    ...DOWNLOAD_UPGRADE_PAYWALL_COPY,
+    title: "A full account is required to deploy",
 };
 
 const FREE_PLAN_UPGRADE_PAYWALL_COPY: UpgradePaywallCopy = {
@@ -8884,6 +8875,10 @@ export default function AppBuilderEditor({
                     onStartCheckout={() => {
                         if (upgradePaywallCopy === DOWNLOAD_UPGRADE_PAYWALL_COPY) {
                             void upgradeForCodeDownload();
+                            return;
+                        }
+                        if (upgradePaywallCopy === DEPLOY_UPGRADE_PAYWALL_COPY) {
+                            void startLocalTrialCheckout(true);
                             return;
                         }
                         requestDeployCheckout();

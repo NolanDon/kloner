@@ -9,7 +9,7 @@ import { upsertVercelProjectEnvVar } from "../../../_lib/vercel-env";
 import { decryptString, type EncryptedBlobV1 } from "../../../_lib/crypto";
 import { loadVercelIntegration } from "../../../_lib/vercel-integration";
 import { refreshTierFromStripeForUid } from "../../../_lib/billing";
-import { loadProjectFileBytes } from "../../../_lib/projectDownload";
+import { canDownloadProject, loadProjectFileBytes } from "../../../_lib/projectDownload";
 import { hydrateAppBuilderFiles } from "../../../_lib/htmlStorage";
 import { captureCriticalEvent } from "@/lib/observability";
 
@@ -235,7 +235,7 @@ export async function POST(
 
         // Server-side tier guard (never trust client)
         const userSnap = await db.doc(`kloner_users/${uid}`).get();
-        const userData = userSnap.exists ? (userSnap.data() as any) : {};
+        let userData = userSnap.exists ? (userSnap.data() as any) : {};
 
         const normalizeTier = (raw: unknown): "free" | "pro" | "agency" | "enterprise" => {
             const t = typeof raw === "string" ? raw.trim().toLowerCase() : "";
@@ -271,19 +271,22 @@ export async function POST(
             try {
                 const refreshed = await refreshTierFromStripeForUid(uid);
                 userTier = refreshed === "pro" || refreshed === "agency" ? refreshed : "free";
+                const refreshedUserSnap = await db.doc(`kloner_users/${uid}`).get();
+                userData = refreshedUserSnap.exists ? (refreshedUserSnap.data() as any) : {};
             } catch {
                 // ignore; fall back to stored tier
             }
         }
 
-        if (userTier === "free") {
+        if (userTier === "free" || !canDownloadProject(userData)) {
             return NextResponse.json(
                 {
                     ok: false,
                     error: "Please upgrade your account to deploy projects.",
                     code: "FREE_TIER_DEPLOY_BLOCKED",
+                    billingState: userData.stripeStatus || "free",
                 },
-                { status: 400 }
+                { status: 402 }
             );
         }
 

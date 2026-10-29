@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { redirect, notFound } from "next/navigation";
 import { randomUUID } from "crypto";
 import { getAdminAuth, getAdminDb } from "@/app/api/_lib/auth";
+import { canDownloadProject } from "@/app/api/_lib/projectDownload";
 import { hydrateAppBuilderFiles } from "@/app/api/_lib/htmlStorage";
 import AppBuilderPageClient from "./AppBuilderPageClient";
 
@@ -74,6 +75,8 @@ export default async function AppBuilderPage({ params }: { params: Promise<{ app
     if (!uid) redirect("/login");
 
     const db = getAdminDb();
+    const userSnap = await db.collection("kloner_users").doc(uid).get();
+    const deployLocked = !canDownloadProject(userSnap.exists ? (userSnap.data() as any) : {});
     const requestId = typeof randomUUID === "function" ? randomUUID() : String(Date.now());
     const appSnap = await db.collection("kloner_users").doc(uid).collection("kloner_apps").doc(appId).get();
     if (!appSnap.exists) notFound();
@@ -153,5 +156,5 @@ export default async function AppBuilderPage({ params }: { params: Promise<{ app
         updatedAt: (data as any).updatedAt || null,
     });
 
-    return <AppBuilderPageClient appId={appId} initialAppData={initialAppData} />;
+    return <AppBuilderPageClient appId={appId} initialAppData={initialAppData} deployLocked={deployLocked} />;
 }

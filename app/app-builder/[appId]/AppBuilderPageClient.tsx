@@ -37,9 +37,11 @@ type InitialAppData = {
 export default function AppBuilderPageClient({
     appId,
     initialAppData,
+    deployLocked,
 }: {
     appId: string;
     initialAppData: InitialAppData;
+    deployLocked: boolean;
 }) {
     const router = useRouter();
     const searchParams = useSearchParams();
@@ -52,6 +54,7 @@ export default function AppBuilderPageClient({
             appId={appId}
             initialAppData={initialAppData as any}
             initialViewMode={initialViewMode}
+            deployLocked={deployLocked}
             showTour={true}
             onClose={() => {
                 router.push("/dashboard/view", { scroll: false });
