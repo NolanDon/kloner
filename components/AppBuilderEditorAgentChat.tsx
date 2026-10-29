@@ -7469,7 +7469,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
     const showChatEmptyState = (chatHistoryResolved || chatHistoryLoadTimedOut) && !showIntroTyping && messages.length === 0 && !isLoading;
 
     return (
-        <div className="app-builder-chat-theme flex flex-col h-full min-h-0 bg-gray-50 overflow-hidden">
+        <div className="app-builder-chat-theme flex h-full min-h-0 w-full min-w-0 max-w-full flex-col overflow-hidden bg-gray-50">
             {/* Header */}
             <div className="flex items-center justify-between p-3 border-b bg-white flex-shrink-0">
                 <div className="flex items-center gap-2">
@@ -7686,7 +7686,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                     }
                     void uploadChatImages(images);
                 }}
-                className={`app-builder-chat-scroll relative flex-1 min-h-0 overflow-y-auto px-4 py-5 pb-4 space-y-4 bg-[radial-gradient(circle_at_top,_rgba(255,141,33,0.10),_transparent_36%),linear-gradient(180deg,rgba(255,250,247,0.96),rgba(255,255,255,1))] ${isDraggingImageOverChat ? "ring-2 ring-inset ring-[#FF8D21]" : ""}`}
+                className={`app-builder-chat-scroll relative min-w-0 w-full max-w-full flex-1 min-h-0 overflow-y-auto px-4 py-5 pb-4 space-y-4 bg-[radial-gradient(circle_at_top,_rgba(255,141,33,0.10),_transparent_36%),linear-gradient(180deg,rgba(255,250,247,0.96),rgba(255,255,255,1))] ${isDraggingImageOverChat ? "ring-2 ring-inset ring-[#FF8D21]" : ""}`}
             >
                 {isDraggingImageOverChat ? (
                     <div className="sticky top-0 z-30 mx-auto w-fit rounded-full border border-[#FF8D21]/40 bg-white px-4 py-2 text-sm font-semibold text-neutral-800 shadow-lg" role="status">
@@ -9286,7 +9286,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                         </div>
                     </div>
                 ) : showPreviewLoadingNotice ? (
-                    <div role="status" className="app-builder-chat-notice app-builder-chat-notice-loading mb-2 rounded-xl border border-amber-200 bg-[linear-gradient(180deg,rgba(255,247,237,0.98),rgba(255,255,255,1))] px-2.5 py-2 shadow-[0_12px_32px_rgba(251,146,60,0.10)] sm:mb-3 sm:rounded-[1.5rem] sm:px-4 sm:py-4">
+                    <div role="status" className="app-builder-chat-notice app-builder-chat-notice-loading mb-2 w-full min-w-0 max-w-full rounded-xl border border-amber-200 bg-[linear-gradient(180deg,rgba(255,247,237,0.98),rgba(255,255,255,1))] px-2.5 py-2 shadow-[0_12px_32px_rgba(251,146,60,0.10)] sm:mb-3 sm:rounded-[1.5rem] sm:px-4 sm:py-4">
                         <div className="flex items-center gap-2 sm:items-start sm:gap-3">
                             <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-700 ring-1 ring-amber-200 sm:h-11 sm:w-11 sm:rounded-2xl">
                                 <AlertTriangle className="h-4 w-4 sm:h-5 sm:w-5" />
@@ -9379,8 +9379,8 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                 ) : null}
 
                 {requestPageOptions.length > 0 ? (
-                    <div className="mb-2 flex items-center gap-2">
-                        <details className="group relative shrink-0">
+                    <div className="mb-2 flex w-full min-w-0 max-w-full flex-wrap items-center gap-2">
+                        <details className="group relative max-w-full shrink-0">
                             <summary className="request-page-picker-trigger flex h-8 cursor-pointer list-none items-center gap-1.5 rounded-full border border-neutral-200 bg-white px-3 text-[12px] font-semibold text-neutral-700 shadow-sm transition hover:bg-neutral-50">
                                 <Search className="h-3.5 w-3.5 text-neutral-500" aria-hidden="true" />
                                 <span className="max-w-[10rem] truncate">{selectedRequestPageLabel}</span>
@@ -9469,7 +9469,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                             Overrides the page sent with each request.
                         </div> */}
 
-                        <div className="ml-auto inline-flex rounded-full border border-neutral-200 bg-neutral-100 p-0.5 text-[11px] font-medium text-neutral-600">
+                        <div className="ml-auto inline-flex max-w-full shrink-0 rounded-full border border-neutral-200 bg-neutral-100 p-0.5 text-[11px] font-medium text-neutral-600">
                             {(["auto", "ask", "task"] as AppBuilderChatMode[]).map((mode) => {
                                 const active = chatMode === mode;
                                 const label = mode === "auto" ? "Auto" : mode === "ask" ? "Ask" : "Task";
@@ -9526,7 +9526,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                         else void uploadChatImages(images);
                     }}
                     onPaste={event => { const images = Array.from(event.clipboardData.files).filter(file => file.type.startsWith("image/")); if (agentMode === "v3" && images.length) { event.preventDefault(); void uploadChatImages(images); } }}
-                    className="relative flex items-stretch overflow-hidden rounded-[1.35rem] border border-[#FF8D21]/18 bg-white shadow-[0_12px_30px_rgba(15,23,42,0.08)]"
+                    className="relative flex w-full min-w-0 max-w-full items-stretch overflow-hidden rounded-[1.35rem] border border-[#FF8D21]/18 bg-white shadow-[0_12px_30px_rgba(15,23,42,0.08)]"
                 >
                     {agentMode === "v3" ? <><input ref={attachmentInputRef} type="file" multiple accept="image/png,image/jpeg,image/webp,image/avif" className="hidden" onChange={event => { void uploadChatImages(Array.from(event.target.files || [])); event.target.value = ""; }} /><button type="button" title="Attach an image, or drop one here" aria-label="Attach an image" disabled={uploadingImage || isLoading || chatDisabled || imageAttachments.length >= 3} onClick={() => attachmentInputRef.current?.click()} className="absolute bottom-2.5 left-2.5 z-10 p-1 text-neutral-500 hover:text-[#FF8D21] disabled:opacity-40"><Paperclip className={`h-5 w-5 ${uploadingImage ? "animate-pulse" : ""}`} /></button></> : null}
                     <div className="relative min-w-0 flex-1">

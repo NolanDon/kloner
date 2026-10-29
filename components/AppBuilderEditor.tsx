@@ -2288,6 +2288,7 @@ export default function AppBuilderEditor({
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [isDeploying, setIsDeploying] = useState(false);
     const deployInFlightRef = useRef(false);
+    const deployPaywallEventAppIdRef = useRef<string | null>(null);
     const [isDownloadingCode, setIsDownloadingCode] = useState(false);
     const [downloadBillingState, setDownloadBillingState] = useState("free");
     const [isSharingPreview, setIsSharingPreview] = useState(false);
@@ -6572,6 +6573,21 @@ export default function AppBuilderEditor({
         if (!app || isDeploying || deployInFlightRef.current) return;
         deployInFlightRef.current = true;
         if (deployLocked) {
+            if (deployPaywallEventAppIdRef.current !== appId) {
+                deployPaywallEventAppIdRef.current = appId;
+                void (async () => {
+                    const csrf = await ensureSessionAndCsrf().catch(() => null);
+                    await fetch(`/api/app-builder/${encodeURIComponent(appId)}/deploy-paywall`, {
+                        method: "POST",
+                        credentials: "include",
+                        headers: { "content-type": "application/json", ...(csrf ? { "x-csrf": csrf } : {}) },
+                        cache: "no-store",
+                        body: JSON.stringify({}),
+                    });
+                })().catch((error) => {
+                    console.warn("[app-builder] failed to report deploy paywall view", error);
+                });
+            }
             openDeployUpgradePaywall();
             deployInFlightRef.current = false;
             return;
@@ -7788,10 +7804,10 @@ export default function AppBuilderEditor({
                     </div>
                 ) : null}
 
-                <div className="flex flex-1 min-h-0" data-app-builder-container border-t>
+                <div className="flex w-full min-w-0 max-w-full flex-1 min-h-0" data-app-builder-container border-t>
                     {/* Left Panel - AI Chat and Controls */}
                     <div 
-                        className={`app-builder-editor-panel ${showLeftPanel ? "flex" : "hidden"} flex-col bg-gray-50 flex-shrink-0 min-h-0 overflow-hidden w-full md:w-auto ${!isVisualEditorMode ? "md:border-r" : ""}`}
+                        className={`app-builder-editor-panel ${showLeftPanel ? "flex" : "hidden"} flex-col bg-gray-50 flex-shrink-0 min-h-0 min-w-0 max-w-full overflow-hidden w-full md:w-auto ${!isVisualEditorMode ? "md:border-r" : ""}`}
                         style={!isMobile && !isVisualEditorMode ? { width: `${leftPanelWidth}px` } : isVisualEditorMode ? { width: "100%" } : undefined}
                     >
                         {/* View Mode Toggle */}
@@ -7901,7 +7917,7 @@ export default function AppBuilderEditor({
                             {agentMode === "v3" ? <EditorColorSchemes appId={appId} ready={previewMode !== "webcontainer" || isWebPreviewReady} /> : null}
                         </div>
                         {/* AI Chat or Code View */}
-                        <div className="flex-1 min-h-0 overflow-hidden">
+                        <div className="flex-1 min-h-0 min-w-0 max-w-full overflow-hidden">
                             <div data-tour-chat-panel className={viewMode === "ai" ? "h-full" : "hidden"}>
                                 {agentMode === "v3" ? (
                                     <AppBuilderEditorAgentChatV3
@@ -8290,7 +8306,7 @@ export default function AppBuilderEditor({
                     )}
 
                     {/* Right Panel - Browser-like App View */}
-                    <div className={`${showRightPanel && !isVisualEditorMode ? "flex" : "hidden"} flex-1 flex flex-col min-h-0`}>
+                    <div className={`${showRightPanel && !isVisualEditorMode ? "flex" : "hidden"} min-w-0 flex-1 flex flex-col min-h-0`}>
                         {showDeployBanner ? (
                             <div
                                 className={`app-builder-deploy-banner ${effectiveDeployBanner?.kind === "error" ? "app-builder-deploy-banner-error" : "app-builder-deploy-banner-success"} border-b px-4 py-3 sm:px-4 ${effectiveDeployBanner?.kind === "error"
