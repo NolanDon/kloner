@@ -864,7 +864,7 @@ export default function LoginPage(): JSX.Element {
                                 {loading ? "Please wait…" : "Continue with Google"}
                             </button>
 
-                            {err && !termsAcceptanceError ? (
+                            {err ? (
                                 <p className="mt-4 rounded-2xl border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">
                                     {err}
                                 </p>
