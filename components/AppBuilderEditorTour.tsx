@@ -145,6 +145,7 @@ export function AppBuilderEditorTour({
         const step = steps[index];
         if (!step || typeof window === "undefined") return;
         const isMobilePreviewStep = isMobile && index === 0;
+        const isPreviewTarget = step.target === "[data-tour-builder-preview]";
 
         const target = document.querySelector(step.target) as HTMLElement | null;
         if (!target) {
@@ -157,21 +158,28 @@ export function AppBuilderEditorTour({
         const popup = containerRef.current?.querySelector('[role="dialog"]') as HTMLElement | null;
         const popupW = popup?.getBoundingClientRect().width || 340;
         const popupH = popup?.getBoundingClientRect().height || 180;
+        const previewCalloutFitsBeside = isPreviewTarget && !isMobilePreviewStep && rect.left - popupW - 12 >= 12;
 
         const preferAbove = rect.top > 180;
-        const rawTop = isMobilePreviewStep
+        const rawTop = previewCalloutFitsBeside
+            ? rect.top + 12
+            : isMobilePreviewStep
             ? rect.bottom - popupH - 20
             : preferAbove
                 ? rect.top - popupH - 12
                 : rect.bottom + 12;
-        const rawLeft = isMobilePreviewStep ? rect.left - 18 : rect.left;
+        const rawLeft = previewCalloutFitsBeside
+            ? rect.left - popupW - 12
+            : isMobilePreviewStep
+                ? rect.left - 18
+                : rect.left;
         const top = Math.min(Math.max(rawTop, 12), window.innerHeight - popupH - 12);
         const left = Math.min(Math.max(rawLeft, 12), window.innerWidth - popupW - 12);
         setPos({ top, left });
 
         if (highlightRef.current) {
-            const pad = 8;
-            const leftShift = isMobilePreviewStep ? 18 : pad;
+            const pad = isPreviewTarget ? -2 : 8;
+            const leftShift = isPreviewTarget ? pad : isMobilePreviewStep ? 18 : pad;
             const box = highlightRef.current;
             box.style.display = "block";
             box.style.top = `${Math.max(rect.top - pad, 8)}px`;
@@ -181,9 +189,9 @@ export function AppBuilderEditorTour({
             box.style.borderRadius = "10px";
         }
 
-        const pad = 8;
+        const pad = isPreviewTarget ? 0 : 8;
         setMask({
-            left: Math.max(rect.left - (isMobilePreviewStep ? 18 : pad), 0),
+            left: Math.max(rect.left - (isPreviewTarget ? 0 : isMobilePreviewStep ? 18 : pad), 0),
             top: Math.max(rect.top - pad, 0),
             width: rect.width + pad * 2,
             height: rect.height + pad * 2,
