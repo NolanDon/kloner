@@ -6145,6 +6145,10 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
             type: "text",
             attachments: imageAttachments,
         };
+        // Attachments belong to this request only. Keep the uploaded image on
+        // the sent message, but remove it from the composer before the next turn.
+        const requestAttachments = imageAttachments;
+        setImageAttachments([]);
 
         if (!hideUserMessage) {
             setMessages(prev => [...prev, userMessage]);
@@ -6177,7 +6181,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                         : selectedRequestCurrentPath,
                     repairContext: opts?.forcedWorkspaceRepairContext || null,
                     conversationHistory,
-                    attachments: imageAttachments.length ? imageAttachments : [...messages].slice(-4).reverse().find(message => message.role === "user" && message.attachments?.length)?.attachments || [],
+                    attachments: requestAttachments,
                     paletteChangeId: opts?.paletteChangeId,
                 });
                 if (shouldAskLanguagePreference && detectedLanguage) {
@@ -6198,7 +6202,6 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                         body: JSON.stringify({ prompted: true }),
                     }).catch(() => null);
                 }
-                setImageAttachments([]);
             } catch (error: any) {
                 const errorMessage = String(error?.message || error || "Workspace Autonomy V3 failed.");
                 const activeV3Job = v3ActiveJobRef.current;
