@@ -30,7 +30,6 @@ import logo from "@/public/images/logo.png";
 import orangeLogo from "@/public/images/orange_logo.png";
 import { useUrlOverlay } from "@/components/UrlOverlayProvider";
 import ThemeToggle from "@/components/ThemeToggle";
-import KlonerPumpkinAccent from "@/components/KlonerPumpkinAccent";
 
 const ACCENT = "#FF8D21";
 
@@ -166,7 +165,6 @@ export default function NavBar(): JSX.Element {
             href="/"
             className="ml-5 flex items-center gap-0 font-black tracking-tight text-xl md:text-2xl shrink-0"
           >
-            <KlonerPumpkinAccent />
             <div className="relative h-[64px] w-[64px] md:h-[90px] md:w-[90px]">
               <Image
                 src={logo}

@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { ArrowRight, ExternalLink, X } from "lucide-react";
-import Image from "next/image";
 
 type UrlProcessingPopupProps = {
     open: boolean;
@@ -284,14 +283,6 @@ export default function UrlProcessingPopup({
                                     className="absolute left-0 top-1/2 h-2 -translate-y-1/2 rounded-full bg-[#FF8D21] transition-[width] duration-300 ease-out"
                                     style={{ width: `${progress}%` }}
                                     aria-hidden="true"
-                                />
-                                <Image
-                                    className="url-processing-pumpkin absolute top-1/2 z-10 h-6 w-7 -translate-y-1/2"
-                                    src="/images/pumpkin-accent.webp"
-                                    width={192}
-                                    height={173}
-                                    alt=""
-                                    style={{ left: `clamp(14px, ${progress}%, calc(100% - 14px))` }}
                                 />
                             </div>
                         ) : null}

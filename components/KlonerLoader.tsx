@@ -14,7 +14,6 @@ type KlonerLoaderProps = {
     milestones?: number[];
     showMilestones?: boolean;
     framed?: boolean;
-    showBats?: boolean;
 };
 
 type HydrationDotsLoaderProps = {
@@ -47,29 +46,14 @@ function clampProgress(value: number | null | undefined) {
     return Math.max(0, Math.min(100, Math.round(value)));
 }
 
-function LoaderBats() {
+function LoaderMark() {
     return (
-        <span className="kloner-loader-bats" aria-hidden="true">
-            <svg className="kloner-loader-bat kloner-loader-bat-one" viewBox="0 0 24 14" fill="currentColor">
-                <path d="M1 2 6 5l3-4 3 4 5-3-2 9-6-3-6 3L1 2Z" />
-            </svg>
-            <svg className="kloner-loader-bat kloner-loader-bat-two" viewBox="0 0 24 14" fill="currentColor">
-                <path d="M1 2 6 5l3-4 3 4 5-3-2 9-6-3-6 3L1 2Z" />
-            </svg>
-            <svg className="kloner-loader-bat kloner-loader-bat-three" viewBox="0 0 24 14" fill="currentColor">
-                <path d="M1 2 6 5l3-4 3 4 5-3-2 9-6-3-6 3L1 2Z" />
-            </svg>
-            <svg className="kloner-loader-bat kloner-loader-bat-four" viewBox="0 0 24 14" fill="currentColor">
-                <path d="M1 2 6 5l3-4 3 4 5-3-2 9-6-3-6 3L1 2Z" />
-            </svg>
-        </span>
-    );
-}
-
-function LoaderBatsMark() {
-    return (
-        <div className="kloner-loader-mark kloner-loader-mark-bats-only">
-            <LoaderBats />
+        <div className="kloner-loader-mark" aria-hidden="true">
+            <motion.span
+                className="h-5 w-5 rounded-full border-2 border-[#FF8D21] border-t-transparent"
+                animate={{ rotate: 360 }}
+                transition={{ duration: 1.1, repeat: Infinity, ease: "linear" }}
+            />
         </div>
     );
 }
@@ -130,7 +114,7 @@ export function HydrationDotsLoader({
 }: HydrationDotsLoaderProps) {
     return (
         <div className={`flex flex-col items-center text-center ${className}`}>
-            <LoaderBatsMark />
+            <LoaderMark />
             <div className="mt-3 text-sm leading-5 tracking-[-0.01em] text-neutral-900">
                 {label}
             </div>
@@ -161,7 +145,7 @@ export function WorkspaceLoadingPanel({
             exit={{ opacity: 0, y: 8 }}
             transition={{ duration: 0.22, ease: "easeOut" }}
         >
-            <LoaderBatsMark />
+            <LoaderMark />
             <div className="mt-3 text-sm leading-5 tracking-[-0.01em] text-neutral-900">
                 {title}
             </div>
@@ -241,7 +225,7 @@ export function WorkspaceLoadingScreen({
         >
             {timedOut ? (
                 <div className="kloner-workspace-loading-timeout w-full max-w-md rounded-3xl border border-neutral-200 bg-white px-6 py-6 text-center shadow-[0_24px_80px_rgba(15,23,42,0.12)]">
-                    <LoaderBatsMark />
+                    <LoaderMark />
                     <div className="mt-3 text-[11px] uppercase tracking-[0.22em] text-neutral-400">
                         {title}
                     </div>
@@ -283,7 +267,6 @@ export default function KlonerLoader({
     milestones = [20, 40, 60, 80, 100],
     showMilestones = false,
     framed = true,
-    showBats = true,
 }: KlonerLoaderProps = {}) {
     const spinner = (
         <motion.div
@@ -325,9 +308,6 @@ export default function KlonerLoader({
             <div className={`mt-2 sm:mt-3 mb-4 mx-2 sm:mx-3 md:mx-4 min-h-[160px] px-6 py-8 grid place-items-center ${framed ? "rounded-2xl border border-neutral-200 shadow-sm" : ""}`} style={framed ? { backgroundColor: "var(--surface)" } : undefined}>
                 {showMilestones ? (
                     <div className="w-full max-w-md">
-                        {showBats ? <div className="relative mx-auto h-4 w-16">
-                            <LoaderBats />
-                        </div> : null}
                         <MilestoneProgress progress={progress} milestones={milestones} />
                         {(label || sublabel) ? (
                             <div className="mt-4 text-center">

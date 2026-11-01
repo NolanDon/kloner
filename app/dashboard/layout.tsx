@@ -35,7 +35,6 @@ import {
 } from "lucide-react";
 import KlonerLoader from "@/components/KlonerLoader";
 import ThemeToggle from "@/components/ThemeToggle";
-import KlonerPumpkinAccent from "@/components/KlonerPumpkinAccent";
 import { type UserTier } from "@/src/lib/credits";
 
 const ACCENT = "#FF8D21";
@@ -400,7 +399,6 @@ function SidebarShell({
           href="/"
           className="flex items-center gap-0.5 font-black tracking-tight text-xl md:text-2xl shrink-0"
         >
-          <KlonerPumpkinAccent />
           <div className="relative h-[90px] w-[90px]">
             <Image
               src={logo}
