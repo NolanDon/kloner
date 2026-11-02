@@ -10,6 +10,7 @@ import React, {
     memo,
 } from "react";
 import { scanSourceMatchesUrl } from "@/src/lib/scanSourceIdentity";
+import { isDashboardProjectAccessLocked } from "./subscriptionAccess";
 import Image from "next/image";
 import { createPortal, flushSync } from "react-dom";
 import { toast } from "react-hot-toast";
@@ -1438,6 +1439,9 @@ type MiniDashboardEntryProps = {
     showDevEarlyGenerationPaywallSwitch?: boolean;
     devEarlyGenerationPaywallEnabled?: boolean;
     onToggleDevEarlyGenerationPaywall?: () => void;
+    showSubscriptionAccessPreviewSwitch?: boolean;
+    subscriptionAccessPreviewEnabled?: boolean;
+    onToggleSubscriptionAccessPreview?: () => void;
 };
 
 function MiniDashboardEntry({
@@ -1464,6 +1468,9 @@ function MiniDashboardEntry({
     showDevEarlyGenerationPaywallSwitch = false,
     devEarlyGenerationPaywallEnabled = false,
     onToggleDevEarlyGenerationPaywall,
+    showSubscriptionAccessPreviewSwitch = false,
+    subscriptionAccessPreviewEnabled = false,
+    onToggleSubscriptionAccessPreview,
 }: MiniDashboardEntryProps) {
     const isCompact = size === "compact";
     const [url, setUrl] = useState("");
@@ -1606,6 +1613,25 @@ function MiniDashboardEntry({
                                     className="dev-paywall-switch__track relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors"
                                 >
                                     <span className={`dev-paywall-switch__thumb absolute left-0.5 h-5 w-5 rounded-full shadow-sm transition-transform ${devEarlyGenerationPaywallEnabled ? "translate-x-5" : "translate-x-0"}`} />
+                                </span>
+                            </button>
+                        ) : null}
+                        {showSubscriptionAccessPreviewSwitch && onToggleSubscriptionAccessPreview ? (
+                            <button
+                                type="button"
+                                role="switch"
+                                aria-checked={subscriptionAccessPreviewEnabled}
+                                data-state={subscriptionAccessPreviewEnabled ? "on" : "off"}
+                                onClick={onToggleSubscriptionAccessPreview}
+                                className="dev-paywall-switch inline-flex min-h-10 items-center gap-3 rounded-full border px-3.5 py-2 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF8D21] focus-visible:ring-offset-2"
+                                title="Admin-only visual preview; does not change subscription state"
+                            >
+                                <span>Preview cancelled plan</span>
+                                <span
+                                    aria-hidden="true"
+                                    className="dev-paywall-switch__track relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors"
+                                >
+                                    <span className={`dev-paywall-switch__thumb absolute left-0.5 h-5 w-5 rounded-full shadow-sm transition-transform ${subscriptionAccessPreviewEnabled ? "translate-x-5" : "translate-x-0"}`} />
                                 </span>
                             </button>
                         ) : null}
@@ -2210,6 +2236,7 @@ function RenderCardInner({
             className={[
                 "relative flex flex-col overflow-visible rounded-xl border bg-white shadow-sm hover:shadow-md transition-shadow",
                 isArchivedFlag ? "border-amber-300/70 bg-amber-50/50" : "border-neutral-200",
+                accessLocked ? "opacity-60 grayscale" : "",
                 // ✅ community rebuild/remix: clearer but still clean
                 isCommunityBuild && !isArchivedFlag
                     ? [
@@ -2465,8 +2492,8 @@ function RenderCardInner({
                                         title={
                                             isArchivedFlag
                                                 ? "Unarchive to customize this preview"
-                                                : accessLocked
-                                                    ? "Trial access was cancelled, so this preview is locked in the dashboard"
+                                                                                : accessLocked
+                                                                                    ? "Subscription access is paused until it is resumed"
                                                 : isBuilding || isQueued
                                                     ? "Still building preview"
                                                     : isFailed
@@ -3279,7 +3306,7 @@ function AppCard({
     }
 
     return (
-        <div className="group relative mx-auto w-full max-w-[240px] px-2 pt-2 pb-4 sm:pb-5">
+        <div className={`group relative mx-auto w-full max-w-[240px] px-2 pt-2 pb-4 sm:pb-5 ${accessLocked ? "opacity-60 grayscale" : ""}`}>
             <div className="flex flex-col items-center gap-4 text-center">
                 <div className="flex w-full items-center justify-center pt-8">
                     {isDraftCard ? (
@@ -3376,7 +3403,7 @@ function AppCard({
                                 disabled={isDeleting || accessLocked || disableActions || isBrokenDraftCard || appViewIsBusy}
                                 className="group/icon relative grid h-40 w-40 place-items-center rounded-[2.75rem] bg-[#FF8D21] text-[48px] font-black text-white shadow-[0_10px_20px_rgba(255,141,33,0.10)] transition-all duration-300 ease-out hover:scale-[1.14] disabled:cursor-not-allowed disabled:opacity-60"
                                 style={{ fontFamily: "ui-rounded, 'SF Pro Rounded', 'Avenir Next Rounded', 'Trebuchet MS', sans-serif" }}
-                                title={accessLocked ? "Trial access was cancelled, so this app is locked in the dashboard" : appViewIsBusy ? "Opening app" : suppressLivePromotionIssue ? "View app" : appIssue?.message || "View app"}
+                                title={accessLocked ? "Subscription access is paused until it is resumed" : appViewIsBusy ? "Opening app" : suppressLivePromotionIssue ? "View app" : appIssue?.message || "View app"}
                                 aria-label={appViewIsBusy ? "Opening app" : suppressLivePromotionIssue ? "View app" : appIssue?.message || "View app"}
                             >
                                 <span className="transition-opacity duration-150 group-hover/icon:opacity-0 group-focus-visible/icon:opacity-0">
@@ -3582,7 +3609,7 @@ function AppCard({
                                     }}
                                     disabled={isDeleting || accessLocked || disableActions || isBrokenDraftCard || isPendingCreation || appViewIsBusy}
                                     className="dashboard-card-action inline-flex h-8 w-8 items-center justify-center rounded-2xl border border-neutral-300 bg-white text-neutral-700 shadow-sm transition-all duration-300 ease-out hover:border-[#FF8D21] hover:bg-[#FF8D21] hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
-                                    title={accessLocked ? "Trial access was cancelled, so this app is locked in the dashboard" : appViewIsBusy ? "Opening app" : suppressLivePromotionIssue ? "View app" : appIssue?.message || "View app"}
+                                    title={accessLocked ? "Subscription access is paused until it is resumed" : appViewIsBusy ? "Opening app" : suppressLivePromotionIssue ? "View app" : appIssue?.message || "View app"}
                                     aria-label={appViewIsBusy ? "Opening app" : suppressLivePromotionIssue ? "View app" : appIssue?.message || "View app"}
                                 >
                                     {appViewIsBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <BrushIcon className="h-3.5 w-3.5" />}
@@ -4162,7 +4189,6 @@ export default function PreviewPage(): JSX.Element {
     const [billingState, setBillingState] = useState<"free" | "active" | "trialing" | "trial_cancelled">("free");
     const [dashboardCompactLayout, setDashboardCompactLayout] = useState<boolean>(false);
     const [showArchivedApps, setShowArchivedApps] = useState<boolean>(false);
-    const isTrialAccessRevoked = billingState === "trial_cancelled";
     const workspaceAutonomyV3IsDefault =
         (process.env.NEXT_PUBLIC_WORKSPACE_AUTONOMY_V3_ENABLED_FOR_ALL !== "false" && Boolean(user?.uid)) ||
         user?.uid === WORKSPACE_AUTONOMY_V3_TEST_UID ||
@@ -4185,6 +4211,7 @@ export default function PreviewPage(): JSX.Element {
     const [showRecoveryCheckoutLoader, setShowRecoveryCheckoutLoader] = useState(false);
     const [showDevQuickMenu, setShowDevQuickMenu] = useState(false);
     const [devEarlyGenerationPaywallEnabled, setDevEarlyGenerationPaywallEnabled] = useState(false);
+    const [devSubscriptionAccessPreviewEnabled, setDevSubscriptionAccessPreviewEnabled] = useState(false);
     const [previewDebugScenario, setPreviewDebugScenario] = useState<{ mode: 'terminal-error' | 'terminal-error-auto-fix'; nonce: number } | null>(null);
     const isDev = process.env.NODE_ENV !== "production";
     const [deletingOwnAccount, setDeletingOwnAccount] = useState(false);
@@ -4427,6 +4454,19 @@ export default function PreviewPage(): JSX.Element {
     const [editorHtml, setEditorHtml] = useState<string>("");
     const [editorRefImg, setEditorRefImg] = useState<string>("");
     const [isAdmin, setIsAdmin] = useState<boolean>(false);
+    const hasActualSubscriptionCancellation = isDashboardProjectAccessLocked({
+        billingState,
+        stripeStatus,
+        cancelAtPeriodEnd: stripeCancelAtPeriodEnd,
+    });
+    const isSimulatedSubscriptionAccessPreview =
+        isAdmin && devSubscriptionAccessPreviewEnabled && !hasActualSubscriptionCancellation;
+    const isSubscriptionAccessRevoked = isDashboardProjectAccessLocked({
+        billingState,
+        stripeStatus,
+        cancelAtPeriodEnd: stripeCancelAtPeriodEnd,
+        previewMode: isAdmin && devSubscriptionAccessPreviewEnabled,
+    });
     const [activeRenderId, setActiveRenderId] = useState<string | undefined>(undefined);
 
     const [appBuilderOpen, setAppBuilderOpen] = useState(false);
@@ -4576,19 +4616,19 @@ export default function PreviewPage(): JSX.Element {
             setAppBuilderInitialViewMode("ai");
             return { ok: false, code: "EDITOR_ACCESS_REVOKED", message: "This app is not available to open." };
         }
-        if (isTrialAccessRevoked) {
+        if (isSubscriptionAccessRevoked) {
             void showAlert(
-                "Your trial was cancelled, so existing projects are locked in the dashboard.",
+                "Your subscription was cancelled, so existing projects are locked in the dashboard.",
                 "Access locked",
             );
-            return { ok: false, code: "EDITOR_ACCESS_REVOKED", message: "Your trial was cancelled, so existing projects are locked in the dashboard." };
+            return { ok: false, code: "EDITOR_ACCESS_REVOKED", message: "Your subscription was cancelled, so existing projects are locked in the dashboard." };
         }
         const nextUrl = buildAppBuilderUrl(nextId, initialViewMode);
         if (!nextUrl) return { ok: false, code: "EDITOR_NAVIGATION_FAILED", message: "The editor destination could not be created." };
 
         if (opts?.forceReload) {
             return requestEditorNavigation({
-                accessRevoked: isTrialAccessRevoked,
+                accessRevoked: isSubscriptionAccessRevoked,
                 signal: opts.signal,
                 refreshSession: () => bootstrapServerSession({ forceRefresh: true, timeoutMs: 12_000 }),
                 navigate: () => window.location.assign(nextUrl),
@@ -4597,7 +4637,7 @@ export default function PreviewPage(): JSX.Element {
 
         router.push(nextUrl, { scroll: false });
         return { ok: true };
-    }, [blockedUrlGenerationAppId, buildAppBuilderUrl, isTrialAccessRevoked, router, showAlert]);
+    }, [blockedUrlGenerationAppId, buildAppBuilderUrl, isSubscriptionAccessRevoked, router, showAlert]);
 
     const openAppBuilderPreviewFirstWithCookieGate = useCallback((appId: string | null, opts?: { forceReload?: boolean }) => {
         void openAppBuilderWithCookieGate(appId, workspaceAutonomyV3IsDefault || isMobileViewport ? "ai" : "custom", opts?.forceReload ? { forceReload: true } : undefined);
@@ -4617,9 +4657,9 @@ export default function PreviewPage(): JSX.Element {
         if (blockedUrlGenerationAppId && nextId === blockedUrlGenerationAppId) {
             return;
         }
-        if (isTrialAccessRevoked) {
+        if (isSubscriptionAccessRevoked) {
             void showAlert(
-                "Your trial was cancelled, so existing projects are locked in the dashboard.",
+                "Your subscription was cancelled, so existing projects are locked in the dashboard.",
                 "Access locked",
             );
             return;
@@ -4628,7 +4668,7 @@ export default function PreviewPage(): JSX.Element {
         const qs = new URLSearchParams();
         qs.set("view", workspaceAutonomyV3IsDefault || isMobileViewport ? "ai" : "custom");
         router.push(`/app-builder/${encodeURIComponent(nextId)}?${qs.toString()}`, { scroll: false });
-    }, [blockedUrlGenerationAppId, isMobileViewport, isTrialAccessRevoked, router, showAlert, workspaceAutonomyV3IsDefault]);
+    }, [blockedUrlGenerationAppId, isMobileViewport, isSubscriptionAccessRevoked, router, showAlert, workspaceAutonomyV3IsDefault]);
 
     // ───────── app deploy wizard (first deploy) ─────────
     const [appDeployWizardOpen, setAppDeployWizardOpen] = useState(false);
@@ -4714,6 +4754,7 @@ export default function PreviewPage(): JSX.Element {
                         : null;
                 setBillingState(nextBillingState);
                 setStripeStatus(nextStripeStatus);
+                setStripeCancelAtPeriodEnd(!!data?.cancelAtPeriodEnd);
                 const normalized: UserTier =
                     t === "pro" || t === "agency" || t === "enterprise" ? (t as UserTier) : "free";
                 setUserTier(normalized);
@@ -4742,7 +4783,18 @@ export default function PreviewPage(): JSX.Element {
     }, [refreshUserTierNow]);
 
     const handleResumeSubscription = useCallback(async () => {
+        if (isSimulatedSubscriptionAccessPreview) {
+            setDevSubscriptionAccessPreviewEnabled(false);
+            push("Cancelled-subscription preview ended.", "ok");
+            return;
+        }
+
         if (resumeSubscriptionBusy) return;
+
+        if ((stripeStatus === "canceled" || stripeStatus === "cancelled") && !stripeCancelAtPeriodEnd) {
+            router.push("/price");
+            return;
+        }
 
         setResumeSubscriptionBusy(true);
         try {
@@ -4763,6 +4815,7 @@ export default function PreviewPage(): JSX.Element {
             }
 
             push("Subscription resumed. You can build again now.", "ok");
+            setDevSubscriptionAccessPreviewEnabled(false);
             await refreshUserTierNow();
         } catch (err: any) {
             console.error("Resume subscription failed", err);
@@ -4770,7 +4823,7 @@ export default function PreviewPage(): JSX.Element {
         } finally {
             setResumeSubscriptionBusy(false);
         }
-    }, [push, refreshUserTierNow, resumeSubscriptionBusy]);
+    }, [isSimulatedSubscriptionAccessPreview, push, refreshUserTierNow, resumeSubscriptionBusy, router, setDevSubscriptionAccessPreviewEnabled, stripeCancelAtPeriodEnd, stripeStatus]);
 
     // URL generation and app creation state.
     const [urlGenerationErrorDetails, setUrlGenerationErrorDetails] = useState<string>("");
@@ -14075,10 +14128,13 @@ export default function PreviewPage(): JSX.Element {
                         showDevEarlyGenerationPaywallSwitch={isDev}
                         devEarlyGenerationPaywallEnabled={devEarlyGenerationPaywallEnabled}
                         onToggleDevEarlyGenerationPaywall={() => setDevEarlyGenerationPaywallEnabled((enabled) => !enabled)}
+                        showSubscriptionAccessPreviewSwitch={isAdmin}
+                        subscriptionAccessPreviewEnabled={devSubscriptionAccessPreviewEnabled}
+                        onToggleSubscriptionAccessPreview={() => setDevSubscriptionAccessPreviewEnabled((enabled) => !enabled)}
                     />
                 </section>
 
-                {billingState === "trial_cancelled" ? (
+                {isSubscriptionAccessRevoked ? (
                     <motion.div
                         initial={{ opacity: 0, y: -8, scale: 0.98 }}
                         animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -14089,7 +14145,11 @@ export default function PreviewPage(): JSX.Element {
                             <div className="flex min-w-0 flex-1 items-start gap-2 text-left">
                                 <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-600" />
                                 <span className="min-w-0 flex-1 whitespace-normal break-words font-semibold leading-5 text-red-950">
-                                    Your account is cancelled, and projects have been paused. Renew to continue building.
+                                    {isSimulatedSubscriptionAccessPreview
+                                        ? "Preview: your subscription is cancelled and projects are paused. Resume to continue building."
+                                        : stripeStatus === "canceled" || stripeStatus === "cancelled"
+                                            ? "Your subscription has ended, and projects are paused. Resubscribe to continue building."
+                                            : "Your subscription is scheduled to end, and projects are paused. Resume to continue building."}
                                 </span>
                             </div>
                             <button
@@ -14103,7 +14163,11 @@ export default function PreviewPage(): JSX.Element {
                                 ) : (
                                     <RotateCcw className="h-3.5 w-3.5" />
                                 )}
-                                Renew
+                                {isSimulatedSubscriptionAccessPreview
+                                    ? "Resume preview"
+                                    : stripeStatus === "canceled" || stripeStatus === "cancelled"
+                                        ? "Resubscribe"
+                                        : "Resume subscription"}
                             </button>
                         </div>
                     </motion.div>
@@ -14254,8 +14318,8 @@ export default function PreviewPage(): JSX.Element {
                                     onRetryPendingCreation={undefined}
                                     onRetryAppIssue={undefined}
                                     onClearPendingCreation={undefined}
-                                    disableActions={isTrialAccessRevoked || websiteSubmitBusy}
-                                    accessLocked={isTrialAccessRevoked}
+                                    disableActions={isSubscriptionAccessRevoked || websiteSubmitBusy}
+                                    accessLocked={isSubscriptionAccessRevoked}
                                     onCustomize={(appId) => {
                                         openAppBuilderFromDashboardCard(appId);
                                     }}
@@ -14291,7 +14355,7 @@ export default function PreviewPage(): JSX.Element {
                                     }
                                     isDeploying={deployingRenderId === r.id}
                                     deployLocked={billingState !== "active"}
-                                    accessLocked={isTrialAccessRevoked}
+                                    accessLocked={isSubscriptionAccessRevoked}
                                     urlHash={(docData?.urlHash as string | undefined) ?? null}
                                     continueRender={continueRender}
                                     discardRender={discardRender}
@@ -14314,7 +14378,7 @@ export default function PreviewPage(): JSX.Element {
                     <AppPreviewEditorCore
                         initialHtml={editorHtml}
                         sourceImage={editorRefImg}
-                        accessLocked={isFreeTierNotTrialing}
+                        accessLocked={isFreeTierNotTrialing || isSubscriptionAccessRevoked}
                         showTour={isTourEligible || shouldForcePreviewTourInDev}
                         initialSeoMetaByPage={activeSeoMetaByPage || undefined}
                         initialArchivedPageIds={activeArchivedPageIds}
@@ -14401,7 +14465,7 @@ export default function PreviewPage(): JSX.Element {
                                 }}
                                 onDeploy={(app) => openAppDeployWizard(app)}
                                 deployLocked={billingState !== "active"}
-                                accessLocked={isFreeTierNotTrialing}
+                                accessLocked={isFreeTierNotTrialing || isSubscriptionAccessRevoked}
                                 showTour={isTourEligible || isFreeTierNotTrialing || shouldForcePreviewTourInDev}
                                 onRequestDeployCheckout={() => {
                                     void startProCheckoutForAppDeploy({ returnAppId: currentAppId });
