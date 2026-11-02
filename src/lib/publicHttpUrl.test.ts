@@ -77,6 +77,33 @@ describe("publicHttpUrl", () => {
         expect(validateAndNormalizePublicHttpUrl("https://xn--pple-43d.com")).toBeNull();
     });
 
+    it("rejects common file-sharing and upload hosts, including subdomains", () => {
+        const blockedUrls = [
+            "https://mega.nz/file/asZyTCYQ",
+            "https://sub.mega.nz/",
+            "https://drive.google.com/file/d/example",
+            "https://www.dropbox.com/s/example/file.zip",
+            "https://1drv.ms/u/s/example",
+            "https://we.tl/t-example",
+            "https://mediafire.com/file/example",
+            "https://gofile.io/d/example",
+        ];
+
+        for (const url of blockedUrls) {
+            expect(getPublicHttpUrlRejectionReason(url)).toBe(
+                "File-sharing and upload domains are blocked.",
+            );
+            expect(validateAndNormalizePublicHttpUrl(url)).toBeNull();
+        }
+    });
+
+    it("does not block unrelated domains that contain file-host names", () => {
+        const url = "https://mega-example.com/";
+
+        expect(getPublicHttpUrlRejectionReason(url)).toBeNull();
+        expect(validateAndNormalizePublicHttpUrl(url)).toBe("https://mega-example.com/");
+    });
+
     it("accepts ordinary public URLs", () => {
         const url = "example.com/products/widget";
 

@@ -23,6 +23,34 @@ const DOMAIN_RE = /^(?!-)(?:[a-z0-9-]{1,63}\.)+[a-z]{2,63}$/i;
 const PRIVATE_HOST_RE =
   /^(?:localhost|::1|0\.0\.0\.0|127(?:\.\d{1,3}){0,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|169\.254\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2[0-9]|3[0-1])\.\d{1,3}\.\d{1,3})$/i;
 const BLOCKED_HOST_RE = /(^|\.)kloner\.app$/i;
+const BLOCKED_FILE_HOSTS = [
+  "mega.nz",
+  "mega.io",
+  "drive.google.com",
+  "dropbox.com",
+  "dropboxusercontent.com",
+  "onedrive.live.com",
+  "1drv.ms",
+  "sharepoint.com",
+  "box.com",
+  "boxusercontent.com",
+  "mediafire.com",
+  "wetransfer.com",
+  "we.tl",
+  "pcloud.com",
+  "drive.proton.me",
+  "sync.com",
+  "icedrive.net",
+  "gofile.io",
+  "file.io",
+  "pixeldrain.com",
+  "filebin.net",
+  "transfernow.net",
+  "sendgb.com",
+  "sendspace.com",
+  "upload.ee",
+  "1fichier.com",
+] as const;
 const SENSITIVE_HOST_LABELS = new Set([
   "account",
   "accounts",
@@ -456,6 +484,12 @@ function getSuspiciousHostLabelRejectionReason(hostLower: string): string | null
   return null;
 }
 
+function isBlockedFileHost(hostLower: string): boolean {
+  return BLOCKED_FILE_HOSTS.some((blockedHost) =>
+    hostLower === blockedHost || hostLower.endsWith(`.${blockedHost}`),
+  );
+}
+
 function isSensitiveGovernmentHost(hostLower: string): boolean {
   if (GOVERNMENT_HOST_SUFFIXES.some((suffix) =>
     hostLower === suffix.slice(1) || hostLower.endsWith(suffix),
@@ -506,6 +540,10 @@ export function getPublicHttpUrlRejectionReason(input: string): string | null {
     }
 
     if (!DOMAIN_RE.test(hostLower)) return "Please enter a valid public http(s) URL.";
+
+    if (isBlockedFileHost(hostLower)) {
+      return "File-sharing and upload domains are blocked.";
+    }
 
     if (isSensitiveGovernmentHost(hostLower)) {
       return "Banking, government, and account-access URLs are blocked.";

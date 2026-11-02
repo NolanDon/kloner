@@ -273,10 +273,10 @@ export default function AdminUsersClient() {
 
     return (
         <div className="space-y-6">
-            <div className="rounded-[28px] border border-neutral-200 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(249,249,248,0.94))] p-5 shadow-[0_18px_45px_rgba(0,0,0,0.08)] sm:p-6">
+            <div className="admin-users-header rounded-[28px] border border-neutral-200 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(249,249,248,0.94))] p-5 shadow-[0_18px_45px_rgba(0,0,0,0.08)] sm:p-6">
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
                     <div>
-                        <div className="inline-flex items-center gap-2 rounded-full border border-orange-200 bg-orange-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-orange-700">
+                        <div className="admin-users-badge inline-flex items-center gap-2 rounded-full border border-orange-200 bg-orange-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-orange-700">
                             Admin
                         </div>
                         <h1 className="mt-3 text-2xl font-semibold tracking-tight text-neutral-950 sm:text-3xl">
@@ -290,7 +290,7 @@ export default function AdminUsersClient() {
                     <button
                         type="button"
                         onClick={() => setRefreshNonce((value) => value + 1)}
-                        className="inline-flex items-center justify-center gap-2 rounded-full border border-neutral-200 bg-white px-4 py-2 text-sm font-medium text-neutral-700 shadow-sm transition hover:border-neutral-300 hover:text-neutral-900"
+                        className="admin-users-refresh inline-flex items-center justify-center gap-2 rounded-full border border-neutral-200 bg-white px-4 py-2 text-sm font-medium text-neutral-700 shadow-sm transition hover:border-neutral-300 hover:text-neutral-900"
                     >
                         <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
                         Refresh
@@ -298,7 +298,7 @@ export default function AdminUsersClient() {
                 </div>
 
                 <div className="mt-5 grid gap-3 lg:grid-cols-[minmax(0,1fr)_220px]">
-                    <div className="relative flex h-[56px] items-center rounded-full bg-white/95 p-2 pl-4 shadow-[0_12px_30px_rgba(0,0,0,0.08)] ring-1 ring-neutral-200 backdrop-blur-md transition-all duration-300 ease-out sm:pl-5">
+                    <div className="admin-users-search relative flex h-[56px] items-center rounded-full bg-white/95 p-2 pl-4 shadow-[0_12px_30px_rgba(0,0,0,0.08)] ring-1 ring-neutral-200 backdrop-blur-md transition-all duration-300 ease-out sm:pl-5">
                         <span className="mr-2 inline-flex h-9 w-9 items-center justify-center rounded-full border border-neutral-200 bg-neutral-50 text-neutral-500">
                             <Search className="h-4 w-4" />
                         </span>
@@ -312,7 +312,7 @@ export default function AdminUsersClient() {
                         />
                     </div>
 
-                    <label className="flex h-[56px] items-center gap-3 rounded-full border border-neutral-200 bg-white px-4 shadow-[0_12px_30px_rgba(0,0,0,0.05)]">
+                    <label className="admin-users-sort flex h-[56px] items-center gap-3 rounded-full border border-neutral-200 bg-white px-4 shadow-[0_12px_30px_rgba(0,0,0,0.05)]">
                         <span className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-400">
                             Sort
                         </span>
@@ -344,7 +344,7 @@ export default function AdminUsersClient() {
                 </div>
             ) : null}
 
-            <div className="rounded-[28px] border border-neutral-200 bg-white shadow-sm">
+            <div className="admin-users-results rounded-[28px] border border-neutral-200 bg-white shadow-sm">
                 {loading ? (
                     <div className="flex items-center justify-center gap-3 px-6 py-16 text-sm text-neutral-500">
                         <Loader2 className="h-4 w-4 animate-spin" />
@@ -362,7 +362,7 @@ export default function AdminUsersClient() {
                             const confirming = confirmDeleteUid === item.uid;
 
                             return (
-                                <div key={item.uid} className="px-5 py-5 sm:px-6">
+                                <div key={item.uid} className="admin-users-result-row px-5 py-5 sm:px-6">
                                     <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
                                         <div className="min-w-0 flex-1">
                                             <div className="flex flex-wrap items-center gap-2">
@@ -384,14 +384,14 @@ export default function AdminUsersClient() {
                                                     </span>
                                                 ) : null}
                                                 {item.disabled ? (
-                                                    <span className="rounded-full border border-red-200 bg-red-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-red-700">
+                                                    <span className="admin-users-disabled rounded-full border border-red-200 bg-red-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-red-700">
                                                         Disabled
                                                     </span>
                                                 ) : null}
                                             </div>
 
                                             <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-                                                <div className="rounded-xl border border-neutral-200 bg-neutral-50/70 px-3 py-2" title="Account created">
+                                                <div className="admin-users-metric rounded-xl border border-neutral-200 bg-neutral-50/70 px-3 py-2" title="Account created">
                                                     <div className="flex items-center justify-between gap-2">
                                                         <Clock3 className="h-3.5 w-3.5 text-neutral-500" />
                                                         <div className="truncate text-xs font-medium text-neutral-900" title={formatWhen(item.createdAt)}>
@@ -399,7 +399,7 @@ export default function AdminUsersClient() {
                                                         </div>
                                                     </div>
                                                 </div>
-                                                <div className="rounded-xl border border-neutral-200 bg-neutral-50/70 px-3 py-2" title="Last login">
+                                                <div className="admin-users-metric rounded-xl border border-neutral-200 bg-neutral-50/70 px-3 py-2" title="Last login">
                                                     <div className="flex items-center justify-between gap-2">
                                                         <Clock3 className="h-3.5 w-3.5 text-neutral-500" />
                                                         <div className="truncate text-xs font-medium text-neutral-900" title={formatWhen(item.lastSignInAt)}>
@@ -407,7 +407,7 @@ export default function AdminUsersClient() {
                                                         </div>
                                                     </div>
                                                 </div>
-                                                <div className="rounded-xl border border-neutral-200 bg-neutral-50/70 px-3 py-2" title="Total storage used (Firestore-referenced + GCS assets)">
+                                                <div className="admin-users-metric rounded-xl border border-neutral-200 bg-neutral-50/70 px-3 py-2" title="Total storage used (Firestore-referenced + GCS assets)">
                                                     <div className="flex items-center justify-between gap-2">
                                                         <HardDrive className="h-3.5 w-3.5 text-neutral-500" />
                                                         <div className="truncate text-xs font-medium text-neutral-900" title={formatStorage(item.storageBytes)}>
@@ -415,7 +415,7 @@ export default function AdminUsersClient() {
                                                         </div>
                                                     </div>
                                                 </div>
-                                                <div className="rounded-xl border border-neutral-200 bg-neutral-50/70 px-3 py-2" title="Firestore asset counts: apps, urls, renders, drafts, deployments">
+                                                <div className="admin-users-metric rounded-xl border border-neutral-200 bg-neutral-50/70 px-3 py-2" title="Firestore asset counts: apps, urls, renders, drafts, deployments">
                                                     <div className="flex items-center justify-between gap-2">
                                                         <Database className="h-3.5 w-3.5 text-neutral-500" />
                                                         <div className="truncate text-xs font-medium text-neutral-900" title={`${item.counts.apps} apps · ${item.counts.urls} urls · ${item.counts.renders} renders · ${item.counts.drafts} drafts · ${item.counts.deployments} deployments`}>
@@ -437,17 +437,17 @@ export default function AdminUsersClient() {
                                                 <button
                                                     type="button"
                                                     onClick={() => setConfirmDeleteUid(item.uid)}
-                                                    className="inline-flex items-center justify-center gap-2 rounded-full border border-red-200 bg-red-50 px-4 py-2.5 text-sm font-semibold text-red-700 transition hover:bg-red-100"
+                                                    className="admin-users-delete-trigger inline-flex items-center justify-center gap-2 rounded-full border border-red-200 bg-red-50 px-4 py-2.5 text-sm font-semibold text-red-700 transition hover:bg-red-100"
                                                 >
                                                     <Trash2 className="h-4 w-4" />
                                                     Delete user
                                                 </button>
                                             ) : (
-                                                <div className="rounded-3xl border border-red-200 bg-red-50 p-3">
-                                                    <div className="text-xs font-semibold uppercase tracking-[0.16em] text-red-600">
+                                                <div className="admin-users-delete-confirm rounded-3xl border border-red-200 bg-red-50 p-3">
+                                                    <div className="admin-users-delete-title text-xs font-semibold uppercase tracking-[0.16em] text-red-600">
                                                         Confirm deletion
                                                     </div>
-                                                    <p className="mt-2 text-xs leading-5 text-red-700">
+                                                    <p className="admin-users-delete-copy mt-2 text-xs leading-5 text-red-700">
                                                         This removes auth, Firestore data, and storage assets for this user.
                                                     </p>
                                                     <div className="mt-3 flex gap-2">
@@ -465,7 +465,7 @@ export default function AdminUsersClient() {
                                                             type="button"
                                                             onClick={() => setConfirmDeleteUid(null)}
                                                             disabled={deleting}
-                                                            className="inline-flex flex-1 items-center justify-center rounded-full border border-red-200 bg-white px-3 py-2 text-sm font-medium text-red-700"
+                                                            className="admin-users-cancel inline-flex flex-1 items-center justify-center rounded-full border border-red-200 bg-white px-3 py-2 text-sm font-medium text-red-700"
                                                         >
                                                             Cancel
                                                         </button>

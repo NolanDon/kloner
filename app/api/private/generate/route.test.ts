@@ -100,6 +100,22 @@ describe("POST /api/private/generate", () => {
         expect(callBackend).not.toHaveBeenCalled();
     });
 
+    it("blocks file-sharing URLs before scanning without disabling the user", async () => {
+        const { POST } = await import("./route");
+        const req: any = {
+            json: async () => ({ url: "https://mega.nz/file/asZyTCYQ" }),
+        };
+
+        const res: any = await POST(req);
+        const body = await res.json();
+
+        expect(res.status).toBe(400);
+        expect(body.error).toBe("File-sharing and upload domains are blocked.");
+        expect(callBackend).not.toHaveBeenCalled();
+        expect(peekUserCredit).not.toHaveBeenCalled();
+        expect(updateUser).not.toHaveBeenCalled();
+    });
+
     it("normalizes safe URLs before sending them upstream", async () => {
         const { POST } = await import("./route");
         const req: any = {

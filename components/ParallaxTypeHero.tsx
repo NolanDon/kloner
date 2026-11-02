@@ -1,71 +1,33 @@
 // components/ParallaxTypeHero.tsx
 'use client';
 
-import React, { useEffect, useRef, useState } from 'react';
-import { motion, useMotionValueEvent, useScroll, useTransform, useSpring } from 'framer-motion';
+import React, { useState } from 'react';
 import Image from 'next/image';
 import { ArrowRightSquare } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { auth } from '@/lib/firebase';
 import { getPublicHttpUrlRejectionReason, stripProtocol, validateAndNormalizePublicHttpUrl } from '@/src/lib/publicHttpUrl';
 
-const clamp = (n: number, min: number, max: number) => Math.min(Math.max(n, min), max);
-const easeOutCubic = (t: number) => 1 - Math.pow(1 - t, 3);
-
 type Props = {
     headline?: string;
     subcopy?: string;
-    parallaxStrength?: number;
     vignette?: number;
-    typingStart?: number;
-    typingEnd?: number;
     showUrlInput?: boolean;
 };
 
 export default function ParallaxTypeHero({
     headline = 'Clone a website from a URL.',
     subcopy = 'Start for free',
-    parallaxStrength = 0,
     vignette = 0.35,
-    typingStart = -0.005,
-    typingEnd = 0.10,
     showUrlInput = false,
 }: Props) {
-    const sectionRef = useRef<HTMLDivElement>(null);
     const router = useRouter();
     const [url, setUrl] = useState('');
     const [error, setError] = useState<string | null>(null);
-    const { scrollYProgress } = useScroll({
-        target: sectionRef,
-        offset: ['start start', 'end start'],
-    });
-
-    const y = useTransform(scrollYProgress, [0, 1], [0, -parallaxStrength]);
-    const scale = useTransform(scrollYProgress, [0, 1], [1.15, 1.05]);
-
-    const norm = useTransform(scrollYProgress, (v) =>
-        clamp((v - typingStart) / (typingEnd - typingStart), 0, 1)
-    );
-    const eased = useTransform(norm, (v) => easeOutCubic(v));
-    const smooth = useSpring(eased, { stiffness: 120, damping: 20, mass: 0.25 });
-    const charIndex = useTransform(smooth, (v) => Math.round(v * (headline?.length ?? 0)));
-
-    const [typed, setTyped] = useState('');
-
-    useEffect(() => {
-        setTyped(headline.slice(0, Math.round(smooth.get() * headline.length)));
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
-
-    useMotionValueEvent(charIndex, 'change', (i) => {
-        setTyped(headline.slice(0, i));
-    });
-
-    const subOpacity = useTransform(scrollYProgress, [typingEnd - 0.10, typingEnd + 0.10], [0, 1]);
 
     return (
-        <section ref={sectionRef} className="relative w-full overflow-clip border-b rounded-xl" style={{ height: '100vh' }}>
-            <motion.div aria-hidden className="absolute inset-0 z-0 overflow-hidden" style={{ y, scale }}>
+        <section className="relative w-full overflow-clip border-b rounded-xl" style={{ height: '100vh' }}>
+            <div aria-hidden className="absolute inset-0 z-0 overflow-hidden">
                 <div className="absolute -inset-[6vh]">
                     <div className="relative h-full w-full">
                         <Image
@@ -95,16 +57,15 @@ export default function ParallaxTypeHero({
                         opacity: 0.9,
                     }}
                 />
-            </motion.div>
+            </div>
 
             <div className="relative z-10 sticky top-0 flex h-screen items-center">
                 <div className="mx-auto w-full max-w-6xl px-6">
-                    <h2 className="max-w-2xl text-5xl font-semibold leading-tight tracking-tight text-white md:text-6xl">
-                        <span className="align-middle">{typed}</span>
-                        <span className="ml-1 inline-block h-[1.1em] w-[0.06em] translate-y-[0.06em] bg-white opacity-80 animate-[blink_1s_steps(1)_infinite]" />
+                    <h2 className="parallax-hero-copy max-w-2xl text-5xl font-semibold leading-tight tracking-tight text-white md:text-6xl">
+                        {headline}
                     </h2>
 
-                    <motion.div initial={{ opacity: 0, y: 8 }} style={{ opacity: subOpacity }}>
+                    <div className="parallax-hero-form">
                         <div className="mt-5 md:mt-6">
                             {showUrlInput ? (
                                 <form
@@ -154,13 +115,9 @@ export default function ParallaxTypeHero({
                                 </div>
                             )}
                         </div>
-                    </motion.div>
+                    </div>
                 </div>
             </div>
-            <style jsx global>{`
-        @keyframes blink { 50% { opacity: 0; } }
-        h1 { text-rendering: optimizeLegibility; -webkit-font-smoothing: antialiased; }
-      `}</style>
         </section>
     );
 }
