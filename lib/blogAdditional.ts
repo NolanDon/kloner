@@ -690,7 +690,7 @@ const drafts: Draft[] = [
     h1: "How to Download a Website",
     metaDescription: "Download a website for offline use the right way: save a single page, mirror a whole site with HTTrack or wget, and check the result before you rely on it.",
     description: "Save one page or mirror a whole site for offline reading, backup, or migration, and know what a raw download cannot do.",
-    publishedAt: "2026-11-02",
+    publishedAt: "2026-11-03",
     tags: ["how to download a website", "website downloader", "offline websites"],
     faqs: [
       {
