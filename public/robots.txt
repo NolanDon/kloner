@@ -8,4 +8,5 @@ Disallow: /preview
 Disallow: /previews
 Disallow: /webcontainer
 Disallow: /cgi-bin/
+Disallow: /login
 Sitemap: https://kloner.app/sitemap.xml
