@@ -16,7 +16,7 @@
     --preview-refresh-backdrop: rgba(255, 255, 255, 0.85);
     --preview-hydration-backdrop: transparent;
     --url-processing-backdrop: rgba(255, 255, 255, 0.85);
-    --moqup-banner-offset: 64px;
+    --moqup-banner-offset: 0px;
 }
 
 html[data-moqup-promo-dismissed="true"] {
@@ -153,7 +153,7 @@ html[data-moqup-promo-dismissed="true"] .moqup-referral-banner {
 
 @media (max-width: 767px) {
     :root {
-        --moqup-banner-offset: 72px;
+        --moqup-banner-offset: 0px;
     }
 
     .site-navbar-wrap {

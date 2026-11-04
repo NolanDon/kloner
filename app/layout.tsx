@@ -7,7 +7,7 @@ import AffiliateRefCapture from "@/components/AffiliateRefCapture";
 import { Suspense } from "react";
 import StyledJsxRegistry from "./registry";
 import { Fraunces, Inter } from "next/font/google";
-import MoqupReferralBanner from "@/components/MoqupReferralBanner";
+// import MoqupReferralBanner from "@/components/MoqupReferralBanner"; // Temporarily disabled.
 
 const inter = Inter({
   subsets: ["latin"],
@@ -80,7 +80,7 @@ export default function RootLayout({
         <StyledJsxRegistry>
           <AuthProviderServer>
             <AppClientProviders>
-              <MoqupReferralBanner />
+              {/* <MoqupReferralBanner /> Temporarily disabled; restore when the promo returns. */}
               <Suspense fallback={null}>
                 <AffiliateRefCapture />
               </Suspense>
