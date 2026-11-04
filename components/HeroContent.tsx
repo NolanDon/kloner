@@ -85,12 +85,12 @@ export default function HeroContent({
         transition={{ duration: 0.8 }}
         className="w-full max-w-[1000px] text-center"
       >
-        {eyebrow ? <div className="mb-5 text-xs font-semibold uppercase tracking-[0.24em] text-white/75">{eyebrow}</div> : null}
+        {eyebrow ? <div className="mb-5 text-xs font-semibold uppercase tracking-[0.24em] text-white/75" style={{ fontFamily: "var(--font-inter), Inter, sans-serif" }}>{eyebrow}</div> : null}
         <h1
-          className={`${displayClassName} mx-auto max-w-[1000px] whitespace-normal leading-[1.1] font-bold tracking-tight text-white`}
+          className={`${displayClassName} mx-auto max-w-[1000px] whitespace-normal leading-[1.1] font-medium tracking-tight text-white`}
           style={{
-            fontSize: "clamp(2.25rem, min(10vw, 7.5vh), 5rem)",
-            fontFamily: "var(--font-inter), Inter, sans-serif",
+            fontSize: "clamp(2.4rem, min(10.5vw, 8vh), 5.5rem)",
+            fontFamily: "var(--font-fraunces), Georgia, serif",
             WebkitFontSmoothing: "antialiased",
             MozOsxFontSmoothing: "grayscale",
             textRendering: "optimizeLegibility",

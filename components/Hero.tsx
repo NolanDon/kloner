@@ -31,7 +31,7 @@ export default function Hero({ eyebrow, heading, subhead }: { eyebrow?: string; 
             <div aria-hidden="true" className="hero-theme-overlay absolute inset-0 pointer-events-none" />
           </div>
 
-          <HeroContent displayClassName="font-black tracking-tight" eyebrow={eyebrow} heading={heading} subhead={subhead} />
+          <HeroContent displayClassName="tracking-tight" eyebrow={eyebrow} heading={heading} subhead={subhead} />
         </div>
       </div>
     </section>

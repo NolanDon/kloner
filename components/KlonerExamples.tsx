@@ -174,7 +174,7 @@ export default function DeckImageCarousel({
                     {/* Left: "Built With" + logo */}
                     <div className="flex items-center gap-4">
                         <h2 className="mt-1 flex items-center justify-center text-lg text-neutral-600">
-                            <span className="text-[16px] uppercase tracking-[0.1em] text-neutral-500">
+                            <span className="font-sans text-[16px] uppercase tracking-[0.1em] text-neutral-500">
                                 Built With
                             </span>
                             <span className="relative inline-block h-[72px] w-[72px] shrink-0 sm:h-[92px] sm:w-[92px]">
