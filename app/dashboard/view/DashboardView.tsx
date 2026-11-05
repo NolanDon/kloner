@@ -6679,7 +6679,6 @@ export default function PreviewPage(): JSX.Element {
                     }
                 } else {
                     if (earlyGenerationPaywall) {
-                        const paywallMessage = String(data?.error || "Please upgrade before generating a website from this request.").trim();
                         pendingUrlGenerationAppIdRef.current = null;
                         setPendingCreatedApp(null);
                         setAppBuilderOpen(false);
@@ -6687,10 +6686,8 @@ export default function PreviewPage(): JSX.Element {
                         setUrlProcessingHandoff(null);
                         setUrlProcessingFailure(null);
                         suppressUrlProcessingFailureRef.current = true;
-                        setErr(paywallMessage);
-                        if (EARLY_GENERATION_PAYWALL_ENABLED) {
-                            setShowCreditsPaywall("early_generation");
-                        }
+                        setErr("");
+                        setShowCreditsPaywall("early_generation");
                         return null;
                     }
                     if (archiveSizePaywall) {
@@ -9317,11 +9314,8 @@ export default function PreviewPage(): JSX.Element {
                         const payload: any = await res.clone().json().catch(() => ({} as any));
                         shouldMarkHandled = res.ok;
                         if (res.status === 402 && payload?.paywallRequired === true && payload?.code === "EARLY_GENERATION_PAYWALL_REQUIRED") {
-                            const paywallMessage = String(payload?.error || "Please upgrade before scanning a website from this request.").trim();
-                            clearUrlScanQueuedState(target, paywallMessage);
-                            if (EARLY_GENERATION_PAYWALL_ENABLED) {
-                                setShowCreditsPaywall("early_generation");
-                            }
+                            clearUrlScanQueuedState(target, "");
+                            setShowCreditsPaywall("early_generation");
                             setActiveUrlScanJob(null);
                             return;
                         }
@@ -10096,10 +10090,26 @@ export default function PreviewPage(): JSX.Element {
         const normalizedUrl = normUrl(rawTarget);
         const editorFailure = Boolean(urlProcessingHandoff?.errorCode?.startsWith("EDITOR_"));
         const alertAction = editorFailure ? "url_editor_navigation_error" : "url_capture_terminal_error";
-        if (!normalizedUrl || !shouldSendFrontendTimeoutAlert(alertAction, normalizedUrl)) return;
-
         const doc = (scanSourceMatchesUrl(docData, rawTarget) ? docData : {}) as any;
         const scanJob = (scanSourceMatchesUrl(activeUrlScanJob, rawTarget) ? activeUrlScanJob : {}) as any;
+        const planRestriction = /EARLY_GENERATION_PAYWALL_REQUIRED|Start your free trial before (?:scanning|generating)|Please upgrade before scanning/i.test([
+            doc.lastErrorCode,
+            doc.lastError,
+            doc.error,
+            scanJob.error,
+            urlProcessingFailure?.message,
+            urlProcessingHandoff?.errorMessage,
+            err,
+        ].map((value) => String(value || "")).join(" "));
+        if (planRestriction) {
+            setErr("");
+            setUrlProcessingFailure(null);
+            setUrlProcessingHandoff(null);
+            setShowCreditsPaywall("early_generation");
+            return;
+        }
+        if (!normalizedUrl || !shouldSendFrontendTimeoutAlert(alertAction, normalizedUrl)) return;
+
         // The previous selection can remain in React state for one render, or
         // arrive late from an unsubscribed asynchronous Firestore callback.
         if (terminalError && !handoffError && !doc.url && !scanJob.url) return;

@@ -27,6 +27,16 @@ html[data-moqup-promo-dismissed="true"] .moqup-referral-banner {
     display: none !important;
 }
 
+.hero-title {
+    font-size: clamp(3rem, min(12vw, 10vh), 7rem);
+}
+
+@media (min-width: 768px) {
+    .hero-title {
+        font-size: clamp(3.5rem, min(9vw, 8vh), 6rem);
+    }
+}
+
 .site-navbar-wrap {
     top: calc(var(--moqup-banner-offset, 0px) + 1rem);
 }

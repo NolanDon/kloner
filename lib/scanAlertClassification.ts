@@ -18,7 +18,7 @@ export function classifyScanAlert({ code = "", message = "", statusCode = 502, b
     if (/DNS_RESOLUTION_FAILED|could not resolve|ERR_NAME_NOT_RESOLVED|ENOTFOUND/i.test(diagnostic)) {
         return { severity: "warning" as const, statusCode: 502, classification: "target_dns_failure" };
     }
-    if (/ARCHIVE_SIZE_LIMIT_REACHED|Please upgrade before scanning|too large for the Free plan/i.test(diagnostic)) {
+    if (/EARLY_GENERATION_PAYWALL_REQUIRED|ARCHIVE_SIZE_LIMIT_REACHED|Please upgrade before scanning|Start your free trial before (?:scanning|generating)|too large for the Free plan/i.test(diagnostic)) {
         return { severity: "warning" as const, statusCode: 402, classification: "plan_restriction" };
     }
     if (/blocked_domain|Domain blocked for site cloning/i.test(diagnostic)) {

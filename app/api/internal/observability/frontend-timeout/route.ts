@@ -103,6 +103,12 @@ export async function POST(req: NextRequest) {
                     ? (backendDebug as any).storage.rootfsIoCorruption
                     : undefined;
 
+            // A free-tier request is intentionally stopped before scan work begins.
+            // Treat this as an upgrade prompt, never as a capture failure alert.
+            if (/EARLY_GENERATION_PAYWALL_REQUIRED|Start your free trial before (?:scanning|generating)|Please upgrade before scanning/i.test(`${code} ${backendCode} ${message} ${backendMessage}`)) {
+                return NextResponse.json({ ok: true, suppressed: true, reason: "plan_restriction" });
+            }
+
             const requestContext = {
                 callerType: "frontend-browser",
                 userAgent: requestUserAgent || undefined,

@@ -87,9 +87,8 @@ export default function HeroContent({
       >
         {eyebrow ? <div className="mb-5 hidden text-xs font-semibold uppercase tracking-[0.24em] text-white/75 sm:block" style={{ fontFamily: "var(--font-inter), Inter, sans-serif" }}>{eyebrow}</div> : null}
         <h1
-          className={`${displayClassName} mx-auto max-w-[1000px] whitespace-normal leading-[1.1] font-medium tracking-tight text-white`}
+          className={`hero-title ${displayClassName} mx-auto max-w-[1000px] whitespace-normal leading-[1.1] font-medium tracking-tight text-white`}
           style={{
-            fontSize: "clamp(3rem, min(12vw, 10vh), 7rem)",
             fontFamily: "var(--font-fraunces), Georgia, serif",
             WebkitFontSmoothing: "antialiased",
             MozOsxFontSmoothing: "grayscale",
