@@ -5,7 +5,7 @@ import { ensureSessionAndCsrf } from "@/lib/auth-client";
 export type KlonerSlackEvent =
     | "signup"
     | "early_paywall_shown"
-    | "early_paywall_started"
+    | "stripe_checkout_redirecting"
     | "early_paywall_closed"
     | "stripe_checkout_cancelled";
 

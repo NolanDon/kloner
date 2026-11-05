@@ -9,7 +9,7 @@ export const runtime = "nodejs";
 const ALLOWED_EVENTS = new Set([
     "signup",
     "early_paywall_shown",
-    "early_paywall_started",
+    "stripe_checkout_redirecting",
     "early_paywall_closed",
     "stripe_checkout_cancelled",
 ]);
@@ -40,8 +40,8 @@ export async function POST(req: NextRequest) {
                 ? `:sparkles: *New signup* · ${email}${name ? ` · ${name}` : ""}${method ? ` · ${method}` : ""}`
                 : event === "early_paywall_shown"
                     ? `:lock: *Early paywall shown* · ${email}`
-                    : event === "early_paywall_started"
-                        ? `:white_check_mark: *Paywall started* · ${email} · ${body.trial === false ? "Paid" : "Trial"}`
+                    : event === "stripe_checkout_redirecting"
+                        ? `:credit_card: *Stripe checkout redirecting* · ${email} · ${body.trial === false ? "Paid plan" : "7-day free trial"}`
                         : event === "early_paywall_closed"
                             ? `:x: *Paywall closed* · ${email} · Scan canceled`
                             : `:no_entry_sign: *Stripe checkout canceled* · ${email}`;

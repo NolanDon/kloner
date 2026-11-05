@@ -13810,7 +13810,7 @@ export default function PreviewPage(): JSX.Element {
     }
 
     const startProCheckout = useCallback(
-        async (paidOnly = false, forcePaid = false) => {
+        async (paidOnly = false, forcePaid = false, onCheckoutReady?: () => Promise<void> | void) => {
             if (checkoutBusy) return;
             setCheckoutBusy(true);
 
@@ -13866,6 +13866,12 @@ export default function PreviewPage(): JSX.Element {
                 if (!res.ok || !data.url) {
                     void showAlert(data?.error || "Unable to start checkout.", "Checkout Error");
                     return;
+                }
+
+                try {
+                    await onCheckoutReady?.();
+                } catch (alertError) {
+                    console.warn("Failed to send checkout redirect Slack alert", alertError);
                 }
 
                 window.location.href = data.url;
@@ -16121,14 +16127,12 @@ export default function PreviewPage(): JSX.Element {
                             showTrialChoice={showCreditsPaywall === "early_generation" && STRIPE_TRIAL_DAYS > 0}
                             onStartCheckoutWithChoice={async (useTrial) => {
                                 const isDeploy = showCreditsPaywall === "deploy";
-                                if (showCreditsPaywall === "early_generation") {
-                                    await sendKlonerSlackEvent("early_paywall_started", {
+                                const isEarlyPaywall = showCreditsPaywall === "early_generation";
+                                setShowCreditsPaywall(null);
+                                await startProCheckout(isDeploy, !useTrial, isEarlyPaywall ? () => sendKlonerSlackEvent("stripe_checkout_redirecting", {
                                         email: user?.email,
                                         trial: useTrial,
-                                    }).catch((error) => console.warn("Failed to send early paywall checkout Slack alert", error));
-                                }
-                                setShowCreditsPaywall(null);
-                                await startProCheckout(isDeploy, !useTrial);
+                                    }) : undefined);
                             }}
                             checkoutBusy={checkoutBusy}
                             title={
