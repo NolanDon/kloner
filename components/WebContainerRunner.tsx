@@ -3,6 +3,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AlertTriangle, CheckCircle2, Loader2 } from 'lucide-react';
+import { KlonerDotsLoader } from "@/components/KlonerLoader";
 import { db } from "@/lib/firebase";
 import { doc, onSnapshot, updateDoc, getDoc } from "firebase/firestore";
 import { useAuth } from "@/src/hooks/useAuth";
@@ -5870,7 +5871,7 @@ export default function NavBar() {
           {showApplyRefreshingOverlay ? (
             <div className="absolute inset-0 z-20 flex items-center justify-center backdrop-blur-[1px]" style={{ backgroundColor: "var(--preview-refresh-backdrop)" }}>
               <div className="flex flex-col items-center text-center">
-                <div className="kloner-dots" aria-hidden="true"><span className="kloner-dot" /><span className="kloner-dot" /><span className="kloner-dot" /></div>
+                <KlonerDotsLoader />
                 <div className="mt-3">
                   {renderLiveStatusLine({
                     uiStage: 'applying_changes',
@@ -6437,7 +6438,7 @@ export default function NavBar() {
           <div className="w-full max-w-[320px] text-center">
             {isPolling && !terminalPreviewStatus ? (
               <div className="flex flex-col items-center">
-                <div className="kloner-dots" aria-hidden="true"><span className="kloner-dot" /><span className="kloner-dot" /><span className="kloner-dot" /></div>
+                <KlonerDotsLoader />
                 <div className="mt-3">
                   {renderLiveStatusLine(
                     currentStatusData
@@ -6474,7 +6475,7 @@ export default function NavBar() {
             ) : (
               // Initial loading state
               <div className="flex flex-col items-center">
-                <div className="kloner-dots" aria-hidden="true"><span className="kloner-dot" /><span className="kloner-dot" /><span className="kloner-dot" /></div>
+                <KlonerDotsLoader />
                 <div className="mt-3">
                 {renderLiveStatusLine({
                   uiStage: connectingToExisting ? 'reconnecting' : 'starting_app',

@@ -1,5 +1,6 @@
 import { hash64, normUrl } from "./page.helpers";
 import { validateAndNormalizePublicHttpUrl } from "@/src/lib/publicHttpUrl";
+import { EARLY_GENERATION_PAYWALL_ENABLED } from "@/src/lib/billingAccess";
 
 export type DashboardDraftCard = {
     draftId: string;
@@ -654,7 +655,9 @@ export async function submitDashboardUrlDraft({
                 const paywallMessage = String(errorBody.error || "Please upgrade before scanning a website from this request.").trim();
                 setDraftApps((prev) => prev.filter((item) => item.draftId !== draftDocId));
                 setErr(paywallMessage);
-                setShowCreditsPaywall("early_generation");
+                if (EARLY_GENERATION_PAYWALL_ENABLED) {
+                    setShowCreditsPaywall("early_generation");
+                }
                 onProcessingSessionChange?.(null);
                 setPendingDraftApps((prev) => {
                     const next = { ...prev };

@@ -216,6 +216,22 @@ html[data-moqup-promo-dismissed="true"] .moqup-referral-banner {
     --url-processing-backdrop: rgba(17, 16, 14, 0.88);
 }
 
+:root[data-theme="dark"] .website-paywall-trial-choice {
+    color: #c3b8a5;
+}
+
+:root[data-theme="dark"] .website-paywall-trial-switch[aria-checked="false"] {
+    background-color: #514b41 !important;
+}
+
+:root[data-theme="dark"] .website-paywall-trial-switch[aria-checked="true"] {
+    background-color: #ff8d21 !important;
+}
+
+:root[data-theme="dark"] .website-paywall-trial-thumb {
+    background-color: #fff !important;
+}
+
 .theme-editor-screenshot {
     position: absolute;
     inset: 0;
@@ -463,6 +479,10 @@ h6 {
 
 :root[data-theme="dark"] :is(.bg-white, .bg-white\/50, .bg-white\/70, .bg-white\/80, .bg-white\/85, .bg-white\/90, .bg-white\/95, .bg-gray-50, .bg-neutral-50, .bg-slate-50) {
     background-color: var(--surface) !important;
+}
+
+:root[data-theme="dark"] .website-paywall-trial-switch .website-paywall-trial-thumb {
+    background-color: #fff !important;
 }
 
 :root[data-theme="dark"] :is(.bg-white\/80, .bg-white\/85, .bg-white\/90, .bg-white\/95) {
@@ -720,13 +740,13 @@ h6 {
 }
 
 .dev-paywall-switch {
-    color: #713f12;
-    background: #fff8e7;
-    border-color: #f2c66d;
+    color: #292521;
+    background: #f5f5f4;
+    border-color: #e5e5e3;
 }
 
 .dev-paywall-switch:hover {
-    background: #fff1c7;
+    background: #eeece9;
 }
 
 .dev-paywall-switch__track {
@@ -738,17 +758,23 @@ h6 {
 }
 
 .dev-paywall-switch[data-state="on"] .dev-paywall-switch__track {
+    background: rgba(35, 30, 24, 0.42);
+}
+
+.dev-paywall-switch[data-state="on"] {
+    color: #ffffff;
     background: #ff8d21;
+    border-color: #ff8d21;
 }
 
 :root[data-theme="dark"] .dev-paywall-switch {
     color: #e8ddc8;
-    background: #30271c;
-    border-color: #76552c;
+    background: #24221f;
+    border-color: rgba(232, 221, 200, 0.18);
 }
 
 :root[data-theme="dark"] .dev-paywall-switch:hover {
-    background: #3a3023;
+    background: #302d29;
 }
 
 :root[data-theme="dark"] .dev-paywall-switch__track {
@@ -756,7 +782,17 @@ h6 {
 }
 
 :root[data-theme="dark"] .dev-paywall-switch__thumb {
-    background: #e8ddc8;
+    background: #ffffff;
+}
+
+:root[data-theme="dark"] .dev-paywall-switch[data-state="on"] {
+    color: #1a1713;
+    background: #ff8d21;
+    border-color: #ff8d21;
+}
+
+:root[data-theme="dark"] .dev-paywall-switch[data-state="on"] .dev-paywall-switch__track {
+    background: rgba(35, 23, 12, 0.42);
 }
 
 :root[data-theme="dark"] .app-builder-editor-panel {

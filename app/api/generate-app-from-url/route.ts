@@ -204,13 +204,13 @@ export async function POST(req: NextRequest) {
     // Stop before credit consumption, backend work, or LLM-backed promotion.
     // This is an operational routing control, not a country-based denial.
     const earlyPaywall = shouldRequireEarlyGenerationPaywall(req);
-    if (tier === "free" && earlyPaywall.required) {
+    if (tier === "free") {
       return NextResponse.json(
         {
-          error: "Please upgrade before generating a website from this request.",
+          error: "Start your free trial before generating a website.",
           code: "EARLY_GENERATION_PAYWALL_REQUIRED",
           paywallRequired: true,
-          paywallReason: earlyPaywall.reason,
+          paywallReason: earlyPaywall.reason || "trial_required",
           upgrade: { requiredPlan: "pro", action: "upgrade" },
         },
         { status: 402, headers: { "Cache-Control": "private, no-store" } },

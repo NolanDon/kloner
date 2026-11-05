@@ -46,14 +46,12 @@ function clampProgress(value: number | null | undefined) {
     return Math.max(0, Math.min(100, Math.round(value)));
 }
 
-function LoaderMark() {
+export function KlonerDotsLoader({ className = "" }: { className?: string }) {
     return (
-        <div className="kloner-loader-mark" aria-hidden="true">
-            <motion.span
-                className="h-5 w-5 rounded-full border-2 border-[#FF8D21] border-t-transparent"
-                animate={{ rotate: 360 }}
-                transition={{ duration: 1.1, repeat: Infinity, ease: "linear" }}
-            />
+        <div className={`kloner-dots ${className}`.trim()} aria-hidden="true">
+            <span className="kloner-dot" />
+            <span className="kloner-dot" />
+            <span className="kloner-dot" />
         </div>
     );
 }
@@ -114,7 +112,7 @@ export function HydrationDotsLoader({
 }: HydrationDotsLoaderProps) {
     return (
         <div className={`flex flex-col items-center text-center ${className}`}>
-            <LoaderMark />
+            <KlonerDotsLoader />
             <div className="mt-3 text-sm leading-5 tracking-[-0.01em] text-neutral-900">
                 {label}
             </div>
@@ -145,7 +143,7 @@ export function WorkspaceLoadingPanel({
             exit={{ opacity: 0, y: 8 }}
             transition={{ duration: 0.22, ease: "easeOut" }}
         >
-            <LoaderMark />
+            <KlonerDotsLoader />
             <div className="mt-3 text-sm leading-5 tracking-[-0.01em] text-neutral-900">
                 {title}
             </div>
@@ -225,7 +223,7 @@ export function WorkspaceLoadingScreen({
         >
             {timedOut ? (
                 <div className="kloner-workspace-loading-timeout w-full max-w-md rounded-3xl border border-neutral-200 bg-white px-6 py-6 text-center shadow-[0_24px_80px_rgba(15,23,42,0.12)]">
-                    <LoaderMark />
+                    <KlonerDotsLoader />
                     <div className="mt-3 text-[11px] uppercase tracking-[0.22em] text-neutral-400">
                         {title}
                     </div>

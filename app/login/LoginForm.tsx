@@ -38,6 +38,8 @@ import {
 } from "firebase/firestore";
 import Image from "next/image";
 import { validateAndNormalizePublicHttpUrl } from "@/src/lib/publicHttpUrl";
+import { sendKlonerSlackEvent } from "@/src/lib/klonerSlackEvents";
+import { EARLY_GENERATION_PAYWALL_ENABLED } from "@/src/lib/billingAccess";
 import { ArrowLeft, Eye, EyeOff } from "lucide-react";
 
 const ACCENT = "#FF8D21";
@@ -356,13 +358,11 @@ async function notifyKlonerSignup(
         };
 
         await Promise.allSettled([
-            // fetch("/api/private/send-signup-alert", {
-            //     method: "POST",
-            //     headers,
-            //     credentials: "same-origin",
-            //     cache: "no-store",
-            //     body: JSON.stringify(payload),
-            // }),
+            sendKlonerSlackEvent("signup", {
+                email: user.email,
+                name: user.displayName,
+                method,
+            }),
             fetch("/api/private/send-welcome-email", {
                 method: "POST",
                 headers,
@@ -530,7 +530,7 @@ export default function LoginPage(): JSX.Element {
                             const nextPath =
                                 mode === "signin"
                                     ? `/dashboard/view?u=${encodeURIComponent(cleaned)}&focusUrl=1`
-                                    : `/dashboard/view?u=${encodeURIComponent(cleaned)}&aq=1`;
+                                    : `/dashboard/view?u=${encodeURIComponent(cleaned)}&aq=1${EARLY_GENERATION_PAYWALL_ENABLED ? "&signupPaywall=1" : ""}`;
                             router.replace(nextPath);
                             return;
                         }
@@ -544,7 +544,11 @@ export default function LoginPage(): JSX.Element {
                     }
                 }
 
-                const next = search.get("next") || "/dashboard/view";
+                const next = search.get("next") || (
+                    mode === "signup" && EARLY_GENERATION_PAYWALL_ENABLED
+                        ? "/dashboard/view?signupPaywall=1"
+                        : "/dashboard/view"
+                );
                 router.replace(next);
 
                 void Promise.allSettled([

@@ -152,6 +152,28 @@ describe("POST /api/generate-app-from-url", () => {
         delete process.env.EARLY_PAYWALL_COUNTRIES;
     });
 
+    it("blocks free accounts before checking credits or calling the backend, regardless of country", async () => {
+        delete process.env.EARLY_PAYWALL_COUNTRIES;
+        getAuthoritativeUserTier.mockResolvedValue("free");
+        const { POST } = await import("./route");
+        const req: any = {
+            headers: new Headers(),
+            json: async () => ({ url: "https://example.com", name: "Example" }),
+        };
+
+        const res: any = await POST(req);
+        const body = await res.json();
+
+        expect(res.status).toBe(402);
+        expect(body).toMatchObject({
+            code: "EARLY_GENERATION_PAYWALL_REQUIRED",
+            paywallRequired: true,
+        });
+        expect(peekUserCredit).not.toHaveBeenCalled();
+        expect(consumeUserCredit).not.toHaveBeenCalled();
+        expect(callBackend).not.toHaveBeenCalled();
+    });
+
     it("routes url payloads to archive generation without screenshot preflight", async () => {
         const { POST } = await import("./route");
         const req: any = {

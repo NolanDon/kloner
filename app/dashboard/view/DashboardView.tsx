@@ -100,6 +100,7 @@ import {
 import { CREDIT_LIMITS, UserTier } from "@/src/lib/credits";
 import { bootstrapServerSession, ensureSessionAndCsrf, resetAuthClientCaches } from "@/lib/auth-client";
 import type { UrlDoc } from "@/app/dashboard/types";
+import { sendKlonerSlackEvent } from "@/src/lib/klonerSlackEvents";
 import { useVercelIntegration } from "@/src/hooks/useVercelIntegration";
 import { archiveRender, filterRendersForBuilder, resolveStorageUrl, useResolvedImg } from "@/src/lib/renders";
 import { archiveApp } from "@/src/lib/apps";
@@ -127,7 +128,7 @@ import { extractArchivedPageIdsFromRender, fetchRenderForDeployment, getArchived
 import { useModal } from "@/components/ui/ModalContext";
 import AppBuilderEditor from "@/components/AppBuilderEditorRouted";
 import WebsitePrePaywall from "@/components/WebsitePrePaywall";
-import { STRIPE_TRIAL_DAYS, TRIAL_CTA_LABEL } from "@/src/lib/billingAccess";
+import { EARLY_GENERATION_PAYWALL_ENABLED, STRIPE_TRIAL_DAYS, TRIAL_CTA_LABEL } from "@/src/lib/billingAccess";
 import { getPublicHttpUrlRejectionReason, validateAndNormalizePublicHttpUrl } from "@/src/lib/publicHttpUrl";
 import { recordDeployAnalytics } from "@/components/analytics";
 
@@ -1574,7 +1575,7 @@ function MiniDashboardEntry({
                             </span>
                         </span> */}
 
-                        <span className="inline-flex items-center rounded-full bg-neutral-100 px-3.5 py-2 text-neutral-700">
+                        <span className="inline-flex items-center rounded-full bg-neutral-100 px-3.5 py-2 text-sm text-neutral-700">
                             Scan credits:&nbsp;
                             <span className="font-semibold text-neutral-900">
                                 {previewRemaining === null || !previewLimitDisplay
@@ -1583,7 +1584,7 @@ function MiniDashboardEntry({
                             </span>
                         </span>
 
-                        <span className="inline-flex items-center rounded-full bg-neutral-100 px-3.5 py-2 text-neutral-700">
+                        <span className="inline-flex items-center rounded-full bg-neutral-100 px-3.5 py-2 text-sm text-neutral-700">
                             <span className="mr-1 inline-flex items-center">
                                 <CoinLottieBadge className="h-6 w-6" />
                             </span>
@@ -4198,6 +4199,8 @@ export default function PreviewPage(): JSX.Element {
     const [showCreditsPaywall, setShowCreditsPaywall] = useState<
         null | "screenshot" | "preview" | "archive_size" | "deploy" | "early_generation"
     >(null);
+    const signupPaywallShownRef = useRef(false);
+    const earlyPaywallSlackShownRef = useRef(false);
     const [showProPaywall, setShowProPaywall] = useState(false);
     const [firstGenerationTrialPromptShown, setFirstGenerationTrialPromptShown] = useState(false);
     const [renderTrialSessionEligible, setRenderTrialSessionEligible] = useState(false);
@@ -4211,9 +4214,34 @@ export default function PreviewPage(): JSX.Element {
     const [showRecoveryCheckoutLoader, setShowRecoveryCheckoutLoader] = useState(false);
     const [showDevQuickMenu, setShowDevQuickMenu] = useState(false);
     const [devEarlyGenerationPaywallEnabled, setDevEarlyGenerationPaywallEnabled] = useState(false);
+    const [devEarlyGenerationPaywallLoaded, setDevEarlyGenerationPaywallLoaded] = useState(false);
     const [devSubscriptionAccessPreviewEnabled, setDevSubscriptionAccessPreviewEnabled] = useState(false);
     const [previewDebugScenario, setPreviewDebugScenario] = useState<{ mode: 'terminal-error' | 'terminal-error-auto-fix'; nonce: number } | null>(null);
     const isDev = process.env.NODE_ENV !== "production";
+
+    useEffect(() => {
+        try {
+            setDevEarlyGenerationPaywallEnabled(
+                window.localStorage.getItem("kloner.dev.forceEarlyGenerationPaywall") === "true",
+            );
+        } catch {
+            setDevEarlyGenerationPaywallEnabled(false);
+        } finally {
+            setDevEarlyGenerationPaywallLoaded(true);
+        }
+    }, []);
+
+    useEffect(() => {
+        if (showCreditsPaywall !== "early_generation") {
+            earlyPaywallSlackShownRef.current = false;
+            return;
+        }
+        if (!user?.uid || earlyPaywallSlackShownRef.current) return;
+
+        earlyPaywallSlackShownRef.current = true;
+        void sendKlonerSlackEvent("early_paywall_shown", { email: user.email })
+            .catch((error) => console.warn("Failed to send early paywall Slack alert", error));
+    }, [showCreditsPaywall, user?.email, user?.uid]);
     const [deletingOwnAccount, setDeletingOwnAccount] = useState(false);
     const recoveryPendingStorageKey = useMemo(
         () => (user?.uid ? `kloner.billing.recovery.pending:${user.uid}` : ""),
@@ -6390,7 +6418,12 @@ export default function PreviewPage(): JSX.Element {
     ) => {
         if (!user) return;
 
-        if (isDev && devEarlyGenerationPaywallEnabled) {
+        const hasTrialOrPaidAccess =
+            stripeStatus === "trialing" ||
+            userTier === "pro" ||
+            userTier === "agency" ||
+            userTier === "enterprise";
+        if (mode === "url" && ((isDev && devEarlyGenerationPaywallEnabled) || (EARLY_GENERATION_PAYWALL_ENABLED && !hasTrialOrPaidAccess))) {
             setShowCreditsPaywall("early_generation");
             return null;
         }
@@ -6655,7 +6688,9 @@ export default function PreviewPage(): JSX.Element {
                         setUrlProcessingFailure(null);
                         suppressUrlProcessingFailureRef.current = true;
                         setErr(paywallMessage);
-                        setShowCreditsPaywall("early_generation");
+                        if (EARLY_GENERATION_PAYWALL_ENABLED) {
+                            setShowCreditsPaywall("early_generation");
+                        }
                         return null;
                     }
                     if (archiveSizePaywall) {
@@ -7076,7 +7111,7 @@ export default function PreviewPage(): JSX.Element {
             push(message, "err");
             return null;
         }
-    }, [user, router, push, activeRenderId, openAppBuilderWithCookieGate, requestAppBuilderCookieConsent, stripeStatus, setDraftApps, setPendingDraftApps, isDev, devEarlyGenerationPaywallEnabled]);
+    }, [user, router, push, activeRenderId, openAppBuilderWithCookieGate, requestAppBuilderCookieConsent, stripeStatus, userTier, setDraftApps, setPendingDraftApps, isDev, devEarlyGenerationPaywallEnabled, setShowCreditsPaywall]);
 
     useEffect(() => {
         if (!pendingCreatedApp) {
@@ -8119,6 +8154,7 @@ export default function PreviewPage(): JSX.Element {
 
     const urlParam = search.get("u") || "";
     const autoQueueParam = (search.get("aq") || "").toLowerCase();
+    const signupPaywallRequested = search.get("signupPaywall") === "1";
     const startParam = (search.get("start") || "").toLowerCase();
     const retryParam = (search.get("retry") || "").toLowerCase();
     const autoQueueRequested = autoQueueParam === "1" || autoQueueParam === "true";
@@ -8141,6 +8177,21 @@ export default function PreviewPage(): JSX.Element {
         const normalized = validateAndNormalizePublicHttpUrl(dec);
         return normalized ? normUrl(normalized) : "";
     }, [urlParam]);
+
+    useEffect(() => {
+        if (!EARLY_GENERATION_PAYWALL_ENABLED || !signupPaywallRequested || !user?.uid) return;
+        if (loading || userTier === "unknown") return;
+
+        const hasTrialOrPaidAccess =
+            stripeStatus === "trialing" ||
+            userTier === "pro" ||
+            userTier === "agency" ||
+            userTier === "enterprise";
+        if (hasTrialOrPaidAccess || signupPaywallShownRef.current) return;
+
+        signupPaywallShownRef.current = true;
+        setShowCreditsPaywall("early_generation");
+    }, [loading, signupPaywallRequested, stripeStatus, user?.uid, userTier]);
 
     const startNextJsAppBuilder = useCallback(async (url: string) => {
         await handleCreateApp("url", undefined, url, {
@@ -8198,7 +8249,17 @@ export default function PreviewPage(): JSX.Element {
 
     const submitMiniUrl = useCallback(
         async (raw: string) => {
-            if (isDev && devEarlyGenerationPaywallEnabled) {
+            const normalized = validateAndNormalizePublicHttpUrl(raw || "");
+            const forceEarlyPaywall = isDev && devEarlyGenerationPaywallEnabled;
+            const hasTrialOrPaidAccess =
+                stripeStatus === "trialing" ||
+                userTier === "pro" ||
+                userTier === "agency" ||
+                userTier === "enterprise";
+            if (
+                normalized &&
+                (forceEarlyPaywall || (EARLY_GENERATION_PAYWALL_ENABLED && !hasTrialOrPaidAccess))
+            ) {
                 setErr("");
                 setInfo("");
                 setWebsiteSubmissionPendingUrl(null);
@@ -8238,7 +8299,7 @@ export default function PreviewPage(): JSX.Element {
                 },
             });
         },
-        [canUseScreenshotCredit, canUsePreviewCredit, devEarlyGenerationPaywallEnabled, fetch, isDev, push, setErr, setInfo, setPendingDraftApps, setDraftApps, setShowCreditsPaywall, setWebsiteSubmissionPendingUrl]
+        [canUseScreenshotCredit, canUsePreviewCredit, devEarlyGenerationPaywallEnabled, fetch, isDev, push, setErr, setInfo, setPendingDraftApps, setDraftApps, setShowCreditsPaywall, setWebsiteSubmissionPendingUrl, setUrlProcessingHandoff, stripeStatus, userTier]
     );
 
     const submitMiniUrlWithDuplicateConfirm = useCallback(
@@ -8282,6 +8343,16 @@ export default function PreviewPage(): JSX.Element {
         const normalized = validateAndNormalizePublicHttpUrl(rawUrl);
         if (!normalized) {
             setErr("That saved URL looks invalid. Delete it from the list to continue.");
+            return;
+        }
+
+        const hasTrialOrPaidAccess =
+            stripeStatus === "trialing" ||
+            userTier === "pro" ||
+            userTier === "agency" ||
+            userTier === "enterprise";
+        if ((isDev && devEarlyGenerationPaywallEnabled) || (EARLY_GENERATION_PAYWALL_ENABLED && !hasTrialOrPaidAccess)) {
+            setShowCreditsPaywall("early_generation");
             return;
         }
 
@@ -8795,7 +8866,7 @@ export default function PreviewPage(): JSX.Element {
             setInfo((current) => current === "Starting scan…" ? "" : current);
         }
 
-    }, [canUsePreviewCredit, db, handleCreateApp, push, refreshUserTierNow, setDraftPromotionScanByDraftId, showWebsiteExitOfferPaywall, targetUrl, user?.uid]);
+    }, [canUsePreviewCredit, db, devEarlyGenerationPaywallEnabled, handleCreateApp, isDev, push, refreshUserTierNow, setDraftPromotionScanByDraftId, setShowCreditsPaywall, showWebsiteExitOfferPaywall, stripeStatus, targetUrl, user?.uid, userTier]);
 
     useEffect(() => {
         promoteDraftToAppRef.current = promoteDraftToApp;
@@ -8887,6 +8958,7 @@ export default function PreviewPage(): JSX.Element {
             url.searchParams.delete("aq");
             url.searchParams.delete("start");
             url.searchParams.delete("retry");
+            url.searchParams.delete("signupPaywall");
             const qs = url.searchParams.toString();
             const next = qs ? `${url.pathname}?${qs}` : url.pathname;
             router.replace(next, { scroll: false });
@@ -9101,6 +9173,18 @@ export default function PreviewPage(): JSX.Element {
                 return false;
             }
 
+            const hasTrialOrPaidAccess =
+                stripeStatus === "trialing" ||
+                userTier === "pro" ||
+                userTier === "agency" ||
+                userTier === "enterprise";
+            if ((isDev && devEarlyGenerationPaywallEnabled) || (EARLY_GENERATION_PAYWALL_ENABLED && !hasTrialOrPaidAccess)) {
+                setErr("");
+                setInfo("");
+                setShowCreditsPaywall("early_generation");
+                return false;
+            }
+
             if (!canUseScreenshotCredit()) {
                 setErr("");
                 setInfo("");
@@ -9235,7 +9319,9 @@ export default function PreviewPage(): JSX.Element {
                         if (res.status === 402 && payload?.paywallRequired === true && payload?.code === "EARLY_GENERATION_PAYWALL_REQUIRED") {
                             const paywallMessage = String(payload?.error || "Please upgrade before scanning a website from this request.").trim();
                             clearUrlScanQueuedState(target, paywallMessage);
-                            setShowCreditsPaywall("early_generation");
+                            if (EARLY_GENERATION_PAYWALL_ENABLED) {
+                                setShowCreditsPaywall("early_generation");
+                            }
                             setActiveUrlScanJob(null);
                             return;
                         }
@@ -9433,10 +9519,16 @@ export default function PreviewPage(): JSX.Element {
             canUseScreenshotCredit,
             clearStartQueryParam,
             db,
+            devEarlyGenerationPaywallEnabled,
+            isDev,
             push,
+            setErr,
+            setInfo,
             user,
             setShowCreditsPaywall,
             shouldSendFrontendTimeoutAlert,
+            stripeStatus,
+            userTier,
         ],
     );
 
@@ -9453,9 +9545,24 @@ export default function PreviewPage(): JSX.Element {
         const nonRetryAutoQueue = (autoQueueRequested || startRequested) && !forceRetryRequested;
         if (!targetUrl) return;
         if (!nonRetryAutoQueue && !(startRequested && forceRetryRequested)) return;
+        if (isDev && !devEarlyGenerationPaywallLoaded) return;
 
         // Run only after initial URL/doc loading settles so this path mirrors user-driven dashboard clone.
         if (nonRetryAutoQueue && (loading || draftAppsLoading)) return;
+        if (nonRetryAutoQueue && userTier === "unknown") return;
+
+        const hasTrialOrPaidAccess =
+            stripeStatus === "trialing" ||
+            userTier === "pro" ||
+            userTier === "agency" ||
+            userTier === "enterprise";
+        if (nonRetryAutoQueue && EARLY_GENERATION_PAYWALL_ENABLED && signupPaywallRequested && !hasTrialOrPaidAccess) {
+            if (!signupPaywallShownRef.current) {
+                signupPaywallShownRef.current = true;
+                setShowCreditsPaywall("early_generation");
+            }
+            return;
+        }
 
         // Non-retry deep links should behave exactly like clicking the dashboard Queue button:
         // create the draft via submitMiniUrl, then clear query params so refresh won't re-run.
@@ -9500,16 +9607,21 @@ export default function PreviewPage(): JSX.Element {
         autoQueueRequested,
         clearAutoQueuedUrlQueryParams,
         draftAppsLoading,
+        devEarlyGenerationPaywallLoaded,
         enqueueUrlScan,
         forceRetryRequested,
         hasRecentAutoQueuedRun,
         hasConsumedAutoQueuedRun,
         loading,
+        isDev,
         markRecentAutoQueuedRun,
         markConsumedAutoQueuedRun,
         startRequested,
         submitMiniUrl,
+        stripeStatus,
+        signupPaywallRequested,
         targetUrl,
+        userTier,
         user?.uid,
     ]);
 
@@ -11614,6 +11726,16 @@ export default function PreviewPage(): JSX.Element {
             return;
         }
 
+        const hasTrialOrPaidAccess =
+            stripeStatus === "trialing" ||
+            userTier === "pro" ||
+            userTier === "agency" ||
+            userTier === "enterprise";
+        if ((isDev && devEarlyGenerationPaywallEnabled) || (EARLY_GENERATION_PAYWALL_ENABLED && !hasTrialOrPaidAccess)) {
+            setShowCreditsPaywall("early_generation");
+            return;
+        }
+
         if (!canUsePreviewCredit()) {
             push(
                 "You have used all available preview credits for this month on this plan.",
@@ -11744,7 +11866,12 @@ export default function PreviewPage(): JSX.Element {
         isBackendFetchFailed502,
         recoverFromTransientRenderStart,
         setErr,
+        setShowCreditsPaywall,
         showWebsiteExitOfferPaywall,
+        devEarlyGenerationPaywallEnabled,
+        isDev,
+        stripeStatus,
+        userTier,
     ]);
 
     const continueRender = useCallback(
@@ -13660,7 +13787,7 @@ export default function PreviewPage(): JSX.Element {
     }
 
     const startProCheckout = useCallback(
-        async (paidOnly = false) => {
+        async (paidOnly = false, forcePaid = false) => {
             if (checkoutBusy) return;
             setCheckoutBusy(true);
 
@@ -13700,7 +13827,7 @@ export default function PreviewPage(): JSX.Element {
                     credentials: "include",
                     body: JSON.stringify({
                         plan: "pro",
-                        ...(paidOnly ? { purchaseIntent: "code_download" } : {}),
+                        ...(forcePaid ? { purchaseIntent: "paid_only" } : paidOnly ? { purchaseIntent: "code_download" } : {}),
                         returnRenderId: deployWizardRenderId,
                         returnStep: 2,
                     }),
@@ -14127,7 +14254,18 @@ export default function PreviewPage(): JSX.Element {
                         focusUrlInputNonce={focusMiniUrlInputNonce}
                         showDevEarlyGenerationPaywallSwitch={isDev}
                         devEarlyGenerationPaywallEnabled={devEarlyGenerationPaywallEnabled}
-                        onToggleDevEarlyGenerationPaywall={() => setDevEarlyGenerationPaywallEnabled((enabled) => !enabled)}
+                        onToggleDevEarlyGenerationPaywall={() => {
+                            const nextEnabled = !devEarlyGenerationPaywallEnabled;
+                            setDevEarlyGenerationPaywallEnabled(nextEnabled);
+                            try {
+                                window.localStorage.setItem(
+                                    "kloner.dev.forceEarlyGenerationPaywall",
+                                    String(nextEnabled),
+                                );
+                            } catch {
+                                // Keep the switch usable when browser storage is unavailable.
+                            }
+                        }}
                         showSubscriptionAccessPreviewSwitch={isAdmin}
                         subscriptionAccessPreviewEnabled={devSubscriptionAccessPreviewEnabled}
                         onToggleSubscriptionAccessPreview={() => setDevSubscriptionAccessPreviewEnabled((enabled) => !enabled)}
@@ -15946,6 +16084,10 @@ export default function PreviewPage(): JSX.Element {
                     <WebsitePrePaywall
                         open={Boolean(showCreditsPaywall)}
                         onClose={() => {
+                            if (showCreditsPaywall === "early_generation") {
+                                void sendKlonerSlackEvent("early_paywall_closed", { email: user?.email })
+                                    .catch((error) => console.warn("Failed to send early paywall close Slack alert", error));
+                            }
                             abortUrlGenerationFlow();
                             setShowCreditsPaywall(null);
                         }}
@@ -15953,10 +16095,22 @@ export default function PreviewPage(): JSX.Element {
                             setShowCreditsPaywall(null);
                             void startProCheckout(showCreditsPaywall === "deploy");
                         }}
+                            showTrialChoice={showCreditsPaywall === "early_generation" && STRIPE_TRIAL_DAYS > 0}
+                            onStartCheckoutWithChoice={async (useTrial) => {
+                                const isDeploy = showCreditsPaywall === "deploy";
+                                if (showCreditsPaywall === "early_generation") {
+                                    await sendKlonerSlackEvent("early_paywall_started", {
+                                        email: user?.email,
+                                        trial: useTrial,
+                                    }).catch((error) => console.warn("Failed to send early paywall checkout Slack alert", error));
+                                }
+                                setShowCreditsPaywall(null);
+                                await startProCheckout(isDeploy, !useTrial);
+                            }}
                             checkoutBusy={checkoutBusy}
                             title={
                                 showCreditsPaywall === "early_generation"
-                                    ? "Upgrade before generating this website"
+                                    ? "Ready to build your website?"
                                     : showCreditsPaywall === "archive_size"
                                     ? "Upgrade to capture sites of this size"
                                     : showCreditsPaywall === "deploy"
@@ -15990,6 +16144,7 @@ export default function PreviewPage(): JSX.Element {
                                             ? "Deployment requires an active paid subscription and is not included in the free trial. Upgrading starts your paid plan and billing immediately."
                                             : "Publish your website live from the editor. Upgrade to unlock one-click deploy and higher monthly credits."
                             }
+                            secondaryLabel={showCreditsPaywall === "early_generation" ? "Not now — cancel scan" : undefined}
                             primaryLabel={showCreditsPaywall === "deploy" ? "Upgrade now — billing starts today" : TRIAL_CTA_LABEL}
                             footerNote={showCreditsPaywall === "deploy" ? "Deployment unlocks with an active paid subscription." : "Cancel anytime before renewal."}
                             zIndexClassName="z-[12049]"

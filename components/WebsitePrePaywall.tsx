@@ -5,8 +5,9 @@ import Image from "next/image";
 import { motion } from "framer-motion";
 import { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { X } from "lucide-react";
+import { ChevronDown, X } from "lucide-react";
 import logo from "@/public/images/orange_logo.png";
+import CoinLottieBadge from "@/components/tools/CoinLottieBadge";
 import { STRIPE_TRIAL_DAYS, TRIAL_CTA_LABEL } from "@/src/lib/billingAccess";
 
 type WebsitePrePaywallProps = {
@@ -23,6 +24,8 @@ type WebsitePrePaywallProps = {
     primaryLabel?: string;
     secondaryLabel?: string;
     footerNote?: string;
+    showTrialChoice?: boolean;
+    onStartCheckoutWithChoice?: (useTrial: boolean) => void;
 };
 
 const paywallCardHeightPx = 280;
@@ -55,17 +58,23 @@ export function WebsitePrePaywall({
     benefits = [
         "Deploy 40+ websites per month",
         "Unlocks one-click publishing",
-        "AI task force to build and design your websites",
+        "Manual customization editor",
+        "AI chat customization editor",
         "Higher queue priority for faster outputs",
-        "24/7 Human support included",
+        "Human support included",
+        "Tokens to keep building",
     ],
     primaryLabel = TRIAL_CTA_LABEL,
     secondaryLabel = "No thanks, continue with limited features",
     footerNote = "Cancel anytime before renewal.",
+    showTrialChoice = false,
+    onStartCheckoutWithChoice,
 }: WebsitePrePaywallProps) {
     const carouselSlides = [{ kind: "checklist" as const, title: "What you unlock" }];
     const activeSlide = 0;
     const [showExitConfirmation, setShowExitConfirmation] = useState(false);
+    const [useTrial, setUseTrial] = useState(true);
+    const [notIncludedExpanded, setNotIncludedExpanded] = useState(false);
     const exitDialogRef = useRef<HTMLDialogElement>(null);
     const exitTitleId = useId();
     const exitDescriptionId = useId();
@@ -99,13 +108,57 @@ export function WebsitePrePaywall({
 
     if (!open) return null;
 
+    const startCheckout = () => onStartCheckoutWithChoice ? onStartCheckoutWithChoice(useTrial) : onStartCheckout();
+    const updateTrialChoice = (checked: boolean) => setUseTrial(checked);
+    const checkoutLabel = showTrialChoice
+        ? (useTrial ? TRIAL_CTA_LABEL : "Subscribe now — full access")
+        : primaryLabel;
+    const trialRestrictedBenefits = [
+        { text: "Deploy 40+ websites per month", icon: paywallBenefitIcons[0], coin: false },
+        { text: "Unlocks one-click deployments", icon: paywallBenefitIcons[1], coin: false },
+        { text: "Download your website code", icon: paywallBenefitIcons[2], coin: false },
+    ];
+    const normalizedBenefits = benefits.flatMap((text) =>
+        /AI task force/i.test(text)
+            ? ["Manual customization editor", "AI chat customization editor"]
+            : [text],
+    );
+    const includedBenefits = showTrialChoice
+        ? normalizedBenefits.slice(2).map((text) => ({
+            text: text.replace("24/7 Human support included", "Human support included"),
+            coin: /tokens to keep building/i.test(text),
+            icon: /AI chat customization/i.test(text)
+                ? paywallBenefitIcons[2]
+                : /manual customization/i.test(text)
+                    ? paywallBenefitIcons[0]
+                : /queue priority/i.test(text)
+                    ? paywallBenefitIcons[3]
+                    : /human support/i.test(text)
+                        ? paywallBenefitIcons[4]
+                        : paywallBenefitIcons[0],
+            restricted: false,
+        }))
+        : normalizedBenefits.map((text, index) => ({
+            text,
+            coin: /tokens to keep building/i.test(text),
+            icon: paywallBenefitIcons[index % paywallBenefitIcons.length],
+            restricted: false,
+        }));
+    const displayedBenefits = showTrialChoice && !useTrial
+        ? [...includedBenefits, ...trialRestrictedBenefits.map((benefit) => ({ ...benefit, restricted: false }))]
+        : includedBenefits;
+    const checklistHeightPx = Math.max(
+        paywallCardHeightPx,
+        displayedBenefits.length * 36 + 120 + (showTrialChoice && useTrial ? 16 : 0),
+    );
+
     const modal = (
         <motion.div
             className={`website-paywall-overlay fixed inset-0 ${zIndexClassName}`}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.34, ease: "easeOut" }}
+            transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
         >
             <dialog
                 ref={exitDialogRef}
@@ -125,11 +178,11 @@ export function WebsitePrePaywall({
                 <div className="mt-5 flex flex-col gap-3">
                     <button
                         type="button"
-                        onClick={onStartCheckout}
+                        onClick={startCheckout}
                         disabled={checkoutBusy}
                         className="min-h-12 rounded-full bg-[#FF8D21] px-5 py-3 font-semibold text-white shadow-sm transition-all duration-200 hover:scale-[1.03] hover:shadow-[0_8px_20px_rgba(255,141,33,0.28)] active:scale-[0.98] disabled:cursor-wait disabled:opacity-70 disabled:hover:scale-100"
                     >
-                        {checkoutBusy ? "Redirecting to Stripe…" : primaryLabel}
+                        {checkoutBusy ? "Redirecting to Stripe…" : checkoutLabel}
                     </button>
                     <button
                         type="button"
@@ -149,16 +202,16 @@ export function WebsitePrePaywall({
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                transition={{ duration: 0.34, ease: "easeOut" }}
+                transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
             />
 
             <div className="absolute inset-0 flex items-start justify-center overflow-y-auto px-3 py-4 sm:items-center sm:px-5 sm:py-6">
                 <motion.div
                     className="relative w-full max-w-[520px] overflow-hidden rounded-[28px] border border-neutral-200 bg-white shadow-[0_24px_80px_rgba(0,0,0,0.22)] sm:max-w-[580px]"
-                    initial={{ opacity: 0, y: 10, scale: 0.975 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    exit={{ opacity: 0, y: 8, scale: 0.98 }}
-                    transition={{ duration: 0.38, ease: "easeOut", delay: 0.02 }}
+                    initial={{ opacity: 0, y: 4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 3 }}
+                    transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1], delay: 0.04 }}
                 >
                     {dismissible ? (
                         <button
@@ -176,7 +229,7 @@ export function WebsitePrePaywall({
                     <div className="max-h-[calc(100dvh-2.25rem)] overflow-y-auto overscroll-contain sm:max-h-[calc(100dvh-3rem)]">
                         <div className="p-4 sm:p-6 lg:p-7">
                             <div className="mx-auto max-w-xl px-4 text-center sm:px-8">
-                                <h3 className="text-2xl leading-tight tracking-tight text-neutral-900 sm:text-[2.15rem]">
+                                <h3 className="text-[1.75rem] leading-tight tracking-tight text-neutral-900 sm:text-[2.35rem]">
                                     {title}
                                 </h3>
                                 <p className="mt-5 text-sm leading-relaxed text-neutral-600 sm:text-[15px]">
@@ -185,7 +238,7 @@ export function WebsitePrePaywall({
                             </div>
 
                             <div className="mt-6 border-t border-neutral-200 pt-4">
-                                <div style={{ height: paywallCardHeightPx }} className="relative overflow-hidden bg-transparent">
+                                <div style={{ height: checklistHeightPx }} className="relative bg-transparent">
                                     <motion.div
                                         animate={{ x: `${-activeSlide * 100}%` }}
                                         transition={{ type: "spring", stiffness: 120, damping: 22, mass: 0.9 }}
@@ -198,22 +251,46 @@ export function WebsitePrePaywall({
                                                 aria-hidden={index !== activeSlide}
                                             >
                                                 <>
-                                                    <div style={{ height: paywallCardHeightPx }} className="flex flex-col justify-center gap-3 px-2 py-5 sm:px-7 sm:py-8">
+                                                    <div style={{ height: checklistHeightPx }} className="flex flex-col justify-start gap-3 px-2 py-5 sm:px-7 sm:py-8">
                                                         <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#FF8D21]">
                                                             {slide.title}
                                                         </div>
                                                         <div className="flex flex-col gap-3">
-                                                            {benefits.map((item, itemIndex) => (
-                                                                <div
-                                                                    key={item}
-                                                                    className="flex items-center gap-3 text-[13px] leading-snug text-neutral-800 sm:text-sm"
-                                                                >
-                                                                    <Image src={paywallBenefitIcons[itemIndex % paywallBenefitIcons.length]} alt="" width={27} height={27} className="h-[27px] w-[27px] shrink-0 object-contain" />
-                                                                    <span className={/starting at/i.test(item) ? "font-semibold text-neutral-900" : ""}>
-                                                                        {item}
-                                                                    </span>
+                                                            {displayedBenefits.map(({ text: item, icon, coin, restricted }, itemIndex) => (
+                                                                <div key={item} className={`flex items-center gap-3 text-[13px] leading-snug text-neutral-800 sm:text-sm ${restricted ? "opacity-65" : ""}`}>
+                                                                        {coin ? (
+                                                                            <CoinLottieBadge className="h-[27px] w-[27px] shrink-0" />
+                                                                        ) : (
+                                                                            <Image src={icon} alt="" width={27} height={27} className="h-[27px] w-[27px] shrink-0 object-contain" />
+                                                                        )}
+                                                                        <span className={`${/starting at/i.test(item) ? "font-semibold text-neutral-900" : ""} ${restricted ? "text-neutral-500" : ""}`}>
+                                                                            {item}
+                                                                        </span>
                                                                 </div>
                                                             ))}
+                                                            {showTrialChoice && useTrial ? (
+                                                                <div className="relative">
+                                                                    <button
+                                                                        type="button"
+                                                                        aria-expanded={notIncludedExpanded}
+                                                                        onClick={() => setNotIncludedExpanded((expanded) => !expanded)}
+                                                                        className="flex w-fit items-center gap-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-neutral-500"
+                                                                    >
+                                                                        <span>Not included</span>
+                                                                        <ChevronDown aria-hidden="true" className={`h-3.5 w-3.5 transition-transform ${notIncludedExpanded ? "rotate-180" : ""}`} />
+                                                                    </button>
+                                                                    {notIncludedExpanded ? (
+                                                                        <div className="website-paywall-not-included-menu absolute left-0 top-full z-30 mt-2 flex w-full flex-col gap-3 rounded-2xl border border-neutral-200 bg-white p-3 shadow-xl">
+                                                                            {trialRestrictedBenefits.map(({ text: item, icon }) => (
+                                                                                <div key={item} className="flex items-center gap-3 text-[13px] leading-snug text-neutral-600 sm:text-sm">
+                                                                                    <Image src={icon} alt="" width={27} height={27} className="h-[27px] w-[27px] shrink-0 object-contain" />
+                                                                                    <span>{item}</span>
+                                                                                </div>
+                                                                            ))}
+                                                                        </div>
+                                                                    ) : null}
+                                                                </div>
+                                                            ) : null}
                                                         </div>
                                                     </div>
                                                 </>
@@ -225,8 +302,24 @@ export function WebsitePrePaywall({
                             </div>
 
                             <div className="mt-5 flex flex-col gap-3">
+                                {showTrialChoice ? (
+                                    <div className="website-paywall-trial-choice flex items-center justify-end gap-2 text-xs text-neutral-600">
+                                        <span>{STRIPE_TRIAL_DAYS}-day free trial</span>
+                                        <button
+                                            type="button"
+                                            role="switch"
+                                            className={`website-paywall-trial-switch relative inline-flex h-5 w-9 shrink-0 items-center overflow-hidden rounded-full transition-colors ${useTrial ? "bg-[#FF8D21]" : "bg-neutral-300"}`}
+                                            aria-checked={useTrial}
+                                            aria-label="Use free trial"
+                                            onClick={() => updateTrialChoice(!useTrial)}
+                                        >
+                                            <span className={`website-paywall-trial-thumb absolute left-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${useTrial ? "translate-x-4" : "translate-x-0"}`} />
+                                        </button>
+                                    </div>
+                                ) : null}
+
                                 <p className="text-center text-[11px] text-neutral-500 sm:text-xs">
-                                    {STRIPE_TRIAL_DAYS > 0 && primaryLabel === TRIAL_CTA_LABEL
+                                    {STRIPE_TRIAL_DAYS > 0 && primaryLabel === TRIAL_CTA_LABEL && (!showTrialChoice || useTrial)
                                         ? `${STRIPE_TRIAL_DAYS}-day free trial. `
                                         : null}
                                     {footerNote}
@@ -234,11 +327,11 @@ export function WebsitePrePaywall({
 
                                 <button
                                     type="button"
-                                    onClick={onStartCheckout}
+                                    onClick={startCheckout}
                                     className="inline-flex min-h-16 w-full items-center justify-center rounded-full bg-[#FF8D21] px-6 py-4 text-xl font-bold tracking-tight text-white shadow-[0_14px_30px_rgba(255,141,33,0.22)] transition-all duration-200 hover:scale-[1.02] hover:shadow-[0_18px_36px_rgba(255,141,33,0.3)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF8D21] focus-visible:ring-offset-2 disabled:cursor-wait disabled:opacity-70 disabled:hover:scale-100 sm:min-h-[72px] sm:px-8 sm:py-5 sm:text-2xl"
                                     disabled={checkoutBusy}
                                 >
-                                    {checkoutBusy ? "Redirecting to Stripe…" : primaryLabel}
+                                    {checkoutBusy ? "Redirecting to Stripe…" : checkoutLabel}
                                 </button>
 
                                 {secondaryLabel ? (
@@ -255,18 +348,17 @@ export function WebsitePrePaywall({
                             </div>
 
                             <div className="mt-6 border-t border-neutral-200 pt-4">
-                                <div className="mb-2.5 flex items-center justify-center gap-1 text-center">
+                                <div className="mb-2.5 text-center leading-tight">
                                     <span className="text-[11px] uppercase tracking-[0.1em] text-neutral-500 sm:text-[11px]">
-                                        See what <span className="text-[15px] font-bold text-[rgba(255,141,33,1)]">5000+</span> Kloner members have built with
-                                    </span>
-                                    <span className="relative inline-block h-[48px] w-[48px] sm:h-[64px] sm:w-[64px]">
-                                        <Image
-                                            src={logo}
-                                            alt="Kloner logo"
-                                            fill
-                                            sizes="(max-width: 640px) 48px, 64px"
-                                            className="object-contain"
-                                        />
+                                        See what <span className="text-[15px] font-bold text-[rgba(255,141,33,1)]">5000+</span> Kloner members have built <span className="inline-flex items-center gap-0.5 whitespace-nowrap align-middle">with<span className="relative inline-block h-[56px] w-[56px] sm:h-[72px] sm:w-[72px]">
+                                            <Image
+                                                src={logo}
+                                                alt="Kloner logo"
+                                                fill
+                                                sizes="(max-width: 640px) 56px, 72px"
+                                                className="object-contain"
+                                            />
+                                        </span></span>
                                     </span>
                                 </div>
 

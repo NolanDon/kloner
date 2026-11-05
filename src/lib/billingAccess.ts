@@ -20,6 +20,10 @@ function readFloatEnv(raw: string | undefined, fallback: number): number {
  */
 export const STRIPE_TRIAL_DAYS = Math.max(0, readIntEnv(process.env.NEXT_PUBLIC_STRIPE_TRIAL_DAYS, 7));
 
+/** Enables the early-generation paywall for free accounts, independent of country. */
+export const EARLY_GENERATION_PAYWALL_ENABLED =
+    process.env.NEXT_PUBLIC_EARLY_GENERATION_PAYWALL_ENABLED === "true";
+
 export const TRIAL_CTA_LABEL =
     STRIPE_TRIAL_DAYS > 0 ? "Start for free today" : "Subscribe now";
 

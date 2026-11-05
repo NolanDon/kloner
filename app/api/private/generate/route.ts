@@ -302,13 +302,13 @@ export async function POST(req: NextRequest) {
             }
 
             const earlyPaywall = shouldRequireEarlyGenerationPaywall(req);
-            if (tier === "free" && earlyPaywall.required) {
+            if (tier === "free") {
                 return jsonNoStatusAlert(
                     {
-                        error: "Please upgrade before scanning a website from this request.",
+                        error: "Start your free trial before scanning a website.",
                         code: "EARLY_GENERATION_PAYWALL_REQUIRED",
                         paywallRequired: true,
-                        paywallReason: earlyPaywall.reason,
+                        paywallReason: earlyPaywall.reason || "trial_required",
                         upgrade: { requiredPlan: "pro", action: "upgrade" },
                     },
                     { status: 402, headers: { "Cache-Control": "private, no-store" } },

@@ -16,6 +16,7 @@ jest.mock("next/server", () => {
 });
 
 const callBackend = jest.fn();
+const mockGetAuthoritativeUserTier = jest.fn();
 const peekUserCredit = jest.fn();
 const consumeUserCredit = jest.fn();
 const captureCriticalEventMock = jest.fn<Promise<unknown>, [any]>(async (_event: any) => undefined);
@@ -39,7 +40,7 @@ jest.mock("../../_lib/auth", () => ({
 
 jest.mock("../../_lib/userTier", () => ({
     __esModule: true,
-    getAuthoritativeUserTier: async () => "pro",
+    getAuthoritativeUserTier: (...args: any[]) => mockGetAuthoritativeUserTier(...args),
 }));
 
 jest.mock("../../_lib/credits-server", () => ({
@@ -60,6 +61,8 @@ describe("POST /api/private/generate", () => {
         consumeUserCredit.mockReset();
         captureCriticalEventMock.mockReset();
         updateUser.mockClear();
+        mockGetAuthoritativeUserTier.mockReset();
+        mockGetAuthoritativeUserTier.mockResolvedValue("pro");
         peekUserCredit.mockResolvedValue({ ok: true, remaining: 10 });
         consumeUserCredit.mockResolvedValue(undefined);
         callBackend.mockResolvedValue({
@@ -114,6 +117,27 @@ describe("POST /api/private/generate", () => {
         expect(callBackend).not.toHaveBeenCalled();
         expect(peekUserCredit).not.toHaveBeenCalled();
         expect(updateUser).not.toHaveBeenCalled();
+    });
+
+    it("blocks a free account before checking credits or starting a scan", async () => {
+        mockGetAuthoritativeUserTier.mockResolvedValueOnce("free");
+        const { POST } = await import("./route");
+        const req: any = {
+            headers: new Headers(),
+            json: async () => ({ url: "https://example.com/" }),
+        };
+
+        const res: any = await POST(req);
+        const body = await res.json();
+
+        expect(res.status).toBe(402);
+        expect(body).toMatchObject({
+            code: "EARLY_GENERATION_PAYWALL_REQUIRED",
+            paywallRequired: true,
+        });
+        expect(peekUserCredit).not.toHaveBeenCalled();
+        expect(consumeUserCredit).not.toHaveBeenCalled();
+        expect(callBackend).not.toHaveBeenCalled();
     });
 
     it("normalizes safe URLs before sending them upstream", async () => {
