@@ -4741,6 +4741,19 @@ export default function PreviewPage(): JSX.Element {
     const [deployWizardRetryCount, setDeployWizardRetryCount] = useState(0);
     const [deployWizardRetryLockedUntil, setDeployWizardRetryLockedUntil] = useState(0);
     const billingSuccessHandledRef = useRef(false);
+    const stripeCheckoutCancelAlertHandledRef = useRef(false);
+
+    useEffect(() => {
+        if (search.get("billing") !== "cancelled") {
+            stripeCheckoutCancelAlertHandledRef.current = false;
+            return;
+        }
+        if (!user?.uid || stripeCheckoutCancelAlertHandledRef.current) return;
+
+        stripeCheckoutCancelAlertHandledRef.current = true;
+        void sendKlonerSlackEvent("stripe_checkout_cancelled", { email: user.email })
+            .catch((error) => console.warn("Failed to send Stripe checkout cancellation Slack alert", error));
+    }, [search, user?.email, user?.uid]);
 
     useEffect(() => {
         if (!appDeployWizardRetryLockedUntil) return;

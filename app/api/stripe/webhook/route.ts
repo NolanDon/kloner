@@ -93,6 +93,41 @@ if (!admin.apps.length) {
 }
 const db = admin.firestore();
 
+async function sendTrialStartedSlackAlert(uid: string, subscriptionId: string): Promise<void> {
+  const webhookUrl = (process.env.SLACK_ERROR_WEBHOOK_URL || process.env.SLACK_WEBHOOK_URL || "").trim();
+  if (!webhookUrl) return;
+
+  const alertRef = db.collection("kloner_slack_event_dedupe").doc(`trial_started_${subscriptionId}`);
+  const claimed = await db.runTransaction(async (tx) => {
+    const existing = await tx.get(alertRef);
+    if (existing.exists) return false;
+    tx.create(alertRef, { event: "trial_started", uid, status: "sending", createdAt: Date.now() });
+    return true;
+  });
+  if (!claimed) return;
+
+  try {
+    const authUser = await admin.auth().getUser(uid);
+    const email = authUser.email?.trim() || uid;
+    const response = await fetch(webhookUrl, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        text: `:tada: *Free trial started* · ${email}`,
+        username: "Kloner",
+        icon_emoji: ":large_orange_circle:",
+        unfurl_links: false,
+        unfurl_media: false,
+      }),
+    });
+    if (!response.ok) throw new Error(`Slack returned ${response.status}`);
+    await alertRef.set({ status: "sent", sentAt: Date.now() }, { merge: true });
+  } catch (error) {
+    await alertRef.delete().catch(() => undefined);
+    console.error("[stripe-webhook] trial-start Slack alert failed", { uid, subscriptionId, error });
+  }
+}
+
 // ------------------------
 // Affiliate constants
 // ------------------------
@@ -1167,7 +1202,7 @@ export async function POST(req: NextRequest) {
           typeof sub.customer === "string" ? sub.customer : sub.customer?.id;
         if (!customerId) break;
 
-        const uid = await resolveUidForCustomerId(customerId);
+        const uid = await resolveUidForCustomerId(customerId) || cleanStr(sub.metadata?.firebaseUid, 128) || null;
         if (!uid) {
           await reportMissingStripeUid({ customerId, eventType: event.type, eventId: event.id });
           break;
@@ -1200,6 +1235,10 @@ export async function POST(req: NextRequest) {
           trialEnd: (sub as any).trial_end ?? undefined,
           cancelAtPeriodEnd: (sub as any).cancel_at_period_end ?? undefined,
         });
+
+        if (event.type === "customer.subscription.created" && status === "trialing") {
+          await sendTrialStartedSlackAlert(uid, sub.id);
+        }
 
         break;
       }

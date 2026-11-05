@@ -148,7 +148,7 @@ export async function GET(req: NextRequest) {
     const discounts = await resolveDiscount(isProd, DEFAULT_EXIT_CODE);
 
     const successUrl = `${origin}/dashboard/view?billing=success&recovery=1`;
-    const cancelUrl = `${origin}/dashboard/view`;
+    const cancelUrl = `${origin}/dashboard/view?billing=cancelled`;
 
     const baseMeta: Record<string, string> = {
         firebaseUid: uid,

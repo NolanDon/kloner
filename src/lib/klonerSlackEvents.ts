@@ -2,7 +2,12 @@
 
 import { ensureSessionAndCsrf } from "@/lib/auth-client";
 
-export type KlonerSlackEvent = "signup" | "early_paywall_shown" | "early_paywall_started" | "early_paywall_closed";
+export type KlonerSlackEvent =
+    | "signup"
+    | "early_paywall_shown"
+    | "early_paywall_started"
+    | "early_paywall_closed"
+    | "stripe_checkout_cancelled";
 
 type KlonerSlackEventDetails = {
     email?: string | null;
@@ -24,7 +29,7 @@ export async function sendKlonerSlackEvent(
         },
         credentials: "same-origin",
         cache: "no-store",
-        keepalive: event === "early_paywall_closed",
+        keepalive: event === "early_paywall_closed" || event === "stripe_checkout_cancelled",
         body: JSON.stringify({ event, ...details }),
     });
 

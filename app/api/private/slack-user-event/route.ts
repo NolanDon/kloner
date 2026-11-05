@@ -11,6 +11,7 @@ const ALLOWED_EVENTS = new Set([
     "early_paywall_shown",
     "early_paywall_started",
     "early_paywall_closed",
+    "stripe_checkout_cancelled",
 ]);
 
 function safeText(value: unknown, fallback = ""): string {
@@ -41,7 +42,9 @@ export async function POST(req: NextRequest) {
                     ? `:lock: *Early paywall shown* · ${email}`
                     : event === "early_paywall_started"
                         ? `:white_check_mark: *Paywall started* · ${email} · ${body.trial === false ? "Paid" : "Trial"}`
-                        : `:x: *Paywall closed* · ${email} · Scan canceled`;
+                        : event === "early_paywall_closed"
+                            ? `:x: *Paywall closed* · ${email} · Scan canceled`
+                            : `:no_entry_sign: *Stripe checkout canceled* · ${email}`;
 
             try {
                 const response = await fetch(webhookUrl, {
