@@ -141,14 +141,14 @@ export default function MembershipSticky({ heading = 'What your website cloner i
 
               <div className="mt-10">
                 <p className="mt-[-40px] md:mt-3 max-w-md text-lg leading-relaxed text-neutral-600 md:text-xl">
-                  Start from a public URL, review the supported website structure and available assets, edit the result with AI, and deploy when it is ready.
+                  After entering your public URL, review the supported website structure and available assets, edit the result with AI, and deploy when it is ready.
                 </p>
               </div>
 
               <button
                 type="button"
                 onClick={openUrlOverlay}
-                className="mt-10 inline-flex items-center gap-2 rounded-full bg-accent px-6 py-4 text-white shadow-sm transition-all duration-200 hover:scale-[1.04] hover:shadow-[0_10px_24px_rgba(255,141,33,0.28)] active:scale-[0.98]"
+                className="mt-10 inline-flex min-h-14 items-center gap-2 rounded-full bg-accent px-7 py-4 text-base font-semibold text-white shadow-sm transition-all duration-200 hover:scale-[1.04] hover:shadow-[0_10px_24px_rgba(255,141,33,0.28)] active:scale-[0.98]"
               >
                 Clone your site <span aria-hidden>›</span>
               </button>

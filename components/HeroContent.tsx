@@ -78,18 +78,18 @@ export default function HeroContent({
   }
 
   return (
-    <div className="relative z-20 flex h-full w-full items-center justify-center px-4 sm:px-6 py-[clamp(1.25rem,3.5vh,2.5rem)]">
+    <div className="relative z-20 flex h-full w-full items-center justify-center px-4 pt-16 pb-[clamp(1.25rem,3.5vh,2.5rem)] sm:px-6 sm:py-[clamp(1.25rem,3.5vh,2.5rem)]">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.8 }}
         className="w-full max-w-[1000px] text-center"
       >
-        {eyebrow ? <div className="mb-5 text-xs font-semibold uppercase tracking-[0.24em] text-white/75" style={{ fontFamily: "var(--font-inter), Inter, sans-serif" }}>{eyebrow}</div> : null}
+        {eyebrow ? <div className="mb-5 hidden text-xs font-semibold uppercase tracking-[0.24em] text-white/75 sm:block" style={{ fontFamily: "var(--font-inter), Inter, sans-serif" }}>{eyebrow}</div> : null}
         <h1
           className={`${displayClassName} mx-auto max-w-[1000px] whitespace-normal leading-[1.1] font-medium tracking-tight text-white`}
           style={{
-            fontSize: "clamp(2.4rem, min(10.5vw, 8vh), 5.5rem)",
+            fontSize: "clamp(3rem, min(12vw, 10vh), 7rem)",
             fontFamily: "var(--font-fraunces), Georgia, serif",
             WebkitFontSmoothing: "antialiased",
             MozOsxFontSmoothing: "grayscale",
@@ -103,7 +103,7 @@ export default function HeroContent({
           {subhead ?? "Clone a website from a URL, customize it with AI, and launch your new site."}
         </p>
 
-        <form onSubmit={onSubmit} className="mt-[clamp(1rem,3.2vh,2.5rem)] w-full max-w-2xl mx-auto space-y-3">
+        <form onSubmit={onSubmit} className="mt-[clamp(1.5rem,4vh,3rem)] w-full max-w-2xl mx-auto space-y-3">
           <label htmlFor="hero-url-input" className="sr-only">
             Website URL
           </label>
@@ -134,7 +134,7 @@ export default function HeroContent({
               <button
                 type="submit"
                 disabled={!url || !!error}
-                className="inline-flex min-h-[52px] shrink-0 items-center justify-center rounded-full bg-[#FF8D21] px-5 text-[15px] text-white whitespace-nowrap shadow-sm transition-all duration-200 hover:scale-[1.04] hover:shadow-[0_10px_24px_rgba(255,141,33,0.28)] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:scale-100"
+                className="inline-flex min-h-14 shrink-0 items-center justify-center rounded-full bg-[#FF8D21] px-7 text-base font-semibold text-white whitespace-nowrap shadow-sm transition-all duration-200 hover:scale-[1.04] hover:shadow-[0_10px_24px_rgba(255,141,33,0.28)] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:scale-100"
                 aria-label="Clone website from URL"
               >
                 <span>Clone</span>
@@ -150,7 +150,7 @@ export default function HeroContent({
             {error ?? "Clone a public website • Preview the result • Customize and launch"}
           </div>
         </form>
-        <p className="mt-3 text-sm text-white/80">
+        <p className="mt-8 text-sm text-white/80">
           Limited free preview · <a href="/price" className="underline underline-offset-4">Pricing</a>
         </p>
 

@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import admin from "firebase-admin";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { getAdminDb } from "../../_lib/auth";
+import { requireSessionAndMaybeCsrf } from "../../_lib/route-guard";
 import { captureCriticalEvent, captureException } from "@/lib/observability";
 import { buildSupportPolicyContext } from "@/src/lib/supportRag";
 
@@ -295,6 +296,7 @@ async function maybeAutoManageInactivity(
 }
 
 export async function GET(req: NextRequest) {
+    return requireSessionAndMaybeCsrf(req, async ({ uid }) => {
     try {
         const { searchParams } = new URL(req.url);
         const chatId = searchParams.get("chatId");
@@ -329,6 +331,10 @@ export async function GET(req: NextRequest) {
                 url: req.url,
                 extra: { chatId },
             });
+            return NextResponse.json({ ok: false, error: "Chat not found" }, { status: 404 });
+        }
+
+        if (chatSnap.data()?.userId !== uid) {
             return NextResponse.json({ ok: false, error: "Chat not found" }, { status: 404 });
         }
 
@@ -373,9 +379,11 @@ export async function GET(req: NextRequest) {
         });
         return NextResponse.json({ ok: false, error: "Failed to load chat" }, { status: 500 });
     }
+    });
 }
 
 export async function POST(req: NextRequest) {
+    return requireSessionAndMaybeCsrf(req, async ({ uid }) => {
     try {
         const body = await req.json().catch(() => ({}));
         const textRaw = typeof body.text === "string" ? body.text.trim() : "";
@@ -405,8 +413,6 @@ export async function POST(req: NextRequest) {
         }
 
         const db = getAdminDb();
-        const uid = (req as any).user?.uid || null;
-
         let chatRef: FirebaseFirestore.DocumentReference;
         let existingData: any | null = null;
 
@@ -421,6 +427,9 @@ export async function POST(req: NextRequest) {
         const nowTs = admin.firestore.Timestamp.now();
 
         if (existingData) {
+            if (existingData.userId !== uid) {
+                return NextResponse.json({ ok: false, error: "Chat not found" }, { status: 404 });
+            }
             const existingStatus =
                 (existingData.status as "open" | "pending" | "closed" | undefined) || "open";
             if (existingStatus === "closed") {
@@ -456,7 +465,7 @@ export async function POST(req: NextRequest) {
         } else {
             await chatRef.set(
                 {
-                    userId: existingData.userId ?? uid ?? null,
+                    userId: uid,
                     updatedAt: nowTs,
                     lastActivityAt: nowTs,
                     status: existingData.status || "open",
@@ -623,4 +632,5 @@ export async function POST(req: NextRequest) {
         });
         return NextResponse.json({ ok: false, error: "Failed to send message" }, { status: 500 });
     }
+    });
 }

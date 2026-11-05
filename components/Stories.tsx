@@ -158,7 +158,7 @@ export default function Stories() {
         <div className="mb-8 flex items-center justify-between gap-4 sm:mb-10">
           <h2 className="mt-1 flex flex-wrap items-center justify-start gap-x-3 gap-y-1 text-base text-neutral-600 sm:text-lg">
             <span className="block font-sans text-[16px] uppercase tracking-[0.1em] text-neutral-500">
-              Make every detail yours with Kloner
+              Make every detail yours with
             </span>
             <span className="relative inline-block h-[72px] w-[72px] shrink-0 sm:h-[92px] sm:w-[92px]">
               <Image src={logo} alt="Kloner logo" fill sizes="(min-width: 640px) 92px, 72px" className="object-contain" />

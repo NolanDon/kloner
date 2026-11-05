@@ -284,7 +284,7 @@ const items = [
   },
   {
     title: "Make it your own",
-    text: "Swap copy, colors, images, and sections until the site feels right.",
+    text: "Use AI or manual mode to edit copy, swap images, and customize the design to match your brand.",
     step: 3,
     Modal: EditBlocksModal as ModalPlain,
     needsProgress: false,

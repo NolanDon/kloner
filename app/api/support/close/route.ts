@@ -2,12 +2,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import admin from "firebase-admin";
 import { getAdminDb } from "../../_lib/auth";
+import { requireSessionAndMaybeCsrf } from "../../_lib/route-guard";
 import { captureCriticalEvent, captureException } from "@/lib/observability";
 
 const CHAT_COLLECTION = "support_chats";
 const INBOX_COLLECTION = "support_inbox";
 
 export async function POST(req: NextRequest) {
+    return requireSessionAndMaybeCsrf(req, async ({ uid }) => {
     try {
         const body = await req.json().catch(() => ({}));
         const chatId = typeof body.chatId === "string" ? body.chatId.trim() : "";
@@ -36,6 +38,11 @@ export async function POST(req: NextRequest) {
 
         const chatRef = db.collection(CHAT_COLLECTION).doc(chatId);
         const inboxRef = db.collection(INBOX_COLLECTION).doc(chatId);
+
+        const chatSnap = await chatRef.get();
+        if (!chatSnap.exists || chatSnap.data()?.userId !== uid) {
+            return NextResponse.json({ ok: false, error: "Chat not found" }, { status: 404 });
+        }
 
         await chatRef.set(
             {
@@ -76,4 +83,5 @@ export async function POST(req: NextRequest) {
         });
         return NextResponse.json({ ok: false, error: "Failed to close chat" }, { status: 500 });
     }
+    });
 }

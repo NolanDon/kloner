@@ -87,14 +87,14 @@ export default function ChatWidgetProvider() {
     const bottomRef = useRef<HTMLDivElement | null>(null);
 
     useEffect(() => {
-        if (typeof window === "undefined") return;
+        if (authLoading || !user || typeof window === "undefined") return;
         const saved = window.localStorage.getItem(STORAGE_KEY);
         if (saved) {
             setChatId(saved);
             void fetchExisting(saved);
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
+    }, [authLoading, user]);
 
     useEffect(() => {
         if (!bottomRef.current) return;
@@ -103,8 +103,10 @@ export default function ChatWidgetProvider() {
 
     async function fetchExisting(existingChatId: string) {
         try {
-            const res = await fetch("/api/support/chat?chatId=" + existingChatId, {
+            const token = await user?.getIdToken().catch(() => null);
+            const res = await fetch("/api/support/chat?chatId=" + encodeURIComponent(existingChatId), {
                 method: "GET",
+                headers: token ? { authorization: `Bearer ${token}` } : {},
             });
 
             if (res.status === 404) {
@@ -133,7 +135,7 @@ export default function ChatWidgetProvider() {
     }
 
     useEffect(() => {
-        if (!open || !chatId || status === "closed") return;
+        if (!user || authLoading || !open || !chatId || status === "closed") return;
 
         let cancelled = false;
         let timeoutId: NodeJS.Timeout | null = null;
@@ -142,9 +144,10 @@ export default function ChatWidgetProvider() {
             if (cancelled) return;
 
             try {
+                const token = await user.getIdToken().catch(() => null);
                 const res = await fetch(
                     "/api/support/chat?chatId=" + encodeURIComponent(chatId),
-                    { method: "GET" },
+                    { method: "GET", headers: token ? { authorization: `Bearer ${token}` } : {} },
                 );
 
                 if (res.status === 404) {
@@ -190,7 +193,7 @@ export default function ChatWidgetProvider() {
             cancelled = true;
             if (timeoutId) clearTimeout(timeoutId);
         };
-    }, [open, chatId, status]);
+    }, [user, authLoading, open, chatId, status]);
 
     function pushClosedSystemMessage() {
         const sys: ChatMessage = {
@@ -205,6 +208,10 @@ export default function ChatWidgetProvider() {
 
     async function handleSend() {
         const text = input.trim();
+        if (!user || authLoading) {
+            setError("Sign in required to use chat");
+            return;
+        }
         if (!text || loading) return;
 
         setError(null);
@@ -228,9 +235,10 @@ export default function ChatWidgetProvider() {
         setInput("");
 
         try {
+            const token = await user.getIdToken();
             const res = await fetch("/api/support/chat", {
                 method: "POST",
-                headers: { "content-type": "application/json" },
+                headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
                 body: JSON.stringify({ chatId, text }),
             });
 
@@ -327,9 +335,10 @@ export default function ChatWidgetProvider() {
         }
 
         try {
+            const token = await user?.getIdToken().catch(() => null);
             await fetch("/api/support/close", {
                 method: "POST",
-                headers: { "content-type": "application/json" },
+                headers: { "content-type": "application/json", ...(token ? { authorization: `Bearer ${token}` } : {}) },
                 body: JSON.stringify({ chatId, by: "user" }),
             });
         } catch {
@@ -343,6 +352,8 @@ export default function ChatWidgetProvider() {
         setChatClosed(false);
         if (typeof window !== "undefined") window.localStorage.removeItem(STORAGE_KEY);
     }
+
+    if (authLoading || !user) return null;
 
     const isConnectingToHuman = mode === "agent" && status === "pending";
     const canRequestHuman = !!user && !authLoading;

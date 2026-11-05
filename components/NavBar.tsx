@@ -327,7 +327,7 @@ export default function NavBar(): JSX.Element {
             <button
               type="button"
               onClick={openUrlOverlay}
-              className="hidden md:inline-flex items-center justify-center h-[52px] mr-1.5 rounded-full px-5 text-[15px] text-white whitespace-nowrap"
+              className="hidden md:inline-flex items-center justify-center h-14 mr-1.5 rounded-full px-7 text-base font-semibold text-white whitespace-nowrap"
               style={{ backgroundColor: ACCENT }}
             >
               Start project
@@ -413,7 +413,7 @@ export default function NavBar(): JSX.Element {
                           setMOpen(false);
                           openUrlOverlay();
                         }}
-                        className="inline-flex items-center justify-center gap-2 rounded-2xl border border-[#FF8D21] bg-[#FF8D21] px-3 py-3 text-sm font-semibold text-white shadow-sm transition-all duration-200 hover:scale-[1.03] hover:shadow-[0_8px_20px_rgba(255,141,33,0.28)] active:scale-[0.98]"
+                        className="inline-flex min-h-14 items-center justify-center gap-2 rounded-2xl border border-[#FF8D21] bg-[#FF8D21] px-5 py-3 text-base font-semibold text-white shadow-sm transition-all duration-200 hover:scale-[1.03] hover:shadow-[0_8px_20px_rgba(255,141,33,0.28)] active:scale-[0.98]"
                       >
                         <ScanSearch className="h-4 w-4" />
                         Start project

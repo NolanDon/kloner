@@ -249,7 +249,7 @@ export default function PreviewDashboard({
                     <button
                         type="button"
                         onClick={openUrlOverlay}
-                        className="group inline-flex items-center rounded-full bg-[#FF8D21] px-4 py-2 text-sm text-white mt-5 whitespace-nowrap shadow-sm transition-all duration-200 ease-out hover:scale-[1.04] hover:shadow-[0_8px_20px_rgba(255,141,33,0.28)] active:scale-[0.98]"
+                        className="group inline-flex min-h-14 items-center rounded-full bg-[#FF8D21] px-7 py-3 text-base font-semibold text-white mt-5 whitespace-nowrap shadow-sm transition-all duration-200 ease-out hover:scale-[1.04] hover:shadow-[0_8px_20px_rgba(255,141,33,0.28)] active:scale-[0.98]"
                     >
                         <span>Clone a website</span>
 
