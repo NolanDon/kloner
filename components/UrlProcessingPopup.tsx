@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { ArrowRight, ExternalLink, X } from "lucide-react";
+import { getUserFacingUrlErrorMessage } from "@/src/lib/userFacingErrors";
 
 type UrlProcessingPopupProps = {
     open: boolean;
@@ -118,7 +119,12 @@ export default function UrlProcessingPopup({
     }, [open, error, tick, resolvedBytes, stage]);
 
     const percentLabel = progress >= 100 ? null : `${progress}%`;
-    const helperText = error ? error : message;
+    const helperText = error
+        ? getUserFacingUrlErrorMessage({
+            status: /unauthorized|session/i.test(error) ? 401 : undefined,
+            message: error,
+          })
+        : message;
     const byteLabel = formatBytes(resolvedBytes);
     const isFinalizedStage = stage === "ready" || stage === "navigating";
     const displayTitle = useMemo(() => {

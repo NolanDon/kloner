@@ -38,7 +38,7 @@ import {
 } from "firebase/firestore";
 import Image from "next/image";
 import { validateAndNormalizePublicHttpUrl } from "@/src/lib/publicHttpUrl";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Eye, EyeOff } from "lucide-react";
 
 const ACCENT = "#FF8D21";
 const POLICY_ACCEPTANCE_VERSION = "2026-05-20";
@@ -689,16 +689,17 @@ export default function LoginPage(): JSX.Element {
                         </div>
 
                         <div className="mb-5 flex justify-center">
-                            <div className="inline-flex items-center rounded-full border border-neutral-200 bg-neutral-50 p-1 text-xs shadow-sm">
+                            <div className="login-theme__mode-switch inline-flex items-center gap-1 rounded-full border border-neutral-200 bg-neutral-50 p-1 text-xs shadow-sm">
                                 <button
                                     type="button"
                                     onClick={() => {
                                         setMode("signin");
                                         setErr("");
                                     }}
-                                    className={`px-3 py-1.5 rounded-full font-medium transition ${mode === "signin"
-                                            ? "bg-accent text-white"
-                                            : "text-neutral-600 hover:text-black"
+                                    aria-pressed={mode === "signin"}
+                                    className={`rounded-full border px-3 py-1.5 font-medium transition ${mode === "signin"
+                                            ? "border-accent bg-accent text-white shadow-sm"
+                                            : "border-transparent text-neutral-600 hover:text-black"
                                         }`}
                                 >
                                     Sign in
@@ -709,9 +710,10 @@ export default function LoginPage(): JSX.Element {
                                         setMode("signup");
                                         setErr("");
                                     }}
-                                    className={`px-3 py-1.5 rounded-full font-medium transition ${mode === "signup"
-                                            ? "bg-accent text-white"
-                                            : "text-neutral-600 hover:text-black"
+                                    aria-pressed={mode === "signup"}
+                                    className={`rounded-full border px-3 py-1.5 font-medium transition ${mode === "signup"
+                                            ? "border-accent bg-accent text-white shadow-sm"
+                                            : "border-transparent text-neutral-600 hover:text-black"
                                         }`}
                                 >
                                     Create account
@@ -786,7 +788,7 @@ export default function LoginPage(): JSX.Element {
                                     <label className="block text-xs font-medium text-neutral-600">
                                         Password
                                     </label>
-                                    <div className="flex items-stretch gap-2">
+                                    <div className="relative">
                                         <input
                                             type={showPw ? "text" : "password"}
                                             autoComplete={
@@ -794,7 +796,7 @@ export default function LoginPage(): JSX.Element {
                                             }
                                             value={pw}
                                             onChange={(e) => setPw(e.target.value)}
-                                            className="w-full rounded-2xl border border-neutral-200 bg-white px-3 py-3 text-sm outline-none transition focus:border-[#FF8D21] focus:ring-2 focus:ring-[#FF8D21]/15"
+                                            className="w-full rounded-2xl border border-neutral-200 bg-white px-3 py-3 pr-12 text-sm outline-none transition focus:border-[#FF8D21] focus:ring-2 focus:ring-[#FF8D21]/15"
                                             placeholder={
                                                 mode === "signin"
                                                     ? "Your password"
@@ -804,10 +806,11 @@ export default function LoginPage(): JSX.Element {
                                         <button
                                             type="button"
                                             onClick={() => setShowPw((v) => !v)}
-                                            className="shrink-0 rounded-2xl border border-neutral-200 bg-white px-3 text-sm transition hover:bg-neutral-50"
-                                            aria-label="Toggle password visibility"
+                                            className="absolute inset-y-0 right-0 inline-flex w-12 items-center justify-center rounded-r-2xl text-neutral-500 transition hover:text-neutral-900"
+                                            aria-label={showPw ? "Hide password" : "Show password"}
+                                            aria-pressed={showPw}
                                         >
-                                            {showPw ? "Hide" : "Show"}
+                                            {showPw ? <EyeOff className="h-5 w-5" aria-hidden /> : <Eye className="h-5 w-5" aria-hidden />}
                                         </button>
                                     </div>
                                 </div>

@@ -1194,8 +1194,9 @@ h6 {
 }
 
 :root[data-theme="dark"] .login-theme__card {
-    background: rgba(36, 34, 31, 0.78) !important;
+    background: rgba(53, 50, 45, 0.88) !important;
     border-color: var(--border-subtle) !important;
+    border-radius: 1.5rem !important;
     -webkit-backdrop-filter: blur(18px) saturate(125%);
     backdrop-filter: blur(18px) saturate(125%);
 }
@@ -1243,6 +1244,53 @@ h6 {
 
 :root[data-theme="dark"] .login-theme :is(.bg-neutral-50, .bg-white, .bg-white\/90) {
     background-color: var(--surface) !important;
+}
+
+@media (max-width: 639px) {
+    .login-theme .login-theme__outer {
+        padding: 0.25rem !important;
+        border: 0 !important;
+        border-radius: 0 !important;
+        background: transparent !important;
+        box-shadow: none !important;
+        -webkit-backdrop-filter: none !important;
+        backdrop-filter: none !important;
+        overflow: visible !important;
+    }
+
+    .login-theme .login-theme__card {
+        padding: 0 !important;
+        border: 0 !important;
+        border-radius: 0 !important;
+        background: transparent !important;
+        box-shadow: none !important;
+        -webkit-backdrop-filter: none !important;
+        backdrop-filter: none !important;
+    }
+}
+
+:root[data-theme="dark"] .login-theme .login-theme__card {
+    border-radius: 1.5rem !important;
+    background: rgba(53, 50, 45, 0.88) !important;
+}
+
+@media (max-width: 639px) {
+    :root[data-theme="dark"] .login-theme .login-theme__card {
+        padding: 1rem !important;
+    }
+}
+
+:root[data-theme="dark"] .login-theme .login-theme__mode-switch button[aria-pressed="true"] {
+    color: #fff !important;
+    background: #ff8d21 !important;
+    border-color: #ff8d21 !important;
+    box-shadow: 0 1px 5px rgba(0, 0, 0, 0.3) !important;
+}
+
+:root[data-theme="dark"] .login-theme .login-theme__mode-switch button[aria-pressed="false"] {
+    color: #e8ddc8 !important;
+    background: transparent !important;
+    border-color: transparent !important;
 }
 
 :root[data-theme="dark"] .how-step-number {
