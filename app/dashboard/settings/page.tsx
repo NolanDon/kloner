@@ -2218,6 +2218,10 @@ export default function SettingsPage(): JSX.Element {
                         Tell us why you’re leaving. This helps us understand
                         what to improve.
                       </p>
+                      <p className="mt-2 text-sm font-medium text-neutral-700">
+                        Canceling your account will end your subscription and
+                        disable your live deployments.
+                      </p>
                     </div>
 
                     <button
