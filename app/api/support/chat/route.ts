@@ -554,7 +554,7 @@ export async function POST(req: NextRequest) {
 
             if (!aiText) {
                 aiText =
-                    "I’m having trouble reaching the AI model right now. Please try again in a minute, " +
+                    "Something failed. Please try again in a minute, " +
                     "or contact support and we’ll help directly.";
             }
 

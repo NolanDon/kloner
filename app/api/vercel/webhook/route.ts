@@ -36,7 +36,7 @@ type DeploymentPayload = {
 
 function verifySignature(rawBody: string, signature: string | null): boolean {
     if (!WEBHOOK_SECRET || !signature) return false;
-    const hmac = crypto.createHmac("sha256", WEBHOOK_SECRET);
+    const hmac = crypto.createHmac("sha1", WEBHOOK_SECRET);
     hmac.update(rawBody, "utf8");
     const digest = hmac.digest("hex");
     try {

@@ -14240,7 +14240,7 @@ export default function PreviewPage(): JSX.Element {
             ) : null}
             {checkoutBusy ? (
                 <div className="fixed inset-0 z-[13000] flex items-center justify-center bg-white/70 px-4 backdrop-blur-md">
-                    <div className="w-full max-w-sm rounded-[28px] border border-neutral-200 bg-white px-6 py-6 text-center text-neutral-900 shadow-[0_24px_80px_rgba(15,23,42,0.16)]">
+                    <div className="w-full max-w-sm rounded-[28px] bg-white px-6 py-6 text-center text-neutral-900 shadow-[0_24px_80px_rgba(15,23,42,0.16)]">
                         <div className="mt-4 flex items-center justify-center gap-2 text-[#FF8D21]">
                             <Loader2 className="h-4 w-4 animate-spin" />
                             <p className="text-sm font-semibold">Opening secure Stripe checkout...</p>
@@ -16182,7 +16182,7 @@ export default function PreviewPage(): JSX.Element {
                 {
                     showRecoveryCheckoutLoader ? (
                         <div className="fixed inset-0 z-[13000] flex items-center justify-center bg-white/70 px-4 backdrop-blur-md">
-                            <div className="w-full max-w-sm rounded-[28px] border border-neutral-200 bg-white px-6 py-6 text-center text-neutral-900 shadow-[0_24px_80px_rgba(15,23,42,0.16)]">
+                            <div className="w-full max-w-sm rounded-[28px] bg-white px-6 py-6 text-center text-neutral-900 shadow-[0_24px_80px_rgba(15,23,42,0.16)]">
                                 <div className="mt-4 flex items-center justify-center gap-2 text-[#FF8D21]">
                                     <Loader2 className="h-4 w-4 animate-spin" />
                                     <p className="text-sm font-semibold">Opening secure Stripe checkout...</p>
