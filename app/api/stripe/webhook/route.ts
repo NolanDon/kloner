@@ -11,6 +11,7 @@ import {
   setUserTierFromStripe,
 } from "../../_lib/billing";
 import { captureCriticalEvent, captureException } from "@/lib/observability";
+import { markFreeTrialUsed } from "@/app/api/_lib/freeTrial";
 import {
   makeRecoveryCheckoutUrl,
   makeUnsubUrl,
@@ -1100,6 +1101,14 @@ export async function POST(req: NextRequest) {
           await linkCustomerToUid(customerId, firebaseUid);
         }
 
+        if (firebaseUid && session.metadata?.trialWelcomeEmail === "1") {
+          const subscriptionId =
+            typeof session.subscription === "string"
+              ? session.subscription
+              : session.subscription?.id;
+          await markFreeTrialUsed({ uid: firebaseUid, subscriptionId });
+        }
+
         await applyAiCreditTopupFromCheckoutSession(session);
 
         const checkoutFlow = cleanStr(
@@ -1214,6 +1223,9 @@ export async function POST(req: NextRequest) {
 
         const tier = mapPriceToTier(priceId);
         const status = sub.status;
+        if (typeof (sub as any).trial_start === "number" || status === "trialing") {
+          await markFreeTrialUsed({ uid, subscriptionId: sub.id });
+        }
         const effectiveTier = effectiveTierFromStripeSubscription({
           mappedTier: tier,
           status,

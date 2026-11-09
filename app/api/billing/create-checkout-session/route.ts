@@ -8,6 +8,7 @@ import { requireSessionAndMaybeCsrf } from "../../_lib/route-guard";
 import { captureCriticalEvent, captureException } from "@/lib/observability";
 import { resolveMonthlyPriceId } from "@/app/api/_lib/monthlyPrice";
 import { shouldRequireEarlyGenerationPaywall } from "@/app/api/_lib/earlyGenerationGate";
+import { hasPriorSubscriptionHistoryForAccount } from "@/app/api/_lib/freeTrial";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -236,11 +237,17 @@ async function handler({ req, uid }: { req: NextRequest; uid: string }) {
     const affiliateSource: string =
         typeof userData?.affiliateSource === "string" ? userData.affiliateSource.trim() : "";
 
+    let authUser: admin.auth.UserRecord | null = null;
+    const getAuthUser = async () => {
+        if (!authUser) authUser = await admin.auth().getUser(uid);
+        return authUser;
+    };
+
     let customerId: string | undefined = userData.stripeCustomerId;
 
     const createAndPersistCustomer = async (): Promise<string> => {
-        const authUser = await admin.auth().getUser(uid);
-        const email = authUser.email ?? undefined;
+        const user = await getAuthUser();
+        const email = user.email ?? undefined;
 
         let customer;
         try {
@@ -336,7 +343,27 @@ async function handler({ req, uid }: { req: NextRequest; uid: string }) {
     // Anti-abuse: one free trial per customer lifecycle.
     // If this customer has any prior subscription history (including canceled),
     // do not attach a new trial.
-    const hasAnySubscriptionHistory = existingSubs.data.length > 0;
+    let hasAnySubscriptionHistory =
+        existingSubs.data.length > 0 ||
+        !!userData.freeTrialUsedAt ||
+        userData.freeTrialUsed === true;
+    if (trialCandidate && !hasAnySubscriptionHistory) {
+        try {
+            const user = await getAuthUser();
+            hasAnySubscriptionHistory = await hasPriorSubscriptionHistoryForAccount({
+                uid,
+                email: user.email,
+                stripe,
+            });
+        } catch (error) {
+            // If eligibility cannot be verified, allow checkout but never grant a trial.
+            hasAnySubscriptionHistory = true;
+            console.error("[billing] trial eligibility check failed; trial withheld", {
+                uid,
+                error,
+            });
+        }
+    }
     const includeTrial = trialCandidate && !hasAnySubscriptionHistory && !earlyPaywallCountry;
     const isAppDeployTrialSuccess = !!(returnAppId && includeTrial);
 

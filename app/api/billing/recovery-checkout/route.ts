@@ -6,6 +6,7 @@ import { verifySignedToken } from "@/app/api/private/email-links";
 import { STRIPE_TRIAL_DAYS } from "@/src/lib/billingAccess";
 import { resolveMonthlyPriceId } from "@/app/api/_lib/monthlyPrice";
 import { shouldRequireEarlyGenerationPaywall } from "@/app/api/_lib/earlyGenerationGate";
+import { hasPriorSubscriptionHistoryForAccount } from "@/app/api/_lib/freeTrial";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -145,6 +146,29 @@ export async function GET(req: NextRequest) {
         );
     }
 
+    let hasAnySubscriptionHistory =
+        existingSubs.data.length > 0 ||
+        !!userData.freeTrialUsedAt ||
+        userData.freeTrialUsed === true;
+    if (STRIPE_TRIAL_DAYS > 0 && !hasAnySubscriptionHistory) {
+        try {
+            const email = (await getAdminAuth().getUser(uid)).email;
+            hasAnySubscriptionHistory = await hasPriorSubscriptionHistoryForAccount({
+                uid,
+                email,
+                stripe,
+            });
+        } catch (error) {
+            // If eligibility cannot be verified, keep the recovery discount but withhold the trial.
+            hasAnySubscriptionHistory = true;
+            console.error("[billing] recovery trial eligibility check failed; trial withheld", {
+                uid,
+                error,
+            });
+        }
+    }
+    const includeTrial = STRIPE_TRIAL_DAYS > 0 && !earlyPaywallCountry && !hasAnySubscriptionHistory;
+
     const discounts = await resolveDiscount(isProd, DEFAULT_EXIT_CODE);
 
     const successUrl = `${origin}/dashboard/view?billing=success&recovery=1`;
@@ -155,6 +179,7 @@ export async function GET(req: NextRequest) {
         plan: "pro",
         checkoutFlow: "recovery_exit40",
         recoveryCode: DEFAULT_EXIT_CODE,
+        ...(includeTrial ? { trialWelcomeEmail: "1" } : {}),
     };
 
     const session = await stripe.checkout.sessions.create({
@@ -170,7 +195,7 @@ export async function GET(req: NextRequest) {
         payment_method_collection: "always",
         discounts,
         subscription_data: {
-            ...(STRIPE_TRIAL_DAYS > 0 && !earlyPaywallCountry ? { trial_period_days: STRIPE_TRIAL_DAYS } : {}),
+            ...(includeTrial ? { trial_period_days: STRIPE_TRIAL_DAYS } : {}),
             metadata: baseMeta,
         },
     });
