@@ -1427,7 +1427,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
     const latestSummaryFeedbackContextRef = useRef<SummarySearchFeedbackContext | null>(null);
     const previewIssueText = String(previewIssue || '').trim();
     const hasPreviewIssue = Boolean(previewIssueText);
-    const showPreviewIssueDetails = true;
+    const previewIssueSummary = previewIssueText.split(/\r?\n/).map((line) => line.trim()).find(Boolean) || "Something went wrong building website.";
     const showPreviewLoadingNotice = !PRODUCTION_AGENT_CHAT_BLOCKED && previewReady === false && !freeCompileFixContext && !hasPreviewIssue;
     const chatDisabled = PRODUCTION_AGENT_CHAT_BLOCKED;
     // Contract gate is owned by the parent editor; chat only renders Fix with AI
@@ -9306,70 +9306,35 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                         </div>
                     </div>
                 ) : hasPreviewIssue ? (
-                    <div className="app-builder-chat-notice app-builder-chat-notice-error mb-3 rounded-[1.5rem] border border-rose-200 bg-[linear-gradient(180deg,rgba(255,241,242,0.98),rgba(255,255,255,1))] px-4 py-4 shadow-[0_12px_32px_rgba(244,63,94,0.10)]">
-                        <div className="flex items-start gap-3">
-                            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-rose-100 text-rose-700 ring-1 ring-rose-200">
-                                <AlertTriangle className="h-5 w-5" />
+                    <div className="app-builder-chat-notice app-builder-chat-notice-error mb-3 rounded-2xl border border-rose-200 bg-[linear-gradient(180deg,rgba(255,241,242,0.98),rgba(255,255,255,1))] px-3 py-3 shadow-[0_12px_32px_rgba(244,63,94,0.10)] sm:px-4">
+                        <div className="flex items-center gap-3">
+                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-rose-100 text-rose-700 ring-1 ring-rose-200 sm:h-10 sm:w-10">
+                                <AlertTriangle className="h-4 w-4 sm:h-[18px] sm:w-[18px]" />
                             </div>
-                            <div className="min-w-0 flex-1">
-                                <div className="flex flex-wrap items-center gap-2">
-                                    <p className="text-sm font-semibold text-rose-950">Preview hit an error</p>
-                                    <span className="inline-flex items-center rounded-full border border-rose-200 bg-white px-2 py-0.5 text-[11px] font-medium text-rose-700">
-                                        Error
-                                    </span>
-                                </div>
-                                <p className="mt-1 text-sm leading-relaxed text-neutral-700">
-                                    Something went wrong building website.
-                                </p>
-                                <div className="mt-3 flex w-full min-w-0 flex-col items-start gap-2">
-                                    <div className="flex w-full min-w-0 flex-wrap items-center gap-2">
-                                        <button
-                                            type="button"
-                                            onClick={() => onPreviewIssueAction?.()}
-                                            className="inline-flex shrink-0 items-center rounded-full border border-rose-600 bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-rose-700"
-                                        >
-                                            {previewIssueActionLabel || "Rebuild"}
-                                        </button>
-                                        <details
-                                            className="group w-full min-w-0"
-                                            onToggle={(event) => {
-                                                const details = event.currentTarget;
-                                                if (!details.open) return;
-                                                window.requestAnimationFrame(() => {
-                                                    const scroller = details.closest('[data-app-builder-chat-scroll="true"]') as HTMLElement | null;
-                                                    if (!scroller) {
-                                                        details.scrollIntoView({ behavior: "smooth", block: "nearest" });
-                                                        return;
-                                                    }
-                                                    const detailsBottom = details.getBoundingClientRect().bottom;
-                                                    const scrollerBottom = scroller.getBoundingClientRect().bottom;
-                                                    if (detailsBottom > scrollerBottom - 20) {
-                                                        scroller.scrollBy({ top: detailsBottom - scrollerBottom + 36, behavior: "smooth" });
-                                                    }
-                                                });
-                                            }}
-                                        >
-                                            <summary className="inline-flex cursor-pointer list-none items-center justify-center rounded-full border border-rose-200 bg-white p-2 text-rose-600 transition hover:bg-rose-50">
-                                                <ChevronDown className="h-4 w-4" aria-hidden="true" />
-                                            </summary>
-                                            <div className="mt-2 w-full min-w-0 max-w-full overflow-hidden rounded-xl border border-rose-200 bg-white px-3 py-2 shadow-[0_10px_24px_rgba(244,63,94,0.08)]">
-                                                <div className="max-h-[min(18rem,40vh)] min-w-0 space-y-2 overflow-y-auto pr-1">
-                                                    <p className="text-sm leading-6 text-neutral-700">
-                                                        The preview ran into a problem, but you can still chat here to debug it or ask for help.
-                                                    </p>
-                                                    <div className="w-full max-w-full overflow-x-auto rounded-xl border border-rose-100 bg-rose-50 px-3 py-2 text-xs leading-5 text-rose-900 break-words whitespace-pre-wrap">
-                                                        {previewIssueText}
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </details>
+                            <div className="flex min-w-0 flex-1 flex-wrap items-center justify-between gap-x-3 gap-y-2">
+                                <div className="min-w-0 flex-1">
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        <p className="text-sm font-semibold text-rose-950">Preview hit an error</p>
+                                        <span className="inline-flex items-center rounded-full border border-rose-200 bg-white px-2 py-0.5 text-[11px] font-medium text-rose-700">
+                                            Error
+                                        </span>
                                     </div>
+                                    <p className="mt-1 break-words text-sm leading-snug text-neutral-700">
+                                        {previewIssueSummary}
+                                    </p>
+                                </div>
+                                <div className="flex shrink-0 items-center gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => onPreviewIssueAction?.()}
+                                        className="inline-flex shrink-0 items-center rounded-full border border-rose-600 bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-rose-700"
+                                    >
+                                        {previewIssueActionLabel || "Rebuild"}
+                                    </button>
                                     {hasPreviewIssueFixRequest ? (
                                         <button
                                             type="button"
-                                            onClick={() => {
-                                                onPreviewIssueFixRequest?.();
-                                            }}
+                                            onClick={() => onPreviewIssueFixRequest?.()}
                                             className="inline-flex shrink-0 items-center justify-center rounded-full border border-rose-200 bg-white px-3 py-1.5 text-xs font-semibold text-rose-700 transition hover:bg-rose-50"
                                         >
                                             Fix with AI

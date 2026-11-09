@@ -172,7 +172,7 @@ export default function UrlOverlay({ open, onClose }: UrlOverlayProps) {
                             className="mt-3 text-xs sm:text-sm text-white/80 min-h-[1.25rem] max-w-[28ch] sm:max-w-none"
                             aria-live="polite"
                         >
-                            {error ?? "Clone any public website • No credit card required to preview"}
+                            {error ?? "Clone your public website"}
                         </div>
                     </motion.div>
                 </motion.div>

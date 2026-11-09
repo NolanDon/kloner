@@ -6383,9 +6383,9 @@ export default function NavBar() {
         </div>
       ) : showManualRefreshOverlay ? (
         <div className="flex-1 flex items-center justify-center px-4">
-          <div className="w-full max-w-lg rounded-[1.5rem] border border-neutral-300 bg-[linear-gradient(180deg,rgba(245,245,245,0.98),rgba(255,255,255,1))] px-4 py-4 shadow-[0_10px_24px_rgba(15,23,42,0.08)]">
+          <div className="preview-refresh-card w-full max-w-lg rounded-[1.5rem] border border-neutral-300 bg-[linear-gradient(180deg,rgba(245,245,245,0.98),rgba(255,255,255,1))] px-4 py-4 shadow-[0_10px_24px_rgba(15,23,42,0.08)]">
             <div className="flex items-start gap-3">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-neutral-200 text-neutral-700 ring-1 ring-neutral-300">
+              <div className="preview-refresh-icon flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-neutral-200 text-neutral-700 ring-1 ring-neutral-300">
                 <Loader2 className="h-5 w-5 animate-spin" />
               </div>
               <div className="min-w-0 flex-1">
