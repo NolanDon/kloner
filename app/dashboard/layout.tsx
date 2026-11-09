@@ -363,7 +363,7 @@ function AccountBlock() {
       </div>
       <button
         onClick={onSignOut}
-        className="mt-3 w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm text-neutral-700 hover:bg-neutral-50"
+        className="dashboard-account-signout mt-3 w-full rounded-lg border border-neutral-200 bg-transparent px-3 py-2 text-sm text-neutral-700 transition-colors hover:bg-neutral-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF8D21] focus-visible:ring-offset-2"
       >
         Sign out
       </button>

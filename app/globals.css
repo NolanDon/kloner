@@ -692,6 +692,81 @@ h6 {
     color: var(--text-primary) !important;
 }
 
+:root[data-theme="dark"] .dashboard-account-signout {
+    background-color: var(--surface) !important;
+    border-color: var(--border-subtle) !important;
+    color: var(--text-primary) !important;
+}
+
+:root[data-theme="dark"] .dashboard-account-signout:hover {
+    background-color: var(--surface-raised) !important;
+}
+
+:root[data-theme="dark"] .dashboard-account-signout:focus-visible {
+    --tw-ring-offset-color: var(--page-bg);
+}
+
+/* Tailwind's light neutral hover utilities otherwise remain bright in dark mode. */
+:root[data-theme="dark"] :is(
+    .hover\:bg-white:hover,
+    .hover\:bg-white\/50:hover,
+    .hover\:bg-white\/70:hover,
+    .hover\:bg-white\/80:hover,
+    .hover\:bg-white\/90:hover,
+    .hover\:bg-white\/95:hover,
+    .hover\:bg-gray-50:hover,
+    .hover\:bg-neutral-50:hover,
+    .hover\:bg-slate-50:hover,
+    .hover\:bg-gray-100:hover,
+    .hover\:bg-neutral-100:hover,
+    .hover\:bg-slate-100:hover
+) {
+    background-color: var(--surface-raised) !important;
+}
+
+:root[data-theme="dark"] :is(
+    .hover\:bg-gray-200:hover,
+    .hover\:bg-neutral-200:hover,
+    .hover\:bg-slate-200:hover
+) {
+    background-color: #3a3631 !important;
+}
+
+:root[data-theme="dark"] :is(
+    .hover\:text-black:hover,
+    .hover\:text-neutral-900:hover,
+    .hover\:text-neutral-800:hover,
+    .hover\:text-gray-900:hover,
+    .hover\:text-gray-800:hover,
+    .hover\:text-slate-900:hover,
+    .hover\:text-slate-800:hover
+) {
+    color: var(--text-primary) !important;
+}
+
+:root[data-theme="dark"] :is(
+    .hover\:text-neutral-700:hover,
+    .hover\:text-neutral-600:hover,
+    .hover\:text-gray-700:hover,
+    .hover\:text-gray-600:hover,
+    .hover\:text-slate-700:hover,
+    .hover\:text-slate-600:hover
+) {
+    color: var(--text-secondary) !important;
+}
+
+:root[data-theme="dark"] :is(
+    .hover\:border-neutral-200:hover,
+    .hover\:border-neutral-300:hover,
+    .hover\:border-neutral-400:hover,
+    .hover\:border-gray-200:hover,
+    .hover\:border-gray-300:hover,
+    .hover\:border-slate-200:hover,
+    .hover\:border-slate-300:hover
+) {
+    border-color: var(--border-subtle) !important;
+}
+
 .darkmode-switch-track {
     border: 1px solid #d6d3d1;
     background-color: #e7e5e4;
