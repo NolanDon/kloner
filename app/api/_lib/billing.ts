@@ -3,6 +3,7 @@ import admin from "firebase-admin";
 import { getStripe } from "@/lib/stripe";
 import { monthlyLimitFor, type CreditKind as CoreCreditKind } from "@/src/lib/credits";
 import { captureCriticalEvent, captureException } from "@/lib/observability";
+import { checkStripeCheckoutAbuse } from "@/app/api/_lib/stripeCheckoutAbuse";
 
 export type UserTier = "free" | "pro" | "agency";
 export type Tier = UserTier;
@@ -562,6 +563,32 @@ export async function refreshTierFromStripeForUid(uid: string): Promise<Tier> {
     }
 
     const subAny = pickBestSubscription(subs.data as any[]) as any;
+
+    const subscriptionId = typeof subAny.id === "string" ? subAny.id : "";
+    const recentSubscription = typeof subAny.created === "number" &&
+        Date.now() - subAny.created * 1000 < 24 * 60 * 60 * 1000;
+    const needsAbuseCheck = data.abuseBlocklistBlocked === true ||
+        subAny.metadata?.abuseBlocklistCheck === "1" ||
+        recentSubscription;
+    if (needsAbuseCheck) {
+        try {
+            const abuseCheck = await checkStripeCheckoutAbuse({
+                uid,
+                subscriptionId,
+                stripe,
+            });
+            if (abuseCheck.outcome === "blocked") return "free";
+        } catch (error) {
+            // The success-page tier refresh is also an entitlement grant path.
+            // Fail closed while the blocklist decision is unavailable so a
+            // disabled Stripe webhook cannot allow Pro access around the check.
+            await userRef.set({ tier: "free", tierSource: "abuse_blocklist_pending" }, { merge: true }).catch(() => undefined);
+            throw Object.assign(new Error("Checkout abuse screening is temporarily unavailable"), {
+                code: "STRIPE_CHECKOUT_ABUSE_CHECK_FAILED",
+                cause: error,
+            });
+        }
+    }
 
     const firstItem = subAny.items?.data?.[0];
     const priceId = typeof firstItem?.price?.id === "string" ? firstItem.price.id : null;

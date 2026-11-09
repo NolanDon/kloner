@@ -170,7 +170,11 @@ export async function GET(req: NextRequest) {
                         userData = freshSnap.exists ? freshSnap.data() : {};
                     } catch (e: any) {
                         // Stripe refresh is best-effort; never hard-fail the UI.
-                        tier = storedTier;
+                        const abuseCheckPending = e?.code === "STRIPE_CHECKOUT_ABUSE_CHECK_FAILED";
+                        tier = abuseCheckPending ? "free" : storedTier;
+                        if (abuseCheckPending) {
+                            userData = { ...userData, tier: "free", tierSource: "abuse_blocklist_pending" };
+                        }
                         stripeRefreshError =
                             typeof e?.message === "string" && e.message
                                 ? e.message
