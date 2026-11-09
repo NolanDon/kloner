@@ -221,6 +221,17 @@ service cloud.firestore {
         allow read, write: if isAdmin();
       }
     }
+
+    /* ---------- SERVER-ONLY STRIPE ABUSE REVIEW ---------- */
+    match /abuseBlocklist/{document=**} {
+      allow read, write: if false;
+    }
+    match /abuseBlocklistChecks/{document=**} {
+      allow read, write: if false;
+    }
+    match /abuseBlocklistAttempts/{document=**} {
+      allow read, write: if false;
+    }
   }
 }
 

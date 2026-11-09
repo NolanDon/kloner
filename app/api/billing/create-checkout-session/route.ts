@@ -451,6 +451,7 @@ async function handler({ req, uid }: { req: NextRequest; uid: string }) {
     const baseMeta: Record<string, string> = {
         firebaseUid: uid,
         plan,
+        ...(plan === "pro" ? { abuseBlocklistCheck: "1" } : {}),
         ...(affiliateRef ? { affiliateRef } : {}),
         ...(affiliateSource ? { affiliateSource } : {}),
         ...(returnAppId ? { returnAppId: String(returnAppId) } : {}),

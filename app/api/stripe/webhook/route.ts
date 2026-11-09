@@ -25,6 +25,7 @@ import {
 } from "@/app/api/_lib/recoveryOffer";
 import { deliverRecoveryOfferEmail } from "@/app/api/_lib/recoveryOfferDelivery";
 import { buildRecoveryOfferEmail } from "@/app/api/_lib/recoveryOfferEmail";
+import { checkStripeCheckoutAbuse } from "@/app/api/_lib/stripeCheckoutAbuse";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -1091,21 +1092,35 @@ export async function POST(req: NextRequest) {
       case "checkout.session.completed": {
         const session = event.data.object as Stripe.Checkout.Session;
 
-        const firebaseUid = session.metadata?.firebaseUid as string | undefined;
         const customerId =
           typeof session.customer === "string"
             ? session.customer
             : session.customer?.id;
+        const firebaseUid = (session.metadata?.firebaseUid as string | undefined) ||
+          (customerId ? await resolveUidForCustomerId(customerId) || undefined : undefined);
 
         if (firebaseUid && customerId) {
           await linkCustomerToUid(customerId, firebaseUid);
         }
 
+        const subscriptionId =
+          typeof session.subscription === "string"
+            ? session.subscription
+            : session.subscription?.id;
+        if (firebaseUid && cleanStr(session.metadata?.plan, 32) === "pro") {
+          if (!subscriptionId) throw new Error("Completed Pro Checkout session has no subscription ID");
+          const abuseCheck = await checkStripeCheckoutAbuse({
+            uid: firebaseUid,
+            subscriptionId,
+            stripe,
+            eventId: event.id,
+            sessionId: session.id,
+            signupEmail: session.customer_details?.email || session.customer_email,
+          });
+          if (abuseCheck.outcome === "blocked") break;
+        }
+
         if (firebaseUid && session.metadata?.trialWelcomeEmail === "1") {
-          const subscriptionId =
-            typeof session.subscription === "string"
-              ? session.subscription
-              : session.subscription?.id;
           await markFreeTrialUsed({ uid: firebaseUid, subscriptionId });
         }
 
@@ -1197,6 +1212,22 @@ export async function POST(req: NextRequest) {
 
       case "checkout.session.async_payment_succeeded": {
         const session = event.data.object as Stripe.Checkout.Session;
+        const subscriptionId =
+          typeof session.subscription === "string"
+            ? session.subscription
+            : session.subscription?.id;
+        const uid = (session.metadata?.firebaseUid as string | undefined) || "";
+        if (uid && subscriptionId && cleanStr(session.metadata?.plan, 32) === "pro") {
+          const abuseCheck = await checkStripeCheckoutAbuse({
+            uid,
+            subscriptionId,
+            stripe,
+            eventId: event.id,
+            sessionId: session.id,
+            signupEmail: session.customer_details?.email || session.customer_email,
+          });
+          if (abuseCheck.outcome === "blocked") break;
+        }
         await applyAiCreditTopupFromCheckoutSession(session);
         break;
       }
@@ -1223,6 +1254,28 @@ export async function POST(req: NextRequest) {
 
         const tier = mapPriceToTier(priceId);
         const status = sub.status;
+
+        const userRef = db.collection("kloner_users").doc(uid);
+        const userSnapshot = await userRef.get();
+        const userData = userSnapshot.exists ? userSnapshot.data() as Record<string, any> : {};
+        const checkSnapshot = await db.collection("abuseBlocklistChecks").doc(sub.id).get();
+        const recentSubscription = typeof (sub as any).created === "number" &&
+          Date.now() - Number((sub as any).created) * 1000 < 24 * 60 * 60 * 1000;
+        const shouldCheckAbuse = userData.abuseBlocklistBlocked === true ||
+          checkSnapshot.exists ||
+          (tier === "pro" && cleanStr(sub.metadata?.abuseBlocklistCheck, 8) === "1") ||
+          (tier === "pro" && event.type === "customer.subscription.created" && recentSubscription);
+
+        if (shouldCheckAbuse) {
+          const abuseCheck = await checkStripeCheckoutAbuse({
+            uid,
+            subscriptionId: sub.id,
+            stripe,
+            eventId: event.id,
+          });
+          if (abuseCheck.outcome === "blocked") break;
+        }
+
         if (typeof (sub as any).trial_start === "number" || status === "trialing") {
           await markFreeTrialUsed({ uid, subscriptionId: sub.id });
         }

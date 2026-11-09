@@ -177,6 +177,7 @@ export async function GET(req: NextRequest) {
     const baseMeta: Record<string, string> = {
         firebaseUid: uid,
         plan: "pro",
+        abuseBlocklistCheck: "1",
         checkoutFlow: "recovery_exit40",
         recoveryCode: DEFAULT_EXIT_CODE,
         ...(includeTrial ? { trialWelcomeEmail: "1" } : {}),
