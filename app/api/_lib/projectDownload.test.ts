@@ -2,7 +2,10 @@
 import { unzipSync } from "fflate";
 import { buildProjectDownload, canDownloadProject, isExportableProjectPath } from "./projectDownload";
 
-jest.mock("firebase-admin", () => ({ __esModule: true, default: { storage: () => ({ bucket: () => ({ file: () => ({ download: async () => [Buffer.from([0, 255, 137, 80])] }) }) }) } }));
+jest.mock("firebase-admin", () => ({ __esModule: true, default: { storage: () => ({ bucket: (name?: string) => {
+    if (!name) throw new Error("Bucket name not specified or invalid. Specify a valid bucket name via the storageBucket option when initializing the app, or specify the bucket name explicitly when calling the getBucket() method.");
+    return { file: () => ({ download: async () => [Buffer.from([0, 255, 137, 80])] }) };
+} }) } }));
 jest.mock("./htmlStorage", () => ({ hydrateAppBuilderFiles: jest.fn() }));
 
 test.each(["trialing", "past_due", "canceled", "unpaid", "incomplete", ""])("denies downloads for %s even with a pro tier", status => {

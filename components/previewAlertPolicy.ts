@@ -204,3 +204,26 @@ export function shouldDedupeAlert(cache: Record<string, number>, key: string, no
   if (typeof last !== 'number') return false;
   return nowMs - last < ttlMs;
 }
+
+export function shouldFallbackFromHydratedStartup(statusCode: number, payload: unknown): boolean {
+  const body = payload && typeof payload === 'object' && !Array.isArray(payload)
+    ? payload as Record<string, unknown>
+    : {};
+  const code = String(body.code || body.errorCode || '').trim().toLowerCase();
+  const error = String(body.error || body.message || '').trim().toLowerCase();
+  const appMissing = code === 'app_not_found' || error === 'app not found';
+  if (appMissing || statusCode === 401 || statusCode === 403) return false;
+
+  const explicitlyUnsupported =
+    statusCode === 501 ||
+    (statusCode === 404 && !appMissing) ||
+    code.includes('unsupported') ||
+    code.includes('invalid_request') ||
+    code.includes('missing_files') ||
+    error.includes('unsupported startupstrategy') ||
+    (!code && (statusCode === 400 || statusCode === 422) && /invalid request|missing files/.test(error));
+
+  // A structured 4xx such as PACKAGE_JSON_EMPTY is a real app error, not a
+  // signal that this backend lacks the hydrated-startup contract.
+  return explicitlyUnsupported || statusCode >= 500 || statusCode === 413;
+}

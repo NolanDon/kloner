@@ -15,7 +15,6 @@ import {
     onAuthStateChanged,
     signInWithEmailAndPassword,
     createUserWithEmailAndPassword,
-    deleteUser,
     sendPasswordResetEmail,
     getIdToken,
     getAdditionalUserInfo,
@@ -23,7 +22,6 @@ import {
     type User,
 } from "firebase/auth";
 import { bootstrapServerSession, ensureSessionAndCsrf as ensureSessionAndCsrfImpl, resetAuthClientCaches } from "@/lib/auth-client";
-import { checkSignupBlocklist } from "@/lib/signupBlocklistClient";
 import type { FirebaseError } from "firebase/app";
 import {
     collection,
@@ -269,12 +267,13 @@ async function recordSignupConsent(u: User, method: "google" | "email" | "apple"
 /* ───────── Session cookie (throttled) ───────── */
 
 async function setSessionCookie(): Promise<void> {
-    await bootstrapServerSession({
+    const ok = await bootstrapServerSession({
         forceRefresh: false,
         minIntervalMs: 30 * 60 * 1000,
         timeoutMs: 12_000,
         reason: "login_form",
     });
+    if (!ok) throw new Error("Unable to create an account right now.");
 }
 
 /* ───────── URL + generate helpers (split) ───────── */
@@ -475,28 +474,6 @@ export default function LoginPage(): JSX.Element {
         const unsub = onAuthStateChanged(auth, async (u) => {
             if (!u) return;
             try {
-                const blocked = await checkSignupBlocklist(u.email).catch(() => ({ blocked: false, reason: null }));
-                if (blocked.blocked) {
-                    try {
-                        await fetch("/api/auth/session", {
-                            method: "DELETE",
-                            credentials: "include",
-                        });
-                    } catch {
-                        // ignore
-                    }
-                    resetAuthClientCaches();
-                    try {
-                        await signOut(auth);
-                    } catch {
-                        // ignore
-                    }
-                    setErr(blocked.reason || "This account is blocked.");
-                    setLoading(false);
-                    router.replace("/login?reason=blocked");
-                    return;
-                }
-
                 await setSessionCookie();
 
                 const pendingP = pendingPrompt?.trim();
@@ -557,8 +534,12 @@ export default function LoginPage(): JSX.Element {
                 ]).catch((e) => {
                     console.error("failed to finish post-login user setup", e);
                 });
-            } catch {
-                router.replace("/dashboard/view");
+            } catch (error) {
+                resetAuthClientCaches();
+                await signOut(auth).catch(() => undefined);
+                setErr(normalizeError(error));
+                setLoading(false);
+                router.replace("/login?reason=blocked");
             }
         });
         return () => unsub();
@@ -571,26 +552,12 @@ export default function LoginPage(): JSX.Element {
         setLoading(true);
         try {
             await ensureBestAuthPersistence();
-            const precheck = await checkSignupBlocklist();
-            if (precheck.blocked) {
-                setErr(precheck.reason || "This signup is blocked.");
-                setLoading(false);
-                return;
-            }
 
             const provider = new GoogleAuthProvider();
             provider.setCustomParameters({ prompt: "select_account" });
 
             const cred = await signInWithPopup(auth, provider);
             const isNew = !!getAdditionalUserInfo(cred)?.isNewUser;
-
-            const postcheck = await checkSignupBlocklist(cred.user.email);
-            if (postcheck.blocked) {
-                await deleteUser(cred.user).catch(() => null);
-                setErr(postcheck.reason || "This signup is blocked.");
-                setLoading(false);
-                return;
-            }
 
             await setSessionCookie();
 
@@ -620,27 +587,11 @@ export default function LoginPage(): JSX.Element {
             await ensureBestAuthPersistence();
             if (!email || !pw) throw new Error("Enter email and password.");
 
-            const blockcheck = await checkSignupBlocklist(mode === "signup" ? email.trim() : null);
-            if (mode === "signup" && blockcheck.blocked) {
-                setErr(blockcheck.reason || "This signup is blocked.");
-                setLoading(false);
-                return;
-            }
-
             if (mode === "signin") {
                 await signInWithEmailAndPassword(auth, email.trim(), pw);
                 await setSessionCookie();
             } else {
                 const cred = await createUserWithEmailAndPassword(auth, email.trim(), pw);
-
-                const postcheck = await checkSignupBlocklist(cred.user.email);
-                if (postcheck.blocked) {
-                    await deleteUser(cred.user).catch(() => null);
-                    setErr(postcheck.reason || "This signup is blocked.");
-                    setLoading(false);
-                    return;
-                }
-
                 await setSessionCookie();
                 void Promise.allSettled([
                     ensureUserCreatedAt(cred.user),

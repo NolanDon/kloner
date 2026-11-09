@@ -672,7 +672,7 @@ export async function submitDashboardUrlDraft({
                 res.status === 403;
 
             if (isDomainBlocked) {
-                const blockedMessage = errorBody?.error || "Domain blocked for site cloning";
+                const blockedMessage = errorBody?.error || "Domain blocked";
                 // Update the optimistic draft in-place to show the blocked state
                 setDraftApps((prev) =>
                     prev.map((item) =>

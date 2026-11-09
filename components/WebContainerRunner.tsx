@@ -16,6 +16,7 @@ import {
   PREVIEW_ALERT_DEDUPE_TTL_MS,
   isTrustedBrowserPreviewUrl,
   shouldDedupeAlert,
+  shouldFallbackFromHydratedStartup,
 } from './previewAlertPolicy';
 import {
   canShowPreviewFixWithAi,
@@ -3647,23 +3648,10 @@ export default function NavBar() {
           const fallbackData = await response.clone().json().catch(() => ({} as any));
           const fallbackCode = String(fallbackData?.code || '').toLowerCase();
           const fallbackError = String(fallbackData?.error || '').toLowerCase();
-          const appMissing = fallbackCode === 'app_not_found' || fallbackError === 'app not found';
-          const backendHydrationUnsupported =
-            response.status === 400 ||
-            response.status === 404 ||
-            response.status === 422 ||
-            response.status === 501 ||
-            fallbackCode.includes('unsupported') ||
-            fallbackCode.includes('invalid_request') ||
-            fallbackCode.includes('missing_files') ||
-            fallbackError.includes('invalid request') ||
-            fallbackError.includes('missing files') ||
-            fallbackError.includes('unsupported startupstrategy');
-
-          // A missing app record cannot be repaired by sending the same request
-          // again with the full file payload. Avoid a duplicate backend request
-          // and preserve the real storage error for the user.
-          const shouldFallbackToLegacy = !appMissing && response.status !== 401 && response.status !== 403;
+          const shouldFallbackToLegacy = shouldFallbackFromHydratedStartup(response.status, fallbackData);
+          const backendHydrationUnsupported = shouldFallbackToLegacy && (
+            response.status < 500 || fallbackCode.includes('unsupported') || fallbackError.includes('unsupported startupstrategy')
+          );
           if (shouldFallbackToLegacy) {
             console.warn('[WebContainerRunner] server-hydrated startup failed; retrying legacy full-files startup', {
               appId,
@@ -3671,50 +3659,20 @@ export default function NavBar() {
               code: fallbackData?.code || null,
               backendHydrationUnsupported,
             });
-            reportStartupContractIssue(`startup-hydrate-fallback-attempt:${appId}:${runId}`, {
-              action: backendHydrationUnsupported
-                ? 'preview_start_server_hydrate_unsupported_fallback'
-                : 'preview_start_server_hydrate_legacy_fallback_attempt',
-              severity: 'error',
-              statusCode: response.status,
-              reason: backendHydrationUnsupported ? 'server_hydrate_unsupported' : 'server_hydrate_startup_failed',
-              message: backendHydrationUnsupported
-                ? 'Server-hydrated preview startup is not supported by backend yet. Falling back to legacy full-files startup.'
-                : `Server-hydrated preview startup failed with HTTP ${response.status}${fallbackCode ? ` (${fallbackCode})` : ''}. Falling back to legacy full-files startup.`,
-              force: true,
-            });
             activeRequestBody = requestBody;
             response = await postWebcontainer(0, activeRequestBody);
             if (response.ok) {
-              reportStartupContractIssue(`startup-hydrate-fallback-succeeded:${appId}:${runId}`, {
-                action: 'preview_start_server_hydrate_legacy_fallback_succeeded',
-                severity: 'warning',
-                reason: 'server_hydrate_startup_failed_legacy_recovered',
-                message: 'Server-hydrated startup failed, but legacy full-files startup succeeded.',
-                force: true,
-              });
+              console.info('[WebContainerRunner] legacy full-files startup recovered the hydrated-startup failure', { appId });
             } else {
-              reportStartupContractIssue(`startup-hydrate-fallback-failed:${appId}:${runId}`, {
-                action: 'preview_start_server_hydrate_legacy_fallback_failed',
-                severity: response.status >= 500 ? 'critical' : 'error',
-                statusCode: response.status,
-                reason: 'server_hydrate_startup_failed_legacy_failed',
-                message: `Server-hydrated startup failed and legacy full-files fallback also failed with HTTP ${response.status}.`,
-                force: true,
+              console.warn('[WebContainerRunner] legacy full-files startup also failed after hydrated startup', {
+                appId,
+                status: response.status,
               });
             }
           } else {
             console.warn('[WebContainerRunner] server-hydrated startup failed with auth/scoping response; skipping legacy fallback', {
               appId,
               status: response.status,
-            });
-            reportStartupContractIssue(`startup-hydrate-no-legacy-fallback:${appId}:${runId}`, {
-              action: 'preview_start_server_hydrate_auth_failure',
-              severity: 'error',
-              statusCode: response.status,
-              reason: 'server_hydrate_auth_or_scope_failure',
-              message: `Server-hydrated startup failed with HTTP ${response.status}. Legacy fallback skipped because auth/scope likely needs refresh.`,
-              force: true,
             });
           }
         }
@@ -3723,14 +3681,6 @@ export default function NavBar() {
           console.warn('[WebContainerRunner] startup hit HTTP 413 on legacy fallback', {
             appId,
             estimatedRequestBytes,
-          });
-          reportStartupContractIssue(`startup-413-fallback-attempt:${appId}:${runId}`, {
-            action: 'preview_start_legacy_payload_too_large',
-            severity: 'error',
-            statusCode: 413,
-            reason: 'request_payload_too_large',
-            message: 'Legacy full-files startup fallback hit HTTP 413 (payload too large).',
-            force: true,
           });
         }
 
@@ -3752,30 +3702,22 @@ export default function NavBar() {
             lowerMsg.includes('function_payload_too_large');
           const isCriticalHttpStartupFailure = response.status >= 500;
 
-          if (isTooLargeLikeError || isCriticalHttpStartupFailure) {
-            reportStartupContractIssue(
-              `startup-critical-http:${appId}:${runId}:${response.status}:${errorCode || 'no-code'}`,
-              {
-                action: isTooLargeLikeError
-                  ? 'preview_start_payload_too_large'
-                  : 'preview_start_critical_http_failure',
-                severity: isTooLargeLikeError ? 'error' : 'critical',
-                statusCode: response.status,
-                reason: isTooLargeLikeError ? 'request_payload_too_large' : 'startup_http_failure',
-                message: `Preview startup failed with HTTP ${response.status}${errorCode ? ` (${errorCode})` : ''}: ${errorMsg}`,
-              },
-            );
+          if (response.status === 401) {
+            reportStartupContractIssue(`startup-auth-failure:${appId}:${runId}`, {
+              action: 'preview_start_auth_failure',
+              severity: 'error',
+              statusCode: response.status,
+              reason: 'startup_auth_failure',
+              message: `Preview startup was rejected with HTTP ${response.status}: ${errorMsg}`,
+            });
           } else {
-            reportStartupContractIssue(
-              `startup-http-noncritical:${appId}:${runId}:${response.status}:${errorCode || 'no-code'}`,
-              {
-                action: 'preview_start_http_failure',
-                severity: response.status >= 400 && response.status < 500 ? 'error' : 'warning',
-                statusCode: response.status,
-                reason: 'startup_http_failure_noncritical',
-                message: `Preview startup returned HTTP ${response.status}${errorCode ? ` (${errorCode})` : ''}: ${errorMsg}`,
-              },
-            );
+            console.warn('[WebContainerRunner] preview startup API returned an error already captured by the server route', {
+              appId,
+              status: response.status,
+              code: errorCode || null,
+              tooLarge: isTooLargeLikeError,
+              serverError: isCriticalHttpStartupFailure,
+            });
           }
 
           const isScopeProblem =
@@ -6402,9 +6344,9 @@ export default function NavBar() {
             const isPositiveStatus = /\bready\b|\bready to\b|\brunning\b|\bcompleted\b|\bfinished\b|\bsuccess\b|\bok\b|\brestart preview\b/.test(statusCopy);
 
             return (
-          <div className="w-full max-w-lg rounded-[1.5rem] border border-neutral-300 bg-[linear-gradient(180deg,rgba(245,245,245,0.98),rgba(255,255,255,1))] px-4 py-4 shadow-[0_10px_24px_rgba(15,23,42,0.08)]">
+          <div className="preview-error-card w-full max-w-lg rounded-[1.5rem] border border-neutral-300 bg-[linear-gradient(180deg,rgba(245,245,245,0.98),rgba(255,255,255,1))] px-4 py-4 shadow-[0_10px_24px_rgba(15,23,42,0.08)]">
             <div className="flex items-start gap-3">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-neutral-200 text-neutral-700 ring-1 ring-neutral-300">
+              <div className="preview-error-icon flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-neutral-200 text-neutral-700 ring-1 ring-neutral-300">
                 {isPositiveStatus ? <CheckCircle2 className="h-5 w-5" /> : <AlertTriangle className="h-5 w-5" />}
               </div>
               <div className="min-w-0 flex-1">
@@ -6416,7 +6358,7 @@ export default function NavBar() {
                   type="button"
                   onClick={retryApp}
                   disabled={isManualRefreshPending}
-                  className="mt-3 inline-flex items-center rounded-full border border-neutral-700 bg-neutral-800 px-3 py-1.5 text-xs font-semibold text-neutral-100 transition hover:bg-neutral-700"
+                  className="preview-error-refresh mt-3 inline-flex items-center rounded-full border border-neutral-700 bg-neutral-800 px-3 py-1.5 text-xs font-semibold text-neutral-100 transition hover:bg-neutral-700"
                 >
                   {isManualRefreshPending ? (
                     <span className="inline-flex items-center gap-2">

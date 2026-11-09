@@ -8,8 +8,7 @@ import {
   signOut,
 } from "firebase/auth";
 import { auth, db } from "@/lib/firebase";
-import { resetAuthClientCaches } from "@/lib/auth-client";
-import { checkSignupBlocklist } from "@/lib/signupBlocklistClient";
+import { bootstrapServerSession, resetAuthClientCaches } from "@/lib/auth-client";
 import { collection, onSnapshot, DocumentData } from "firebase/firestore";
 import { useAppActivityHeartbeat } from "@/src/hooks/useAppActivityHeartbeat";
 import Link from "next/link";
@@ -729,28 +728,19 @@ export default function AppShellLayout({ children }: { children: ReactNode }) {
         return;
       }
 
-      const blocked = await checkSignupBlocklist(u.email).catch(() => ({
-        blocked: false,
-        reason: null,
-      }));
-      if (blocked.blocked) {
-        try {
-          await fetch("/api/auth/session", {
-            method: "DELETE",
-            credentials: "include",
-          });
-        } catch {
-          // ignore
-        }
+      const hasServerSession = await bootstrapServerSession({
+        minIntervalMs: 0,
+        timeoutMs: 12_000,
+        reason: "dashboard_auth_guard",
+      });
+      if (!hasServerSession) {
         resetAuthClientCaches();
         try {
           await signOut(auth);
         } catch {
           // ignore
         }
-        router.replace(
-          `/login?reason=blocked${blocked.reason ? `&message=${encodeURIComponent(blocked.reason)}` : ""}`,
-        );
+        router.replace("/login?reason=blocked");
         return;
       }
 

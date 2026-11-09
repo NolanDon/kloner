@@ -5,6 +5,7 @@ import {
   getPollBackoffMs,
   isTrustedBrowserPreviewUrl,
   parsePreviewTimeoutMs,
+  shouldFallbackFromHydratedStartup,
   shouldDedupeAlert,
 } from './previewAlertPolicy';
 
@@ -146,5 +147,21 @@ describe('previewAlertPolicy', () => {
     expect(getPollBackoffMs(3)).toBe(4000);
     expect(getPollBackoffMs(4)).toBe(8000);
     expect(getPollBackoffMs(8)).toBe(8000);
+  });
+
+  test('does not retry hydrated PACKAGE_JSON_EMPTY as a missing backend feature', () => {
+    expect(shouldFallbackFromHydratedStartup(422, {
+      code: 'PACKAGE_JSON_EMPTY',
+      errorCode: 'PACKAGE_JSON_EMPTY',
+      error: 'We could not start the preview because some required app files are missing.',
+    })).toBe(false);
+  });
+
+  test('retries only explicit contract incompatibility or recoverable server failures', () => {
+    expect(shouldFallbackFromHydratedStartup(422, { code: 'UNSUPPORTED_STARTUP_STRATEGY' })).toBe(true);
+    expect(shouldFallbackFromHydratedStartup(400, { error: 'Invalid request' })).toBe(true);
+    expect(shouldFallbackFromHydratedStartup(502, { code: 'HYDRATE_FILES_LOAD_FAILED' })).toBe(true);
+    expect(shouldFallbackFromHydratedStartup(404, { code: 'APP_NOT_FOUND', error: 'App not found' })).toBe(false);
+    expect(shouldFallbackFromHydratedStartup(403, { code: 'APP_SCOPE_VIOLATION' })).toBe(false);
   });
 });

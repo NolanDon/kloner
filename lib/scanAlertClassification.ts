@@ -21,7 +21,7 @@ export function classifyScanAlert({ code = "", message = "", statusCode = 502, b
     if (/EARLY_GENERATION_PAYWALL_REQUIRED|ARCHIVE_SIZE_LIMIT_REACHED|Please upgrade before scanning|Start your free trial before (?:scanning|generating)|too large for the Free plan/i.test(diagnostic)) {
         return { severity: "warning" as const, statusCode: 402, classification: "plan_restriction" };
     }
-    if (/blocked_domain|Domain blocked for site cloning/i.test(diagnostic)) {
+    if (/blocked_domain|Domain blocked/i.test(diagnostic)) {
         return { severity: "warning" as const, statusCode: 403, classification: "domain_policy" };
     }
     if (/snapshot_v[23]_blocked|SNAPSHOT_CAPTURE_BLOCKED|WAF_CHALLENGE|site blocked the snapshot|\bBLOCKED\b|forbidden_page/i.test(diagnostic)) {

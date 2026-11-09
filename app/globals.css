@@ -427,6 +427,38 @@ h6 {
     box-shadow: 0 0 0 1px rgba(232, 221, 200, 0.12) !important;
 }
 
+:root[data-theme="dark"] .preview-error-card {
+    border-color: var(--border-subtle) !important;
+    background: linear-gradient(180deg, #302d29 0%, #24221f 100%) !important;
+    color: var(--text-primary) !important;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.32) !important;
+}
+
+:root[data-theme="dark"] .preview-error-card .text-neutral-900 {
+    color: var(--text-primary) !important;
+}
+
+:root[data-theme="dark"] .preview-error-card .text-neutral-700 {
+    color: var(--text-secondary) !important;
+}
+
+:root[data-theme="dark"] .preview-error-icon {
+    border-color: #514b41 !important;
+    background-color: #3a3631 !important;
+    color: #e8ddc8 !important;
+    --tw-ring-color: rgba(232, 221, 200, 0.16) !important;
+}
+
+:root[data-theme="dark"] .preview-error-refresh {
+    border-color: #514b41 !important;
+    background-color: #302d29 !important;
+    color: var(--text-primary) !important;
+}
+
+:root[data-theme="dark"] .preview-error-refresh:hover {
+    background-color: #3a3631 !important;
+}
+
 .blog-article-hero-backdrop {
     background:
         radial-gradient(1200px circle at 30% -20%, rgba(255,141,33,0.14), transparent 55%),

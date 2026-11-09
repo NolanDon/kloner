@@ -11,7 +11,7 @@ describe("scan alert classification", () => {
     });
     it("preserves expected plan and domain restrictions without inventing a 502", () => {
         expect(classifyScanAlert({ message: "Please upgrade before scanning a website from this request." })).toMatchObject({ statusCode: 402, severity: "warning" });
-        expect(classifyScanAlert({ message: "Domain blocked for site cloning" })).toMatchObject({ statusCode: 403, severity: "warning" });
+        expect(classifyScanAlert({ message: "Domain blocked" })).toMatchObject({ statusCode: 403, severity: "warning" });
         expect(classifyScanAlert({ code: "snapshot_v3_blocked", statusCode: 403 })).toMatchObject({ statusCode: 403, severity: "warning" });
     });
     it("does not report a ready scan as a backend failure without diagnostic evidence", () => {

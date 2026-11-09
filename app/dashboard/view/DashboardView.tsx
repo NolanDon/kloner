@@ -3029,7 +3029,7 @@ function AppCard({
         if (raw) return raw;
 
         return draftIssueIsBlocked
-            ? "Domain blocked for site cloning"
+            ? "Domain blocked"
             : draftIssueIsPromotionProgress
                 ? "Builder opening shortly"
                 : "Scan issue";
@@ -3087,7 +3087,7 @@ function AppCard({
         draftPromotionScanState?.progress,
     );
     const draftDevArchiveRingClass = "";
-    const blockedDraftDescription = "Domain blocked for site cloning";
+    const blockedDraftDescription = "Domain blocked";
     const draftIssueDetails = draftIssue
         ? (() => {
             const raw = String(
@@ -3916,7 +3916,7 @@ const GhostGeneratePreviewCard = memo(function GhostGeneratePreviewCard({
                                                 <div className="flex items-start gap-2 sm:gap-3">
                                                     <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-600" />
                                                     <span className="min-w-0 flex-1 whitespace-normal break-words font-semibold leading-5 text-red-950">
-                                                        Domain blocked for site cloning. Please use a different URL.
+                                                        Domain blocked. Please use a different URL.
                                                     </span>
                                                 </div>
                                             </div>
@@ -9443,7 +9443,7 @@ export default function PreviewPage(): JSX.Element {
                             setErr(nextUiError);
                         }
                         if (looksBlocked) {
-                            setCaptureIssueNotice(`Domain blocked for site cloning: ${target}. Please use a different URL.`);
+                            setCaptureIssueNotice(`Domain blocked: ${target}. Please use a different URL.`);
                         }
                         if (creditLimitResponse) {
                             setShowCreditsPaywall("screenshot");

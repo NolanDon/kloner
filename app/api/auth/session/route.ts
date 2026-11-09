@@ -35,6 +35,17 @@ export async function POST(req: NextRequest) {
         });
 
         if (decision.blocked) {
+            // A Firebase Auth user is provisionally created before the browser
+            // can request its session. Remove fresh blocked accounts here so
+            // they cannot accumulate as unusable identities.
+            const userRecord = await auth.getUser(decoded.uid).catch(() => null);
+            const createdAt = userRecord?.metadata.creationTime
+                ? Date.parse(userRecord.metadata.creationTime)
+                : Number.NaN;
+            if (Number.isFinite(createdAt) && Date.now() - createdAt <= 10 * 60 * 1000) {
+                await auth.deleteUser(decoded.uid).catch(() => undefined);
+            }
+
             const clientIp = getClientIp(req);
             if (decision.matchedBy === "ip" && clientIp) {
                 await sendBlockedSignupIpAlert({
