@@ -2,6 +2,12 @@ import admin from "firebase-admin";
 import { zipSync } from "fflate";
 import { hydrateAppBuilderFiles } from "./htmlStorage";
 
+const FIREBASE_STORAGE_BUCKET = [
+    process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+    process.env.FIREBASE_STORAGE_BUCKET,
+].map(value => String(value || "").trim()).find(Boolean)
+    || "tracksitechanges-5743f.firebasestorage.app";
+
 export function canDownloadProject(user: Record<string, any>): boolean {
     return ["pro", "agency"].includes(String(user.tier || "").toLowerCase())
         && String(user.stripeStatus || "").toLowerCase() === "active"
@@ -45,7 +51,7 @@ export async function loadProjectFileBytes({ db, uid, appId, app, currentFile }:
         else if (typeof record.content === "string" && record.content.length) {
             bytes = Buffer.from(record.content, record.encoding === "base64" ? "base64" : "utf8");
         } else if (record.storagePath) {
-            [bytes] = await admin.storage().bucket().file(record.storagePath).download();
+            [bytes] = await admin.storage().bucket(FIREBASE_STORAGE_BUCKET).file(record.storagePath).download();
         } else if (app.htmlStoragePath && /\.html?$/i.test(path)) {
             legacyFiles ||= await hydrateAppBuilderFiles({ ...app, db, uid, appId });
             if (!legacyFiles[path]?.content) throw new Error(`Could not load project file: ${path}`);
