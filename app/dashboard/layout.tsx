@@ -169,6 +169,12 @@ const BASE_NAV_SECTIONS: NavSectionConfig[] = [
         icon: ShieldCheck,
         adminOnly: true,
       },
+      {
+        href: "/admin/abuse-blocklist",
+        label: "Abuse blocklist",
+        icon: ShieldCheck,
+        adminOnly: true,
+      },
     ],
   },
 ];
