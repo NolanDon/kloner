@@ -769,7 +769,7 @@ const drafts: Draft[] = [
     ],
   },
   {
-    slug: "website-downloader",
+    slug: "what-is-a-website-downloader",
     title: "Website Downloader: What It Is and How to Download a Website for Offline Use (2026 Guide)",
     h1: "What Is a Website Downloader?",
     metaDescription: "A website downloader saves a site's pages, images, and files to your computer for offline use. Learn how downloaders work, which method fits your job, and when to rebuild instead.",
