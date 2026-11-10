@@ -1,5 +1,6 @@
 import "server-only";
 
+import crypto from "node:crypto";
 import { getStripe } from "@/lib/stripe";
 import { getAdminDb } from "@/app/api/_lib/auth";
 import { checkStripeCheckoutAbuse } from "@/app/api/_lib/stripeCheckoutAbuse";
@@ -7,7 +8,7 @@ import { checkStripeCheckoutAbuse } from "@/app/api/_lib/stripeCheckoutAbuse";
 /** Applies the same recent-subscription Stripe abuse screen used by billing
  * before a signed-in account can access support chat.
  */
-export async function checkSupportChatAccount(uid: string): Promise<"passed" | "blocked"> {
+export async function checkSupportChatAccount(uid: string, ip?: string): Promise<"passed" | "blocked"> {
     const db = getAdminDb();
     const userRef = db.collection("kloner_users").doc(uid);
     const userSnap = await userRef.get();
@@ -15,6 +16,23 @@ export async function checkSupportChatAccount(uid: string): Promise<"passed" | "
     const customerId = typeof user.stripeCustomerId === "string" ? user.stripeCustomerId : "";
 
     if (user.abuseBlocklistBlocked === true) return "blocked";
+
+    const collection = db.collection("abuseBlocklist");
+    const configSnap = await collection.doc("config").get();
+    const config = configSnap.exists ? configSnap.data() as Record<string, unknown> : {};
+    const configUids = Array.isArray(config.uids) ? config.uids : [];
+    const configIps = Array.isArray(config.ips) ? config.ips : [];
+    if (configUids.includes(uid) || (ip && configIps.includes(ip))) return "blocked";
+
+    const ruleRef = (type: "uid" | "ip", value: string) => {
+        const digest = crypto.createHash("sha256").update(`${type}:${value}`).digest("hex");
+        return collection.doc(`rule_${digest}`);
+    };
+    const checks = await Promise.all([
+        ruleRef("uid", uid).get(),
+        ...(ip ? [ruleRef("ip", ip).get()] : []),
+    ]);
+    if (checks.some((snapshot) => snapshot.exists && snapshot.get("enabled") !== false)) return "blocked";
     if (!customerId) return "passed";
 
     const stripe = getStripe();

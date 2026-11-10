@@ -7,6 +7,7 @@ import { requireSessionAndMaybeCsrf } from "../../_lib/route-guard";
 import { captureCriticalEvent, captureException } from "@/lib/observability";
 import { buildSupportPolicyContext } from "@/src/lib/supportRag";
 import { checkSupportChatAccount } from "@/app/api/_lib/supportChatAbuse";
+import { getClientIp } from "../../_lib/route-guard";
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || "";
 const geminiClient = GEMINI_API_KEY ? new GoogleGenerativeAI(GEMINI_API_KEY) : null;
@@ -299,7 +300,7 @@ async function maybeAutoManageInactivity(
 export async function GET(req: NextRequest) {
     return requireSessionAndMaybeCsrf(req, async ({ uid }) => {
     try {
-        const abuseCheck = await checkSupportChatAccount(uid);
+        const abuseCheck = await checkSupportChatAccount(uid, getClientIp(req));
         if (abuseCheck === "blocked") {
             return NextResponse.json({ ok: false, error: "Support chat is unavailable for this account." }, { status: 403 });
         }
@@ -390,7 +391,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
     return requireSessionAndMaybeCsrf(req, async ({ uid }) => {
     try {
-        const abuseCheck = await checkSupportChatAccount(uid);
+        const abuseCheck = await checkSupportChatAccount(uid, getClientIp(req));
         if (abuseCheck === "blocked") {
             return NextResponse.json({ ok: false, error: "Support chat is unavailable for this account." }, { status: 403 });
         }

@@ -5,7 +5,7 @@ import type Stripe from "stripe";
 import { getAdminAuth, getAdminDb } from "@/app/api/_lib/auth";
 import { captureAuditEvent } from "@/lib/observability";
 
-type SignalType = "cardFingerprint" | "cardCountry" | "name" | "email";
+type SignalType = "cardFingerprint" | "cardCountry" | "name" | "email" | "ip" | "uid";
 export type AbuseMatch = { type: SignalType; value: string };
 
 type Blocklist = Record<SignalType, string[]>;
@@ -15,6 +15,8 @@ const EMPTY_BLOCKLIST: Blocklist = {
     cardCountry: [],
     name: [],
     email: [],
+    ip: [],
+    uid: [],
 };
 
 function clean(value: unknown, max = 512): string {
@@ -48,6 +50,8 @@ async function readBlocklist(): Promise<Blocklist> {
             blocklist.cardCountry.push(...asStringList(data.cardCountries));
             blocklist.name.push(...asStringList(data.names));
             blocklist.email.push(...asStringList(data.emails));
+            blocklist.ip.push(...asStringList(data.ips));
+            blocklist.uid.push(...asStringList(data.uids));
         }
 
         // Individual enabled records can be added to the collection without a deploy.
@@ -66,12 +70,16 @@ export function findAbuseMatches(params: {
     country?: string | null;
     billingName?: string | null;
     signupEmail?: string | null;
+    ip?: string | null;
+    uid?: string | null;
 }): AbuseMatch[] {
     const matches: AbuseMatch[] = [];
     const fingerprint = clean(params.fingerprint);
     const country = clean(params.country).toUpperCase();
     const billingName = normalizeName(clean(params.billingName));
     const signupEmail = normalizeEmail(clean(params.signupEmail));
+    const ip = clean(params.ip);
+    const uid = clean(params.uid, 160);
 
     for (const value of params.blocklist.cardFingerprint) {
         if (fingerprint && fingerprint === value.trim()) matches.push({ type: "cardFingerprint", value });
@@ -84,6 +92,12 @@ export function findAbuseMatches(params: {
     }
     for (const value of params.blocklist.email) {
         if (signupEmail && signupEmail === normalizeEmail(value)) matches.push({ type: "email", value });
+    }
+    for (const value of params.blocklist.ip) {
+        if (ip && ip === value.trim()) matches.push({ type: "ip", value });
+    }
+    for (const value of params.blocklist.uid) {
+        if (uid && uid === value.trim()) matches.push({ type: "uid", value });
     }
     return matches;
 }
@@ -339,6 +353,7 @@ export async function checkStripeCheckoutAbuse(params: {
             country: paymentMethod.card?.country,
             billingName: paymentMethod.billing_details?.name,
             signupEmail,
+            uid,
         });
 
         if (matches.length) {

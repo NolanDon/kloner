@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "node:crypto";
+import { isIP } from "node:net";
 import { getAdminDb, requireAdmin } from "@/app/api/_lib/auth";
 
 export const runtime = "nodejs";
@@ -10,6 +11,8 @@ const FIELD_BY_TYPE = {
     cardCountry: "cardCountries",
     name: "names",
     email: "emails",
+    ip: "ips",
+    uid: "uids",
 } as const;
 
 type RuleType = keyof typeof FIELD_BY_TYPE;
@@ -19,6 +22,7 @@ function normalizeValue(type: RuleType, value: string): string {
     if (type === "email") return trimmed.toLowerCase();
     if (type === "cardCountry") return trimmed.toUpperCase();
     if (type === "name") return trimmed.replace(/\s+/g, " ");
+    if (type === "uid") return trimmed;
     return trimmed;
 }
 
@@ -41,6 +45,8 @@ function validateValue(type: RuleType, value: unknown): string {
     if (type === "cardFingerprint" && !/^[A-Za-z0-9_-]{8,128}$/.test(clean)) {
         throw new Error("Enter a valid Stripe card fingerprint.");
     }
+    if (type === "ip" && !isIP(clean)) throw new Error("Enter a valid IPv4 or IPv6 address.");
+    if (type === "uid" && !/^[A-Za-z0-9_-]{1,160}$/.test(clean)) throw new Error("Enter a valid Firebase UID.");
     return clean;
 }
 

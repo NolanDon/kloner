@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { getAuth, getIdToken, getIdTokenResult, onAuthStateChanged } from "firebase/auth";
 import { Loader2, Plus, RefreshCw, ShieldAlert, Trash2 } from "lucide-react";
 
-type RuleType = "email" | "name" | "cardCountry" | "cardFingerprint";
+type RuleType = "email" | "name" | "cardCountry" | "cardFingerprint" | "ip" | "uid";
 type Entry = {
     id: string;
     type: RuleType;
@@ -17,6 +17,8 @@ const RULE_TYPES: Array<{ value: RuleType; label: string; placeholder: string }>
     { value: "name", label: "Billing name", placeholder: "Name on card" },
     { value: "cardCountry", label: "Card country", placeholder: "Two-letter code, e.g. MA" },
     { value: "cardFingerprint", label: "Card fingerprint", placeholder: "Stripe card fingerprint" },
+    { value: "ip", label: "IP address", placeholder: "203.0.113.42" },
+    { value: "uid", label: "Firebase UID", placeholder: "Firebase user ID" },
 ];
 
 async function adminFetch(path: string, init?: RequestInit) {
@@ -90,7 +92,7 @@ export default function AbuseBlocklistClient() {
                 body: JSON.stringify({ type, value }),
             });
             setValue("");
-            setNotice("Rule added. It applies to new checkouts immediately.");
+            setNotice("Rule added. It applies to relevant checks immediately.");
             await load();
         } catch (e) {
             setError(e instanceof Error ? e.message : "Could not add this rule.");
@@ -130,7 +132,7 @@ export default function AbuseBlocklistClient() {
                     <h1 className="text-2xl font-semibold">Checkout abuse blocklist</h1>
                 </div>
                 <p className="mt-2 max-w-2xl text-sm text-gray-600">
-                    Add an email, billing name, card country, or card fingerprint. Rules are checked on new Stripe checkouts and saved privately on the server.
+                    Add an email, billing name, card country, card fingerprint, IP address, or Firebase UID. Stripe screening checks payment and identity rules; IP and UID rules also restrict support chat access.
                 </p>
             </header>
 
