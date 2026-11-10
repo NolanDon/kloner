@@ -6,6 +6,7 @@ import { getAdminDb } from "../../_lib/auth";
 import { requireSessionAndMaybeCsrf } from "../../_lib/route-guard";
 import { captureCriticalEvent, captureException } from "@/lib/observability";
 import { buildSupportPolicyContext } from "@/src/lib/supportRag";
+import { checkSupportChatAccount } from "@/app/api/_lib/supportChatAbuse";
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || "";
 const geminiClient = GEMINI_API_KEY ? new GoogleGenerativeAI(GEMINI_API_KEY) : null;
@@ -298,6 +299,10 @@ async function maybeAutoManageInactivity(
 export async function GET(req: NextRequest) {
     return requireSessionAndMaybeCsrf(req, async ({ uid }) => {
     try {
+        const abuseCheck = await checkSupportChatAccount(uid);
+        if (abuseCheck === "blocked") {
+            return NextResponse.json({ ok: false, error: "Support chat is unavailable for this account." }, { status: 403 });
+        }
         const { searchParams } = new URL(req.url);
         const chatId = searchParams.get("chatId");
         if (!chatId) {
@@ -385,6 +390,10 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
     return requireSessionAndMaybeCsrf(req, async ({ uid }) => {
     try {
+        const abuseCheck = await checkSupportChatAccount(uid);
+        if (abuseCheck === "blocked") {
+            return NextResponse.json({ ok: false, error: "Support chat is unavailable for this account." }, { status: 403 });
+        }
         const body = await req.json().catch(() => ({}));
         const textRaw = typeof body.text === "string" ? body.text.trim() : "";
         const existingChatId = typeof body.chatId === "string" ? body.chatId.trim() : "";

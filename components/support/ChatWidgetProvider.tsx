@@ -121,6 +121,12 @@ export default function ChatWidgetProvider() {
                 return;
             }
 
+            if (res.status === 403) {
+                const body = await res.json().catch(() => ({}));
+                setError(body?.error || "Support chat is unavailable for this account.");
+                return;
+            }
+
             if (!res.ok) return;
 
             const data: ApiSendResponse = await res.json();
@@ -159,6 +165,12 @@ export default function ChatWidgetProvider() {
                     setMode("ai");
                     setStatus("open");
                     setChatClosed(false);
+                    return;
+                }
+
+                if (res.status === 403) {
+                    const body = await res.json().catch(() => ({}));
+                    setError(body?.error || "Support chat is unavailable for this account.");
                     return;
                 }
 
