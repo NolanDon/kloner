@@ -28,6 +28,7 @@ import {
   type PreviewFailureContract,
   type PreviewFailureUserAction,
 } from './previewFailureContract';
+import { getPreviewInspectionOrigin, readPreviewInspectionResult, type PreviewBlockingOverlay } from './previewInspection';
 
 const getStoredContainerCode = async (appId: string, user: any): Promise<string | null> => {
   try {
@@ -629,6 +630,7 @@ export default function WebContainerRunner({ appId, files, filesReady = true, is
   const iframeCriticalTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const iframePostLoadTimeoutRef = useRef<number | NodeJS.Timeout | null>(null); // Detect white-screen after iframe navigation
   const iframeWhiteScreenProbeTimeoutRef = useRef<number | NodeJS.Timeout | null>(null);
+  const activeWhiteScreenInspectionRef = useRef<{ requestId: string; previewUrl: string } | null>(null);
   const iframeRuntimeErrorCleanupRef = useRef<(() => void) | null>(null);
   const automaticRetryTimeoutRef = useRef<number | NodeJS.Timeout | null>(null); // Track automatic retry timeout
   const pollStartedAtRef = useRef<number>(0);
@@ -1362,6 +1364,7 @@ export default function WebContainerRunner({ appId, files, filesReady = true, is
     availableScriptFiles?: string[];
     visibleElementCount?: number;
     titleText?: string | null;
+    blockingOverlay?: PreviewBlockingOverlay | null;
   }) => {
     if (lastWhiteScreenReportKeyRef.current === key) return;
     lastWhiteScreenReportKeyRef.current = key;
@@ -1369,6 +1372,9 @@ export default function WebContainerRunner({ appId, files, filesReady = true, is
     const issueMessage = String(payload.message || '').trim() || 'Preview loaded but rendered a blank page.';
     const detailLines: string[] = [];
     if (payload.titleText) detailLines.push(`title=${payload.titleText}`);
+    if (payload.blockingOverlay) {
+      detailLines.push(`blockingOverlay=${payload.blockingOverlay.selector} (${payload.blockingOverlay.coverage}% viewport, z-index ${payload.blockingOverlay.zIndex})`);
+    }
     if (typeof payload.visibleElementCount === 'number') detailLines.push(`visibleElements=${payload.visibleElementCount}`);
     if (payload.scriptSrcs?.length) detailLines.push(`scripts=${payload.scriptSrcs.slice(0, 6).join(', ')}`);
     if (payload.missingScriptSrcs?.length) detailLines.push(`missingScripts=${payload.missingScriptSrcs.slice(0, 12).join(', ')}`);
@@ -1388,18 +1394,23 @@ export default function WebContainerRunner({ appId, files, filesReady = true, is
         quickFixEligible: true,
         summary: hasMissingAssets
           ? 'Preview references missing JavaScript chunk files'
+          : payload.blockingOverlay
+            ? 'Preview is covered by a large white overlay'
           : 'Preview rendered a blank white screen',
         detail:
           issueMessage +
           (detailLines.length ? `\n\nSignals:\n- ${detailLines.join('\n- ')}` : '') +
           (hasMissingAssets
             ? `\n\nRecovery hint:\nThe preview HTML is requesting chunk files that are not present in the current file tree. Restore or rename the missing files so their names match the requested chunk URLs, or update the HTML references to point at the available chunk files.`
-            : `\n\nThis often means a Next.js chunk returned HTML instead of JavaScript or the app crashed during hydration.`),
+            : payload.blockingOverlay
+              ? `\n\nRecovery hint:\nInspect ${payload.blockingOverlay.selector} in the project HTML, CSS, or JavaScript and remove or hide the full-page white layer. A static HTML/CSS edit only needs a preview refresh; rebuild only when the project runtime or dependencies changed.`
+              : `\n\nThis often means a Next.js chunk returned HTML instead of JavaScript or the app crashed during hydration.`),
         fingerprint: `white_screen:${payload.code || pollingCodeRef.current || 'unknown'}:${String(payload.previewUrl || previewUrlRef.current || '').slice(0, 120)}`,
         metadata: {
           requestedAssets: payload.scriptSrcs || [],
           missingAssets: payload.missingScriptSrcs || [],
           availableAssets: payload.availableScriptFiles || [],
+          blockingOverlay: payload.blockingOverlay || null,
         },
       },
     };
@@ -1422,6 +1433,7 @@ export default function WebContainerRunner({ appId, files, filesReady = true, is
         availableScriptFiles: payload.availableScriptFiles || [],
         visibleElementCount: payload.visibleElementCount ?? null,
         titleText: payload.titleText || null,
+        blockingOverlay: payload.blockingOverlay || null,
       },
       failure: whiteScreenFailure,
       debug: {
@@ -1440,6 +1452,7 @@ export default function WebContainerRunner({ appId, files, filesReady = true, is
           previewUrl: payload.previewUrl || previewUrlRef.current || null,
           reason: payload.reason,
           titleText: payload.titleText || null,
+          blockingOverlay: payload.blockingOverlay || null,
           visibleElementCount: payload.visibleElementCount ?? null,
           scriptSrcs: payload.scriptSrcs || [],
           missingScriptSrcs: payload.missingScriptSrcs || [],
@@ -1465,6 +1478,9 @@ export default function WebContainerRunner({ appId, files, filesReady = true, is
       backendStatusData: nextStatusData,
     });
   };
+
+  const reportWhiteScreenIssueRef = useRef(reportWhiteScreenIssueOnce);
+  reportWhiteScreenIssueRef.current = reportWhiteScreenIssueOnce;
 
   const inspectIframeWhiteScreen = (): {
     bodyText: string;
@@ -1554,30 +1570,78 @@ export default function WebContainerRunner({ appId, files, filesReady = true, is
 
       if (!iframeLoadedSuccessfullyRef.current) return;
       const probe = inspectIframeWhiteScreen();
-      if (!probe) return;
-
       const currentUrl = previewUrlRef.current || previewUrlAtSchedule || '';
       const code = pollingCodeRef.current || derivePreviewCodeFromUrl(currentUrl) || 'unknown';
-      const reportKey = `white-screen:${appId}:${code}:${String(currentUrl || 'unknown')}:${probe.visibleElementCount}:${probe.titleText || ''}`;
+      if (probe) {
+        const reportKey = `white-screen:${appId}:${code}:${String(currentUrl || 'unknown')}:${probe.visibleElementCount}:${probe.titleText || ''}`;
+        reportWhiteScreenIssueOnce(reportKey, {
+          appId,
+          code,
+          previewUrl: currentUrl || null,
+          reason: probe.missingScriptSrcs.length > 0 ? 'white_screen_missing_chunk_assets' : 'white_screen_js_chunk_hydration_failure',
+          message: probe.missingScriptSrcs.length > 0
+            ? "Preview loaded, but it references JavaScript chunk files that are missing from the current project files."
+            : "Preview loaded, but the page stayed blank. A JavaScript chunk may have failed to load or returned HTML instead of JavaScript.",
+          bodyText: probe.bodyText,
+          htmlSnippet: probe.htmlSnippet,
+          scriptSrcs: probe.scriptSrcs,
+          missingScriptSrcs: probe.missingScriptSrcs,
+          availableScriptFiles: probe.availableScriptFiles,
+          visibleElementCount: probe.visibleElementCount,
+          titleText: probe.titleText,
+        });
+        return;
+      }
 
-      reportWhiteScreenIssueOnce(reportKey, {
-        appId,
-        code,
-        previewUrl: currentUrl || null,
-        reason: probe.missingScriptSrcs.length > 0 ? 'white_screen_missing_chunk_assets' : 'white_screen_js_chunk_hydration_failure',
-        message: probe.missingScriptSrcs.length > 0
-          ? "Preview loaded, but it references JavaScript chunk files that are missing from the current project files."
-          : "Preview loaded, but the page stayed blank. A JavaScript chunk may have failed to load or returned HTML instead of JavaScript.",
-        bodyText: probe.bodyText,
-        htmlSnippet: probe.htmlSnippet,
-        scriptSrcs: probe.scriptSrcs,
-        missingScriptSrcs: probe.missingScriptSrcs,
-        availableScriptFiles: probe.availableScriptFiles,
-        visibleElementCount: probe.visibleElementCount,
-        titleText: probe.titleText,
-      });
+      // Preview pages live on a separate origin, so direct DOM inspection is
+      // blocked by the browser. Ask the small proxy-injected bridge instead.
+      const iframeWindow = iframeRef.current?.contentWindow || null;
+      const targetOrigin = getPreviewInspectionOrigin(currentUrl);
+      if (!iframeWindow || !targetOrigin) return;
+      const requestId = `white-screen:${appId}:${Date.now()}:${Math.random().toString(36).slice(2, 10)}`;
+      activeWhiteScreenInspectionRef.current = { requestId, previewUrl: currentUrl };
+      try {
+        iframeWindow.postMessage({ type: 'kloner:preview-inspect', requestId }, targetOrigin);
+      } catch {
+        activeWhiteScreenInspectionRef.current = null;
+      }
     }, 2500);
   };
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const onPreviewInspection = (event: MessageEvent) => {
+      const pending = activeWhiteScreenInspectionRef.current;
+      if (!pending) return;
+      const result = readPreviewInspectionResult(event, {
+        iframeWindow: iframeRef.current?.contentWindow || null,
+        previewUrl: pending.previewUrl,
+        requestId: pending.requestId,
+      });
+      if (!result) return;
+      activeWhiteScreenInspectionRef.current = null;
+      if (!result.blockingOverlay && !result.blank) return;
+
+      const currentUrl = previewUrlRef.current || pending.previewUrl;
+      const code = pollingCodeRef.current || derivePreviewCodeFromUrl(currentUrl) || 'unknown';
+      const overlay = result.blockingOverlay;
+      const reportKey = `white-screen:${appId}:${code}:${currentUrl}:bridge:${overlay?.selector || 'blank'}`;
+      reportWhiteScreenIssueRef.current(reportKey, {
+        appId,
+        code,
+        previewUrl: currentUrl,
+        reason: overlay ? 'white_screen_blocking_overlay' : 'white_screen_blank_cross_origin',
+        message: overlay
+          ? `The preview is covered by a white overlay (${overlay.selector}, covering ${overlay.coverage}% of the screen).`
+          : 'The preview frame loaded, but its page is blank. The preview server responded without a visible page.',
+        visibleElementCount: result.visibleElementCount,
+        titleText: result.title || null,
+        blockingOverlay: overlay,
+      });
+    };
+    window.addEventListener('message', onPreviewInspection);
+    return () => window.removeEventListener('message', onPreviewInspection);
+  }, [appId]);
 
   const attachIframeRuntimeErrorWatchers = () => {
     if (typeof window === 'undefined') return;

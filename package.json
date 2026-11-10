@@ -63,5 +63,8 @@
   },
   "engines": {
     "node": "22.23.4"
+  },
+  "overrides": {
+    "dompurify": "3.4.17"
   }
 }

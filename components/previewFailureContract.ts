@@ -47,6 +47,13 @@ export type PreviewFailureContract = {
       requestedAssets?: string[];
       missingAssets?: string[];
       availableAssets?: string[];
+      blockingOverlay?: {
+        selector: string;
+        position?: string;
+        zIndex: number;
+        coverage: number;
+        backgroundColor?: string;
+      } | null;
     } | null;
   };
 };

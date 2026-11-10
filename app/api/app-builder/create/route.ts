@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAdminDb } from "../../_lib/auth";
 import { requireSessionAndMaybeCsrf } from "../../_lib/route-guard";
 import { DEFAULT_APP_TEMPLATE_FILES, DEFAULT_APP_TEMPLATE_VERSION } from "../_lib/default-app-template";
+import { buildImportedRenderPage } from "../_lib/importedRenderPage";
 import { getAuthoritativeUserTier } from "../../_lib/userTier";
 
 export const runtime = "nodejs";
@@ -127,26 +128,7 @@ export async function POST(req: NextRequest) {
             initialFiles = {
               ...initialFiles,
               "app/page.js": {
-                content: `export const dynamic = 'force-dynamic';
-
-export default function Home() {
-  return (
-    <main className="kloner-shell">
-      <div className="kloner-card">
-        <div className="kloner-top">
-          <div className="kloner-brand">
-            <span className="kloner-dot" aria-hidden="true" />
-            <span>Kloner</span>
-          </div>
-          <div className="kloner-meta">Imported render</div>
-        </div>
-        <div className="kloner-body">
-          <div dangerouslySetInnerHTML={{ __html: \`${renderData.html.replace(/`/g, '\\`')}\` }} />
-        </div>
-      </div>
-    </main>
-  );
-}`,
+                content: buildImportedRenderPage(String(renderData.html)),
               },
             };
           }

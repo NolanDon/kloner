@@ -5852,7 +5852,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                     : summary;
                 if (hasChanges) await refreshV3Preview(`job:${job.jobId || requestId}`).catch(() => {});
                 const completionText = hasChanges
-                    ? `${friendlySummary}\n\nYou can undo this change below.`
+                    ? `${friendlySummary}\n\nThe project checks passed and I refreshed the preview. Those checks do not confirm the page’s appearance, so please verify that the white screen is gone. You can undo this change below.`
                     : summary || "Your project already has that change, so there was nothing new to save.";
 
                 commitV3TerminalMessage({
