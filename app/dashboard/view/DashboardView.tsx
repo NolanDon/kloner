@@ -2732,7 +2732,7 @@ function RenderCardInner({
                     </div>
                 </div>
 
-                {isDeleting && <CenterSpinner />}
+                {isDeleting && <CenterSpinner dim={false} />}
 
                 {/* generic overlay spinner only when this card is queued/deploying and has no bar */}
                 {(isQueued || isDeploying) && !hasProgressInfo && (
@@ -3670,7 +3670,7 @@ function AppCard({
                     )}
                 </div>
 
-                {isDeleting && <CenterSpinner />}
+                {isDeleting && <CenterSpinner dim={false} />}
             </div>
         </div>
     );
@@ -15044,10 +15044,8 @@ export default function PreviewPage(): JSX.Element {
                                                 </div> */}
 
                                                 {isVercelConnected && !isVercelChecking ? (
-                                                    <div className="flex items-center gap-3 rounded-2xl border border-orange-200 bg-orange-50/80 px-3.5 py-3 text-sm text-neutral-800">
-                                                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-orange-200 bg-white shadow-sm">
-                                                            <Loader2 className="h-4 w-4 animate-spin text-orange-500" />
-                                                        </div>
+                                                    <div className="flex items-center gap-3 px-0 py-1 text-sm text-neutral-800">
+                                                        <Loader2 className="h-4 w-4 shrink-0 animate-spin text-orange-500" aria-hidden="true" />
                                                         <div className="min-w-0">
                                                             <p className="text-[13px] font-semibold text-neutral-900">Vercel connected</p>
                                                             <p className="mt-0.5 text-xs text-neutral-600">Continuing to deploy…</p>
@@ -15111,12 +15109,12 @@ export default function PreviewPage(): JSX.Element {
                                                                 : "Ready to deploy."}
                                                 </p>
 
-                                                <div className={`flex items-start gap-3 rounded-xl border px-3 py-3 text-sm ${appDeployWizardError ? "border-amber-200 bg-amber-50 text-amber-900" : "border-neutral-200 bg-neutral-50 text-neutral-700"}`}>
-                                                    <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-white border border-neutral-300">
+                                                <div className={`flex items-start gap-3 text-sm ${appDeployWizardBusy ? "py-1 text-neutral-700" : appDeployWizardError ? "rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-amber-900" : "rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-3 text-neutral-700"}`}>
+                                                    <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center">
                                                         {appDeployWizardError ? (
                                                             <AlertTriangle className="h-5 w-5 text-amber-600" />
                                                         ) : appDeployWizardBusy ? (
-                                                            <div className="h-4 w-4 animate-spin rounded-full border-2 border-neutral-300 border-t-[rgba(255,141,33,0.95)]" />
+                                                            <Loader2 className="h-5 w-5 animate-spin text-orange-500" aria-hidden="true" />
                                                         ) : appDeployWizardLiveUrl ? (
                                                             <span className="text-base">🎉</span>
                                                         ) : (

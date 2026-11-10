@@ -630,7 +630,7 @@ export default function LoginPage(): JSX.Element {
             </Link>
 
             <section className="grid min-h-[100dvh] w-full grid-cols-1 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,0.78fr)]">
-                <div className="relative order-1 flex items-center justify-center px-4 pb-8 pt-4 sm:px-6 lg:order-1 lg:px-10 lg:py-10">
+                <div className="relative order-1 flex items-center justify-center px-2 pb-8 pt-4 sm:px-6 lg:order-1 lg:px-10 lg:py-10">
                     <div className="login-theme__outer w-full max-w-xl rounded-[32px] border border-black/5 bg-white/90 p-5 shadow-[0_24px_80px_rgba(15,23,42,0.12)] backdrop-blur-xl sm:p-6 lg:rounded-none lg:border-0 lg:bg-transparent lg:p-0 lg:shadow-none">
                         <div className="mb-4 flex items-center justify-start lg:hidden">
                             <button

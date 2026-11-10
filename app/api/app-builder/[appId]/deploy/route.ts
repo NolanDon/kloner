@@ -312,7 +312,52 @@ export async function POST(
             .collection("integrations")
             .doc("vercel");
 
-        const integration = await loadVercelIntegration(integrationRef as any);
+        let integration;
+        try {
+            integration = await loadVercelIntegration(integrationRef as any);
+        } catch (error) {
+            const detail = error instanceof Error ? error.message : String(error || "");
+            const encryptionKeyMisconfigured = /Missing KLONER_ENCRYPTION_KEY|Invalid KLONER_ENCRYPTION_KEY length/i.test(detail);
+            const encryptedTokenUnreadable = /authenticate data|encrypted blob format|invalid encrypted/i.test(detail);
+            if (encryptionKeyMisconfigured) {
+                const message = "The deployment service encryption key is misconfigured. Please contact support.";
+                reportDeployFailure({
+                    uid,
+                    appId,
+                    appName: String(data.name || `app-${appId}`),
+                    vercelProjectId,
+                    vercelProjectName,
+                    vercelTeamId: undefined,
+                    statusCode: 500,
+                    code: "VERCEL_ENCRYPTION_KEY_MISCONFIGURED",
+                    message,
+                    extra: { phase: "load_vercel_integration" },
+                });
+                return NextResponse.json(
+                    { ok: false, error: message, code: "VERCEL_ENCRYPTION_KEY_MISCONFIGURED" },
+                    { status: 500 },
+                );
+            }
+            if (!encryptedTokenUnreadable) throw error;
+
+            const message = "Your saved Vercel connection could not be unlocked. Reconnect Vercel from Settings, then retry the deployment.";
+            reportDeployFailure({
+                uid,
+                appId,
+                appName: String(data.name || `app-${appId}`),
+                vercelProjectId,
+                vercelProjectName,
+                vercelTeamId: undefined,
+                statusCode: 409,
+                code: "VERCEL_RECONNECT_REQUIRED",
+                message,
+                extra: { phase: "load_vercel_integration" },
+            });
+            return NextResponse.json(
+                { ok: false, error: message, code: "VERCEL_RECONNECT_REQUIRED" },
+                { status: 409 },
+            );
+        }
         if (!integration.exists) {
             return NextResponse.json(
                 {
