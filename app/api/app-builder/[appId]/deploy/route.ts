@@ -138,7 +138,7 @@ async function uploadVercelFile(accessToken: string, filePath: string, content: 
 
 async function uploadVercelFiles(accessToken: string, files: Array<{ file: string; content: string | Uint8Array }>): Promise<Array<{ file: string; sha: string; size: number }>> {
     const results: Array<{ file: string; sha: string; size: number }> = [];
-    const batchSize = 8;
+    const batchSize = 16;
 
     for (let i = 0; i < files.length; i += batchSize) {
         const batch = files.slice(i, i + batchSize);
@@ -291,7 +291,14 @@ export async function POST(
         }
 
         const appName = data.name || `app-${appId}`;
+        const fileLoadStartedAt = Date.now();
         const projectBytes = await loadProjectFileBytes({ db, uid, appId, app: data });
+        console.info("[app-builder/deploy] project files loaded", {
+            appId,
+            fileCount: Object.keys(projectBytes).length,
+            totalBytes: Object.values(projectBytes).reduce((sum, bytes) => sum + bytes.byteLength, 0),
+            durationMs: Date.now() - fileLoadStartedAt,
+        });
         const files: Record<string, { content: string }> = Object.fromEntries(
             Object.entries(projectBytes).map(([path, bytes]) => [path, { content: Buffer.from(bytes).toString("utf8") }]),
         );
@@ -596,7 +603,13 @@ export async function POST(
 
         let deploymentFiles: Array<{ file: string; sha: string; size: number }> = [];
         try {
+            const uploadStartedAt = Date.now();
             deploymentFiles = await uploadVercelFiles(accessToken, deploymentSourceFiles);
+            console.info("[app-builder/deploy] Vercel source files uploaded", {
+                appId,
+                fileCount: deploymentFiles.length,
+                durationMs: Date.now() - uploadStartedAt,
+            });
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             reportDeployFailure({
@@ -688,6 +701,7 @@ export async function POST(
             deployBody.project = vercelProjectId;
         }
 
+        const createDeploymentStartedAt = Date.now();
         const deployRes = await fetch(deployUrl, {
             method: "POST",
             headers: {
@@ -699,6 +713,12 @@ export async function POST(
         });
 
         const deployJson = await deployRes.json().catch(() => ({} as any));
+        console.info("[app-builder/deploy] Vercel deployment request completed", {
+            appId,
+            statusCode: deployRes.status,
+            durationMs: Date.now() - createDeploymentStartedAt,
+            hasDeploymentId: Boolean((deployJson as any)?.id),
+        });
 
         if (!deployRes.ok) {
             const errorMessage =

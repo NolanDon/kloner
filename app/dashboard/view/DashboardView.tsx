@@ -140,6 +140,7 @@ const WORKSPACE_AUTONOMY_V3_TEST_UID = "FJPVD2BuHrXBLhOFOBWi9oW7Apt1";
 const WORKSPACE_AUTONOMY_V3_TEST_EMAIL = "nolan796@live.ca";
 const DEPLOY_RETRY_BASE_DELAY_MS = 1500;
 const DEPLOY_RETRY_MAX_DELAY_MS = 30000;
+const APP_DEPLOY_REQUEST_TIMEOUT_MS = 15 * 60 * 1000;
 
 function computeDeployRetryDelayMs(attempt: number): number {
     const normalizedAttempt = Math.max(1, Math.floor(attempt));
@@ -4702,6 +4703,7 @@ export default function PreviewPage(): JSX.Element {
     const [appDeployWizardOpen, setAppDeployWizardOpen] = useState(false);
     const [appDeployWizardStep, setAppDeployWizardStep] = useState<1 | 2 | 3>(1);
     const [appDeployWizardBusy, setAppDeployWizardBusy] = useState(false);
+    const [appDeployWizardConnecting, setAppDeployWizardConnecting] = useState(false);
     const [appDeployWizardError, setAppDeployWizardError] = useState<string | null>(null);
     const [appDeployWizardAppId, setAppDeployWizardAppId] = useState<string | null>(null);
     const [appDeployWizardAppName, setAppDeployWizardAppName] = useState<string>("");
@@ -5680,6 +5682,7 @@ export default function PreviewPage(): JSX.Element {
         appDeployWizardRestoreTokenRef.current += 1;
         setAppDeployWizardOpen(false);
         setAppDeployWizardBusy(false);
+        setAppDeployWizardConnecting(false);
         setAppDeployWizardError(null);
         setAppDeployWizardLiveUrl(null);
         setAppDeployWizardAppId(null);
@@ -5833,6 +5836,7 @@ export default function PreviewPage(): JSX.Element {
         setAppDeployWizardError(null);
         setAppDeployWizardLiveUrl(null);
         setAppBuilderDeployIssue(null);
+        const deployAttemptStartedAt = Date.now();
 
         try {
             const csrf = await ensureSessionAndCsrf().catch(() => null);
@@ -5846,15 +5850,25 @@ export default function PreviewPage(): JSX.Element {
             };
 
             const doDeploy = async () => {
-                const res = await fetch(`/api/app-builder/${appDeployWizardAppId}/deploy`, {
-                    method: "POST",
-                    headers: {
-                        ...(csrf ? { "x-csrf": csrf } : {}),
-                    },
-                    credentials: "include",
-                });
-                const data = await res.json().catch(() => ({} as any));
-                return { res, data };
+                const controller = new AbortController();
+                const timeoutId = window.setTimeout(
+                    () => controller.abort(),
+                    APP_DEPLOY_REQUEST_TIMEOUT_MS,
+                );
+                try {
+                    const res = await fetch(`/api/app-builder/${appDeployWizardAppId}/deploy`, {
+                        method: "POST",
+                        headers: {
+                            ...(csrf ? { "x-csrf": csrf } : {}),
+                        },
+                        credentials: "include",
+                        signal: controller.signal,
+                    });
+                    const data = await res.json().catch(() => ({} as any));
+                    return { res, data };
+                } finally {
+                    window.clearTimeout(timeoutId);
+                }
             };
 
             // App deploy requires an httpOnly app-scope cookie. Obtain it here so users can deploy
@@ -5908,16 +5922,44 @@ export default function PreviewPage(): JSX.Element {
             setAppDeployWizardRetryCount(0);
             setAppDeployWizardRetryLockedUntil(0);
         } catch (e: any) {
-            const message = e?.message || "Deploy failed.";
+            const timedOut = e?.name === "TimeoutError" || e?.name === "AbortError";
+            if (timedOut && user && appDeployWizardAppId) {
+                // The server can finish creating a deployment after the browser stops
+                // waiting. Recover its saved URL before allowing a duplicate retry.
+                for (let attempt = 0; attempt < 5; attempt += 1) {
+                    const appSnap = await getDoc(
+                        doc(db, "kloner_users", user.uid, "kloner_apps", appDeployWizardAppId),
+                    ).catch(() => null);
+                    const appData = appSnap?.exists() ? appSnap.data() : null;
+                    const exportedAt = appData?.lastExportedAt;
+                    const exportedAtMs = typeof exportedAt?.toMillis === "function"
+                        ? exportedAt.toMillis()
+                        : exportedAt instanceof Date
+                            ? exportedAt.getTime()
+                            : Date.parse(String(exportedAt || ""));
+                    const savedUrl = String(appData?.lastDeployUrl || appData?.productionUrl || "").trim();
+                    if (savedUrl && Number.isFinite(exportedAtMs) && exportedAtMs >= deployAttemptStartedAt - 5_000) {
+                        setAppDeployWizardError(null);
+                        setAppDeployWizardLiveUrl(savedUrl);
+                        setAppDeployWizardRetryCount(0);
+                        setAppDeployWizardRetryLockedUntil(0);
+                        return;
+                    }
+                    if (attempt < 4) await new Promise((resolve) => setTimeout(resolve, 1_000));
+                }
+            }
+            const message = timedOut
+                ? "Kloner did not receive a deployment response within 15 minutes. Check your Vercel Deployments before retrying; Vercel may still be processing the request."
+                : e?.message || "Deploy failed.";
             const nextRetryCount = appDeployWizardRetryCount + 1;
             setAppDeployWizardRetryCount(nextRetryCount);
             setAppDeployWizardRetryLockedUntil(Date.now() + computeDeployRetryDelayMs(nextRetryCount));
             void reportDeployWizardFailure({
                 scope: "app",
-                code: "DEPLOY_REQUEST_FAILED",
+                code: timedOut ? "DEPLOY_REQUEST_TIMEOUT" : "DEPLOY_REQUEST_FAILED",
                 message,
-                statusCode: 500,
-                phase: "client_deploy_exception",
+                statusCode: timedOut ? 408 : 500,
+                phase: timedOut ? "deployment_request_timeout" : "client_deploy_exception",
                 attempt: nextRetryCount,
                 errorName: e?.name || "Error",
                 stack: e?.stack || null,
@@ -12845,6 +12887,7 @@ export default function PreviewPage(): JSX.Element {
         }
 
         setAppDeployWizardError(null);
+        setAppDeployWizardConnecting(true);
 
         try {
             if (!(await bootstrapServerSession({ forceRefresh: true, reason: "vercel_oauth_start" }))) {
@@ -12895,6 +12938,7 @@ export default function PreviewPage(): JSX.Element {
         } catch (e) {
             console.error("Inline Vercel connect failed to start", e);
             setAppDeployWizardError("Could not start the connection. Sign in again and retry.");
+            setAppDeployWizardConnecting(false);
         }
     }
 
@@ -13006,6 +13050,7 @@ export default function PreviewPage(): JSX.Element {
                     setAppDeployWizardAppName(nextAppName);
                     setAppDeployWizardError(null);
                     setAppDeployWizardBusy(false);
+                    setAppDeployWizardConnecting(false);
                     setAppDeployWizardLiveUrl(null);
                     setAppDeployWizardRetryCount(0);
                     setAppDeployWizardRetryLockedUntil(0);
@@ -13178,6 +13223,7 @@ export default function PreviewPage(): JSX.Element {
                 setAppDeployWizardAppName(nextAppName);
                 setAppDeployWizardError(null);
                 setAppDeployWizardBusy(false);
+                setAppDeployWizardConnecting(false);
                 setAppDeployWizardLiveUrl(null);
                 setAppDeployWizardRetryCount(0);
                 setAppDeployWizardRetryLockedUntil(0);
@@ -15005,7 +15051,7 @@ export default function PreviewPage(): JSX.Element {
 
                                         {appDeployWizardStep === 1 ? (
                                             <div className="space-y-4">
-                                                <div className="flex items-start gap-3">
+                                                <div className="my-2 flex items-start gap-3">
                                                     <div className="mt-0.5 relative h-10 w-10 rounded-xl bg-black overflow-hidden">
                                                         <svg
                                                             viewBox="0 0 24 24"
@@ -15058,13 +15104,16 @@ export default function PreviewPage(): JSX.Element {
                                                         type="button"
                                                         onClick={() => {
                                                             if (isVercelConnected) return;
+                                                            if (appDeployWizardConnecting) return;
                                                             void handleConnectVercelForAppDeployWizard();
                                                         }}
-                                                        className="flex-1 rounded-xl px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-60"
+                                                        className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-60"
                                                         style={{ backgroundColor: ACCENT }}
-                                                        disabled={isVercelChecking || isVercelConnected}
+                                                        disabled={isVercelChecking || isVercelConnected || appDeployWizardConnecting}
                                                     >
-                                                        {isVercelChecking
+                                                        {appDeployWizardConnecting ? (
+                                                            <><Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> Connecting…</>
+                                                        ) : isVercelChecking
                                                             ? "Checking…"
                                                             : isVercelConnected
                                                                 ? "Connected"
@@ -15539,11 +15588,13 @@ export default function PreviewPage(): JSX.Element {
                                                                 }
                                                                 handleConnectVercelFromWizard();
                                                             }}
-                                                            disabled={deployWizardBusy}
-                                                            className="inline-flex h-12 w-full items-center justify-center rounded-full px-3 py-1.5 text-sm text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                                                            disabled={deployWizardBusy || vercelInlineConnecting}
+                                                            className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-full px-3 py-1.5 text-sm text-white disabled:opacity-50 disabled:cursor-not-allowed"
                                                             style={{ backgroundColor: ACCENT }}
                                                         >
-                                                            {vercelStatus === "connected" ? "Continue" : "Connect Vercel"}
+                                                            {vercelInlineConnecting ? (
+                                                                <><Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> Connecting…</>
+                                                            ) : vercelStatus === "connected" ? "Continue" : "Connect Vercel"}
                                                         </button>
 
                                                         <button
