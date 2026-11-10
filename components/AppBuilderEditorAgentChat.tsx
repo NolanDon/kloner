@@ -5768,14 +5768,20 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                     if (status !== "completed") {
                     const failedResult = rawJob?.result || rawJob?.job?.result || null;
                     const failedFiles = Array.isArray(failedResult?.changedFiles) ? failedResult.changedFiles : [];
-                    const failedDetail = failedResult?.health?.error || failedResult?.preview?.error || failedResult?.restart?.error || "";
+                    const failedPreview = failedResult?.preview && typeof failedResult.preview === "object" ? failedResult.preview : null;
+                    const failedPreviewAttempts = Array.isArray(failedPreview?.applyAttempts) ? failedPreview.applyAttempts.length : 0;
+                    const failedPreviewCode = String(failedPreview?.applyFailureCode || (failedPreview?.ok === false && failedPreview?.code !== failedPreview?.previewCode ? failedPreview?.code : "") || "").trim();
+                    const failedPreviewDiagnostic = failedPreview?.ok === false
+                        ? `Preview apply failed${failedPreviewCode ? ` (${failedPreviewCode})` : ""}${failedPreviewAttempts ? ` after ${failedPreviewAttempts} attempt${failedPreviewAttempts === 1 ? "" : "s"}` : ""}: ${String(failedPreview.error || "The preview machine did not return an error detail.")}`
+                        : "";
+                    const failedDetail = failedPreviewDiagnostic || failedPreview?.error || failedResult?.health?.error || failedResult?.restart?.error || "";
                     const failedHealth = failedResult?.health && typeof failedResult.health === "object"
                         ? failedResult.health
                         : null;
                     if (failedHealth && failedHealth.ok === false) {
                         const repairContext: WorkspaceAutonomyRepairContext = {
                             code: typeof failedHealth.code === "string" ? failedHealth.code : "HEALTH_CHECK_FAILED",
-                            message: typeof failedHealth.error === "string" ? failedHealth.error : failedDetail,
+                            message: failedPreviewDiagnostic || (typeof failedHealth.error === "string" ? failedHealth.error : failedDetail),
                             command: typeof failedHealth.command === "string" ? failedHealth.command : "",
                             stdout: typeof failedHealth.stdout === "string" ? failedHealth.stdout : "",
                             stderr: typeof failedHealth.stderr === "string" ? failedHealth.stderr : "",
