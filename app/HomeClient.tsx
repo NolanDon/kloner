@@ -63,7 +63,7 @@ export default function HomeClient() {
 
                 <section aria-label="Website cloning guides" className="snap-start bg-white px-6 py-8">
                     <p className="mx-auto max-w-3xl text-center text-neutral-600">
-                        Need a walkthrough? <Link href="/blog/clone-website-from-url" className="underline underline-offset-4">Learn how to clone a website from a URL</Link> or review <Link href="/blog/clone-website-free" className="underline underline-offset-4">free preview access and plan limits</Link>.
+                        Need a walkthrough? <Link href="/blog/clone-website-from-url" className="underline underline-offset-4">Learn how to clone a website from a URL</Link> or review <Link href="/blog/clone-website-free" className="underline underline-offset-4">free preview access and plan limits</Link>. Our guides also cover <Link href="/blog/how-to-clone-a-website" className="underline underline-offset-4">how to clone a website step by step</Link>, <Link href="/blog/duplicate-a-website" className="underline underline-offset-4">how to duplicate a website</Link>, and <Link href="/blog/website-copier-online" className="underline underline-offset-4">how to copy a website online</Link>.
                     </p>
                 </section>
 
