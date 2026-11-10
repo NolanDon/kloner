@@ -15188,6 +15188,10 @@ export default function PreviewPage(): JSX.Element {
                                                             <p className="text-[13px] mt-2 text-amber-800">
                                                                 {appDeployWizardResolvedErrorText}
                                                             </p>
+                                                        ) : appDeployWizardBusy ? (
+                                                            <p className="text-[12px] text-neutral-600">
+                                                                We transfer your project files to your Vercel account. Deployment can take a few minutes, and larger projects may take up to 10 minutes.
+                                                            </p>
                                                         ) : (
                                                             <p className="text-[12px] text-neutral-600">
                                                                 Deploy creates a production URL in Vercel.
