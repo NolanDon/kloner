@@ -4,6 +4,8 @@ test.each(['HEALTH_CHECK_RUNTIME_FAILED', 'HEALTH_CHECK_FAST_RUNTIME_FAILED', 'R
 });
 test('a failing build remains eligible for a code repair', () => expect(isWorkspacePreviewConnectionFailure('HEALTH_CHECK_FAILED')).toBe(false));
 test('preview outages explain saved work without asking the user to ask AI', () => {
-    expect(workspacePreviewConnectionMessage()).toContain('changes are saved');
+    expect(workspacePreviewConnectionMessage()).toContain('edits are saved in the project');
+    expect(workspacePreviewConnectionMessage()).toContain('preview is still showing the previous version');
+    expect(workspacePreviewConnectionMessage()).toContain('choose Undo');
     expect(workspacePreviewConnectionMessage()).not.toMatch(/AI|code problem/);
 });

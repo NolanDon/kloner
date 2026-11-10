@@ -10,6 +10,6 @@ export function isWorkspacePreviewConnectionFailure(code: unknown): boolean {
 }
 export function workspacePreviewConnectionMessage(hasChanges = true): string {
     return hasChanges
-        ? "Your changes are saved, but I couldn’t reconnect the preview after trying to recover it. Retry the preview connection or undo this edit."
-        : "I couldn’t reconnect the preview after trying to recover it. Retry the preview connection.";
+        ? "Your edits are saved in the project, but the preview is still showing the previous version. Retry the preview to load your edits, or choose Undo to restore the earlier version."
+        : "I couldn’t reconnect the preview. Retry the preview.";
 }

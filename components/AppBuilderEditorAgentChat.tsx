@@ -7807,7 +7807,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                         <div className="min-w-0 flex-1">
                                             <div className="text-xs font-semibold text-amber-950">{connectionFailure ? "Preview connection interrupted" : "The repair could not be verified"}</div>
                                             <div className="mt-1 text-xs leading-5 text-amber-900">
-                                                {connectionFailure ? "Your saved files are available. Retry the preview without changing the code." : "I already tried to repair the project. You can retry that repair or undo the saved change."}
+                                                {connectionFailure ? "Your project changes are saved, but the preview may still show the previous version. Retry the preview to load your saved changes." : "I already tried to repair the project. You can retry that repair or undo the saved change."}
                                             </div>
                                             {message.workspaceRepairContext ? (
                                                 <details className="mt-2 rounded-xl border border-amber-200 bg-white/70 px-2.5 py-2">
@@ -8471,14 +8471,14 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                 ) : null}
                 <div ref={messagesEndRef} />
             </div>
-                            {activeRestorePointPreviewData ? (
+                            {activeRestorePointPreviewData && typeof document !== "undefined" ? createPortal(
                                 <div
-                                    className="fixed inset-0 z-[17000] bg-black/30 px-3 py-3 sm:px-4 sm:py-6"
+                                    className="fixed inset-0 z-[17000] flex items-center justify-center bg-black/30 p-3 sm:p-6"
                                     onMouseDown={(e) => {
                                         if (e.target === e.currentTarget) setActiveRestorePointPreview(null);
                                     }}
                                 >
-                                    <div className="mx-auto mt-4 w-full max-w-4xl overflow-hidden rounded-2xl sm:rounded-3xl border border-neutral-200 bg-white shadow-[0_28px_80px_rgba(15,23,42,0.25)]">
+                                    <div className="flex max-h-[calc(100dvh-1.5rem)] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-[0_28px_80px_rgba(15,23,42,0.25)] sm:max-h-[calc(100dvh-3rem)] sm:rounded-3xl">
                                         <div className="flex items-start justify-between gap-3 border-b border-neutral-200 px-4 py-3 sm:px-5 sm:py-4">
                                             <div className="min-w-0">
                                                 <div className="text-sm font-semibold text-neutral-900">File diff preview</div>
@@ -8493,22 +8493,23 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                                 <X className="h-4 w-4" />
                                             </button>
                                         </div>
-                                        <div className="grid gap-0 md:grid-cols-2">
+                                        <div className="grid min-h-0 gap-0 overflow-y-auto md:grid-cols-2">
                                             <div className="border-b border-neutral-200 md:border-b-0 md:border-r md:border-neutral-200">
                                                 <div className="border-b border-rose-100 bg-rose-50 px-4 py-2 text-xs font-semibold text-rose-700">Replaced / removed</div>
-                                                <pre className="max-h-[40vh] overflow-auto whitespace-pre-wrap break-words bg-[#fffafa] px-4 py-4 text-[11px] sm:text-[12px] leading-5 sm:leading-6 text-rose-950">
+                                                <pre className="max-h-[40vh] overflow-auto whitespace-pre-wrap break-words bg-[#fffafa] px-4 py-4 text-[11px] leading-5 text-rose-950 sm:text-[12px] sm:leading-6">
                                                     <span className="text-rose-700">{activeRestorePointPreviewData.preview.before || "(empty)"}</span>
                                                 </pre>
                                             </div>
                                             <div>
                                                 <div className="border-b border-emerald-100 bg-emerald-50 px-4 py-2 text-xs font-semibold text-emerald-700">New / added</div>
-                                                <pre className="max-h-[40vh] overflow-auto whitespace-pre-wrap break-words bg-[#fbfffb] px-4 py-4 text-[11px] sm:text-[12px] leading-5 sm:leading-6 text-emerald-950">
+                                                <pre className="max-h-[40vh] overflow-auto whitespace-pre-wrap break-words bg-[#fbfffb] px-4 py-4 text-[11px] leading-5 text-emerald-950 sm:text-[12px] sm:leading-6">
                                                     <span className="text-emerald-700">{activeRestorePointPreviewData.preview.after || "(empty)"}</span>
                                                 </pre>
                                             </div>
                                         </div>
                                     </div>
-                                </div>
+                                </div>,
+                                document.body,
                             ) : null}
             {databaseConnections.length > 0 && (
                 <div className="px-4 py-2 border-t bg-white flex-shrink-0">
