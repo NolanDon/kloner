@@ -247,7 +247,35 @@ export async function checkStripeCheckoutAbuse(params: {
         return { action: "claimed" as const, prior };
     });
 
-    if (claim.action === "busy") throw new Error("Stripe Checkout abuse check is already running; retry webhook");
+    if (claim.action === "busy") {
+        // Stripe can deliver checkout.session.completed and
+        // customer.subscription.created at nearly the same time. Let the
+        // request that owns the lease finish so normal duplicate delivery
+        // does not become a noisy 500 (and so the subscription event does not
+        // acknowledge before the access decision is known).
+        const waitUntil = Date.now() + 4_000;
+        while (Date.now() < waitUntil) {
+            await new Promise((resolve) => setTimeout(resolve, 125));
+            const latest = await checkRef.get();
+            const current = latest.exists ? latest.data() as Record<string, any> : {};
+
+            if (current.status === "passed") {
+                return { outcome: "passed", matches: [] };
+            }
+            if (current.status === "blocked" && current.enforcementComplete === true) {
+                const matches = Array.isArray(current.matchedSignals)
+                    ? current.matchedSignals as AbuseMatch[]
+                    : [];
+                return { outcome: "blocked", matches };
+            }
+            if (current.status === "retry" || (
+                current.status === "checking" && Number(current.leaseUntil || 0) <= Date.now()
+            )) {
+                break;
+            }
+        }
+        throw new Error("Stripe Checkout abuse check is still running; retry webhook");
+    }
     if (claim.action === "passed") {
         if (!claim.prior.alertSent) {
             await sendCheckAlert({ uid, subscriptionId, sessionId: params.sessionId, eventId: params.eventId, outcome: "passed", matches: [] });
