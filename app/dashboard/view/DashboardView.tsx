@@ -2733,8 +2733,6 @@ function RenderCardInner({
                     </div>
                 </div>
 
-                {isDeleting && <CenterSpinner dim={false} />}
-
                 {/* generic overlay spinner only when this card is queued/deploying and has no bar */}
                 {(isQueued || isDeploying) && !hasProgressInfo && (
                     <CenterSpinner
@@ -3589,7 +3587,7 @@ function AppCard({
                                     disabled={isDeleting}
                                     aria-label="Delete draft"
                                     title="Delete draft"
-                                    className="dashboard-card-action dashboard-card-action-delete inline-flex h-8 w-8 items-center justify-center rounded-2xl border border-neutral-300 bg-white text-neutral-700 shadow-sm transition-all duration-300 ease-out hover:border-red-500 hover:bg-red-600 hover:text-white disabled:pointer-events-none disabled:opacity-60"
+                                    className="dashboard-card-action dashboard-card-action-delete inline-flex h-8 w-8 items-center justify-center rounded-2xl border border-neutral-300 bg-white text-neutral-700 shadow-sm transition-all duration-300 ease-out hover:border-red-500 hover:bg-red-600 hover:text-white disabled:cursor-not-allowed disabled:pointer-events-none disabled:border-neutral-200 disabled:bg-neutral-100 disabled:text-neutral-400 disabled:opacity-60"
                                 >
                                     <Trash2 className="h-3.5 w-3.5" />
                                 </button>
@@ -3658,20 +3656,15 @@ function AppCard({
                                     disabled={isDeleting || disableActions || isPendingCreation}
                                     aria-label={isDeleting ? "Deleting app" : "Delete app"}
                                     title={isDeleting ? "Deleting app" : "Delete"}
-                                    className={`dashboard-card-action dashboard-card-action-delete inline-flex h-8 w-8 items-center justify-center rounded-2xl border shadow-sm transition-all duration-300 ease-out disabled:pointer-events-none disabled:opacity-70 ${
-                                        isDeleting
-                                            ? "border-red-500 bg-red-600 text-white"
-                                            : "border-neutral-300 bg-white text-neutral-700 hover:border-red-500 hover:bg-red-600 hover:text-white"
-                                    }`}
+                                    className="dashboard-card-action dashboard-card-action-delete inline-flex h-8 w-8 items-center justify-center rounded-2xl border border-neutral-300 bg-white text-neutral-700 shadow-sm transition-all duration-300 ease-out hover:border-red-500 hover:bg-red-600 hover:text-white disabled:cursor-not-allowed disabled:pointer-events-none disabled:border-neutral-200 disabled:bg-neutral-100 disabled:text-neutral-400 disabled:opacity-60"
                                 >
-                                    {isDeleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                                    <Trash2 className="h-3.5 w-3.5" />
                                 </button>
                             </div>
                         </>
                     )}
                 </div>
 
-                {isDeleting && <CenterSpinner dim={false} />}
             </div>
         </div>
     );
