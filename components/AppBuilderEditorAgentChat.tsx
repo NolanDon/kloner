@@ -1508,7 +1508,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                 if (stage === "checking_progress") return "I’m still working on your update. It’s taking a little longer to get a clear result, so I’m checking again.";
                 if (stage === "workspace_loaded") return "I’ve got your site open. I’m looking for the best place to make that change.";
                 if (stage === "agent_reasoning") return "I’m figuring out how your request fits with the rest of the page.";
-                if (stage === "agent_tools") return "I’ve found where to make the change. I’m working on it now.";
+                if (stage === "agent_tools") return "I’m reviewing the relevant files and checking what needs to change.";
                 if (stage === "agent_retry") return "I’m checking the update and adjusting my approach so it matches what you asked for.";
                 if (stage === "recovered_mutation") return "I found another way to make that change, and I’m checking that it looks right.";
                 if (stage === "restarting") return "Your changes are saved. I’m refreshing the preview so you can see them.";
@@ -5853,7 +5853,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                 if (hasChanges) await refreshV3Preview(`job:${job.jobId || requestId}`).catch(() => {});
                 const completionText = hasChanges
                     ? `${friendlySummary}\n\nThe project checks passed and I refreshed the preview. Those checks do not confirm the page’s appearance, so please verify that the white screen is gone. You can undo this change below.`
-                    : summary || "Your project already has that change, so there was nothing new to save.";
+                    : "I finished reviewing your request, but no files changed. The requested result may already be in place—please check the preview. If it isn’t, tell me what should look different and I’ll try a more specific update.";
 
                 commitV3TerminalMessage({
                     id: `v3_completed_${job.jobId || Date.now()}`,
