@@ -164,4 +164,17 @@ describe('previewAlertPolicy', () => {
     expect(shouldFallbackFromHydratedStartup(404, { code: 'APP_NOT_FOUND', error: 'App not found' })).toBe(false);
     expect(shouldFallbackFromHydratedStartup(403, { code: 'APP_SCOPE_VIOLATION' })).toBe(false);
   });
+
+  test('does not send a 4.35 MiB project through Vercel after hydrated startup fails', () => {
+    const estimatedLegacyRequestBytes = Math.round(4.35 * 1024 * 1024);
+    expect(shouldFallbackFromHydratedStartup(
+      502,
+      { code: 'HYDRATE_FILES_LOAD_FAILED' },
+      estimatedLegacyRequestBytes,
+    )).toBe(false);
+  });
+
+  test('never retries a payload-too-large response with the same full-file request', () => {
+    expect(shouldFallbackFromHydratedStartup(413, { code: 'PAYLOAD_TOO_LARGE' }, 1024)).toBe(false);
+  });
 });

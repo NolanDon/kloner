@@ -98,3 +98,32 @@ test('a frontend preview timeout is an error with a human sentence and structure
         extra: { classification: 'preview_connection_timeout', diagnosticMessage: expect.stringContaining('12-minute'), userAgent: 'Chrome Android' },
     });
 });
+
+test('a preview startup payload-limit failure is explicitly sent to Slack observability', async () => {
+    captureCriticalEventMock.mockClear();
+    const { POST } = await import('./route');
+    const response: any = await POST({ headers: new Headers(), json: async () => ({
+        action: 'preview_start_payload_too_large',
+        severity: 'error',
+        statusCode: 413,
+        status: 'webcontainer_startup',
+        route: '/dashboard/view',
+        service: 'webcontainer-runner',
+        reason: 'legacy_request_exceeded_function_body_limit',
+        requestId: 'preview-run-123',
+        message: 'The full-file preview startup request was rejected with HTTP 413. Estimated JSON body size: 4561305 bytes (4.35 MB).',
+        appId: 'draftapp_test',
+        tags: ['preview', 'payload-too-large'],
+    }) } as any);
+
+    expect(response.status).toBe(200);
+    expect(captureCriticalEventMock).toHaveBeenCalledTimes(1);
+    expect(captureCriticalEventMock.mock.calls[0][0]).toMatchObject({
+        source: 'frontend',
+        severity: 'error',
+        statusCode: 413,
+        action: 'preview_start_payload_too_large',
+        requestId: 'preview-run-123',
+        service: 'webcontainer-runner',
+    });
+});

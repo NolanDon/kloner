@@ -205,7 +205,16 @@ export function shouldDedupeAlert(cache: Record<string, number>, key: string, no
   return nowMs - last < ttlMs;
 }
 
-export function shouldFallbackFromHydratedStartup(statusCode: number, payload: unknown): boolean {
+// Vercel Functions reject request bodies at roughly 4.5 MB. Keep a margin
+// below that platform limit because the request travels through several
+// serializers/proxies before reaching this route.
+export const MAX_LEGACY_PREVIEW_REQUEST_BYTES = 4 * 1024 * 1024;
+
+export function shouldFallbackFromHydratedStartup(
+  statusCode: number,
+  payload: unknown,
+  legacyRequestBytes?: number,
+): boolean {
   const body = payload && typeof payload === 'object' && !Array.isArray(payload)
     ? payload as Record<string, unknown>
     : {};
@@ -213,6 +222,13 @@ export function shouldFallbackFromHydratedStartup(statusCode: number, payload: u
   const error = String(body.error || body.message || '').trim().toLowerCase();
   const appMissing = code === 'app_not_found' || error === 'app not found';
   if (appMissing || statusCode === 401 || statusCode === 403) return false;
+  if (
+    statusCode === 413 ||
+    code.includes('payload_too_large') ||
+    code.includes('request_too_large') ||
+    error.includes('payload too large') ||
+    (typeof legacyRequestBytes === 'number' && legacyRequestBytes > MAX_LEGACY_PREVIEW_REQUEST_BYTES)
+  ) return false;
 
   const explicitlyUnsupported =
     statusCode === 501 ||
@@ -225,5 +241,5 @@ export function shouldFallbackFromHydratedStartup(statusCode: number, payload: u
 
   // A structured 4xx such as PACKAGE_JSON_EMPTY is a real app error, not a
   // signal that this backend lacks the hydrated-startup contract.
-  return explicitlyUnsupported || statusCode >= 500 || statusCode === 413;
+  return explicitlyUnsupported || statusCode >= 500;
 }

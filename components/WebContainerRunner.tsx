@@ -14,6 +14,7 @@ import {
   getPollBackoffMs,
   parsePreviewTimeoutMs,
   PREVIEW_ALERT_DEDUPE_TTL_MS,
+  MAX_LEGACY_PREVIEW_REQUEST_BYTES,
   isTrustedBrowserPreviewUrl,
   shouldDedupeAlert,
   shouldFallbackFromHydratedStartup,
@@ -3615,9 +3616,10 @@ export default function NavBar() {
           statusCode?: number;
           reason: string;
           message: string;
+          requestId?: string;
           force?: boolean;
         }) => {
-          void reportPreviewAlert({
+          return reportPreviewAlert({
             appId,
             code: pollingCodeRef.current || undefined,
             action: payload.action,
@@ -3626,6 +3628,7 @@ export default function NavBar() {
             status: 'webcontainer_startup',
             reason: payload.reason,
             message: payload.message,
+            requestId: payload.requestId,
             elapsedMs: pollStartedAtRef.current ? Date.now() - pollStartedAtRef.current : undefined,
             previewUrl: previewUrlRef.current,
             backendStatusData: lastBackendStatusRef.current,
@@ -3648,7 +3651,15 @@ export default function NavBar() {
           const fallbackData = await response.clone().json().catch(() => ({} as any));
           const fallbackCode = String(fallbackData?.code || '').toLowerCase();
           const fallbackError = String(fallbackData?.error || '').toLowerCase();
-          const shouldFallbackToLegacy = shouldFallbackFromHydratedStartup(response.status, fallbackData);
+          const legacyFallbackWouldBeRequired = shouldFallbackFromHydratedStartup(response.status, fallbackData);
+          const shouldFallbackToLegacy = shouldFallbackFromHydratedStartup(
+            response.status,
+            fallbackData,
+            estimatedRequestBytes,
+          );
+          const skippedOversizedLegacyFallback =
+            legacyFallbackWouldBeRequired && !shouldFallbackToLegacy &&
+            estimatedRequestBytes > MAX_LEGACY_PREVIEW_REQUEST_BYTES;
           const backendHydrationUnsupported = shouldFallbackToLegacy && (
             response.status < 500 || fallbackCode.includes('unsupported') || fallbackError.includes('unsupported startupstrategy')
           );
@@ -3670,10 +3681,29 @@ export default function NavBar() {
               });
             }
           } else {
-            console.warn('[WebContainerRunner] server-hydrated startup failed with auth/scoping response; skipping legacy fallback', {
+            console.warn('[WebContainerRunner] server-hydrated startup failed; checking whether a legacy fallback is safe', {
               appId,
               status: response.status,
+              legacyPayloadBytes: estimatedRequestBytes,
+              legacyPayloadOverSafeLimit: estimatedRequestBytes > MAX_LEGACY_PREVIEW_REQUEST_BYTES,
             });
+            if (
+              skippedOversizedLegacyFallback &&
+              response.status !== 401 &&
+              response.status !== 403
+            ) {
+              const payloadError = `Preview payload too large for full-file startup (${formatMb(estimatedRequestBytes)}). Server-hydrated startup also failed with HTTP ${response.status}: ${String(fallbackData?.error || fallbackData?.code || 'unknown error')}.`;
+              await reportStartupContractIssue(`startup-payload-too-large:${appId}:${runId}`, {
+                action: 'preview_start_payload_too_large',
+                severity: 'error',
+                statusCode: response.status >= 500 ? response.status : 413,
+                reason: 'server_hydrate_failed_and_legacy_request_exceeds_limit',
+                message: payloadError,
+                requestId: String(runId),
+                force: true,
+              });
+              throw new Error(payloadError);
+            }
           }
         }
 
@@ -3734,6 +3764,17 @@ export default function NavBar() {
             await ensureAppScopeCookie();
             response = await postWebcontainer(1, activeRequestBody);
           } else if (response.status === 413) {
+            if (activeRequestBody === requestBody) {
+              await reportStartupContractIssue(`startup-payload-too-large:${appId}:${runId}`, {
+                action: 'preview_start_payload_too_large',
+                severity: 'error',
+                statusCode: 413,
+                reason: 'legacy_request_exceeded_function_body_limit',
+                message: `The full-file preview startup request was rejected with HTTP 413. Estimated JSON body size: ${estimatedRequestBytes} bytes (${formatMb(estimatedRequestBytes)}).`,
+                requestId: String(runId),
+                force: true,
+              });
+            }
             throw new Error(
               `Preview payload too large (HTTP 413). The generated app payload is about ${formatMb(estimatedRequestBytes)} and exceeds the API/request limit. Remove large assets or split content before retrying.`
             );

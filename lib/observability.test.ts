@@ -343,3 +343,29 @@ test('frontend error headers use the backend order: emoji, source label, service
         expect(payload.blocks.find((b: any) => b.type === 'header').text.text).toMatch(/^:x: \[FRONTEND\].* ERROR \(504\)$/);
     } finally { global.fetch = original; }
 });
+
+test('preview payload-limit errors are delivered to Slack', async () => {
+    const originalFetch = global.fetch;
+    process.env.SLACK_ERROR_WEBHOOK_URL = 'https://hooks.slack.test/services/a/b/c';
+    global.fetch = jest.fn(async () => ({ ok: true, status: 200, text: async () => 'ok' })) as any;
+    try {
+        const { captureCriticalEvent } = await import('./observability');
+        await captureCriticalEvent({
+            source: 'frontend',
+            severity: 'error',
+            statusCode: 413,
+            requestId: 'preview-run-payload-413',
+            action: 'preview_start_payload_too_large',
+            route: '/dashboard/view',
+            service: 'webcontainer-runner',
+            message: 'The full-file preview startup request was rejected with HTTP 413.',
+        });
+
+        expect(global.fetch).toHaveBeenCalledTimes(1);
+        const body = JSON.parse(String((global.fetch as jest.Mock).mock.calls[0][1].body));
+        expect(JSON.stringify(body)).toContain('HTTP 413');
+        expect(JSON.stringify(body)).toContain('preview_start_payload_too_large');
+    } finally {
+        global.fetch = originalFetch;
+    }
+});
