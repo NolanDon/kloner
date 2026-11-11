@@ -1442,25 +1442,12 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
     const hasPreviewIssueFixRequest = typeof onPreviewIssueFixRequest === "function";
 
     useEffect(() => {
-        if (!appId) {
-            setPreviewIssueDismissedForAppId(null);
-            return;
-        }
-        try {
-            const key = `kloner:preview-issue-dismissed:${appId}`;
-            setPreviewIssueDismissedForAppId(window.localStorage.getItem(key) === "true" ? appId : null);
-        } catch {
-            setPreviewIssueDismissedForAppId(null);
-        }
+        setPreviewIssueDismissedForAppId(null);
+        setPreviewIssueFixStartedKey(null);
     }, [appId]);
 
     const dismissPreviewIssue = useCallback(() => {
         setPreviewIssueDismissedForAppId(appId);
-        try {
-            window.localStorage.setItem(`kloner:preview-issue-dismissed:${appId}`, "true");
-        } catch {
-            // Keep this dismissal for the current editor session if storage is unavailable.
-        }
     }, [appId]);
 
     const startPreviewIssueFix = useCallback(() => {
@@ -9359,41 +9346,33 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                         </div>
                     </div>
                 ) : shouldShowPreviewIssue ? (
-                    <div className="app-builder-chat-notice app-builder-chat-notice-error mb-3 rounded-2xl border border-rose-200 bg-[linear-gradient(180deg,rgba(255,241,242,0.98),rgba(255,255,255,1))] px-3 py-3 shadow-[0_12px_32px_rgba(244,63,94,0.10)] sm:px-4">
-                        <div className="flex items-center gap-3">
-                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-rose-100 text-rose-700 ring-1 ring-rose-200 sm:h-10 sm:w-10">
-                                <AlertTriangle className="h-4 w-4 sm:h-[18px] sm:w-[18px]" />
+                    <div className="app-builder-chat-notice app-builder-chat-notice-error relative mb-2 rounded-xl border border-rose-200 bg-[linear-gradient(180deg,rgba(255,241,242,0.98),rgba(255,255,255,1))] px-2.5 py-2 pr-8 shadow-[0_8px_20px_rgba(244,63,94,0.08)] sm:px-3 sm:py-2.5">
+                        <button
+                            type="button"
+                            onClick={dismissPreviewIssue}
+                            aria-label="Close preview error"
+                            className="absolute right-2 top-2 rounded-full p-1 text-neutral-500 transition hover:text-neutral-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400"
+                        >
+                            <X className="h-3.5 w-3.5" />
+                        </button>
+                        <div className="flex items-center gap-2">
+                            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-rose-100 text-rose-700 ring-1 ring-rose-200 sm:h-8 sm:w-8">
+                                <AlertTriangle className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                             </div>
-                            <div className="flex min-w-0 flex-1 flex-wrap items-center justify-between gap-x-3 gap-y-2">
-                                <div className="min-w-0 flex-1">
-                                    <div className="flex flex-wrap items-center gap-2">
-                                        <p className="text-sm font-semibold text-rose-950">Preview hit an error</p>
-                                        <span className="inline-flex items-center rounded-full border border-rose-200 bg-white px-2 py-0.5 text-[11px] font-medium text-rose-700">
-                                            Error
-                                        </span>
-                                    </div>
-                                    <p className="mt-1 line-clamp-1 break-words text-xs leading-tight text-neutral-700 sm:line-clamp-none sm:text-sm sm:leading-snug">
-                                        <span className="sm:hidden">Preview issue</span>
-                                        <span className="hidden sm:inline">{previewIssueSummary}</span>
-                                    </p>
-                                    {previewIssueCounts ? (
-                                        <p className="mt-1 text-[10px] leading-none text-neutral-500 sm:text-[11px]">
-                                            Critical ({previewIssueCounts.critical}) · Warnings ({previewIssueCounts.warnings})
-                                        </p>
-                                    ) : null}
-                                    <button
-                                        type="button"
-                                        onClick={dismissPreviewIssue}
-                                        className="mt-1 text-xs font-medium text-neutral-500 underline decoration-neutral-400 underline-offset-2 transition hover:text-neutral-700"
-                                    >
-                                        Do not show again
-                                    </button>
+                            <div className="min-w-0 flex-1">
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                    <p className="text-xs font-semibold leading-tight text-rose-950 sm:text-sm">Preview hit an error</p>
+                                    <span className="inline-flex items-center rounded-full border border-rose-200 bg-white px-1.5 py-0.5 text-[10px] font-medium leading-none text-rose-700">
+                                        Error
+                                    </span>
                                 </div>
-                                <div className="flex shrink-0 items-center gap-2">
+                                <div className="mt-0.5 flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
+                                    <p className="min-w-0 truncate text-[10px] leading-tight text-neutral-600 sm:text-xs">{previewIssueCounts ? `Critical (${previewIssueCounts.critical}) · Warnings (${previewIssueCounts.warnings})` : previewIssueSummary}</p>
+                                    <div className="flex shrink-0 items-center gap-1.5">
                                     <button
                                         type="button"
                                         onClick={() => onPreviewIssueAction?.()}
-                                        className="inline-flex shrink-0 items-center rounded-full border border-rose-600 bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-rose-700"
+                                        className="inline-flex shrink-0 items-center rounded-full border border-rose-600 bg-rose-600 px-2.5 py-1 text-[11px] font-semibold text-white transition hover:bg-rose-700 sm:px-3 sm:text-xs"
                                     >
                                         {previewIssueActionLabel || "Rebuild"}
                                     </button>
@@ -9401,11 +9380,12 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                         <button
                                             type="button"
                                             onClick={startPreviewIssueFix}
-                                            className="inline-flex shrink-0 items-center justify-center rounded-full border border-rose-200 bg-white px-3 py-1.5 text-xs font-semibold text-rose-700 transition hover:bg-rose-50"
+                                            className="inline-flex shrink-0 items-center justify-center rounded-full border border-rose-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-rose-700 transition hover:bg-rose-50 sm:px-3 sm:text-xs"
                                         >
                                             Fix with AI
                                         </button>
                                     ) : null}
+                                    </div>
                                 </div>
                             </div>
                         </div>

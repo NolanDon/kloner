@@ -2653,7 +2653,10 @@ export default function AppBuilderEditor({
         rebuildAt: 0,
         saveAt: 0,
     });
-    const previewIssueCounts = useMemo(() => summarizePreviewIssues(previewIssueDiagnostics), [previewIssueDiagnostics]);
+    const previewIssueCounts = useMemo(
+        () => summarizePreviewIssues(previewIssueDiagnostics) || ((previewIssue || autoPreviewError || previewError) ? { critical: 1, warnings: 0 } : null),
+        [autoPreviewError, previewError, previewIssue, previewIssueDiagnostics],
+    );
     const previewIssueFixDecision = useMemo(
         () => getPreviewIssueFixDecision(previewIssue || autoPreviewError || previewError, previewIssueDiagnostics, previewIssueFailure),
         [autoPreviewError, previewError, previewIssue, previewIssueDiagnostics, previewIssueFailure],
