@@ -7829,7 +7829,7 @@ export default function AppBuilderEditor({
                     >
                         {/* View Mode Toggle */}
                         <div
-                            className={`app-builder-mode-row flex items-center gap-2 p-3 sticky top-0 z-10 bg-gray-50 ${
+                            className={`app-builder-mode-row flex items-center justify-center gap-2 p-3 sticky top-0 z-10 bg-gray-50 ${
                                 isVisualEditorMode
                                     ? isCustomSidebarOpen
                                         ? "w-[min(92vw,520px)]"
@@ -7837,7 +7837,7 @@ export default function AppBuilderEditor({
                                     : ""
                             }`}
                         >
-                            <div className="app-builder-view-mode-tabs inline-flex flex-1 min-w-0 gap-2 overflow-x-auto overflow-y-visible scrollbar-hide rounded-[1.5rem] border border-neutral-200 bg-white/70 p-1 shadow-[0_10px_30px_rgba(15,23,42,0.04)] backdrop-blur">
+                            <div className="app-builder-view-mode-tabs inline-flex w-fit max-w-full min-w-0 shrink-0 gap-2 overflow-x-auto overflow-y-visible scrollbar-hide rounded-[1.5rem] border border-neutral-200 bg-white/70 p-1 shadow-[0_10px_30px_rgba(15,23,42,0.04)] backdrop-blur">
                                 <motion.button
                                     onClick={() => { void requestViewModeChange("ai"); }}
                                     disabled={isModeSwitching}
@@ -8884,6 +8884,7 @@ export default function AppBuilderEditor({
                 {shouldRunBuilderTour ? (
                     <AppBuilderEditorTour
                         startToken={builderTourStartToken}
+                        includeColorSchemes={agentMode === "v3"}
                         onEnd={handleBuilderTourExit}
                     />
                 ) : null}

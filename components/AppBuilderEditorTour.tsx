@@ -73,11 +73,19 @@ const desktopSteps: TourStep[] = [
         content: "Use Custom for quick visual tweaks and short text rewrites.",
     },
     {
+        target: "[data-tour-color-schemes]",
+        title: "Color schemes",
+        content: "Preview a palette on your site, then save it when you find a look you like.",
+    },
+    {
         target: "[data-tour-deploy]",
         title: "Deploy",
         content: "When you are ready, deploy your latest changes to a live site.",
     },
 ];
+
+const desktopStepsWithoutColorSchemes = desktopSteps.filter((step) => step.target !== "[data-tour-color-schemes]");
+const COLOR_SCHEMES_TOUR_TARGET = "[data-tour-color-schemes]";
 
 const mobileSteps: TourStep[] = [
     {
@@ -109,10 +117,12 @@ function isChatIntroTarget(target: string | undefined) {
 export function AppBuilderEditorTour({
     startToken,
     enabled = true,
+    includeColorSchemes = false,
     onEnd,
 }: {
     startToken: number;
     enabled?: boolean;
+    includeColorSchemes?: boolean;
     onEnd?: () => void;
 }) {
     const [running, setRunning] = useState(false);
@@ -123,7 +133,7 @@ export function AppBuilderEditorTour({
     const [hasSeenTourBefore, setHasSeenTourBefore] = useState(() => hasSeenTour());
     const containerRef = useRef<HTMLDivElement | null>(null);
     const highlightRef = useRef<HTMLDivElement | null>(null);
-    const steps = isMobile ? mobileSteps : desktopSteps;
+    const steps = isMobile ? mobileSteps : includeColorSchemes ? desktopSteps : desktopStepsWithoutColorSchemes;
 
     const broadcastChatHighlightForStep = useCallback((stepIndex: number) => {
         if (typeof window === "undefined") return;
@@ -144,6 +154,7 @@ export function AppBuilderEditorTour({
         if (!step || typeof window === "undefined") return;
         const isMobilePreviewStep = isMobile && index === 0;
         const isPreviewTarget = step.target === "[data-tour-builder-preview]";
+        const isColorSchemesTarget = step.target === COLOR_SCHEMES_TOUR_TARGET;
 
         const target = document.querySelector(step.target) as HTMLElement | null;
         if (!target) {
@@ -159,14 +170,18 @@ export function AppBuilderEditorTour({
         const previewCalloutFitsBeside = isPreviewTarget && !isMobilePreviewStep && rect.left - popupW - 12 >= 12;
 
         const preferAbove = rect.top > 180;
-        const rawTop = previewCalloutFitsBeside
+        const rawTop = isColorSchemesTarget
+            ? rect.top
+            : previewCalloutFitsBeside
             ? rect.top + 12
             : isMobilePreviewStep
             ? rect.bottom - popupH - 20
             : preferAbove
                 ? rect.top - popupH - 12
                 : rect.bottom + 12;
-        const rawLeft = previewCalloutFitsBeside
+        const rawLeft = isColorSchemesTarget
+            ? rect.right + 12
+            : previewCalloutFitsBeside
             ? rect.left - popupW - 12
             : isMobilePreviewStep
                 ? rect.left - 18
@@ -258,6 +273,16 @@ export function AppBuilderEditorTour({
         };
     }, [broadcastChatHighlightForStep, index, running, updatePosition]);
 
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+        const open = running && !isMobile && steps[index]?.target === COLOR_SCHEMES_TOUR_TARGET;
+        window.dispatchEvent(new CustomEvent("kloner:builder-tour-color-schemes", { detail: { open } }));
+    }, [index, isMobile, running, steps]);
+
+    useEffect(() => () => {
+        window.dispatchEvent(new CustomEvent("kloner:builder-tour-color-schemes", { detail: { open: false } }));
+    }, []);
+
     useLayoutEffect(() => {
         if (!running) return;
 
@@ -325,7 +350,11 @@ export function AppBuilderEditorTour({
                 <div
                     role="dialog"
                     className="pointer-events-auto absolute w-[min(92vw,360px)] rounded-2xl border border-neutral-200 bg-white p-4 text-neutral-900 shadow-2xl"
-                    style={{ top: pos.top, left: pos.left }}
+                    style={{
+                        top: pos.top,
+                        left: pos.left,
+                        ...(steps[index].target === COLOR_SCHEMES_TOUR_TARGET ? { width: "min(34vw, 320px)" } : {}),
+                    }}
                 >
                     <div className="text-xs font-semibold uppercase tracking-[0.12em] text-neutral-500">Builder tour</div>
                     <div className="mt-1 text-base font-semibold">{steps[index].title}</div>

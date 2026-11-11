@@ -81,6 +81,16 @@ export default function EditorColorSchemes({ appId, ready }: { appId: string; re
     }, [appId]);
 
     useEffect(() => {
+        const onBuilderTourStep = (event: Event) => {
+            const detail = (event as CustomEvent<{ open?: boolean }>).detail;
+            const desktop = !window.matchMedia("(max-width: 767px)").matches;
+            setOpen(Boolean(detail?.open && desktop));
+        };
+        window.addEventListener("kloner:builder-tour-color-schemes", onBuilderTourStep);
+        return () => window.removeEventListener("kloner:builder-tour-color-schemes", onBuilderTourStep);
+    }, []);
+
+    useEffect(() => {
         if (!open) return;
         updatePosition();
         const reposition = () => updatePosition();
@@ -163,10 +173,11 @@ export default function EditorColorSchemes({ appId, ready }: { appId: string; re
     };
 
     return (
-        <div className="relative ml-auto shrink-0">
+        <div className="relative shrink-0">
             <button
                 ref={triggerRef}
                 type="button"
+                data-tour-color-schemes
                 aria-expanded={open}
                 aria-haspopup="dialog"
                 aria-label="Preview color schemes"
