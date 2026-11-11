@@ -29,6 +29,7 @@ import {
   type PreviewFailureUserAction,
 } from './previewFailureContract';
 import { getPreviewInspectionOrigin, readPreviewInspectionResult, type PreviewBlockingOverlay } from './previewInspection';
+import { inspectPreviewBundleAssets } from './previewBundleDiagnostics';
 
 const getStoredContainerCode = async (appId: string, user: any): Promise<string | null> => {
   try {
@@ -1505,24 +1506,18 @@ export default function WebContainerRunner({ appId, files, filesReady = true, is
       const scriptSrcs = Array.from(doc.querySelectorAll('script[src]'))
         .map((script) => String((script as HTMLScriptElement).getAttribute('src') || (script as HTMLScriptElement).src || '').trim())
         .filter(Boolean);
-      const normalizeAssetPath = (value: string) =>
-        String(value || '')
-          .trim()
-          .replace(/^https?:\/\/[^/]+/i, '')
-          .replace(/^[./]+/, '')
-          .replace(/^public\//i, '')
-          .split(/[?#]/)[0]
-          .replace(/^\/+/, '');
-      const availableScriptFiles = Array.from(new Set(
-        Object.keys(files || {})
-          .map((path) => normalizeAssetPath(path))
-          .filter((path) => /(?:^|\/)_next\/static\/chunks\/.+\.(?:js|css)$/i.test(path)),
-      ));
-      const availableScriptFileSet = new Set(availableScriptFiles);
-      const requestedChunkScripts = scriptSrcs.filter((src) => /(?:^|\/)_next\/static\/chunks\/.+\.(?:js|css)$/i.test(src));
-      const missingScriptSrcs = requestedChunkScripts
-        .map((src) => normalizeAssetPath(src))
-        .filter((src) => src && !availableScriptFileSet.has(src));
+      const failedScriptSrcs = (doc.defaultView?.performance.getEntriesByType('resource') || [])
+        .map((entry) => entry as PerformanceResourceTiming & { responseStatus?: number })
+        .filter((entry) => Number(entry.responseStatus || 0) >= 400)
+        .map((entry) => String(entry.name || ''))
+        .filter(Boolean);
+      const bundleDiagnostics = inspectPreviewBundleAssets({
+        scriptSrcs,
+        failedScriptSrcs,
+        sourceFilePaths: Object.keys(files || {}),
+        baseUri: String(doc.baseURI || ''),
+      });
+      const { availableScriptFiles, missingScriptSrcs } = bundleDiagnostics;
 
       const visibleElementCount = Array.from(body.querySelectorAll('*')).filter((node) => {
         const el = node as HTMLElement;
@@ -1534,13 +1529,15 @@ export default function WebContainerRunner({ appId, files, filesReady = true, is
         return style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0';
       }).length;
 
-      const hasChunkScripts = requestedChunkScripts.length > 0;
+      const hasChunkScripts = bundleDiagnostics.requestedBundleScripts.length > 0;
+      const hasMissingNextChunks = bundleDiagnostics.hasNextChunkScripts
+        && missingScriptSrcs.some((src) => /(?:^|\/)_next\/static\/chunks\/.+\.js$/i.test(src));
       const hasKnownChunkCrashText = /Minified React error #418|expected expression, got '<'|hydration/i.test(
         `${titleText || ''}\n${bodyText}\n${htmlSnippet}`,
       );
       const blankEnough = bodyText.length < 40 && visibleElementCount <= 1;
 
-      if (!hasKnownChunkCrashText && !(hasChunkScripts && blankEnough) && missingScriptSrcs.length === 0) {
+      if (!hasKnownChunkCrashText && !(hasChunkScripts && blankEnough) && !hasMissingNextChunks) {
         return null;
       }
 
