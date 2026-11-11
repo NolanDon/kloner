@@ -31,7 +31,6 @@ export async function POST(req: NextRequest) {
       const previous = snap.data()?.browserRuntimeEvidence;
       if (previous?.report?.startedAt > evidence.startedAt) return true;
       if (previous?.report?.navigationId === evidence.navigationId && previous.report.capturedAt >= evidence.capturedAt) return true;
-      if (previous?.receivedAt > now - 5000 && previous?.report?.confirmedBlank === evidence.confirmedBlank) return true;
       tx.update(ref, { browserRuntimeEvidence: { receivedAt: now, source: 'editor_browser_untrusted', report: evidence } });
       return true;
     });

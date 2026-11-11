@@ -45,6 +45,7 @@ export function normalizePreviewRuntimeEvidence(value: unknown): PreviewRuntimeE
       kind: safeText(v.kind, 30), timestamp: safeText(v.timestamp, 32), elapsedMs: number(v.elapsedMs),
       url: safeText(v.url, 500), message: safeText(v.message, 500), stack: safeText(v.stack, 1200),
       status: number(v.status), line: number(v.line), column: number(v.column), resourceType: safeText(v.resourceType, 30),
+      method: safeText(v.method, 12),
     })),
     renders: (Array.isArray(raw.renders) ? raw.renders : []).slice(-24).filter((v: unknown) => v && typeof v === 'object').map(page),
   };
