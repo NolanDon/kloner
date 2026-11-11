@@ -1034,13 +1034,13 @@ function buildCompileFixPrefill(ctx: CompileErrorQuickFixContext): string {
     const recoveryHint =
         ctx.metadata?.missingAssets?.length
             ? [
-                "The preview appears to be white-screening because it references missing chunk assets.",
-                "Restore or rename the missing files so they match the requested chunk filenames, or update the HTML references to point at the existing chunk files.",
+                "The preview is blank and missing chunk assets were observed. Verify whether these failures actually block rendering.",
+                "Trace the actual browser failures to source before correcting a required asset. Preserve unrelated scripts and hydration data, then rerun the same preview to verify recovery.",
             ].join(" ")
             : "";
 
     return [
-        recoveryHint || "Please fix this compile error using the immutable context below.",
+        recoveryHint || "Please investigate this preview failure using the immutable context below. Establish a rendering blocker before editing source, apply a minimal patch, and rerun the same reproduction before claiming recovery.",
         "",
         "Context (immutable in free-fix mode):",
         JSON.stringify(immutableContext, null, 2),
@@ -5822,10 +5822,14 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                         });
                         return;
                     }
+                    const runtimeVerificationFailed = /^PREVIEW_RUNTIME_(?:VERIFICATION|EVIDENCE)_/.test(String(failedResult?.code || ''));
+                    if (runtimeVerificationFailed && failedFiles.length > 0) await refreshV3Preview(`unverified:${job.jobId || requestId}`).catch(() => {});
                     const rawError = String((job as any)?.error?.message || (job as any)?.error || failedDetail || "").trim();
                     commitV3TerminalMessage({
                         id: `v3_failed_${job.jobId || Date.now()}`,
-                        content: failedFiles.length > 0
+                        content: runtimeVerificationFailed
+                            ? String(failedResult.summary || failedResult.error || 'The changes are saved, but I could not verify that the preview is working. Please check the preview before retrying.')
+                            : failedFiles.length > 0
                             ? "Some changes were saved, but I couldn’t confirm they work yet. Check the preview; you can undo the saved changes below."
                             : "I couldn’t finish this update, and no changes were saved. Please try again.",
                         workspaceRestore: failedResult?.restorePointId ? { pointId: failedResult.restorePointId } : undefined,
@@ -6185,7 +6189,12 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                     currentPath: typeof opts?.forcedCurrentPath === "string"
                         ? (opts.forcedCurrentPath.trim() || null)
                         : selectedRequestCurrentPath,
-                    repairContext: opts?.forcedWorkspaceRepairContext || null,
+                    repairContext: opts?.forcedWorkspaceRepairContext || (isFreeCompileFixMode && activeCompileFixContext ? {
+                        previewCode: activeCompileFixContext.code,
+                        code: activeCompileFixContext.compileError.fingerprint.startsWith('white_screen:') ? 'PREVIEW_WHITE_SCREEN' : 'PREVIEW_COMPILE_ERROR',
+                        message: activeCompileFixContext.compileError.summary,
+                        stderr: activeCompileFixContext.compileError.detail,
+                    } : null),
                     conversationHistory,
                     attachments: requestAttachments,
                     paletteChangeId: opts?.paletteChangeId,

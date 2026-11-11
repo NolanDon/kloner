@@ -24,6 +24,7 @@ export type AppEmbeddingSearchRequest = {
 };
 
 export type WorkspaceAutonomyRepairContext = {
+    previewCode?: string | null;
     code?: string | null;
     message?: string | null;
     command?: string | null;

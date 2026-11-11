@@ -12,6 +12,22 @@ export interface PreviewInspectionResult {
   bodyTextLength: number;
   visibleElementCount: number;
   blockingOverlay: PreviewBlockingOverlay | null;
+  runtime?: PreviewRuntimeEvidence;
+}
+
+export function readPreviewRuntimeState(
+  event: Pick<MessageEvent, 'source' | 'origin' | 'data'>,
+  expected: { iframeWindow: Window | null; previewUrl: string | null; appId: string; code: string },
+): PreviewRuntimeEvidence | null {
+  const origin = getPreviewInspectionOrigin(expected.previewUrl);
+  if (!origin || !expected.iframeWindow || event.source !== expected.iframeWindow || event.origin !== origin) return null;
+  const data = event.data;
+  if (data?.type !== 'kloner:preview-runtime-state' || data.correlation?.app_id !== expected.appId
+    || data.correlation?.preview_code !== expected.code) return null;
+  const runtime = normalizePreviewRuntimeEvidence(data.runtime);
+  if (!runtime || getPreviewInspectionOrigin(runtime.url) !== origin || runtime.capturedAt < runtime.startedAt
+    || Math.abs(Date.now() - runtime.capturedAt) > 120_000) return null;
+  return runtime;
 }
 
 export function getPreviewInspectionOrigin(previewUrl: string | null | undefined): string | null {
@@ -61,5 +77,7 @@ export function readPreviewInspectionResult(
     bodyTextLength: Math.max(0, Number(raw.bodyTextLength) || 0),
     visibleElementCount: Math.max(0, Number(raw.visibleElementCount) || 0),
     blockingOverlay,
+    ...(normalizePreviewRuntimeEvidence(raw.runtime) ? { runtime: normalizePreviewRuntimeEvidence(raw.runtime)! } : {}),
   };
 }
+import { normalizePreviewRuntimeEvidence, type PreviewRuntimeEvidence } from '../src/lib/previewRuntimeEvidence';

@@ -1,6 +1,8 @@
 // src/components/PreviewEditor.tsx
 "use client";
 
+import { instrumentLocalPreview, removeLocalPreviewObserver } from "@/src/lib/localPreviewRuntime";
+import { normalizePreviewRuntimeEvidence, type PreviewRuntimeEvidence } from "@/src/lib/previewRuntimeEvidence";
 import { ensureSessionAndCsrf } from "@/lib/auth-client";
 import { useEffect, useMemo, useRef, useState, useCallback, useLayoutEffect, ChangeEvent, type ComponentProps } from "react";
 import Link from "next/link";
@@ -719,7 +721,7 @@ export function injectJsonLdGraph(html: string, meta: SeoMetaMap): string {
 // 2) strip editor/runtime artifacts + localhost origins + unsafe attrs
 export function stripEditorArtifacts(html: string): string {
     if (!html) return html;
-    let out = html;
+    let out = removeLocalPreviewObserver(html);
 
     // 1) remove ONLY the route style block by id (quoted id)
     out = out.replace(
@@ -1490,6 +1492,10 @@ export function AppPreviewEditorCore({
     const [previewHtml, setPreviewHtml] = useState<string>("");
     const iframeRef = useRef<HTMLIFrameElement>(null);
     const [iframeReady, setIframeReady] = useState(false);
+    const [localRuntimeFailure, setLocalRuntimeFailure] = useState<PreviewRuntimeEvidence | null>(null);
+    const [localRuntimeUnavailable, setLocalRuntimeUnavailable] = useState(false);
+    const [localPreviewReload, setLocalPreviewReload] = useState(0);
+    const localRuntimeObservedRef = useRef(false);
     const containerRef = useRef<HTMLDivElement>(null);
     const [activePageId, setActivePageId] = useState<string>("");
     const [derivedPages, setDerivedPages] = useState<EditorPage[]>([]);
@@ -5102,9 +5108,41 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
         setIframeReady(false);
     }, [renderHtml, aiPreviewHtml, currentPageKey, currentHtmlPath, mode]);
 
+    const localPreviewSource = useMemo(() => instrumentLocalPreview(
+        aiPreviewHtml || renderHtml || "<!doctype html><html><head></head><body></body></html>",
+        '', draftId || 'local-editor',
+    ), [aiPreviewHtml, renderHtml, draftId]);
+    useEffect(() => {
+        localRuntimeObservedRef.current = false;
+        setLocalRuntimeFailure(null);
+        setLocalRuntimeUnavailable(false);
+        const listener = (event: MessageEvent) => {
+            if (event.source !== iframeRef.current?.contentWindow || event.origin !== window.location.origin
+                || !['kloner:preview-runtime-state', 'kloner:preview-inspection-result'].includes(event.data?.type)
+                || event.data.correlation?.app_id !== (draftId || 'local-editor')) return;
+            const evidence = normalizePreviewRuntimeEvidence(event.data.runtime || event.data.result?.runtime);
+            if (!evidence) return;
+            localRuntimeObservedRef.current = true;
+            setLocalRuntimeUnavailable(false);
+            setLocalRuntimeFailure(evidence.confirmedBlank ? evidence : null);
+        };
+        window.addEventListener('message', listener);
+        const timeout = window.setTimeout(() => { if (!localRuntimeObservedRef.current) setLocalRuntimeUnavailable(true); }, 11000);
+        return () => { window.removeEventListener('message', listener); window.clearTimeout(timeout); };
+    }, [localPreviewSource, localPreviewReload, draftId]);
+
     const iframeNode = (
+        <>
+        {localRuntimeFailure || localRuntimeUnavailable ? (
+            <div role="alert" className="border-b border-amber-200 bg-amber-50 p-3 text-sm text-neutral-900">
+                <p>{localRuntimeFailure ? 'This editor preview stopped displaying content. Reload it or open the live preview to compare.' : 'We couldn’t check this editor preview. If it appears blank, reload it.'}</p>
+                <button type="button" className="mt-2 mr-3 underline" onClick={() => setLocalPreviewReload(value => value + 1)}>Reload preview</button>
+                {baseHref ? <a href={baseHref} target="_blank" rel="noopener noreferrer" className="underline">Open live preview</a> : null}
+                {localRuntimeFailure ? <details className="mt-2"><summary>Technical details</summary><pre className="max-h-48 overflow-auto whitespace-pre-wrap text-xs">{JSON.stringify(localRuntimeFailure, null, 2)}</pre></details> : null}
+            </div>
+        ) : null}
         <iframe
-            key={`${currentPageKey}:${currentHtmlPath || "single"}`}
+            key={`${currentPageKey}:${currentHtmlPath || "single"}:${localPreviewReload}`}
             ref={iframeRef}
             className={`w-full h-[70vh] sm:h-[80vh] border-0 transition-opacity duration-150 ${
                 iframeReady ? "opacity-100" : "opacity-0"
@@ -5113,14 +5151,11 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
             title="KlonerPreview"
             referrerPolicy="no-referrer"
             sandbox="allow-scripts allow-same-origin"
-            srcDoc={
-                aiPreviewHtml ||
-                renderHtml ||
-                "<!doctype html><html><head><meta charset='utf-8'></head><body></body></html>"
-            }
+            srcDoc={localPreviewSource}
             aria-busy={!iframeReady}
             onLoad={async () => {
                 const iframe = iframeRef.current;
+                iframe?.contentWindow?.postMessage({ type: 'kloner:preview-inspect', requestId: `local-editor:${draftId || 'local-editor'}` }, window.location.origin);
                 const doc = getPreviewIframeDocument();
                 if (!doc) return;
 
@@ -5150,8 +5185,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                 setIframeReady(true);
             }}
         />
-
-
+        </>
     );
 
     // ARCHIVING PAGES

@@ -28,7 +28,8 @@ import {
   type PreviewFailureContract,
   type PreviewFailureUserAction,
 } from './previewFailureContract';
-import { getPreviewInspectionOrigin, readPreviewInspectionResult, type PreviewBlockingOverlay } from './previewInspection';
+import { getPreviewInspectionOrigin, readPreviewInspectionResult, readPreviewRuntimeState, type PreviewBlockingOverlay } from './previewInspection';
+import { type PreviewRuntimeEvidence } from '../src/lib/previewRuntimeEvidence';
 import { inspectPreviewBundleAssets } from './previewBundleDiagnostics';
 
 const getStoredContainerCode = async (appId: string, user: any): Promise<string | null> => {
@@ -578,6 +579,11 @@ export default function WebContainerRunner({ appId, files, filesReady = true, is
       availableAssets?: string[];
     } | null;
   } | null>(null);
+  const [runtimeObservationUnavailable, setRuntimeObservationUnavailable] = useState(false);
+  const [previewDocumentLoad, setPreviewDocumentLoad] = useState(0);
+  const [runtimePreviewFailure, setRuntimePreviewFailure] = useState<{ message: string; detail: string; failure: PreviewFailureContract; code: string } | null>(null);
+  const previewNavigationStartedRef = useRef(0);
+  const runtimeEvidenceNavigationRef = useRef<{ id: string; startedAt: number; capturedAt: number } | null>(null);
   const compileFixRequestCooldownRef = useRef<{ fingerprint: string; until: number } | null>(null);
   const fixWithAiCooldownTimerRef = useRef<number | null>(null);
   const [fixWithAiCooldownUntil, setFixWithAiCooldownUntil] = useState(0);
@@ -1366,6 +1372,7 @@ export default function WebContainerRunner({ appId, files, filesReady = true, is
     visibleElementCount?: number;
     titleText?: string | null;
     blockingOverlay?: PreviewBlockingOverlay | null;
+    runtime?: PreviewRuntimeEvidence;
   }) => {
     if (lastWhiteScreenReportKeyRef.current === key) return;
     lastWhiteScreenReportKeyRef.current = key;
@@ -1381,6 +1388,7 @@ export default function WebContainerRunner({ appId, files, filesReady = true, is
     if (payload.missingScriptSrcs?.length) detailLines.push(`missingScripts=${payload.missingScriptSrcs.slice(0, 12).join(', ')}`);
     if (payload.availableScriptFiles?.length) detailLines.push(`availableScripts=${payload.availableScriptFiles.slice(0, 12).join(', ')}`);
     if (payload.bodyText) detailLines.push(`bodyText=${payload.bodyText.slice(0, 220)}`);
+    if (payload.runtime) detailLines.push(`Passive runtime evidence (untrusted; timing is not proof of causality): ${JSON.stringify(payload.runtime)}`);
     if (payload.htmlSnippet) detailLines.push(`html=${payload.htmlSnippet.slice(0, 220)}`);
 
     const hasMissingAssets = Boolean(payload.missingScriptSrcs?.length);
@@ -1389,12 +1397,12 @@ export default function WebContainerRunner({ appId, files, filesReady = true, is
       aiFixEligible: true,
       fixActionType: 'quick_fix_compile',
       userAction: 'refresh',
-      confidence: 0.88,
+      confidence: 0.6,
       reason: payload.reason,
       compileError: {
         quickFixEligible: true,
         summary: hasMissingAssets
-          ? 'Preview references missing JavaScript chunk files'
+          ? 'Missing JavaScript assets were observed while the preview was blank'
           : payload.blockingOverlay
             ? 'Preview is covered by a large white overlay'
           : 'Preview rendered a blank white screen',
@@ -1402,10 +1410,10 @@ export default function WebContainerRunner({ appId, files, filesReady = true, is
           issueMessage +
           (detailLines.length ? `\n\nSignals:\n- ${detailLines.join('\n- ')}` : '') +
           (hasMissingAssets
-            ? `\n\nRecovery hint:\nThe preview HTML is requesting chunk files that are not present in the current file tree. Restore or rename the missing files so their names match the requested chunk URLs, or update the HTML references to point at the available chunk files.`
+            ? `\n\nRecovery hint:\nCheck which recorded assets are required for rendering and trace their actual browser failures to source. Restore an asset or correct its reference only when that failure is demonstrated to block rendering. Preserve unrelated scripts and data, and rerun the same preview after the minimal patch.`
             : payload.blockingOverlay
-              ? `\n\nRecovery hint:\nInspect ${payload.blockingOverlay.selector} in the project HTML, CSS, or JavaScript and remove or hide the full-page white layer. A static HTML/CSS edit only needs a preview refresh; rebuild only when the project runtime or dependencies changed.`
-              : `\n\nThis often means a Next.js chunk returned HTML instead of JavaScript or the app crashed during hydration.`),
+              ? `\n\nRecovery hint:\nInspect ${payload.blockingOverlay.selector} and establish why it remains visible before changing project source. A static HTML/CSS edit only needs a preview refresh; rebuild only when the project runtime or dependencies changed.`
+              : `\n\nInvestigate the recorded render transitions and errors. Preserve third-party scripts and hydration data. A failed request or exception alone does not prove causality. Trace a demonstrated blocker to source, make a minimal patch, and rerun the same preview before claiming recovery.`),
         fingerprint: `white_screen:${payload.code || pollingCodeRef.current || 'unknown'}:${String(payload.previewUrl || previewUrlRef.current || '').slice(0, 120)}`,
         metadata: {
           requestedAssets: payload.scriptSrcs || [],
@@ -1443,7 +1451,7 @@ export default function WebContainerRunner({ appId, files, filesReady = true, is
       },
     };
 
-    setCurrentStatusData(nextStatusData);
+    setRuntimePreviewFailure({ message: issueMessage, detail: whiteScreenFailure.compileError!.detail, failure: whiteScreenFailure, code: payload.code || '' });
 
     try {
       onPreviewIssueChange?.({
@@ -1537,7 +1545,7 @@ export default function WebContainerRunner({ appId, files, filesReady = true, is
       );
       const blankEnough = bodyText.length < 40 && visibleElementCount <= 1;
 
-      if (!hasKnownChunkCrashText && !(hasChunkScripts && blankEnough) && !hasMissingNextChunks) {
+      if (!blankEnough || (!hasKnownChunkCrashText && !hasChunkScripts && !hasMissingNextChunks)) {
         return null;
       }
 
@@ -1578,7 +1586,7 @@ export default function WebContainerRunner({ appId, files, filesReady = true, is
           reason: probe.missingScriptSrcs.length > 0 ? 'white_screen_missing_chunk_assets' : 'white_screen_js_chunk_hydration_failure',
           message: probe.missingScriptSrcs.length > 0
             ? "Preview loaded, but it references JavaScript chunk files that are missing from the current project files."
-            : "Preview loaded, but the page stayed blank. A JavaScript chunk may have failed to load or returned HTML instead of JavaScript.",
+            : "Preview loaded, but the page stayed blank. The captured render and resource signals need investigation.",
           bodyText: probe.bodyText,
           htmlSnippet: probe.htmlSnippet,
           scriptSrcs: probe.scriptSrcs,
@@ -1605,133 +1613,67 @@ export default function WebContainerRunner({ appId, files, filesReady = true, is
     }, 2500);
   };
 
+  const persistRuntimeEvidenceRef = useRef<(runtime: PreviewRuntimeEvidence, code: string) => void>(() => {});
+  persistRuntimeEvidenceRef.current = (runtime, code) => {
+    void getAuthenticatedHeaders().then(headers => fetch('/api/webcontainer-runtime-evidence', {
+      method: 'POST', credentials: 'include', headers,
+      body: JSON.stringify({ appId, code, runtime }),
+    })).then(response => {
+      if (!response.ok) console.warn('[preview health] Could not save browser evidence:', response.status);
+    }).catch(error => console.warn('[preview health] Could not save browser evidence:', error));
+  };
+
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const onPreviewInspection = (event: MessageEvent) => {
+      const currentUrl = previewUrlRef.current || '';
+      const code = pollingCodeRef.current || derivePreviewCodeFromUrl(currentUrl) || 'unknown';
+      const runtime = readPreviewRuntimeState(event, {
+        iframeWindow: iframeRef.current?.contentWindow || null, previewUrl: currentUrl, appId, code,
+      });
+      if (runtime) {
+        setRuntimeObservationUnavailable(false);
+        const previous = runtimeEvidenceNavigationRef.current;
+        if (previous?.id === runtime.navigationId && previous.capturedAt >= runtime.capturedAt) return;
+        if (runtime.startedAt < previewNavigationStartedRef.current - 2000 || (previous && runtime.startedAt < previous.startedAt)) return;
+        runtimeEvidenceNavigationRef.current = { id: runtime.navigationId, startedAt: runtime.startedAt, capturedAt: runtime.capturedAt };
+        persistRuntimeEvidenceRef.current(runtime, code);
+        if (!runtime.confirmedBlank) {
+          setRuntimePreviewFailure(null);
+          lastWhiteScreenReportKeyRef.current = '';
+          onPreviewIssueChange?.({ issue: null });
+          return;
+        }
+        reportWhiteScreenIssueRef.current(`runtime:${appId}:${code}:${runtime.navigationId}`, {
+          appId, code, previewUrl: currentUrl, reason: 'confirmed_blank_browser_render',
+          message: runtime.firstUsefulMs !== null
+            ? 'The page appeared, then stopped displaying content. Runtime details are available for diagnosis.'
+            : 'The preview loaded but has not displayed content. Try refreshing or ask AI to investigate.',
+          visibleElementCount: Number(runtime.page.visibleElementCount || 0), runtime,
+        });
+        return;
+      }
       const pending = activeWhiteScreenInspectionRef.current;
       if (!pending) return;
       const result = readPreviewInspectionResult(event, {
         iframeWindow: iframeRef.current?.contentWindow || null,
-        previewUrl: pending.previewUrl,
-        requestId: pending.requestId,
+        previewUrl: pending.previewUrl, requestId: pending.requestId,
       });
       if (!result) return;
       activeWhiteScreenInspectionRef.current = null;
-      if (!result.blockingOverlay && !result.blank) return;
-
-      const currentUrl = previewUrlRef.current || pending.previewUrl;
-      const code = pollingCodeRef.current || derivePreviewCodeFromUrl(currentUrl) || 'unknown';
-      const overlay = result.blockingOverlay;
-      const reportKey = `white-screen:${appId}:${code}:${currentUrl}:bridge:${overlay?.selector || 'blank'}`;
-      reportWhiteScreenIssueRef.current(reportKey, {
-        appId,
-        code,
-        previewUrl: currentUrl,
-        reason: overlay ? 'white_screen_blocking_overlay' : 'white_screen_blank_cross_origin',
-        message: overlay
-          ? `The preview is covered by a white overlay (${overlay.selector}, covering ${overlay.coverage}% of the screen).`
-          : 'The preview frame loaded, but its page is blank. The preview server responded without a visible page.',
-        visibleElementCount: result.visibleElementCount,
-        titleText: result.title || null,
-        blockingOverlay: overlay,
+      setRuntimeObservationUnavailable(false);
+      if (!result.blank) return;
+      reportWhiteScreenIssueRef.current(`white-screen:${appId}:${code}:${currentUrl}:bridge`, {
+        appId, code, previewUrl: currentUrl, reason: 'white_screen_blank_cross_origin',
+        message: 'The preview loaded but is not displaying content. Try refreshing or ask AI to investigate.',
+        visibleElementCount: result.visibleElementCount, titleText: result.title || null,
+        blockingOverlay: result.blockingOverlay, runtime: result.runtime,
       });
     };
     window.addEventListener('message', onPreviewInspection);
     return () => window.removeEventListener('message', onPreviewInspection);
-  }, [appId]);
+  }, [appId, onPreviewIssueChange]);
 
-  const attachIframeRuntimeErrorWatchers = () => {
-    if (typeof window === 'undefined') return;
-    if (iframeRuntimeErrorCleanupRef.current) {
-      iframeRuntimeErrorCleanupRef.current();
-      iframeRuntimeErrorCleanupRef.current = null;
-    }
-
-    try {
-      const iframe = iframeRef.current;
-      const win = iframe?.contentWindow || null;
-      if (!win) return;
-
-      const handleError = (event: ErrorEvent) => {
-        const message = String(event?.message || event?.error?.message || event?.error?.stack || '').trim();
-        const filename = String(event?.filename || '').trim();
-        const lower = `${message}\n${filename}`.toLowerCase();
-
-        if (
-          !lower.includes('expected expression, got \'<\'') &&
-          !lower.includes('minified react error #418') &&
-          !lower.includes('hydrate') &&
-          !lower.includes('/_next/static/chunks/')
-        ) {
-          return;
-        }
-
-        const currentUrl = previewUrlRef.current || previewUrl || activePreviewUrl || '';
-        const code = pollingCodeRef.current || derivePreviewCodeFromUrl(currentUrl) || 'unknown';
-        const reportKey = `white-screen-runtime:${appId}:${code}:${String(currentUrl || 'unknown')}:${message.slice(0, 120)}:${filename.slice(0, 120)}`;
-
-        reportWhiteScreenIssueOnce(reportKey, {
-          appId,
-          code,
-          previewUrl: currentUrl || null,
-          reason: 'white_screen_runtime_or_chunk_failure',
-          message:
-            message ||
-            'Preview failed to render because a JavaScript chunk or runtime script crashed.',
-          bodyText: message,
-          htmlSnippet: filename,
-          scriptSrcs: filename ? [filename] : [],
-          visibleElementCount: 0,
-          titleText: null,
-        });
-      };
-
-      const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
-        const message = String(event?.reason?.message || event?.reason || '').trim();
-        const lower = message.toLowerCase();
-        if (!lower.includes('expected expression, got \'<\'') && !lower.includes('minified react error #418') && !lower.includes('hydrate')) {
-          return;
-        }
-
-        const currentUrl = previewUrlRef.current || previewUrl || activePreviewUrl || '';
-        const code = pollingCodeRef.current || derivePreviewCodeFromUrl(currentUrl) || 'unknown';
-        const reportKey = `white-screen-rejection:${appId}:${code}:${String(currentUrl || 'unknown')}:${message.slice(0, 120)}`;
-
-        reportWhiteScreenIssueOnce(reportKey, {
-          appId,
-          code,
-          previewUrl: currentUrl || null,
-          reason: 'white_screen_runtime_rejection',
-          message: message || 'Preview failed to render due to a runtime rejection.',
-          bodyText: message,
-          htmlSnippet: '',
-          scriptSrcs: [],
-          visibleElementCount: 0,
-          titleText: null,
-        });
-      };
-
-      win.addEventListener('error', handleError);
-      win.addEventListener('unhandledrejection', handleUnhandledRejection as any);
-      iframeRuntimeErrorCleanupRef.current = () => {
-        try {
-          win.removeEventListener('error', handleError);
-          win.removeEventListener('unhandledrejection', handleUnhandledRejection as any);
-        } catch {
-          // ignore
-        }
-      };
-    } catch {
-      // Cross-origin iframe access is expected in some preview modes.
-      // In that case we skip direct window listeners and rely on the outer
-      // preview status / iframe load / white-screen probes that are still safe.
-      try {
-        iframeRuntimeErrorCleanupRef.current = null;
-      } catch {
-        // ignore
-      }
-    }
-  };
 
   const emitCompileErrorTelemetry = useCallback((kind: 'compile_error_seen' | 'compile_error_fix_clicked' | 'compile_error_fix_sent' | 'compile_error_recovered', detail: Record<string, any>) => {
     if (typeof window === 'undefined') return;
@@ -2547,6 +2489,9 @@ export default function NavBar() {
   }, [files]);
 
   useEffect(() => {
+    setRuntimePreviewFailure(null);
+    runtimeEvidenceNavigationRef.current = null;
+    previewNavigationStartedRef.current = Date.now();
     previewUrlRef.current = previewUrl;
     if (previewUrl) {
       if (!previewUrlFirstSeenAtRef.current) previewUrlFirstSeenAtRef.current = Date.now();
@@ -5560,6 +5505,34 @@ export default function NavBar() {
     previewInteractiveByStatus;
   const showPreviewSurface = Boolean(previewUrl) && !error && !compileErrorState && !terminalPreviewStatus && (externalPreviewMode || canRenderEmbeddedFrame);
   const activePreviewUrl = withPreviewTheme(withPreviewPath(previewUrl || '', navigatePath || ''), previewTheme);
+  useEffect(() => {
+    setRuntimeObservationUnavailable(false);
+    if (!showPreviewSurface || externalPreviewMode) return;
+    let responseTimeout: ReturnType<typeof setTimeout> | undefined;
+    let requestId = '';
+    // This checks the bridge during normal browsing, after the initial render.
+    // A CSP-blocked observer or a navigation to an uninstrumented/blank document
+    // must not silently look like a successfully checked preview.
+    const requestTimeout = setTimeout(() => {
+      const origin = getPreviewInspectionOrigin(activePreviewUrl);
+      const frameWindow = iframeRef.current?.contentWindow;
+      if (!origin || !frameWindow) return;
+      requestId = `health:${appId}:${Date.now()}`;
+      activeWhiteScreenInspectionRef.current = { requestId, previewUrl: activePreviewUrl };
+      frameWindow.postMessage({ type: 'kloner:preview-inspect', requestId }, origin);
+      responseTimeout = setTimeout(() => {
+        if (activeWhiteScreenInspectionRef.current?.requestId === requestId) {
+          activeWhiteScreenInspectionRef.current = null;
+          setRuntimeObservationUnavailable(true);
+        }
+      }, 3000);
+    }, 8000);
+    return () => {
+      clearTimeout(requestTimeout);
+      clearTimeout(responseTimeout);
+      if (requestId && activeWhiteScreenInspectionRef.current?.requestId === requestId) activeWhiteScreenInspectionRef.current = null;
+    };
+  }, [appId, activePreviewUrl, previewDocumentLoad, showPreviewSurface, externalPreviewMode]);
   const showApplyRefreshingOverlay = showPreviewSurface && isApplyRefreshing;
   const terminalPreviewStatusData = terminalPreviewStatus ? (currentStatusData || lastBackendStatusRef.current || null) : null;
   const showTerminalPreviewErrorCard = Boolean(error) || terminalPreviewStatus;
@@ -5727,7 +5700,10 @@ export default function NavBar() {
     const isReadyPreview = previewGenerationStatus === 'ready';
     const issueText = previewGenerationUi?.userMessage || previewGenerationUi?.message || previewGenerationUi?.details || terminalPreviewErrorMessage;
     const shouldSurfacePreviewIssue = (showTerminalPreviewErrorCard || previewGenerationUi?.status === 'warning' || previewGenerationUi?.status === 'error') && !isProcessingPreview && !isReadyPreview;
-    const nextPayload = shouldSurfacePreviewIssue
+    const nextPayload = runtimePreviewFailure ? {
+      status: 'error', issue: runtimePreviewFailure.message, diagnostics: runtimePreviewFailure.detail,
+      failure: runtimePreviewFailure.failure, recommendedActionLabel: 'Refresh',
+    } : shouldSurfacePreviewIssue
       ? {
           status: previewGenerationStatus || 'error',
           issue: issueText,
@@ -5773,7 +5749,7 @@ export default function NavBar() {
     } catch {
       // ignore
     }
-  }, [onPreviewIssueChange, previewFailureContract, previewFailureUi?.backendStatus, previewFailureUi?.correlationId, previewFailureUi?.machineState, previewFailureUi?.requestId, previewFailureUi?.uiStage, previewGenerationUi?.details, previewGenerationUi?.errorCode, previewGenerationUi?.message, previewGenerationUi?.recommendedAction, previewGenerationUi?.retryAction, previewGenerationUi?.retryable, previewGenerationUi?.status, previewGenerationUi?.userMessage, previewGenerationUi?.warningCode, previewIssueDiagnostics, showTerminalPreviewErrorCard, terminalPreviewErrorMessage]);
+  }, [runtimePreviewFailure, onPreviewIssueChange, previewFailureContract, previewFailureUi?.backendStatus, previewFailureUi?.correlationId, previewFailureUi?.machineState, previewFailureUi?.requestId, previewFailureUi?.uiStage, previewGenerationUi?.details, previewGenerationUi?.errorCode, previewGenerationUi?.message, previewGenerationUi?.recommendedAction, previewGenerationUi?.retryAction, previewGenerationUi?.retryable, previewGenerationUi?.status, previewGenerationUi?.userMessage, previewGenerationUi?.warningCode, previewIssueDiagnostics, showTerminalPreviewErrorCard, terminalPreviewErrorMessage]);
 
   useEffect(() => {
     if (!debugPreviewScenario) return;
@@ -5844,6 +5820,28 @@ export default function NavBar() {
 
   return (
     <div className="app-builder-webcontainer-shell h-full flex flex-col text-black/90 rounded-2xl shadow" style={{ backgroundColor: "var(--page-bg)" }}>
+      {runtimeObservationUnavailable && !runtimePreviewFailure ? (
+        <div role="status" className="flex items-center gap-3 border-b bg-amber-50 p-3 text-sm">
+          <span>We couldn’t check this preview. If it appears blank, refresh it to reconnect.</span>
+          <button type="button" className="underline" onClick={() => hardReloadPreview('preview_health_unavailable')}>Refresh</button>
+          <button type="button" aria-label="Dismiss preview notice" onClick={() => setRuntimeObservationUnavailable(false)}>×</button>
+        </div>
+      ) : null}
+      {runtimePreviewFailure ? (
+        <div role="alert" className="border-b border-amber-200 bg-amber-50 p-4 text-sm text-neutral-900">
+          <p>{runtimePreviewFailure.message}</p>
+          <div className="mt-3 flex gap-2">
+            <button type="button" className="rounded-full border px-3 py-1" onClick={() => hardReloadPreview('runtime_blank_retry')}>Refresh preview</button>
+            <button type="button" className="rounded-full bg-accent px-3 py-1 text-white disabled:opacity-50" disabled={isFixWithAiCoolingDown} onClick={() => {
+              startFixWithAiCooldown();
+              const issue = runtimePreviewFailure;
+              onCompileErrorFixRequest?.({ appId, code: issue.code, actionType: 'quick_fix_compile', autoSend: true,
+                compileError: issue.failure.compileError! });
+            }}>Investigate with AI</button>
+          </div>
+          <details className="mt-2"><summary>Technical details</summary><pre className="max-h-48 overflow-auto whitespace-pre-wrap text-xs">{runtimePreviewFailure.detail}</pre></details>
+        </div>
+      ) : null}
       {compileErrorState && !error ? (
         <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/20 px-4">
           <div className="w-full max-w-2xl rounded-2xl border border-black/10 bg-white shadow-2xl">
@@ -6098,6 +6096,7 @@ export default function NavBar() {
             title="App Preview"
             sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"
             onLoad={(event) => {
+              setPreviewDocumentLoad(value => value + 1);
               console.log('[WebContainerRunner] iframe onLoad (navigation complete):', previewUrl);
 
               try {
@@ -6151,7 +6150,6 @@ export default function NavBar() {
               if (isApplyRefreshing && (backendReadyRef.current || hmrWsStatus === 'ok' || previewPresentation.shouldShowLivePreview)) {
                 setIsApplyRefreshing(false);
               }
-              attachIframeRuntimeErrorWatchers();
               scheduleWhiteScreenProbe(String(activePreviewUrl || previewUrl || ''));
 
               // For the chat UX we want to unlock when the preview is actually usable.

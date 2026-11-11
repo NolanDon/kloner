@@ -329,13 +329,13 @@ function buildCompileFixPrefill(ctx: CompileErrorQuickFixContext): string {
     const recoveryHint =
         ctx.metadata?.missingAssets?.length
             ? [
-                "The preview appears to be white-screening because it references missing chunk assets.",
-                "Restore or rename the missing files so they match the requested chunk filenames, or update the HTML references to point at the existing chunk files.",
+                "The preview is blank and missing chunk assets were observed. Verify whether these failures actually block rendering.",
+                "Trace the actual browser failures to source before correcting a required asset. Preserve unrelated scripts and hydration data, then rerun the same preview to verify recovery.",
             ].join(" ")
             : "";
 
     return [
-        recoveryHint || "Please fix this compile error using the immutable context below.",
+        recoveryHint || "Please investigate this preview failure using the immutable context below. Establish a rendering blocker before editing source, apply a minimal patch, and rerun the same reproduction before claiming recovery.",
         "",
         "Context (immutable in free-fix mode):",
         JSON.stringify(immutableContext, null, 2),
