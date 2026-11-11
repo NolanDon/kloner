@@ -10,6 +10,7 @@ type UrlProcessingPopupProps = {
     title?: string;
     message?: string;
     error?: string | null;
+    sourceUrl?: string | null;
     errorLabel?: string;
     attemptLabel?: string | null;
     onDismiss?: () => void;
@@ -55,11 +56,23 @@ function parseVerifyDomainMessage(text: string): { prefix: string; domain: strin
     return { prefix, domain, suffix };
 }
 
+function getSafePublicUrl(value?: string | null): string | null {
+    if (!value) return null;
+    try {
+        const url = new URL(value.trim());
+        if ((url.protocol !== "http:" && url.protocol !== "https:") || url.username || url.password) return null;
+        return url.href;
+    } catch {
+        return null;
+    }
+}
+
 export default function UrlProcessingPopup({
     open,
     title = "Processing your URL",
     message = "This can take a few minutes.",
     error = null,
+    sourceUrl = null,
     errorLabel = "Error",
     attemptLabel = null,
     onDismiss,
@@ -125,6 +138,12 @@ export default function UrlProcessingPopup({
             message: error,
           })
         : message;
+    const safeSourceUrl = getSafePublicUrl(sourceUrl);
+    const showUnreachableUrlLink = Boolean(
+        safeSourceUrl &&
+        error &&
+        helperText === "We couldn’t reach this website right now. Check that it opens publicly, then try again in a moment.",
+    );
     const byteLabel = formatBytes(resolvedBytes);
     const isFinalizedStage = stage === "ready" || stage === "navigating";
     const displayTitle = useMemo(() => {
@@ -221,6 +240,19 @@ export default function UrlProcessingPopup({
                                 ) : (
                                     helperText
                                 )}
+                                {showUnreachableUrlLink && safeSourceUrl ? (
+                                    <div className="mt-2">
+                                        <a
+                                            href={safeSourceUrl}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="inline-flex max-w-full flex-wrap items-center justify-center gap-x-2 font-medium text-[#FF8D21] underline decoration-current underline-offset-2 transition hover:text-[#f47f0b]"
+                                        >
+                                            <span className="min-w-0 break-all">{safeSourceUrl}</span>
+                                            <span className="inline-flex shrink-0 items-center gap-1">Open in new window <ExternalLink className="h-3.5 w-3.5" /></span>
+                                        </a>
+                                    </div>
+                                ) : null}
                             </div>
                             {attemptLabel ? (
                                 <div className="w-full max-w-full overflow-hidden text-ellipsis whitespace-nowrap text-[11px] font-medium tracking-[0.06em] text-neutral-500">

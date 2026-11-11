@@ -14051,6 +14051,12 @@ export default function PreviewPage(): JSX.Element {
                     : "Opening your editor...")
                 : null) ||
         "This can take a few minutes.";
+    const urlProcessingPopupSourceUrl =
+        urlProcessingFailure?.url ||
+        urlProcessingHandoff?.sourceUrl ||
+        pendingCreatedApp?.sourceUrl ||
+        websiteSubmissionPendingUrl ||
+        null;
     const urlProcessingUpgradeRequired = Boolean(
         urlProcessingFailure?.message &&
         /please upgrade before scanning a website/i.test(urlProcessingFailure.message),
@@ -14075,6 +14081,7 @@ export default function PreviewPage(): JSX.Element {
                 title={urlProcessingPopupTitle}
                 message={urlProcessingPopupMessage}
                 error={urlProcessingFailure?.message || (urlProcessingHandoff?.phase === "error" ? urlProcessingHandoff?.errorMessage || "URL processing failed." : null)}
+                sourceUrl={urlProcessingPopupSourceUrl}
                 errorLabel={urlProcessingWaitLimitReached ? "Please check back shortly" : undefined}
                 archiveZipBytes={urlProcessingHandoff?.archiveZipBytes ?? pendingCreatedApp?.archiveZipBytes ?? null}
                 stage={
