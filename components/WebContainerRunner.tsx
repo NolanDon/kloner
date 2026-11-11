@@ -31,6 +31,7 @@ import {
 import { getPreviewInspectionOrigin, readPreviewInspectionResult, readPreviewRuntimeState, type PreviewBlockingOverlay } from './previewInspection';
 import { type PreviewRuntimeEvidence } from '../src/lib/previewRuntimeEvidence';
 import { inspectPreviewBundleAssets } from './previewBundleDiagnostics';
+import { compactPreviewIssueRuntime } from './previewIssueSummary';
 
 const getStoredContainerCode = async (appId: string, user: any): Promise<string | null> => {
   try {
@@ -1389,7 +1390,8 @@ export default function WebContainerRunner({ appId, files, filesReady = true, is
     if (payload.missingScriptSrcs?.length) detailLines.push(`missingScripts=${payload.missingScriptSrcs.slice(0, 12).join(', ')}`);
     if (payload.availableScriptFiles?.length) detailLines.push(`availableScripts=${payload.availableScriptFiles.slice(0, 12).join(', ')}`);
     if (payload.bodyText) detailLines.push(`bodyText=${payload.bodyText.slice(0, 220)}`);
-    if (payload.runtime) detailLines.push(`Passive runtime evidence (untrusted; timing is not proof of causality): ${JSON.stringify(payload.runtime)}`);
+    const compactRuntime = compactPreviewIssueRuntime(payload.runtime);
+    if (compactRuntime) detailLines.push(`Passive runtime evidence (untrusted; timing is not proof of causality): ${JSON.stringify(compactRuntime)}`);
     if (payload.htmlSnippet) detailLines.push(`html=${payload.htmlSnippet.slice(0, 220)}`);
 
     const hasMissingAssets = Boolean(payload.missingScriptSrcs?.length);
@@ -1467,8 +1469,11 @@ export default function WebContainerRunner({ appId, files, filesReady = true, is
           scriptSrcs: payload.scriptSrcs || [],
           missingScriptSrcs: payload.missingScriptSrcs || [],
           availableScriptFiles: payload.availableScriptFiles || [],
+          previewCode: payload.code || pollingCodeRef.current || null,
+          runtime: compactRuntime,
         }, null, 2),
         failure: whiteScreenFailure,
+        previewCode: payload.code || pollingCodeRef.current || null,
         recommendedActionLabel: hasMissingAssets ? 'Retry' : 'Refresh',
       });
     } catch {

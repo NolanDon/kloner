@@ -31,6 +31,7 @@ import { compressImageForUpload } from "@/src/lib/clientImageCompression";
 import { sanitizeImageName } from "./helpers";
 import { AnimatePresence, motion } from "framer-motion";
 import { detectProjectFramework, shouldPreserveRuntimeScripts } from "@/src/lib/projectFramework";
+import { summarizePreviewIssues } from "./previewIssueSummary";
 import { normalizePreviewApplyResponse } from "@/src/lib/appEmbeddingsClient";
 import { getResponsiveUiScale } from "@/src/lib/uiScale";
 import {
@@ -2652,6 +2653,7 @@ export default function AppBuilderEditor({
         rebuildAt: 0,
         saveAt: 0,
     });
+    const previewIssueCounts = useMemo(() => summarizePreviewIssues(previewIssueDiagnostics), [previewIssueDiagnostics]);
     const previewIssueFixDecision = useMemo(
         () => getPreviewIssueFixDecision(previewIssue || autoPreviewError || previewError, previewIssueDiagnostics, previewIssueFailure),
         [autoPreviewError, previewError, previewIssue, previewIssueDiagnostics, previewIssueFailure],
@@ -7942,6 +7944,7 @@ export default function AppBuilderEditor({
                                         creditError={agentCreditError}
                                         previewReady={previewMode !== "webcontainer" ? true : isWebPreviewReady}
                                         previewIssue={previewMode !== "webcontainer" ? null : (previewIssue || autoPreviewError || previewError)}
+                                        previewIssueCounts={previewMode !== "webcontainer" ? null : previewIssueCounts}
                                         previewIssueActionLabel={previewIssueActionLabel}
                                         onPreviewIssueAction={() => {
                                             const normalizedPreviewIssueAction = String(previewIssueActionLabel || "").trim().toLowerCase();
@@ -7966,6 +7969,7 @@ export default function AppBuilderEditor({
                                     creditError={agentCreditError}
                                     previewReady={previewMode !== "webcontainer" ? true : isWebPreviewReady}
                                     previewIssue={previewMode !== "webcontainer" ? null : (previewIssue || autoPreviewError || previewError)}
+                                    previewIssueCounts={previewMode !== "webcontainer" ? null : previewIssueCounts}
                                     previewIssueActionLabel={previewIssueActionLabel}
                                     onPreviewIssueAction={() => {
                                         const normalizedPreviewIssueAction = String(previewIssueActionLabel || "").trim().toLowerCase();

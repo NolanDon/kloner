@@ -15,6 +15,7 @@ import { db } from "@/lib/firebase";
 import { doc, onSnapshot } from "firebase/firestore";
 import { useModal } from "@/components/ui/ModalContext";
 import EditPlanJobStatusCard from "@/components/EditPlanJobStatusCard";
+import type { PreviewIssueCounts } from "./previewIssueSummary";
 import {
     applyEditPlanOps,
     extractCompletedEditPlanProposal,
@@ -237,6 +238,7 @@ export type AppBuilderEditorAgentChatProps = {
     creditError?: string | null;
     previewReady?: boolean;
     previewIssue?: string | null;
+    previewIssueCounts?: PreviewIssueCounts | null;
     previewIssueActionLabel?: string | null;
     onPreviewIssueAction?: () => void;
     onPreviewIssueFixRequest?: () => void;
@@ -1060,7 +1062,7 @@ const NEXT_EDIT_SUGGESTION_SETS = [
 ];
 
 
-export default function AppBuilderEditorAgentChat({ appId, files, currentFile, onFileEdit, onFilesReplace, onRestoreApplied, creditError, previewReady, previewIssue, previewIssueActionLabel, onPreviewIssueAction, onPreviewIssueFixRequest, onUserMessageSent, onIntroSequenceComplete, onRequestUpgradePaywall, topupModalTrigger, welcomeContext, agentMode = "v2" }: AppBuilderEditorAgentChatProps) {
+export default function AppBuilderEditorAgentChat({ appId, files, currentFile, onFileEdit, onFilesReplace, onRestoreApplied, creditError, previewReady, previewIssue, previewIssueCounts, previewIssueActionLabel, onPreviewIssueAction, onPreviewIssueFixRequest, onUserMessageSent, onIntroSequenceComplete, onRequestUpgradePaywall, topupModalTrigger, welcomeContext, agentMode = "v2" }: AppBuilderEditorAgentChatProps) {
     const [previewIssueDismissedForAppId, setPreviewIssueDismissedForAppId] = useState<string | null>(null);
     const [previewIssueFixStartedKey, setPreviewIssueFixStartedKey] = useState<string | null>(null);
     const [imageAttachments, setImageAttachments] = useState<AgentImageAttachment[]>([]);
@@ -9370,9 +9372,15 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                             Error
                                         </span>
                                     </div>
-                                    <p className="mt-1 break-words text-sm leading-snug text-neutral-700">
-                                        {previewIssueSummary}
+                                    <p className="mt-1 line-clamp-1 break-words text-xs leading-tight text-neutral-700 sm:line-clamp-none sm:text-sm sm:leading-snug">
+                                        <span className="sm:hidden">Preview issue</span>
+                                        <span className="hidden sm:inline">{previewIssueSummary}</span>
                                     </p>
+                                    {previewIssueCounts ? (
+                                        <p className="mt-1 text-[10px] leading-none text-neutral-500 sm:text-[11px]">
+                                            Critical ({previewIssueCounts.critical}) · Warnings ({previewIssueCounts.warnings})
+                                        </p>
+                                    ) : null}
                                     <button
                                         type="button"
                                         onClick={dismissPreviewIssue}
