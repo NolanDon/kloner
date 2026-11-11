@@ -1061,6 +1061,7 @@ const NEXT_EDIT_SUGGESTION_SETS = [
 
 export default function AppBuilderEditorAgentChat({ appId, files, currentFile, onFileEdit, onFilesReplace, onRestoreApplied, creditError, previewReady, previewIssue, previewIssueActionLabel, onPreviewIssueAction, onPreviewIssueFixRequest, onUserMessageSent, onIntroSequenceComplete, onRequestUpgradePaywall, topupModalTrigger, welcomeContext, agentMode = "v2" }: AppBuilderEditorAgentChatProps) {
     const [previewIssueDismissedForAppId, setPreviewIssueDismissedForAppId] = useState<string | null>(null);
+    const [previewIssueFixStartedKey, setPreviewIssueFixStartedKey] = useState<string | null>(null);
     const [imageAttachments, setImageAttachments] = useState<AgentImageAttachment[]>([]);
     const [uploadingImage, setUploadingImage] = useState(false);
     const [attachmentError, setAttachmentError] = useState<string | null>(null);
@@ -1428,7 +1429,8 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
     const latestSummaryFeedbackContextRef = useRef<SummarySearchFeedbackContext | null>(null);
     const previewIssueText = String(previewIssue || '').trim();
     const hasPreviewIssue = Boolean(previewIssueText);
-    const shouldShowPreviewIssue = hasPreviewIssue && previewIssueDismissedForAppId !== appId;
+    const previewIssueKey = `${appId}:${previewIssueText}`;
+    const shouldShowPreviewIssue = hasPreviewIssue && previewIssueDismissedForAppId !== appId && previewIssueFixStartedKey !== previewIssueKey;
     const previewIssueSummary = previewIssueText.split(/\r?\n/).map((line) => line.trim()).find(Boolean) || "Something went wrong building website.";
     const showPreviewLoadingNotice = !PRODUCTION_AGENT_CHAT_BLOCKED && previewReady === false && !freeCompileFixContext && !hasPreviewIssue;
     const chatDisabled = PRODUCTION_AGENT_CHAT_BLOCKED;
@@ -1457,6 +1459,31 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
             // Keep this dismissal for the current editor session if storage is unavailable.
         }
     }, [appId]);
+
+    const startPreviewIssueFix = useCallback(() => {
+        setPreviewIssueFixStartedKey(`${appId}:${previewIssueText}`);
+        onPreviewIssueFixRequest?.();
+    }, [appId, onPreviewIssueFixRequest, previewIssueText]);
+
+    useEffect(() => {
+        const handlePreviewIssueFixStarted = (event: Event) => {
+            const detail = (event as CustomEvent<{ appId?: string; message?: string }>).detail;
+            if (detail?.appId !== appId || !detail.message?.trim()) return;
+            setMessages((previous) => [
+                ...previous,
+                {
+                    id: `preview_issue_fix_started_${Date.now()}`,
+                    role: "user",
+                    content: detail.message!.trim(),
+                    timestamp: new Date(),
+                    type: "text",
+                },
+            ]);
+            onUserMessageSent?.();
+        };
+        window.addEventListener("kloner:preview-issue-fix-started", handlePreviewIssueFixStarted as EventListener);
+        return () => window.removeEventListener("kloner:preview-issue-fix-started", handlePreviewIssueFixStarted as EventListener);
+    }, [appId, onUserMessageSent]);
 
     const didSyncSupabasePreviewEnvRef = useRef(false);
 
@@ -9368,7 +9395,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                     {hasPreviewIssueFixRequest ? (
                                         <button
                                             type="button"
-                                            onClick={() => onPreviewIssueFixRequest?.()}
+                                            onClick={startPreviewIssueFix}
                                             className="inline-flex shrink-0 items-center justify-center rounded-full border border-rose-200 bg-white px-3 py-1.5 text-xs font-semibold text-rose-700 transition hover:bg-rose-50"
                                         >
                                             Fix with AI

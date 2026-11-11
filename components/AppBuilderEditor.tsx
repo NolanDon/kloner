@@ -2898,6 +2898,12 @@ export default function AppBuilderEditor({
         if (cooldown && cooldown.fingerprint === fingerprint && now < cooldown.until) return;
         previewIssueFixRequestCooldownRef.current = { fingerprint, until: now + cooldownMs };
 
+        if (typeof window !== "undefined") {
+            window.dispatchEvent(new CustomEvent("kloner:preview-issue-fix-started", {
+                detail: { appId, message: "I started a Fix with AI request for the preview error." },
+            }));
+        }
+
         const fileCount = Object.keys(app?.files || {}).length;
         const hasPath = (pattern: RegExp): boolean => Object.keys(app?.files || {}).some((path) => pattern.test(path));
         const bundleSignals = {
