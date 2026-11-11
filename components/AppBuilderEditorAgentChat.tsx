@@ -9349,6 +9349,13 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                     <p className="mt-1 break-words text-sm leading-snug text-neutral-700">
                                         {previewIssueSummary}
                                     </p>
+                                    <button
+                                        type="button"
+                                        onClick={dismissPreviewIssue}
+                                        className="mt-1 text-xs font-medium text-neutral-500 underline decoration-neutral-400 underline-offset-2 transition hover:text-neutral-700"
+                                    >
+                                        Do not show again
+                                    </button>
                                 </div>
                                 <div className="flex shrink-0 items-center gap-2">
                                     <button
@@ -9367,13 +9374,6 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                             Fix with AI
                                         </button>
                                     ) : null}
-                                    <button
-                                        type="button"
-                                        onClick={dismissPreviewIssue}
-                                        className="inline-flex shrink-0 items-center rounded-full px-2 py-1.5 text-xs font-medium text-neutral-400 transition hover:bg-white/5 hover:text-neutral-200"
-                                    >
-                                        Do not show again
-                                    </button>
                                 </div>
                             </div>
                         </div>
