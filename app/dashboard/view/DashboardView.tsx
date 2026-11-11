@@ -4236,7 +4236,6 @@ export default function PreviewPage(): JSX.Element {
         void sendKlonerSlackEvent("early_paywall_shown", { email: user.email })
             .catch((error) => console.warn("Failed to send early paywall Slack alert", error));
     }, [showCreditsPaywall, user?.email, user?.uid]);
-    const [deletingOwnAccount, setDeletingOwnAccount] = useState(false);
     const recoveryPendingStorageKey = useMemo(
         () => (user?.uid ? `kloner.billing.recovery.pending:${user.uid}` : ""),
         [user?.uid],
@@ -4396,39 +4395,6 @@ export default function PreviewPage(): JSX.Element {
             });
         }
     }
-
-    const handleDeleteOwnAccount = async () => {
-        if (deletingOwnAccount) return;
-        const ok = await showConfirm(
-            "Delete your account? This will permanently delete all your apps, data, and cancel any active subscription. This cannot be undone.",
-            "Delete Account"
-        );
-        if (!ok) return;
-        setDeletingOwnAccount(true);
-        try {
-            const csrf = await ensureSessionAndCsrf().catch(() => null);
-            const res = await fetch("/api/me", {
-                method: "DELETE",
-                headers: {
-                    "Content-Type": "application/json",
-                    ...(csrf ? { "x-csrf": csrf } : {}),
-                },
-                body: JSON.stringify({ confirm: "DELETE_MY_ACCOUNT" }),
-            });
-            if (!res.ok) {
-                const data = (await res.json().catch(() => ({}))) as { error?: string };
-                void showAlert(data.error ?? "Failed to delete account. Please try again.");
-                return;
-            }
-            resetAuthClientCaches();
-            await firebaseSignOut(auth).catch(() => null);
-            router.replace("/login");
-        } catch {
-            void showAlert("Failed to delete account. Please try again.");
-        } finally {
-            setDeletingOwnAccount(false);
-        }
-    };
 
     const [deployWizardOpen, setDeployWizardOpen] = useState(false);
     const [deployWizardStep, setDeployWizardStep] = useState<1 | 2 | 3 | 5>(1);
@@ -8222,6 +8188,9 @@ export default function PreviewPage(): JSX.Element {
         const normalized = validateAndNormalizePublicHttpUrl(dec);
         return normalized ? normUrl(normalized) : "";
     }, [urlParam]);
+    // Error state is shared by parts of the dashboard, so never associate it with
+    // a newly selected URL until that URL's document context has been reset.
+    const urlErrorContextRef = useRef(targetUrl);
 
     useEffect(() => {
         if (!EARLY_GENERATION_PAYWALL_ENABLED || !signupPaywallRequested || !user?.uid) return;
@@ -9806,6 +9775,9 @@ export default function PreviewPage(): JSX.Element {
     );
 
     useEffect(() => {
+        const currentTarget = targetUrl ? normUrl(targetUrl) : "";
+        if (urlErrorContextRef.current !== currentTarget) return;
+
         const activeUrlFlow =
             createWebsitePlusBusy ||
             websiteSubmitBusy ||
@@ -10121,33 +10093,46 @@ export default function PreviewPage(): JSX.Element {
     }, [targetUrl, captureStatus, err, startRequested, shouldSendFrontendTimeoutAlert, docData]);
 
     useEffect(() => {
-        const rawTarget = urlProcessingFailure?.url || urlProcessingHandoff?.sourceUrl || targetUrl || "";
+        const rawTarget = targetUrl || "";
         if (!rawTarget) return;
+
+        const normalizedUrl = normUrl(rawTarget);
+        if (urlErrorContextRef.current !== normalizedUrl) return;
+        const failureMatchesTarget = Boolean(
+            urlProcessingFailure?.url && normUrl(urlProcessingFailure.url) === normalizedUrl,
+        );
+        const handoffMatchesTarget = Boolean(
+            urlProcessingHandoff?.sourceUrl && normUrl(urlProcessingHandoff.sourceUrl) === normalizedUrl,
+        );
 
         // A scan can be accepted by /generate and fail later while the browser
         // polls the Firestore URL document. That terminal failure never passes
         // through the proxy's HTTP error handler, so report it from here.
-        const terminalError = captureStatus === "error";
-        const handoffError = Boolean(urlProcessingFailure?.message ||
-            (urlProcessingHandoff?.phase === "error" && urlProcessingHandoff.errorMessage));
+        const doc = (scanSourceMatchesUrl(docData, rawTarget) ? docData : {}) as any;
+        const scanJob = (scanSourceMatchesUrl(activeUrlScanJob, rawTarget) ? activeUrlScanJob : {}) as any;
+        const terminalError = captureStatus === "error" && (
+            doc.status === "error" || doc.status === "stale" ||
+            scanJob.status === "error" || scanJob.status === "stale" ||
+            captureTerminalFailureUrl === normalizedUrl
+        );
+        const handoffError = Boolean(
+            (failureMatchesTarget && urlProcessingFailure?.message) ||
+            (handoffMatchesTarget && urlProcessingHandoff?.phase === "error" && urlProcessingHandoff.errorMessage),
+        );
         if (!terminalError && !handoffError) return;
 
         // Do not report the old error state while a fresh scan is being queued.
         if (terminalError && startRequested && !err) return;
 
-        const normalizedUrl = normUrl(rawTarget);
-        const editorFailure = Boolean(urlProcessingHandoff?.errorCode?.startsWith("EDITOR_"));
+        const editorFailure = Boolean(handoffMatchesTarget && urlProcessingHandoff?.errorCode?.startsWith("EDITOR_"));
         const alertAction = editorFailure ? "url_editor_navigation_error" : "url_capture_terminal_error";
-        const doc = (scanSourceMatchesUrl(docData, rawTarget) ? docData : {}) as any;
-        const scanJob = (scanSourceMatchesUrl(activeUrlScanJob, rawTarget) ? activeUrlScanJob : {}) as any;
         const planRestriction = /EARLY_GENERATION_PAYWALL_REQUIRED|Start your free trial before (?:scanning|generating)|Please upgrade before scanning/i.test([
             doc.lastErrorCode,
             doc.lastError,
             doc.error,
             scanJob.error,
-            urlProcessingFailure?.message,
-            urlProcessingHandoff?.errorMessage,
-            err,
+            failureMatchesTarget ? urlProcessingFailure?.message : null,
+            handoffMatchesTarget ? urlProcessingHandoff?.errorMessage : null,
         ].map((value) => String(value || "")).join(" "));
         if (planRestriction) {
             setErr("");
@@ -10171,9 +10156,8 @@ export default function PreviewPage(): JSX.Element {
             doc.error,
             scanJob.error,
             doc.warningMessage,
-            urlProcessingFailure?.message,
-            urlProcessingHandoff?.phase === "error" ? urlProcessingHandoff.errorMessage : null,
-            err,
+            failureMatchesTarget ? urlProcessingFailure?.message : null,
+            handoffMatchesTarget && urlProcessingHandoff?.phase === "error" ? urlProcessingHandoff.errorMessage : null,
         ]
             .map((value) => String(value || "").trim())
             .find((value) => value && !genericMessages.has(value.toLowerCase())) || "";
@@ -10229,7 +10213,7 @@ export default function PreviewPage(): JSX.Element {
                 // Observability must never interfere with the user's error UI.
             }
         })();
-    }, [activeUrlScanJob, captureStatus, docData, err, ensureSessionAndCsrf, shouldSendFrontendTimeoutAlert, startRequested, targetUrl, urlProcessingFailure, urlProcessingHandoff?.phase, urlProcessingHandoff?.errorCode, urlProcessingHandoff?.appId, urlProcessingHandoff?.errorMessage, urlProcessingHandoff?.sourceUrl]);
+    }, [activeUrlScanJob, captureStatus, captureTerminalFailureUrl, docData, ensureSessionAndCsrf, shouldSendFrontendTimeoutAlert, startRequested, targetUrl, urlProcessingFailure, urlProcessingHandoff?.phase, urlProcessingHandoff?.errorCode, urlProcessingHandoff?.appId, urlProcessingHandoff?.errorMessage, urlProcessingHandoff?.sourceUrl]);
 
     useEffect(() => {
         const normalizedUrl = targetUrl ? normUrl(targetUrl) : "";
@@ -10852,11 +10836,20 @@ export default function PreviewPage(): JSX.Element {
                 currentContext.uid !== prevUrlDocContextRef.current.uid ||
                 currentContext.targetUrl !== prevUrlDocContextRef.current.targetUrl;
             prevUrlDocContextRef.current = currentContext;
+            urlErrorContextRef.current = currentContext.targetUrl ? normUrl(currentContext.targetUrl) : "";
 
             // Keep terminal capture errors visible during nonce-driven doc refreshes.
             if (contextChanged) {
                 setErr("");
                 setInfo("");
+                setUrlProcessingFailure(null);
+                setUrlProcessingHandoff((current) => {
+                    if (!current?.sourceUrl || !currentContext.targetUrl) return null;
+                    return normUrl(current.sourceUrl) === normUrl(currentContext.targetUrl) ? current : null;
+                });
+                setCaptureTerminalFailureUrl("");
+                setCaptureIssueDetails("");
+                setCaptureIssueNotice("");
             }
             setLoading(true);
             setDocSnap(null);
@@ -14151,22 +14144,6 @@ export default function PreviewPage(): JSX.Element {
                                     </div>
 
                                     <div className="mt-4 space-y-2 overflow-y-auto pr-1">
-                                    <button
-                                        type="button"
-                                        onClick={() => { void handleDeleteOwnAccount(); }}
-                                        disabled={deletingOwnAccount}
-                                        className="flex w-full items-center justify-between rounded-2xl border border-red-200 bg-red-50 px-3 py-2.5 text-left text-sm font-medium text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
-                                    >
-                                        <span>{deletingOwnAccount ? "Deleting account..." : "Delete my account"}</span>
-                                        {deletingOwnAccount ? (
-                                            <Loader2 className="h-4 w-4 animate-spin text-red-500" />
-                                        ) : (
-                                            <Trash2 className="h-4 w-4 text-red-500" />
-                                        )}
-                                    </button>
-
-                                    <div className="border-t border-neutral-200" />
-
                                     <button
                                         type="button"
                                         onClick={() => {

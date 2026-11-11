@@ -1008,47 +1008,6 @@ export default function SettingsPage(): JSX.Element {
     }
   }
 
-  async function handleDeleteAccount() {
-    const confirmed = await showConfirm(
-      "Delete your Kloner account, all associated app data, uploaded files, integrations, and local session data? This cannot be undone.",
-      "Delete Account",
-    );
-    if (!confirmed) return;
-
-    setAccountActionBusy(true);
-    setAccountActionError(null);
-    setAccountActionSuccess(null);
-
-    try {
-      const csrf = await ensureSessionAndCsrf();
-      const res = await fetch("/api/me", {
-        method: "DELETE",
-        credentials: "include",
-        headers: {
-          "content-type": "application/json",
-          ...(csrf ? { "x-csrf": csrf } : {}),
-        },
-        body: JSON.stringify({ confirm: "DELETE_MY_ACCOUNT" }),
-      });
-
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data?.ok) {
-        throw new Error(data?.error || `Delete failed (HTTP ${res.status})`);
-      }
-
-      await fetch("/api/auth/session", {
-        method: "DELETE",
-        credentials: "include",
-      }).catch(() => undefined);
-      await auth.signOut().catch(() => undefined);
-      router.replace("/");
-    } catch (err: any) {
-      setAccountActionError(err?.message || "Delete failed.");
-    } finally {
-      setAccountActionBusy(false);
-    }
-  }
-
   function openCancelFeedbackPopup() {
     setCancelError(null);
     setCancelSuccess(null);
@@ -1946,7 +1905,7 @@ export default function SettingsPage(): JSX.Element {
 
             <SettingsSection
               title="Account and data"
-              subtitle="Grab a JSON export if you want a copy, or delete the account when you’re done."
+              subtitle="Export your data or contact support to request account closure or data deletion."
               icon={<ArchiveRestore className="h-4 w-4" />}
             >
               <div className="space-y-3">
@@ -1961,17 +1920,6 @@ export default function SettingsPage(): JSX.Element {
                     })}
                   >
                     Export my data
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void handleDeleteAccount()}
-                    disabled={accountActionBusy}
-                    className={btnClass({
-                      kind: "danger",
-                      disabled: accountActionBusy,
-                    })}
-                  >
-                    Delete account
                   </button>
                 </div>
 
