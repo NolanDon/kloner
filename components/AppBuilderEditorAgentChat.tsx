@@ -51,6 +51,7 @@ import {
 } from "@/src/lib/projectFramework";
 import { BASIC_MONTHLY_PRICE_USD } from "@/src/lib/billingAccess";
 import { deriveEmbeddingCurrentPath } from "@/src/lib/embeddingCurrentPath";
+import { limitEditorAgentPrompt } from "./previewFailureContract";
 import {
     buildChatRestorePointRevertSuccessMessage,
     buildChatRestorePointsErrorMessage,
@@ -1039,8 +1040,16 @@ function buildCompileFixPrefill(ctx: CompileErrorQuickFixContext): string {
             ].join(" ")
             : "";
 
+    const previewRuntimeGuidance = ctx.code === "preview_issue"
+        ? [
+            "Use the attached browser runtime findings as evidence. Read the project files and trace each relevant failed request or JavaScript error to the source that produced it before editing.",
+            "If a project-owned script is confirmed to cause the blank page, remove that script completely and verify the page renders. Do not remove an analytics or third-party integration based only on its host or a 404; preserve unrelated behavior and explain if the evidence does not support a source change.",
+        ]
+        : [];
+
     return [
         recoveryHint || "Please fix this compile error using the immutable context below.",
+        ...previewRuntimeGuidance,
         "",
         "Context (immutable in free-fix mode):",
         JSON.stringify(immutableContext, null, 2),
@@ -5929,10 +5938,13 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
         paletteChangeId?: string;
     }) => {
         const rawMessageInput = (typeof opts?.forcedInput === "string" ? opts.forcedInput : input) || (imageAttachments.length ? "Inspect this image and describe the issue or intended change. Ask whether I want it fixed before editing." : "");
-        const messageInput = rawMessageInput.length > MAX_EDITOR_PROMPT_CHARS
-            ? rawMessageInput.slice(0, MAX_EDITOR_PROMPT_CHARS)
-            : rawMessageInput;
         const activeCompileFixContext = opts?.forcedCompileFixContext ?? freeCompileFixContext;
+        const isPreviewIssueRepair = activeCompileFixContext?.code === "preview_issue";
+        const promptLimit = isPreviewIssueRepair ? 12_000 : MAX_EDITOR_PROMPT_CHARS;
+        const messageInput = limitEditorAgentPrompt(rawMessageInput, {
+            previewRepair: isPreviewIssueRepair,
+            maxChars: MAX_EDITOR_PROMPT_CHARS,
+        });
         const allowWhenChatDisabled = opts?.allowWhenChatDisabled === true;
         const hideUserMessage = opts?.hideUserMessage === true;
         const bypassInitialSearch = opts?.bypassInitialSearch === true;
@@ -5942,7 +5954,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
         if (chatDisabled && !allowWhenChatDisabled) return;
         if (!messageInput.trim() || isLoading) return;
         if (messageInput !== rawMessageInput) {
-            setHistoryToast(`Prompt trimmed to ${MAX_EDITOR_PROMPT_CHARS} characters.`);
+            setHistoryToast(`Prompt trimmed to ${promptLimit} characters.`);
             if (typeof opts?.forcedInput !== "string") {
                 setInput(messageInput);
             }
@@ -6164,7 +6176,8 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
         setIsLoading(true);
         lastEditPlanPromptRef.current = messageInput;
 
-        if (agentMode === "v3") {
+        const useV3ForPreviewRepair = activeCompileFixContext?.code === "preview_issue";
+        if (agentMode === "v3" || useV3ForPreviewRepair) {
             try {
                 const conversationHistory = messages
                     .filter((entry) => !entry.workspaceProgress)

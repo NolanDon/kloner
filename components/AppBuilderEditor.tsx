@@ -14,6 +14,7 @@ import AppPreviewEditor from "./AppPreviewEditor";
 import WebsitePrePaywall from "./WebsitePrePaywall";
 import KlonerLoader, { WorkspaceLoadingPanel, WorkspaceLoadingScreen } from "./KlonerLoader";
 import WebContainerRunner from "./WebContainerRunner";
+import { compactPreviewBrowserFindings } from "./previewInspection";
 import EditorColorSchemes from "./EditorColorSchemes";
 import { WorkspaceAgentLoader } from "./WorkspaceAgentActivity";
 import { bootstrapServerSession, ensureSessionAndCsrf, resetAuthClientCaches } from "@/lib/auth-client";
@@ -2933,7 +2934,7 @@ export default function AppBuilderEditor({
             bundleSignals,
             missingFiles,
             missingFileCount: missingFiles.length,
-            previewIssueDiagnostics: safeParseDiagnostics(previewIssueDiagnostics),
+            browserFindings: compactPreviewBrowserFindings(previewIssueDiagnostics),
             previewIssueFixDecision,
         };
 
@@ -2945,7 +2946,7 @@ export default function AppBuilderEditor({
             autoSend: true,
             compileError: {
                 summary: "Preview hit an error",
-                detail: `${issue}${previewIssueDiagnostics ? `\n\nHidden diagnostics:\n${JSON.stringify(hiddenDiagnostics, null, 2)}` : ""}`,
+                detail: `${issue}${previewIssueDiagnostics ? `\n\nBrowser findings to trace before editing:\n${JSON.stringify(hiddenDiagnostics.browserFindings)}\n\nProject context:\n${JSON.stringify({ detectedFramework: hiddenDiagnostics.detectedFramework, frameworkLabel: hiddenDiagnostics.frameworkLabel, bundleSignals: hiddenDiagnostics.bundleSignals, missingFiles: hiddenDiagnostics.missingFiles })}` : ""}`,
                 fingerprint,
             },
         });
