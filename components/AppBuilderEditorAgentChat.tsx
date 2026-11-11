@@ -360,6 +360,7 @@ type CompileErrorQuickFixContext = {
         requestedAssets?: string[];
         missingAssets?: string[];
         availableAssets?: string[];
+        previewCode?: string | null;
     } | null;
     compileError: {
         summary: string;
@@ -6233,7 +6234,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                         ? (opts.forcedCurrentPath.trim() || null)
                         : selectedRequestCurrentPath,
                     repairContext: opts?.forcedWorkspaceRepairContext || (isFreeCompileFixMode && activeCompileFixContext ? {
-                        previewCode: activeCompileFixContext.code,
+                        previewCode: activeCompileFixContext.metadata?.previewCode || "",
                         code: activeCompileFixContext.compileError.fingerprint.startsWith('white_screen:') ? 'PREVIEW_WHITE_SCREEN' : 'PREVIEW_COMPILE_ERROR',
                         message: activeCompileFixContext.compileError.summary,
                         stderr: activeCompileFixContext.compileError.detail,
@@ -7478,6 +7479,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                     requestedAssets: Array.isArray(detail.metadata.requestedAssets) ? detail.metadata.requestedAssets.map((value: unknown) => String(value || "").trim()).filter(Boolean) : undefined,
                     missingAssets: Array.isArray(detail.metadata.missingAssets) ? detail.metadata.missingAssets.map((value: unknown) => String(value || "").trim()).filter(Boolean) : undefined,
                     availableAssets: Array.isArray(detail.metadata.availableAssets) ? detail.metadata.availableAssets.map((value: unknown) => String(value || "").trim()).filter(Boolean) : undefined,
+                    previewCode: typeof detail.metadata.previewCode === "string" ? detail.metadata.previewCode.trim() : null,
                 } : null,
                 compileError: {
                     summary,

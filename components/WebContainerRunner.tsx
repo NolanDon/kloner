@@ -384,6 +384,7 @@ interface WebContainerRunnerProps {
     diagnostics?: string | null;
     failure?: PreviewFailureContract | null;
     recommendedActionLabel?: string | null;
+    previewCode?: string | null;
   } | null) => void;
   onBackendReady?: (args: { appId: string; code: string; url: string }) => void;
   onRequestRebuild?: () => void | Promise<void>;
@@ -5695,6 +5696,7 @@ export default function NavBar() {
   }, [appId, buildPreviewFixIssueMessage, canFixPreviewFailureWithAi, onCompileErrorFixRequest, previewFailureMessage, previewFailureTitle, previewFailureUi?.correlationId, previewFailureUi?.requestId, previewIssueContextData, startFixWithAiCooldown]);
 
   useEffect(() => {
+    const currentPreviewCode = derivePreviewCodeFromUrl(activePreviewUrl || '') || pollingCodeRef.current || null;
     const previewGenerationStatus = previewGenerationUi?.status || null;
     const isProcessingPreview = previewGenerationStatus === 'processing';
     const isReadyPreview = previewGenerationStatus === 'ready';
@@ -5702,7 +5704,7 @@ export default function NavBar() {
     const shouldSurfacePreviewIssue = (showTerminalPreviewErrorCard || previewGenerationUi?.status === 'warning' || previewGenerationUi?.status === 'error') && !isProcessingPreview && !isReadyPreview;
     const nextPayload = runtimePreviewFailure ? {
       status: 'error', issue: runtimePreviewFailure.message, diagnostics: runtimePreviewFailure.detail,
-      failure: runtimePreviewFailure.failure, recommendedActionLabel: 'Refresh',
+      failure: runtimePreviewFailure.failure, recommendedActionLabel: 'Refresh', previewCode: currentPreviewCode,
     } : shouldSurfacePreviewIssue
       ? {
           status: previewGenerationStatus || 'error',
@@ -5718,6 +5720,7 @@ export default function NavBar() {
           diagnostics: previewIssueDiagnostics,
           failure: previewFailureContract,
           recommendedActionLabel: mapPreviewRecommendedActionLabel(previewGenerationUi?.recommendedAction),
+          previewCode: currentPreviewCode,
         }
       : null;
 
@@ -5726,6 +5729,7 @@ export default function NavBar() {
           'active',
           nextPayload.status,
           nextPayload.issue,
+          String(nextPayload.previewCode || ''),
           String(previewFailureUi?.requestId || ''),
           String(previewFailureUi?.correlationId || ''),
           String(previewFailureUi?.backendStatus || ''),
@@ -5749,7 +5753,7 @@ export default function NavBar() {
     } catch {
       // ignore
     }
-  }, [runtimePreviewFailure, onPreviewIssueChange, previewFailureContract, previewFailureUi?.backendStatus, previewFailureUi?.correlationId, previewFailureUi?.machineState, previewFailureUi?.requestId, previewFailureUi?.uiStage, previewGenerationUi?.details, previewGenerationUi?.errorCode, previewGenerationUi?.message, previewGenerationUi?.recommendedAction, previewGenerationUi?.retryAction, previewGenerationUi?.retryable, previewGenerationUi?.status, previewGenerationUi?.userMessage, previewGenerationUi?.warningCode, previewIssueDiagnostics, showTerminalPreviewErrorCard, terminalPreviewErrorMessage]);
+  }, [runtimePreviewFailure, onPreviewIssueChange, activePreviewUrl, previewFailureContract, previewFailureUi?.backendStatus, previewFailureUi?.correlationId, previewFailureUi?.machineState, previewFailureUi?.requestId, previewFailureUi?.uiStage, previewGenerationUi?.details, previewGenerationUi?.errorCode, previewGenerationUi?.message, previewGenerationUi?.recommendedAction, previewGenerationUi?.retryAction, previewGenerationUi?.retryable, previewGenerationUi?.status, previewGenerationUi?.userMessage, previewGenerationUi?.warningCode, previewIssueDiagnostics, showTerminalPreviewErrorCard, terminalPreviewErrorMessage]);
 
   useEffect(() => {
     if (!debugPreviewScenario) return;

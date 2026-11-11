@@ -2615,6 +2615,7 @@ export default function AppBuilderEditor({
     const [previewIssue, setPreviewIssue] = useState<string | null>(null);
     const [previewIssueDiagnostics, setPreviewIssueDiagnostics] = useState<string | null>(null);
     const [previewIssueFailure, setPreviewIssueFailure] = useState<PreviewFailureContract | null>(null);
+    const [previewIssuePreviewCode, setPreviewIssuePreviewCode] = useState<string | null>(null);
     const [previewIssueActionLabel, setPreviewIssueActionLabel] = useState<string | null>(null);
     const [deployBannerFromApp, setDeployBannerFromApp] = useState<DeployStatusBanner | null>(null);
     const [deployBannerFromRoute, setDeployBannerFromRoute] = useState<DeployStatusBanner | null>(null);
@@ -2869,6 +2870,7 @@ export default function AppBuilderEditor({
             requestedAssets?: string[];
             missingAssets?: string[];
             availableAssets?: string[];
+            previewCode?: string | null;
         };
         compileError: {
             summary: string;
@@ -2891,7 +2893,10 @@ export default function AppBuilderEditor({
         const issue = String(previewIssue || autoPreviewError || previewError || "").trim();
         if (!issue) return;
 
-        const fingerprint = `preview_issue:${appId}:${issue.slice(0, 120)}`;
+        const isWhiteScreen = previewIssueFailure?.errorClass === "white_screen";
+        const fingerprint = isWhiteScreen
+            ? `white_screen:${appId}:${String(previewIssuePreviewCode || issue).slice(0, 120)}`
+            : `preview_issue:${appId}:${issue.slice(0, 120)}`;
         const now = Date.now();
         const cooldown = previewIssueFixRequestCooldownRef.current;
         const cooldownMs = 5_000;
@@ -2949,13 +2954,14 @@ export default function AppBuilderEditor({
             actionType: "quick_fix_compile",
             fixAction: "preview_issue_fix",
             autoSend: true,
+            metadata: previewIssuePreviewCode ? { previewCode: previewIssuePreviewCode } : undefined,
             compileError: {
                 summary: "Preview hit an error",
                 detail: `${issue}${previewIssueDiagnostics ? `\n\nHidden diagnostics:\n${JSON.stringify(hiddenDiagnostics, null, 2)}` : ""}`,
                 fingerprint,
             },
         });
-    }, [appId, app?.files, autoPreviewError, canFixPreviewIssueWithAi, handleCompileErrorFixRequest, previewError, previewIssue, previewIssueDiagnostics, previewIssueFixDecision, projectFramework]);
+    }, [appId, app?.files, autoPreviewError, canFixPreviewIssueWithAi, handleCompileErrorFixRequest, previewError, previewIssue, previewIssueDiagnostics, previewIssueFailure?.errorClass, previewIssueFixDecision, previewIssuePreviewCode, projectFramework]);
 
     const effectiveDeployBanner = deployBannerFromRoute || deployBannerFromApp;
 
@@ -8455,6 +8461,7 @@ export default function AppBuilderEditor({
                                                 setPreviewIssue(payload?.issue || null);
                                                 setPreviewIssueDiagnostics(payload?.diagnostics || null);
                                                 setPreviewIssueFailure(normalizePreviewFailureContract(payload?.failure));
+                                                setPreviewIssuePreviewCode(payload?.previewCode || null);
                                                 setPreviewIssueActionLabel(payload?.recommendedActionLabel || null);
                                             }}
                                             onNavigatePathChange={handlePreviewRouteChange}
