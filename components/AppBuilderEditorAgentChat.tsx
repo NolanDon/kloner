@@ -1060,6 +1060,7 @@ const NEXT_EDIT_SUGGESTION_SETS = [
 
 
 export default function AppBuilderEditorAgentChat({ appId, files, currentFile, onFileEdit, onFilesReplace, onRestoreApplied, creditError, previewReady, previewIssue, previewIssueActionLabel, onPreviewIssueAction, onPreviewIssueFixRequest, onUserMessageSent, onIntroSequenceComplete, onRequestUpgradePaywall, topupModalTrigger, welcomeContext, agentMode = "v2" }: AppBuilderEditorAgentChatProps) {
+    const [previewIssueDismissedForAppId, setPreviewIssueDismissedForAppId] = useState<string | null>(null);
     const [imageAttachments, setImageAttachments] = useState<AgentImageAttachment[]>([]);
     const [uploadingImage, setUploadingImage] = useState(false);
     const [attachmentError, setAttachmentError] = useState<string | null>(null);
@@ -1427,12 +1428,35 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
     const latestSummaryFeedbackContextRef = useRef<SummarySearchFeedbackContext | null>(null);
     const previewIssueText = String(previewIssue || '').trim();
     const hasPreviewIssue = Boolean(previewIssueText);
+    const shouldShowPreviewIssue = hasPreviewIssue && previewIssueDismissedForAppId !== appId;
     const previewIssueSummary = previewIssueText.split(/\r?\n/).map((line) => line.trim()).find(Boolean) || "Something went wrong building website.";
     const showPreviewLoadingNotice = !PRODUCTION_AGENT_CHAT_BLOCKED && previewReady === false && !freeCompileFixContext && !hasPreviewIssue;
     const chatDisabled = PRODUCTION_AGENT_CHAT_BLOCKED;
     // Contract gate is owned by the parent editor; chat only renders Fix with AI
     // when the gated callback is provided.
     const hasPreviewIssueFixRequest = typeof onPreviewIssueFixRequest === "function";
+
+    useEffect(() => {
+        if (!appId) {
+            setPreviewIssueDismissedForAppId(null);
+            return;
+        }
+        try {
+            const key = `kloner:preview-issue-dismissed:${appId}`;
+            setPreviewIssueDismissedForAppId(window.localStorage.getItem(key) === "true" ? appId : null);
+        } catch {
+            setPreviewIssueDismissedForAppId(null);
+        }
+    }, [appId]);
+
+    const dismissPreviewIssue = useCallback(() => {
+        setPreviewIssueDismissedForAppId(appId);
+        try {
+            window.localStorage.setItem(`kloner:preview-issue-dismissed:${appId}`, "true");
+        } catch {
+            // Keep this dismissal for the current editor session if storage is unavailable.
+        }
+    }, [appId]);
 
     const didSyncSupabasePreviewEnvRef = useRef(false);
 
@@ -9308,7 +9332,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                             </div>
                         </div>
                     </div>
-                ) : hasPreviewIssue ? (
+                ) : shouldShowPreviewIssue ? (
                     <div className="app-builder-chat-notice app-builder-chat-notice-error mb-3 rounded-2xl border border-rose-200 bg-[linear-gradient(180deg,rgba(255,241,242,0.98),rgba(255,255,255,1))] px-3 py-3 shadow-[0_12px_32px_rgba(244,63,94,0.10)] sm:px-4">
                         <div className="flex items-center gap-3">
                             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-rose-100 text-rose-700 ring-1 ring-rose-200 sm:h-10 sm:w-10">
@@ -9343,6 +9367,13 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                             Fix with AI
                                         </button>
                                     ) : null}
+                                    <button
+                                        type="button"
+                                        onClick={dismissPreviewIssue}
+                                        className="inline-flex shrink-0 items-center rounded-full px-2 py-1.5 text-xs font-medium text-neutral-400 transition hover:bg-white/5 hover:text-neutral-200"
+                                    >
+                                        Do not show again
+                                    </button>
                                 </div>
                             </div>
                         </div>

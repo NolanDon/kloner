@@ -5827,21 +5827,6 @@ export default function NavBar() {
           <button type="button" aria-label="Dismiss preview notice" onClick={() => setRuntimeObservationUnavailable(false)}>×</button>
         </div>
       ) : null}
-      {runtimePreviewFailure ? (
-        <div role="alert" className="border-b border-amber-200 bg-amber-50 p-4 text-sm text-neutral-900">
-          <p>{runtimePreviewFailure.message}</p>
-          <div className="mt-3 flex gap-2">
-            <button type="button" className="rounded-full border px-3 py-1" onClick={() => hardReloadPreview('runtime_blank_retry')}>Refresh preview</button>
-            <button type="button" className="rounded-full bg-accent px-3 py-1 text-white disabled:opacity-50" disabled={isFixWithAiCoolingDown} onClick={() => {
-              startFixWithAiCooldown();
-              const issue = runtimePreviewFailure;
-              onCompileErrorFixRequest?.({ appId, code: issue.code, actionType: 'quick_fix_compile', autoSend: true,
-                compileError: issue.failure.compileError! });
-            }}>Investigate with AI</button>
-          </div>
-          <details className="mt-2"><summary>Technical details</summary><pre className="max-h-48 overflow-auto whitespace-pre-wrap text-xs">{runtimePreviewFailure.detail}</pre></details>
-        </div>
-      ) : null}
       {compileErrorState && !error ? (
         <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/20 px-4">
           <div className="w-full max-w-2xl rounded-2xl border border-black/10 bg-white shadow-2xl">
