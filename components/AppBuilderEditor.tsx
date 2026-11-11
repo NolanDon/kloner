@@ -31,7 +31,7 @@ import { compressImageForUpload } from "@/src/lib/clientImageCompression";
 import { sanitizeImageName } from "./helpers";
 import { AnimatePresence, motion } from "framer-motion";
 import { detectProjectFramework, shouldPreserveRuntimeScripts } from "@/src/lib/projectFramework";
-import { summarizePreviewIssues } from "./previewIssueSummary";
+import { buildPreviewIssueEvidence, summarizePreviewIssues } from "./previewIssueSummary";
 import { normalizePreviewApplyResponse } from "@/src/lib/appEmbeddingsClient";
 import { getResponsiveUiScale } from "@/src/lib/uiScale";
 import {
@@ -2877,6 +2877,7 @@ export default function AppBuilderEditor({
             availableAssets?: string[];
             previewCode?: string | null;
         };
+        previewDiagnostics?: unknown;
         compileError: {
             summary: string;
             detail: string;
@@ -2950,6 +2951,7 @@ export default function AppBuilderEditor({
             missingFiles,
             missingFileCount: missingFiles.length,
             previewIssueDiagnostics: safeParseDiagnostics(previewIssueDiagnostics),
+            priorityPreviewEvidence: buildPreviewIssueEvidence(previewIssueDiagnostics, previewIssueCounts),
             previewIssueFixDecision,
         };
 
@@ -2959,6 +2961,7 @@ export default function AppBuilderEditor({
             actionType: "quick_fix_compile",
             fixAction: "preview_issue_fix",
             autoSend: true,
+            previewDiagnostics: buildPreviewIssueEvidence(previewIssueDiagnostics, previewIssueCounts),
             metadata: previewIssuePreviewCode ? { previewCode: previewIssuePreviewCode } : undefined,
             compileError: {
                 summary: "Preview hit an error",
@@ -2966,7 +2969,7 @@ export default function AppBuilderEditor({
                 fingerprint,
             },
         });
-    }, [appId, app?.files, autoPreviewError, canFixPreviewIssueWithAi, handleCompileErrorFixRequest, previewError, previewIssue, previewIssueDiagnostics, previewIssueFailure?.errorClass, previewIssueFixDecision, previewIssuePreviewCode, projectFramework]);
+    }, [appId, app?.files, autoPreviewError, canFixPreviewIssueWithAi, handleCompileErrorFixRequest, previewError, previewIssue, previewIssueCounts, previewIssueDiagnostics, previewIssueFailure?.errorClass, previewIssueFixDecision, previewIssuePreviewCode, projectFramework]);
 
     const effectiveDeployBanner = deployBannerFromRoute || deployBannerFromApp;
 

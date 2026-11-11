@@ -39,6 +39,7 @@ export function summarizeRestorePointDiff(detail: RestorePointDiffDetail | null 
     return paths.map((path) => {
         const beforeText = String(detail.before?.[path] ?? "");
         const afterText = String(detail.after?.[path] ?? "");
+        if (beforeText === afterText) return null;
         const delta = countLineDelta(beforeText, afterText);
         return {
             path,
@@ -47,7 +48,7 @@ export function summarizeRestorePointDiff(detail: RestorePointDiffDetail | null 
             beforeLines: normalizeLines(beforeText).length,
             afterLines: normalizeLines(afterText).length,
         };
-    });
+    }).filter((entry): entry is Exclude<typeof entry, null> => entry !== null);
 }
 
 export function buildRestorePointDiffPreview(detail: RestorePointDiffDetail | null | undefined, path: string): { before: string; after: string } | null {

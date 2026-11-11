@@ -324,6 +324,51 @@ function shouldUseUrlScanSummary(event: Pick<StoredEvent, "route" | "service" | 
     );
 }
 
+function compactUrlScanSlackText(event: StoredEvent): string {
+    const extra = (event.extra && typeof event.extra === "object") ? event.extra as any : {};
+    const url = String(extra.url || extra.requestContext?.url || event.url || "");
+    let linkedUrl = cleanContextValue(url, 220);
+    try {
+        const parsed = new URL(url);
+        if (parsed.protocol === "http:" || parsed.protocol === "https:") {
+            linkedUrl = `<${parsed.toString()}|${cleanContextValue(parsed.hostname, 100)}>`;
+        }
+    } catch {
+        // Keep the escaped plain URL when the event does not contain a valid URL
+    }
+
+    const fields: string[] = [];
+    const action = event.action || "";
+    const status = typeof event.statusCode === "number" ? String(event.statusCode) : "";
+    const code = cleanContextValue(extra.backendCode ?? extra.upstreamCode ?? extra.responseCode ?? extra.code, 100);
+    const reason = cleanContextValue(extra.failureReason ?? extra.backendMessage ?? extra.upstreamMessage ?? extra.responseError ?? extra.reason, 160);
+    const requestId = cleanContextValue(extra.backendRequestId ?? extra.upstreamRequestId ?? extra.reqId ?? event.requestId, 100);
+
+    if (action === "url_scan_failed") {
+        fields.push(`Failed${status ? ` (${status})` : ""}`);
+        if (code) fields.push(code);
+        if (reason) fields.push(reason);
+    } else if (action === "url_scan_accepted") {
+        fields.push(`Accepted${status ? ` (${status})` : ""}`);
+        if (code) fields.push(code);
+    } else if (action === "url_scan_succeeded") {
+        fields.push("Completed");
+    } else {
+        fields.push("Started");
+    }
+
+    if (linkedUrl) fields.push(linkedUrl);
+    if (requestId) fields.push(`req ${requestId}`);
+    if (event.userId) fields.push(`user ${cleanContextValue(event.userId, 80)}`);
+    if (event.occurredAt) {
+        const timestamp = new Date(event.occurredAt);
+        fields.push(Number.isNaN(timestamp.getTime())
+            ? cleanContextValue(event.occurredAt, 24)
+            : `${timestamp.toISOString().slice(11, 19)}Z`);
+    }
+    return fields.join(" · ");
+}
+
 function toSlackBlocks(event: StoredEvent, eventId: string) {
     const route = event.route || event.page || "n/a";
     const user = event.userId || (event.extra?.identityStatus ? `unverified (${event.extra.identityStatus})` : "anonymous");
@@ -405,30 +450,35 @@ function toSlackBlocks(event: StoredEvent, eventId: string) {
                 emoji: true,
             },
         },
-        {
+        ...(isUrlScan ? [{
             type: "section",
-            text: {
-                type: "mrkdwn",
-                text: truncate(`*Message:* ${message}`, MAX_TEXT_CHARS),
+            text: { type: "mrkdwn", text: truncate(compactUrlScanSlackText(event), MAX_TEXT_CHARS) },
+        }] : [
+            {
+                type: "section",
+                text: {
+                    type: "mrkdwn",
+                    text: truncate(`*Message:* ${message}`, MAX_TEXT_CHARS),
+                },
             },
-        },
-        {
-            type: "section",
-            text: {
-                type: "mrkdwn",
-                text: truncate(details, MAX_TEXT_CHARS),
+            {
+                type: "section",
+                text: {
+                    type: "mrkdwn",
+                    text: truncate(details, MAX_TEXT_CHARS),
+                },
             },
-        },
+        ]),
     ];
 
-    if (contextBlock) {
+    if (!isUrlScan && contextBlock) {
         const parts = oauthDetails ? chunkString(contextBlock, MAX_TEXT_CHARS) : [truncate(contextBlock, MAX_TEXT_CHARS)];
         for (const part of parts) {
             blocks.push({ type: "section", text: { type: "mrkdwn", text: part } });
         }
     }
 
-    if (event.url && verboseSlackDetails) {
+    if (!isUrlScan && event.url && verboseSlackDetails) {
         blocks.push({
             type: "section",
             text: {
@@ -438,7 +488,7 @@ function toSlackBlocks(event: StoredEvent, eventId: string) {
         });
     }
 
-    if (stack && verboseSlackDetails) {
+    if (!isUrlScan && stack && verboseSlackDetails) {
         const stackChunks = chunkString(stack, MAX_STACK_BLOCK_CHARS);
         stackChunks.forEach((part, index) => {
             const label = stackChunks.length > 1 ? `*Stack (${index + 1}/${stackChunks.length}):*` : "*Stack:*";
@@ -452,7 +502,7 @@ function toSlackBlocks(event: StoredEvent, eventId: string) {
         });
     }
 
-    if (event.extra && Object.keys(event.extra).length > 0 && verboseSlackDetails) {
+    if (!isUrlScan && event.extra && Object.keys(event.extra).length > 0 && verboseSlackDetails) {
         let debugJson = "";
         try {
             debugJson = JSON.stringify(event.extra, null, 2);
@@ -501,7 +551,7 @@ async function postToSlack(event: StoredEvent, eventId: string) {
 
     const body: Record<string, unknown> = {
         text: event.action?.startsWith("url_scan_")
-            ? event.message
+            ? compactUrlScanSlackText(event)
             : withAlertLabel(event, `${event.severity.toUpperCase()}${typeof event.statusCode === "number" ? ` (${event.statusCode})` : ""} ${event.message}`),
         unfurl_links: false,
         unfurl_media: false,

@@ -364,6 +364,7 @@ type CompileErrorQuickFixContext = {
         availableAssets?: string[];
         previewCode?: string | null;
     } | null;
+    previewDiagnostics?: unknown;
     compileError: {
         summary: string;
         detail: string;
@@ -6238,8 +6239,10 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                     repairContext: opts?.forcedWorkspaceRepairContext || (isFreeCompileFixMode && activeCompileFixContext ? {
                         previewCode: activeCompileFixContext.metadata?.previewCode || "",
                         code: activeCompileFixContext.compileError.fingerprint.startsWith('white_screen:') ? 'PREVIEW_WHITE_SCREEN' : 'PREVIEW_COMPILE_ERROR',
+                        fixAction: activeCompileFixContext.fixAction || 'preview_issue_fix',
                         message: activeCompileFixContext.compileError.summary,
                         stderr: activeCompileFixContext.compileError.detail,
+                        previewDiagnostics: activeCompileFixContext.previewDiagnostics || null,
                     } : null),
                     conversationHistory,
                     attachments: requestAttachments,
@@ -7483,6 +7486,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                     availableAssets: Array.isArray(detail.metadata.availableAssets) ? detail.metadata.availableAssets.map((value: unknown) => String(value || "").trim()).filter(Boolean) : undefined,
                     previewCode: typeof detail.metadata.previewCode === "string" ? detail.metadata.previewCode.trim() : null,
                 } : null,
+                previewDiagnostics: detail?.previewDiagnostics && typeof detail.previewDiagnostics === "object" ? detail.previewDiagnostics : null,
                 compileError: {
                     summary,
                     detail: detailText,

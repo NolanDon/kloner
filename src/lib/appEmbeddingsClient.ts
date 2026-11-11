@@ -30,6 +30,7 @@ export type WorkspaceAutonomyRepairContext = {
     command?: string | null;
     stdout?: string | null;
     stderr?: string | null;
+    previewDiagnostics?: unknown;
     changedFiles?: string[] | null;
     restorePointId?: string | null;
 };

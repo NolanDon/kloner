@@ -1,5 +1,15 @@
 type PreviewIssueEvent = { kind?: string; status?: number; method?: string; resourceType?: string; url?: string; message?: string; stack?: string; elapsedMs?: number };
 export type PreviewIssueCounts = { critical: number; warnings: number };
+export type PreviewIssueEvidence = {
+    counts: PreviewIssueCounts;
+    confirmedBlank: boolean;
+    page: Record<string, unknown> | null;
+    criticalEvents: PreviewIssueEvent[];
+    warningEvents: PreviewIssueEvent[];
+    renders: Array<Record<string, unknown>>;
+    omittedCriticalEvents: number;
+    omittedWarningEvents: number;
+};
 const EVENT_ARRAY_KINDS: Record<string, string> = { pageErrors: "exception", consoleErrors: "console_error", httpErrors: "http_error", requestFailures: "request_failure", resourceErrors: "resource_error" };
 function record(value: unknown): Record<string, any> | null { return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, any> : null; }
 function eventKey(event: PreviewIssueEvent): string { return [event.kind, event.method, event.status, event.resourceType, event.url, event.message].map(value => String(value || "").toLowerCase()).join("|"); }
@@ -76,6 +86,37 @@ export function summarizePreviewIssues(rawDiagnostics: string | null | undefined
     if (hasRecordedWarning(root)) warnings.add("preview-warning");
     for (const event of events) (isCritical(event, blank, at) ? critical : warnings).add(eventKey(event));
     return critical.size || warnings.size ? { critical: critical.size, warnings: warnings.size } : null;
+}
+export function buildPreviewIssueEvidence(rawDiagnostics: string | null | undefined, fallbackCounts: PreviewIssueCounts | null = null): PreviewIssueEvidence | null {
+    if (!rawDiagnostics) return fallbackCounts ? { counts: fallbackCounts, confirmedBlank: false, page: null, criticalEvents: [], warningEvents: [], renders: [], omittedCriticalEvents: 0, omittedWarningEvents: 0 } : null;
+    let root: unknown;
+    try { root = JSON.parse(rawDiagnostics); } catch { return fallbackCounts ? { counts: fallbackCounts, confirmedBlank: false, page: null, criticalEvents: [], warningEvents: [], renders: [], omittedCriticalEvents: 0, omittedWarningEvents: 0 } : null; }
+    const events = collectEvents(root);
+    const blank = hasConfirmedBlank(root);
+    const at = blankTime(root);
+    const criticalEvents = events.filter((event) => isCritical(event, blank, at));
+    const warningEvents = events.filter((event) => !isCritical(event, blank, at));
+    const counts = summarizePreviewIssues(rawDiagnostics) || fallbackCounts;
+    if (!counts) return null;
+    const findRuntime = (value: unknown, depth = 0): Record<string, any> | null => {
+        if (depth > 7) return null;
+        if (Array.isArray(value)) { for (const child of value) { const result = findRuntime(child, depth + 1); if (result) return result; } return null; }
+        const item = record(value); if (!item) return null;
+        if (Number(item.version) === 1 && Array.isArray(item.events) && item.page) return item;
+        for (const child of Object.values(item)) { if (child && typeof child === "object") { const result = findRuntime(child, depth + 1); if (result) return result; } }
+        return null;
+    };
+    const runtime = findRuntime(root);
+    return {
+        counts,
+        confirmedBlank: blank,
+        page: runtime?.page ? { blank: runtime.page.blank === true, bodyVisible: runtime.page.bodyVisible === true, visibleElementCount: Number(runtime.page.visibleElementCount || 0), bodyTextLength: Number(runtime.page.bodyTextLength || 0), readyState: String(runtime.page.readyState || "").slice(0, 20) } : null,
+        criticalEvents: criticalEvents.slice(-8),
+        warningEvents: warningEvents.slice(-4),
+        renders: Array.isArray(runtime?.renders) ? runtime.renders.slice(-6).map((render: unknown) => { const item = record(render) || {}; return { elapsedMs: Number(item.elapsedMs || 0) || null, blank: item.blank === true, bodyVisible: item.bodyVisible === true, visibleElementCount: Number(item.visibleElementCount || 0), bodyTextLength: Number(item.bodyTextLength || 0) }; }) : [],
+        omittedCriticalEvents: Math.max(0, criticalEvents.length - 8),
+        omittedWarningEvents: Math.max(0, warningEvents.length - 4),
+    };
 }
 export function compactPreviewIssueRuntime(runtime: unknown): Record<string, unknown> | null {
     const source = record(runtime); if (!source) return null; const events = collectEvents(source); const at = blankTime(source);
