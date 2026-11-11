@@ -12,12 +12,13 @@ import {
     consumeUserCredit,
 } from "../../_lib/credits-server";
 import { shouldRequireEarlyGenerationPaywall } from "../../_lib/earlyGenerationGate";
-import { disableUserForBlockedUrl, getClientIp, isAdultBlockedUrl } from "../../_lib/blockedUrlAbuse";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
 export const revalidate = 0;
+
+const GENERIC_SCAN_FAILURE_MESSAGE = "We couldn’t reach this website right now. Check that it opens publicly, then try again in a moment.";
 
 async function captureUrlScanFailure(params: {
     uid?: string;
@@ -272,15 +273,6 @@ export async function POST(req: NextRequest) {
 
             const normalizedUrl = typeof url === "string" ? validateAndNormalizePublicHttpUrl(url) : null;
             if (!normalizedUrl) {
-                if (typeof url === "string" && url.trim() && isAdultBlockedUrl(url)) {
-                    await disableUserForBlockedUrl({
-                        uid: decoded.uid,
-                        url,
-                        ip: getClientIp(req),
-                        route: "/api/private/generate",
-                        requestId: req.headers?.get?.("x-request-id"),
-                    });
-                }
                 return jsonNoStatusAlert(
                     { error: getPublicHttpUrlRejectionReason(typeof url === "string" ? url : "") || "Invalid URL" },
                     { status: 400 }
@@ -441,20 +433,27 @@ export async function POST(req: NextRequest) {
                             body: null,
                         }
                         : extractDownstreamFailureDetails(r, payload);
+                    const policyBlocked = downstream.code === "SCAN_POLICY_BLOCKED";
                     const domainVerification = status >= 500 && !unexpectedBinaryResponse
                         ? buildDomainVerificationMessage(normalizedUrl)
                         : null;
                     const userError = unexpectedBinaryResponse
                         ? "The scan service returned an image instead of scan results. Please try again."
+                        : policyBlocked
+                            ? GENERIC_SCAN_FAILURE_MESSAGE
                         : domainVerification?.userMessage || downstream.reason;
 
                     await captureUrlScanFailure({
                         uid: decoded.uid,
                         targetUrl: normalizedUrl,
-                        reason: downstream.reason,
+                        reason: policyBlocked ? "site_scan_unavailable" : downstream.reason,
                         statusCode: status,
                         requestId: r.reqId,
-                        downstream: {
+                        downstream: policyBlocked ? {
+                            status: r.status,
+                            code: "SCAN_POLICY_BLOCKED",
+                            requestId: downstream.requestId,
+                        } : {
                             status: r.status,
                             statusText: downstream.statusText,
                             code: downstream.code,
@@ -477,6 +476,24 @@ export async function POST(req: NextRequest) {
                             backendRaw: downstream.raw,
                         },
                     });
+
+                    if (policyBlocked) {
+                        return jsonNoStatusAlert(
+                            {
+                                error: userError,
+                                userMessage: userError,
+                                code: "URL_SCAN_FAILED",
+                            },
+                            {
+                                status,
+                                headers: {
+                                    "x-request-id": r.reqId,
+                                    "cache-control": "no-store",
+                                    "x-observability-skip-status-alert": "1",
+                                },
+                            },
+                        );
+                    }
 
                     return jsonNoStatusAlert(
                         {

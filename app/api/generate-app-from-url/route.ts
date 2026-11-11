@@ -9,10 +9,10 @@ import { peekUserCredit, consumeUserCredit } from "../_lib/credits-server";
 import { validateAndNormalizePublicHttpUrl, getPublicHttpUrlRejectionReason } from "@/src/lib/publicHttpUrl";
 import { captureCriticalEvent } from "@/lib/observability";
 import { shouldRequireEarlyGenerationPaywall } from "../_lib/earlyGenerationGate";
-import { disableUserForBlockedUrl, getClientIp, isAdultBlockedUrl } from "../_lib/blockedUrlAbuse";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+const GENERIC_SCAN_FAILURE_MESSAGE = "We couldn’t reach this website right now. Check that it opens publicly, then try again in a moment.";
 
 function backendConfigHint() {
   const origin = process.env.BACKEND_ORIGIN || process.env.BACKEND_URL || process.env.PUBLIC_ORIGIN || "";
@@ -159,9 +159,6 @@ export async function POST(req: NextRequest) {
     const normalizedUrl = validateAndNormalizePublicHttpUrl(url);
     if (!normalizedUrl) {
       const reason = getPublicHttpUrlRejectionReason(url) || "Invalid URL";
-      if (isAdultBlockedUrl(url)) {
-        await disableUserForBlockedUrl({ uid: decoded.uid, url, ip: getClientIp(req), route: "/api/generate-app-from-url", requestId: req.headers.get("x-request-id") });
-      }
       void reportBlockedUrlAttempt({ uid: decoded.uid, url, reason });
       await reportZipGenerationFailure({
         req,
@@ -476,6 +473,31 @@ export async function POST(req: NextRequest) {
 
       const appData = (appResponse.json || {}) as any;
       const upstreamStatus = appResponse.status || 502;
+
+      if (appData?.code === "SCAN_POLICY_BLOCKED") {
+        await reportZipGenerationFailure({
+          req,
+          uid: decoded.uid,
+          url: normalizedUrl,
+          name,
+          reason: "site_scan_unavailable",
+          statusCode: upstreamStatus,
+          reqId: appResponse.reqId,
+          backendUrl: appResponse.url,
+          backendStatus: upstreamStatus,
+          backendMessage: GENERIC_SCAN_FAILURE_MESSAGE,
+        }).catch(() => null);
+
+        return NextResponse.json(
+          {
+            error: GENERIC_SCAN_FAILURE_MESSAGE,
+            userMessage: GENERIC_SCAN_FAILURE_MESSAGE,
+            code: "URL_SCAN_FAILED",
+            reqId: appResponse.reqId,
+          },
+          { status: upstreamStatus >= 400 ? upstreamStatus : 403 },
+        );
+      }
 
       if (
         upstreamStatus === 402 &&
