@@ -8346,7 +8346,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                         if (summary.length === 0) return null;
 
                                         return (
-                                            <div className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
+                                            <div className="rounded-2xl bg-white p-4 shadow-sm">
                                                 <div className="space-y-3">
                                                     {summary.map((entry) => (
                                                         <button
