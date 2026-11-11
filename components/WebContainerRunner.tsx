@@ -22,14 +22,13 @@ import {
 import {
   canShowPreviewFixWithAi,
   mapPreviewRecommendedActionLabel,
-  isReadyPreviewWithRuntimeWarning,
   normalizePreviewGenerationContract,
   mapPreviewUserActionLabel,
   normalizePreviewFailureContract,
   type PreviewFailureContract,
   type PreviewFailureUserAction,
 } from './previewFailureContract';
-import { compactPreviewBrowserFindings, getPreviewInspectionOrigin, readPreviewInspectionResult, type PreviewBlockingOverlay, type PreviewRuntimeDiagnostic } from './previewInspection';
+import { getPreviewInspectionOrigin, readPreviewInspectionResult, type PreviewBlockingOverlay } from './previewInspection';
 import { inspectPreviewBundleAssets } from './previewBundleDiagnostics';
 
 const getStoredContainerCode = async (appId: string, user: any): Promise<string | null> => {
@@ -1136,7 +1135,6 @@ export default function WebContainerRunner({ appId, files, filesReady = true, is
     alertKey?: string;
     deduped?: boolean;
     backend?: any;
-    browserFindings?: Record<string, unknown>;
   }) => {
     try {
       const headers = await getAuthenticatedHeaders();
@@ -1219,7 +1217,6 @@ export default function WebContainerRunner({ appId, files, filesReady = true, is
     const backendContext = extractTimeoutBackendContext(payload.backendStatusData || lastBackendStatusRef.current || null);
     const backend: any = backendContext.backend;
     const backendDebug = (backend?.debug && typeof backend.debug === 'object' ? backend.debug : {}) as Record<string, any>;
-    const browserFindings = compactPreviewBrowserFindings(payload.backendStatusData || null);
 
     const debugPayload = {
       appId: payload.appId,
@@ -1228,7 +1225,6 @@ export default function WebContainerRunner({ appId, files, filesReady = true, is
       requestId: payload.requestId || backendContext.requestId || null,
       jobId: payload.jobId || backendContext.jobId || null,
       correlationIds: payload.correlationIds || null,
-      browserFindings,
       elapsedMs: typeof payload.elapsedMs === 'number' ? payload.elapsedMs : null,
       backend: {
         status: backend?.status || null,
@@ -1271,7 +1267,6 @@ export default function WebContainerRunner({ appId, files, filesReady = true, is
       alertKey,
       deduped: false,
       backend: debugPayload.backend,
-      browserFindings: debugPayload.browserFindings || undefined,
     });
 
     return { sent: true, deduped: false, alertKey };
@@ -1371,7 +1366,6 @@ export default function WebContainerRunner({ appId, files, filesReady = true, is
     visibleElementCount?: number;
     titleText?: string | null;
     blockingOverlay?: PreviewBlockingOverlay | null;
-    runtimeDiagnostics?: PreviewRuntimeDiagnostic[];
   }) => {
     if (lastWhiteScreenReportKeyRef.current === key) return;
     lastWhiteScreenReportKeyRef.current = key;
@@ -1388,7 +1382,6 @@ export default function WebContainerRunner({ appId, files, filesReady = true, is
     if (payload.availableScriptFiles?.length) detailLines.push(`availableScripts=${payload.availableScriptFiles.slice(0, 12).join(', ')}`);
     if (payload.bodyText) detailLines.push(`bodyText=${payload.bodyText.slice(0, 220)}`);
     if (payload.htmlSnippet) detailLines.push(`html=${payload.htmlSnippet.slice(0, 220)}`);
-    if (payload.runtimeDiagnostics?.length) detailLines.push(`browserDiagnostics=${JSON.stringify(payload.runtimeDiagnostics.slice(0, 20)).slice(0, 5_000)}`);
 
     const hasMissingAssets = Boolean(payload.missingScriptSrcs?.length);
     const whiteScreenFailure: PreviewFailureContract = {
@@ -1442,7 +1435,6 @@ export default function WebContainerRunner({ appId, files, filesReady = true, is
         visibleElementCount: payload.visibleElementCount ?? null,
         titleText: payload.titleText || null,
         blockingOverlay: payload.blockingOverlay || null,
-        runtimeDiagnostics: payload.runtimeDiagnostics || [],
       },
       failure: whiteScreenFailure,
       debug: {
@@ -1466,7 +1458,6 @@ export default function WebContainerRunner({ appId, files, filesReady = true, is
           scriptSrcs: payload.scriptSrcs || [],
           missingScriptSrcs: payload.missingScriptSrcs || [],
           availableScriptFiles: payload.availableScriptFiles || [],
-          runtimeDiagnostics: payload.runtimeDiagnostics || [],
         }, null, 2),
         failure: whiteScreenFailure,
         recommendedActionLabel: hasMissingAssets ? 'Retry' : 'Refresh',
@@ -1623,7 +1614,6 @@ export default function WebContainerRunner({ appId, files, filesReady = true, is
         iframeWindow: iframeRef.current?.contentWindow || null,
         previewUrl: pending.previewUrl,
         requestId: pending.requestId,
-        appId,
       });
       if (!result) return;
       activeWhiteScreenInspectionRef.current = null;
@@ -1644,7 +1634,6 @@ export default function WebContainerRunner({ appId, files, filesReady = true, is
         visibleElementCount: result.visibleElementCount,
         titleText: result.title || null,
         blockingOverlay: overlay,
-        runtimeDiagnostics: result.runtimeDiagnostics,
       });
     };
     window.addEventListener('message', onPreviewInspection);
@@ -1763,7 +1752,6 @@ export default function WebContainerRunner({ appId, files, filesReady = true, is
   }, [appId]);
 
   const getCompileErrorStateFromStatus = useCallback((code: string, statusData: any) => {
-    if (isReadyPreviewWithRuntimeWarning(statusData)) return null;
     const failure = normalizePreviewFailureContract(statusData);
     if (!failure) return null;
     if (!canShowPreviewFixWithAi(failure)) return null;

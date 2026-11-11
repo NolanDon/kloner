@@ -31,13 +31,6 @@ export type PreviewGenerationContract = {
   error: Record<string, any> | null;
 };
 
-export const MAX_AUTOMATIC_PREVIEW_FIX_PROMPT_CHARS = 12_000;
-
-export function limitEditorAgentPrompt(value: unknown, { previewRepair = false, maxChars = 600 } = {}): string {
-  const limit = previewRepair ? MAX_AUTOMATIC_PREVIEW_FIX_PROMPT_CHARS : Math.max(1, Number(maxChars) || 600);
-  return String(value || '').slice(0, limit);
-}
-
 export type PreviewFailureContract = {
   errorClass: PreviewFailureErrorClass;
   aiFixEligible: boolean;
@@ -107,12 +100,6 @@ function asStringArray(value: unknown): unknown[] {
   return Array.isArray(value) ? value.slice() : [];
 }
 
-export function isReadyPreviewWithRuntimeWarning(rawInput: unknown): boolean {
-  const rawObject = asRecord(rawInput);
-  if (!rawObject || !asRecord(rawObject.startupRuntimeWarningDetails)) return false;
-  return rawObject.ready === true || String(rawObject.status || '').trim().toLowerCase() === 'ready';
-}
-
 function getPreviewGenerationStatus(raw: Record<string, any>): PreviewGenerationStatus {
   const status = String(raw.status || raw.state || raw.phase || raw.stage || "").trim().toLowerCase();
   if (status === "processing" || status === "ready" || status === "warning" || status === "error") {
@@ -128,14 +115,12 @@ export function normalizePreviewGenerationContract(rawInput: unknown): PreviewGe
   const rawObject = asRecord(rawInput);
   if (!rawObject) return null;
 
-  const startupRuntimeWarning = asRecord(rawObject.startupRuntimeWarningDetails);
   const warning = asRecord(rawObject.warning);
   const error = asRecord(rawObject.error);
   const warnings = asStringArray(rawObject.warnings);
 
-  const status = startupRuntimeWarning ? "warning" : getPreviewGenerationStatus(rawObject);
+  const status = getPreviewGenerationStatus(rawObject);
   const userMessage =
-    asString(startupRuntimeWarning?.message) ||
     asString(rawObject.userMessage) ||
     asString(rawObject.message) ||
     asString(warning?.userMessage) ||
@@ -145,14 +130,12 @@ export function normalizePreviewGenerationContract(rawInput: unknown): PreviewGe
     null;
 
   const details =
-    (startupRuntimeWarning ? "Browser findings are available for the AI repair" : null) ||
     asString(rawObject.details) ||
     asString(warning?.details) ||
     asString(error?.details) ||
     null;
 
   const warningCode =
-    (startupRuntimeWarning ? "PREVIEW_STARTUP_RUNTIME_WARNING" : null) ||
     asString(rawObject.warningCode) ||
     asString(warning?.code) ||
     asString(warning?.warningCode) ||
@@ -211,8 +194,7 @@ export function normalizePreviewFailureContract(rawInput: unknown): PreviewFailu
   const rawObject = asRecord(rawInput);
   if (!rawObject) return null;
 
-  const startupRuntimeWarning = asRecord(rawObject.startupRuntimeWarningDetails);
-  const failure = asRecord(rawObject.failure) || asRecord(startupRuntimeWarning?.failure) || rawObject;
+  const failure = asRecord(rawObject.failure) || rawObject;
 
   const errorClassRaw = String(failure.errorClass || "").trim().toLowerCase() as PreviewFailureErrorClass;
   if (!PREVIEW_FAILURE_ERROR_CLASSES.has(errorClassRaw)) return null;
