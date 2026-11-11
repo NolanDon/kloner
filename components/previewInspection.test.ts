@@ -84,6 +84,7 @@ describe('preview inspection messages', () => {
       status: 404,
       url: 'https://backend.leadconnectorhq.com/funnels/page/data',
     });
+    expect(inspected?.runtimeDiagnostics[0].stack).toContain('https://preview.kloner.app/assets/page.js:40:2');
     expect(JSON.stringify(inspected)).not.toMatch(/secret-value|private/);
     expect(readPreviewInspectionResult({
       source: iframeWindow,

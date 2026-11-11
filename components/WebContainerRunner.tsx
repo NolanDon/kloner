@@ -29,7 +29,7 @@ import {
   type PreviewFailureContract,
   type PreviewFailureUserAction,
 } from './previewFailureContract';
-import { getPreviewInspectionOrigin, readPreviewInspectionResult, type PreviewBlockingOverlay, type PreviewRuntimeDiagnostic } from './previewInspection';
+import { compactPreviewBrowserFindings, getPreviewInspectionOrigin, readPreviewInspectionResult, type PreviewBlockingOverlay, type PreviewRuntimeDiagnostic } from './previewInspection';
 import { inspectPreviewBundleAssets } from './previewBundleDiagnostics';
 
 const getStoredContainerCode = async (appId: string, user: any): Promise<string | null> => {
@@ -1136,6 +1136,7 @@ export default function WebContainerRunner({ appId, files, filesReady = true, is
     alertKey?: string;
     deduped?: boolean;
     backend?: any;
+    browserFindings?: Record<string, unknown>;
   }) => {
     try {
       const headers = await getAuthenticatedHeaders();
@@ -1218,6 +1219,7 @@ export default function WebContainerRunner({ appId, files, filesReady = true, is
     const backendContext = extractTimeoutBackendContext(payload.backendStatusData || lastBackendStatusRef.current || null);
     const backend: any = backendContext.backend;
     const backendDebug = (backend?.debug && typeof backend.debug === 'object' ? backend.debug : {}) as Record<string, any>;
+    const browserFindings = compactPreviewBrowserFindings(payload.backendStatusData || null);
 
     const debugPayload = {
       appId: payload.appId,
@@ -1226,6 +1228,7 @@ export default function WebContainerRunner({ appId, files, filesReady = true, is
       requestId: payload.requestId || backendContext.requestId || null,
       jobId: payload.jobId || backendContext.jobId || null,
       correlationIds: payload.correlationIds || null,
+      browserFindings,
       elapsedMs: typeof payload.elapsedMs === 'number' ? payload.elapsedMs : null,
       backend: {
         status: backend?.status || null,
@@ -1268,6 +1271,7 @@ export default function WebContainerRunner({ appId, files, filesReady = true, is
       alertKey,
       deduped: false,
       backend: debugPayload.backend,
+      browserFindings: debugPayload.browserFindings || undefined,
     });
 
     return { sent: true, deduped: false, alertKey };

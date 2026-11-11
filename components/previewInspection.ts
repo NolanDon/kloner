@@ -43,7 +43,11 @@ function safeDiagnosticUrl(value: unknown): string {
 function safeDiagnosticText(value: unknown): string {
   return String(value || '')
     .slice(0, 1000)
-    .replace(/https?:\/\/[^\s"'<>)}\]]+/gi, (candidate) => safeDiagnosticUrl(candidate.replace(/[.,;:]$/, '')) || '[URL]')
+    .replace(/https?:\/\/[^\s"'<>)}\]]+/gi, (candidate) => {
+      const locationSuffix = candidate.match(/:(\d+):(\d+)$/)?.[0] || '';
+      const withoutLocation = locationSuffix ? candidate.slice(0, -locationSuffix.length) : candidate;
+      return `${safeDiagnosticUrl(withoutLocation.replace(/[.,;:]$/, '')) || '[URL]'}${locationSuffix}`;
+    })
     .replace(/\bBearer\s+[^\s,;]+/gi, 'Bearer [redacted]')
     .replace(/((?:token|secret|api[_-]?key|authorization|password)\s*[=:]\s*)[^\s&;,]+/gi, '$1[redacted]')
     .slice(0, 800);

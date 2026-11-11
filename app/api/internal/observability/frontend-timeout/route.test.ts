@@ -99,6 +99,50 @@ test('a frontend preview timeout is an error with a human sentence and structure
     });
 });
 
+test('a white-screen alert includes bounded browser findings with URLs and secrets sanitized', async () => {
+    captureCriticalEventMock.mockClear();
+    const { POST } = await import('./route');
+    const response: any = await POST({ headers: new Headers(), json: async () => ({
+        action: 'preview_white_screen_detected',
+        severity: 'warning',
+        statusCode: 200,
+        status: 'white_screen',
+        message: 'The preview frame loaded, but its page is blank.',
+        appId: 'draftapp_test',
+        browserFindings: {
+            reason: 'blank page',
+            page: { bodyVisible: false, visibleElementCount: 0, readyState: 'complete' },
+            runtimeDiagnostics: [{
+                kind: 'http_error',
+                resourceType: 'fetch',
+                method: 'GET',
+                status: 404,
+                url: 'https://backend.leadconnectorhq.com/funnels/page/data?stepId=private-value&token=secret-value',
+                stack: 'at getPage (https://preview.kloner.app/assets/funnel.js?session=private-value:91:3)',
+            }],
+        },
+    }) } as any);
+
+    expect(response.status).toBe(200);
+    const event = captureCriticalEventMock.mock.calls[0][0];
+    expect(event.extra.browserFindings).toMatchObject({
+        reason: 'blank page',
+        page: { bodyVisible: false, visibleElementCount: 0 },
+        runtimeDiagnostics: [{
+            kind: 'http_error',
+            resourceType: 'fetch',
+            method: 'GET',
+            status: 404,
+            url: 'https://backend.leadconnectorhq.com/funnels/page/data',
+            stack: expect.stringContaining('https://preview.kloner.app/assets/funnel.js:91:3'),
+        }],
+    });
+    expect(event.extra.debugDetails).toContain('https://backend.leadconnectorhq.com/funnels/page/data');
+    expect(event.extra.debugDetails).toContain('https://preview.kloner.app/assets/funnel.js:91:3');
+    expect(event.extra.debugDetails).not.toMatch(/private-value|secret-value/);
+    expect(JSON.stringify(event.extra.browserFindings)).not.toMatch(/private-value|secret-value/);
+});
+
 test('a preview startup payload-limit failure is explicitly sent to Slack observability', async () => {
     captureCriticalEventMock.mockClear();
     const { POST } = await import('./route');
