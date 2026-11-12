@@ -71,12 +71,13 @@ html[data-moqup-promo-dismissed="true"] .moqup-referral-banner {
 .hero-url-shell-right {
     background:
         linear-gradient(rgba(32, 25, 22, 0.76), rgba(32, 25, 22, 0.76)) padding-box,
-        linear-gradient(105deg, rgba(37, 30, 26, 0.94) 0%, rgba(137, 87, 52, 0.36) 33%, rgba(255, 170, 79, 0.42) 62%, rgba(255, 139, 43, 0.82) 85%, #ffb347 100%) border-box;
-    box-shadow: 0 20px 54px rgba(22, 14, 9, 0.45), 8px 0 28px rgba(255, 147, 47, 0.35), 0 0 20px rgba(255, 141, 33, 0.18);
+        linear-gradient(105deg, rgba(37, 30, 26, 0.94) 0%, rgba(137, 111, 91, 0.32) 33%, rgba(255, 238, 211, 0.34) 62%, rgba(255, 249, 237, 0.78) 85%, #fffaf0 100%) border-box;
+    box-shadow: 0 20px 54px rgba(22, 14, 9, 0.45), 8px 0 28px rgba(255, 250, 240, 0.34), 0 0 20px rgba(255, 255, 255, 0.16);
 }
 
 .hero-url-shell-right::after {
     animation-direction: reverse;
+    background: linear-gradient(105deg, transparent 34%, rgba(255, 255, 255, 0.05) 40%, rgba(255, 255, 255, 0.96) 49%, rgba(255, 248, 235, 0.82) 53%, transparent 64%);
 }
 
 @media (prefers-reduced-motion: reduce) {
