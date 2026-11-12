@@ -1461,7 +1461,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
     const chatDisabled = PRODUCTION_AGENT_CHAT_BLOCKED;
     // Contract gate is owned by the parent editor; chat only renders Fix with AI
     // when the gated callback is provided.
-    const hasPreviewIssueFixRequest = typeof onPreviewIssueFixRequest === "function";
+    const hasPreviewIssueFixRequest = isAdmin && typeof onPreviewIssueFixRequest === "function";
 
     useEffect(() => {
         setDismissedPreviewIssueKey(null);

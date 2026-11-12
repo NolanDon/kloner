@@ -1565,7 +1565,7 @@ export default function AppBuilderEditor({
     isDeleting?: boolean;
     agentMode?: "v2" | "v3";
 }) {
-    const { user, userTier, loading: authLoading } = useAuth();
+    const { user, userTier, isAdmin, loading: authLoading } = useAuth();
     const { showConfirm, showAlert, hideModal } = useModal();
     const isDeletingApp = Boolean(isDeleting);
     const onMissingAppRef = useRef(onMissingApp);
@@ -8370,7 +8370,7 @@ export default function AppBuilderEditor({
                                         </div>
                                     </div>
                                     <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
-                                        {effectiveDeployBanner?.kind === "error" && effectiveDeployBanner.fixAction ? (
+                                        {effectiveDeployBanner?.kind === "error" && effectiveDeployBanner.fixAction && (effectiveDeployBanner.fixAction === "connect_vercel" || isAdmin) ? (
                                             <button
                                                 type="button"
                                                 onClick={handleDeployBannerFixRequest}
@@ -8462,6 +8462,7 @@ export default function AppBuilderEditor({
                                     <div ref={previewHydrationAnchorRef} className="relative h-full w-full p-3">
                                             <WebContainerRunner
                                                 appId={appId}
+                                                adminCanUseFixWithAi={isAdmin}
                                                 files={effectivePreviewFiles}
                                                 filesReady={isPreviewBootReady}
                                                 isDeleting={isDeletingApp}

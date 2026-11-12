@@ -376,6 +376,7 @@ interface WebContainerRunnerProps {
   appId: string;
   files: { [path: string]: { content: string; lastModified: number } };
   previewIssue?: string | null;
+  adminCanUseFixWithAi?: boolean;
   filesReady?: boolean;
   isDeleting?: boolean;
   onFileChange?: (path: string, content: string) => void;
@@ -425,7 +426,7 @@ interface WebContainerRunnerProps {
   onNavigatePathChange?: (path: string | null) => void;
 }
 
-export default function WebContainerRunner({ appId, files, filesReady = true, isDeleting = false, onFileChange, onPreviewReadyChange, onPreviewIssueChange, onBackendReady, onRequestRebuild, onCompileErrorFixRequest, debugPreviewScenario, reloadToken, workspaceRevision, applyToken, restartToken, reconnectToken, forceFreshStart, pollingConfig, navigatePath, navigatePathToken, onNavigatePathChange }: WebContainerRunnerProps) {
+export default function WebContainerRunner({ appId, files, adminCanUseFixWithAi = false, filesReady = true, isDeleting = false, onFileChange, onPreviewReadyChange, onPreviewIssueChange, onBackendReady, onRequestRebuild, onCompileErrorFixRequest, debugPreviewScenario, reloadToken, workspaceRevision, applyToken, restartToken, reconnectToken, forceFreshStart, pollingConfig, navigatePath, navigatePathToken, onNavigatePathChange }: WebContainerRunnerProps) {
 
   type DebugEvent = {
     ts: number;
@@ -5864,7 +5865,7 @@ export default function NavBar() {
               </details>
 
               <div className="flex flex-wrap items-center gap-2">
-                {compileErrorState.canShowFixWithAiCta ? (
+                {adminCanUseFixWithAi && compileErrorState.canShowFixWithAiCta ? (
                   <button
                     type="button"
                     onClick={() => {
