@@ -15,7 +15,7 @@ import { db } from "@/lib/firebase";
 import { doc, onSnapshot } from "firebase/firestore";
 import { useModal } from "@/components/ui/ModalContext";
 import EditPlanJobStatusCard from "@/components/EditPlanJobStatusCard";
-import type { PreviewIssueCounts } from "./previewIssueSummary";
+import { buildPreviewIssueEvidence, type PreviewIssueCounts } from "./previewIssueSummary";
 import {
     applyEditPlanOps,
     extractCompletedEditPlanProposal,
@@ -239,6 +239,7 @@ export type AppBuilderEditorAgentChatProps = {
     previewReady?: boolean;
     previewIssue?: string | null;
     previewIssueCounts?: PreviewIssueCounts | null;
+    previewIssueDiagnostics?: string | null;
     previewIssueActionLabel?: string | null;
     onPreviewIssueAction?: () => void;
     onPreviewIssueFixRequest?: () => void;
@@ -1063,7 +1064,7 @@ const NEXT_EDIT_SUGGESTION_SETS = [
 ];
 
 
-export default function AppBuilderEditorAgentChat({ appId, files, currentFile, onFileEdit, onFilesReplace, onRestoreApplied, creditError, previewReady, previewIssue, previewIssueCounts, previewIssueActionLabel, onPreviewIssueAction, onPreviewIssueFixRequest, onUserMessageSent, onIntroSequenceComplete, onRequestUpgradePaywall, topupModalTrigger, welcomeContext, agentMode = "v2" }: AppBuilderEditorAgentChatProps) {
+export default function AppBuilderEditorAgentChat({ appId, files, currentFile, onFileEdit, onFilesReplace, onRestoreApplied, creditError, previewReady, previewIssue, previewIssueCounts, previewIssueDiagnostics, previewIssueActionLabel, onPreviewIssueAction, onPreviewIssueFixRequest, onUserMessageSent, onIntroSequenceComplete, onRequestUpgradePaywall, topupModalTrigger, welcomeContext, agentMode = "v2" }: AppBuilderEditorAgentChatProps) {
     const [dismissedPreviewIssueKey, setDismissedPreviewIssueKey] = useState<string | null>(null);
     const [imageAttachments, setImageAttachments] = useState<AgentImageAttachment[]>([]);
     const [uploadingImage, setUploadingImage] = useState(false);
@@ -1075,7 +1076,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
     const [showSuggestions, setShowSuggestions] = useState(false);
     const [suggestionSetIndex, setSuggestionSetIndex] = useState(0);
     const suggestionsDismissed = useRef(false);
-    const { user, userTier } = useAuth();
+    const { user, userTier, isAdmin } = useAuth();
     const { showConfirm, showAlert } = useModal();
     const PRO_MONTHLY_PRICE_USD = BASIC_MONTHLY_PRICE_USD;
     const TOPUP_COMING_SOON = false;
@@ -1435,6 +1436,16 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
     const previewIssueKey = `${appId}:${previewIssueText}`;
     const shouldShowPreviewIssue = hasPreviewIssue && dismissedPreviewIssueKey !== previewIssueKey;
     const previewIssueSummary = previewIssueText.split(/\r?\n/).map((line) => line.trim()).find(Boolean) || "Something went wrong building website.";
+    const adminPreviewIssueEvidence = useMemo(
+        () => isAdmin ? buildPreviewIssueEvidence(previewIssueDiagnostics, previewIssueCounts) : null,
+        [isAdmin, previewIssueCounts, previewIssueDiagnostics],
+    );
+    const formatPreviewIssueEvent = (event: { kind?: string; message?: string; url?: string; status?: number; resourceType?: string }) => {
+        const description = String(event.message || "").trim() || String(event.kind || "Preview issue").replaceAll("_", " ");
+        const location = String(event.url || "").trim();
+        const status = Number(event.status || 0);
+        return [description, status ? `HTTP ${status}` : "", location].filter(Boolean).join(" · ").slice(0, 300);
+    };
     const showPreviewLoadingNotice = !PRODUCTION_AGENT_CHAT_BLOCKED && previewReady === false && !freeCompileFixContext && !hasPreviewIssue;
     const chatDisabled = PRODUCTION_AGENT_CHAT_BLOCKED;
     // Contract gate is owned by the parent editor; chat only renders Fix with AI
@@ -9391,6 +9402,20 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                     ) : null}
                                     </div>
                                 </div>
+                                {isAdmin && adminPreviewIssueEvidence && (adminPreviewIssueEvidence.counts.critical > 0 || adminPreviewIssueEvidence.counts.warnings > 0) ? (
+                                    <div className="mt-2 space-y-1 border-t border-rose-200/80 pt-2 text-[11px] leading-snug text-neutral-700 sm:text-xs" aria-label="Preview diagnostic details">
+                                        {adminPreviewIssueEvidence.counts.critical > 0 ? (
+                                            <p><span className="font-semibold text-rose-800">Critical:</span> {adminPreviewIssueEvidence.criticalEvents.length
+                                                ? adminPreviewIssueEvidence.criticalEvents.slice(0, 3).map(formatPreviewIssueEvent).join("; ")
+                                                : "No critical event details were captured."}</p>
+                                        ) : null}
+                                        {adminPreviewIssueEvidence.counts.warnings > 0 ? (
+                                            <p><span className="font-semibold text-amber-800">Warnings:</span> {adminPreviewIssueEvidence.warningEvents.length
+                                                ? adminPreviewIssueEvidence.warningEvents.slice(0, 3).map(formatPreviewIssueEvent).join("; ")
+                                                : "No warning event details were captured."}</p>
+                                        ) : null}
+                                    </div>
+                                ) : null}
                             </div>
                         </div>
                     </div>

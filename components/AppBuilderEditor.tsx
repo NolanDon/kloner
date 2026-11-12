@@ -7986,6 +7986,7 @@ export default function AppBuilderEditor({
                                     previewReady={previewMode !== "webcontainer" ? true : isWebPreviewReady}
                                     previewIssue={previewMode !== "webcontainer" ? null : (previewIssue || autoPreviewError || previewError)}
                                     previewIssueCounts={previewMode !== "webcontainer" ? null : previewIssueCounts}
+                                    previewIssueDiagnostics={previewMode !== "webcontainer" ? null : previewIssueDiagnostics}
                                     previewIssueActionLabel={previewIssueActionLabel}
                                     onPreviewIssueAction={() => {
                                         const normalizedPreviewIssueAction = String(previewIssueActionLabel || "").trim().toLowerCase();
