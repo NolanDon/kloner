@@ -98,7 +98,7 @@ export default function HeroContent({
           {heading ?? <>AI Website Cloner</>}
         </h1>
 
-        <p className="mx-auto mt-[clamp(1rem,2.2vh,1.75rem)] max-w-4xl text-lg font-medium text-white/90 sm:text-xl md:text-2xl lg:text-[1.8rem]">
+        <p className="mx-auto mt-[clamp(1rem,2.2vh,1.75rem)] max-w-4xl text-lg font-medium text-white/90 sm:text-xl md:text-2xl lg:text-[1.65rem]">
           {subhead ?? "Clone a website from a URL, customize it with AI, and launch your new site."}
         </p>
 

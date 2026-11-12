@@ -28,12 +28,12 @@ html[data-moqup-promo-dismissed="true"] .moqup-referral-banner {
 }
 
 .hero-title {
-    font-size: clamp(3.25rem, 11vw, 6rem);
+    font-size: clamp(3rem, 10vw, 5.5rem);
 }
 
 @media (min-width: 768px) {
     .hero-title {
-        font-size: clamp(5rem, 8vw, 9rem);
+        font-size: clamp(4.5rem, 7vw, 8rem);
     }
 }
 
