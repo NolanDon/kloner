@@ -3,8 +3,7 @@ import type { Metadata } from "next";
 import CommunityBuildsClient from "./CommunityBuildsClient";
 import NavBar from "@/components/NavBar";
 import Footer from "@/components/Footer";
-import Image from "next/image";
-import logo from "@/public/images/orange_logo.png";
+import KlonerWordmark from "@/components/KlonerWordmark";
 import { buildMetaDescription } from "@/lib/seo";
 
 const communityBuildsDescription = buildMetaDescription([
@@ -32,15 +31,7 @@ export default function CommunityBuildsPage() {
                         <h1 className="text-[13px] uppercase tracking-[0.1em] text-neutral-500 sm:text-[12px]">
                             See what the community has built with
                         </h1>
-                        <span className="relative inline-block h-[64px] w-[64px] sm:h-[84px] sm:w-[84px]">
-                            <Image
-                                src={logo}
-                                alt="Kloner logo"
-                                fill
-                                sizes="(max-width: 640px) 64px, 84px"
-                                className="object-contain"
-                            />
-                        </span>
+                        <KlonerWordmark className="text-xl sm:text-2xl" />
                     </div>
                 </header>
 

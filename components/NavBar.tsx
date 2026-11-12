@@ -25,9 +25,7 @@ import { useAuth } from "@/src/hooks/useAuth";
 import { signOut, type User } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import { resetAuthClientCaches } from "@/lib/auth-client";
-import Image from "next/image";
-import logo from "@/public/images/logo.png";
-import orangeLogo from "@/public/images/orange_logo.png";
+import KlonerWordmark from "@/components/KlonerWordmark";
 import { useUrlOverlay } from "@/components/UrlOverlayProvider";
 import ThemeToggle from "@/components/ThemeToggle";
 
@@ -165,25 +163,7 @@ export default function NavBar(): JSX.Element {
             href="/"
             className="ml-5 flex items-center gap-0 font-black tracking-tight text-xl md:text-2xl shrink-0"
           >
-            <div className="relative h-[64px] w-[64px] md:h-[90px] md:w-[90px]">
-              <Image
-                src={logo}
-                alt="kloner logo"
-                fill
-                sizes="(min-width: 768px) 90px, 64px"
-                priority
-                className="site-navbar-logo site-navbar-logo-light object-contain"
-              />
-              <Image
-                src={orangeLogo}
-                alt=""
-                fill
-                sizes="(min-width: 768px) 90px, 64px"
-                priority
-                aria-hidden="true"
-                className="site-navbar-logo site-navbar-logo-dark object-contain"
-              />
-            </div>
+            <KlonerWordmark className="text-2xl md:text-3xl" />
           </Link>
 
           {/* Tablet nav */}

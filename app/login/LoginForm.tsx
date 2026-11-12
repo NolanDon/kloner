@@ -4,6 +4,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
+import KlonerWordmark from "@/components/KlonerWordmark";
 import { auth, db } from "@/lib/firebase";
 import {
     GoogleAuthProvider,
@@ -647,7 +648,7 @@ export default function LoginPage(): JSX.Element {
     return (
         <main className="login-theme min-h-[100dvh] overflow-hidden bg-[radial-gradient(circle_at_top_left,_rgba(255,141,33,0.12),_transparent_36%),radial-gradient(circle_at_bottom_right,_rgba(15,23,42,0.08),_transparent_30%),linear-gradient(180deg,_#fffaf6_0%,_#fff_58%,_#fff7f1_100%)] text-black">
             <Link href="/" className="absolute left-4 top-4 z-20 hidden items-center justify-center transition hover:opacity-90 sm:inline-flex sm:left-6 sm:top-6">
-                <Image src="/images/orange_logo.png" alt="Kloner home" width={144} height={144} className="h-20 w-20 object-contain sm:h-20 sm:w-20 lg:h-24 lg:w-24" priority />
+                <KlonerWordmark className="text-3xl sm:text-4xl" />
             </Link>
 
             <section className="grid min-h-[100dvh] w-full grid-cols-1 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,0.78fr)]">

@@ -87,9 +87,9 @@ export default function HeroContent({
       >
         {eyebrow ? <div className="mb-5 hidden text-xs font-semibold uppercase tracking-[0.24em] text-white/75 sm:block" style={{ fontFamily: "var(--font-inter), Inter, sans-serif" }}>{eyebrow}</div> : null}
         <h1
-          className={`hero-title ${displayClassName} mx-auto max-w-[1000px] whitespace-normal leading-[1.1] font-medium tracking-tight text-white`}
+          className={`hero-title ${displayClassName} mx-auto max-w-[1100px] whitespace-normal leading-[1.02] font-extrabold tracking-[-0.055em] text-[#fff8ed]`}
           style={{
-            fontFamily: "var(--font-fraunces), Georgia, serif",
+            fontFamily: "var(--font-inter), Inter, ui-sans-serif, sans-serif",
             WebkitFontSmoothing: "antialiased",
             MozOsxFontSmoothing: "grayscale",
             textRendering: "optimizeLegibility",
@@ -106,10 +106,12 @@ export default function HeroContent({
           <label htmlFor="hero-url-input" className="sr-only">
             Website URL
           </label>
-          <div className="rounded-full bg-white/95 p-2 shadow-[0_20px_50px_rgba(0,0,0,0.3)] ring-1 ring-white/20 backdrop-blur-md">
+          <div className="relative overflow-hidden rounded-full border border-white/35 bg-[rgba(32,25,22,0.68)] p-2 shadow-[0_22px_60px_rgba(22,14,9,0.45)] backdrop-blur-xl">
+            <span aria-hidden="true" className="pointer-events-none absolute -left-10 top-1/2 h-32 w-64 -translate-y-1/2 rounded-full bg-[radial-gradient(ellipse_at_center,rgba(255,191,112,0.46)_0%,rgba(255,141,33,0.2)_38%,rgba(255,141,33,0)_72%)] blur-2xl" />
+            <span aria-hidden="true" className="pointer-events-none absolute inset-y-0 left-0 w-[42%] bg-gradient-to-r from-[#ffb366]/10 to-transparent" />
             <div className="flex items-stretch gap-2">
-              <div className="flex min-h-[60px] flex-1 items-center rounded-full px-5 sm:px-6">
-                <span className="hidden sm:inline text-neutral-400 text-lg font-medium mr-1">
+              <div className="relative flex min-h-[60px] flex-1 items-center rounded-full px-5 sm:px-6">
+                <span className="hidden sm:inline text-white/60 text-lg font-medium mr-1">
                   https://
                 </span>
 
@@ -123,7 +125,7 @@ export default function HeroContent({
                   placeholder="example.com"
                   inputMode="url"
                   autoCapitalize="none"
-                  className="w-full bg-transparent outline-none text-neutral-700 text-base sm:text-lg placeholder:text-neutral-400 font-medium"
+                  className="w-full bg-transparent outline-none text-[#fff8ed] text-base sm:text-lg placeholder:text-white/55 font-medium"
                   autoComplete="off"
                   aria-describedby={error ? errorId : hintId}
                   aria-invalid={Boolean(error)}

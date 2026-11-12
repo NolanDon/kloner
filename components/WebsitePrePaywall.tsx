@@ -6,7 +6,7 @@ import { motion } from "framer-motion";
 import { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ChevronDown, X } from "lucide-react";
-import logo from "@/public/images/orange_logo.png";
+import KlonerWordmark from "@/components/KlonerWordmark";
 import CoinLottieBadge from "@/components/tools/CoinLottieBadge";
 import { STRIPE_TRIAL_DAYS, TRIAL_CTA_LABEL } from "@/src/lib/billingAccess";
 
@@ -350,15 +350,7 @@ export function WebsitePrePaywall({
                             <div className="mt-6 border-t border-neutral-200 pt-4">
                                 <div className="mb-2.5 text-center leading-tight">
                                     <span className="text-[11px] uppercase tracking-[0.1em] text-neutral-500 sm:text-[11px]">
-                                        See what <span className="text-[15px] font-bold text-[rgba(255,141,33,1)]">5000+</span> Kloner members have built <span className="inline-flex items-center gap-0.5 whitespace-nowrap align-middle">with<span className="relative inline-block h-[56px] w-[56px] sm:h-[72px] sm:w-[72px]">
-                                            <Image
-                                                src={logo}
-                                                alt="Kloner logo"
-                                                fill
-                                                sizes="(max-width: 640px) 56px, 72px"
-                                                className="object-contain"
-                                            />
-                                        </span></span>
+                                        See what <span className="text-[15px] font-bold text-[rgba(255,141,33,1)]">5000+</span> Kloner members have built <span className="inline-flex items-center gap-0.5 whitespace-nowrap align-middle">with<KlonerWordmark className="text-base sm:text-lg" /></span>
                                     </span>
                                 </div>
 

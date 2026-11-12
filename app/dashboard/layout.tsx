@@ -12,8 +12,7 @@ import { bootstrapServerSession, resetAuthClientCaches } from "@/lib/auth-client
 import { collection, onSnapshot, DocumentData } from "firebase/firestore";
 import { useAppActivityHeartbeat } from "@/src/hooks/useAppActivityHeartbeat";
 import Link from "next/link";
-import Image from "next/image";
-import logo from "@/public/images/orange_logo.png";
+import KlonerWordmark from "@/components/KlonerWordmark";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   MoreHorizontal,
@@ -404,16 +403,7 @@ function SidebarShell({
           href="/"
           className="flex items-center gap-0.5 font-black tracking-tight text-xl md:text-2xl shrink-0"
         >
-          <div className="relative h-[90px] w-[90px]">
-            <Image
-              src={logo}
-              alt="kloner logo"
-              fill
-              sizes="90px"
-              priority
-              className="object-contain"
-            />
-          </div>
+<KlonerWordmark className="text-2xl md:text-3xl" />
         </Link>
       </div>
 
@@ -554,16 +544,7 @@ function MobileHeader({
           href="/"
           className="flex items-center gap-2 font-black tracking-tight text-lg shrink-0"
         >
-          <div className="relative h-[64px] w-[64px]">
-            <Image
-              src={logo}
-              alt="kloner logo"
-              fill
-              sizes="44px"
-              priority
-              className="object-contain"
-            />
-          </div>
+<KlonerWordmark className="text-xl" />
         </Link>
 
         <div className="flex items-center gap-2">

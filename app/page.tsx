@@ -43,7 +43,7 @@ export default function Page() {
         "@id": "https://kloner.app/#organization",
         name: "Kloner",
         url: "https://kloner.app/",
-        logo: "https://kloner.app/images/orange_logo.png",
+        logo: "https://kloner.app/images/kloner-wordmark.svg",
       },
       {
         "@type": "WebSite",

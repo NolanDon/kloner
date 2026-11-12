@@ -3,7 +3,7 @@
 
 import { useEffect, useState, useMemo, useCallback } from "react";
 import Image from "next/image";
-import logo from "@/public/images/orange_logo.png";
+import KlonerWordmark from "@/components/KlonerWordmark";
 
 type Slide = {
     src: string;
@@ -177,15 +177,7 @@ export default function DeckImageCarousel({
                             <span className="font-sans text-[16px] uppercase tracking-[0.1em] text-neutral-500">
                                 Built With
                             </span>
-                            <span className="relative inline-block h-[72px] w-[72px] shrink-0 sm:h-[92px] sm:w-[92px]">
-                                <Image
-                                    src={logo}
-                                    alt="Kloner logo"
-                                    fill
-                                    sizes="(min-width: 640px) 92px, 72px"
-                                    className="object-contain"
-                                />
-                            </span>
+                            <KlonerWordmark className="text-2xl sm:text-3xl" />
                         </h2>
                     </div>
 
