@@ -29,7 +29,7 @@ export default function TermsPage(): JSX.Element {
                             Terms and Conditions
                         </h1>
                         <p className="mt-2 text-sm text-neutral-600">
-                            Last updated: 29 October 2026
+                            Last updated: 11 November 2026
                         </p>
                     </div>
 
@@ -467,8 +467,14 @@ export default function TermsPage(): JSX.Element {
                                 We may take these actions without prior notice if we believe it
                                 is reasonably necessary to protect third-party rights, comply
                                 with law, or protect Kloner from legal or regulatory risk. We
-                                may also terminate accounts that are subject to repeated or
-                                serious complaints.
+                                review copyright and abuse reports under the process described
+                                in our <a href="/legal/copyright" className="font-medium underline underline-offset-2">Copyright and Abuse Policy</a>.
+                                We keep a record of substantiated notices and other reliable
+                                evidence of infringement associated with an account. In
+                                appropriate circumstances, including repeated or serious
+                                violations, we may suspend or terminate that account. We
+                                consider the available evidence and any response or appeal
+                                before taking action where doing so is practical and lawful.
                             </p>
                         </section>
 

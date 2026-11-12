@@ -13,7 +13,7 @@ export type CookieConsentStatus = "unknown" | "accepted" | "necessary";
 
 type CookieConsentContextValue = {
     status: CookieConsentStatus;
-    acceptNecessaryCookies: () => void;
+    acceptAllCookies: () => void;
     acceptNecessaryOnlyCookies: () => void;
     openCookieSettings: () => void;
 };
@@ -87,7 +87,7 @@ function clearNonEssentialTrackingState() {
 export function CookieConsentProvider({ children }: { children: React.ReactNode }) {
     const [status, setStatus] = useState<CookieConsentStatus>(() => readStoredConsent());
 
-    const acceptNecessaryCookies = () => {
+    const acceptAllCookies = () => {
         persistConsent("accepted");
         setGoogleAnalyticsDisabled(false);
         setStatus("accepted");
@@ -111,7 +111,7 @@ export function CookieConsentProvider({ children }: { children: React.ReactNode 
     };
 
     const value = useMemo(
-        () => ({ status, acceptNecessaryCookies, acceptNecessaryOnlyCookies, openCookieSettings }),
+        () => ({ status, acceptAllCookies, acceptNecessaryOnlyCookies, openCookieSettings }),
         [status],
     );
 
@@ -127,7 +127,7 @@ export function useCookieConsent() {
 }
 
 export function CookieConsentBanner() {
-    const { status, acceptNecessaryCookies, acceptNecessaryOnlyCookies } = useCookieConsent();
+    const { status, acceptAllCookies, acceptNecessaryOnlyCookies } = useCookieConsent();
     const [isMounted, setIsMounted] = useState(false);
 
     useEffect(() => {
@@ -152,20 +152,20 @@ export function CookieConsentBanner() {
                     </div>
                 </div>
 
-                <div className="flex items-center gap-4 sm:justify-end">
+                <div className="grid w-full grid-cols-2 gap-2 sm:w-auto sm:min-w-[280px]">
                     <button
                         type="button"
-                        onClick={acceptNecessaryCookies}
-                        className="rounded-full bg-[#FF8D21] px-6 py-3 text-md font-semibold text-white shadow-sm transition hover:opacity-95"
+                        onClick={acceptAllCookies}
+                        className="min-h-11 rounded-full border border-neutral-300 bg-neutral-50 px-4 py-3 text-sm font-semibold text-neutral-900 transition hover:bg-neutral-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF8D21]"
                     >
                         Accept all
                     </button>
                     <button
                         type="button"
                         onClick={acceptNecessaryOnlyCookies}
-                        className="shrink-0 whitespace-nowrap text-xs text-neutral-600 underline decoration-neutral-400 underline-offset-4 transition hover:text-neutral-900"
+                        className="min-h-11 rounded-full border border-neutral-300 bg-neutral-50 px-4 py-3 text-sm font-semibold text-neutral-900 transition hover:bg-neutral-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF8D21]"
                     >
-                        No, just essential
+                        Reject optional
                     </button>
                 </div>
             </div>

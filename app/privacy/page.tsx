@@ -29,7 +29,7 @@ export default function PrivacyPage(): JSX.Element {
                             Privacy Policy
                         </h1>
                         <p className="mt-2 text-sm text-neutral-600">
-                            Last updated: 29 October 2026
+                            Last updated: 11 November 2026
                         </p>
                     </div>
 
@@ -47,8 +47,8 @@ export default function PrivacyPage(): JSX.Element {
                             <p className="mt-2">
                                 Depending on how you use Kloner, we may collect identifiers such as your name, email address, account ID,
                                 authentication/session data, billing and subscription identifiers, submitted URLs, project files,
-                                screenshots, uploaded assets, support messages, and technical data such as IP address, user agent,
-                                referer, timestamps, and request identifiers.
+                                screenshots, uploaded assets, support messages, legal acceptance versions and timestamps, and technical
+                                data such as IP address, user agent, referer, timestamps, and request identifiers.
                             </p>
                             <p className="mt-2">
                                 If analytics are enabled, we may also collect usage and interaction data from Mixpanel and Google
@@ -69,8 +69,8 @@ export default function PrivacyPage(): JSX.Element {
                                 and other core app functions you request. These are always on.
                             </p>
                             <p className="mt-2">
-                                Analytics cookies, affiliate cookies, and related tracking storage stay off until you accept them in the
-                                cookie banner. If you reject, some features will be limited.
+                                Analytics cookies, affiliate cookies, and related tracking storage stay off unless you choose “Accept all”
+                                in the cookie banner. Choosing “Reject optional” keeps those technologies off.
                             </p>
                             <p className="mt-2">
                                 You can change your choice any time from the Cookie settings link in the footer.
@@ -94,9 +94,11 @@ export default function PrivacyPage(): JSX.Element {
                         <section>
                             <h2 className="text-base font-semibold text-neutral-900">5. Sharing and Processors</h2>
                             <p className="mt-2">
-                                We use third-party processors to operate the service, including Firebase, Vercel, Stripe, Resend,
-                                Mixpanel, Google Analytics, Supabase, Google AI services, and the backend generation service used for
-                                crawls and previews. Those providers may process data outside your jurisdiction depending on their
+                                Kloner operates the scan backend at backend.tracksitechanges.io. Google provides underlying hosting
+                                and Firebase/Google Cloud infrastructure; Google does not operate that Kloner service. We also use
+                                service providers such as Firebase, Vercel, Stripe, Resend, Mixpanel, Google Analytics, Supabase,
+                                Google AI services, and Slack for operational alerts. These providers process information for the
+                                purposes described here and may process it outside your jurisdiction depending on their
                                 infrastructure and settings.
                             </p>
                             <p className="mt-2">
@@ -123,6 +125,17 @@ export default function PrivacyPage(): JSX.Element {
                                 code, edits, files, and deployment settings. We use this content to provide the features you request,
                                 maintain the service, protect it against abuse, and provide support. Access may be available to authorized
                                 personnel when needed for support, security, or service operation.
+                            </p>
+                            <p className="mt-2">
+                                For a scan, Kloner’s backend fetches and renders pages at the submitted site and may temporarily process
+                                page text, markup, and assets. If a scan passes policy checks, the resulting archive and project assets
+                                may be stored in Firebase/Google Cloud storage for your account. If policy checks block a scan, Kloner
+                                stops processing and does not upload the site archive or assets to project storage; temporary scan files
+                                are removed during cleanup. Operational alerts may include the submitted domain, account identifier,
+                                and policy decision, but do not include copied page text or images. Contact form messages are delivered
+                                to Kloner support through Resend. For contact-form abuse prevention, Kloner stores a one-way hashed
+                                network identifier and rate-limit count with a one-hour expiry; Firestore deletes expired records
+                                asynchronously, typically within 24 hours after expiry.
                             </p>
                             <p className="mt-2">
                                 If you use Kloner to create or deploy a website or application for other people, you decide what personal

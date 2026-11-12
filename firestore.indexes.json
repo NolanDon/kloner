@@ -52,6 +52,12 @@
   ],
   "fieldOverrides": [
     {
+      "collectionGroup": "contact_rate_limits",
+      "fieldPath": "expiresAt",
+      "ttl": true,
+      "indexes": []
+    },
+    {
       "collectionGroup": "file_blobs",
       "fieldPath": "inline",
       "indexes": [

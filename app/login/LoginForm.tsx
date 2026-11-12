@@ -1,7 +1,7 @@
 // app/login/page.tsx
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { auth, db } from "@/lib/firebase";
@@ -19,6 +19,7 @@ import {
     getIdToken,
     getAdditionalUserInfo,
     signOut,
+    deleteUser,
     type User,
 } from "firebase/auth";
 import { bootstrapServerSession, ensureSessionAndCsrf as ensureSessionAndCsrfImpl, resetAuthClientCaches } from "@/lib/auth-client";
@@ -41,8 +42,6 @@ import { EARLY_GENERATION_PAYWALL_ENABLED } from "@/src/lib/billingAccess";
 import { ArrowLeft, Eye, EyeOff } from "lucide-react";
 
 const ACCENT = "#FF8D21";
-const POLICY_ACCEPTANCE_VERSION = "2026-05-20";
-
 // Backwards-compatible export: many parts of the app import this helper.
 // Keep it here, but the implementation lives in a shared client module.
 export const ensureSessionAndCsrf = ensureSessionAndCsrfImpl;
@@ -238,29 +237,20 @@ async function attachAffiliateToUserDoc(u: User): Promise<void> {
     }
 }
 
-async function recordSignupConsent(u: User, method: "google" | "email" | "apple"): Promise<void> {
-    const userRef = doc(db, "kloner_users", u.uid);
-
-    try {
-        await retryOwnerWriteAfterTokenRefresh(u, () =>
-            setDoc(
-                userRef,
-                {
-                    consent: {
-                        termsAcceptedAt: serverTimestamp(),
-                        privacyAcceptedAt: serverTimestamp(),
-                        termsVersion: POLICY_ACCEPTANCE_VERSION,
-                        privacyVersion: POLICY_ACCEPTANCE_VERSION,
-                        source: "login_form_signup",
-                        method,
-                    },
-                    consentUpdatedAt: serverTimestamp(),
-                },
-                { merge: true },
-            )
-        );
-    } catch (e) {
-        console.error("Failed to record signup consent", e);
+async function recordSignupConsent(method: "google" | "email" | "apple"): Promise<void> {
+    const csrf = await ensureSessionAndCsrfImpl();
+    const response = await fetch("/api/legal/acceptance", {
+        method: "POST",
+        credentials: "include",
+        headers: {
+            "content-type": "application/json",
+            ...(csrf ? { "x-csrf": csrf } : {}),
+        },
+        body: JSON.stringify({ method }),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || !payload?.ok) {
+        throw new Error(payload?.error || "We couldn’t save your Terms acceptance. Please try again.");
     }
 }
 
@@ -390,6 +380,8 @@ export default function LoginPage(): JSX.Element {
     const [email, setEmail] = useState<string>("");
     const [pw, setPw] = useState<string>("");
     const [showPw, setShowPw] = useState<boolean>(false);
+    const [termsAccepted, setTermsAccepted] = useState(false);
+    const signupConsentMethodRef = useRef<"google" | "email" | null>(null);
 
     const [pendingUrl, setPendingUrl] = useState<string>("");
     const [pendingPrompt, setPendingPrompt] = useState<string>("");
@@ -475,6 +467,11 @@ export default function LoginPage(): JSX.Element {
             if (!u) return;
             try {
                 await setSessionCookie();
+                const pendingConsentMethod = signupConsentMethodRef.current;
+                if (pendingConsentMethod) {
+                    await recordSignupConsent(pendingConsentMethod);
+                    signupConsentMethodRef.current = null;
+                }
 
                 const pendingP = pendingPrompt?.trim();
                 if (pendingP) {
@@ -535,6 +532,7 @@ export default function LoginPage(): JSX.Element {
                     console.error("failed to finish post-login user setup", e);
                 });
             } catch (error) {
+                signupConsentMethodRef.current = null;
                 resetAuthClientCaches();
                 await signOut(auth).catch(() => undefined);
                 setErr(normalizeError(error));
@@ -548,7 +546,13 @@ export default function LoginPage(): JSX.Element {
     const signInWithGoogle = async (): Promise<void> => {
         setErr("");
         setResetSuccess("");
+        if (mode === "signup" && !termsAccepted) {
+            setErr("Please accept the Terms of Service and Privacy Policy to create an account.");
+            return;
+        }
+        if (mode === "signup") signupConsentMethodRef.current = "google";
 
+        let newlyCreatedUser: User | null = null;
         setLoading(true);
         try {
             await ensureBestAuthPersistence();
@@ -558,20 +562,26 @@ export default function LoginPage(): JSX.Element {
 
             const cred = await signInWithPopup(auth, provider);
             const isNew = !!getAdditionalUserInfo(cred)?.isNewUser;
+            if (isNew) newlyCreatedUser = cred.user;
 
             await setSessionCookie();
 
             if (isNew) {
+                await recordSignupConsent("google");
                 void Promise.allSettled([
                     ensureUserCreatedAt(cred.user),
                     attachAffiliateToUserDoc(cred.user),
-                    recordSignupConsent(cred.user, "google"),
                     notifyKlonerSignup(cred.user, "google"),
-                ]).catch((e) => {
-                    console.error("failed to finish google signup setup", e);
-                });
+                ]);
             }
         } catch (e) {
+            signupConsentMethodRef.current = null;
+            if (newlyCreatedUser) {
+                await deleteUser(newlyCreatedUser).catch(() => undefined);
+                await fetch("/api/auth/session", { method: "DELETE", credentials: "include" }).catch(() => undefined);
+                await signOut(auth).catch(() => undefined);
+                resetAuthClientCaches();
+            }
             setErr(normalizeError(e));
             setLoading(false);
         }
@@ -591,18 +601,29 @@ export default function LoginPage(): JSX.Element {
                 await signInWithEmailAndPassword(auth, email.trim(), pw);
                 await setSessionCookie();
             } else {
+                if (!termsAccepted) throw new Error("Please accept the Terms of Service and Privacy Policy to create an account.");
+                signupConsentMethodRef.current = "email";
                 const cred = await createUserWithEmailAndPassword(auth, email.trim(), pw);
-                await setSessionCookie();
+                try {
+                    await setSessionCookie();
+                    await recordSignupConsent("email");
+                    signupConsentMethodRef.current = null;
+                } catch (error) {
+                    signupConsentMethodRef.current = null;
+                    await deleteUser(cred.user).catch(() => undefined);
+                    await fetch("/api/auth/session", { method: "DELETE", credentials: "include" }).catch(() => undefined);
+                    await signOut(auth).catch(() => undefined);
+                    resetAuthClientCaches();
+                    throw error;
+                }
                 void Promise.allSettled([
                     ensureUserCreatedAt(cred.user),
                     attachAffiliateToUserDoc(cred.user),
-                    recordSignupConsent(cred.user, "email"),
                     notifyKlonerSignup(cred.user, "email"),
-                ]).catch((e) => {
-                    console.error("failed to finish email signup setup", e);
-                });
+                ]);
             }
         } catch (e2) {
+            signupConsentMethodRef.current = null;
             setErr(normalizeError(e2));
             setLoading(false);
         }
@@ -649,6 +670,7 @@ export default function LoginPage(): JSX.Element {
                                     type="button"
                                     onClick={() => {
                                         setMode("signin");
+                                        setTermsAccepted(false);
                                         setErr("");
                                     }}
                                     aria-pressed={mode === "signin"}
@@ -663,6 +685,7 @@ export default function LoginPage(): JSX.Element {
                                     type="button"
                                     onClick={() => {
                                         setMode("signup");
+                                        setTermsAccepted(false);
                                         setErr("");
                                     }}
                                     aria-pressed={mode === "signup"}
@@ -771,16 +794,27 @@ export default function LoginPage(): JSX.Element {
                                 </div>
 
                                 {mode === "signup" && (
-                                    <div className="mt-2 text-center text-xs leading-5 text-neutral-500">
-                                        By signing up, you agree to our{" "}
-                                        <a href="/terms" className="font-medium underline underline-offset-2" style={{ color: ACCENT }} target="_blank" rel="noreferrer">
-                                            Terms of Service
-                                        </a>{" "}
-                                        and{" "}
-                                        <a href="/privacy" className="font-medium underline underline-offset-2" style={{ color: ACCENT }} target="_blank" rel="noreferrer">
-                                            Privacy Policy
-                                        </a>
-                                        .
+                                    <div className="mt-3 text-xs leading-5 text-neutral-600">
+                                        <label className="flex items-start gap-2.5">
+                                            <input
+                                                type="checkbox"
+                                                required
+                                                checked={termsAccepted}
+                                                onChange={(event) => setTermsAccepted(event.target.checked)}
+                                                className="mt-1 h-4 w-4 shrink-0 accent-[#FF8D21]"
+                                            />
+                                            <span>
+                                                I agree to the{" "}
+                                                <a href="/terms" className="font-medium underline underline-offset-2" style={{ color: ACCENT }} target="_blank" rel="noreferrer">
+                                                    Terms of Service
+                                                </a>{" "}
+                                                and{" "}
+                                                <a href="/privacy" className="font-medium underline underline-offset-2" style={{ color: ACCENT }} target="_blank" rel="noreferrer">
+                                                    Privacy Policy
+                                                </a>
+                                                .
+                                            </span>
+                                        </label>
                                     </div>
                                 )}
 

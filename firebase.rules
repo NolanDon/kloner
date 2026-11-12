@@ -232,6 +232,13 @@ service cloud.firestore {
     match /abuseBlocklistAttempts/{document=**} {
       allow read, write: if false;
     }
+    match /legal_acceptances/{acceptanceId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+    match /contact_rate_limits/{document=**} {
+      allow read, write: if false;
+    }
   }
 }
 
