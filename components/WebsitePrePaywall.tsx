@@ -350,7 +350,7 @@ export function WebsitePrePaywall({
                             <div className="mt-6 border-t border-neutral-200 pt-4">
                                 <div className="mb-2.5 text-center leading-tight">
                                     <span className="text-[11px] uppercase tracking-[0.1em] text-neutral-500 sm:text-[11px]">
-                                        See what <span className="text-[15px] font-bold text-[rgba(255,141,33,1)]">5000+</span> Kloner members have built <span className="inline-flex items-center gap-0.5 whitespace-nowrap align-middle">with<KlonerWordmark className="text-base sm:text-lg" /></span>
+                                        See what <span className="text-[15px] font-bold text-[rgba(255,141,33,1)]">5000+</span> Kloner members have built <span className="inline-flex items-center gap-1.5 whitespace-nowrap align-middle">with<KlonerWordmark className="text-base sm:text-lg" /></span>
                                     </span>
                                 </div>
 

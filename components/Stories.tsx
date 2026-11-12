@@ -156,7 +156,7 @@ export default function Stories() {
     <section className="section stories-editor-demo mt-20 mb-20 bg-white text-black" id="reviews">
       <div className="container-soft">
         <div className="mb-8 flex items-center justify-between gap-4 sm:mb-10">
-          <h2 className="mt-1 flex flex-wrap items-center justify-start gap-x-3 gap-y-1 text-base text-neutral-600 sm:text-lg">
+          <h2 className="mt-1 flex flex-wrap items-center justify-start gap-x-4 gap-y-1 text-base text-neutral-600 sm:text-lg">
             <span className="block font-sans text-[16px] uppercase tracking-[0.1em] text-neutral-500">
               Make every detail yours with
             </span>
