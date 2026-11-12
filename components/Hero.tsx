@@ -11,8 +11,8 @@ export default function Hero({ eyebrow, heading, subhead }: { eyebrow?: string; 
         minHeight: 560,
       }}
     >
-      <div className="absolute inset-0 p-0 sm:p-4">
-        <div className="relative h-full w-full overflow-hidden ring-1 ring-black/10 shadow-2xl bg-[#2a1b3e] rounded-none sm:rounded-[28px]">
+      <div className="absolute inset-0">
+        <div className="relative h-full w-full overflow-hidden bg-[#2a1b3e]">
           {/* BACKGROUND */}
           <div className="absolute inset-0 overflow-hidden">
             <Image
