@@ -8514,7 +8514,11 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                         </div>
                     </div>
                 ) : null}
-                {agentMode === "v3" && (isLoading || Boolean(activeEditPlanJob && !isEditPlanJobTerminalStatus(String(activeEditPlanJob.status)))) && <WorkspaceAgentLoader />}
+                {agentMode === "v3" && (isLoading || Boolean(activeEditPlanJob && !isEditPlanJobTerminalStatus(String(activeEditPlanJob.status)))) && (
+                    <div className="pl-4">
+                        <WorkspaceAgentLoader />
+                    </div>
+                )}
                 {agentMode !== "v3" && isLoading && !activeEditPlanJob && (
                     <div className="flex justify-start">
                         <div className="app-builder-agent-loader-bubble max-w-[82%] rounded-2xl border border-gray-200 bg-white p-3 shadow-[0_10px_24px_rgba(15,23,42,0.05)]">
