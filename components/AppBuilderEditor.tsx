@@ -2618,6 +2618,7 @@ export default function AppBuilderEditor({
     const [previewIssueFailure, setPreviewIssueFailure] = useState<PreviewFailureContract | null>(null);
     const [previewIssuePreviewCode, setPreviewIssuePreviewCode] = useState<string | null>(null);
     const [previewIssueActionLabel, setPreviewIssueActionLabel] = useState<string | null>(null);
+    const previousPreviewIssueAppIdRef = useRef(appId);
     const [deployBannerFromApp, setDeployBannerFromApp] = useState<DeployStatusBanner | null>(null);
     const [deployBannerFromRoute, setDeployBannerFromRoute] = useState<DeployStatusBanner | null>(null);
     const [dismissedDeployBannerFingerprint, setDismissedDeployBannerFingerprint] = useState<string | null>(null);
@@ -2657,6 +2658,15 @@ export default function AppBuilderEditor({
         () => summarizePreviewIssues(previewIssueDiagnostics) || ((previewIssue || autoPreviewError || previewError) ? { critical: 1, warnings: 0 } : null),
         [autoPreviewError, previewError, previewIssue, previewIssueDiagnostics],
     );
+    useEffect(() => {
+        if (previousPreviewIssueAppIdRef.current === appId) return;
+        previousPreviewIssueAppIdRef.current = appId;
+        setPreviewIssue(null);
+        setPreviewIssueDiagnostics(null);
+        setPreviewIssueFailure(null);
+        setPreviewIssuePreviewCode(null);
+        setPreviewIssueActionLabel(null);
+    }, [appId]);
     const previewIssueFixDecision = useMemo(
         () => getPreviewIssueFixDecision(previewIssue || autoPreviewError || previewError, previewIssueDiagnostics, previewIssueFailure),
         [autoPreviewError, previewError, previewIssue, previewIssueDiagnostics, previewIssueFailure],
@@ -8467,12 +8477,20 @@ export default function AppBuilderEditor({
                                                 }}
                                                 previewIssue={previewIssue}
                                             onPreviewIssueChange={(payload) => {
-                                                if (payload?.issue) setIsPreviewBuilding(false);
-                                                setPreviewIssue(payload?.issue || null);
-                                                setPreviewIssueDiagnostics(payload?.diagnostics || null);
-                                                setPreviewIssueFailure(normalizePreviewFailureContract(payload?.failure));
-                                                setPreviewIssuePreviewCode(payload?.previewCode || null);
-                                                setPreviewIssueActionLabel(payload?.recommendedActionLabel || null);
+                                                if (payload?.issue) {
+                                                    setIsPreviewBuilding(false);
+                                                    setPreviewIssue(payload.issue);
+                                                    setPreviewIssueDiagnostics(payload.diagnostics || null);
+                                                    setPreviewIssueFailure(normalizePreviewFailureContract(payload.failure));
+                                                    setPreviewIssuePreviewCode(payload.previewCode || null);
+                                                    setPreviewIssueActionLabel(payload.recommendedActionLabel || null);
+                                                } else if (payload?.resolved) {
+                                                    setPreviewIssue(null);
+                                                    setPreviewIssueDiagnostics(null);
+                                                    setPreviewIssueFailure(null);
+                                                    setPreviewIssuePreviewCode(null);
+                                                    setPreviewIssueActionLabel(null);
+                                                }
                                             }}
                                             onNavigatePathChange={handlePreviewRouteChange}
                                             onCompileErrorFixRequest={handleCompileErrorFixRequest}

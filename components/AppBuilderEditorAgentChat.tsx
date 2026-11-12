@@ -1064,8 +1064,7 @@ const NEXT_EDIT_SUGGESTION_SETS = [
 
 
 export default function AppBuilderEditorAgentChat({ appId, files, currentFile, onFileEdit, onFilesReplace, onRestoreApplied, creditError, previewReady, previewIssue, previewIssueCounts, previewIssueActionLabel, onPreviewIssueAction, onPreviewIssueFixRequest, onUserMessageSent, onIntroSequenceComplete, onRequestUpgradePaywall, topupModalTrigger, welcomeContext, agentMode = "v2" }: AppBuilderEditorAgentChatProps) {
-    const [previewIssueDismissedForAppId, setPreviewIssueDismissedForAppId] = useState<string | null>(null);
-    const [previewIssueFixStartedKey, setPreviewIssueFixStartedKey] = useState<string | null>(null);
+    const [dismissedPreviewIssueKey, setDismissedPreviewIssueKey] = useState<string | null>(null);
     const [imageAttachments, setImageAttachments] = useState<AgentImageAttachment[]>([]);
     const [uploadingImage, setUploadingImage] = useState(false);
     const [attachmentError, setAttachmentError] = useState<string | null>(null);
@@ -1434,7 +1433,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
     const previewIssueText = String(previewIssue || '').trim();
     const hasPreviewIssue = Boolean(previewIssueText);
     const previewIssueKey = `${appId}:${previewIssueText}`;
-    const shouldShowPreviewIssue = hasPreviewIssue && previewIssueDismissedForAppId !== appId && previewIssueFixStartedKey !== previewIssueKey;
+    const shouldShowPreviewIssue = hasPreviewIssue && dismissedPreviewIssueKey !== previewIssueKey;
     const previewIssueSummary = previewIssueText.split(/\r?\n/).map((line) => line.trim()).find(Boolean) || "Something went wrong building website.";
     const showPreviewLoadingNotice = !PRODUCTION_AGENT_CHAT_BLOCKED && previewReady === false && !freeCompileFixContext && !hasPreviewIssue;
     const chatDisabled = PRODUCTION_AGENT_CHAT_BLOCKED;
@@ -1443,18 +1442,16 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
     const hasPreviewIssueFixRequest = typeof onPreviewIssueFixRequest === "function";
 
     useEffect(() => {
-        setPreviewIssueDismissedForAppId(null);
-        setPreviewIssueFixStartedKey(null);
-    }, [appId]);
+        setDismissedPreviewIssueKey(null);
+    }, [appId, previewIssueText]);
 
     const dismissPreviewIssue = useCallback(() => {
-        setPreviewIssueDismissedForAppId(appId);
-    }, [appId]);
+        setDismissedPreviewIssueKey(previewIssueKey);
+    }, [previewIssueKey]);
 
     const startPreviewIssueFix = useCallback(() => {
-        setPreviewIssueFixStartedKey(`${appId}:${previewIssueText}`);
         onPreviewIssueFixRequest?.();
-    }, [appId, onPreviewIssueFixRequest, previewIssueText]);
+    }, [onPreviewIssueFixRequest]);
 
     useEffect(() => {
         const handlePreviewIssueFixStarted = (event: Event) => {

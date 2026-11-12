@@ -31,7 +31,7 @@ import {
 import { getPreviewInspectionOrigin, readPreviewInspectionResult, readPreviewRuntimeState, type PreviewBlockingOverlay } from './previewInspection';
 import { type PreviewRuntimeEvidence } from '../src/lib/previewRuntimeEvidence';
 import { inspectPreviewBundleAssets } from './previewBundleDiagnostics';
-import { compactPreviewIssueRuntime } from './previewIssueSummary';
+import { compactPreviewIssueRuntime, summarizePreviewIssues } from './previewIssueSummary';
 
 const getStoredContainerCode = async (appId: string, user: any): Promise<string | null> => {
   try {
@@ -382,6 +382,7 @@ interface WebContainerRunnerProps {
   onPreviewReadyChange?: (ready: boolean) => void;
   onPreviewIssueChange?: (issue: {
     issue: string | null;
+    resolved?: boolean;
     diagnostics?: string | null;
     failure?: PreviewFailureContract | null;
     recommendedActionLabel?: string | null;
@@ -1644,12 +1645,14 @@ export default function WebContainerRunner({ appId, files, filesReady = true, is
         if (runtime.startedAt < previewNavigationStartedRef.current - 2000 || (previous && runtime.startedAt < previous.startedAt)) return;
         runtimeEvidenceNavigationRef.current = { id: runtime.navigationId, startedAt: runtime.startedAt, capturedAt: runtime.capturedAt };
         persistRuntimeEvidenceRef.current(runtime, code);
-        if (!runtime.confirmedBlank) {
+        const runtimeCounts = summarizePreviewIssues(JSON.stringify(runtime));
+        if (!runtime.confirmedBlank && !runtimeCounts?.critical && !runtimeCounts?.warnings) {
           setRuntimePreviewFailure(null);
           lastWhiteScreenReportKeyRef.current = '';
-          onPreviewIssueChange?.({ issue: null });
+          onPreviewIssueChange?.({ issue: null, resolved: true });
           return;
         }
+        if (!runtime.confirmedBlank) return;
         reportWhiteScreenIssueRef.current(`runtime:${appId}:${code}:${runtime.navigationId}`, {
           appId, code, previewUrl: currentUrl, reason: 'confirmed_blank_browser_render',
           message: runtime.firstUsefulMs !== null
@@ -1668,7 +1671,15 @@ export default function WebContainerRunner({ appId, files, filesReady = true, is
       if (!result) return;
       activeWhiteScreenInspectionRef.current = null;
       setRuntimeObservationUnavailable(false);
-      if (!result.blank) return;
+      if (!result.blank) {
+        const resultCounts = summarizePreviewIssues(JSON.stringify(result.runtime || {}));
+        if (!resultCounts?.critical && !resultCounts?.warnings) {
+          setRuntimePreviewFailure(null);
+          lastWhiteScreenReportKeyRef.current = '';
+          onPreviewIssueChange?.({ issue: null, resolved: true });
+        }
+        return;
+      }
       reportWhiteScreenIssueRef.current(`white-screen:${appId}:${code}:${currentUrl}:bridge`, {
         appId, code, previewUrl: currentUrl, reason: 'white_screen_blank_cross_origin',
         message: 'The preview loaded but is not displaying content. Try refreshing or ask AI to investigate.',
