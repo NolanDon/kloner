@@ -1472,6 +1472,12 @@ export default function WebContainerRunner({ appId, files, filesReady = true, is
           availableScriptFiles: payload.availableScriptFiles || [],
           previewCode: payload.code || pollingCodeRef.current || null,
           runtime: compactRuntime,
+          failure: {
+            errorClass: whiteScreenFailure.errorClass,
+            compileError: {
+              summary: whiteScreenFailure.compileError?.summary || null,
+            },
+          },
         }, null, 2),
         failure: whiteScreenFailure,
         previewCode: payload.code || pollingCodeRef.current || null,
