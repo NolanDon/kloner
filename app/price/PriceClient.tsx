@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import NavBar from "@/components/NavBar";
 import Footer from "@/components/Footer";
 import BillingBanner from "@/components/BillingBanner";
-import { AnimatedCreditCard } from "@/components/AnimatedCreditCard";
+// import { AnimatedCreditCard } from "@/components/AnimatedCreditCard";
 import { useModal } from "@/components/ui/ModalContext";
 import { useAuth } from "@/src/hooks/useAuth";
 import { useAppActivityHeartbeat } from "@/src/hooks/useAppActivityHeartbeat";
@@ -384,9 +384,11 @@ export default function PriceClient(): JSX.Element {
                                 </p>
                             </div>
 
+                            {/* Temporarily hidden pricing hero card.
                             <div className="flex justify-center lg:justify-end">
                                 <AnimatedCreditCard />
                             </div>
+                            */}
                         </div>
                     </header>
 
