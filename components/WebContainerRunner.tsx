@@ -584,7 +584,7 @@ export default function WebContainerRunner({ appId, files, filesReady = true, is
   } | null>(null);
   const [runtimeObservationUnavailable, setRuntimeObservationUnavailable] = useState(false);
   const [previewDocumentLoad, setPreviewDocumentLoad] = useState(0);
-  const [runtimePreviewFailure, setRuntimePreviewFailure] = useState<{ message: string; detail: string; failure: PreviewFailureContract; code: string } | null>(null);
+  const [runtimePreviewFailure, setRuntimePreviewFailure] = useState<{ message: string; detail: string; diagnostics: string; failure: PreviewFailureContract; code: string } | null>(null);
   const previewNavigationStartedRef = useRef(0);
   const runtimeEvidenceNavigationRef = useRef<{ id: string; startedAt: number; capturedAt: number } | null>(null);
   const compileFixRequestCooldownRef = useRef<{ fingerprint: string; until: number } | null>(null);
@@ -1455,30 +1455,26 @@ export default function WebContainerRunner({ appId, files, filesReady = true, is
       },
     };
 
-    setRuntimePreviewFailure({ message: issueMessage, detail: whiteScreenFailure.compileError!.detail, failure: whiteScreenFailure, code: payload.code || '' });
+    const whiteScreenDiagnostics = JSON.stringify({
+      appId: payload.appId,
+      previewUrl: payload.previewUrl || previewUrlRef.current || null,
+      reason: payload.reason,
+      titleText: payload.titleText || null,
+      blockingOverlay: payload.blockingOverlay || null,
+      visibleElementCount: payload.visibleElementCount ?? null,
+      scriptSrcs: payload.scriptSrcs || [],
+      missingScriptSrcs: payload.missingScriptSrcs || [],
+      availableScriptFiles: payload.availableScriptFiles || [],
+      previewCode: payload.code || pollingCodeRef.current || null,
+      runtime: compactRuntime,
+      failure: whiteScreenFailure,
+    }, null, 2);
+    setRuntimePreviewFailure({ message: issueMessage, detail: whiteScreenFailure.compileError!.detail, diagnostics: whiteScreenDiagnostics, failure: whiteScreenFailure, code: payload.code || '' });
 
     try {
       onPreviewIssueChange?.({
         issue: issueMessage,
-        diagnostics: JSON.stringify({
-          appId: payload.appId,
-          previewUrl: payload.previewUrl || previewUrlRef.current || null,
-          reason: payload.reason,
-          titleText: payload.titleText || null,
-          blockingOverlay: payload.blockingOverlay || null,
-          visibleElementCount: payload.visibleElementCount ?? null,
-          scriptSrcs: payload.scriptSrcs || [],
-          missingScriptSrcs: payload.missingScriptSrcs || [],
-          availableScriptFiles: payload.availableScriptFiles || [],
-          previewCode: payload.code || pollingCodeRef.current || null,
-          runtime: compactRuntime,
-          failure: {
-            errorClass: whiteScreenFailure.errorClass,
-            compileError: {
-              summary: whiteScreenFailure.compileError?.summary || null,
-            },
-          },
-        }, null, 2),
+        diagnostics: whiteScreenDiagnostics,
         failure: whiteScreenFailure,
         previewCode: payload.code || pollingCodeRef.current || null,
         recommendedActionLabel: hasMissingAssets ? 'Retry' : 'Refresh',
@@ -5725,7 +5721,7 @@ export default function NavBar() {
     const issueText = previewGenerationUi?.userMessage || previewGenerationUi?.message || previewGenerationUi?.details || terminalPreviewErrorMessage;
     const shouldSurfacePreviewIssue = (showTerminalPreviewErrorCard || previewGenerationUi?.status === 'warning' || previewGenerationUi?.status === 'error') && !isProcessingPreview && !isReadyPreview;
     const nextPayload = runtimePreviewFailure ? {
-      status: 'error', issue: runtimePreviewFailure.message, diagnostics: runtimePreviewFailure.detail,
+      status: 'error', issue: runtimePreviewFailure.message, diagnostics: runtimePreviewFailure.diagnostics,
       failure: runtimePreviewFailure.failure, recommendedActionLabel: 'Refresh', previewCode: currentPreviewCode,
     } : shouldSurfacePreviewIssue
       ? {
