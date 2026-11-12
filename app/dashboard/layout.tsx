@@ -301,13 +301,11 @@ function PlanBlock({
   const badgeLabel = billingState === "trialing" ? "trialing" : planLabel;
 
   return (
-    <div className="border-b border-neutral-200 px-4 pb-4">
-      <div className="inline-flex w-fit items-center gap-1 rounded-full border border-[rgba(255,141,33,0.45)] bg-white px-3 py-1">
-        <Crown className="h-3.5 w-3.5 text-[#FF8D21]" />
-        <span className="text-[10px] font-semibold uppercase tracking-wide text-[#FF8D21]">
-          {badgeLabel}
-        </span>
-      </div>
+    <div className="inline-flex w-fit shrink-0 items-center gap-1 rounded-full border border-[rgba(255,141,33,0.45)] bg-white px-3 py-1">
+      <Crown className="h-3.5 w-3.5 text-[#FF8D21]" />
+      <span className="text-[10px] font-semibold uppercase tracking-wide text-[#FF8D21]">
+        {badgeLabel}
+      </span>
     </div>
   );
 }
@@ -398,20 +396,19 @@ function SidebarShell({
 
   return (
     <div className="flex h-full flex-col w-full">
-      <div className="px-5 pt-5">
+      <div className="flex items-center gap-3 border-b border-neutral-200 px-5 pb-4 pt-5">
         <Link
           href="/"
-          className="flex items-center gap-0.5 font-black tracking-tight text-xl md:text-2xl shrink-0"
+          className="flex shrink-0 items-center font-black tracking-tight text-xl md:text-2xl"
         >
-<KlonerWordmark className="text-2xl md:text-3xl" />
+          <KlonerWordmark className="text-2xl md:text-3xl" />
         </Link>
+        <PlanBlock
+          planLabel={planLabel}
+          billingState={billingState}
+          userTier={userTier}
+        />
       </div>
-
-      <PlanBlock
-        planLabel={planLabel}
-        billingState={billingState}
-        userTier={userTier}
-      />
 
       <nav className="flex-1 p-3 text-sm overflow-y-auto">
         <div className="mb-1">
