@@ -83,11 +83,11 @@ export default function HeroContent({
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.8 }}
-        className="w-full max-w-[1000px] text-center"
+        className="w-full max-w-[1400px] text-center"
       >
-        {eyebrow ? <div className="mb-5 hidden text-xs font-semibold uppercase tracking-[0.24em] text-white/75 sm:block" style={{ fontFamily: "var(--font-inter), Inter, sans-serif" }}>{eyebrow}</div> : null}
+        {eyebrow ? <div className="mb-6 hidden text-sm font-semibold uppercase tracking-[0.24em] text-white/80 sm:block md:mb-8" style={{ fontFamily: "var(--font-inter), Inter, sans-serif" }}>{eyebrow}</div> : null}
         <h1
-          className={`hero-title ${displayClassName} mx-auto max-w-[1100px] whitespace-normal leading-[1.02] font-extrabold tracking-[-0.055em] text-[#fff8ed]`}
+          className={`hero-title ${displayClassName} mx-auto max-w-[1400px] whitespace-normal leading-[1.02] font-extrabold tracking-[-0.055em] text-[#fff8ed]`}
           style={{
             fontFamily: "var(--font-inter), Inter, ui-sans-serif, sans-serif",
             WebkitFontSmoothing: "antialiased",
@@ -98,20 +98,20 @@ export default function HeroContent({
           {heading ?? <>AI Website Cloner</>}
         </h1>
 
-        <p className="mt-[clamp(0.75rem,2.2vh,1.5rem)] text-white/90 text-base sm:text-lg md:text-xl max-w-xl mx-auto font-medium">
+        <p className="mx-auto mt-[clamp(1rem,2.2vh,1.75rem)] max-w-4xl text-lg font-medium text-white/90 sm:text-xl md:text-2xl lg:text-[1.8rem]">
           {subhead ?? "Clone a website from a URL, customize it with AI, and launch your new site."}
         </p>
 
-        <form onSubmit={onSubmit} className="mt-[clamp(1.5rem,4vh,3rem)] w-full max-w-2xl mx-auto space-y-3">
+        <form onSubmit={onSubmit} className="mx-auto mt-[clamp(1.75rem,4vh,3rem)] w-full max-w-[800px] space-y-3">
           <label htmlFor="hero-url-input" className="sr-only">
             Website URL
           </label>
-          <div className="relative overflow-hidden rounded-full border border-white/35 bg-[rgba(32,25,22,0.68)] p-2 shadow-[0_22px_60px_rgba(22,14,9,0.45)] backdrop-blur-xl">
-            <span aria-hidden="true" className="pointer-events-none absolute -left-10 top-1/2 h-32 w-64 -translate-y-1/2 rounded-full bg-[radial-gradient(ellipse_at_center,rgba(255,191,112,0.46)_0%,rgba(255,141,33,0.2)_38%,rgba(255,141,33,0)_72%)] blur-2xl" />
-            <span aria-hidden="true" className="pointer-events-none absolute inset-y-0 left-0 w-[42%] bg-gradient-to-r from-[#ffb366]/10 to-transparent" />
+          <div className="relative isolate overflow-hidden rounded-full border border-[#ffd39e]/70 bg-[rgba(32,25,22,0.72)] p-2 shadow-[0_22px_60px_rgba(22,14,9,0.48),0_0_35px_rgba(255,160,70,0.22)] backdrop-blur-xl">
+            <span aria-hidden="true" className="pointer-events-none absolute -left-12 top-1/2 z-0 h-36 w-[22rem] -translate-y-1/2 rounded-full bg-[radial-gradient(ellipse_at_center,rgba(255,220,166,0.78)_0%,rgba(255,166,79,0.52)_24%,rgba(255,141,33,0.22)_52%,rgba(255,141,33,0)_78%)] blur-2xl" />
+            <span aria-hidden="true" className="hero-url-glimmer pointer-events-none absolute -left-[20%] top-[-40%] z-0 h-[180%] w-[38%] bg-[linear-gradient(100deg,transparent_0%,rgba(255,174,93,0.03)_28%,rgba(255,224,175,0.5)_48%,rgba(255,155,65,0.24)_58%,transparent_78%)] blur-md" />
             <div className="flex items-stretch gap-2">
-              <div className="relative flex min-h-[60px] flex-1 items-center rounded-full px-5 sm:px-6">
-                <span className="hidden sm:inline text-white/60 text-lg font-medium mr-1">
+              <div className="relative z-10 flex min-h-[68px] flex-1 items-center rounded-full px-5 sm:px-7">
+                <span className="mr-1 hidden text-lg font-medium text-white/65 sm:inline md:text-xl">
                   https://
                 </span>
 
@@ -125,7 +125,7 @@ export default function HeroContent({
                   placeholder="example.com"
                   inputMode="url"
                   autoCapitalize="none"
-                  className="w-full bg-transparent outline-none text-[#fff8ed] text-base sm:text-lg placeholder:text-white/55 font-medium"
+                  className="w-full bg-transparent text-lg font-medium text-[#fff8ed] outline-none placeholder:text-white/55 sm:text-xl md:text-2xl"
                   autoComplete="off"
                   aria-describedby={error ? errorId : hintId}
                   aria-invalid={Boolean(error)}
@@ -135,7 +135,7 @@ export default function HeroContent({
               <button
                 type="submit"
                 disabled={!url || !!error}
-                className="inline-flex min-h-14 shrink-0 items-center justify-center rounded-full bg-[#FF8D21] px-7 text-base font-semibold text-white whitespace-nowrap shadow-sm transition-all duration-200 hover:scale-[1.04] hover:shadow-[0_10px_24px_rgba(255,141,33,0.28)] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:scale-100"
+                className="inline-flex min-h-16 shrink-0 items-center justify-center rounded-full bg-[#FF8D21] px-8 text-lg font-semibold whitespace-nowrap text-white shadow-[0_6px_24px_rgba(255,141,33,0.32)] transition-all duration-200 hover:scale-[1.04] hover:shadow-[0_10px_28px_rgba(255,141,33,0.48)] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:scale-100 md:px-10 md:text-xl"
                 aria-label="Clone website from URL"
               >
                 <span>Clone</span>

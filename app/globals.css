@@ -28,12 +28,31 @@ html[data-moqup-promo-dismissed="true"] .moqup-referral-banner {
 }
 
 .hero-title {
-    font-size: clamp(3rem, min(12vw, 10vh), 7rem);
+    font-size: clamp(3.25rem, 11vw, 6rem);
 }
 
 @media (min-width: 768px) {
     .hero-title {
-        font-size: clamp(3.5rem, min(9vw, 8vh), 6rem);
+        font-size: clamp(5rem, 8vw, 9rem);
+    }
+}
+
+@keyframes hero-url-glimmer {
+    0%, 18% { transform: translateX(-125%) skewX(-18deg); opacity: 0; }
+    32% { opacity: 0.9; }
+    68% { opacity: 0.55; }
+    100% { transform: translateX(190%) skewX(-18deg); opacity: 0; }
+}
+
+.hero-url-glimmer {
+    animation: hero-url-glimmer 3.8s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .hero-url-glimmer {
+        animation: none;
+        opacity: 0.35;
+        transform: translateX(0) skewX(-18deg);
     }
 }
 
