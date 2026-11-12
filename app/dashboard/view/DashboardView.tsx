@@ -8188,6 +8188,9 @@ export default function PreviewPage(): JSX.Element {
         const normalized = validateAndNormalizePublicHttpUrl(dec);
         return normalized ? normUrl(normalized) : "";
     }, [urlParam]);
+    const currentTargetUrlRef = useRef(targetUrl);
+    currentTargetUrlRef.current = targetUrl;
+    const latestUrlScanIntentRef = useRef<{ url: string } | null>(null);
     // Error state is shared by parts of the dashboard, so never associate it with
     // a newly selected URL until that URL's document context has been reset.
     const urlErrorContextRef = useRef(targetUrl);
@@ -8281,6 +8284,7 @@ export default function PreviewPage(): JSX.Element {
                 setShowCreditsPaywall("early_generation");
                 return false;
             }
+            if (normalized) latestUrlScanIntentRef.current = { url: normUrl(normalized) };
             return submitDashboardUrlDraft({
                 rawUrl: raw,
                 canUseScreenshotCredit,
@@ -9222,6 +9226,7 @@ export default function PreviewPage(): JSX.Element {
             if (startRequestedInFlightRef.current === startRequestKey && !forceRetry) {
                 return false;
             }
+            latestUrlScanIntentRef.current = { url: normUrl(target) };
             startRequestedInFlightRef.current = startRequestKey;
             startRequestedEnqueueAttemptRef.current = startRequestKey;
 
@@ -10098,6 +10103,14 @@ export default function PreviewPage(): JSX.Element {
 
         const normalizedUrl = normUrl(rawTarget);
         if (urlErrorContextRef.current !== normalizedUrl) return;
+        const hasCompetingScanIntent = () => {
+            const latestIntent = latestUrlScanIntentRef.current;
+            return Boolean(
+                latestIntent &&
+                latestIntent.url !== normalizedUrl,
+            );
+        };
+        if (normUrl(currentTargetUrlRef.current) !== normalizedUrl || hasCompetingScanIntent()) return;
         const failureMatchesTarget = Boolean(
             urlProcessingFailure?.url && normUrl(urlProcessingFailure.url) === normalizedUrl,
         );
@@ -10178,6 +10191,9 @@ export default function PreviewPage(): JSX.Element {
         void (async () => {
             try {
                 const csrf = await ensureSessionAndCsrf().catch(() => null);
+                // The user may switch domains or start another scan while session
+                // setup is pending. Revalidate before reporting this captured error.
+                if (normUrl(currentTargetUrlRef.current) !== normalizedUrl || hasCompetingScanIntent()) return;
                 await fetch("/api/internal/observability/frontend-timeout", {
                     method: "POST",
                     headers: {
