@@ -1450,8 +1450,11 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
     }, [previewIssueKey]);
 
     const startPreviewIssueFix = useCallback(() => {
+        // Hide the actionable card as soon as Fix with AI is selected so a
+        // repeated click cannot enqueue another request for this same issue.
+        dismissPreviewIssue();
         onPreviewIssueFixRequest?.();
-    }, [onPreviewIssueFixRequest]);
+    }, [dismissPreviewIssue, onPreviewIssueFixRequest]);
 
     useEffect(() => {
         const handlePreviewIssueFixStarted = (event: Event) => {
