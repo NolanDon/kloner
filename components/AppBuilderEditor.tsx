@@ -2961,9 +2961,12 @@ export default function AppBuilderEditor({
             missingFiles,
             missingFileCount: missingFiles.length,
             previewIssueDiagnostics: safeParseDiagnostics(previewIssueDiagnostics),
+            previewIssueFailure,
             priorityPreviewEvidence: buildPreviewIssueEvidence(previewIssueDiagnostics, previewIssueCounts),
             previewIssueFixDecision,
         };
+        const previewEvidence = buildPreviewIssueEvidence(previewIssueDiagnostics, previewIssueCounts);
+        const hasPreviewDiagnostics = Boolean(previewIssueDiagnostics || previewIssueFailure);
 
         handleCompileErrorFixRequest({
             appId,
@@ -2971,15 +2974,15 @@ export default function AppBuilderEditor({
             actionType: "quick_fix_compile",
             fixAction: "preview_issue_fix",
             autoSend: true,
-            previewDiagnostics: buildPreviewIssueEvidence(previewIssueDiagnostics, previewIssueCounts),
+            previewDiagnostics: { ...(previewEvidence || {}), failure: previewIssueFailure },
             metadata: previewIssuePreviewCode ? { previewCode: previewIssuePreviewCode } : undefined,
             compileError: {
                 summary: "Preview hit an error",
-                detail: `${issue}${previewIssueDiagnostics ? `\n\nHidden diagnostics:\n${JSON.stringify(hiddenDiagnostics, null, 2)}` : ""}`,
+                detail: `${issue}${hasPreviewDiagnostics ? `\n\nHidden diagnostics:\n${JSON.stringify(hiddenDiagnostics, null, 2)}` : ""}`,
                 fingerprint,
             },
         });
-    }, [appId, app?.files, autoPreviewError, canFixPreviewIssueWithAi, handleCompileErrorFixRequest, previewError, previewIssue, previewIssueCounts, previewIssueDiagnostics, previewIssueFailure?.errorClass, previewIssueFixDecision, previewIssuePreviewCode, projectFramework]);
+    }, [appId, app?.files, autoPreviewError, canFixPreviewIssueWithAi, handleCompileErrorFixRequest, previewError, previewIssue, previewIssueCounts, previewIssueDiagnostics, previewIssueFailure, previewIssueFixDecision, previewIssuePreviewCode, projectFramework]);
 
     const effectiveDeployBanner = deployBannerFromRoute || deployBannerFromApp;
 
@@ -8480,10 +8483,22 @@ export default function AppBuilderEditor({
                                                 previewIssue={previewIssue}
                                             onPreviewIssueChange={(payload) => {
                                                 if (payload?.issue) {
+                                                    const parsedDiagnostics = safeParseDiagnostics(payload.diagnostics);
+                                                    const payloadFailure = normalizePreviewFailureContract(payload.failure)
+                                                        || normalizePreviewFailureContract(parsedDiagnostics?.failure)
+                                                        || normalizePreviewFailureContract(parsedDiagnostics?.currentStatusData?.failure);
+                                                    const sameIssue = previewIssue === payload.issue;
+                                                    const effectiveFailure = payloadFailure || (sameIssue ? previewIssueFailure : null);
+                                                    const diagnosticsObject = parsedDiagnostics || (payload.diagnostics
+                                                        ? { diagnosticMessage: String(payload.diagnostics).slice(0, 4_000) }
+                                                        : {});
+                                                    const normalizedDiagnostics = Object.keys(diagnosticsObject).length || effectiveFailure
+                                                        ? JSON.stringify({ ...diagnosticsObject, ...(effectiveFailure ? { failure: effectiveFailure } : {}) })
+                                                        : null;
                                                     setIsPreviewBuilding(false);
                                                     setPreviewIssue(payload.issue);
-                                                    setPreviewIssueDiagnostics(payload.diagnostics || null);
-                                                    setPreviewIssueFailure(normalizePreviewFailureContract(payload.failure));
+                                                    setPreviewIssueDiagnostics(normalizedDiagnostics);
+                                                    setPreviewIssueFailure(effectiveFailure);
                                                     setPreviewIssuePreviewCode(payload.previewCode || null);
                                                     setPreviewIssueActionLabel(payload.recommendedActionLabel || null);
                                                 } else if (payload?.resolved) {

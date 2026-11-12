@@ -47,15 +47,34 @@ function hasRecordedFailure(root: unknown): boolean {
         return Object.values(item).some(child => child && typeof child === "object" && visit(child, depth + 1));
     }; return visit(root);
 }
+function normalizeDiagnosticCode(value: unknown): string {
+    return String(value || "").toLowerCase().replace(/^preview_/, "").replace(/[^a-z0-9]/g, "");
+}
+function collectFailureCodes(root: unknown): Set<string> {
+    const codes = new Set<string>();
+    const visited = new Set<object>();
+    const visit = (value: unknown, depth = 0) => {
+        if (depth > 7) return;
+        if (Array.isArray(value)) { value.forEach(child => visit(child, depth + 1)); return; }
+        const item = record(value);
+        if (!item || visited.has(item)) return;
+        visited.add(item);
+        for (const code of [item.errorCode, item.errorClass]) {
+            const normalized = normalizeDiagnosticCode(code);
+            if (normalized) codes.add(normalized);
+        }
+        for (const child of Object.values(item)) if (child && typeof child === "object") visit(child, depth + 1);
+    };
+    visit(root);
+    return codes;
+}
 function hasRecordedWarning(root: unknown): boolean {
+    const failureCodes = collectFailureCodes(root);
     const visited = new Set<object>(); const visit = (value: unknown, depth = 0): boolean => {
         if (depth > 7) return false; if (Array.isArray(value)) return value.some(item => visit(item, depth + 1));
         const item = record(value); if (!item || visited.has(item)) return false; visited.add(item);
         if (typeof item.warningCode === "string" && item.warningCode.trim()) {
-            const normalize = (code: unknown) => String(code || "").toLowerCase().replace(/^preview_/, "").replace(/[^a-z0-9]/g, "");
-            const warningCode = normalize(item.warningCode);
-            const matchingFailure = [item.errorCode, item.errorClass].some(code => warningCode && warningCode === normalize(code));
-            if (!matchingFailure) return true;
+            if (!failureCodes.has(normalizeDiagnosticCode(item.warningCode))) return true;
         }
         return Object.values(item).some(child => child && typeof child === "object" && visit(child, depth + 1));
     }; return visit(root);
@@ -64,6 +83,7 @@ function hasRecordedWarning(root: unknown): boolean {
 function collectRecordedReasons(root: unknown): { critical: Array<{ code: string; message: string }>; warnings: Array<{ code: string; message: string }> } {
     const critical = new Map<string, { code: string; message: string }>();
     const warnings = new Map<string, { code: string; message: string }>();
+    const failureCodes = collectFailureCodes(root);
     const visited = new Set<object>();
     const visit = (value: unknown, depth = 0) => {
         if (depth > 7) return;
@@ -83,8 +103,7 @@ function collectRecordedReasons(root: unknown): { critical: Array<{ code: string
         }
 
         const warningCode = typeof item.warningCode === "string" ? item.warningCode.trim() : "";
-        const normalize = (code: unknown) => String(code || "").toLowerCase().replace(/^preview_/, "").replace(/[^a-z0-9]/g, "");
-        const duplicateFailureWarning = warningCode && [item.errorCode, item.errorClass].some(code => normalize(warningCode) === normalize(code));
+        const duplicateFailureWarning = warningCode && failureCodes.has(normalizeDiagnosticCode(warningCode));
         if (warningCode && !duplicateFailureWarning) {
             const message = String(item.warningMessage || item.uiMessage || item.message || record(item.warning)?.message || "").trim().slice(0, 500);
             const key = `${warningCode}|${message}`.toLowerCase();
