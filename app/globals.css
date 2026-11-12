@@ -48,8 +48,8 @@ html[data-moqup-promo-dismissed="true"] .moqup-referral-banner {
     border: 1px solid transparent;
     background:
         linear-gradient(rgba(32, 25, 22, 0.76), rgba(32, 25, 22, 0.76)) padding-box,
-        linear-gradient(105deg, #ffb347 0%, rgba(255, 163, 66, 0.98) 5%, rgba(255, 139, 43, 0.82) 15%, rgba(255, 170, 79, 0.42) 38%, rgba(137, 87, 52, 0.36) 67%, rgba(37, 30, 26, 0.94) 100%) border-box;
-    box-shadow: 0 20px 54px rgba(22, 14, 9, 0.45), -8px 0 28px rgba(255, 147, 47, 0.35), 0 0 20px rgba(255, 141, 33, 0.18);
+        linear-gradient(105deg, #ffe0ad 0%, rgba(255, 216, 166, 0.96) 5%, rgba(255, 190, 129, 0.76) 15%, rgba(255, 184, 112, 0.38) 38%, rgba(137, 87, 52, 0.32) 67%, rgba(37, 30, 26, 0.94) 100%) border-box;
+    box-shadow: 0 20px 54px rgba(22, 14, 9, 0.45), -8px 0 26px rgba(255, 218, 169, 0.25), 0 0 18px rgba(255, 185, 112, 0.13);
 }
 
 .hero-url-shell::after {
