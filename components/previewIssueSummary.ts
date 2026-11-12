@@ -6,6 +6,8 @@ export type PreviewIssueEvidence = {
     page: Record<string, unknown> | null;
     criticalEvents: PreviewIssueEvent[];
     warningEvents: PreviewIssueEvent[];
+    criticalReasons: Array<{ code: string; message: string }>;
+    warningReasons: Array<{ code: string; message: string }>;
     renders: Array<Record<string, unknown>>;
     omittedCriticalEvents: number;
     omittedWarningEvents: number;
@@ -54,6 +56,39 @@ function hasRecordedWarning(root: unknown): boolean {
     }; return visit(root);
 }
 
+function collectRecordedReasons(root: unknown): { critical: Array<{ code: string; message: string }>; warnings: Array<{ code: string; message: string }> } {
+    const critical = new Map<string, { code: string; message: string }>();
+    const warnings = new Map<string, { code: string; message: string }>();
+    const visited = new Set<object>();
+    const visit = (value: unknown, depth = 0) => {
+        if (depth > 7) return;
+        if (Array.isArray(value)) { value.forEach(child => visit(child, depth + 1)); return; }
+        const item = record(value);
+        if (!item || visited.has(item)) return;
+        visited.add(item);
+
+        const errorClass = typeof item.errorClass === "string" ? item.errorClass.trim() : "";
+        const isFailure = Boolean(errorClass) || (String(item.status || "").toLowerCase() === "error" && Boolean(item.error || item.message || item.errorCode));
+        if (isFailure) {
+            const compileError = record(item.compileError) || {};
+            const code = errorClass || String(item.errorCode || item.code || "preview_failure");
+            const message = String(compileError.summary || item.uiTitle || item.summary || item.errorReason || item.errorCode || item.message || item.error || compileError.detail || "").trim().slice(0, 500);
+            const key = `${code}|${message}`.toLowerCase();
+            critical.set(key, { code: code.slice(0, 100), message });
+        }
+
+        const warningCode = typeof item.warningCode === "string" ? item.warningCode.trim() : "";
+        if (warningCode) {
+            const message = String(item.warningMessage || item.uiMessage || item.message || record(item.warning)?.message || "").trim().slice(0, 500);
+            const key = `${warningCode}|${message}`.toLowerCase();
+            warnings.set(key, { code: warningCode.slice(0, 100), message });
+        }
+        for (const child of Object.values(item)) if (child && typeof child === "object") visit(child, depth + 1);
+    };
+    visit(root);
+    return { critical: [...critical.values()].slice(-8), warnings: [...warnings.values()].slice(-8) };
+}
+
 function blankTime(root: unknown): number | null {
     const visited = new Set<object>(); const candidates: Array<{ elapsedMs: number; firstUsefulMs: number }> = [];
     const visit = (value: unknown, depth = 0, firstUsefulMs = 0) => {
@@ -88,14 +123,15 @@ export function summarizePreviewIssues(rawDiagnostics: string | null | undefined
     return critical.size || warnings.size ? { critical: critical.size, warnings: warnings.size } : null;
 }
 export function buildPreviewIssueEvidence(rawDiagnostics: string | null | undefined, fallbackCounts: PreviewIssueCounts | null = null): PreviewIssueEvidence | null {
-    if (!rawDiagnostics) return fallbackCounts ? { counts: fallbackCounts, confirmedBlank: false, page: null, criticalEvents: [], warningEvents: [], renders: [], omittedCriticalEvents: 0, omittedWarningEvents: 0 } : null;
+    if (!rawDiagnostics) return fallbackCounts ? { counts: fallbackCounts, confirmedBlank: false, page: null, criticalEvents: [], warningEvents: [], criticalReasons: [], warningReasons: [], renders: [], omittedCriticalEvents: 0, omittedWarningEvents: 0 } : null;
     let root: unknown;
-    try { root = JSON.parse(rawDiagnostics); } catch { return fallbackCounts ? { counts: fallbackCounts, confirmedBlank: false, page: null, criticalEvents: [], warningEvents: [], renders: [], omittedCriticalEvents: 0, omittedWarningEvents: 0 } : null; }
+    try { root = JSON.parse(rawDiagnostics); } catch { return fallbackCounts ? { counts: fallbackCounts, confirmedBlank: false, page: null, criticalEvents: [], warningEvents: [], criticalReasons: [], warningReasons: [], renders: [], omittedCriticalEvents: 0, omittedWarningEvents: 0 } : null; }
     const events = collectEvents(root);
     const blank = hasConfirmedBlank(root);
     const at = blankTime(root);
     const criticalEvents = events.filter((event) => isCritical(event, blank, at));
     const warningEvents = events.filter((event) => !isCritical(event, blank, at));
+    const recordedReasons = collectRecordedReasons(root);
     const counts = summarizePreviewIssues(rawDiagnostics) || fallbackCounts;
     if (!counts) return null;
     const findRuntime = (value: unknown, depth = 0): Record<string, any> | null => {
@@ -113,6 +149,8 @@ export function buildPreviewIssueEvidence(rawDiagnostics: string | null | undefi
         page: runtime?.page ? { blank: runtime.page.blank === true, bodyVisible: runtime.page.bodyVisible === true, visibleElementCount: Number(runtime.page.visibleElementCount || 0), bodyTextLength: Number(runtime.page.bodyTextLength || 0), readyState: String(runtime.page.readyState || "").slice(0, 20) } : null,
         criticalEvents: criticalEvents.slice(-8),
         warningEvents: warningEvents.slice(-4),
+        criticalReasons: recordedReasons.critical,
+        warningReasons: recordedReasons.warnings,
         renders: Array.isArray(runtime?.renders) ? runtime.renders.slice(-6).map((render: unknown) => { const item = record(render) || {}; return { elapsedMs: Number(item.elapsedMs || 0) || null, blank: item.blank === true, bodyVisible: item.bodyVisible === true, visibleElementCount: Number(item.visibleElementCount || 0), bodyTextLength: Number(item.bodyTextLength || 0) }; }) : [],
         omittedCriticalEvents: Math.max(0, criticalEvents.length - 8),
         omittedWarningEvents: Math.max(0, warningEvents.length - 4),

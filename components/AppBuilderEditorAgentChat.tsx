@@ -1446,6 +1446,11 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
         const status = Number(event.status || 0);
         return [description, status ? `HTTP ${status}` : "", location].filter(Boolean).join(" · ").slice(0, 300);
     };
+    const formatPreviewIssueReason = (reason: { code: string; message: string }) => {
+        const code = String(reason.code || "Preview failure").replaceAll("_", " ");
+        const message = String(reason.message || "").trim();
+        return `${code}${message ? ` — ${message}` : ""}`.slice(0, 400);
+    };
     const showPreviewLoadingNotice = !PRODUCTION_AGENT_CHAT_BLOCKED && previewReady === false && !freeCompileFixContext && !hasPreviewIssue;
     const chatDisabled = PRODUCTION_AGENT_CHAT_BLOCKED;
     // Contract gate is owned by the parent editor; chat only renders Fix with AI
@@ -9405,14 +9410,10 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                 {isAdmin && adminPreviewIssueEvidence && (adminPreviewIssueEvidence.counts.critical > 0 || adminPreviewIssueEvidence.counts.warnings > 0) ? (
                                     <div className="mt-2 space-y-1 border-t border-rose-200/80 pt-2 text-[11px] leading-snug text-neutral-700 sm:text-xs" aria-label="Preview diagnostic details">
                                         {adminPreviewIssueEvidence.counts.critical > 0 ? (
-                                            <p><span className="font-semibold text-rose-800">Critical:</span> {adminPreviewIssueEvidence.criticalEvents.length
-                                                ? adminPreviewIssueEvidence.criticalEvents.slice(0, 3).map(formatPreviewIssueEvent).join("; ")
-                                                : "No critical event details were captured."}</p>
+                                            <p><span className="font-semibold text-rose-800">Critical:</span> {[...adminPreviewIssueEvidence.criticalReasons.map(formatPreviewIssueReason), ...adminPreviewIssueEvidence.criticalEvents.slice(0, 3).map(formatPreviewIssueEvent)].join("; ") || "No critical event details were captured."}</p>
                                         ) : null}
                                         {adminPreviewIssueEvidence.counts.warnings > 0 ? (
-                                            <p><span className="font-semibold text-amber-800">Warnings:</span> {adminPreviewIssueEvidence.warningEvents.length
-                                                ? adminPreviewIssueEvidence.warningEvents.slice(0, 3).map(formatPreviewIssueEvent).join("; ")
-                                                : "No warning event details were captured."}</p>
+                                            <p><span className="font-semibold text-amber-800">Warnings:</span> {[...adminPreviewIssueEvidence.warningReasons.map(formatPreviewIssueReason), ...adminPreviewIssueEvidence.warningEvents.slice(0, 3).map(formatPreviewIssueEvent)].join("; ") || "No warning event details were captured."}</p>
                                         ) : null}
                                     </div>
                                 ) : null}
