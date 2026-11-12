@@ -51,7 +51,12 @@ function hasRecordedWarning(root: unknown): boolean {
     const visited = new Set<object>(); const visit = (value: unknown, depth = 0): boolean => {
         if (depth > 7) return false; if (Array.isArray(value)) return value.some(item => visit(item, depth + 1));
         const item = record(value); if (!item || visited.has(item)) return false; visited.add(item);
-        if (typeof item.warningCode === "string" && item.warningCode.trim()) return true;
+        if (typeof item.warningCode === "string" && item.warningCode.trim()) {
+            const normalize = (code: unknown) => String(code || "").toLowerCase().replace(/^preview_/, "").replace(/[^a-z0-9]/g, "");
+            const warningCode = normalize(item.warningCode);
+            const matchingFailure = [item.errorCode, item.errorClass].some(code => warningCode && warningCode === normalize(code));
+            if (!matchingFailure) return true;
+        }
         return Object.values(item).some(child => child && typeof child === "object" && visit(child, depth + 1));
     }; return visit(root);
 }
@@ -78,7 +83,9 @@ function collectRecordedReasons(root: unknown): { critical: Array<{ code: string
         }
 
         const warningCode = typeof item.warningCode === "string" ? item.warningCode.trim() : "";
-        if (warningCode) {
+        const normalize = (code: unknown) => String(code || "").toLowerCase().replace(/^preview_/, "").replace(/[^a-z0-9]/g, "");
+        const duplicateFailureWarning = warningCode && [item.errorCode, item.errorClass].some(code => normalize(warningCode) === normalize(code));
+        if (warningCode && !duplicateFailureWarning) {
             const message = String(item.warningMessage || item.uiMessage || item.message || record(item.warning)?.message || "").trim().slice(0, 500);
             const key = `${warningCode}|${message}`.toLowerCase();
             warnings.set(key, { code: warningCode.slice(0, 100), message });
@@ -86,6 +93,12 @@ function collectRecordedReasons(root: unknown): { critical: Array<{ code: string
         for (const child of Object.values(item)) if (child && typeof child === "object") visit(child, depth + 1);
     };
     visit(root);
+    if (hasConfirmedBlank(root) && critical.size === 0) {
+        critical.set("blank_preview", {
+            code: "blank_preview",
+            message: "The iframe was detected as blank, but no specific browser error was captured.",
+        });
+    }
     return { critical: [...critical.values()].slice(-8), warnings: [...warnings.values()].slice(-8) };
 }
 
@@ -116,8 +129,7 @@ function isCritical(event: PreviewIssueEvent, blank: boolean, at: number | null)
 export function summarizePreviewIssues(rawDiagnostics: string | null | undefined): PreviewIssueCounts | null {
     if (!rawDiagnostics) return null; let root: unknown; try { root = JSON.parse(rawDiagnostics); } catch { return null; }
     const events = collectEvents(root); const blank = hasConfirmedBlank(root); const at = blankTime(root); const critical = new Set<string>(); const warnings = new Set<string>();
-    if (blank) critical.add("confirmed-blank-page");
-    if (hasRecordedFailure(root)) critical.add("preview-failure");
+    if (blank || hasRecordedFailure(root)) critical.add("preview-failure");
     if (hasRecordedWarning(root)) warnings.add("preview-warning");
     for (const event of events) (isCritical(event, blank, at) ? critical : warnings).add(eventKey(event));
     return critical.size || warnings.size ? { critical: critical.size, warnings: warnings.size } : null;

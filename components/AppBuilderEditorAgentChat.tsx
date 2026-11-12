@@ -16,6 +16,7 @@ import { doc, onSnapshot } from "firebase/firestore";
 import { useModal } from "@/components/ui/ModalContext";
 import EditPlanJobStatusCard from "@/components/EditPlanJobStatusCard";
 import { buildPreviewIssueEvidence, type PreviewIssueCounts } from "./previewIssueSummary";
+import type { PreviewFailureContract } from "./previewFailureContract";
 import {
     applyEditPlanOps,
     extractCompletedEditPlanProposal,
@@ -240,6 +241,7 @@ export type AppBuilderEditorAgentChatProps = {
     previewIssue?: string | null;
     previewIssueCounts?: PreviewIssueCounts | null;
     previewIssueDiagnostics?: string | null;
+    previewIssueFailure?: PreviewFailureContract | null;
     previewIssueActionLabel?: string | null;
     onPreviewIssueAction?: () => void;
     onPreviewIssueFixRequest?: () => void;
@@ -1064,7 +1066,7 @@ const NEXT_EDIT_SUGGESTION_SETS = [
 ];
 
 
-export default function AppBuilderEditorAgentChat({ appId, files, currentFile, onFileEdit, onFilesReplace, onRestoreApplied, creditError, previewReady, previewIssue, previewIssueCounts, previewIssueDiagnostics, previewIssueActionLabel, onPreviewIssueAction, onPreviewIssueFixRequest, onUserMessageSent, onIntroSequenceComplete, onRequestUpgradePaywall, topupModalTrigger, welcomeContext, agentMode = "v2" }: AppBuilderEditorAgentChatProps) {
+export default function AppBuilderEditorAgentChat({ appId, files, currentFile, onFileEdit, onFilesReplace, onRestoreApplied, creditError, previewReady, previewIssue, previewIssueCounts, previewIssueDiagnostics, previewIssueFailure, previewIssueActionLabel, onPreviewIssueAction, onPreviewIssueFixRequest, onUserMessageSent, onIntroSequenceComplete, onRequestUpgradePaywall, topupModalTrigger, welcomeContext, agentMode = "v2" }: AppBuilderEditorAgentChatProps) {
     const [dismissedPreviewIssueKey, setDismissedPreviewIssueKey] = useState<string | null>(null);
     const [imageAttachments, setImageAttachments] = useState<AgentImageAttachment[]>([]);
     const [uploadingImage, setUploadingImage] = useState(false);
@@ -1440,6 +1442,10 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
         () => isAdmin ? buildPreviewIssueEvidence(previewIssueDiagnostics, previewIssueCounts) : null,
         [isAdmin, previewIssueCounts, previewIssueDiagnostics],
     );
+    const adminPreviewIssueFailure = isAdmin && previewIssueFailure ? {
+        code: previewIssueFailure.errorClass,
+        message: previewIssueFailure.compileError?.summary || previewIssueFailure.reason || "",
+    } : null;
     const formatPreviewIssueEvent = (event: { kind?: string; message?: string; url?: string; status?: number; resourceType?: string }) => {
         const description = String(event.message || "").trim() || String(event.kind || "Preview issue").replaceAll("_", " ");
         const location = String(event.url || "").trim();
@@ -9410,10 +9416,15 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                                 {isAdmin && adminPreviewIssueEvidence && (adminPreviewIssueEvidence.counts.critical > 0 || adminPreviewIssueEvidence.counts.warnings > 0) ? (
                                     <div className="mt-2 space-y-1 border-t border-rose-200/80 pt-2 text-[11px] leading-snug text-neutral-700 sm:text-xs" aria-label="Preview diagnostic details">
                                         {adminPreviewIssueEvidence.counts.critical > 0 ? (
-                                            <p><span className="font-semibold text-rose-800">Critical:</span> {[...adminPreviewIssueEvidence.criticalReasons.map(formatPreviewIssueReason), ...adminPreviewIssueEvidence.criticalEvents.slice(0, 3).map(formatPreviewIssueEvent)].join("; ") || "No critical event details were captured."}</p>
+                                            <p><span className="font-semibold text-rose-800">Critical:</span> {[
+                                                ...(adminPreviewIssueFailure ? [formatPreviewIssueReason(adminPreviewIssueFailure)] : adminPreviewIssueEvidence.criticalReasons.map(formatPreviewIssueReason)),
+                                                ...adminPreviewIssueEvidence.criticalEvents.slice(0, 3).map(formatPreviewIssueEvent),
+                                            ].join("; ") || (adminPreviewIssueEvidence.confirmedBlank
+                                                ? "The iframe was detected as blank, but no specific browser error was captured."
+                                                : "A preview failure was detected, but no browser error details were captured.")}</p>
                                         ) : null}
                                         {adminPreviewIssueEvidence.counts.warnings > 0 ? (
-                                            <p><span className="font-semibold text-amber-800">Warnings:</span> {[...adminPreviewIssueEvidence.warningReasons.map(formatPreviewIssueReason), ...adminPreviewIssueEvidence.warningEvents.slice(0, 3).map(formatPreviewIssueEvent)].join("; ") || "No warning event details were captured."}</p>
+                                            <p><span className="font-semibold text-amber-800">Warnings:</span> {[...adminPreviewIssueEvidence.warningReasons.map(formatPreviewIssueReason), ...adminPreviewIssueEvidence.warningEvents.slice(0, 3).map(formatPreviewIssueEvent)].join("; ") || "A warning marker was recorded, but no separate warning event was captured."}</p>
                                         ) : null}
                                     </div>
                                 ) : null}
