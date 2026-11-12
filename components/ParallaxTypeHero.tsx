@@ -84,12 +84,12 @@ export default function ParallaxTypeHero({
                                             router.push(`/login?mode=signup&u=${encodeURIComponent(normalized)}`);
                                         }
                                     }}
-                                    className="w-full max-w-2xl space-y-3"
+                                    className="w-full max-w-4xl space-y-3"
                                 >
-                                    <div className="rounded-full bg-white/95 p-2 shadow-[0_20px_50px_rgba(0,0,0,0.3)] ring-1 ring-white/20 backdrop-blur-md">
+                                    <div className="hero-url-shell hero-url-shell-right relative isolate overflow-hidden rounded-full p-2 backdrop-blur-xl">
                                         <div className="flex items-stretch gap-2">
-                                            <div className="flex min-h-[48px] flex-1 items-center rounded-full px-4 sm:px-6">
-                                                <span className="hidden sm:inline text-neutral-400 text-lg font-medium mr-1">https://</span>
+                                            <div className="relative z-10 flex min-h-[68px] flex-1 items-center rounded-full px-5 sm:px-7">
+                                                <span className="mr-1 hidden text-lg font-medium text-white/65 sm:inline md:text-xl">https://</span>
                                                 <input
                                                     value={url}
                                                     onChange={(event) => { const value = stripProtocol(event.target.value); setUrl(value); setError(value && !validateAndNormalizePublicHttpUrl(value) ? 'Please enter a valid public http(s) URL.' : null); }}
@@ -98,10 +98,10 @@ export default function ParallaxTypeHero({
                                                     autoCapitalize="none"
                                                     autoComplete="off"
                                                     aria-label="Website URL"
-                                                    className="w-full bg-transparent outline-none text-neutral-700 text-base sm:text-lg placeholder:text-neutral-400 font-medium"
+                                                    className="w-full bg-transparent text-lg font-medium text-[#fff8ed] outline-none placeholder:text-white/55 sm:text-xl md:text-2xl"
                                                 />
                                             </div>
-                                            <button type="submit" disabled={!url || !!error} className="inline-flex min-h-[48px] w-12 shrink-0 items-center justify-center rounded-full bg-[#FF8D21] text-white shadow-sm transition-all duration-200 hover:scale-[1.04] hover:shadow-[0_10px_24px_rgba(255,141,33,0.28)] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:scale-100 sm:w-auto sm:px-5" aria-label="Clone website from URL">
+                                            <button type="submit" disabled={!url || !!error} className="inline-flex min-h-16 w-12 shrink-0 items-center justify-center rounded-full bg-[#FF8D21] text-white shadow-[0_6px_24px_rgba(255,141,33,0.32)] transition-all duration-200 hover:scale-[1.04] hover:shadow-[0_10px_28px_rgba(255,141,33,0.48)] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:scale-100 sm:w-auto sm:px-8" aria-label="Clone website from URL">
                                                 <ArrowRightSquare className="h-5 w-5 sm:hidden" aria-hidden />
                                                 <span className="hidden text-sm sm:inline sm:text-base">Clone</span>
                                             </button>

@@ -68,6 +68,17 @@ html[data-moqup-promo-dismissed="true"] .moqup-referral-banner {
     mask-composite: exclude;
 }
 
+.hero-url-shell-right {
+    background:
+        linear-gradient(rgba(32, 25, 22, 0.76), rgba(32, 25, 22, 0.76)) padding-box,
+        linear-gradient(105deg, rgba(37, 30, 26, 0.94) 0%, rgba(137, 87, 52, 0.36) 33%, rgba(255, 170, 79, 0.42) 62%, rgba(255, 139, 43, 0.82) 85%, #ffb347 100%) border-box;
+    box-shadow: 0 20px 54px rgba(22, 14, 9, 0.45), 8px 0 28px rgba(255, 147, 47, 0.35), 0 0 20px rgba(255, 141, 33, 0.18);
+}
+
+.hero-url-shell-right::after {
+    animation-direction: reverse;
+}
+
 @media (prefers-reduced-motion: reduce) {
     .hero-url-shell::after {
         animation: none;
