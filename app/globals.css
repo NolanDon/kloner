@@ -38,21 +38,40 @@ html[data-moqup-promo-dismissed="true"] .moqup-referral-banner {
 }
 
 @keyframes hero-url-glimmer {
-    0%, 18% { transform: translateX(-125%) skewX(-18deg); opacity: 0; }
-    32% { opacity: 0.9; }
-    68% { opacity: 0.55; }
-    100% { transform: translateX(190%) skewX(-18deg); opacity: 0; }
+    0%, 12% { background-position: 140% 0; opacity: 0; }
+    28% { opacity: 0.95; }
+    64% { opacity: 0.72; }
+    100% { background-position: -140% 0; opacity: 0; }
 }
 
-.hero-url-glimmer {
-    animation: hero-url-glimmer 3.8s ease-in-out infinite;
+.hero-url-shell {
+    border: 1px solid transparent;
+    background:
+        linear-gradient(rgba(32, 25, 22, 0.76), rgba(32, 25, 22, 0.76)) padding-box,
+        linear-gradient(105deg, #fffaf0 0%, rgba(255, 244, 224, 0.94) 5%, rgba(255, 194, 126, 0.78) 15%, rgba(255, 242, 222, 0.38) 38%, rgba(137, 111, 91, 0.36) 67%, rgba(37, 30, 26, 0.94) 100%) border-box;
+    box-shadow: 0 20px 54px rgba(22, 14, 9, 0.45), -8px 0 26px rgba(255, 244, 224, 0.19), 0 0 20px rgba(255, 255, 255, 0.12);
+}
+
+.hero-url-shell::after {
+    position: absolute;
+    z-index: 20;
+    inset: 0;
+    border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(105deg, transparent 34%, rgba(255, 255, 255, 0.04) 40%, rgba(255, 255, 255, 0.96) 49%, rgba(255, 228, 190, 0.76) 53%, transparent 64%);
+    background-size: 300% 100%;
+    content: "";
+    pointer-events: none;
+    animation: hero-url-glimmer 4.2s ease-in-out infinite;
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .hero-url-glimmer {
+    .hero-url-shell::after {
         animation: none;
-        opacity: 0.35;
-        transform: translateX(0) skewX(-18deg);
+        opacity: 0.25;
     }
 }
 

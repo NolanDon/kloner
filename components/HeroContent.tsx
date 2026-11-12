@@ -106,9 +106,7 @@ export default function HeroContent({
           <label htmlFor="hero-url-input" className="sr-only">
             Website URL
           </label>
-          <div className="relative isolate overflow-hidden rounded-full border border-[#ffd39e]/70 bg-[rgba(32,25,22,0.72)] p-2 shadow-[0_22px_60px_rgba(22,14,9,0.48),0_0_35px_rgba(255,160,70,0.22)] backdrop-blur-xl">
-            <span aria-hidden="true" className="pointer-events-none absolute -left-12 top-1/2 z-0 h-36 w-[22rem] -translate-y-1/2 rounded-full bg-[radial-gradient(ellipse_at_center,rgba(255,220,166,0.78)_0%,rgba(255,166,79,0.52)_24%,rgba(255,141,33,0.22)_52%,rgba(255,141,33,0)_78%)] blur-2xl" />
-            <span aria-hidden="true" className="hero-url-glimmer pointer-events-none absolute -left-[20%] top-[-40%] z-0 h-[180%] w-[38%] bg-[linear-gradient(100deg,transparent_0%,rgba(255,174,93,0.03)_28%,rgba(255,224,175,0.5)_48%,rgba(255,155,65,0.24)_58%,transparent_78%)] blur-md" />
+          <div className="hero-url-shell relative isolate overflow-hidden rounded-full p-2 backdrop-blur-xl">
             <div className="flex items-stretch gap-2">
               <div className="relative z-10 flex min-h-[68px] flex-1 items-center rounded-full px-5 sm:px-7">
                 <span className="mr-1 hidden text-lg font-medium text-white/65 sm:inline md:text-xl">
