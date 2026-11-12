@@ -3,7 +3,7 @@
 
 import React, { useState } from 'react';
 import Image from 'next/image';
-import { ArrowRightSquare } from 'lucide-react';
+import { Send } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { auth } from '@/lib/firebase';
 import { getPublicHttpUrlRejectionReason, stripProtocol, validateAndNormalizePublicHttpUrl } from '@/src/lib/publicHttpUrl';
@@ -101,8 +101,8 @@ export default function ParallaxTypeHero({
                                                     className="w-full bg-transparent text-lg font-medium text-[#fff8ed] outline-none placeholder:text-white/55 sm:text-xl md:text-2xl"
                                                 />
                                             </div>
-                                            <button type="submit" disabled={!url || !!error} className="inline-flex min-h-16 w-12 shrink-0 items-center justify-center rounded-full bg-[#FF8D21] text-white shadow-[0_6px_24px_rgba(255,141,33,0.32)] transition-all duration-200 hover:scale-[1.04] hover:shadow-[0_10px_28px_rgba(255,141,33,0.48)] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:scale-100 sm:w-auto sm:px-8" aria-label="Clone website from URL">
-                                                <ArrowRightSquare className="h-5 w-5 sm:hidden" aria-hidden />
+                                            <button type="submit" disabled={!url || !!error} className="inline-flex min-h-16 w-16 shrink-0 items-center justify-center rounded-full bg-[#FF8D21] text-white shadow-[0_6px_24px_rgba(255,141,33,0.32)] transition-all duration-200 hover:scale-[1.04] hover:shadow-[0_10px_28px_rgba(255,141,33,0.48)] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:scale-100 sm:w-auto sm:px-8" aria-label="Clone website from URL">
+                                                <Send className="h-5 w-5 shrink-0 sm:hidden" strokeWidth={2} aria-hidden />
                                                 <span className="hidden text-sm sm:inline sm:text-base">Clone</span>
                                             </button>
                                         </div>
