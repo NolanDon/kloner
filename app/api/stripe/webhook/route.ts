@@ -130,6 +130,57 @@ async function sendTrialStartedSlackAlert(uid: string, subscriptionId: string): 
   }
 }
 
+async function sendCheckoutActivitySlackAlert(
+  outcome: "succeeded" | "abandoned",
+  session: Stripe.Checkout.Session,
+  uid: string,
+): Promise<void> {
+  if (cleanStr(session.metadata?.plan, 32) !== "pro") return;
+  const webhookUrl = (process.env.SLACK_ERROR_WEBHOOK_URL || process.env.SLACK_WEBHOOK_URL || "").trim();
+  if (!webhookUrl) return;
+
+  const alertRef = db.collection("kloner_slack_event_dedupe").doc(`checkout_${outcome}_${session.id}`);
+  const claimed = await db.runTransaction(async (tx) => {
+    const existing = await tx.get(alertRef);
+    if (existing.exists) return false;
+    tx.create(alertRef, { event: `checkout_${outcome}`, uid, sessionId: session.id, status: "sending", createdAt: Date.now() });
+    return true;
+  });
+  if (!claimed) return;
+
+  try {
+    const authUser = await admin.auth().getUser(uid);
+    const email = authUser.email?.trim() || uid;
+    const checkoutContext = cleanStr(session.metadata?.checkoutContext, 40);
+    const contextLabel = checkoutContext === "editor_deploy"
+      ? "Editor · Deploy"
+      : checkoutContext === "editor_download"
+        ? "Editor · Code download"
+        : checkoutContext === "dashboard_deploy"
+          ? "Dashboard · App deploy"
+        : "Dashboard · Scan";
+    const trial = session.metadata?.trialWelcomeEmail === "1";
+    const label = outcome === "succeeded" ? "Stripe checkout successful" : "Stripe checkout abandoned";
+    const emoji = outcome === "succeeded" ? ":white_check_mark:" : ":hourglass:";
+    const response = await fetch(webhookUrl, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        text: `${emoji} *${label}* · ${email} · ${contextLabel} · ${trial ? "7-day free trial" : "Paid plan"}`,
+        username: "Kloner",
+        icon_emoji: ":large_orange_circle:",
+        unfurl_links: false,
+        unfurl_media: false,
+      }),
+    });
+    if (!response.ok) throw new Error(`Slack returned ${response.status}`);
+    await alertRef.set({ status: "sent", sentAt: Date.now() }, { merge: true });
+  } catch (error) {
+    await alertRef.delete().catch(() => undefined);
+    console.error("[stripe-webhook] checkout activity Slack alert failed", { uid, sessionId: session.id, outcome, error });
+  }
+}
+
 // ------------------------
 // Affiliate constants
 // ------------------------
@@ -1154,6 +1205,11 @@ export async function POST(req: NextRequest) {
             console.error("[stripe-webhook] trial welcome email failed", err);
           }
         }
+        if (firebaseUid) {
+          await sendCheckoutActivitySlackAlert("succeeded", session, firebaseUid).catch((error) => {
+            console.warn("[stripe-webhook] checkout success Slack alert failed", { uid: firebaseUid, sessionId: session.id, error });
+          });
+        }
         break;
       }
 
@@ -1162,6 +1218,12 @@ export async function POST(req: NextRequest) {
         const session = event.data.object as Stripe.Checkout.Session;
         const firebaseUid = session.metadata?.firebaseUid as string | undefined;
         const plan = cleanStr((session.metadata as any)?.plan, 64);
+
+        if (event.type === "checkout.session.expired" && firebaseUid && plan === "pro") {
+          await sendCheckoutActivitySlackAlert("abandoned", session, firebaseUid).catch((error) => {
+            console.warn("[stripe-webhook] checkout abandonment Slack alert failed", { uid: firebaseUid, sessionId: session.id, error });
+          });
+        }
 
         if (firebaseUid && plan === "pro") {
           try {

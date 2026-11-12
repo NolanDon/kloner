@@ -26,6 +26,7 @@ import { doc, onSnapshot } from "firebase/firestore";
 import { resolveStorageUrl } from "@/src/lib/renders";
 import { signOut as firebaseSignOut } from "firebase/auth";
 import { useAuth } from "@/src/hooks/useAuth";
+import { sendKlonerSlackEvent } from "@/src/lib/klonerSlackEvents";
 import { useModal } from "@/components/ui/ModalContext";
 import { compressImageForUpload } from "@/src/lib/clientImageCompression";
 import { sanitizeImageName } from "./helpers";
@@ -3968,7 +3969,7 @@ export default function AppBuilderEditor({
         }
     }, []);
 
-    const startLocalTrialCheckout = useCallback(async (paidOnly = false) => {
+    const startLocalTrialCheckout = useCallback(async (paidOnly = false, context: "editor_deploy" | "editor_download" = "editor_deploy") => {
         if (trialCheckoutBusy || localTrialCheckoutBusy) return;
         if (typeof window === "undefined") return;
 
@@ -4004,6 +4005,7 @@ export default function AppBuilderEditor({
                 body: JSON.stringify({
                     plan: "pro",
                     purchaseIntent: paidOnly ? "code_download" : undefined,
+                    checkoutContext: context,
                     returnAppId: appId,
                     returnStep: 3,
                 }),
@@ -4022,6 +4024,14 @@ export default function AppBuilderEditor({
                 return;
             }
 
+            if (!data.upgradedTrial) {
+                await sendKlonerSlackEvent("stripe_checkout_redirecting", {
+                    email: user?.email,
+                    trial: data.trial === true,
+                    context,
+                }).catch((error) => console.warn("Failed to send editor checkout redirect Slack alert", error));
+            }
+
             // Stripe checkout is an intentional full-page navigation. The themed
             // paywall has already confirmed the action, so do not show a second
             // browser-native “Leave site?” dialog.
@@ -4036,7 +4046,7 @@ export default function AppBuilderEditor({
         } finally {
             setLocalTrialCheckoutBusy(false);
         }
-    }, [appId, localTrialCheckoutBusy, showAlert, trialCheckoutBusy]);
+    }, [appId, localTrialCheckoutBusy, showAlert, trialCheckoutBusy, user?.email]);
 
     const requestDeployCheckout = useCallback(() => {
         if (onRequestDeployCheckout) {
@@ -4044,7 +4054,7 @@ export default function AppBuilderEditor({
             return;
         }
 
-        void startLocalTrialCheckout();
+        void startLocalTrialCheckout(false, "editor_deploy");
     }, [onRequestDeployCheckout, startLocalTrialCheckout]);
 
     const handleDownloadCode = async () => {
@@ -4062,6 +4072,11 @@ export default function AppBuilderEditor({
                 setDownloadBillingState(data.billingState || "free");
                 setUpgradePaywallCopy(DOWNLOAD_UPGRADE_PAYWALL_COPY);
                 setShowDeployUpgradePaywall(true);
+                void sendKlonerSlackEvent("editor_download_paywall_shown", {
+                    email: user?.email,
+                    billingState: data.billingState || "free",
+                    context: "editor_download",
+                }).catch((error) => console.warn("Failed to send editor download paywall Slack alert", error));
                 return;
             }
             if (!response.ok) {
@@ -4085,7 +4100,7 @@ export default function AppBuilderEditor({
 
     const upgradeForCodeDownload = async () => {
         if (downloadBillingState !== "trialing") {
-            await startLocalTrialCheckout(true);
+            await startLocalTrialCheckout(true, "editor_download");
             return;
         }
         if (localTrialCheckoutBusy) return;
@@ -6610,13 +6625,20 @@ export default function AppBuilderEditor({
                 deployPaywallEventAppIdRef.current = appId;
                 void (async () => {
                     const csrf = await ensureSessionAndCsrf().catch(() => null);
-                    await fetch(`/api/app-builder/${encodeURIComponent(appId)}/deploy-paywall`, {
+                    const response = await fetch(`/api/app-builder/${encodeURIComponent(appId)}/deploy-paywall`, {
                         method: "POST",
                         credentials: "include",
                         headers: { "content-type": "application/json", ...(csrf ? { "x-csrf": csrf } : {}) },
                         cache: "no-store",
                         body: JSON.stringify({}),
                     });
+                    if (response.status === 402) {
+                        await sendKlonerSlackEvent("editor_deploy_paywall_shown", {
+                            email: user?.email,
+                            billingState: "trialing",
+                            context: "editor_deploy",
+                        });
+                    }
                 })().catch((error) => {
                     console.warn("[app-builder] failed to report deploy paywall view", error);
                 });
@@ -8954,7 +8976,7 @@ export default function AppBuilderEditor({
                             return;
                         }
                         if (upgradePaywallCopy === DEPLOY_UPGRADE_PAYWALL_COPY) {
-                            void startLocalTrialCheckout(true);
+                            void startLocalTrialCheckout(true, "editor_deploy");
                             return;
                         }
                         requestDeployCheckout();

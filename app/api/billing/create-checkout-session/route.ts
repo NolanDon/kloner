@@ -201,6 +201,7 @@ async function handler({ req, uid }: { req: NextRequest; uid: string }) {
         returnRenderId,
         returnAppId,
         returnStep,
+        checkoutContext: requestedCheckoutContext,
 
         // exit-offer inputs
         offer, // "exit40"
@@ -208,6 +209,9 @@ async function handler({ req, uid }: { req: NextRequest; uid: string }) {
         offerReason, // optional
         offerPromoCode, // optional: "DEPLOY40" (human code)
     } = body as any;
+    const checkoutContext = requestedCheckoutContext === "editor_deploy" || requestedCheckoutContext === "editor_download" || requestedCheckoutContext === "dashboard_deploy" || requestedCheckoutContext === "dashboard_scan"
+        ? requestedCheckoutContext
+        : "dashboard_scan";
 
     if (!plan) {
         return NextResponse.json({ error: "Missing plan" }, { status: 400 });
@@ -384,7 +388,7 @@ async function handler({ req, uid }: { req: NextRequest; uid: string }) {
                     )}&billing=success`
             : `${appOrigin}/dashboard/view?billing=success`;
 
-    const cancelUrl = `${appOrigin}/dashboard/view?billing=cancelled&recovery=1`;
+    const cancelUrl = `${appOrigin}/dashboard/view?billing=cancelled&recovery=1&checkoutContext=${encodeURIComponent(checkoutContext)}`;
 
     if (trialSubscription) {
         const subscriptionItem = trialSubscription.items?.data?.[0];
@@ -422,7 +426,7 @@ async function handler({ req, uid }: { req: NextRequest; uid: string }) {
                 );
             }
             await refreshTierFromStripeForUid(uid);
-            return NextResponse.json({ url: successUrl, upgradedTrial: true }, { status: 200 });
+            return NextResponse.json({ url: successUrl, upgradedTrial: true, trial: false }, { status: 200 });
         } catch (err: any) {
             await notifyStripeSubscriptionError({
                 action: "billing.createCheckoutSession.upgradeTrial",
@@ -457,6 +461,7 @@ async function handler({ req, uid }: { req: NextRequest; uid: string }) {
         ...(returnAppId ? { returnAppId: String(returnAppId) } : {}),
         ...(returnRenderId ? { returnRenderId: String(returnRenderId) } : {}),
         ...(returnStep ? { returnStep: String(returnStep) } : {}),
+        checkoutContext,
         ...(includeTrial ? { trialWelcomeEmail: "1" } : {}),
         ...(exitOfferRequested ? { checkoutFlow: "recovery_exit40" } : {}),
         ...(isAppDeployTrialSuccess ? { checkoutFlow: "app_deploy_trial" } : {}),
@@ -548,7 +553,7 @@ async function handler({ req, uid }: { req: NextRequest; uid: string }) {
         }
     }
 
-    return NextResponse.json({ url: session.url }, { status: 200 });
+    return NextResponse.json({ url: session.url, trial: includeTrial }, { status: 200 });
 }
 
 export async function POST(req: NextRequest) {

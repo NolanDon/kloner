@@ -30,9 +30,13 @@ export async function POST(req: NextRequest, { params }: any) {
         }
         const userRef = db.collection("kloner_users").doc(uid);
         const user = (await userRef.get()).data() || {};
-        if (!canDownloadProject(user)) return NextResponse.json({
-            code: "PAID_SUBSCRIPTION_REQUIRED", billingState: user.stripeStatus || "free", error: "Upgrade to a paid subscription to download your code.",
-        }, { status: 402 });
+        if (!canDownloadProject(user)) {
+            const response = NextResponse.json({
+                code: "PAID_SUBSCRIPTION_REQUIRED", billingState: user.stripeStatus || "free", error: "Upgrade to a paid subscription to download your code.",
+            }, { status: 402 });
+            response.headers.set("x-observability-skip-status-alert", "1");
+            return response;
+        }
         const snap = await userRef.collection("kloner_apps").doc(appId).get();
         if (!snap.exists) return NextResponse.json({ error: "App not found" }, { status: 404 });
         const body = await authedReq.json();

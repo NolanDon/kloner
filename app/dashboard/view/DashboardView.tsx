@@ -4230,12 +4230,16 @@ export default function PreviewPage(): JSX.Element {
             earlyPaywallSlackShownRef.current = false;
             return;
         }
-        if (!user?.uid || earlyPaywallSlackShownRef.current) return;
+        if (!user?.uid || userTier === "unknown" || earlyPaywallSlackShownRef.current) return;
 
         earlyPaywallSlackShownRef.current = true;
-        void sendKlonerSlackEvent("early_paywall_shown", { email: user.email })
+        void sendKlonerSlackEvent("early_paywall_shown", {
+            email: user.email,
+            context: "dashboard_scan",
+            billingState: userTier,
+        })
             .catch((error) => console.warn("Failed to send early paywall Slack alert", error));
-    }, [showCreditsPaywall, user?.email, user?.uid]);
+    }, [showCreditsPaywall, user?.email, user?.uid, userTier]);
     const recoveryPendingStorageKey = useMemo(
         () => (user?.uid ? `kloner.billing.recovery.pending:${user.uid}` : ""),
         [user?.uid],
@@ -4712,7 +4716,11 @@ export default function PreviewPage(): JSX.Element {
         if (!user?.uid || stripeCheckoutCancelAlertHandledRef.current) return;
 
         stripeCheckoutCancelAlertHandledRef.current = true;
-        void sendKlonerSlackEvent("stripe_checkout_cancelled", { email: user.email })
+        const checkoutContext = search.get("checkoutContext");
+        void sendKlonerSlackEvent("stripe_checkout_cancelled", {
+            email: user.email,
+            context: checkoutContext === "editor_deploy" || checkoutContext === "editor_download" || checkoutContext === "dashboard_deploy" ? checkoutContext : "dashboard_scan",
+        })
             .catch((error) => console.warn("Failed to send Stripe checkout cancellation Slack alert", error));
     }, [search, user?.email, user?.uid]);
 
@@ -13858,7 +13866,7 @@ export default function PreviewPage(): JSX.Element {
     }
 
     const startProCheckout = useCallback(
-        async (paidOnly = false, forcePaid = false, onCheckoutReady?: () => Promise<void> | void) => {
+        async (paidOnly = false, forcePaid = false, onCheckoutReady?: (details: { trial: boolean }) => Promise<void> | void) => {
             if (checkoutBusy) return;
             setCheckoutBusy(true);
 
@@ -13917,7 +13925,7 @@ export default function PreviewPage(): JSX.Element {
                 }
 
                 try {
-                    await onCheckoutReady?.();
+                    if (!data.upgradedTrial) await onCheckoutReady?.({ trial: data.trial === true });
                 } catch (alertError) {
                     console.warn("Failed to send checkout redirect Slack alert", alertError);
                 }
@@ -13983,6 +13991,7 @@ export default function PreviewPage(): JSX.Element {
                     body: JSON.stringify({
                         plan: "pro",
                         ...(opts?.paidOnly ? { purchaseIntent: "code_download" } : {}),
+                        checkoutContext: "dashboard_deploy",
                         returnAppId: checkoutReturnAppId,
                         returnStep: 3,
                     }),
@@ -14000,6 +14009,14 @@ export default function PreviewPage(): JSX.Element {
                     return;
                 }
 
+                if (!data.upgradedTrial) {
+                    await sendKlonerSlackEvent("stripe_checkout_redirecting", {
+                        email: user?.email,
+                        trial: data.trial === true,
+                        context: "dashboard_deploy",
+                    }).catch((alertError) => console.warn("Failed to send deploy checkout redirect Slack alert", alertError));
+                }
+
                 window.location.href = data.url;
             } catch (err) {
                 console.error("startProCheckoutForAppDeploy failed", err);
@@ -14011,7 +14028,7 @@ export default function PreviewPage(): JSX.Element {
                 setCheckoutBusy(false);
             }
         },
-        [checkoutBusy, appDeployWizardAppId, currentAppId, recoveryPendingStorageKey, showAlert],
+        [checkoutBusy, appDeployWizardAppId, currentAppId, recoveryPendingStorageKey, showAlert, user?.email],
     );
 
     const showDevHydrationLoader = useCallback(() => {
@@ -16175,9 +16192,10 @@ export default function PreviewPage(): JSX.Element {
                                 const isDeploy = showCreditsPaywall === "deploy";
                                 const isEarlyPaywall = showCreditsPaywall === "early_generation";
                                 setShowCreditsPaywall(null);
-                                await startProCheckout(isDeploy, !useTrial, isEarlyPaywall ? () => sendKlonerSlackEvent("stripe_checkout_redirecting", {
+                                await startProCheckout(isDeploy, !useTrial, isEarlyPaywall ? ({ trial }) => sendKlonerSlackEvent("stripe_checkout_redirecting", {
                                         email: user?.email,
-                                        trial: useTrial,
+                                        trial,
+                                        context: "dashboard_scan",
                                     }) : undefined);
                             }}
                             checkoutBusy={checkoutBusy}

@@ -17,7 +17,7 @@ export async function POST(req: NextRequest, { params }: any) {
         const billingState = String(userData.stripeStatus || "free").trim().toLowerCase();
 
         if (billingState === "trialing") {
-            return NextResponse.json(
+            const response = NextResponse.json(
                 {
                     code: "PAID_SUBSCRIPTION_REQUIRED",
                     billingState,
@@ -25,6 +25,8 @@ export async function POST(req: NextRequest, { params }: any) {
                 },
                 { status: 402 },
             );
+            response.headers.set("x-observability-skip-status-alert", "1");
+            return response;
         }
 
         return NextResponse.json({ ok: true }, { status: 200 });

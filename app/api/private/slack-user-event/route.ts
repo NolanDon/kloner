@@ -12,6 +12,8 @@ const ALLOWED_EVENTS = new Set([
     "stripe_checkout_redirecting",
     "early_paywall_closed",
     "stripe_checkout_cancelled",
+    "editor_deploy_paywall_shown",
+    "editor_download_paywall_shown",
 ]);
 
 function safeText(value: unknown, fallback = ""): string {
@@ -36,15 +38,39 @@ export async function POST(req: NextRequest) {
             const email = safeText(body.email, "user");
             const method = safeText(body.method, "");
             const name = safeText(body.name, "");
+            const context = body.context === "editor_deploy" || body.context === "editor_download" || body.context === "dashboard_deploy" || body.context === "dashboard_scan"
+                ? body.context
+                : "dashboard_scan";
+            const contextLabel = context === "editor_deploy"
+                ? "Editor · Deploy"
+                : context === "editor_download"
+                    ? "Editor · Code download"
+                    : context === "dashboard_deploy"
+                        ? "Dashboard · App deploy"
+                    : "Dashboard · Scan";
+            const billingState = safeText(body.billingState, "").toLowerCase();
+            const billingLabel = billingState === "trialing"
+                ? "Trial"
+                : billingState === "free"
+                    ? "Free plan"
+                    : ["pro", "agency", "enterprise", "active"].includes(billingState)
+                        ? "Paid plan"
+                        : "";
             const eventText = event === "signup"
                 ? `:sparkles: *New signup* · ${email}${name ? ` · ${name}` : ""}${method ? ` · ${method}` : ""}`
                 : event === "early_paywall_shown"
-                    ? `:lock: *Early paywall shown* · ${email}`
+                    ? `:lock: *Early paywall shown* · ${email} · ${contextLabel}${billingLabel ? ` · ${billingLabel}` : ""}`
                     : event === "stripe_checkout_redirecting"
-                        ? `:credit_card: *Stripe checkout redirecting* · ${email} · ${body.trial === false ? "Paid plan" : "7-day free trial"}`
+                        ? `:credit_card: *Stripe checkout redirecting* · ${email} · ${contextLabel} · ${body.trial === true ? "7-day free trial" : "Paid plan"}`
                         : event === "early_paywall_closed"
-                            ? `:x: *Paywall closed* · ${email} · Scan canceled`
-                            : `:no_entry_sign: *Stripe checkout canceled* · ${email}`;
+                            ? `:x: *Paywall closed* · ${email} · ${contextLabel} · Scan canceled`
+                            : event === "stripe_checkout_cancelled"
+                                ? `:no_entry_sign: *Stripe checkout canceled* · ${email} · ${contextLabel}`
+                                : event === "editor_deploy_paywall_shown"
+                                    ? `:lock: *Editor deploy paywall shown* · ${email} · ${billingLabel || "Trial"}`
+                                    : event === "editor_download_paywall_shown"
+                                    ? `:lock: *Editor code download paywall shown* · ${email} · ${billingLabel || "Free plan"}`
+                                    : `:no_entry_sign: *Stripe checkout canceled* · ${email} · ${contextLabel}`;
 
             try {
                 const response = await fetch(webhookUrl, {
