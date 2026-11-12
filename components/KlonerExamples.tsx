@@ -173,8 +173,8 @@ export default function DeckImageCarousel({
                 <div className="mb-6 flex w-full items-center gap-6 sm:gap-8">
                     {/* Left: "Built With" + logo */}
                     <div className="flex items-center gap-4">
-                        <h2 className="mt-1 flex items-center justify-center gap-2 text-lg text-neutral-600 sm:gap-2.5">
-                            <span className="font-sans text-[16px] uppercase tracking-[0.1em] text-neutral-500">
+                        <h2 className="mt-1 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-base text-neutral-600 sm:text-lg">
+                            <span className="block font-sans text-[16px] uppercase tracking-[0.1em] text-neutral-500">
                                 Built With
                             </span>
                             <KlonerWordmark className="text-2xl sm:text-3xl" />
