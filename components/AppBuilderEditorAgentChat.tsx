@@ -6002,7 +6002,8 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
         paletteChangeId?: string;
     }) => {
         const rawMessageInput = (typeof opts?.forcedInput === "string" ? opts.forcedInput : input) || (imageAttachments.length ? "Inspect this image and describe the issue or intended change. Ask whether I want it fixed before editing." : "");
-        const messageInput = rawMessageInput.length > MAX_EDITOR_PROMPT_CHARS
+        const isCompileFixPrompt = Boolean(opts?.forcedCompileFixContext);
+        const messageInput = !isCompileFixPrompt && rawMessageInput.length > MAX_EDITOR_PROMPT_CHARS
             ? rawMessageInput.slice(0, MAX_EDITOR_PROMPT_CHARS)
             : rawMessageInput;
         const activeCompileFixContext = opts?.forcedCompileFixContext ?? freeCompileFixContext;
@@ -6014,7 +6015,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
 
         if (chatDisabled && !allowWhenChatDisabled) return;
         if (!messageInput.trim() || isLoading) return;
-        if (messageInput !== rawMessageInput) {
+        if (!isCompileFixPrompt && messageInput !== rawMessageInput) {
             setHistoryToast(`Prompt trimmed to ${MAX_EDITOR_PROMPT_CHARS} characters.`);
             if (typeof opts?.forcedInput !== "string") {
                 setInput(messageInput);
