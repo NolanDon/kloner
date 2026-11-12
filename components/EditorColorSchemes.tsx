@@ -26,6 +26,10 @@ export default function EditorColorSchemes({ appId, ready }: { appId: string; re
     const request = useRef("");
     const acknowledged = useRef("");
 
+    useEffect(() => {
+        setOpen(window.matchMedia("(min-width: 768px)").matches);
+    }, [appId]);
+
     const updatePosition = () => {
         const rect = triggerRef.current?.getBoundingClientRect();
         if (!rect) return;
