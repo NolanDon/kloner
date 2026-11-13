@@ -6,13 +6,20 @@ import DeferredChatWidget from "@/components/support/DeferredChatWidget";
 import AffiliateRefCapture from "@/components/AffiliateRefCapture";
 import { Suspense } from "react";
 import StyledJsxRegistry from "./registry";
-import { Fraunces, Inter } from "next/font/google";
+import { Fraunces, Inter, Manrope } from "next/font/google";
 // import MoqupReferralBanner from "@/components/MoqupReferralBanner"; // Temporarily disabled.
 
 const inter = Inter({
   subsets: ["latin"],
   variable: "--font-inter",
   display: "swap",
+});
+
+const manrope = Manrope({
+  subsets: ["latin"],
+  variable: "--font-manrope",
+  display: "swap",
+  weight: "variable",
 });
 
 const fraunces = Fraunces({
@@ -68,7 +75,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={`${inter.variable} ${fraunces.variable}`} suppressHydrationWarning>
+    <html lang="en" className={`${inter.variable} ${manrope.variable} ${fraunces.variable}`} suppressHydrationWarning>
       <head>
         <script
           dangerouslySetInnerHTML={{

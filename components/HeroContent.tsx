@@ -89,7 +89,7 @@ export default function HeroContent({
         <h1
           className={`hero-title ${displayClassName} mx-auto max-w-[1400px] whitespace-normal leading-[1.02] font-extrabold tracking-[-0.055em] text-[#fff8ed]`}
           style={{
-            fontFamily: "var(--font-inter), Inter, ui-sans-serif, sans-serif",
+            fontFamily: "var(--font-manrope), Manrope, ui-sans-serif, sans-serif",
             WebkitFontSmoothing: "antialiased",
             MozOsxFontSmoothing: "grayscale",
             textRendering: "optimizeLegibility",
