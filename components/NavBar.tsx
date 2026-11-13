@@ -36,6 +36,7 @@ type BrandShape = { nav: NavItem[]; cta: { href: string } };
 
 export default function NavBar(): JSX.Element {
   const [scrolled, setScrolled] = useState(false);
+  const [hasScrolled, setHasScrolled] = useState(false);
   const [open, setOpen] = useState(false);
   const [mOpen, setMOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
@@ -44,7 +45,10 @@ export default function NavBar(): JSX.Element {
   const { openUrlOverlay } = useUrlOverlay();
 
   useEffect(() => {
-    const on = () => setScrolled(window.scrollY > 800);
+    const on = () => {
+      setScrolled(window.scrollY > 800);
+      setHasScrolled(window.scrollY > 0);
+    };
     on();
     window.addEventListener("scroll", on);
     return () => window.removeEventListener("scroll", on);
@@ -156,7 +160,7 @@ export default function NavBar(): JSX.Element {
     >
       <div className="mx-auto max-w-6xl">
         <div
-          className={`site-navbar relative flex items-center gap-3 px-3 py-2.5 md:px-1 mx-2 ${shellClasses}`}
+          className={`site-navbar relative flex items-center gap-3 px-3 py-2.5 md:px-1 mx-2 ${shellClasses} ${hasScrolled ? "" : "site-navbar-hero-glow"}`}
           style={{ height: "4.25rem" }}
         >
           <Link

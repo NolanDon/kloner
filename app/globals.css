@@ -144,35 +144,29 @@ html[data-moqup-promo-dismissed="true"] .moqup-referral-banner {
     top: calc(var(--moqup-banner-offset, 0px) + 1rem);
 }
 
-.site-navbar {
-    isolation: isolate;
-}
-
-.site-navbar::before {
+.site-navbar-hero-glow::after {
     position: absolute;
-    z-index: -1;
-    bottom: -9px;
+    bottom: 0;
     left: 3%;
-    width: 150px;
-    height: 30px;
-    border-radius: 50%;
-    background: radial-gradient(ellipse, rgba(255, 202, 145, 0.55) 0%, rgba(255, 141, 33, 0.32) 38%, transparent 76%);
+    width: 170px;
+    height: 1px;
+    border-radius: 999px;
+    background: linear-gradient(90deg, transparent, rgba(255, 248, 237, 0.18) 8%, rgba(255, 224, 173, 0.95) 35%, rgba(255, 141, 33, 0.72) 62%, transparent);
     content: "";
-    filter: blur(13px);
-    opacity: 0.78;
     pointer-events: none;
-    animation: hero-nav-glow 4.2s ease-in-out infinite;
+    transform-origin: left center;
+    animation: hero-nav-border-glimmer 4.2s ease-in-out infinite;
 }
 
-@keyframes hero-nav-glow {
-    0%, 100% { opacity: 0.58; transform: translateX(-2px) scaleX(0.94); }
-    50% { opacity: 0.9; transform: translateX(3px) scaleX(1.04); }
+@keyframes hero-nav-border-glimmer {
+    0%, 100% { opacity: 0.48; transform: scaleX(0.88); }
+    50% { opacity: 1; transform: scaleX(1); }
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .site-navbar::before {
+    .site-navbar-hero-glow::after {
         animation: none;
-        opacity: 0.72;
+        opacity: 0.8;
     }
 }
 
