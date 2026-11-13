@@ -274,16 +274,8 @@ export default function PreviewDashboard({
                     </button>
                 </motion.div>
 
-                {/* Showcase area with browser frame + faded side demos */}
+                {/* Single focused browser demo */}
                 <div className="relative">
-                    {/* soft background behind everything */}
-                    <div className="pointer-events-none absolute inset-0 -z-10 rounded-[36px] bg-white" />
-                    <div className="pointer-events-none absolute inset-0 -z-10 rounded-[36px] ring-1 ring-neutral-200/60" />
-
-                    {/* Side faded demos */}
-                    <SideFadedDemo side="left" />
-                    <SideFadedDemo side="right" />
-
                     {/* Center browser */}
                     <div className="mx-auto max-w-6xl px-2 sm:px-3 md:px-0">
                         <BrowserFrame
@@ -600,13 +592,10 @@ function BrowserFrame({
     return (
         <div
             className={[
-                "relative rounded-[34px] border border-neutral-200 bg-white shadow-[0_20px_70px_rgba(0,0,0,0.08)]",
+                "relative rounded-[34px] border border-neutral-200 bg-white shadow-[0_0_32px_rgba(255,255,255,0.12)]",
                 className,
             ].join(" ")}
         >
-            {/* outer glow */}
-            <div className="pointer-events-none absolute -inset-[1px] rounded-[36px] ring-1 ring-neutral-200/50" />
-
             {/* chrome */}
             <div className="h-12 flex items-center gap-3 px-4 border-b border-neutral-200 bg-white rounded-t-[34px]">
                 <div className="flex items-center gap-2">
@@ -636,142 +625,6 @@ function BrowserFrame({
             >
                 <div className="absolute inset-0 bg-white" />
                 <div className="relative">{children}</div>
-            </div>
-        </div>
-    );
-}
-
-function SideFadedDemo({ side }: { side: "left" | "right" }) {
-    return (
-        <div
-            className={[
-                "pointer-events-none hidden lg:block absolute top-10 bottom-10",
-                side === "left"
-                    ? "left-0 -translate-x-[20%]"
-                    : "right-0 translate-x-[20%]",
-            ].join(" ")}
-            aria-hidden="true"
-        >
-            <div
-                className={[
-                    "relative h-full w-[420px] xl:w-[480px]",
-                    "opacity-[0.22] blur-[0.2px]",
-                ].join(" ")}
-                style={{
-                    maskImage:
-                        side === "left"
-                            ? "linear-gradient(to right, transparent, black 22%, black 78%, transparent)"
-                            : "linear-gradient(to left, transparent, black 22%, black 78%, transparent)",
-                    WebkitMaskImage:
-                        side === "left"
-                            ? "linear-gradient(to right, transparent, black 22%, black 78%, transparent)"
-                            : "linear-gradient(to left, transparent, black 22%, black 78%, transparent)",
-                }}
-            >
-                <div
-                    className={[
-                        "absolute inset-0",
-                        side === "left" ? "rotate-[-1.25deg]" : "rotate-[1.25deg]",
-                    ].join(" ")}
-                >
-                    <div className="h-full rounded-[28px] border border-neutral-200 bg-white shadow-sm overflow-hidden">
-                        <div className="h-10 border-b border-neutral-200 bg-white flex items-center gap-2 px-3">
-                            <span className="h-2.5 w-2.5 rounded-full bg-rose-400" />
-                            <span className="h-2.5 w-2.5 rounded-full bg-amber-400" />
-                            <span className="h-2.5 w-2.5 rounded-full bg-emerald-400" />
-                            <div className="ml-2 h-6 w-[70%] rounded-full bg-neutral-50 border border-neutral-200" />
-                        </div>
-
-                        <div className="h-full grid grid-cols-[160px,1fr]">
-                            <DemoSidebar />
-                            <DemoContent />
-                        </div>
-                    </div>
-                </div>
-
-                {/* extra fade wash so it stays subtle */}
-                <div className="absolute inset-0 bg-gradient-to-b from-white/40 via-transparent to-white/40" />
-            </div>
-        </div>
-    );
-}
-
-function DemoSidebar() {
-    const items = [
-        "Home",
-        "Dashboard",
-        "Builder",
-        "Deployments",
-        "Community templates",
-        "Settings",
-        "Docs",
-    ];
-
-    return (
-        <div className="border-r border-neutral-200 bg-white">
-            <div className="p-4 border-b border-neutral-200">
-                <div className="h-8 w-24 rounded-lg bg-neutral-200" />
-            </div>
-            <div className="p-3 space-y-2">
-                {items.map((t, idx) => (
-                    <div
-                        key={t}
-                        className={[
-                            "h-9 rounded-xl border border-neutral-200 bg-white flex items-center px-3",
-                            idx === 1 ? "bg-neutral-50" : "",
-                        ].join(" ")}
-                    >
-                        <div className="h-5 w-5 rounded-md bg-neutral-200 mr-2" />
-                        <div className="h-3 w-[70%] rounded bg-neutral-200" />
-                    </div>
-                ))}
-            </div>
-        </div>
-    );
-}
-
-function DemoContent() {
-    return (
-        <div className="bg-white">
-            <div className="p-4 border-b border-neutral-200">
-                <div className="flex items-center justify-between">
-                    <div>
-                        <div className="h-4 w-40 rounded bg-neutral-200" />
-                        <div className="h-3 w-64 rounded bg-neutral-200 mt-2" />
-                    </div>
-                    <div className="h-9 w-28 rounded-full bg-neutral-200" />
-                </div>
-            </div>
-
-            <div className="p-4">
-                <div className="grid grid-cols-2 gap-3">
-                    <div className="rounded-2xl border border-neutral-200 bg-white overflow-hidden">
-                        <div className="h-20 bg-neutral-200" />
-                        <div className="p-3">
-                            <div className="h-3 w-24 rounded bg-neutral-200" />
-                            <div className="h-3 w-40 rounded bg-neutral-200 mt-2" />
-                        </div>
-                    </div>
-                    <div className="rounded-2xl border border-neutral-200 bg-white overflow-hidden">
-                        <div className="h-20 bg-neutral-200" />
-                        <div className="p-3">
-                            <div className="h-3 w-24 rounded bg-neutral-200" />
-                            <div className="h-3 w-40 rounded bg-neutral-200 mt-2" />
-                        </div>
-                    </div>
-                </div>
-
-                <div className="mt-4 rounded-2xl border border-neutral-200 bg-white p-4">
-                    <div className="flex items-center justify-between">
-                        <div className="h-3 w-44 rounded bg-neutral-200" />
-                        <div className="h-7 w-20 rounded-full bg-neutral-200" />
-                    </div>
-                    <div className="mt-3 space-y-2">
-                        <div className="h-3 w-[92%] rounded bg-neutral-200" />
-                        <div className="h-3 w-[86%] rounded bg-neutral-200" />
-                        <div className="h-3 w-[74%] rounded bg-neutral-200" />
-                    </div>
-                </div>
             </div>
         </div>
     );
