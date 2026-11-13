@@ -14327,15 +14327,15 @@ export default function PreviewPage(): JSX.Element {
                 </>
             ) : null}
             {checkoutBusy ? (
-                <div className="fixed inset-0 z-[13000] flex items-center justify-center bg-white/70 px-4 backdrop-blur-md">
-                    <div className="w-full max-w-sm rounded-[28px] bg-white px-6 py-6 text-center text-neutral-900 shadow-[0_24px_80px_rgba(15,23,42,0.16)]">
+                <div className="fixed inset-0 z-[13000] flex items-center justify-center bg-black/55 px-4 backdrop-blur-md">
+                    <div className="w-full max-w-sm rounded-[28px] border border-white/20 bg-[#302e2b] px-6 py-6 text-center text-white shadow-[0_24px_80px_rgba(0,0,0,0.5),0_0_24px_rgba(255,255,255,0.08)]">
                         <div className="mt-4 flex items-center justify-center gap-2 text-[#FF8D21]">
                             <Loader2 className="h-4 w-4 animate-spin" />
                             <p className="text-sm font-semibold">Opening secure Stripe checkout...</p>
                         </div>
-                        <p className="mt-2 text-xs leading-5 text-neutral-500">Please wait while we prepare your session.</p>
+                        <p className="mt-2 text-xs leading-5 text-neutral-300">Please wait while we prepare your session.</p>
                         <div className="mt-4 flex justify-center">
-                            <span className="inline-flex items-center gap-2 text-xs font-medium text-neutral-500">
+                            <span className="inline-flex items-center gap-2 text-xs font-medium text-neutral-300">
                                 <span>powered by</span>
                                 <Image src="/images/stripe.png" alt="Stripe" width={160} height={52} className="h-9 w-auto object-contain" />
                             </span>
@@ -16296,15 +16296,15 @@ export default function PreviewPage(): JSX.Element {
 
                 {
                     showRecoveryCheckoutLoader ? (
-                        <div className="fixed inset-0 z-[13000] flex items-center justify-center bg-white/70 px-4 backdrop-blur-md">
-                            <div className="w-full max-w-sm rounded-[28px] bg-white px-6 py-6 text-center text-neutral-900 shadow-[0_24px_80px_rgba(15,23,42,0.16)]">
+                        <div className="fixed inset-0 z-[13000] flex items-center justify-center bg-black/55 px-4 backdrop-blur-md">
+                            <div className="w-full max-w-sm rounded-[28px] border border-white/20 bg-[#302e2b] px-6 py-6 text-center text-white shadow-[0_24px_80px_rgba(0,0,0,0.5),0_0_24px_rgba(255,255,255,0.08)]">
                                 <div className="mt-4 flex items-center justify-center gap-2 text-[#FF8D21]">
                                     <Loader2 className="h-4 w-4 animate-spin" />
                                     <p className="text-sm font-semibold">Opening secure Stripe checkout...</p>
                                 </div>
-                                <p className="mt-2 text-xs leading-5 text-neutral-500">Please wait while we prepare your session.</p>
+                                <p className="mt-2 text-xs leading-5 text-neutral-300">Please wait while we prepare your session.</p>
                                 <div className="mt-4 flex justify-center">
-                                    <span className="inline-flex items-center gap-2 text-xs font-medium text-neutral-500">
+                                    <span className="inline-flex items-center gap-2 text-xs font-medium text-neutral-300">
                                         <span>powered by</span>
                                         <Image src="/images/stripe.png" alt="Stripe" width={160} height={52} className="h-9 w-auto object-contain" />
                                     </span>

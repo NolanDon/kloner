@@ -355,7 +355,7 @@ export default function PriceClient(): JSX.Element {
 
             {checkoutOverlayVisible ? (
                 <div className="fixed inset-0 z-[13000] flex items-center justify-center bg-black/55 px-4 backdrop-blur-sm">
-                    <div className="flex flex-col items-center gap-3 rounded-3xl border border-white/10 bg-neutral-950/95 px-6 py-5 text-center text-white shadow-[0_20px_80px_rgba(0,0,0,0.45)]">
+                    <div className="flex flex-col items-center gap-3 rounded-3xl border border-white/20 bg-[#302e2b] px-6 py-5 text-center text-white shadow-[0_20px_80px_rgba(0,0,0,0.5),0_0_24px_rgba(255,255,255,0.08)]">
                         <Loader2 className="h-6 w-6 animate-spin text-[#FF8D21]" />
                         <div>
                             <p className="text-sm font-semibold">Opening secure Stripe checkout...</p>
