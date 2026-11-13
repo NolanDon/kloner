@@ -1482,7 +1482,7 @@ function MiniDashboardEntry({
     onPreviewTrialAiPaywall,
 }: MiniDashboardEntryProps) {
     const isCompact = size === "compact";
-    const isActiveTrial = stripeStatus === "trialing" && billingState !== "trial_cancelled";
+    const isActiveTrial = stripeStatus === "trialing";
     const trialUpgradeLabel = isActiveTrial
         ? "Need more scans or AI credits? Upgrade"
         : null;
