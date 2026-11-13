@@ -37,6 +37,55 @@ html[data-moqup-promo-dismissed="true"] .moqup-referral-banner {
     }
 }
 
+@media (max-width: 420px) {
+    .hero-content {
+        padding: 4.5rem 1rem 1.25rem;
+    }
+
+    .hero-title {
+        max-width: 100%;
+        font-size: clamp(2.15rem, 9vw, 2.5rem);
+        line-height: 1;
+        letter-spacing: -0.045em;
+    }
+
+    .hero-subhead {
+        max-width: 22rem;
+        margin-top: 0.8rem;
+        font-size: 1rem;
+        line-height: 1.45;
+    }
+
+    .hero-url-form {
+        max-width: 23rem;
+        margin-top: 1.35rem;
+    }
+
+    .hero-url-shell {
+        padding: 5px;
+    }
+
+    .hero-url-input-wrap {
+        min-height: 54px;
+        padding-inline: 1rem;
+    }
+
+    .hero-url-input {
+        font-size: 1rem;
+    }
+
+    .hero-clone-button {
+        min-height: 52px;
+        padding-inline: 1.15rem;
+        font-size: 1rem;
+    }
+
+    .hero-tagline {
+        margin-top: 1.2rem;
+        font-size: 0.8rem;
+    }
+}
+
 @keyframes hero-url-glimmer {
     0%, 12% { background-position: 140% 0; opacity: 0; }
     28% { opacity: 0.95; }

@@ -78,7 +78,7 @@ export default function HeroContent({
   }
 
   return (
-    <div className="relative z-20 flex h-full w-full items-center justify-center px-4 pt-16 pb-[clamp(1.25rem,3.5vh,2.5rem)] sm:px-6 sm:py-[clamp(1.25rem,3.5vh,2.5rem)]">
+    <div className="hero-content relative z-20 flex h-full w-full items-center justify-center px-4 pt-16 pb-[clamp(1.25rem,3.5vh,2.5rem)] sm:px-6 sm:py-[clamp(1.25rem,3.5vh,2.5rem)]">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -98,17 +98,17 @@ export default function HeroContent({
           {heading ?? <>AI Website Cloner</>}
         </h1>
 
-        <p className="mx-auto mt-[clamp(1rem,2.2vh,1.75rem)] max-w-4xl text-lg font-medium text-white/90 sm:text-xl md:text-2xl lg:text-[1.65rem]">
+        <p className="hero-subhead mx-auto mt-[clamp(1rem,2.2vh,1.75rem)] max-w-4xl text-lg font-medium text-white/90 sm:text-xl md:text-2xl lg:text-[1.65rem]">
           {subhead ?? "Clone a website from a URL, customize it with AI, and launch your new site."}
         </p>
 
-        <form onSubmit={onSubmit} className="mx-auto mt-[clamp(1.75rem,4vh,3rem)] w-full max-w-[800px] space-y-3">
+        <form onSubmit={onSubmit} className="hero-url-form mx-auto mt-[clamp(1.75rem,4vh,3rem)] w-full max-w-[800px] space-y-3">
           <label htmlFor="hero-url-input" className="sr-only">
             Website URL
           </label>
           <div className="hero-url-shell relative isolate overflow-hidden rounded-full p-2 backdrop-blur-xl">
             <div className="flex items-stretch gap-2">
-              <div className="relative z-10 flex min-h-[68px] flex-1 items-center rounded-full px-5 sm:px-7">
+              <div className="hero-url-input-wrap relative z-10 flex min-h-[68px] flex-1 items-center rounded-full px-5 sm:px-7">
                 <span className="mr-1 hidden text-lg font-medium text-white/65 sm:inline md:text-xl">
                   https://
                 </span>
@@ -123,7 +123,7 @@ export default function HeroContent({
                   placeholder="example.com"
                   inputMode="url"
                   autoCapitalize="none"
-                  className="w-full bg-transparent text-lg font-medium text-[#fff8ed] outline-none placeholder:text-white/55 sm:text-xl md:text-2xl"
+                  className="hero-url-input w-full bg-transparent text-lg font-medium text-[#fff8ed] outline-none placeholder:text-white/55 sm:text-xl md:text-2xl"
                   autoComplete="off"
                   aria-describedby={error ? errorId : hintId}
                   aria-invalid={Boolean(error)}
@@ -133,7 +133,7 @@ export default function HeroContent({
               <button
                 type="submit"
                 disabled={!url || !!error}
-                className="inline-flex min-h-16 shrink-0 items-center justify-center rounded-full bg-[#FF8D21] px-8 text-lg font-semibold whitespace-nowrap text-white shadow-[0_6px_24px_rgba(255,141,33,0.32)] transition-all duration-200 hover:scale-[1.04] hover:shadow-[0_10px_28px_rgba(255,141,33,0.48)] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:scale-100 md:px-10 md:text-xl"
+                className="hero-clone-button inline-flex min-h-16 shrink-0 items-center justify-center rounded-full bg-[#FF8D21] px-8 text-lg font-semibold whitespace-nowrap text-white shadow-[0_6px_24px_rgba(255,141,33,0.32)] transition-all duration-200 hover:scale-[1.04] hover:shadow-[0_10px_28px_rgba(255,141,33,0.48)] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:scale-100 md:px-10 md:text-xl"
                 aria-label="Clone website from URL"
               >
                 <span>Clone</span>
@@ -149,7 +149,7 @@ export default function HeroContent({
             {error ?? "Clone a public website • Preview the result • Customize and launch"}
           </div>
         </form>
-        <p className="mt-8 text-sm text-white/80">
+        <p className="hero-tagline mt-8 text-sm text-white/80">
           Limited free preview · <a href="/price" className="underline underline-offset-4">Pricing</a>
         </p>
 
