@@ -15,6 +15,8 @@ type SuccessConfettiProps = {
   title: string;
   message: string;
   onDismiss: () => void;
+  durationMs?: number;
+  plainCheckmark?: boolean;
 };
 
 export function useConfettiAnimation(open: boolean) {
@@ -77,7 +79,14 @@ export function useConfettiAnimation(open: boolean) {
   return { animationData, animationError };
 }
 
-export default function SuccessConfetti({ open, title, message, onDismiss }: SuccessConfettiProps) {
+export default function SuccessConfetti({
+  open,
+  title,
+  message,
+  onDismiss,
+  durationMs = 3800,
+  plainCheckmark = false,
+}: SuccessConfettiProps) {
   const { animationData, animationError } = useConfettiAnimation(open);
 
   useEffect(() => {
@@ -85,9 +94,9 @@ export default function SuccessConfetti({ open, title, message, onDismiss }: Suc
       return;
     }
 
-    const timeout = window.setTimeout(onDismiss, 3800);
+    const timeout = window.setTimeout(onDismiss, durationMs);
     return () => window.clearTimeout(timeout);
-  }, [onDismiss, open]);
+  }, [durationMs, onDismiss, open]);
 
   if (!open || typeof document === "undefined") {
     return null;
@@ -117,7 +126,9 @@ export default function SuccessConfetti({ open, title, message, onDismiss }: Suc
             </button>
 
             <div className="flex items-start gap-3 pr-10">
-              <div className="success-confetti-icon inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-emerald-100 bg-emerald-50 text-emerald-600">
+              <div className={plainCheckmark
+                ? "inline-flex h-10 w-10 shrink-0 items-center justify-center text-emerald-500"
+                : "success-confetti-icon inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-emerald-100 bg-emerald-50 text-emerald-600"}>
                 <CheckCircle2 className="h-5 w-5" />
               </div>
 

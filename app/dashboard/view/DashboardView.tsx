@@ -16434,6 +16434,8 @@ export default function PreviewPage(): JSX.Element {
                     title="Subscription active"
                     message="Your billing update went through. You can keep building now."
                     onDismiss={() => setShowBillingSuccessConfetti(false)}
+                    durationMs={6000}
+                    plainCheckmark
                 />
             </div>
         </main>
