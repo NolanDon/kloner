@@ -583,7 +583,6 @@ export default function WebContainerRunner({ appId, files, adminCanUseFixWithAi 
       availableAssets?: string[];
     } | null;
   } | null>(null);
-  const [runtimeObservationUnavailable, setRuntimeObservationUnavailable] = useState(false);
   const [previewDocumentLoad, setPreviewDocumentLoad] = useState(0);
   const [runtimePreviewFailure, setRuntimePreviewFailure] = useState<{ message: string; detail: string; diagnostics: string; failure: PreviewFailureContract; code: string } | null>(null);
   const previewNavigationStartedRef = useRef(0);
@@ -1642,7 +1641,6 @@ export default function WebContainerRunner({ appId, files, adminCanUseFixWithAi 
         iframeWindow: iframeRef.current?.contentWindow || null, previewUrl: currentUrl, appId, code,
       });
       if (runtime) {
-        setRuntimeObservationUnavailable(false);
         const previous = runtimeEvidenceNavigationRef.current;
         if (previous?.id === runtime.navigationId && previous.capturedAt >= runtime.capturedAt) return;
         if (runtime.startedAt < previewNavigationStartedRef.current - 2000 || (previous && runtime.startedAt < previous.startedAt)) return;
@@ -1673,7 +1671,6 @@ export default function WebContainerRunner({ appId, files, adminCanUseFixWithAi 
       });
       if (!result) return;
       activeWhiteScreenInspectionRef.current = null;
-      setRuntimeObservationUnavailable(false);
       if (!result.blank) {
         const resultCounts = summarizePreviewIssues(JSON.stringify(result.runtime || {}));
         if (!resultCounts?.critical && !resultCounts?.warnings) {
@@ -5526,8 +5523,14 @@ export default function NavBar() {
   const showPreviewSurface = Boolean(previewUrl) && !error && !compileErrorState && !terminalPreviewStatus && (externalPreviewMode || canRenderEmbeddedFrame);
   const activePreviewUrl = withPreviewTheme(withPreviewPath(previewUrl || '', navigatePath || ''), previewTheme);
   useEffect(() => {
-    setRuntimeObservationUnavailable(false);
-    if (!showPreviewSurface || externalPreviewMode) return;
+    if (
+      !showPreviewSurface ||
+      externalPreviewMode ||
+      isLoading ||
+      isPolling ||
+      connectingToExisting ||
+      !iframeLoadedSuccessfullyRef.current
+    ) return;
     let responseTimeout: ReturnType<typeof setTimeout> | undefined;
     let requestId = '';
     // This checks the bridge during normal browsing, after the initial render.
@@ -5543,16 +5546,15 @@ export default function NavBar() {
       responseTimeout = setTimeout(() => {
         if (activeWhiteScreenInspectionRef.current?.requestId === requestId) {
           activeWhiteScreenInspectionRef.current = null;
-          setRuntimeObservationUnavailable(true);
         }
       }, 3000);
-    }, 8000);
+    }, 12000);
     return () => {
       clearTimeout(requestTimeout);
       clearTimeout(responseTimeout);
       if (requestId && activeWhiteScreenInspectionRef.current?.requestId === requestId) activeWhiteScreenInspectionRef.current = null;
     };
-  }, [appId, activePreviewUrl, previewDocumentLoad, showPreviewSurface, externalPreviewMode]);
+  }, [appId, activePreviewUrl, previewDocumentLoad, showPreviewSurface, externalPreviewMode, isLoading, isPolling, connectingToExisting]);
   const showApplyRefreshingOverlay = showPreviewSurface && isApplyRefreshing;
   const terminalPreviewStatusData = terminalPreviewStatus ? (currentStatusData || lastBackendStatusRef.current || null) : null;
   const showTerminalPreviewErrorCard = Boolean(error) || terminalPreviewStatus;
@@ -5843,13 +5845,6 @@ export default function NavBar() {
 
   return (
     <div className="app-builder-webcontainer-shell h-full flex flex-col text-black/90 rounded-2xl shadow" style={{ backgroundColor: "var(--page-bg)" }}>
-      {runtimeObservationUnavailable && !runtimePreviewFailure ? (
-        <div role="status" className="flex items-center gap-3 border-b bg-amber-50 p-3 text-sm">
-          <span>We couldn’t check this preview. If it appears blank, refresh it to reconnect.</span>
-          <button type="button" className="underline" onClick={() => hardReloadPreview('preview_health_unavailable')}>Refresh</button>
-          <button type="button" aria-label="Dismiss preview notice" onClick={() => setRuntimeObservationUnavailable(false)}>×</button>
-        </div>
-      ) : null}
       {compileErrorState && !error ? (
         <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/20 px-4">
           <div className="w-full max-w-2xl rounded-2xl border border-black/10 bg-white shadow-2xl">
