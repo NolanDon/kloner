@@ -33,20 +33,19 @@ html[data-moqup-promo-dismissed="true"] .moqup-referral-banner {
 
 .hero-title-initial {
     position: relative;
-    isolation: isolate;
+    display: inline-block;
 }
 
-.hero-title-initial::before {
+.hero-title-initial-overlay {
     position: absolute;
-    z-index: -1;
-    top: 5%;
-    bottom: 0;
-    left: -0.42em;
-    width: 1em;
-    background: radial-gradient(ellipse at 78% 55%, rgba(255, 189, 119, 0.48) 0%, rgba(255, 141, 33, 0.2) 35%, transparent 74%);
-    content: "";
-    filter: blur(0.12em);
+    inset: 0;
+    color: transparent;
+    background: linear-gradient(90deg, #ffe0ad 0%, rgba(255, 176, 91, 0.88) 16%, rgba(255, 141, 33, 0.18) 45%, transparent 62%);
+    background-clip: text;
+    -webkit-background-clip: text;
+    filter: drop-shadow(-2px 0 3px rgba(255, 141, 33, 0.48));
     pointer-events: none;
+    user-select: none;
 }
 
 @media (min-width: 768px) {
