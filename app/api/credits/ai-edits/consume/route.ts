@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { assertCsrf, verifySession, getAdminDb } from "@/app/api/_lib/auth";
-import { monthlyLimitFor, type UserTier } from "@/src/lib/credits";
+import { monthlyLimitFor, TRIAL_AI_EDIT_CHANGE_LIMIT, type UserTier } from "@/src/lib/credits";
 import { getAuthoritativeUserTier } from "@/app/api/_lib/userTier";
 import { captureCriticalEvent, captureException } from "@/lib/observability";
 import { getAuthoritativeAiEditCreditCost } from "@/src/lib/aiEditCredits";
@@ -107,7 +107,7 @@ export async function POST(req: NextRequest) {
         const userDataForTier = userSnapForTier.exists ? (userSnapForTier.data() as any) : {};
         const override = getActiveCreditsOverride(userDataForTier, now);
         const effectiveTier = override ? normalizeUserTier(override.tier) : baseTier;
-        const isTrialing = !override && userDataForTier?.stripeStatus === "trialing";
+        const isTrialing = !override && userDataForTier?.stripeStatus === "trialing" && userDataForTier?.tierOverrideReason !== "trial_cancelled";
         const limit = monthlyLimitFor(effectiveTier, "edit", isTrialing);
 
         if (!limit) {
@@ -122,6 +122,9 @@ export async function POST(req: NextRequest) {
         let finalRemaining = 0;
         let alreadyCommitted = false;
         let ok = false;
+        let trialLimitReached = false;
+        let finalIsTrialing = isTrialing;
+        let trialChangesRemaining: number | null = isTrialing ? TRIAL_AI_EDIT_CHANGE_LIMIT : null;
 
         await db.runTransaction(async (tx: any) => {
             const evtSnap = await tx.get(evtRef);
@@ -134,6 +137,11 @@ export async function POST(req: NextRequest) {
                     const userSnap = await tx.get(userRef);
                     const data = userSnap.exists ? (userSnap.data() as any) : {};
                     const bucket = getAiEditsBucket(data);
+                    finalIsTrialing = !getActiveCreditsOverride(data, now) && data?.stripeStatus === "trialing" && data?.tierOverrideReason !== "trial_cancelled";
+                    if (finalIsTrialing) {
+                        const used = typeof data.trialAiChangesUsed === "number" ? Math.max(0, Math.floor(data.trialAiChangesUsed)) : 0;
+                        trialChangesRemaining = Math.max(0, TRIAL_AI_EDIT_CHANGE_LIMIT - used);
+                    }
 
                     const rawEnd = bucket.periodEnd;
                     const endDate: Date | null = rawEnd && typeof rawEnd.toDate === "function" ? (rawEnd.toDate() as Date) : rawEnd instanceof Date ? rawEnd : null;
@@ -159,7 +167,31 @@ export async function POST(req: NextRequest) {
 
             const userSnap = await tx.get(userRef);
             const data = userSnap.exists ? (userSnap.data() as any) : {};
+            const transactionOverride = getActiveCreditsOverride(data, now);
+            finalIsTrialing = !transactionOverride && data?.stripeStatus === "trialing" && data?.tierOverrideReason !== "trial_cancelled";
+            const trialChangesUsed = typeof data?.trialAiChangesUsed === "number" && Number.isFinite(data.trialAiChangesUsed)
+                ? Math.max(0, Math.floor(data.trialAiChangesUsed))
+                : 0;
+            trialChangesRemaining = finalIsTrialing
+                ? Math.max(0, TRIAL_AI_EDIT_CHANGE_LIMIT - trialChangesUsed)
+                : null;
             const bucket = getAiEditsBucket(data);
+
+            if (finalIsTrialing && trialChangesUsed >= TRIAL_AI_EDIT_CHANGE_LIMIT) {
+                finalRemaining = Math.max(0, normalizeNonNegativeInt(bucket.remaining) ?? 0);
+                trialLimitReached = true;
+                ok = false;
+                tx.set(evtRef, {
+                    feature: "ai_agent_edit",
+                    status: "blocked",
+                    reason: "trial_change_limit",
+                    cost,
+                    tier: effectiveTier,
+                    createdAt: now,
+                    createdAtMs: now.getTime(),
+                }, { merge: true });
+                return;
+            }
 
             const rawEnd = bucket.periodEnd;
             const endDate: Date | null = rawEnd && typeof rawEnd.toDate === "function" ? (rawEnd.toDate() as Date) : rawEnd instanceof Date ? rawEnd : null;
@@ -234,9 +266,12 @@ export async function POST(req: NextRequest) {
                         periodEnd: usePeriodEnd,
                         bonusRemaining: newBonus,
                     },
+                    ...(finalIsTrialing ? { trialAiChangesUsed: trialChangesUsed + 1 } : {}),
                 },
                 { merge: true }
             );
+
+            if (finalIsTrialing) trialChangesRemaining = Math.max(0, TRIAL_AI_EDIT_CHANGE_LIMIT - trialChangesUsed - 1);
 
             tx.set(
                 evtRef,
@@ -257,37 +292,42 @@ export async function POST(req: NextRequest) {
             const upgradeUrl = new URL("/price", origin).toString();
             const topupUrl = new URL("/topup", origin).toString();
 
-            await captureCriticalEvent({
-                source: "vercel",
-                severity: "error",
-                statusCode: 402,
-                route: req.nextUrl?.pathname,
-                method: "POST",
-                action: "credits.consumeAiEdits",
-                userId: uid,
-                message: "Insufficient credits",
-                service: "credits",
-                url: req.url,
-                extra: {
-                    remaining: finalRemaining,
-                    monthlyLimit: limit,
-                    code: "AI_EDIT_CREDITS_EXHAUSTED",
-                    trialing: isTrialing,
-                    tier: effectiveTier,
-                },
-            });
+            if (!trialLimitReached) {
+                await captureCriticalEvent({
+                    source: "vercel",
+                    severity: "error",
+                    statusCode: 402,
+                    route: req.nextUrl?.pathname,
+                    method: "POST",
+                    action: "credits.consumeAiEdits",
+                    userId: uid,
+                    message: "Insufficient credits",
+                    service: "credits",
+                    url: req.url,
+                    extra: {
+                        remaining: finalRemaining,
+                        monthlyLimit: limit,
+                        code: "AI_EDIT_CREDITS_EXHAUSTED",
+                        trialing: finalIsTrialing,
+                        tier: effectiveTier,
+                    },
+                });
+            }
 
             return NextResponse.json(
                 {
                     ok: false,
                     error:
-                        isTrialing || effectiveTier === "free"
+                        trialLimitReached
+                            ? "You’ve used all 5 AI changes included with your free trial. Upgrade to keep using the AI agent."
+                            : isTrialing || effectiveTier === "free"
                             ? `You have used all AI edit credits for this month. Upgrade to get more credits: ${upgradeUrl}`
                             : `You have used all AI edit credits for this month. Top up credits: ${topupUrl} (or upgrade: ${upgradeUrl})`,
                     remaining: finalRemaining,
                     monthlyLimit: limit,
-                    code: "AI_EDIT_CREDITS_EXHAUSTED",
-                    trialing: isTrialing,
+                    code: trialLimitReached ? "TRIAL_AI_CHANGE_LIMIT_REACHED" : "AI_EDIT_CREDITS_EXHAUSTED",
+                    trialing: finalIsTrialing,
+                    remainingChanges: trialChangesRemaining,
                     periodEnd: periodEnd.toISOString(),
                     alreadyCommitted,
                 },
@@ -300,6 +340,8 @@ export async function POST(req: NextRequest) {
                 ok: true,
                 remaining: finalRemaining,
                 monthlyLimit: limit,
+                trialing: finalIsTrialing,
+                remainingChanges: trialChangesRemaining,
                 periodEnd: periodEnd.toISOString(),
                 alreadyCommitted,
             },

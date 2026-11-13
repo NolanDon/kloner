@@ -97,7 +97,7 @@ import {
     shortVersionFromShotPath,
     rendersEqual,
 } from "./page.helpers";
-import { CREDIT_LIMITS, TRIAL_CREDIT_LIMITS, UserTier } from "@/src/lib/credits";
+import { CREDIT_LIMITS, TRIAL_AI_EDIT_CHANGE_LIMIT, TRIAL_CREDIT_LIMITS, UserTier } from "@/src/lib/credits";
 import { bootstrapServerSession, ensureSessionAndCsrf, resetAuthClientCaches } from "@/lib/auth-client";
 import type { UrlDoc } from "@/app/dashboard/types";
 import { sendKlonerSlackEvent } from "@/src/lib/klonerSlackEvents";
@@ -1430,6 +1430,7 @@ type MiniDashboardEntryProps = {
     previewLimitDisplay?: string | number | null;
     editRemaining?: number | null;
     editLimitDisplay?: string | number | null;
+    trialAiChangesRemaining?: number | null;
     onManagePlan?: () => void;
     size?: "compact" | "full";
     disabled?: boolean;
@@ -1462,6 +1463,7 @@ function MiniDashboardEntry({
     previewLimitDisplay = null,
     editRemaining = null,
     editLimitDisplay = null,
+    trialAiChangesRemaining = null,
     onManagePlan,
     size = "compact",
     disabled = false,
@@ -1482,6 +1484,7 @@ function MiniDashboardEntry({
     onPreviewTrialAiPaywall,
 }: MiniDashboardEntryProps) {
     const isCompact = size === "compact";
+    const isActiveTrial = stripeStatus === "trialing" && billingState !== "trial_cancelled";
     const [url, setUrl] = useState("");
     const [busy, setBusy] = useState(false);
     const [pressingSubmit, setPressingSubmit] = useState(false);
@@ -1596,9 +1599,11 @@ function MiniDashboardEntry({
                             <span className="mr-1 inline-flex items-center">
                                 <CoinLottieBadge className="h-6 w-6" />
                             </span>
-                            AI credits:&nbsp;
+                            {isActiveTrial ? "AI changes:" : "AI credits:"}&nbsp;
                             <span className="font-semibold text-neutral-900">
-                                {editRemaining === null
+                                {isActiveTrial
+                                    ? `${trialAiChangesRemaining ?? "—"}/${TRIAL_AI_EDIT_CHANGE_LIMIT}`
+                                    : editRemaining === null
                                     ? "-"
                                     : editLimitDisplay
                                         ? `${editRemaining}/${editLimitDisplay}`
@@ -7671,6 +7676,7 @@ export default function PreviewPage(): JSX.Element {
         editUsed: 0,
         editRemaining: null,
     });
+    const [trialAiChangesRemaining, setTrialAiChangesRemaining] = useState<number | null>(null);
 
     // derived limits for denominator (fallback only)
     const screenshotLimitDisplay =
@@ -7693,6 +7699,7 @@ export default function PreviewPage(): JSX.Element {
     //   credits.snapshot
     useEffect(() => {
         if (!user) {
+            setTrialAiChangesRemaining(null);
             setCredits({
                 screenshotUsed: 0,
                 previewUsed: 0,
@@ -7713,6 +7720,7 @@ export default function PreviewPage(): JSX.Element {
             ref,
             (snap) => {
                 if (!snap.exists()) {
+                    setTrialAiChangesRemaining(null);
                     // No doc yet: treat as full allowance based on tier limits
                     const screenshotLimit =
                         tierLimits.screenshotMonthly && tierLimits.screenshotMonthly > 0
@@ -7765,6 +7773,13 @@ export default function PreviewPage(): JSX.Element {
                     typeof creditsMap.stripeStatus === "string" && creditsMap.stripeStatus.trim()
                         ? creditsMap.stripeStatus.trim().toLowerCase()
                         : "";
+                const usedTrialAiChanges = typeof creditsMap.trialAiChangesUsed === "number" && Number.isFinite(creditsMap.trialAiChangesUsed)
+                    ? Math.max(0, Math.floor(creditsMap.trialAiChangesUsed))
+                    : 0;
+                setTrialAiChangesRemaining(nextStripeStatus === "trialing"
+                    && !isTrialCancelledOverride
+                    ? Math.max(0, TRIAL_AI_EDIT_CHANGE_LIMIT - usedTrialAiChanges)
+                    : null);
                 const nextBillingState =
                     typeof creditsMap.billingState === "string" && creditsMap.billingState.trim()
                         ? (creditsMap.billingState.trim().toLowerCase() as
@@ -14341,6 +14356,7 @@ export default function PreviewPage(): JSX.Element {
                         previewLimitDisplay={previewLimitDisplay}
                         editRemaining={editRemaining}
                         editLimitDisplay={editLimitDisplay}
+                        trialAiChangesRemaining={trialAiChangesRemaining}
                         onManagePlan={() => {
                             void startProCheckout();
                         }}
@@ -14691,6 +14707,7 @@ export default function PreviewPage(): JSX.Element {
                         >
                             <AppBuilderEditor
                                 appId={currentAppId}
+                                billingState={billingState}
                                 initialViewMode={appBuilderInitialViewMode}
                                 isDeleting={Boolean(deletingApp[currentAppId])}
                                 onCanonicalAppIdResolved={(canonicalAppId: string) => {
@@ -16224,7 +16241,7 @@ export default function PreviewPage(): JSX.Element {
                                     : showCreditsPaywall === "trial_snapshot"
                                     ? "You’ve used your monthly trial scans"
                                     : showCreditsPaywall === "trial_ai"
-                                    ? "You’ve used your monthly trial AI credits"
+                                    ? "You’ve used your trial AI changes"
                                     : showCreditsPaywall === "archive_size"
                                     ? "Upgrade to capture sites of this size"
                                     : showCreditsPaywall === "deploy"
@@ -16239,7 +16256,7 @@ export default function PreviewPage(): JSX.Element {
                                     : showCreditsPaywall === "trial_snapshot"
                                     ? `Your trial includes ${TRIAL_CREDIT_LIMITS.screenshotMonthly / 10} website scans each month. Upgrade to continue scanning.`
                                     : showCreditsPaywall === "trial_ai"
-                                    ? `Your trial includes ${TRIAL_CREDIT_LIMITS.editMonthly} AI credits each month. Upgrade to keep using the AI agent.`
+                                    ? `Your trial includes ${TRIAL_AI_EDIT_CHANGE_LIMIT} AI changes. Upgrade to keep using the AI agent.`
                                     : showCreditsPaywall === "screenshot"
                                     ? (
                                         <>
@@ -16265,7 +16282,7 @@ export default function PreviewPage(): JSX.Element {
                             benefits={showCreditsPaywall === "trial_snapshot"
                                 ? [`${TRIAL_CREDIT_LIMITS.screenshotMonthly / 10} website scans per month`, "Unlock deployments and live URLs", "Higher monthly credits for continued building"]
                                 : showCreditsPaywall === "trial_ai"
-                                    ? [`${TRIAL_CREDIT_LIMITS.editMonthly} AI credits per month`, "Keep using the AI agent to edit your website", "Unlock deployments and live URLs"]
+                                    ? [`${TRIAL_AI_EDIT_CHANGE_LIMIT} AI changes during your trial`, "Keep using the AI agent to edit your website", "Unlock deployments and live URLs"]
                                     : undefined}
                             secondaryLabel={showCreditsPaywall === "early_generation" ? "Not now — cancel scan" : undefined}
                             primaryLabel={showCreditsPaywall === "deploy" || showCreditsPaywall === "trial_snapshot" || showCreditsPaywall === "trial_ai" ? "Upgrade now — billing starts today" : TRIAL_CTA_LABEL}

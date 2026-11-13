@@ -52,6 +52,7 @@ import {
     planWouldSwitchFramework,
 } from "@/src/lib/projectFramework";
 import { BASIC_MONTHLY_PRICE_USD } from "@/src/lib/billingAccess";
+import { TRIAL_AI_EDIT_CHANGE_LIMIT } from "@/src/lib/credits";
 import { deriveEmbeddingCurrentPath } from "@/src/lib/embeddingCurrentPath";
 import {
     buildChatRestorePointRevertSuccessMessage,
@@ -1084,6 +1085,8 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
     const TOPUP_COMING_SOON = false;
     const allowDatabaseSetupUi = process.env.NODE_ENV !== "production";
     const [aiCreditsRemaining, setAiCreditsRemaining] = useState<number | null>(null);
+    const [isTrialing, setIsTrialing] = useState(false);
+    const [trialAiChangesRemaining, setTrialAiChangesRemaining] = useState<number | null>(null);
     const [showCreditsAccuracyNotice, setShowCreditsAccuracyNotice] = useState(true);
     const [topupBusy, setTopupBusy] = useState(false);
     const [topupModalOpen, setTopupModalOpen] = useState(false);
@@ -1251,6 +1254,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
     const [chatMode, setChatMode] = useState<AppBuilderChatMode>("auto");
     const [freeCompileFixContext, setFreeCompileFixContext] = useState<CompileErrorQuickFixContext | null>(null);
     const [isLoading, setIsLoading] = useState(false);
+    const trialAiChangeLimitReached = isTrialing && trialAiChangesRemaining === 0 && !isLoading;
     const [isHydrated, setIsHydrated] = useState(false);
     const [checkpoints, setCheckpoints] = useState<Checkpoint[]>([]);
     const [currentCheckpoint, setCurrentCheckpoint] = useState<string | null>(null);
@@ -2661,6 +2665,12 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                     const data = snap.exists() ? (snap.data() as any) : null;
                     const bucket = data?.["credits.aiEdits"] || data?.credits?.aiEdits || null;
                     const remaining = typeof bucket?.remaining === "number" ? bucket.remaining : null;
+                    const trialing = data?.stripeStatus === "trialing" && data?.tierOverrideReason !== "trial_cancelled";
+                    const usedChanges = typeof data?.trialAiChangesUsed === "number" && Number.isFinite(data.trialAiChangesUsed)
+                        ? Math.max(0, Math.floor(data.trialAiChangesUsed))
+                        : 0;
+                    setIsTrialing(trialing);
+                    setTrialAiChangesRemaining(trialing ? Math.max(0, TRIAL_AI_EDIT_CHANGE_LIMIT - usedChanges) : null);
                     setAiCreditsRemaining(Number.isFinite(remaining) ? remaining : null);
                 },
                 (err) => {
@@ -6014,6 +6024,10 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
         const shouldRestoreInput = typeof opts?.forcedInput !== "string";
 
         if (chatDisabled && !allowWhenChatDisabled) return;
+        if (!isCompileFixPrompt && trialAiChangeLimitReached) {
+            onRequestUpgradePaywall?.();
+            return;
+        }
         if (!messageInput.trim() || isLoading) return;
         if (!isCompileFixPrompt && messageInput !== rawMessageInput) {
             setHistoryToast(`Prompt trimmed to ${MAX_EDITOR_PROMPT_CHARS} characters.`);
@@ -6203,6 +6217,10 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
         }
 
         // If we can see the remaining balance and it's exhausted, block early.
+        if (!isFreeCompileFixMode && trialAiChangeLimitReached) {
+            onRequestUpgradePaywall?.();
+            return;
+        }
         if (!isFreeCompileFixMode && typeof aiCreditsRemaining === "number" && aiCreditsRemaining <= 0) {
             onRequestUpgradePaywall?.();
             const topup = "/topup";
@@ -7029,7 +7047,8 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                     });
                     const consumeJson = await consumeRes.json().catch(() => ({} as any));
                     if (!consumeRes.ok || consumeJson?.ok === false) {
-                        if (consumeJson?.code === "AI_EDIT_CREDITS_EXHAUSTED") onRequestUpgradePaywall?.();
+                        if (typeof consumeJson?.remainingChanges === "number") setTrialAiChangesRemaining(consumeJson.remainingChanges);
+                        if (consumeJson?.code === "AI_EDIT_CREDITS_EXHAUSTED" || consumeJson?.code === "TRIAL_AI_CHANGE_LIMIT_REACHED") onRequestUpgradePaywall?.();
                         const topup = "/topup";
                         const messageText = typeof consumeJson?.error === "string" && consumeJson.error.trim()
                             ? consumeJson.error
@@ -7047,6 +7066,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                         setIsLoading(false);
                         return;
                     }
+                    if (typeof consumeJson?.remainingChanges === "number") setTrialAiChangesRemaining(consumeJson.remainingChanges);
                     if (typeof consumeJson?.remaining === "number" && Number.isFinite(consumeJson.remaining)) {
                         setAiCreditsRemaining(consumeJson.remaining);
                     }
@@ -7123,7 +7143,8 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                 });
                 const consumeJson = await consumeRes.json().catch(() => ({} as any));
                 if (!consumeRes.ok || consumeJson?.ok === false) {
-                    if (consumeJson?.code === "AI_EDIT_CREDITS_EXHAUSTED") onRequestUpgradePaywall?.();
+                    if (typeof consumeJson?.remainingChanges === "number") setTrialAiChangesRemaining(consumeJson.remainingChanges);
+                    if (consumeJson?.code === "AI_EDIT_CREDITS_EXHAUSTED" || consumeJson?.code === "TRIAL_AI_CHANGE_LIMIT_REACHED") onRequestUpgradePaywall?.();
                     const topup = "/topup";
                     const messageText = typeof consumeJson?.error === "string" && consumeJson.error.trim()
                         ? consumeJson.error
@@ -7140,6 +7161,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                     ]);
                     return;
                 }
+                if (typeof consumeJson?.remainingChanges === "number") setTrialAiChangesRemaining(consumeJson.remainingChanges);
                 if (typeof consumeJson?.remaining === "number" && Number.isFinite(consumeJson.remaining)) {
                     setAiCreditsRemaining(consumeJson.remaining);
                 }
@@ -7564,7 +7586,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
     const showChatEmptyState = (chatHistoryResolved || chatHistoryLoadTimedOut) && !showIntroTyping && messages.length === 0 && !isLoading;
 
     return (
-        <div className="app-builder-chat-theme flex h-full min-h-0 w-full min-w-0 max-w-full flex-col overflow-hidden bg-gray-50">
+        <div className="app-builder-chat-theme relative flex h-full min-h-0 w-full min-w-0 max-w-full flex-col overflow-hidden bg-gray-50">
             {/* Header */}
             <div className="flex items-center justify-between p-3 border-b bg-white flex-shrink-0">
                 <div className="flex items-center gap-2">
@@ -7582,7 +7604,12 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                     ) : null}
                 </div>
                 <div className="flex items-center gap-2">
-                    <button
+                    {isTrialing ? (
+                        <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-neutral-200 px-2 py-1 text-xs font-medium text-neutral-700 sm:hidden" aria-label={`${trialAiChangesRemaining ?? "Loading"} AI changes remaining during trial`}>
+                            <span>{trialAiChangesRemaining ?? "—"}</span>
+                            <span>changes</span>
+                        </span>
+                    ) : <button
                         type="button"
                         className="inline-flex shrink-0 items-center gap-1 rounded-full border border-neutral-200 px-2 py-1 text-xs font-medium text-neutral-700 sm:hidden"
                         onClick={() => setTopupModalOpen(true)}
@@ -7592,7 +7619,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                         <CoinLottieBadge className="h-5 w-5" />
                         <span>{aiCreditsRemaining ?? "—"}</span>
                         <span aria-hidden="true">+</span>
-                    </button>
+                    </button>}
                     <button
                         type="button"
                         onClick={() => setShowRestorePointsPanel((prev) => !prev)}
@@ -9118,12 +9145,11 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
 
                 <div className="mb-2 hidden items-center justify-between sm:flex">
                     <div className="inline-flex items-center gap-1.5 text-[12px] text-gray-700">
-                        <CoinLottieBadge className="h-8 w-8 shrink-0" />
-                        {aiCreditsRemaining == null
-                            ? "Credits remaining: —"
-                            : `Credits remaining: ${aiCreditsRemaining}`}
+                        {isTrialing ? (
+                            <span>{trialAiChangesRemaining ?? "—"} of {TRIAL_AI_EDIT_CHANGE_LIMIT} AI changes remaining during trial</span>
+                        ) : <><CoinLottieBadge className="h-8 w-8 shrink-0" />{aiCreditsRemaining == null ? "Credits remaining: —" : `Credits remaining: ${aiCreditsRemaining}`}</>}
                     </div>
-                    <button
+                    {!isTrialing ? <button
                         type="button"
                         className="px-2 text-xs font-semibold bg-accent text-white rounded-full hover:bg-accent-dark disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-1.5"
                         onClick={() => {
@@ -9137,7 +9163,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                             <span>{topupBusy ? "Opening checkout…" : "Add credits"}</span>
                         </span>
                         <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
-                    </button>
+                    </button> : null}
                 </div>
 
                 {typeof aiCreditsRemaining === "number" && aiCreditsRemaining <= 0 ? (
@@ -9624,7 +9650,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                         className="block w-full min-h-[76px] resize-none bg-transparent px-3 pt-2.5 pb-6 text-base text-neutral-900 placeholder:text-neutral-400 focus:outline-none sm:min-h-[104px] sm:px-4 sm:pt-3 sm:text-sm"
                         rows={2}
                         maxLength={MAX_EDITOR_PROMPT_CHARS}
-                        disabled={isLoading || chatDisabled}
+                        disabled={isLoading || chatDisabled || trialAiChangeLimitReached}
                     />
                     <span className="pointer-events-none absolute bottom-1.5 right-3 text-[10px] leading-4 text-neutral-500" aria-label="Character count">{input.length}/{MAX_EDITOR_PROMPT_CHARS}</span>
                     </div>
@@ -9633,7 +9659,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                         onClick={() => {
                             void sendMessage();
                         }}
-                        disabled={(!input.trim() && !imageAttachments.length) || uploadingImage || isLoading || chatDisabled}
+                        disabled={(!input.trim() && !imageAttachments.length) || uploadingImage || isLoading || chatDisabled || trialAiChangeLimitReached}
                         className="app-builder-chat-send flex w-12 shrink-0 items-center justify-center bg-[#FF8D21] text-white shadow-none transition-colors hover:bg-[#D96E11] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#B95505] disabled:cursor-not-allowed disabled:opacity-50 sm:w-16"
                         aria-label="Send message"
                     >
@@ -9644,6 +9670,18 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                     <span>Press Enter to send, Shift+Enter for new line</span>
                 </div>
             </div>
+            {trialAiChangeLimitReached ? (
+                <div className="absolute inset-0 z-[80] flex items-center justify-center bg-neutral-950/30 px-5 backdrop-blur-[5px]" role="dialog" aria-modal="true" aria-labelledby="trial-ai-limit-title">
+                    <div className="w-full max-w-sm rounded-2xl border border-neutral-200 bg-white p-6 text-center shadow-[0_24px_70px_rgba(0,0,0,0.28)]">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-[#C66513]">Free trial limit reached</p>
+                        <h3 id="trial-ai-limit-title" className="mt-2 text-xl font-semibold text-neutral-900">You’ve used your {TRIAL_AI_EDIT_CHANGE_LIMIT} AI changes</h3>
+                        <p className="mt-2 text-sm leading-6 text-neutral-600">Upgrade to continue making changes with the AI agent.</p>
+                        <button type="button" onClick={() => onRequestUpgradePaywall?.()} className="mt-5 inline-flex min-h-11 items-center justify-center rounded-full bg-[#FF8D21] px-6 text-sm font-semibold text-white shadow-sm transition hover:bg-[#D96E11] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF8D21] focus-visible:ring-offset-2">
+                            Upgrade to continue
+                        </button>
+                    </div>
+                </div>
+            ) : null}
         </div>
     );
 }

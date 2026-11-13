@@ -21,7 +21,7 @@ import { shouldBypassEditorNavigationGuard } from "@/lib/editorNavigation";
 import { useVercelIntegration } from "@/src/hooks/useVercelIntegration";
 import { auth, db, storage } from "@/lib/firebase";
 import { BASIC_MONTHLY_PRICE_USD, TRIAL_CTA_LABEL } from "@/src/lib/billingAccess";
-import { TRIAL_CREDIT_LIMITS } from "@/src/lib/credits";
+import { TRIAL_AI_EDIT_CHANGE_LIMIT } from "@/src/lib/credits";
 import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
 import { doc, onSnapshot } from "firebase/firestore";
 import { resolveStorageUrl } from "@/src/lib/renders";
@@ -226,10 +226,10 @@ const FREE_PLAN_UPGRADE_PAYWALL_COPY: UpgradePaywallCopy = {
 };
 
 const TRIAL_AI_CREDITS_PAYWALL_COPY: UpgradePaywallCopy = {
-    title: "You’ve used your monthly trial AI credits",
-    description: `Your trial includes ${TRIAL_CREDIT_LIMITS.editMonthly} AI credits each month. Upgrade to keep using the AI agent.`,
+    title: "You’ve used your trial AI changes",
+    description: `Your trial includes ${TRIAL_AI_EDIT_CHANGE_LIMIT} AI changes. Upgrade to keep using the AI agent.`,
     benefits: [
-        `${TRIAL_CREDIT_LIMITS.editMonthly} AI credits per month`,
+        `${TRIAL_AI_EDIT_CHANGE_LIMIT} AI changes during your trial`,
         "Keep using the AI agent to edit your website",
         "Unlock deployments and live URLs",
         "Priority rendering and faster queues",
@@ -1533,6 +1533,7 @@ function getEditorLanguageForPath(path: string | null): string {
 export default function AppBuilderEditor({
     appId,
     initialAppData = null,
+    billingState = "free",
     initialViewMode,
     onCanonicalAppIdResolved,
     onClose,
@@ -1555,6 +1556,7 @@ export default function AppBuilderEditor({
 }: {
     appId: string;
     initialAppData?: AppData | null;
+    billingState?: "free" | "active" | "trialing" | "trial_cancelled";
     initialViewMode?: LeftViewMode;
     onCanonicalAppIdResolved?: (canonicalAppId: string) => void;
     onClose: () => void;
@@ -2306,7 +2308,8 @@ export default function AppBuilderEditor({
     const deployInFlightRef = useRef(false);
     const deployPaywallEventAppIdRef = useRef<string | null>(null);
     const [isDownloadingCode, setIsDownloadingCode] = useState(false);
-    const [downloadBillingState, setDownloadBillingState] = useState("free");
+    const [downloadBillingState, setDownloadBillingState] = useState(billingState);
+    useEffect(() => setDownloadBillingState(billingState), [billingState]);
     const [isSharingPreview, setIsSharingPreview] = useState(false);
     const [isPreviewBuilding, setIsPreviewBuilding] = useState(false);
     const [isCustomSidebarOpen, setIsCustomSidebarOpen] = useState(true);

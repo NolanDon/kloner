@@ -7,8 +7,10 @@ export type UserTier = "free" | "pro" | "agency" | "enterprise" | "unknown";
 // Trial quotas stay below the paid Pro allowance. Snapshot credits cost 10 per scan.
 export const TRIAL_CREDIT_LIMITS = {
     screenshotMonthly: 30,
-    editMonthly: 75,
+    // Five edits at the fixed server-side cost of 3 credits each.
+    editMonthly: 15,
 } as const;
+export const TRIAL_AI_EDIT_CHANGE_LIMIT = 5;
 
 /**
  * Monthly credit limits per tier, tuned for cost-efficiency:

@@ -1,7 +1,8 @@
 // app/api/_lib/billing.ts
 import admin from "firebase-admin";
 import { getStripe } from "@/lib/stripe";
-import { monthlyLimitFor, type CreditKind as CoreCreditKind } from "@/src/lib/credits";
+import { monthlyLimitFor, TRIAL_AI_EDIT_CHANGE_LIMIT, type CreditKind as CoreCreditKind } from "@/src/lib/credits";
+import { AI_EDIT_CREDIT_COST } from "@/src/lib/aiEditCredits";
 import { captureCriticalEvent, captureException } from "@/lib/observability";
 import { checkStripeCheckoutAbuse } from "@/app/api/_lib/stripeCheckoutAbuse";
 
@@ -253,6 +254,19 @@ export async function setUserTierFromStripe(
         tierSource: "stripe",
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     };
+
+    if (isTrialing && (previousStripeStatus !== "trialing" || typeof existingData.trialAiChangesUsed !== "number")) {
+        const priorAiBucket = readAiEditsBucket(existingData);
+        const priorMonthlyLimit = typeof priorAiBucket?.monthlyLimit === "number" ? priorAiBucket.monthlyLimit : 0;
+        const priorRemaining = typeof priorAiBucket?.remaining === "number" ? priorAiBucket.remaining : priorMonthlyLimit;
+        const priorBonus = inferBonusRemaining(priorAiBucket);
+        const priorMonthlyRemaining = Math.max(0, Math.min(priorMonthlyLimit, priorRemaining - priorBonus));
+        const inferredUsed = previousStripeStatus === "trialing"
+            ? Math.min(TRIAL_AI_EDIT_CHANGE_LIMIT, Math.floor(Math.max(0, priorMonthlyLimit - priorMonthlyRemaining) / AI_EDIT_CREDIT_COST))
+            : 0;
+        update.trialAiChangesUsed = inferredUsed;
+        update.trialAiChangesLimit = TRIAL_AI_EDIT_CHANGE_LIMIT;
+    }
 
     // Mirror Stripe fields onto kloner_users, including nulls to clear stale state
     if (stripeData) {
