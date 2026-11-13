@@ -14669,6 +14669,7 @@ export default function PreviewPage(): JSX.Element {
                     <AppPreviewEditorCore
                         initialHtml={editorHtml}
                         sourceImage={editorRefImg}
+                        billingState={billingState}
                         accessLocked={isFreeTierNotTrialing || isSubscriptionAccessRevoked}
                         showTour={isTourEligible || shouldForcePreviewTourInDev}
                         initialSeoMetaByPage={activeSeoMetaByPage || undefined}

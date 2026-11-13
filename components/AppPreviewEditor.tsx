@@ -114,6 +114,7 @@ type Props = {
     viewMode?: "ai" | "code" | "images" | "custom";
     onChangeViewMode?: (mode: "ai" | "code" | "images" | "custom") => void;
     isProduction?: boolean;
+    billingState?: "free" | "active" | "trialing" | "trial_cancelled";
     appName?: string;
     isRenaming?: boolean;
     tempName?: string;
@@ -1357,6 +1358,7 @@ export function AppPreviewEditorCore({
     viewMode = "custom",
     onChangeViewMode,
     isProduction = false,
+    billingState = "free",
     appName,
     isRenaming,
     tempName,
@@ -1521,7 +1523,8 @@ export function AppPreviewEditorCore({
 
     const [isDraggingPreview, setIsDraggingPreview] = useState(false);
     const shouldRunPreviewTour = !isCompactLayout && shouldShowTour;
-    const shouldLockPreviewEditor = (accessLocked || userTier === "free") && !isAdmin && !authLoading;
+    const hasCurrentSubscriptionAccess = billingState === "active" || billingState === "trialing";
+    const shouldLockPreviewEditor = (accessLocked || (!hasCurrentSubscriptionAccess && userTier === "free")) && !isAdmin && !authLoading;
     const shouldAutoOpenAccessPaywallFromTour = shouldRunPreviewTour && previewTourDontShowAgain && shouldLockPreviewEditor;
     const shouldLockPreviewPanels =
         shouldLockPreviewEditor &&
@@ -7293,6 +7296,7 @@ type AppSourcePreviewEditorProps = {
     viewMode?: "ai" | "code" | "images" | "custom";
     onChangeViewMode?: (mode: "ai" | "code" | "images" | "custom") => void;
     isProduction?: boolean;
+    billingState?: "free" | "active" | "trialing" | "trial_cancelled";
     onSidebarVisibilityChange?: (open: boolean) => void;
     sharedUiScale?: number;
     onSharedUiScaleChange?: (scale: number) => void;
@@ -7351,6 +7355,7 @@ export default function AppPreviewEditor({
     viewMode = "custom",
     onChangeViewMode,
     isProduction = false,
+    billingState = "free",
     onSidebarVisibilityChange,
     sharedUiScale,
     onSharedUiScaleChange,
@@ -7613,6 +7618,7 @@ export default function AppPreviewEditor({
                     viewMode={viewMode}
                     onChangeViewMode={onChangeViewMode}
                     isProduction={isProduction}
+                    billingState={billingState}
                     onSidebarVisibilityChange={onSidebarVisibilityChange}
                     sharedUiScale={sharedUiScale}
                     onSharedUiScaleChange={onSharedUiScaleChange}

@@ -2655,10 +2655,15 @@ export default function AppBuilderEditor({
     const previousViewModeRef = useRef<LeftViewMode>("ai");
     const builderTrialPromptNotifiedRef = useRef(false);
     const shouldRunBuilderTour = !isVisualEditorMode && (showTour || (trialPromptEnabled && trialPromptSessionEligible));
-    const shouldLockBuilderEditor = accessLocked || userTier === "free";
+    // Dashboard billing may be fresher than the auth context (notably just
+    // after checkout). An active or trialing billing state grants editor access
+    // while auth claims/Firestore tier catch up.
+    const hasCurrentSubscriptionAccess = billingState === "active" || billingState === "trialing";
+    const shouldLockBuilderEditor = accessLocked || (!hasCurrentSubscriptionAccess && userTier === "free");
     const shouldShowBuilderTrialPrompt =
         trialPromptEnabled &&
         trialPromptSessionEligible &&
+        !hasCurrentSubscriptionAccess &&
         userTier === "free" &&
         !authLoading &&
         !loading &&
