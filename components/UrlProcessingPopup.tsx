@@ -188,8 +188,8 @@ export default function UrlProcessingPopup({
                         exit={{ opacity: 0, y: 10 }}
                         transition={{ duration: 0.45, ease: "easeOut" }}
                     >
-                        <div className="grid grid-cols-[minmax(0,1fr),auto] items-start gap-4">
-                            <div className="min-w-0 text-center">
+                        <div className="relative min-h-[3.25rem] w-full">
+                            <div className="w-full text-center">
                                 <div className="text-[10px] uppercase tracking-[0.24em] text-neutral-400">
                                     {error ? errorLabel : stage === "navigating" ? "Opening" : stage === "ready" ? "Ready" : "Working"}
                                 </div>
@@ -209,7 +209,7 @@ export default function UrlProcessingPopup({
                                 </div>
                             </div>
 
-                            <div className="shrink-0 min-h-[3.25rem] text-right pt-1">
+                            <div className="absolute right-0 top-0 pt-1">
                                 {onDismiss ? (
                                     <button
                                         type="button"
