@@ -522,7 +522,48 @@ export async function refreshTierFromStripeForUid(uid: string): Promise<Tier> {
     } catch {
         // ignore
     }
-    const customerId: string | undefined = data.stripeCustomerId;
+
+    // Local development uses Stripe test mode and may point at the same
+    // Firestore project as production. Never let a test-mode refresh rewrite
+    // the shared live tier, status, or credit buckets.
+    if (process.env.NODE_ENV !== "production") {
+        const storedTier = typeof data.tier === "string" ? data.tier.toLowerCase() : "free";
+        return storedTier === "pro" || storedTier === "agency"
+            ? storedTier
+            : "free";
+    }
+
+    let customerId: string | undefined = data.stripeCustomerId;
+
+    const findMappedCustomerWithSubscriptions = async (excludeCustomerId?: string) => {
+        const mappings = await db.collection("stripe_customers").where("uid", "==", uid).get();
+        for (const mapping of mappings.docs) {
+            const candidateId = mapping.id;
+            if (!candidateId || candidateId === excludeCustomerId) continue;
+            try {
+                const candidateSubscriptions = await stripe.subscriptions.list({
+                    customer: candidateId,
+                    status: "all",
+                    limit: 10,
+                });
+                if (candidateSubscriptions.data.length) {
+                    return { customerId: candidateId, subscriptions: candidateSubscriptions };
+                }
+            } catch {
+                // Mappings can contain test-mode customers. A live Stripe key
+                // cannot retrieve those; continue until a live customer matches.
+            }
+        }
+        return null;
+    };
+
+    if (!customerId) {
+        const mappedCustomer = await findMappedCustomerWithSubscriptions();
+        if (mappedCustomer) {
+            customerId = mappedCustomer.customerId;
+            await userRef.set({ stripeCustomerId: customerId }, { merge: true });
+        }
+    }
 
     if (!customerId) {
         await setUserTierFromStripe(uid, "free", {
@@ -553,32 +594,45 @@ export async function refreshTierFromStripeForUid(uid: string): Promise<Tier> {
                   ? error.status
                   : 500;
 
-        if (status >= 500) {
-            await captureException({
-                source: "vercel",
-                error,
-                action: "billing.refreshTier.listSubscriptions",
-                statusCode: status,
-                service: "billing-subscription",
-                userId: uid,
-                extra: { customerId },
-            });
-        } else {
-            await captureCriticalEvent({
-                source: "vercel",
-                severity: "critical",
-                statusCode: status,
-                action: "billing.refreshTier.listSubscriptions",
-                service: "billing-subscription",
-                userId: uid,
-                message: typeof error?.message === "string" ? error.message : "Stripe subscription list failed",
-                errorName: typeof error?.type === "string" ? error.type : undefined,
-                stack: typeof error?.stack === "string" ? error.stack : undefined,
-                extra: { customerId },
-            });
+        const stripeCode = String(error?.code || error?.raw?.code || "").toLowerCase();
+        const isMissingCustomer = status === 404 || stripeCode === "resource_missing";
+        if (isMissingCustomer) {
+            const mappedCustomer = await findMappedCustomerWithSubscriptions(customerId).catch(() => null);
+            if (mappedCustomer) {
+                customerId = mappedCustomer.customerId;
+                subs = mappedCustomer.subscriptions;
+                await userRef.set({ stripeCustomerId: customerId }, { merge: true });
+            }
         }
 
-        throw error;
+        if (!subs) {
+            if (status >= 500) {
+                await captureException({
+                    source: "vercel",
+                    error,
+                    action: "billing.refreshTier.listSubscriptions",
+                    statusCode: status,
+                    service: "billing-subscription",
+                    userId: uid,
+                    extra: { customerId },
+                });
+            } else {
+                await captureCriticalEvent({
+                    source: "vercel",
+                    severity: "critical",
+                    statusCode: status,
+                    action: "billing.refreshTier.listSubscriptions",
+                    service: "billing-subscription",
+                    userId: uid,
+                    message: typeof error?.message === "string" ? error.message : "Stripe subscription list failed",
+                    errorName: typeof error?.type === "string" ? error.type : undefined,
+                    stack: typeof error?.stack === "string" ? error.stack : undefined,
+                    extra: { customerId },
+                });
+            }
+
+            throw error;
+        }
     }
 
     if (!subs.data.length) {

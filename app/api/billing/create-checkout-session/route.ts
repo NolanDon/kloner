@@ -247,7 +247,11 @@ async function handler({ req, uid }: { req: NextRequest; uid: string }) {
         return authUser;
     };
 
-    let customerId: string | undefined = userData.stripeCustomerId;
+    // Local Stripe test mode may share Firestore with production. Keep test
+    // customers in a separate field so a test checkout cannot replace the live
+    // customer ID used by production billing refreshes and webhooks.
+    const customerIdField = isProd ? "stripeCustomerId" : "stripeCustomerIdTest";
+    let customerId: string | undefined = userData[customerIdField];
 
     const createAndPersistCustomer = async (): Promise<string> => {
         const user = await getAuthUser();
@@ -274,7 +278,7 @@ async function handler({ req, uid }: { req: NextRequest; uid: string }) {
         }
 
         const nextCustomerId = customer.id;
-        await userRef.set({ stripeCustomerId: nextCustomerId }, { merge: true });
+        await userRef.set({ [customerIdField]: nextCustomerId }, { merge: true });
         await linkCustomerToUid(nextCustomerId, uid);
         return nextCustomerId;
     };
