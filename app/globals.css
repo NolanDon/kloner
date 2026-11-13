@@ -144,6 +144,17 @@ html[data-moqup-promo-dismissed="true"] .moqup-referral-banner {
     top: calc(var(--moqup-banner-offset, 0px) + 1rem);
 }
 
+.website-paywall-scroll {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+
+.website-paywall-scroll::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
+}
+
 .site-navbar-hero-glow {
     background-image: radial-gradient(ellipse 34% 110% at 0% 100%, rgba(255, 141, 33, 0.08) 0%, rgba(255, 141, 33, 0.025) 38%, transparent 82%);
 }

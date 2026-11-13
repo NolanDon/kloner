@@ -205,7 +205,7 @@ export function WebsitePrePaywall({
                 transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
             />
 
-            <div className="absolute inset-0 flex items-start justify-center overflow-y-auto px-3 py-4 sm:items-center sm:px-5 sm:py-6">
+            <div className="website-paywall-scroll absolute inset-0 flex items-start justify-center overflow-y-auto px-3 py-4 sm:items-center sm:px-5 sm:py-6">
                 <motion.div
                     className="relative w-full max-w-[520px] overflow-hidden rounded-[28px] border border-neutral-200 bg-white shadow-[0_24px_80px_rgba(0,0,0,0.22)] sm:max-w-[580px]"
                     initial={{ opacity: 0, y: 4 }}
@@ -226,7 +226,7 @@ export function WebsitePrePaywall({
                         </button>
                     ) : null}
 
-                    <div className="max-h-[calc(100dvh-2.25rem)] overflow-y-auto overscroll-contain sm:max-h-[calc(100dvh-3rem)]">
+                    <div className="website-paywall-scroll max-h-[calc(100dvh-2.25rem)] overflow-y-auto overscroll-contain sm:max-h-[calc(100dvh-3rem)]">
                         <div className="p-4 sm:p-6 lg:p-7">
                             <div className="mx-auto max-w-xl px-4 text-center sm:px-8">
                                 <h3 className="text-[1.75rem] leading-tight tracking-tight text-neutral-900 sm:text-[2.35rem]">
