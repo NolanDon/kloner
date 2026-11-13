@@ -287,7 +287,7 @@ export async function setUserTierFromStripe(
 
     if (shouldResetCredits) {
         // Compute new limits for this tier from central credit config
-        const previewLimit = monthlyLimitFor(tier, "preview" as CoreCreditKind);
+        const previewLimit = monthlyLimitFor(tier, "preview" as CoreCreditKind, isTrialing);
         const screenshotLimit = monthlyLimitFor(tier, "screenshot" as CoreCreditKind, isTrialing);
         const editLimit = monthlyLimitFor(tier, "edit" as CoreCreditKind, isTrialing);
 

@@ -7,6 +7,8 @@ export type UserTier = "free" | "pro" | "agency" | "enterprise" | "unknown";
 // Trial quotas stay below the paid Pro allowance. Snapshot credits cost 10 per scan.
 export const TRIAL_CREDIT_LIMITS = {
     screenshotMonthly: 30,
+    // Three preview operations at the fixed server-side cost of 15 credits each.
+    previewMonthly: 45,
     // Five edits at the fixed server-side cost of 3 credits each.
     editMonthly: 15,
 } as const;
@@ -82,6 +84,7 @@ export function monthlyLimitFor(
     kind: CreditKind,
     trialing = false,
 ): number {
+    if (trialing && kind === "preview") return TRIAL_CREDIT_LIMITS.previewMonthly;
     if (trialing && kind === "screenshot") return TRIAL_CREDIT_LIMITS.screenshotMonthly;
     if (trialing && kind === "edit") return TRIAL_CREDIT_LIMITS.editMonthly;
     const t = tier || "free";

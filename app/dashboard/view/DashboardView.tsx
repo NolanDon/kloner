@@ -7578,7 +7578,12 @@ export default function PreviewPage(): JSX.Element {
     const tierLimits = useMemo(() => {
         const base = CREDIT_LIMITS[userTier] || CREDIT_LIMITS.free;
         return stripeStatus === "trialing"
-            ? { ...base, screenshotMonthly: TRIAL_CREDIT_LIMITS.screenshotMonthly, editMonthly: TRIAL_CREDIT_LIMITS.editMonthly }
+            ? {
+                ...base,
+                previewMonthly: TRIAL_CREDIT_LIMITS.previewMonthly,
+                screenshotMonthly: TRIAL_CREDIT_LIMITS.screenshotMonthly,
+                editMonthly: TRIAL_CREDIT_LIMITS.editMonthly,
+            }
             : base;
     }, [stripeStatus, userTier]);
 
@@ -7822,8 +7827,11 @@ export default function PreviewPage(): JSX.Element {
                 setExitOfferClaimed(nextExitOfferClaimed);
                 setFirstGenerationTrialPromptShown(nextTrialPromptShown);
 
+                const isActiveTrial = nextStripeStatus === "trialing" && !isTrialCancelledOverride;
                 const previewLimit = isTrialCancelledOverride
                     ? CREDIT_LIMITS.free.previewMonthly
+                    : isActiveTrial
+                        ? TRIAL_CREDIT_LIMITS.previewMonthly
                     : typeof previewBucket.monthlyLimit === "number" &&
                         previewBucket.monthlyLimit >= 0
                         ? previewBucket.monthlyLimit
@@ -7845,7 +7853,7 @@ export default function PreviewPage(): JSX.Element {
                 const previewRemaining =
                     previewLimit === 0
                         ? null
-                        : isTrialCancelledOverride
+                        : isTrialCancelledOverride || isActiveTrial
                             ? Math.min(
                                 typeof previewBucket.remaining === "number" && Number.isFinite(previewBucket.remaining)
                                     ? previewBucket.remaining
