@@ -1483,6 +1483,21 @@ function MiniDashboardEntry({
 }: MiniDashboardEntryProps) {
     const isCompact = size === "compact";
     const isActiveTrial = stripeStatus === "trialing" && billingState !== "trial_cancelled";
+    const hasLowTrialScans = isActiveTrial &&
+        previewRemaining !== null &&
+        Number(previewLimitDisplay) > 0 &&
+        previewRemaining <= Number(previewLimitDisplay) / 2;
+    const hasLowTrialAiCredits = isActiveTrial &&
+        editRemaining !== null &&
+        Number(editLimitDisplay) > 0 &&
+        editRemaining <= Number(editLimitDisplay) / 2;
+    const trialUpgradeLabel = hasLowTrialScans && hasLowTrialAiCredits
+        ? "Upgrade for more scans and AI credits"
+        : hasLowTrialScans
+            ? "Upgrade for more scans"
+            : hasLowTrialAiCredits
+                ? "Upgrade for more AI credits"
+                : null;
     const [url, setUrl] = useState("");
     const [busy, setBusy] = useState(false);
     const [pressingSubmit, setPressingSubmit] = useState(false);
@@ -1606,6 +1621,16 @@ function MiniDashboardEntry({
                                         : `${editRemaining}`}
                             </span>
                         </span>
+
+                        {trialUpgradeLabel && onManagePlan ? (
+                            <button
+                                type="button"
+                                onClick={onManagePlan}
+                                className="inline-flex items-center px-1 text-sm font-medium text-[#FF8D21] underline underline-offset-4 hover:text-[#e97812] focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF8D21]"
+                            >
+                                {trialUpgradeLabel}
+                            </button>
+                        ) : null}
 
                         {showDevEarlyGenerationPaywallSwitch && onToggleDevEarlyGenerationPaywall ? (
                             <button
