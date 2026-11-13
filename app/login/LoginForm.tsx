@@ -538,7 +538,6 @@ export default function LoginPage(): JSX.Element {
                 await signOut(auth).catch(() => undefined);
                 setErr(normalizeError(error));
                 setLoading(false);
-                router.replace("/login?reason=blocked");
             }
         });
         return () => unsub();

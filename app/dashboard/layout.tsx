@@ -724,7 +724,7 @@ export default function AppShellLayout({ children }: { children: ReactNode }) {
         } catch {
           // ignore
         }
-        router.replace("/login?reason=blocked");
+        router.replace("/login");
         return;
       }
 
