@@ -97,7 +97,7 @@ import {
     shortVersionFromShotPath,
     rendersEqual,
 } from "./page.helpers";
-import { CREDIT_LIMITS, UserTier } from "@/src/lib/credits";
+import { CREDIT_LIMITS, TRIAL_CREDIT_LIMITS, UserTier } from "@/src/lib/credits";
 import { bootstrapServerSession, ensureSessionAndCsrf, resetAuthClientCaches } from "@/lib/auth-client";
 import type { UrlDoc } from "@/app/dashboard/types";
 import { sendKlonerSlackEvent } from "@/src/lib/klonerSlackEvents";
@@ -550,6 +550,7 @@ function isScreenshotCreditLimitResponse(status: number, payload: any): boolean 
     return (
         errorText.includes("monthly snapshot limit reached") ||
         errorText.includes("screenshot credits") ||
+        reasonText === "snapshot_credits_exhausted" ||
         reasonText === "monthly_snapshot_limit" ||
         reasonText === "snapshot_credit_limit" ||
         (typeof remaining === "number" && remaining <= 0)
@@ -1444,6 +1445,9 @@ type MiniDashboardEntryProps = {
     showSubscriptionAccessPreviewSwitch?: boolean;
     subscriptionAccessPreviewEnabled?: boolean;
     onToggleSubscriptionAccessPreview?: () => void;
+    showAdminTrialPaywallPreviews?: boolean;
+    onPreviewTrialSnapshotPaywall?: () => void;
+    onPreviewTrialAiPaywall?: () => void;
 };
 
 function MiniDashboardEntry({
@@ -1473,6 +1477,9 @@ function MiniDashboardEntry({
     showSubscriptionAccessPreviewSwitch = false,
     subscriptionAccessPreviewEnabled = false,
     onToggleSubscriptionAccessPreview,
+    showAdminTrialPaywallPreviews = false,
+    onPreviewTrialSnapshotPaywall,
+    onPreviewTrialAiPaywall,
 }: MiniDashboardEntryProps) {
     const isCompact = size === "compact";
     const [url, setUrl] = useState("");
@@ -1636,6 +1643,12 @@ function MiniDashboardEntry({
                                     <span className={`dev-paywall-switch__thumb absolute left-0.5 h-5 w-5 rounded-full shadow-sm transition-transform ${subscriptionAccessPreviewEnabled ? "translate-x-5" : "translate-x-0"}`} />
                                 </span>
                             </button>
+                        ) : null}
+                        {showAdminTrialPaywallPreviews && onPreviewTrialSnapshotPaywall && onPreviewTrialAiPaywall ? (
+                            <div className="inline-flex flex-wrap items-center gap-2">
+                                <button type="button" onClick={onPreviewTrialSnapshotPaywall} className="rounded-full border border-neutral-300 px-3 py-2 text-xs font-semibold text-neutral-700 hover:border-[#FF8D21] hover:text-neutral-900">Preview scan limit paywall</button>
+                                <button type="button" onClick={onPreviewTrialAiPaywall} className="rounded-full border border-neutral-300 px-3 py-2 text-xs font-semibold text-neutral-700 hover:border-[#FF8D21] hover:text-neutral-900">Preview AI limit paywall</button>
+                            </div>
                         ) : null}
                     </div>
 
@@ -4191,7 +4204,7 @@ export default function PreviewPage(): JSX.Element {
 
 
     const [showCreditsPaywall, setShowCreditsPaywall] = useState<
-        null | "screenshot" | "preview" | "archive_size" | "deploy" | "early_generation"
+        null | "screenshot" | "preview" | "archive_size" | "deploy" | "early_generation" | "trial_snapshot" | "trial_ai"
     >(null);
     const signupPaywallShownRef = useRef(false);
     const earlyPaywallSlackShownRef = useRef(false);
@@ -7557,10 +7570,12 @@ export default function PreviewPage(): JSX.Element {
         []
     );
 
-    const tierLimits = useMemo(
-        () => CREDIT_LIMITS[userTier] || CREDIT_LIMITS.free,
-        [userTier]
-    );
+    const tierLimits = useMemo(() => {
+        const base = CREDIT_LIMITS[userTier] || CREDIT_LIMITS.free;
+        return stripeStatus === "trialing"
+            ? { ...base, screenshotMonthly: TRIAL_CREDIT_LIMITS.screenshotMonthly, editMonthly: TRIAL_CREDIT_LIMITS.editMonthly }
+            : base;
+    }, [stripeStatus, userTier]);
 
 
     const saveRenderNameHintNow = useCallback(
@@ -9214,7 +9229,7 @@ export default function PreviewPage(): JSX.Element {
             if (!canUseScreenshotCredit()) {
                 setErr("");
                 setInfo("");
-                setShowCreditsPaywall("screenshot");
+                setShowCreditsPaywall(stripeStatus === "trialing" ? "trial_snapshot" : "screenshot");
                 return false;
             }
 
@@ -9354,7 +9369,7 @@ export default function PreviewPage(): JSX.Element {
                                 payload?.error || "This website is too large for the Free plan.",
                             ).trim();
                             clearUrlScanQueuedState(target, paywallMessage);
-                            setShowCreditsPaywall("screenshot");
+                            setShowCreditsPaywall("archive_size");
                             setActiveUrlScanJob(null);
                             return;
                         }
@@ -9463,7 +9478,7 @@ export default function PreviewPage(): JSX.Element {
                             setCaptureIssueNotice(`Domain blocked: ${target}. Please use a different URL.`);
                         }
                         if (creditLimitResponse) {
-                            setShowCreditsPaywall("screenshot");
+                            setShowCreditsPaywall(stripeStatus === "trialing" ? "trial_snapshot" : "screenshot");
                         }
                         setActiveUrlScanJob(null);
 
@@ -11523,7 +11538,7 @@ export default function PreviewPage(): JSX.Element {
                 setErr("");
                 setInfo("");
                 push("You have used all available screenshot credits for this month.", "warn");
-                setShowCreditsPaywall("screenshot");
+                setShowCreditsPaywall(stripeStatus === "trialing" ? "trial_snapshot" : "screenshot");
                 return;
             }
             setErr("");
@@ -11913,7 +11928,7 @@ export default function PreviewPage(): JSX.Element {
 
             if (r.status === 429 && isScreenshotCreditLimitResponse(r.status, j)) {
                 setErr("");
-                setShowCreditsPaywall("screenshot");
+                setShowCreditsPaywall(stripeStatus === "trialing" ? "trial_snapshot" : "screenshot");
                 return;
             }
 
@@ -14354,6 +14369,9 @@ export default function PreviewPage(): JSX.Element {
                         showSubscriptionAccessPreviewSwitch={isAdmin}
                         subscriptionAccessPreviewEnabled={devSubscriptionAccessPreviewEnabled}
                         onToggleSubscriptionAccessPreview={() => setDevSubscriptionAccessPreviewEnabled((enabled) => !enabled)}
+                        showAdminTrialPaywallPreviews={isAdmin}
+                        onPreviewTrialSnapshotPaywall={() => setShowCreditsPaywall("trial_snapshot")}
+                        onPreviewTrialAiPaywall={() => setShowCreditsPaywall("trial_ai")}
                     />
                 </section>
 
@@ -16185,7 +16203,8 @@ export default function PreviewPage(): JSX.Element {
                         }}
                         onStartCheckout={() => {
                             setShowCreditsPaywall(null);
-                            void startProCheckout(showCreditsPaywall === "deploy");
+                            const isTrialLimitPaywall = showCreditsPaywall === "trial_snapshot" || showCreditsPaywall === "trial_ai";
+                            void startProCheckout(showCreditsPaywall === "deploy", isTrialLimitPaywall);
                         }}
                             showTrialChoice={showCreditsPaywall === "early_generation" && STRIPE_TRIAL_DAYS > 0}
                             onStartCheckoutWithChoice={async (useTrial) => {
@@ -16202,6 +16221,10 @@ export default function PreviewPage(): JSX.Element {
                             title={
                                 showCreditsPaywall === "early_generation"
                                     ? "Ready to build your website?"
+                                    : showCreditsPaywall === "trial_snapshot"
+                                    ? "You’ve used your monthly trial scans"
+                                    : showCreditsPaywall === "trial_ai"
+                                    ? "You’ve used your monthly trial AI credits"
                                     : showCreditsPaywall === "archive_size"
                                     ? "Upgrade to capture sites of this size"
                                     : showCreditsPaywall === "deploy"
@@ -16213,6 +16236,10 @@ export default function PreviewPage(): JSX.Element {
                             description={
                                 showCreditsPaywall === "early_generation"
                                     ? "This generation is paused until your account is upgraded."
+                                    : showCreditsPaywall === "trial_snapshot"
+                                    ? `Your trial includes ${TRIAL_CREDIT_LIMITS.screenshotMonthly / 10} website scans each month. Upgrade to continue scanning.`
+                                    : showCreditsPaywall === "trial_ai"
+                                    ? `Your trial includes ${TRIAL_CREDIT_LIMITS.editMonthly} AI credits each month. Upgrade to keep using the AI agent.`
                                     : showCreditsPaywall === "screenshot"
                                     ? (
                                         <>
@@ -16235,9 +16262,14 @@ export default function PreviewPage(): JSX.Element {
                                             ? "Deployment requires an active paid subscription and is not included in the free trial. Upgrading starts your paid plan and billing immediately."
                                             : "Publish your website live from the editor. Upgrade to unlock one-click deploy and higher monthly credits."
                             }
+                            benefits={showCreditsPaywall === "trial_snapshot"
+                                ? [`${TRIAL_CREDIT_LIMITS.screenshotMonthly / 10} website scans per month`, "Unlock deployments and live URLs", "Higher monthly credits for continued building"]
+                                : showCreditsPaywall === "trial_ai"
+                                    ? [`${TRIAL_CREDIT_LIMITS.editMonthly} AI credits per month`, "Keep using the AI agent to edit your website", "Unlock deployments and live URLs"]
+                                    : undefined}
                             secondaryLabel={showCreditsPaywall === "early_generation" ? "Not now — cancel scan" : undefined}
-                            primaryLabel={showCreditsPaywall === "deploy" ? "Upgrade now — billing starts today" : TRIAL_CTA_LABEL}
-                            footerNote={showCreditsPaywall === "deploy" ? "Deployment unlocks with an active paid subscription." : "Cancel anytime before renewal."}
+                            primaryLabel={showCreditsPaywall === "deploy" || showCreditsPaywall === "trial_snapshot" || showCreditsPaywall === "trial_ai" ? "Upgrade now — billing starts today" : TRIAL_CTA_LABEL}
+                            footerNote={showCreditsPaywall === "deploy" ? "Deployment unlocks with an active paid subscription." : showCreditsPaywall === "trial_snapshot" || showCreditsPaywall === "trial_ai" ? "Upgrade to continue using Kloner during your trial." : "Cancel anytime before renewal."}
                             zIndexClassName="z-[12049]"
                         />
                     )

@@ -21,6 +21,7 @@ import { shouldBypassEditorNavigationGuard } from "@/lib/editorNavigation";
 import { useVercelIntegration } from "@/src/hooks/useVercelIntegration";
 import { auth, db, storage } from "@/lib/firebase";
 import { BASIC_MONTHLY_PRICE_USD, TRIAL_CTA_LABEL } from "@/src/lib/billingAccess";
+import { TRIAL_CREDIT_LIMITS } from "@/src/lib/credits";
 import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
 import { doc, onSnapshot } from "firebase/firestore";
 import { resolveStorageUrl } from "@/src/lib/renders";
@@ -222,6 +223,19 @@ const FREE_PLAN_UPGRADE_PAYWALL_COPY: UpgradePaywallCopy = {
     ],
     primaryLabel: TRIAL_CTA_LABEL,
     footerNote: "Cancel anytime before renewal.",
+};
+
+const TRIAL_AI_CREDITS_PAYWALL_COPY: UpgradePaywallCopy = {
+    title: "You’ve used your monthly trial AI credits",
+    description: `Your trial includes ${TRIAL_CREDIT_LIMITS.editMonthly} AI credits each month. Upgrade to keep using the AI agent.`,
+    benefits: [
+        `${TRIAL_CREDIT_LIMITS.editMonthly} AI credits per month`,
+        "Keep using the AI agent to edit your website",
+        "Unlock deployments and live URLs",
+        "Priority rendering and faster queues",
+    ],
+    primaryLabel: "Upgrade now — billing starts today",
+    footerNote: "Upgrade to keep using Kloner during your trial.",
 };
 
 type PreviewMode = "webcontainer" | "vercel";
@@ -2405,9 +2419,9 @@ export default function AppBuilderEditor({
     }, []);
 
     const openFreePlanUpgradePaywall = useCallback(() => {
-        setUpgradePaywallCopy(FREE_PLAN_UPGRADE_PAYWALL_COPY);
+        setUpgradePaywallCopy(downloadBillingState === "trialing" ? TRIAL_AI_CREDITS_PAYWALL_COPY : FREE_PLAN_UPGRADE_PAYWALL_COPY);
         setShowDeployUpgradePaywall(true);
-    }, []);
+    }, [downloadBillingState]);
 
     const pageOptions = useMemo(() => {
         const seen = new Set<string>();
@@ -4122,6 +4136,29 @@ export default function AppBuilderEditor({
         }
     };
 
+    const upgradeTrialForAiCredits = async () => {
+        if (downloadBillingState !== "trialing") {
+            await startLocalTrialCheckout(true, "editor_deploy");
+            return;
+        }
+        if (localTrialCheckoutBusy) return;
+        setLocalTrialCheckoutBusy(true);
+        try {
+            const csrf = await ensureSessionAndCsrf();
+            const response = await fetch("/api/billing/activate-subscription", {
+                method: "POST", credentials: "include",
+                headers: { "content-type": "application/json", ...(csrf ? { "x-csrf": csrf } : {}) },
+            });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(data.error || "Could not activate your paid subscription.");
+            setShowDeployUpgradePaywall(false);
+        } catch (error) {
+            void showAlert(error instanceof Error ? error.message : "Please update your subscription in account settings.", "Subscription");
+        } finally {
+            setLocalTrialCheckoutBusy(false);
+        }
+    };
+
     const restartLocalPreview = useCallback(async (forceFresh: boolean = false) => {
         if (isPreviewBuilding) return;
         const now = Date.now();
@@ -4192,6 +4229,7 @@ export default function AppBuilderEditor({
 
                 const data = await res.json().catch(() => ({} as any));
                 if (!res.ok || !(data as any)?.ok) {
+                    if ((data as any)?.code === "AI_EDIT_CREDITS_EXHAUSTED") openFreePlanUpgradePaywall();
                     const msg = String((data as any)?.error || `Credit consume failed (HTTP ${res.status})`);
                     setAgentCreditError(msg);
                     return;
@@ -4200,7 +4238,7 @@ export default function AppBuilderEditor({
                 setAgentCreditError(String(err?.message || "Failed to consume AI edit credit"));
             }
         },
-        [fetchFreshCsrf]
+        [fetchFreshCsrf, openFreePlanUpgradePaywall]
     );
 
 
@@ -8971,6 +9009,10 @@ export default function AppBuilderEditor({
                     open={showDeployUpgradePaywall}
                     onClose={() => setShowDeployUpgradePaywall(false)}
                     onStartCheckout={() => {
+                        if (upgradePaywallCopy === TRIAL_AI_CREDITS_PAYWALL_COPY) {
+                            void upgradeTrialForAiCredits();
+                            return;
+                        }
                         if (upgradePaywallCopy === DOWNLOAD_UPGRADE_PAYWALL_COPY) {
                             void upgradeForCodeDownload();
                             return;

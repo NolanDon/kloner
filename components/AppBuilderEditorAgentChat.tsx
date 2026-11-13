@@ -6204,6 +6204,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
 
         // If we can see the remaining balance and it's exhausted, block early.
         if (!isFreeCompileFixMode && typeof aiCreditsRemaining === "number" && aiCreditsRemaining <= 0) {
+            onRequestUpgradePaywall?.();
             const topup = "/topup";
             const errorMessage: Message = {
                 id: `error_${Date.now()}`,
@@ -7028,6 +7029,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                     });
                     const consumeJson = await consumeRes.json().catch(() => ({} as any));
                     if (!consumeRes.ok || consumeJson?.ok === false) {
+                        if (consumeJson?.code === "AI_EDIT_CREDITS_EXHAUSTED") onRequestUpgradePaywall?.();
                         const topup = "/topup";
                         const messageText = typeof consumeJson?.error === "string" && consumeJson.error.trim()
                             ? consumeJson.error
@@ -7121,6 +7123,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                 });
                 const consumeJson = await consumeRes.json().catch(() => ({} as any));
                 if (!consumeRes.ok || consumeJson?.ok === false) {
+                    if (consumeJson?.code === "AI_EDIT_CREDITS_EXHAUSTED") onRequestUpgradePaywall?.();
                     const topup = "/topup";
                     const messageText = typeof consumeJson?.error === "string" && consumeJson.error.trim()
                         ? consumeJson.error

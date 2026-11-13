@@ -4,6 +4,12 @@ export type CreditKind = "screenshot" | "preview" | "edit";
 
 export type UserTier = "free" | "pro" | "agency" | "enterprise" | "unknown";
 
+// Trial quotas stay below the paid Pro allowance. Snapshot credits cost 10 per scan.
+export const TRIAL_CREDIT_LIMITS = {
+    screenshotMonthly: 30,
+    editMonthly: 75,
+} as const;
+
 /**
  * Monthly credit limits per tier, tuned for cost-efficiency:
  *
@@ -71,8 +77,11 @@ export function tierFromClaims(claims: Claims): UserTier {
  */
 export function monthlyLimitFor(
     tier: UserTier,
-    kind: CreditKind
+    kind: CreditKind,
+    trialing = false,
 ): number {
+    if (trialing && kind === "screenshot") return TRIAL_CREDIT_LIMITS.screenshotMonthly;
+    if (trialing && kind === "edit") return TRIAL_CREDIT_LIMITS.editMonthly;
     const t = tier || "free";
     const limits = CREDIT_LIMITS[t] ?? CREDIT_LIMITS.free;
 

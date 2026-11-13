@@ -224,6 +224,10 @@ export async function setUserTierFromStripe(
     const existingData = existingSnap.exists ? (existingSnap.data() as any) : {};
 
     const previousTier: Tier | undefined = existingData.tier;
+    const previousStripeStatus = typeof existingData.stripeStatus === "string" ? existingData.stripeStatus : null;
+    const nextStripeStatus = typeof stripeData?.status === "string" ? stripeData.status : previousStripeStatus;
+    const trialStatusChanged = (previousStripeStatus === "trialing") !== (nextStripeStatus === "trialing");
+    const isTrialing = nextStripeStatus === "trialing";
     const previousStripePeriodEnd: number | undefined =
         typeof existingData.stripeCurrentPeriodEnd === "number"
             ? existingData.stripeCurrentPeriodEnd
@@ -241,6 +245,7 @@ export async function setUserTierFromStripe(
     const shouldResetCredits =
         !existingSnap.exists ||
         previousTier !== tier ||
+        trialStatusChanged ||
         (newStripePeriodEnd && newStripePeriodEnd !== previousStripePeriodEnd);
 
     const update: Record<string, unknown> = {
@@ -269,8 +274,8 @@ export async function setUserTierFromStripe(
     if (shouldResetCredits) {
         // Compute new limits for this tier from central credit config
         const previewLimit = monthlyLimitFor(tier, "preview" as CoreCreditKind);
-        const screenshotLimit = monthlyLimitFor(tier, "screenshot" as CoreCreditKind);
-        const editLimit = monthlyLimitFor(tier, "edit" as CoreCreditKind);
+        const screenshotLimit = monthlyLimitFor(tier, "screenshot" as CoreCreditKind, isTrialing);
+        const editLimit = monthlyLimitFor(tier, "edit" as CoreCreditKind, isTrialing);
 
         // Decide what period end to attach to reset credits
         const periodEndDate = computeCreditPeriodEnd(stripeData);
@@ -311,7 +316,7 @@ export async function setUserTierFromStripe(
     } else {
         // Self-heal: if aiEdits bucket is out of sync with the tier, fix it without forcing
         // a full credit reset for other buckets.
-        const editLimit = monthlyLimitFor(tier, "edit" as CoreCreditKind);
+        const editLimit = monthlyLimitFor(tier, "edit" as CoreCreditKind, isTrialing);
         if (editLimit !== undefined && editLimit !== null) {
             const rawBucket = readAiEditsBucket(existingData);
 
@@ -339,6 +344,19 @@ export async function setUserTierFromStripe(
                               ...(existingBonus > 0 ? { bonusRemaining: existingBonus } : {}),
                           };
             }
+        }
+
+        const screenshotLimit = monthlyLimitFor(tier, "screenshot" as CoreCreditKind, isTrialing);
+        const snapshotBucket = existingData?.["credits.snapshot"] || existingData?.credits?.snapshot || {};
+        const currentSnapshotLimit = typeof snapshotBucket.monthlyLimit === "number" ? snapshotBucket.monthlyLimit : null;
+        if (currentSnapshotLimit !== screenshotLimit) {
+            const periodEndTs = admin.firestore.Timestamp.fromDate(computeCreditPeriodEnd(stripeData));
+            const currentRemaining = typeof snapshotBucket.remaining === "number" ? snapshotBucket.remaining : screenshotLimit;
+            update["credits.snapshot"] = {
+                monthlyLimit: screenshotLimit,
+                remaining: screenshotLimit === 0 ? null : Math.max(0, Math.min(currentRemaining, screenshotLimit)),
+                periodEnd: periodEndTs,
+            };
         }
     }
 

@@ -19,6 +19,7 @@ export const fetchCache = "force-no-store";
 export const revalidate = 0;
 
 const GENERIC_SCAN_FAILURE_MESSAGE = "We couldn’t reach this website right now. Check that it opens publicly, then try again in a moment.";
+const POLICY_BLOCKED_USER_MESSAGE = "This content is prohibited by our acceptable-use policy. Continued attempts to scan prohibited content may result in account suspension.";
 
 async function captureUrlScanFailure(params: {
     uid?: string;
@@ -314,6 +315,7 @@ export async function POST(req: NextRequest) {
                     return jsonNoStatusAlert(
                         {
                             error: "Monthly snapshot limit reached for your plan.",
+                            code: "SNAPSHOT_CREDITS_EXHAUSTED",
                             remaining: peek.remaining,
                         },
                         { status: 429 }
@@ -440,7 +442,7 @@ export async function POST(req: NextRequest) {
                     const userError = unexpectedBinaryResponse
                         ? "The scan service returned an image instead of scan results. Please try again."
                         : policyBlocked
-                            ? GENERIC_SCAN_FAILURE_MESSAGE
+                            ? POLICY_BLOCKED_USER_MESSAGE
                         : domainVerification?.userMessage || downstream.reason;
 
                     await captureUrlScanFailure({
@@ -482,7 +484,7 @@ export async function POST(req: NextRequest) {
                             {
                                 error: userError,
                                 userMessage: userError,
-                                code: "URL_SCAN_FAILED",
+                                code: "SCAN_POLICY_BLOCKED",
                             },
                             {
                                 status,

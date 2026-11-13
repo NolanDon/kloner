@@ -139,7 +139,8 @@ export async function peekUserCredit(
     const effectiveTier = override?.tier || tier;
 
     const coreKind = toCoreKind(kind);
-    const defaultLimit = monthlyLimitFor(effectiveTier, coreKind);
+    const trialing = !override && data.stripeStatus === "trialing";
+    const defaultLimit = monthlyLimitFor(effectiveTier, coreKind, trialing);
     const cost = creditCost(kind);
 
     // Unlimited tier
@@ -245,7 +246,8 @@ export async function consumeUserCredit(
         const data = snap.exists ? ((snap.data() as any) || {}) : {};
         const override = getActiveCreditsOverride(data, now);
         const effectiveTier = override?.tier || tier;
-        const limitForTier = monthlyLimitFor(effectiveTier, coreKind);
+        const trialing = !override && data.stripeStatus === "trialing";
+        const limitForTier = monthlyLimitFor(effectiveTier, coreKind, trialing);
 
         // Capture for return payload (0 => unlimited, represented as null)
         finalMonthlyLimit = limitForTier === 0 ? null : limitForTier;

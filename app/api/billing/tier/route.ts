@@ -185,7 +185,7 @@ export async function GET(req: NextRequest) {
                 // Self-heal: keep credits.aiEdits in sync with the tier.
                 // This fixes cases where preview/snapshot look correct (due to usage) but aiEdits stayed at free-tier.
                 try {
-                    const expected = monthlyLimitFor(tier, "edit");
+                    const expected = monthlyLimitFor(tier, "edit", userData?.stripeStatus === "trialing");
                     const bucket = aiEditsBucketFromUserData(userData);
                     const currentRemaining =
                         bucket && typeof bucket.remaining === "number" && Number.isFinite(bucket.remaining) && bucket.remaining >= 0

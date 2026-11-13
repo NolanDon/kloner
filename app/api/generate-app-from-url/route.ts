@@ -13,6 +13,7 @@ import { shouldRequireEarlyGenerationPaywall } from "../_lib/earlyGenerationGate
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 const GENERIC_SCAN_FAILURE_MESSAGE = "We couldn’t reach this website right now. Check that it opens publicly, then try again in a moment.";
+const POLICY_BLOCKED_USER_MESSAGE = "This content is prohibited by our acceptable-use policy. Continued attempts to scan prohibited content may result in account suspension.";
 
 function backendConfigHint() {
   const origin = process.env.BACKEND_ORIGIN || process.env.BACKEND_URL || process.env.PUBLIC_ORIGIN || "";
@@ -485,14 +486,14 @@ export async function POST(req: NextRequest) {
           reqId: appResponse.reqId,
           backendUrl: appResponse.url,
           backendStatus: upstreamStatus,
-          backendMessage: GENERIC_SCAN_FAILURE_MESSAGE,
+          backendMessage: POLICY_BLOCKED_USER_MESSAGE,
         }).catch(() => null);
 
         return NextResponse.json(
           {
-            error: GENERIC_SCAN_FAILURE_MESSAGE,
-            userMessage: GENERIC_SCAN_FAILURE_MESSAGE,
-            code: "URL_SCAN_FAILED",
+            error: POLICY_BLOCKED_USER_MESSAGE,
+            userMessage: POLICY_BLOCKED_USER_MESSAGE,
+            code: "SCAN_POLICY_BLOCKED",
             reqId: appResponse.reqId,
           },
           { status: upstreamStatus >= 400 ? upstreamStatus : 403 },

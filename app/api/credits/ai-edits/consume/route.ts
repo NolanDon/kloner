@@ -107,7 +107,8 @@ export async function POST(req: NextRequest) {
         const userDataForTier = userSnapForTier.exists ? (userSnapForTier.data() as any) : {};
         const override = getActiveCreditsOverride(userDataForTier, now);
         const effectiveTier = override ? normalizeUserTier(override.tier) : baseTier;
-        const limit = monthlyLimitFor(effectiveTier, "edit");
+        const isTrialing = !override && userDataForTier?.stripeStatus === "trialing";
+        const limit = monthlyLimitFor(effectiveTier, "edit", isTrialing);
 
         if (!limit) {
             return NextResponse.json(
@@ -270,6 +271,8 @@ export async function POST(req: NextRequest) {
                 extra: {
                     remaining: finalRemaining,
                     monthlyLimit: limit,
+                    code: "AI_EDIT_CREDITS_EXHAUSTED",
+                    trialing: isTrialing,
                     tier: effectiveTier,
                 },
             });
@@ -278,11 +281,13 @@ export async function POST(req: NextRequest) {
                 {
                     ok: false,
                     error:
-                        effectiveTier === "free"
+                        isTrialing || effectiveTier === "free"
                             ? `You have used all AI edit credits for this month. Upgrade to get more credits: ${upgradeUrl}`
                             : `You have used all AI edit credits for this month. Top up credits: ${topupUrl} (or upgrade: ${upgradeUrl})`,
                     remaining: finalRemaining,
                     monthlyLimit: limit,
+                    code: "AI_EDIT_CREDITS_EXHAUSTED",
+                    trialing: isTrialing,
                     periodEnd: periodEnd.toISOString(),
                     alreadyCommitted,
                 },
