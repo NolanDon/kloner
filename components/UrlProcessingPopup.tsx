@@ -225,10 +225,8 @@ export default function UrlProcessingPopup({
                         </div>
 
                         {isPolicyBlocked ? (
-                            <div className="mt-7 flex justify-center" aria-hidden="true">
-                                <span className="grid h-12 w-12 place-items-center rounded-full border border-[#FF8D21]/35 bg-[#FF8D21]/10 text-[#FF8D21]">
-                                    <ShieldAlert className="h-6 w-6" strokeWidth={1.8} />
-                                </span>
+                            <div className="mt-7 flex justify-center text-[#FF8D21]" aria-hidden="true">
+                                <ShieldAlert className="h-10 w-10" strokeWidth={1.8} />
                             </div>
                         ) : null}
 
