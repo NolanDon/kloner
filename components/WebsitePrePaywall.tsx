@@ -61,8 +61,8 @@ export function WebsitePrePaywall({
         "Manual customization editor",
         "AI chat customization editor",
         "Higher queue priority for faster outputs",
-        "Chat support included",
-        "Tokens for AI edits",
+        "Human support included",
+        "Tokens to keep building",
     ],
     primaryLabel = TRIAL_CTA_LABEL,
     secondaryLabel = "No thanks, continue with limited features",
@@ -126,7 +126,7 @@ export function WebsitePrePaywall({
     const includedBenefits = showTrialChoice
         ? normalizedBenefits.slice(2).map((text) => ({
             text: text.replace("24/7 Human support included", "Human support included"),
-            coin: /Tokens for AI edits/i.test(text),
+            coin: /tokens to keep building/i.test(text),
             icon: /AI chat customization/i.test(text)
                 ? paywallBenefitIcons[2]
                 : /manual customization/i.test(text)
@@ -140,7 +140,7 @@ export function WebsitePrePaywall({
         }))
         : normalizedBenefits.map((text, index) => ({
             text,
-            coin: /Tokens for AI edits/i.test(text),
+            coin: /tokens to keep building/i.test(text),
             icon: paywallBenefitIcons[index % paywallBenefitIcons.length],
             restricted: false,
         }));
