@@ -1430,7 +1430,6 @@ type MiniDashboardEntryProps = {
     previewLimitDisplay?: string | number | null;
     editRemaining?: number | null;
     editLimitDisplay?: string | number | null;
-    trialAiChangesRemaining?: number | null;
     onManagePlan?: () => void;
     size?: "compact" | "full";
     disabled?: boolean;
@@ -1463,7 +1462,6 @@ function MiniDashboardEntry({
     previewLimitDisplay = null,
     editRemaining = null,
     editLimitDisplay = null,
-    trialAiChangesRemaining = null,
     onManagePlan,
     size = "compact",
     disabled = false,
@@ -1599,11 +1597,9 @@ function MiniDashboardEntry({
                             <span className="mr-1 inline-flex items-center">
                                 <CoinLottieBadge className="h-6 w-6" />
                             </span>
-                            {isActiveTrial ? "AI changes:" : "AI credits:"}&nbsp;
+                            AI credits:&nbsp;
                             <span className="font-semibold text-neutral-900">
-                                {isActiveTrial
-                                    ? `${trialAiChangesRemaining ?? "—"}/${TRIAL_AI_EDIT_CHANGE_LIMIT}`
-                                    : editRemaining === null
+                                {editRemaining === null
                                     ? "-"
                                     : editLimitDisplay
                                         ? `${editRemaining}/${editLimitDisplay}`
@@ -7681,7 +7677,6 @@ export default function PreviewPage(): JSX.Element {
         editUsed: 0,
         editRemaining: null,
     });
-    const [trialAiChangesRemaining, setTrialAiChangesRemaining] = useState<number | null>(null);
 
     // derived limits for denominator (fallback only)
     const screenshotLimitDisplay =
@@ -7704,7 +7699,6 @@ export default function PreviewPage(): JSX.Element {
     //   credits.snapshot
     useEffect(() => {
         if (!user) {
-            setTrialAiChangesRemaining(null);
             setCredits({
                 screenshotUsed: 0,
                 previewUsed: 0,
@@ -7725,7 +7719,6 @@ export default function PreviewPage(): JSX.Element {
             ref,
             (snap) => {
                 if (!snap.exists()) {
-                    setTrialAiChangesRemaining(null);
                     // No doc yet: treat as full allowance based on tier limits
                     const screenshotLimit =
                         tierLimits.screenshotMonthly && tierLimits.screenshotMonthly > 0
@@ -7778,13 +7771,6 @@ export default function PreviewPage(): JSX.Element {
                     typeof creditsMap.stripeStatus === "string" && creditsMap.stripeStatus.trim()
                         ? creditsMap.stripeStatus.trim().toLowerCase()
                         : "";
-                const usedTrialAiChanges = typeof creditsMap.trialAiChangesUsed === "number" && Number.isFinite(creditsMap.trialAiChangesUsed)
-                    ? Math.max(0, Math.floor(creditsMap.trialAiChangesUsed))
-                    : 0;
-                setTrialAiChangesRemaining(nextStripeStatus === "trialing"
-                    && !isTrialCancelledOverride
-                    ? Math.max(0, TRIAL_AI_EDIT_CHANGE_LIMIT - usedTrialAiChanges)
-                    : null);
                 const nextBillingState =
                     typeof creditsMap.billingState === "string" && creditsMap.billingState.trim()
                         ? (creditsMap.billingState.trim().toLowerCase() as
@@ -14366,7 +14352,6 @@ export default function PreviewPage(): JSX.Element {
                         previewLimitDisplay={previewLimitDisplay}
                         editRemaining={editRemaining}
                         editLimitDisplay={editLimitDisplay}
-                        trialAiChangesRemaining={trialAiChangesRemaining}
                         onManagePlan={() => {
                             void startProCheckout();
                         }}
