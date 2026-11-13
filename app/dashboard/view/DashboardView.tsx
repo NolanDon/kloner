@@ -1483,7 +1483,7 @@ function MiniDashboardEntry({
 }: MiniDashboardEntryProps) {
     const isCompact = size === "compact";
     const isActiveTrial = stripeStatus === "trialing";
-    const trialUpgradeLabel = isActiveTrial
+    const upgradeLinkLabel = (isActiveTrial || userTier === "free")
         ? "Need more scans or AI credits? Upgrade"
         : null;
     const [url, setUrl] = useState("");
@@ -1610,13 +1610,13 @@ function MiniDashboardEntry({
                             </span>
                         </span>
 
-                        {trialUpgradeLabel && onManagePlan ? (
+                        {upgradeLinkLabel && onManagePlan ? (
                             <button
                                 type="button"
                                 onClick={onManagePlan}
                                 className="inline-flex items-center px-1 text-sm font-normal text-[#FF8D21] underline underline-offset-4 hover:text-[#e97812] focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF8D21]"
                             >
-                                {trialUpgradeLabel}
+                                {upgradeLinkLabel}
                             </button>
                         ) : null}
 
