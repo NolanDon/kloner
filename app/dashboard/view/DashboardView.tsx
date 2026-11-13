@@ -1484,7 +1484,7 @@ function MiniDashboardEntry({
     const isCompact = size === "compact";
     const isActiveTrial = stripeStatus === "trialing" && billingState !== "trial_cancelled";
     const trialUpgradeLabel = isActiveTrial
-        ? "Upgrade for more scans & credits"
+        ? "Upgrade for more scans and AI credits"
         : null;
     const [url, setUrl] = useState("");
     const [busy, setBusy] = useState(false);
