@@ -24,7 +24,7 @@ export default function HomeClient() {
                 <section id="hero" className="snap-start snap-always min-h-screen flex flex-col">
                     <Hero
                         eyebrow="From idea to website, faster"
-                        heading={<>AI Website <span className="text-[#ff922d]" style={{ fontStyle: "oblique 6deg" }}>Cloner</span></>}
+                        heading={<><span className="hero-title-initial">A</span>I Website <span className="text-[#ff922d]" style={{ fontStyle: "oblique 6deg" }}>Cloner</span></>}
                         subhead="Clone a website from a URL, customize it with AI, and launch your new site."
                     />
                 </section>

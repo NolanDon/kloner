@@ -36,7 +36,7 @@ type BrandShape = { nav: NavItem[]; cta: { href: string } };
 
 export default function NavBar(): JSX.Element {
   const [scrolled, setScrolled] = useState(false);
-  const [hasScrolled, setHasScrolled] = useState(false);
+  const [heroInView, setHeroInView] = useState(false);
   const [open, setOpen] = useState(false);
   const [mOpen, setMOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
@@ -45,13 +45,25 @@ export default function NavBar(): JSX.Element {
   const { openUrlOverlay } = useUrlOverlay();
 
   useEffect(() => {
-    const on = () => {
-      setScrolled(window.scrollY > 800);
-      setHasScrolled(window.scrollY > 0);
-    };
+    const on = () => setScrolled(window.scrollY > 800);
     on();
     window.addEventListener("scroll", on);
     return () => window.removeEventListener("scroll", on);
+  }, []);
+
+  useEffect(() => {
+    const hero = document.getElementById("hero");
+    if (!hero) {
+      setHeroInView(false);
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      ([entry]) => setHeroInView(Boolean(entry?.isIntersecting)),
+      { threshold: 0.12 },
+    );
+    observer.observe(hero);
+    return () => observer.disconnect();
   }, []);
 
   useEffect(() => {
@@ -160,7 +172,7 @@ export default function NavBar(): JSX.Element {
     >
       <div className="mx-auto max-w-6xl">
         <div
-          className={`site-navbar relative flex items-center gap-3 px-3 py-2.5 md:px-1 mx-2 ${shellClasses} ${hasScrolled ? "" : "site-navbar-hero-glow"}`}
+          className={`site-navbar relative flex items-center gap-3 px-3 py-2.5 md:px-1 mx-2 ${shellClasses} ${heroInView ? "site-navbar-hero-glow" : ""}`}
           style={{ height: "4.25rem" }}
         >
           <Link

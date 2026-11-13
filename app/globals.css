@@ -31,6 +31,24 @@ html[data-moqup-promo-dismissed="true"] .moqup-referral-banner {
     font-size: clamp(3rem, 10vw, 5.5rem);
 }
 
+.hero-title-initial {
+    position: relative;
+    isolation: isolate;
+}
+
+.hero-title-initial::before {
+    position: absolute;
+    z-index: -1;
+    top: 5%;
+    bottom: 0;
+    left: -0.42em;
+    width: 1em;
+    background: radial-gradient(ellipse at 78% 55%, rgba(255, 189, 119, 0.48) 0%, rgba(255, 141, 33, 0.2) 35%, transparent 74%);
+    content: "";
+    filter: blur(0.12em);
+    pointer-events: none;
+}
+
 @media (min-width: 768px) {
     .hero-title {
         font-size: clamp(4.5rem, 7vw, 8rem);
