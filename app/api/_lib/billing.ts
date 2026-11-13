@@ -524,13 +524,39 @@ export async function refreshTierFromStripeForUid(uid: string): Promise<Tier> {
     }
 
     // Local development uses Stripe test mode and may point at the same
-    // Firestore project as production. Never let a test-mode refresh rewrite
-    // the shared live tier, status, or credit buckets.
+    // Firestore project as production. Mirror test entitlements separately.
     if (process.env.NODE_ENV !== "production") {
-        const storedTier = typeof data.tier === "string" ? data.tier.toLowerCase() : "free";
-        return storedTier === "pro" || storedTier === "agency"
-            ? storedTier
+        const testCustomerId = typeof data.stripeCustomerIdTest === "string" ? data.stripeCustomerIdTest : "";
+        if (!testCustomerId) {
+            await userRef.set({ devStripeBilling: { tier: "free", status: null, subscriptionId: null } }, { merge: true });
+            return "free";
+        }
+        const testSubs = await stripe.subscriptions.list({ customer: testCustomerId, status: "all", limit: 10 });
+        const testSub = pickBestSubscription(testSubs.data as any[]);
+        const item = testSub?.items?.data?.[0];
+        const testPriceId = typeof item?.price?.id === "string" ? item.price.id : null;
+        const mappedTier = mapPriceToTier(testPriceId);
+        const status = typeof testSub?.status === "string" ? testSub.status : null;
+        const tier = testSub
+            ? effectiveTierFromStripeSubscription({
+                  mappedTier,
+                  status,
+                  currentPeriodEnd: typeof testSub.current_period_end === "number" ? testSub.current_period_end : null,
+                  trialEnd: typeof testSub.trial_end === "number" ? testSub.trial_end : null,
+                  cancelAtPeriodEnd: typeof testSub.cancel_at_period_end === "boolean" ? testSub.cancel_at_period_end : null,
+                  created: typeof testSub.created === "number" ? testSub.created : null,
+              })
             : "free";
+        await userRef.set({
+            devStripeBilling: {
+                tier,
+                status,
+                subscriptionId: typeof testSub?.id === "string" ? testSub.id : null,
+                currentPeriodEnd: typeof testSub?.current_period_end === "number" ? testSub.current_period_end : null,
+                cancelAtPeriodEnd: typeof testSub?.cancel_at_period_end === "boolean" ? testSub.cancel_at_period_end : false,
+            },
+        }, { merge: true });
+        return tier;
     }
 
     let customerId: string | undefined = data.stripeCustomerId;

@@ -155,6 +155,39 @@ export async function GET(req: NextRequest) {
                     );
                 }
 
+                // In local development Stripe runs in test mode and may share
+                // this Firestore project with production. Report its separate
+                // entitlement mirror without self-healing production credits or
+                // changing the canonical live tier.
+                if (process.env.NODE_ENV !== "production") {
+                    try {
+                        await refreshTierFromStripeForUid(uid);
+                        const freshSnap = await userRef.get();
+                        userData = freshSnap.exists ? freshSnap.data() : {};
+                    } catch (error) {
+                        console.error("billing/tier dev Stripe refresh failed", error);
+                    }
+                    const devBilling = userData?.devStripeBilling || {};
+                    const devTier = (["pro", "agency", "enterprise"].includes(devBilling.tier) ? devBilling.tier : "free") as UserTier;
+                    const devStatus = typeof devBilling.status === "string" ? devBilling.status : null;
+                    const billingState: BillingState = devStatus === "trialing"
+                        ? "trialing"
+                        : devStatus === "active" && devTier !== "free"
+                            ? "active"
+                            : "free";
+                    return NextResponse.json({
+                        uid,
+                        tier: devTier,
+                        billingState,
+                        stripeStatus: devStatus,
+                        stripeSubscriptionId: devBilling.subscriptionId ?? null,
+                        currentPeriodEnd: devBilling.currentPeriodEnd ?? null,
+                        cancelAtPeriodEnd: devBilling.cancelAtPeriodEnd ?? null,
+                        source: "stripe_test",
+                        credits: { aiEdits: serializeAiEditsCredits(userData) },
+                    }, { status: 200 });
+                }
+
                 const storedTier = (userData.tier as UserTier) || "free";
 
                 let stripeRefreshError: string | null = null;

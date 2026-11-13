@@ -7766,6 +7766,9 @@ export default function PreviewPage(): JSX.Element {
                 }
 
                 const creditsMap = (snap.data() as any) || {};
+                const devStripeBilling = isDev && creditsMap.devStripeBilling && typeof creditsMap.devStripeBilling === "object"
+                    ? creditsMap.devStripeBilling
+                    : null;
                 const previewBucket =
                     creditsMap?.["credits.preview"] || creditsMap?.credits?.preview || {};
                 const snapshotBucket =
@@ -7774,24 +7777,32 @@ export default function PreviewPage(): JSX.Element {
                     creditsMap?.["credits.aiEdits"] || creditsMap?.credits?.aiEdits || {};
 
                 const nextTier =
-                    typeof creditsMap.tier === "string" ? creditsMap.tier.trim().toLowerCase() : "";
+                    typeof devStripeBilling?.tier === "string"
+                        ? devStripeBilling.tier.trim().toLowerCase()
+                        : typeof creditsMap.tier === "string" ? creditsMap.tier.trim().toLowerCase() : "";
                 const tierOverrideReason =
                     typeof creditsMap.tierOverrideReason === "string"
                         ? creditsMap.tierOverrideReason.trim().toLowerCase()
                         : "";
                 const isTrialCancelledOverride = tierOverrideReason === "trial_cancelled";
-                if (isTrialCancelledOverride) {
+                if (isTrialCancelledOverride && !devStripeBilling) {
                     setUserTier("free");
                 } else if (nextTier === "free" || nextTier === "pro" || nextTier === "agency" || nextTier === "enterprise") {
                     setUserTier(nextTier as UserTier);
                 }
 
+                const rawStripeStatus = devStripeBilling?.status ?? creditsMap.stripeStatus;
                 const nextStripeStatus =
-                    typeof creditsMap.stripeStatus === "string" && creditsMap.stripeStatus.trim()
-                        ? creditsMap.stripeStatus.trim().toLowerCase()
+                    typeof rawStripeStatus === "string" && rawStripeStatus.trim()
+                        ? rawStripeStatus.trim().toLowerCase()
                         : "";
-                const nextBillingState =
-                    typeof creditsMap.billingState === "string" && creditsMap.billingState.trim()
+                const nextBillingState = devStripeBilling
+                    ? nextStripeStatus === "trialing"
+                        ? "trialing"
+                        : nextStripeStatus === "active" && nextTier !== "free"
+                            ? "active"
+                            : "free"
+                    : typeof creditsMap.billingState === "string" && creditsMap.billingState.trim()
                         ? (creditsMap.billingState.trim().toLowerCase() as
                               | "free"
                               | "active"
@@ -7805,8 +7816,9 @@ export default function PreviewPage(): JSX.Element {
                 setBillingState(nextBillingState);
                 if (nextStripeStatus) setStripeStatus(nextStripeStatus);
 
-                if (typeof creditsMap.stripeCancelAtPeriodEnd === "boolean") {
-                    setStripeCancelAtPeriodEnd(creditsMap.stripeCancelAtPeriodEnd);
+                const cancelAtPeriodEnd = devStripeBilling?.cancelAtPeriodEnd ?? creditsMap.stripeCancelAtPeriodEnd;
+                if (typeof cancelAtPeriodEnd === "boolean") {
+                    setStripeCancelAtPeriodEnd(cancelAtPeriodEnd);
                 }
 
                 const dashboardPrefs =
