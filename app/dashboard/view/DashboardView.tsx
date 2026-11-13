@@ -16309,7 +16309,7 @@ export default function PreviewPage(): JSX.Element {
                                     : showCreditsPaywall === "archive_size"
                                         ? "This website is too large for the Free plan. Upgrade to capture sites of this size."
                                         : showCreditsPaywall === "preview"
-                                        ? "You have used all monthly generation credits. Upgrade to websites and unlock one-click deploy."
+                                        ? "You have used all monthly generation credits. Upgrade your plan to create more websites and unlock one-click deployment."
                                         : showCreditsPaywall === "deploy"
                                             ? "Deployment requires an active paid subscription and is not included in the free trial. Upgrading starts your paid plan and billing immediately."
                                             : "Publish your website live from the editor. Upgrade to unlock one-click deploy and higher monthly credits."
