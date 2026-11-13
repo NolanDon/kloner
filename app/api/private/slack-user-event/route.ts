@@ -10,6 +10,7 @@ const ALLOWED_EVENTS = new Set([
     "signup",
     "early_paywall_shown",
     "stripe_checkout_redirecting",
+    "stripe_trial_option_disabled",
     "early_paywall_closed",
     "stripe_checkout_cancelled",
     "editor_deploy_paywall_shown",
@@ -56,21 +57,50 @@ export async function POST(req: NextRequest) {
                     : ["pro", "agency", "enterprise", "active"].includes(billingState)
                         ? "Paid plan"
                         : "";
+            const trialReason = [
+                "prior_subscription",
+                "country_restricted",
+                "eligibility_check_failed",
+                "trials_disabled",
+                "paid_option_selected",
+            ].includes(safeText(body.trialReason, ""))
+                ? safeText(body.trialReason, "")
+                : "";
+            const trialReasonLabel = trialReason === "prior_subscription"
+                ? "prior subscription history"
+                : trialReason === "country_restricted"
+                    ? "regional eligibility"
+                    : trialReason === "eligibility_check_failed"
+                        ? "eligibility check could not be confirmed"
+                        : trialReason === "trials_disabled"
+                            ? "trial offer unavailable"
+                            : trialReason === "paid_option_selected"
+                                ? "trial option switched off"
+                                : "";
+            const checkoutPlanLabel = body.trial === true
+                ? "7-day free trial"
+                : body.requestedTrial === false
+                    ? "Paid plan (trial option switched off)"
+                    : trialReasonLabel
+                        ? `Paid plan (trial unavailable: ${trialReasonLabel})`
+                        : "Paid plan";
             const eventText = event === "signup"
                 ? `:sparkles: *New signup* · ${email}${name ? ` · ${name}` : ""}${method ? ` · ${method}` : ""}`
                 : event === "early_paywall_shown"
                     ? `:lock: *Early paywall shown* · ${email} · ${contextLabel}${billingLabel ? ` · ${billingLabel}` : ""}`
                     : event === "stripe_checkout_redirecting"
-                        ? `:credit_card: *Stripe checkout redirecting* · ${email} · ${contextLabel} · ${body.trial === true ? "7-day free trial" : "Paid plan"}`
-                        : event === "early_paywall_closed"
-                            ? `:x: *Paywall closed* · ${email} · ${contextLabel} · Scan canceled`
-                            : event === "stripe_checkout_cancelled"
-                                ? `:no_entry_sign: *Stripe checkout canceled* · ${email} · ${contextLabel}`
-                                : event === "editor_deploy_paywall_shown"
-                                    ? `:lock: *Editor deploy paywall shown* · ${email} · ${billingLabel || "Trial"}`
-                                    : event === "editor_download_paywall_shown"
-                                    ? `:lock: *Editor code download paywall shown* · ${email} · ${billingLabel || "Free plan"}`
-                                    : `:no_entry_sign: *Stripe checkout canceled* · ${email} · ${contextLabel}`;
+                        ? `:credit_card: *Stripe checkout redirecting* · ${email} · ${contextLabel} · ${checkoutPlanLabel}`
+                        : event === "stripe_trial_option_disabled"
+                            ? `:credit_card: *Free trial switched off* · ${email} · ${contextLabel} · Paid plan selected`
+                            : event === "early_paywall_closed"
+                                ? `:x: *Paywall closed* · ${email} · ${contextLabel} · Scan canceled`
+                                : event === "stripe_checkout_cancelled"
+                                    ? `:no_entry_sign: *Stripe checkout canceled* · ${email} · ${contextLabel}`
+                                    : event === "editor_deploy_paywall_shown"
+                                        ? `:lock: *Editor deploy paywall shown* · ${email} · ${billingLabel || "Trial"}`
+                                        : event === "editor_download_paywall_shown"
+                                            ? `:lock: *Editor code download paywall shown* · ${email} · ${billingLabel || "Free plan"}`
+                                            : `:no_entry_sign: *Stripe checkout canceled* · ${email} · ${contextLabel}`;
 
             try {
                 const response = await fetch(webhookUrl, {

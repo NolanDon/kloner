@@ -4269,10 +4269,10 @@ export default function PreviewPage(): JSX.Element {
         void sendKlonerSlackEvent("early_paywall_shown", {
             email: user.email,
             context: "dashboard_scan",
-            billingState: userTier,
+            billingState,
         })
             .catch((error) => console.warn("Failed to send early paywall Slack alert", error));
-    }, [showCreditsPaywall, user?.email, user?.uid, userTier]);
+    }, [showCreditsPaywall, user?.email, user?.uid, userTier, billingState]);
     const recoveryPendingStorageKey = useMemo(
         () => (user?.uid ? `kloner.billing.recovery.pending:${user.uid}` : ""),
         [user?.uid],
@@ -13929,7 +13929,7 @@ export default function PreviewPage(): JSX.Element {
     }
 
     const startProCheckout = useCallback(
-        async (paidOnly = false, forcePaid = false, onCheckoutReady?: (details: { trial: boolean }) => Promise<void> | void) => {
+        async (paidOnly = false, forcePaid = false, onCheckoutReady?: (details: { trial: boolean; requestedTrial: boolean; trialReason?: string | null }) => Promise<void> | void) => {
             if (checkoutBusy) return;
             setCheckoutBusy(true);
 
@@ -13988,7 +13988,11 @@ export default function PreviewPage(): JSX.Element {
                 }
 
                 try {
-                    if (!data.upgradedTrial) await onCheckoutReady?.({ trial: data.trial === true });
+                    if (!data.upgradedTrial) await onCheckoutReady?.({
+                        trial: data.trial === true,
+                        requestedTrial: !forcePaid,
+                        trialReason: typeof data.trialReason === "string" ? data.trialReason : null,
+                    });
                 } catch (alertError) {
                     console.warn("Failed to send checkout redirect Slack alert", alertError);
                 }
@@ -16265,13 +16269,22 @@ export default function PreviewPage(): JSX.Element {
                             void startProCheckout(showCreditsPaywall === "deploy", isTrialLimitPaywall);
                         }}
                             showTrialChoice={showCreditsPaywall === "early_generation" && STRIPE_TRIAL_DAYS > 0}
+                            onTrialChoiceChange={(useTrial) => {
+                                if (useTrial) return;
+                                void sendKlonerSlackEvent("stripe_trial_option_disabled", {
+                                    email: user?.email,
+                                    context: "dashboard_scan",
+                                }).catch((error) => console.warn("Failed to send trial choice Slack alert", error));
+                            }}
                             onStartCheckoutWithChoice={async (useTrial) => {
                                 const isDeploy = showCreditsPaywall === "deploy";
                                 const isEarlyPaywall = showCreditsPaywall === "early_generation";
                                 setShowCreditsPaywall(null);
-                                await startProCheckout(isDeploy, !useTrial, isEarlyPaywall ? ({ trial }) => sendKlonerSlackEvent("stripe_checkout_redirecting", {
+                                await startProCheckout(isDeploy, !useTrial, isEarlyPaywall ? ({ trial, requestedTrial, trialReason }) => sendKlonerSlackEvent("stripe_checkout_redirecting", {
                                         email: user?.email,
                                         trial,
+                                        requestedTrial,
+                                        trialReason,
                                         context: "dashboard_scan",
                                     }) : undefined);
                             }}

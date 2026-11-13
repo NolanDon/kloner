@@ -355,6 +355,7 @@ async function handler({ req, uid }: { req: NextRequest; uid: string }) {
         existingSubs.data.length > 0 ||
         !!userData.freeTrialUsedAt ||
         userData.freeTrialUsed === true;
+    let trialEligibilityCheckFailed = false;
     if (trialCandidate && !hasAnySubscriptionHistory) {
         try {
             const user = await getAuthUser();
@@ -366,6 +367,7 @@ async function handler({ req, uid }: { req: NextRequest; uid: string }) {
         } catch (error) {
             // If eligibility cannot be verified, allow checkout but never grant a trial.
             hasAnySubscriptionHistory = true;
+            trialEligibilityCheckFailed = true;
             console.error("[billing] trial eligibility check failed; trial withheld", {
                 uid,
                 error,
@@ -373,6 +375,19 @@ async function handler({ req, uid }: { req: NextRequest; uid: string }) {
         }
     }
     const includeTrial = trialCandidate && !hasAnySubscriptionHistory && !earlyPaywallCountry;
+    const trialReason = includeTrial
+        ? null
+        : body.purchaseIntent === "paid_only" || body.purchaseIntent === "code_download"
+            ? "paid_option_selected"
+            : STRIPE_TRIAL_DAYS <= 0
+                ? "trials_disabled"
+                : earlyPaywallCountry
+                    ? "country_restricted"
+                    : trialEligibilityCheckFailed
+                        ? "eligibility_check_failed"
+                        : hasAnySubscriptionHistory
+                            ? "prior_subscription"
+                            : null;
     const isAppDeployTrialSuccess = !!(returnAppId && includeTrial);
 
     const appOrigin = isProd
@@ -557,7 +572,7 @@ async function handler({ req, uid }: { req: NextRequest; uid: string }) {
         }
     }
 
-    return NextResponse.json({ url: session.url, trial: includeTrial }, { status: 200 });
+    return NextResponse.json({ url: session.url, trial: includeTrial, trialReason }, { status: 200 });
 }
 
 export async function POST(req: NextRequest) {

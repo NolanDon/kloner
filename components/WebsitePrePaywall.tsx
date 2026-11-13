@@ -26,6 +26,7 @@ type WebsitePrePaywallProps = {
     footerNote?: string;
     showTrialChoice?: boolean;
     onStartCheckoutWithChoice?: (useTrial: boolean) => void;
+    onTrialChoiceChange?: (useTrial: boolean) => void;
 };
 
 const paywallCardHeightPx = 280;
@@ -69,6 +70,7 @@ export function WebsitePrePaywall({
     footerNote = "Cancel anytime before renewal.",
     showTrialChoice = false,
     onStartCheckoutWithChoice,
+    onTrialChoiceChange,
 }: WebsitePrePaywallProps) {
     const carouselSlides = [{ kind: "checklist" as const, title: "What you unlock" }];
     const activeSlide = 0;
@@ -109,7 +111,10 @@ export function WebsitePrePaywall({
     if (!open) return null;
 
     const startCheckout = () => onStartCheckoutWithChoice ? onStartCheckoutWithChoice(useTrial) : onStartCheckout();
-    const updateTrialChoice = (checked: boolean) => setUseTrial(checked);
+    const updateTrialChoice = (checked: boolean) => {
+        setUseTrial(checked);
+        onTrialChoiceChange?.(checked);
+    };
     const checkoutLabel = showTrialChoice
         ? (useTrial ? TRIAL_CTA_LABEL : "Subscribe now — full access")
         : primaryLabel;
