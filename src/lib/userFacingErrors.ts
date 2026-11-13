@@ -19,7 +19,10 @@ export function getUserFacingUrlErrorMessage(input: UserFacingUrlErrorInput): st
     const code = normalizedText(input.code);
     const text = normalizedText(input.code, input.reason, input.message);
 
-    if (code === "scan_policy_blocked") {
+    if (
+        code === "scan_policy_blocked" ||
+        text.includes("content is prohibited by our acceptable-use policy")
+    ) {
         return "This content is prohibited by our acceptable-use policy. Continued attempts to scan prohibited content may result in account suspension.";
     }
 

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { ArrowRight, ExternalLink, X } from "lucide-react";
+import { ArrowRight, ExternalLink, ShieldAlert, X } from "lucide-react";
 import { getUserFacingUrlErrorMessage } from "@/src/lib/userFacingErrors";
 
 type UrlProcessingPopupProps = {
@@ -139,6 +139,9 @@ export default function UrlProcessingPopup({
           })
         : message;
     const safeSourceUrl = getSafePublicUrl(sourceUrl);
+    const isPolicyBlocked = Boolean(
+        error?.toLowerCase().includes("content is prohibited by our acceptable-use policy"),
+    );
     const showUnreachableUrlLink = Boolean(
         safeSourceUrl &&
         error &&
@@ -221,7 +224,15 @@ export default function UrlProcessingPopup({
                             </div>
                         </div>
 
-                        <div className={`relative mt-20 flex flex-col gap-3 ${showPrimaryAction ? "items-center text-center" : ""}`}>
+                        {isPolicyBlocked ? (
+                            <div className="mt-7 flex justify-center" aria-hidden="true">
+                                <span className="grid h-12 w-12 place-items-center rounded-full border border-[#FF8D21]/35 bg-[#FF8D21]/10 text-[#FF8D21]">
+                                    <ShieldAlert className="h-6 w-6" strokeWidth={1.8} />
+                                </span>
+                            </div>
+                        ) : null}
+
+                        <div className={`relative ${isPolicyBlocked ? "mt-5" : "mt-20"} flex flex-col gap-3 ${showPrimaryAction ? "items-center text-center" : ""}`}>
                             <div className={`w-full max-w-full text-sm font-normal leading-5 tracking-[-0.01em] text-neutral-900 ${showPrimaryAction ? "whitespace-normal text-center" : "overflow-hidden text-ellipsis whitespace-nowrap"}`}>
                                 {verifyDomainMessage ? (
                                     <>

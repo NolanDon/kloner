@@ -6248,6 +6248,8 @@ export default function PreviewPage(): JSX.Element {
 
         return Boolean(
             text && (
+                text.includes("scan_policy_blocked") ||
+                text.includes("content is prohibited by our acceptable-use policy") ||
                 text.includes("domain blocked") ||
                 text.includes("blocked for site cloning") ||
                 text.includes("blocked the snapshot request") ||
@@ -6328,7 +6330,9 @@ export default function PreviewPage(): JSX.Element {
                     : res.status >= 500
                         ? "server_error"
                         : "unknown";
-        const failureMessage = isRouteMismatch
+        const failureMessage = code === "SCAN_POLICY_BLOCKED"
+            ? userMessage || errorMessage || "This content is prohibited by our acceptable-use policy. Continued attempts to scan prohibited content may result in account suspension."
+            : isRouteMismatch
             ? "The generation service is temporarily unavailable. Please try again in a bit."
             : failureKind === "validation_error"
                 ? buildValidationMessage()
@@ -6409,7 +6413,9 @@ export default function PreviewPage(): JSX.Element {
         if (hardFailureCode || res.status === 400 || res.status === 409 || res.status === 413 || !res.ok) {
             return {
                 kind: "terminal_failure",
-                message: rescanRequired
+                message: code === "SCAN_POLICY_BLOCKED"
+                    ? userMessage || errorMessage || "This content is prohibited by our acceptable-use policy. Continued attempts to scan prohibited content may result in account suspension."
+                    : rescanRequired
                     ? "This URL must be rescanned before generation can continue."
                     : "Something went wrong. Please rescan the URL and try again.",
                 code,
