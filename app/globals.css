@@ -144,6 +144,38 @@ html[data-moqup-promo-dismissed="true"] .moqup-referral-banner {
     top: calc(var(--moqup-banner-offset, 0px) + 1rem);
 }
 
+.site-navbar {
+    isolation: isolate;
+}
+
+.site-navbar::before {
+    position: absolute;
+    z-index: -1;
+    bottom: -9px;
+    left: 3%;
+    width: 150px;
+    height: 30px;
+    border-radius: 50%;
+    background: radial-gradient(ellipse, rgba(255, 202, 145, 0.55) 0%, rgba(255, 141, 33, 0.32) 38%, transparent 76%);
+    content: "";
+    filter: blur(13px);
+    opacity: 0.78;
+    pointer-events: none;
+    animation: hero-nav-glow 4.2s ease-in-out infinite;
+}
+
+@keyframes hero-nav-glow {
+    0%, 100% { opacity: 0.58; transform: translateX(-2px) scaleX(0.94); }
+    50% { opacity: 0.9; transform: translateX(3px) scaleX(1.04); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .site-navbar::before {
+        animation: none;
+        opacity: 0.72;
+    }
+}
+
 .moqup-referral-banner {
     position: relative;
     z-index: 60;
