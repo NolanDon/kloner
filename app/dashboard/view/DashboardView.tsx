@@ -1483,21 +1483,9 @@ function MiniDashboardEntry({
 }: MiniDashboardEntryProps) {
     const isCompact = size === "compact";
     const isActiveTrial = stripeStatus === "trialing" && billingState !== "trial_cancelled";
-    const hasLowTrialScans = isActiveTrial &&
-        previewRemaining !== null &&
-        Number(previewLimitDisplay) > 0 &&
-        previewRemaining <= Number(previewLimitDisplay) / 2;
-    const hasLowTrialAiCredits = isActiveTrial &&
-        editRemaining !== null &&
-        Number(editLimitDisplay) > 0 &&
-        editRemaining <= Number(editLimitDisplay) / 2;
-    const trialUpgradeLabel = hasLowTrialScans && hasLowTrialAiCredits
+    const trialUpgradeLabel = isActiveTrial
         ? "Upgrade for more scans and AI credits"
-        : hasLowTrialScans
-            ? "Upgrade for more scans"
-            : hasLowTrialAiCredits
-                ? "Upgrade for more AI credits"
-                : null;
+        : null;
     const [url, setUrl] = useState("");
     const [busy, setBusy] = useState(false);
     const [pressingSubmit, setPressingSubmit] = useState(false);
