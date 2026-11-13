@@ -30,6 +30,9 @@ const fraunces = Fraunces({
 });
 
 export const metadata: Metadata = {
+  icons: {
+    icon: [{ url: "/favicon.png", sizes: "192x192", type: "image/png" }],
+  },
   title: {
     default: "Kloner – AI Website Cloner",
     template: "%s | Kloner",
