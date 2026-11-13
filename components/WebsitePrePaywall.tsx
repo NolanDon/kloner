@@ -259,9 +259,9 @@ export function WebsitePrePaywall({
                                                             {displayedBenefits.map(({ text: item, icon, coin, restricted }, itemIndex) => (
                                                                 <div key={item} className={`flex items-center gap-3 text-[13px] leading-snug text-neutral-800 sm:text-sm ${restricted ? "opacity-65" : ""}`}>
                                                                     {coin ? (
-                                                                        <CoinLottieBadge className="h-[27px] w-[27px] shrink-0" />
+                                                                        <CoinLottieBadge className="paywall-benefit-icon-orange h-[27px] w-[27px] shrink-0" />
                                                                     ) : (
-                                                                        <Image src={icon} alt="" width={27} height={27} className="h-[27px] w-[27px] shrink-0 object-contain" />
+                                                                        <Image src={icon} alt="" width={27} height={27} className="paywall-benefit-icon-orange h-[27px] w-[27px] shrink-0 object-contain" />
                                                                     )}
                                                                     <span className={`${/starting at/i.test(item) ? "font-semibold text-neutral-900" : ""} ${restricted ? "text-neutral-500" : ""}`}>
                                                                         {item}

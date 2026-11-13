@@ -129,6 +129,10 @@ html[data-moqup-promo-dismissed="true"] .moqup-referral-banner {
     background: linear-gradient(105deg, transparent 34%, rgba(255, 255, 255, 0.05) 40%, rgba(255, 255, 255, 0.96) 49%, rgba(255, 248, 235, 0.82) 53%, transparent 64%);
 }
 
+.paywall-benefit-icon-orange {
+    filter: brightness(0) saturate(100%) invert(58%) sepia(91%) saturate(1541%) hue-rotate(347deg) brightness(101%) contrast(101%);
+}
+
 @media (prefers-reduced-motion: reduce) {
     .hero-url-shell::after {
         animation: none;
