@@ -31,25 +31,6 @@ html[data-moqup-promo-dismissed="true"] .moqup-referral-banner {
     font-size: clamp(3rem, 10vw, 5.5rem);
 }
 
-.hero-title-initial {
-    position: relative;
-    display: inline-block;
-}
-
-.hero-title-initial-overlay {
-    position: absolute;
-    inset: 0;
-    color: transparent;
-    background:
-        radial-gradient(ellipse 80% 42% at 0% 100%, #ff9a3e 0%, rgba(255, 141, 33, 0.76) 25%, transparent 72%),
-        linear-gradient(90deg, #ffffff 0%, rgba(255, 250, 239, 0.99) 7%, rgba(255, 215, 168, 0.96) 18%, rgba(255, 141, 33, 0.32) 40%, transparent 62%);
-    background-clip: text;
-    -webkit-background-clip: text;
-    filter: drop-shadow(-2px 0 4px rgba(255, 198, 126, 0.78)) drop-shadow(-7px 0 12px rgba(255, 141, 33, 0.68));
-    pointer-events: none;
-    user-select: none;
-}
-
 @media (min-width: 768px) {
     .hero-title {
         font-size: clamp(4.5rem, 7vw, 8rem);
