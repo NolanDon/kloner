@@ -40,10 +40,10 @@ html[data-moqup-promo-dismissed="true"] .moqup-referral-banner {
     position: absolute;
     inset: 0;
     color: transparent;
-    background: linear-gradient(90deg, #ffe0ad 0%, rgba(255, 176, 91, 0.88) 16%, rgba(255, 141, 33, 0.18) 45%, transparent 62%);
+    background: linear-gradient(90deg, #ffffff 0%, rgba(255, 250, 239, 0.99) 7%, rgba(255, 215, 168, 0.96) 18%, rgba(255, 141, 33, 0.32) 40%, transparent 62%);
     background-clip: text;
     -webkit-background-clip: text;
-    filter: drop-shadow(-2px 0 3px rgba(255, 141, 33, 0.48));
+    filter: drop-shadow(-2px 0 4px rgba(255, 255, 255, 0.95)) drop-shadow(-7px 0 11px rgba(255, 141, 33, 0.62));
     pointer-events: none;
     user-select: none;
 }
@@ -162,7 +162,7 @@ html[data-moqup-promo-dismissed="true"] .moqup-referral-banner {
 }
 
 .site-navbar-hero-glow {
-    background-image: radial-gradient(ellipse 40% 135% at 0% 100%, rgba(255, 141, 33, 0.2) 0%, rgba(255, 141, 33, 0.08) 38%, transparent 82%);
+    background-image: radial-gradient(ellipse 34% 110% at 0% 100%, rgba(255, 141, 33, 0.08) 0%, rgba(255, 141, 33, 0.025) 38%, transparent 82%);
 }
 
 .site-navbar-hero-glow::after {
