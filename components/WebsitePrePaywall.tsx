@@ -61,8 +61,8 @@ export function WebsitePrePaywall({
         "Manual customization editor",
         "AI chat customization editor",
         "Higher queue priority for faster outputs",
-        "Human support included",
-        "Tokens to keep building",
+        "Chat support included",
+        "Tokens for AI edits",
     ],
     primaryLabel = TRIAL_CTA_LABEL,
     secondaryLabel = "No thanks, continue with limited features",
@@ -126,7 +126,7 @@ export function WebsitePrePaywall({
     const includedBenefits = showTrialChoice
         ? normalizedBenefits.slice(2).map((text) => ({
             text: text.replace("24/7 Human support included", "Human support included"),
-            coin: /tokens to keep building/i.test(text),
+            coin: /Tokens for AI edits/i.test(text),
             icon: /AI chat customization/i.test(text)
                 ? paywallBenefitIcons[2]
                 : /manual customization/i.test(text)
@@ -140,7 +140,7 @@ export function WebsitePrePaywall({
         }))
         : normalizedBenefits.map((text, index) => ({
             text,
-            coin: /tokens to keep building/i.test(text),
+            coin: /Tokens for AI edits/i.test(text),
             icon: paywallBenefitIcons[index % paywallBenefitIcons.length],
             restricted: false,
         }));
@@ -350,7 +350,7 @@ export function WebsitePrePaywall({
                             <div className="mt-6 border-t border-neutral-200 pt-4">
                                 <div className="mb-2.5 text-center leading-tight">
                                     <span className="text-[11px] uppercase tracking-[0.1em] text-neutral-500 sm:text-[11px]">
-                                        See what <span className="text-[15px] font-bold text-[rgba(255,141,33,1)]">5000+</span> Kloner members have built <span className="inline-flex items-center gap-1.5 whitespace-nowrap align-middle">with<KlonerWordmark className="text-base sm:text-lg" /></span>
+                                        See what <span className="text-[15px] font-bold text-[rgba(255,141,33,1)]">5000+</span> Kloner members have built <span className="inline-flex items-center gap-1.5 whitespace-nowrap align-middle">with<KlonerWordmark className="text-[12px] normal-case sm:text-[13px]" /></span>
                                     </span>
                                 </div>
 
