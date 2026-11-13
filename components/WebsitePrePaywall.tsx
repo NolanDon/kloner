@@ -349,11 +349,13 @@ export function WebsitePrePaywall({
 
                             <div className="mt-6 border-t border-neutral-200 pt-4">
                                 <div className="mb-2.5 text-center leading-tight">
-                                    <span className="text-[11px] uppercase tracking-[0.1em] text-neutral-500 sm:text-[11px]">
-                                        See what <span className="text-[15px] font-bold text-[rgba(255,141,33,1)]">5000+</span> Kloner members have built with<span className="inline-flex items-center gap-1.5 whitespace-nowrap align-middle"><KlonerWordmark className="text-[14px] normal-case sm:text-[13px]" /></span>
-                                    </span>
+                                    <div className="flex items-baseline justify-center gap-1.5">
+                                        <span className="text-[11px] uppercase tracking-[0.1em] text-neutral-500 sm:text-[11px]">
+                                            See what <span className="text-[15px] font-bold text-[rgba(255,141,33,1)]">5000+</span> Kloner members have built with
+                                        </span>
+                                        <KlonerWordmark className="text-[18px] normal-case sm:text-[20px]" />
+                                    </div>
                                 </div>
-Tokens for AI customization
                                 <div className="relative overflow-hidden rounded-[24px] shadow-[0_10px_24px_rgba(15,23,42,0.06)]">
                                     <div className="overflow-hidden py-3 sm:py-4">
                                         <div className="website-paywall-carousel flex w-max items-stretch gap-3 px-3">
