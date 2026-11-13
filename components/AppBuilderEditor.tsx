@@ -201,7 +201,14 @@ type UpgradePaywallCopy = {
 const DOWNLOAD_UPGRADE_PAYWALL_COPY: UpgradePaywallCopy = {
     title: "Upgrade to download your code",
     description: "Code downloads require a paid subscription and are not included in the free trial. Upgrading starts your paid plan and billing immediately.",
-    benefits: ["Download your current project as a ZIP", "Includes your latest editor changes", "Keep building and publishing your websites"],
+    benefits: [
+        "Download your current project as a ZIP",
+        "Includes your latest editor changes",
+        "Keep building and publishing your websites",
+        "Keep a local copy of your project files and assets",
+        "Continue customizing the code outside Kloner",
+        "Host your exported website with a provider you choose",
+    ],
     primaryLabel: "Upgrade now — billing starts today",
     footerNote: "Downloads unlock with an active paid subscription.",
 };
