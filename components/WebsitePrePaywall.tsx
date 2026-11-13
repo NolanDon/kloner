@@ -169,20 +169,20 @@ export function WebsitePrePaywall({
                     event.preventDefault();
                     if (!checkoutBusy) setShowExitConfirmation(false);
                 }}
-                className="m-auto w-[calc(100%-2rem)] max-w-sm rounded-2xl border border-neutral-200 bg-white p-6 text-neutral-900 shadow-2xl backdrop:bg-black/50"
+                className="m-auto w-[calc(100%-1.5rem)] max-w-lg rounded-2xl border border-neutral-200 bg-white p-8 text-neutral-900 shadow-2xl backdrop:bg-black/50 sm:p-9"
             >
-                <h3 id={exitTitleId} className="text-xl font-semibold">Leave your project?</h3>
-                <p id={exitDescriptionId} className="mt-2 text-sm leading-relaxed text-neutral-600">
+                <h3 id={exitTitleId} className="text-2xl font-semibold">Leave your project?</h3>
+                <p id={exitDescriptionId} className="mt-3 text-base leading-relaxed text-neutral-600">
                     Unlock your project to keep editing. {STRIPE_TRIAL_DAYS > 0 ? "You can start for free today!" : "Choose a plan to keep building."}
                 </p>
-                <div className="mt-5 flex flex-col gap-3">
+                <div className="mt-7 flex flex-col gap-4">
                     <button
                         type="button"
                         onClick={startCheckout}
                         disabled={checkoutBusy}
-                        className="min-h-12 rounded-full bg-[#FF8D21] px-5 py-3 font-semibold text-white shadow-sm transition-all duration-200 hover:scale-[1.03] hover:shadow-[0_8px_20px_rgba(255,141,33,0.28)] active:scale-[0.98] disabled:cursor-wait disabled:opacity-70 disabled:hover:scale-100"
+                        className="min-h-14 rounded-full bg-[#FF8D21] px-6 py-4 text-base font-semibold text-white shadow-sm transition-all duration-200 hover:scale-[1.02] hover:shadow-[0_8px_20px_rgba(255,141,33,0.28)] active:scale-[0.98] disabled:cursor-wait disabled:opacity-70 disabled:hover:scale-100"
                     >
-                        {checkoutBusy ? "Redirecting to Stripe…" : checkoutLabel}
+                        {checkoutBusy ? "Redirecting to Stripe…" : confirmExit ? "Unlock my project →" : checkoutLabel}
                     </button>
                     <button
                         type="button"
@@ -191,7 +191,7 @@ export function WebsitePrePaywall({
                             onClose();
                         }}
                         disabled={checkoutBusy}
-                        className="py-1 text-sm text-neutral-600 underline underline-offset-4 disabled:opacity-70"
+                        className="py-2 text-sm text-neutral-600 underline underline-offset-4 disabled:opacity-70"
                     >
                         Yes, exit editor
                     </button>
