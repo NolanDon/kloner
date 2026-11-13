@@ -182,7 +182,7 @@ export default function UrlProcessingPopup({
                     aria-label="URL processing"
                 >
                     <motion.div
-                        className="url-processing-panel relative flex w-full max-w-4xl flex-col justify-center"
+                        className="url-processing-panel relative flex w-full max-w-3xl flex-col justify-center rounded-[2rem] border px-5 py-7 shadow-2xl sm:px-8 sm:py-9"
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: 10 }}
@@ -214,7 +214,7 @@ export default function UrlProcessingPopup({
                                     <button
                                         type="button"
                                         onClick={onDismiss}
-                                        className="inline-flex h-8 w-8 items-center justify-center self-end text-neutral-600 transition hover:text-neutral-950"
+                                        className="url-processing-dismiss inline-flex h-9 w-9 items-center justify-center self-end rounded-full border border-black/10 bg-black/[0.03] text-neutral-600 transition hover:bg-black/[0.07] hover:text-neutral-950"
                                         aria-label="Exit to dashboard"
                                         title="Exit to dashboard"
                                     >
