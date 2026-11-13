@@ -62,7 +62,7 @@ export function WebsitePrePaywall({
         "AI chat customization editor",
         "Higher queue priority for faster outputs",
         "Human support included",
-        "Tokens to keep building",
+        "Tokens for AI customization",
     ],
     primaryLabel = TRIAL_CTA_LABEL,
     secondaryLabel = "No thanks, continue with limited features",
@@ -126,21 +126,21 @@ export function WebsitePrePaywall({
     const includedBenefits = showTrialChoice
         ? normalizedBenefits.slice(2).map((text) => ({
             text: text.replace("24/7 Human support included", "Human support included"),
-            coin: /tokens to keep building/i.test(text),
+            coin: /tokens for AI customization/i.test(text),
             icon: /AI chat customization/i.test(text)
                 ? paywallBenefitIcons[2]
                 : /manual customization/i.test(text)
                     ? paywallBenefitIcons[0]
-                : /queue priority/i.test(text)
-                    ? paywallBenefitIcons[3]
-                    : /human support/i.test(text)
-                        ? paywallBenefitIcons[4]
-                        : paywallBenefitIcons[0],
+                    : /queue priority/i.test(text)
+                        ? paywallBenefitIcons[3]
+                        : /human support/i.test(text)
+                            ? paywallBenefitIcons[4]
+                            : paywallBenefitIcons[0],
             restricted: false,
         }))
         : normalizedBenefits.map((text, index) => ({
             text,
-            coin: /tokens to keep building/i.test(text),
+            coin: /tokens for AI customization/i.test(text),
             icon: paywallBenefitIcons[index % paywallBenefitIcons.length],
             restricted: false,
         }));
@@ -258,14 +258,14 @@ export function WebsitePrePaywall({
                                                         <div className="flex flex-col gap-3">
                                                             {displayedBenefits.map(({ text: item, icon, coin, restricted }, itemIndex) => (
                                                                 <div key={item} className={`flex items-center gap-3 text-[13px] leading-snug text-neutral-800 sm:text-sm ${restricted ? "opacity-65" : ""}`}>
-                                                                        {coin ? (
-                                                                            <CoinLottieBadge className="h-[27px] w-[27px] shrink-0" />
-                                                                        ) : (
-                                                                            <Image src={icon} alt="" width={27} height={27} className="h-[27px] w-[27px] shrink-0 object-contain" />
-                                                                        )}
-                                                                        <span className={`${/starting at/i.test(item) ? "font-semibold text-neutral-900" : ""} ${restricted ? "text-neutral-500" : ""}`}>
-                                                                            {item}
-                                                                        </span>
+                                                                    {coin ? (
+                                                                        <CoinLottieBadge className="h-[27px] w-[27px] shrink-0" />
+                                                                    ) : (
+                                                                        <Image src={icon} alt="" width={27} height={27} className="h-[27px] w-[27px] shrink-0 object-contain" />
+                                                                    )}
+                                                                    <span className={`${/starting at/i.test(item) ? "font-semibold text-neutral-900" : ""} ${restricted ? "text-neutral-500" : ""}`}>
+                                                                        {item}
+                                                                    </span>
                                                                 </div>
                                                             ))}
                                                             {showTrialChoice && useTrial ? (
@@ -350,10 +350,10 @@ export function WebsitePrePaywall({
                             <div className="mt-6 border-t border-neutral-200 pt-4">
                                 <div className="mb-2.5 text-center leading-tight">
                                     <span className="text-[11px] uppercase tracking-[0.1em] text-neutral-500 sm:text-[11px]">
-                                        See what <span className="text-[15px] font-bold text-[rgba(255,141,33,1)]">5000+</span> Kloner members have built <span className="inline-flex items-center gap-1.5 whitespace-nowrap align-middle">with<KlonerWordmark className="text-[12px] normal-case sm:text-[13px]" /></span>
+                                        See what <span className="text-[15px] font-bold text-[rgba(255,141,33,1)]">5000+</span> Kloner members have built with<span className="inline-flex items-center gap-1.5 whitespace-nowrap align-middle"><KlonerWordmark className="text-[14px] normal-case sm:text-[13px]" /></span>
                                     </span>
                                 </div>
-
+Tokens for AI customization
                                 <div className="relative overflow-hidden rounded-[24px] shadow-[0_10px_24px_rgba(15,23,42,0.06)]">
                                     <div className="overflow-hidden py-3 sm:py-4">
                                         <div className="website-paywall-carousel flex w-max items-stretch gap-3 px-3">

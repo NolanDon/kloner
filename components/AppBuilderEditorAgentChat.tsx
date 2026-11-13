@@ -5794,7 +5794,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
 
         setV3Job(queued.data);
         const startedAt = Date.now();
-        let runtimeVerificationPreviewRefreshed = false;
+        let runtimeVerificationPreviewRefreshes = 0;
         let statusReadFailures = 0;
         // A restart can take up to 60s and the bounded project health command
         // can take up to 120s. Keep the execution window above that sum. A
@@ -5820,12 +5820,14 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                 const job = setV3Job(snapshot.data);
                 if (!job) return;
                 const status = String(job.status || "queued").toLowerCase();
-                if (!runtimeVerificationPreviewRefreshed && String(job.stage || "").toLowerCase() === "runtime_verification") {
-                    // The backend has applied the repair and is checking it now.
-                    // Reload the user's normal browser preview so the backend can
-                    // collect fresh, unblocked runtime evidence for this revision.
-                    runtimeVerificationPreviewRefreshed = true;
-                    void refreshV3Preview(`runtime-verification:${job.jobId || requestId}`).catch(() => {});
+                const verificationStage = String(job.stage || "").toLowerCase();
+                const shouldRefreshForVerification = (verificationStage === "runtime_verification" && runtimeVerificationPreviewRefreshes === 0)
+                    || (verificationStage === "runtime_verification_retry" && runtimeVerificationPreviewRefreshes === 1);
+                if (shouldRefreshForVerification) {
+                    // Reload once after each applied repair so the backend can
+                    // collect fresh, unblocked evidence for that exact revision.
+                    runtimeVerificationPreviewRefreshes += 1;
+                    void refreshV3Preview(`runtime-verification:${runtimeVerificationPreviewRefreshes}:${job.jobId || requestId}`).catch(() => {});
                 }
                 if (isEditPlanJobTerminalStatus(status)) {
                     const rawJob = snapshot.data as any;
@@ -5852,7 +5854,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                     const failedHealth = failedResult?.health && typeof failedResult.health === "object"
                         ? failedResult.health
                         : null;
-                    if (failedFiles.length > 0 && !runtimeVerificationPreviewRefreshed) {
+                    if (failedFiles.length > 0 && runtimeVerificationPreviewRefreshes === 0) {
                         await refreshV3Preview(`saved-failure:${job.jobId || requestId}`).catch(() => {});
                     }
                     if (failedHealth && failedHealth.ok === false) {
@@ -5909,7 +5911,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                         content: runtimeVerificationFailed
                             ? failedSummary || 'I saved the changes and reloaded the preview, but the browser check could not confirm the page is rendering correctly. I captured the latest browser details for another repair attempt.'
                             : failedFiles.length > 0
-                            ? `I saved your changes${previewReloadConfirmed ? ' and reloaded the preview' : runtimeVerificationPreviewRefreshed ? ' and requested a preview reload' : ''}, but the update did not pass verification. ${failedSummary || 'Check the preview before keeping the change; you can undo it below.'}`
+                            ? `I saved your changes${previewReloadConfirmed ? ' and reloaded the preview' : runtimeVerificationPreviewRefreshes > 0 ? ' and requested a preview reload' : ''}, but the update did not pass verification. ${failedSummary || 'Check the preview before keeping the change; you can undo it below.'}`
                             : "I couldn’t finish this update, and no changes were saved. Please try again.",
                         workspaceRestore: failedResult?.restorePointId ? { pointId: failedResult.restorePointId } : undefined,
                         debugDetails: rawError || undefined,
@@ -5933,7 +5935,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                 const friendlySummary = !summary || /^Updated\s+\d+\s+file/i.test(summary)
                     ? `I’ve finished your update: “${params.query}”. Take a look and let me know what you think.`
                     : summary;
-                if (hasChanges && !runtimeVerificationPreviewRefreshed) await refreshV3Preview(`job:${job.jobId || requestId}`).catch(() => {});
+                if (hasChanges && runtimeVerificationPreviewRefreshes === 0) await refreshV3Preview(`job:${job.jobId || requestId}`).catch(() => {});
                 const completionText = hasChanges
                     ? `${friendlySummary}\n\nThe project checks passed and I refreshed the preview. Those checks do not confirm the page’s appearance, so please verify that the white screen is gone. You can undo this change below.`
                     : "I finished reviewing your request, but no files changed. The requested result may already be in place—please check the preview. If it isn’t, tell me what should look different and I’ll try a more specific update.";
