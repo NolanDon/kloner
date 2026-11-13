@@ -2832,18 +2832,24 @@ function useToasts() {
 
 function Toasts({ toasts }: { toasts: ToastMsg[] }) {
     return (
-        <div className="fixed bottom-3 right-3 z-50 flex flex-col gap-2">
+        <div className="pointer-events-none fixed bottom-4 right-4 z-50 flex w-[calc(100%-2rem)] flex-col items-end gap-2 sm:w-auto">
             {toasts.map((t) => (
                 <div
                     key={t.id}
-                    className={`rounded-md border px-3 py-2 text-sm shadow-sm bg-white ${t.tone === "ok"
-                        ? "border-emerald-200 text-emerald-700"
+                    role={t.tone === "err" ? "alert" : "status"}
+                    className={`dashboard-toast pointer-events-auto flex w-fit max-w-full items-center gap-3 rounded-full border px-5 py-3 text-sm leading-5 shadow-lg backdrop-blur-md ${t.tone === "ok"
+                        ? "dashboard-toast-ok"
                         : t.tone === "warn"
-                            ? "border-amber-200 text-amber-700"
-                            : "border-red-200 text-red-700"
+                            ? "dashboard-toast-warn"
+                            : "dashboard-toast-error"
                         }`}
                 >
-                    {t.text}
+                    {t.tone === "ok" ? (
+                        <CheckCircle2 className="h-5 w-5 shrink-0" aria-hidden="true" />
+                    ) : (
+                        <AlertTriangle className="h-5 w-5 shrink-0" aria-hidden="true" />
+                    )}
+                    <span>{t.text}</span>
                 </div>
             ))}
         </div>
