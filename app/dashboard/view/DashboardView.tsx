@@ -14099,10 +14099,14 @@ export default function PreviewPage(): JSX.Element {
     }, [isDev]);
 
     const urlProcessingWaitLimitReached = (urlProcessingFailure?.message || urlProcessingHandoff?.errorMessage) === ARCHIVE_READINESS_WAIT_MESSAGE;
-    const urlProcessingPopupTitle = urlProcessingWaitLimitReached
+    const editorOpenFailed = urlProcessingHandoff?.phase === "error" &&
+        Boolean(urlProcessingHandoff.errorCode?.startsWith("EDITOR_"));
+    const editorOpenFailureMessage = urlProcessingHandoff?.errorMessage ||
+        "Your app is ready, but the editor couldn’t open. Retry opening it; you don’t need to scan again.";
+    const urlProcessingPopupTitle = editorOpenFailed
+        ? "Your website is ready, the editor couldn’t open"
+        : urlProcessingWaitLimitReached
         ? "Taking longer than expected"
-        : urlProcessingHandoff?.errorCode?.startsWith("EDITOR_")
-        ? "Your app is ready — the editor couldn’t open"
         : urlProcessingFailure
         ? "URL processing failed"
         : urlProcessingHandoff?.phase === "error"
@@ -14120,7 +14124,9 @@ export default function PreviewPage(): JSX.Element {
                         null,
                     );
 
-    const urlProcessingPopupMessage = urlProcessingFailure?.message ||
+    const urlProcessingPopupMessage = editorOpenFailed
+        ? editorOpenFailureMessage
+        : urlProcessingFailure?.message ||
         (urlProcessingHandoff?.phase === "error"
             ? urlProcessingHandoff.errorMessage || "URL processing failed."
             : null) ||
@@ -14163,7 +14169,9 @@ export default function PreviewPage(): JSX.Element {
                 open={Boolean((urlProcessingHandoff || urlProcessingFailure) && !urlProcessingPopupSuppressed)}
                 title={urlProcessingPopupTitle}
                 message={urlProcessingPopupMessage}
-                error={urlProcessingFailure?.message || (urlProcessingHandoff?.phase === "error" ? urlProcessingHandoff?.errorMessage || "URL processing failed." : null)}
+                error={editorOpenFailed
+                    ? null
+                    : urlProcessingFailure?.message || (urlProcessingHandoff?.phase === "error" ? urlProcessingHandoff?.errorMessage || "URL processing failed." : null)}
                 sourceUrl={urlProcessingPopupSourceUrl}
                 errorLabel={urlProcessingWaitLimitReached ? "Please check back shortly" : undefined}
                 archiveZipBytes={urlProcessingHandoff?.archiveZipBytes ?? pendingCreatedApp?.archiveZipBytes ?? null}
