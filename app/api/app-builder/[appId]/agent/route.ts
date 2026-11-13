@@ -65,7 +65,7 @@ export async function POST(req: NextRequest, { params }: any) {
             return NextResponse.json({ error: "Prompt required" }, { status: 400 });
         }
 
-        const model = genAI.getGenerativeModel({ model: "gemini-3.6-flash" });
+        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
 
         const systemPrompt = `You are an expert Next.js developer. Modify the provided code based on the user's request.
 
@@ -101,7 +101,7 @@ Provide only the modified code, no explanations or markdown.`;
                     appId,
                     code: classified.code,
                     providerMessage: classified.providerMessage,
-                    model: "gemini-3.6-flash",
+                    model: "gemini-2.5-flash-lite",
                 },
             });
 

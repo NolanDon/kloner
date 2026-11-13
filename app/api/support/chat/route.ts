@@ -12,7 +12,7 @@ import { getClientIp } from "../../_lib/route-guard";
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || "";
 const geminiClient = GEMINI_API_KEY ? new GoogleGenerativeAI(GEMINI_API_KEY) : null;
 
-const GEMINI_CHAT_MODEL = "gemini-3.6-flash";
+const GEMINI_CHAT_MODEL = "gemini-2.5-flash-lite";
 const GEMINI_EMBEDDING_MODEL = "gemini-embedding-2";
 
 type Sender = "user" | "ai" | "agent" | "system";

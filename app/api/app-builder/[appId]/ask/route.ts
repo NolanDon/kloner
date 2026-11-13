@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 
 const geminiApiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || "";
 const geminiClient = geminiApiKey ? new GoogleGenerativeAI(geminiApiKey) : null;
-const APP_BUILDER_ASK_MODEL = "gemini-3.6-flash";
+const APP_BUILDER_ASK_MODEL = "gemini-2.5-flash-lite";
 
 function buildAskPrompt(params: {
     question: string;

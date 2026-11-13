@@ -1413,7 +1413,7 @@ export async function POST(req: NextRequest) {
 
             if (requestMode === "quick_question" || chatIntent.kind === "quick-question") {
                 const model = genAI.getGenerativeModel({
-                    model: "gemini-3.6-flash",
+                    model: "gemini-2.5-flash-lite",
                     safetySettings: [
                         { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
                         { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
@@ -1541,7 +1541,7 @@ export async function POST(req: NextRequest) {
             }
             const filePaths = Object.keys(allFiles);
             const plannerModel = genAI.getGenerativeModel({
-                model: "gemini-3.6-flash",
+                model: "gemini-2.5-flash-lite",
                 safetySettings: [
                     { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
                     { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
@@ -1648,7 +1648,7 @@ export async function POST(req: NextRequest) {
             aiSlackRequestDigest = requestId;
 
             const model = genAI.getGenerativeModel({
-                model: "gemini-3.6-flash",
+                model: "gemini-2.5-flash-lite",
                 safetySettings: [
                     { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
                     { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
@@ -2111,7 +2111,7 @@ export async function POST(req: NextRequest) {
                         estimatedCostUsd: aiRequestUsage.estimatedCostUsd,
                         inputTokenCap: AI_AGENT_INPUT_TOKEN_CAP,
                         outputTokenCap: AI_AGENT_OUTPUT_TOKEN_CAP,
-                        model: "gemini-3.6-flash",
+                        model: "gemini-2.5-flash-lite",
                         searchDebug,
                         selectedFilesPreview: aiSlackSelectedFilesPreview,
                         fileContextPreview: aiSlackFileContextPreview,
@@ -2224,7 +2224,7 @@ export async function POST(req: NextRequest) {
                     estimatedCostUsd: aiRequestUsage.estimatedCostUsd,
                     inputTokenCap: AI_AGENT_INPUT_TOKEN_CAP,
                     outputTokenCap: AI_AGENT_OUTPUT_TOKEN_CAP,
-                        model: "gemini-3.6-flash",
+                        model: "gemini-2.5-flash-lite",
                     providerMessage: classified.providerMessage,
                     code: classified.code,
                     providerErrorName: classified.providerErrorName,
