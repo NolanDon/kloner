@@ -7,7 +7,7 @@ import MixpanelAutocapture from "@/components/MixpanelAutocapture";
 
 const CONSENT_STORAGE_KEY = "kloner.cookieConsent.v1";
 const GA_ID = "G-FVKJJK0379";
-const NON_ESSENTIAL_COOKIE_NAMES = ["_ga", "_gid", "_gat", "_gcl_au", "kl_aff_ref", "kl_aff_code"];
+const NON_ESSENTIAL_COOKIE_NAMES = ["_ga", "_gid", "_gat", "_gcl_au", "kl_aff_ref", "kl_aff_code", "kl_first_touch"];
 
 export type CookieConsentStatus = "unknown" | "accepted" | "necessary";
 
@@ -74,7 +74,7 @@ function clearNonEssentialTrackingState() {
         for (let i = 0; i < window.localStorage.length; i += 1) {
             const key = window.localStorage.key(i);
             if (!key) continue;
-            if (key.startsWith("mp_") || key.startsWith("mixpanel")) keys.push(key);
+            if (key.startsWith("mp_") || key.startsWith("mixpanel") || key === "kl_first_touch.v1") keys.push(key);
         }
         for (const key of keys) {
             window.localStorage.removeItem(key);

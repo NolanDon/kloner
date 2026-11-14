@@ -38,6 +38,7 @@ import {
 } from "firebase/firestore";
 import Image from "next/image";
 import { validateAndNormalizePublicHttpUrl } from "@/src/lib/publicHttpUrl";
+import { readFirstTouchFromClient } from "@/lib/attribution";
 import { sendKlonerSlackEvent } from "@/src/lib/klonerSlackEvents";
 import { EARLY_GENERATION_PAYWALL_ENABLED } from "@/src/lib/billingAccess";
 import { ArrowLeft, Eye, EyeOff } from "lucide-react";
@@ -235,6 +236,46 @@ async function attachAffiliateToUserDoc(u: User): Promise<void> {
         await retryOwnerWriteAfterTokenRefresh(u, () => setDoc(userRef, updates, { merge: true }));
     } catch (e) {
         console.error("Failed to attach affiliate attribution", e);
+    }
+}
+
+/**
+ * Attach first-touch acquisition attribution (landing page, referrer, UTMs)
+ * to the user's root doc. Non-destructive: only written when the doc has no
+ * acquisition yet. Captured client-side by components/AttributionCapture.tsx
+ * after cookie consent; absent when the visitor rejected optional cookies.
+ */
+async function attachAttributionToUserDoc(u: User): Promise<void> {
+    const attr = readFirstTouchFromClient();
+    if (!attr) return;
+
+    const userRef = doc(db, "kloner_users", u.uid);
+
+    try {
+        const snap = await getDoc(userRef);
+        const existing = snap.exists() ? (snap.data() as any) : null;
+        if (existing?.acquisition) return;
+
+        const acquisition: Record<string, string> = { source: "first_touch" };
+        if (attr.landingPath) acquisition.landingPath = attr.landingPath;
+        if (attr.referrer) acquisition.referrer = attr.referrer;
+        if (attr.utmSource) acquisition.utmSource = attr.utmSource;
+        if (attr.utmMedium) acquisition.utmMedium = attr.utmMedium;
+        if (attr.utmCampaign) acquisition.utmCampaign = attr.utmCampaign;
+        if (attr.utmTerm) acquisition.utmTerm = attr.utmTerm;
+        if (attr.utmContent) acquisition.utmContent = attr.utmContent;
+        if (attr.gclid) acquisition.gclid = attr.gclid;
+        if (attr.capturedAt) acquisition.capturedAt = attr.capturedAt;
+
+        await retryOwnerWriteAfterTokenRefresh(u, () =>
+            setDoc(
+                userRef,
+                { acquisition, acquisitionAttachedAt: serverTimestamp() },
+                { merge: true },
+            ),
+        );
+    } catch (e) {
+        console.error("Failed to attach acquisition attribution", e);
     }
 }
 
@@ -529,6 +570,7 @@ export default function LoginPage(): JSX.Element {
                 void Promise.allSettled([
                     ensureUserCreatedAt(u),
                     attachAffiliateToUserDoc(u),
+                    attachAttributionToUserDoc(u),
                 ]).catch((e) => {
                     console.error("failed to finish post-login user setup", e);
                 });
@@ -571,6 +613,7 @@ export default function LoginPage(): JSX.Element {
                 void Promise.allSettled([
                     ensureUserCreatedAt(cred.user),
                     attachAffiliateToUserDoc(cred.user),
+                    attachAttributionToUserDoc(cred.user),
                     notifyKlonerSignup(cred.user, "google"),
                 ]);
             }
@@ -619,6 +662,7 @@ export default function LoginPage(): JSX.Element {
                 void Promise.allSettled([
                     ensureUserCreatedAt(cred.user),
                     attachAffiliateToUserDoc(cred.user),
+                    attachAttributionToUserDoc(cred.user),
                     notifyKlonerSignup(cred.user, "email"),
                 ]);
             }

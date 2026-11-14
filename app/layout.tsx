@@ -4,6 +4,7 @@ import AuthProviderServer from "@/components/auth/auth-provider.server";
 import { AppClientProviders } from "./AppClientProvider";
 import DeferredChatWidget from "@/components/support/DeferredChatWidget";
 import AffiliateRefCapture from "@/components/AffiliateRefCapture";
+import AttributionCapture from "@/components/AttributionCapture";
 import { Suspense } from "react";
 import StyledJsxRegistry from "./registry";
 import { Fraunces, Inter, Manrope } from "next/font/google";
@@ -93,6 +94,7 @@ export default function RootLayout({
               {/* <MoqupReferralBanner /> Temporarily disabled; restore when the promo returns. */}
               <Suspense fallback={null}>
                 <AffiliateRefCapture />
+                <AttributionCapture />
               </Suspense>
               {children}
               <DeferredChatWidget />

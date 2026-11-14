@@ -9,6 +9,7 @@ import { captureCriticalEvent, captureException } from "@/lib/observability";
 import { resolveMonthlyPriceId } from "@/app/api/_lib/monthlyPrice";
 import { shouldRequireEarlyGenerationPaywall } from "@/app/api/_lib/earlyGenerationGate";
 import { hasPriorSubscriptionHistoryForAccount } from "@/app/api/_lib/freeTrial";
+import { parseFirstTouch, attributionToStripeMeta } from "@/lib/attribution";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -241,6 +242,13 @@ async function handler({ req, uid }: { req: NextRequest; uid: string }) {
     const affiliateSource: string =
         typeof userData?.affiliateSource === "string" ? userData.affiliateSource.trim() : "";
 
+    // First-touch acquisition attribution, attached to the user doc at
+    // signup/login by the client (consent-gated). Forwarded to Stripe so
+    // payers can be tied back to the landing page / campaign that brought them.
+    const acqMeta: Record<string, string> = attributionToStripeMeta(
+        parseFirstTouch(userData?.acquisition),
+    );
+
     let authUser: admin.auth.UserRecord | null = null;
     const getAuthUser = async () => {
         if (!authUser) authUser = await admin.auth().getUser(uid);
@@ -265,6 +273,7 @@ async function handler({ req, uid }: { req: NextRequest; uid: string }) {
                     firebaseUid: uid,
                     ...(affiliateRef ? { affiliateRef } : {}),
                     ...(affiliateSource ? { affiliateSource } : {}),
+                    ...acqMeta,
                 },
             });
         } catch (err: any) {
@@ -286,13 +295,14 @@ async function handler({ req, uid }: { req: NextRequest; uid: string }) {
     if (!customerId) {
         customerId = await createAndPersistCustomer();
     } else {
-        if (affiliateRef || affiliateSource) {
+        if (affiliateRef || affiliateSource || Object.keys(acqMeta).length > 0) {
             try {
                 await stripe.customers.update(customerId, {
                     metadata: {
                         firebaseUid: uid,
                         ...(affiliateRef ? { affiliateRef } : {}),
                         ...(affiliateSource ? { affiliateSource } : {}),
+                        ...acqMeta,
                     },
                 });
             } catch (err: any) {
@@ -477,6 +487,7 @@ async function handler({ req, uid }: { req: NextRequest; uid: string }) {
         ...(plan === "pro" ? { abuseBlocklistCheck: "1" } : {}),
         ...(affiliateRef ? { affiliateRef } : {}),
         ...(affiliateSource ? { affiliateSource } : {}),
+        ...acqMeta,
         ...(returnAppId ? { returnAppId: String(returnAppId) } : {}),
         ...(returnRenderId ? { returnRenderId: String(returnRenderId) } : {}),
         ...(returnStep ? { returnStep: String(returnStep) } : {}),
