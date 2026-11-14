@@ -51,6 +51,13 @@ type UserAnalyticsRow = {
     appBuilderSessionCount?: number | null;
     appBuilderAvgSessionMinutes?: number | null;
     appBuilderAiUserMessageTotal?: number | null;
+
+    acqLandingPath?: string | null;
+    acqReferrer?: string | null;
+    acqUtmSource?: string | null;
+    acqUtmMedium?: string | null;
+    acqUtmCampaign?: string | null;
+    acqCapturedAt?: Date | null;
 };
 
 type DailyBucket = {
@@ -130,6 +137,19 @@ function buildReturningActiveUsersByDay(keys: string[], rows: UserAnalyticsRow[]
     }
 
     return keys.map((k) => ({ x: k, y: m.get(k) ?? 0 }));
+}
+
+function acquisitionSourceLabel(r: UserAnalyticsRow): string {
+    if (r.acqUtmSource) return r.acqUtmSource;
+    if (r.acqReferrer) {
+        try {
+            return new URL(r.acqReferrer).hostname || r.acqReferrer;
+        } catch {
+            return r.acqReferrer;
+        }
+    }
+    if (r.acqLandingPath || r.acqCapturedAt) return "direct";
+    return "unknown";
 }
 
 function buildTotalMinutesByTier(rows: UserAnalyticsRow[]) {
@@ -423,6 +443,7 @@ export default function AdminAnalyticsPage() {
                     const creditsAiEditsRemaining = credits.aiEdits?.remaining ?? null;
                     const creditsPreviewRemaining = credits.preview?.remaining ?? null;
                     const creditsSnapshotRemaining = credits.snapshot?.remaining ?? null;
+                    const acq = (data.acquisition ?? null) as any;
 
                     map.set(docSnap.id, {
                         id: docSnap.id,
@@ -450,6 +471,12 @@ export default function AdminAnalyticsPage() {
                         appBuilderSessionCount: 0,
                         appBuilderAvgSessionMinutes: 0,
                         appBuilderAiUserMessageTotal: 0,
+                        acqLandingPath: (acq?.landingPath ?? null) as string | null,
+                        acqReferrer: (acq?.referrer ?? null) as string | null,
+                        acqUtmSource: (acq?.utmSource ?? null) as string | null,
+                        acqUtmMedium: (acq?.utmMedium ?? null) as string | null,
+                        acqUtmCampaign: (acq?.utmCampaign ?? null) as string | null,
+                        acqCapturedAt: tsToDate(acq?.capturedAt),
                     });
                 });
 
@@ -960,6 +987,20 @@ export default function AdminAnalyticsPage() {
     const usageKeys = useMemo(() => buildLastNDaysKeys(usageRangeDays), [usageRangeDays]);
 
     const signupsSeries = useMemo(() => buildSeriesFromBuckets(usageKeys, dailyBuckets), [usageKeys, dailyBuckets]);
+
+    const todaysSignups = useMemo(() => {
+        const start = startOfDay(new Date());
+        const list = rows
+            .filter((r) => r.createdAt && r.createdAt >= start)
+            .sort((a, b) => (b.createdAt?.getTime() || 0) - (a.createdAt?.getTime() || 0));
+        const counts = new Map<string, number>();
+        for (const r of list) {
+            const key = acquisitionSourceLabel(r);
+            counts.set(key, (counts.get(key) ?? 0) + 1);
+        }
+        const bySource = Array.from(counts.entries()).sort((a, b) => b[1] - a[1]);
+        return { list, bySource };
+    }, [rows]);
 
     const appCreationsSeries = useMemo(
         () => buildSeriesFromBuckets(usageKeys, appDailyBuckets),
@@ -1488,6 +1529,58 @@ export default function AdminAnalyticsPage() {
                                             points={signupsSeries}
                                         />
                                     </div>
+
+                                    <section className="rounded-xl border border-neutral-200 bg-white p-4">
+                                        <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                                            <div>
+                                                <p className="text-[11px] uppercase tracking-[0.16em] text-neutral-500">Signups today by source</p>
+                                                <p className="mt-1 text-xs text-neutral-500">
+                                                    First-touch acquisition (landing page, referrer, UTMs), captured after cookie consent and attached to the user record at signup. Tracking began 2026-11-14; &quot;unknown&quot; means no source was captured (no consent, or signed up before tracking).
+                                                </p>
+                                            </div>
+                                            <p className="text-[11px] text-neutral-500">{todaysSignups.list.length} signup{todaysSignups.list.length === 1 ? "" : "s"} today</p>
+                                        </div>
+
+                                        {todaysSignups.list.length === 0 ? (
+                                            <p className="mt-3 text-xs text-neutral-500">No signups yet today.</p>
+                                        ) : (
+                                            <>
+                                                <div className="mt-4 grid gap-4 md:grid-cols-4 text-sm">
+                                                    {todaysSignups.bySource.map(([source, count]) => (
+                                                        <div key={source} className="rounded-lg border border-neutral-100 bg-neutral-50 p-3">
+                                                            <p className="text-[11px] text-neutral-500 mb-1">{source}</p>
+                                                            <p className="text-xl font-semibold text-neutral-900">{count}</p>
+                                                        </div>
+                                                    ))}
+                                                </div>
+
+                                                <div className="mt-4 space-y-2">
+                                                    {todaysSignups.list.slice(0, 50).map((r) => (
+                                                        <div key={r.id} className="rounded-lg border border-neutral-100 bg-neutral-50 p-3">
+                                                            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-neutral-600">
+                                                                <span className="font-medium text-neutral-800">{r.email || r.id}</span>
+                                                                <span>
+                                                                    {r.createdAt
+                                                                        ? r.createdAt.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })
+                                                                        : "Unknown time"}
+                                                                </span>
+                                                                <span>Source: {acquisitionSourceLabel(r)}</span>
+                                                                {r.acqUtmMedium ? <span>Medium: {r.acqUtmMedium}</span> : null}
+                                                                {r.acqUtmCampaign ? <span>Campaign: {r.acqUtmCampaign}</span> : null}
+                                                            </div>
+                                                            <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-neutral-500">
+                                                                <span>Landing: {r.acqLandingPath || "(not captured)"}</span>
+                                                                {r.acqReferrer ? <span className="break-all">Referrer: {r.acqReferrer}</span> : null}
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                                {todaysSignups.list.length > 50 ? (
+                                                    <p className="mt-2 text-[11px] text-neutral-500">Showing first 50 of {todaysSignups.list.length} signups today.</p>
+                                                ) : null}
+                                            </>
+                                        )}
+                                    </section>
 
                                     <section className="rounded-xl border border-neutral-200 bg-white p-4">
                                         <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
