@@ -36,8 +36,6 @@ const nextConfig = {
     },
     async redirects() {
         return [
-            { source: '/blog/app-cloner', destination: '/blog/clone-web-app-ui', permanent: true },
-            { source: '/blog/ai-app-cloner', destination: '/blog/clone-web-app-ui', permanent: true },
             { source: '/blog/how-to-clone-apps', destination: '/blog/clone-web-app-ui', permanent: true },
             { source: '/blog/website-clone', destination: '/blog/how-to-clone-a-website', permanent: true },
             { source: '/blog/clone-site', destination: '/blog/how-to-clone-a-website', permanent: true },
@@ -78,11 +76,6 @@ const nextConfig = {
                 permanent: true,
             },
             {
-                source: '/blog/clone-a-website-from-a-url',
-                destination: '/blog/clone-website-from-url',
-                permanent: true,
-            },
-            {
                 source: '/blog/clone-wordpress-site',
                 destination: '/blog/clone-wordpress-website',
                 permanent: true,
@@ -100,11 +93,6 @@ const nextConfig = {
             {
                 source: '/blog/clone-website-to-html-css',
                 destination: '/blog/clone-website-to-html',
-                permanent: true,
-            },
-            {
-                source: '/blog/clone-website-ai',
-                destination: '/blog/ai-website-cloner',
                 permanent: true,
             },
             {

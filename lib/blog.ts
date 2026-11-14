@@ -3637,19 +3637,15 @@ AI is most valuable here as an accelerator for the first version. The final qual
 // Relevant replacements have redirects in next.config.mjs; others return 404. Filtering keeps them out of
 // generated params, the blog index, and the sitemap as well.
 const RETIRED_BLOG_SLUGS = new Set([
-  "app-cloner",
-  "ai-app-cloner",
   "how-to-clone-apps",
   "website-clone",
   "clone-site",
 
   "website-cloner",
-  "clone-a-website-from-a-url",
   "clone-wordpress-site",
   "wordpress-site-duplicator",
   "clone-wordpress-theme-from-url",
   "clone-website-to-html-css",
-  "clone-website-ai",
   "site-copier",
   "website-copier",
   "website-cloning-guide",
