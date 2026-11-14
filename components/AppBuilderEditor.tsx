@@ -21,7 +21,7 @@ import { shouldBypassEditorNavigationGuard } from "@/lib/editorNavigation";
 import { useVercelIntegration } from "@/src/hooks/useVercelIntegration";
 import { auth, db, storage } from "@/lib/firebase";
 import { BASIC_MONTHLY_PRICE_USD, TRIAL_CTA_LABEL } from "@/src/lib/billingAccess";
-import { TRIAL_AI_EDIT_CHANGE_LIMIT } from "@/src/lib/credits";
+import { CREDIT_LIMITS, TRIAL_AI_EDIT_CHANGE_LIMIT } from "@/src/lib/credits";
 import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
 import { doc, onSnapshot } from "firebase/firestore";
 import { resolveStorageUrl } from "@/src/lib/renders";
@@ -236,9 +236,11 @@ const TRIAL_AI_CREDITS_PAYWALL_COPY: UpgradePaywallCopy = {
     title: "You’ve used your trial AI changes",
     description: `Your trial includes ${TRIAL_AI_EDIT_CHANGE_LIMIT} AI changes. Upgrade to keep using the AI agent.`,
     benefits: [
-        `${TRIAL_AI_EDIT_CHANGE_LIMIT} AI changes during your trial`,
+        `${CREDIT_LIMITS.pro.screenshotMonthly / 10} website scans per month on Pro`,
+        `${CREDIT_LIMITS.pro.editMonthly} AI edit credits each month`,
         "Keep using the AI agent to edit your website",
         "Unlock deployments and live URLs",
+        "Download your website code",
         "Priority rendering and faster queues",
     ],
     primaryLabel: "Upgrade now — billing starts today",

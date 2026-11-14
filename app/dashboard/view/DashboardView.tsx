@@ -16334,9 +16334,9 @@ export default function PreviewPage(): JSX.Element {
                                             : "Publish your website live from the editor. Upgrade to unlock one-click deploy and higher monthly credits."
                             }
                             benefits={showCreditsPaywall === "trial_snapshot"
-                                ? [`${TRIAL_CREDIT_LIMITS.screenshotMonthly / 10} website scans per month`, "Unlock deployments and live URLs", "Higher monthly credits for continued building"]
+                                ? [`${CREDIT_LIMITS.pro.screenshotMonthly / 10} website scans per month on Pro`, `${CREDIT_LIMITS.pro.editMonthly} AI edit credits each month`, "Unlock deployments and live URLs", "Download your website code", "Priority rendering and faster queues"]
                                 : showCreditsPaywall === "trial_ai"
-                                    ? [`${TRIAL_AI_EDIT_CHANGE_LIMIT} AI changes during your trial`, "Keep using the AI agent to edit your website", "Unlock deployments and live URLs"]
+                                    ? [`${CREDIT_LIMITS.pro.screenshotMonthly / 10} website scans per month on Pro`, `${CREDIT_LIMITS.pro.editMonthly} AI edit credits each month`, "Keep using the AI agent to edit your website", "Unlock deployments and live URLs", "Download your website code"]
                                     : undefined}
                             secondaryLabel={showCreditsPaywall === "early_generation" ? "Not now — cancel scan" : undefined}
                             primaryLabel={showCreditsPaywall === "deploy" || showCreditsPaywall === "trial_snapshot" || showCreditsPaywall === "trial_ai" ? "Upgrade now — billing starts today" : TRIAL_CTA_LABEL}
