@@ -68,7 +68,7 @@ export async function POST(req: NextRequest) {
                 method: "POST",
                 action: "app_embeddings_agent_v3_no_changes",
                 userId: uid,
-                requestId: result.reqId || null,
+                requestId: result.reqId || undefined,
                 message: "Workspace autonomy agent returned no file changes for a requested mutation.",
                 service: "app-embeddings-agent-v3-proxy",
                 tags: ["app-embeddings", "agent-v3", "no-changes"],
