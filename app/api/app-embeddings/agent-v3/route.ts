@@ -4,6 +4,7 @@ import { assertAppBuilderScope } from "../../_lib/appBuilderScope";
 import { callBackend } from "@/src/lib/callBackend";
 import { normalizeAgentImages } from "@/src/lib/agentAttachments";
 import { normalizeAgentLanguage } from "@/src/lib/agentLanguage";
+import { captureAuditEvent } from "@/lib/observability";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -50,6 +51,44 @@ export async function POST(req: NextRequest) {
                     : [],
             },
         });
+
+        // The backend owns the agent and workspace implementation. Persist its
+        // no-change diagnostics here so an unsuccessful agent turn can be
+        // investigated even when the backend only emits a Slack alert.
+        const backendPayload = result.json && typeof result.json === "object"
+            ? result.json as Record<string, unknown>
+            : {};
+        const backendCode = asString(backendPayload.code, 160);
+        if (result.status === 422 && backendCode === "WORKSPACE_AUTONOMY_V3_NO_CHANGES") {
+            void captureAuditEvent({
+                source: "internal",
+                severity: "warning",
+                statusCode: result.status,
+                route: "/api/app-embeddings/agent-v3",
+                method: "POST",
+                action: "app_embeddings_agent_v3_no_changes",
+                userId: uid,
+                requestId: result.reqId || null,
+                message: "Workspace autonomy agent returned no file changes for a requested mutation.",
+                service: "app-embeddings-agent-v3-proxy",
+                tags: ["app-embeddings", "agent-v3", "no-changes"],
+                extra: {
+                    appId,
+                    currentPath: asString(body.currentPath, 500) || null,
+                    backendCode,
+                    backendMessage: asString(backendPayload.message, 1000) || null,
+                    backendError: asString(backendPayload.error, 1000) || null,
+                    backendRequestId: asString(backendPayload.requestId, 200) || result.reqId || null,
+                    jobId: asString(backendPayload.jobId, 200) || null,
+                    userRequest: query.slice(0, 1000),
+                    // Include the backend's diagnostics as supplied, excluding
+                    // any auth/session material (none is forwarded to Slack).
+                    debug: backendPayload.debug && typeof backendPayload.debug === "object"
+                        ? backendPayload.debug
+                        : null,
+                },
+            });
+        }
         return NextResponse.json(result.json, { status: result.status });
     });
 }

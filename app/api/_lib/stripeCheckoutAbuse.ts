@@ -149,8 +149,8 @@ async function sendCheckAlert(params: {
         userId: params.uid,
         requestId: params.eventId || params.subscriptionId,
         message: params.outcome === "blocked"
-            ? "Stripe Checkout blocklist check matched; subscription cancellation and account disable were initiated."
-            : "Stripe Checkout blocklist check passed.",
+            ? "Stripe blocklist check rejected checkout."
+            : "Stripe blocklist check passed.",
         tags: ["stripe", "checkout", "abuse-blocklist", params.outcome],
         extra: {
             stripeSubscriptionId: params.subscriptionId,
