@@ -17,6 +17,12 @@ const CATEGORY_LABELS = {
 } as const;
 type ContactCategory = keyof typeof CATEGORY_LABELS;
 
+// Keep the sender on the Kloner domain even if a shared email setting is stale.
+// Resend verifies the domain in the From address, so an unrelated legacy
+// ALERT_EMAIL_FROM value must not break contact delivery.
+const CONTACT_FROM = "Kloner Support <support@kloner.app>";
+const CONTACT_TO = "support@kloner.app";
+
 function clean(value: unknown, maxLength: number): string {
   return typeof value === "string" ? value.trim().slice(0, maxLength) : "";
 }
@@ -81,8 +87,8 @@ export async function POST(request: NextRequest) {
     const apiKey = process.env.RESEND_API_KEY;
     if (!apiKey) throw new Error("RESEND_API_KEY is not configured");
     const result = await new Resend(apiKey).emails.send({
-      from: process.env.CONTACT_EMAIL_FROM || process.env.ALERT_EMAIL_FROM || "support@kloner.app",
-      to: process.env.SUPPORT_TO || "support@kloner.app",
+      from: CONTACT_FROM,
+      to: CONTACT_TO,
       replyTo: email,
       subject: `[Kloner ${CATEGORY_LABELS[category]}] ${subject || email}`,
       text: [
@@ -105,7 +111,9 @@ export async function POST(request: NextRequest) {
       method: "POST",
       action: "contact.message_delivery_failed",
       service: "contact-form",
-      message: error instanceof Error ? error.message : "Contact delivery failed",
+      // Error text from providers can contain recipient data or request details.
+      // Keep those details out of the shared critical-event stream.
+      message: "Contact email delivery failed",
       tags: ["contact", "delivery-failed"],
     }).catch(() => null);
     return NextResponse.json(
