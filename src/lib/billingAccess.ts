@@ -27,6 +27,12 @@ export const EARLY_GENERATION_PAYWALL_ENABLED =
 export const TRIAL_CTA_LABEL =
     STRIPE_TRIAL_DAYS > 0 ? "Start for free today" : "Subscribe now";
 
+/** The canonical subscription entitlement used by dashboard and editor gates. */
+export function hasSubscriptionAccess(billingState: unknown): boolean {
+    const state = typeof billingState === "string" ? billingState.trim().toLowerCase() : "";
+    return state === "active" || state === "trialing";
+}
+
 export const BASIC_MONTHLY_PRICE_USD = Math.max(
     1,
     readFloatEnv(

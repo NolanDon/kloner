@@ -51,6 +51,13 @@ export async function getAuthoritativeUserTier(uid: string): Promise<UserTier> {
     const overrideTier = getActiveTierOverride(userData, now);
     if (overrideTier) return overrideTier;
 
+    // Development uses Stripe test subscriptions, mirrored to devStripeBilling.
+    // The production tier cache can still say `free` for the same Firebase user,
+    // so it must not short-circuit the test-mode entitlement lookup below.
+    if (process.env.NODE_ENV !== "production") {
+        return refreshTierFromStripeForUid(uid);
+    }
+
     const source: string | undefined = userData.tierSource;
     const storedTier = (userData.tier as UserTier) || "free";
     const stripeStatus = typeof userData?.stripeStatus === "string" ? userData.stripeStatus : null;

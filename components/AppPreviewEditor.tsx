@@ -115,6 +115,8 @@ type Props = {
     onChangeViewMode?: (mode: "ai" | "code" | "images" | "custom") => void;
     isProduction?: boolean;
     billingState?: "free" | "active" | "trialing" | "trial_cancelled";
+    billingAccessLoading?: boolean;
+    billingTier?: UserTier;
     appName?: string;
     isRenaming?: boolean;
     tempName?: string;
@@ -888,6 +890,7 @@ import type { RenderDoc } from "@/app/dashboard/view/DashboardView";
 import { useAuth } from "@/src/hooks/useAuth";
 import { BASIC_MONTHLY_PRICE_USD, TRIAL_CTA_LABEL } from "@/src/lib/billingAccess";
 import type { UserTier } from "@/src/lib/credits";
+import { hasSubscriptionAccess } from "@/src/lib/billingAccess";
 import { Camera, Check, ChevronDown, ChevronLeft, ChevronRight, Code2, Eye, EyeOff, FileText, Images, Lock, Loader2, Maximize2, MessageSquare, Minimize2, Monitor, Palette, Pencil, Pipette, Redo2, Rocket, RotateCcw, RotateCw, SlidersHorizontal, Smartphone, Tablet, Trash2Icon, Undo2, X } from "lucide-react";
 import { compressImageForUpload } from "@/src/lib/clientImageCompression";
 import { EditorSessionCounters, EditorSessionMetrics, EditorSessionUser, ExportAnalyticsUser, recordEditorSessionAnalytics, recordExportAnalytics } from "./analytics";
@@ -1359,6 +1362,8 @@ export function AppPreviewEditorCore({
     onChangeViewMode,
     isProduction = false,
     billingState = "free",
+    billingAccessLoading = false,
+    billingTier,
     appName,
     isRenaming,
     tempName,
@@ -1393,6 +1398,7 @@ export function AppPreviewEditorCore({
     showRightSidebarToggle = true,
 }: Props) {
     const { user, userTier, loading: authLoading } = useAuth() as { user: FirebaseUser | null; userTier: UserTier; loading: boolean };
+    const effectiveUserTier = billingTier ?? userTier;
     const isDevCodeMode = process.env.NODE_ENV === "development";
     const [nameHint, setNameHint] = useState<string>("");
     const [version, setVersion] = useState<number>(1);
@@ -1421,8 +1427,8 @@ export function AppPreviewEditorCore({
     const [prefetchedAiMeta, setPrefetchedAiMeta] = useState<any | null>(null);
     const [prefetchedAiHistoryError, setPrefetchedAiHistoryError] = useState<string | null>(null);
     const [prefetchedAiHistoryLoading, setPrefetchedAiHistoryLoading] = useState<boolean>(false);
-    const canUsePremiumImagesTab = userTier === "pro" || userTier === "agency";
-    const shouldLockImagesTab = !authLoading && !canUsePremiumImagesTab;
+    const canUsePremiumImagesTab = effectiveUserTier === "pro" || effectiveUserTier === "agency";
+    const shouldLockImagesTab = !billingAccessLoading && !authLoading && !canUsePremiumImagesTab;
 
     function normalizeAiEditCreatedAt(raw: any): string {
         if (!raw) return "";
@@ -1523,8 +1529,11 @@ export function AppPreviewEditorCore({
 
     const [isDraggingPreview, setIsDraggingPreview] = useState(false);
     const shouldRunPreviewTour = !isCompactLayout && shouldShowTour;
-    const hasCurrentSubscriptionAccess = billingState === "active" || billingState === "trialing";
-    const shouldLockPreviewEditor = (accessLocked || (!hasCurrentSubscriptionAccess && userTier === "free")) && !isAdmin && !authLoading;
+    const hasCurrentSubscriptionAccess = hasSubscriptionAccess(billingState);
+    const shouldLockPreviewEditor = !billingAccessLoading &&
+        (accessLocked || (!hasCurrentSubscriptionAccess && effectiveUserTier === "free")) &&
+        !isAdmin &&
+        !authLoading;
     const shouldAutoOpenAccessPaywallFromTour = shouldRunPreviewTour && previewTourDontShowAgain && shouldLockPreviewEditor;
     const shouldLockPreviewPanels =
         shouldLockPreviewEditor &&
@@ -7297,6 +7306,8 @@ type AppSourcePreviewEditorProps = {
     onChangeViewMode?: (mode: "ai" | "code" | "images" | "custom") => void;
     isProduction?: boolean;
     billingState?: "free" | "active" | "trialing" | "trial_cancelled";
+    billingAccessLoading?: boolean;
+    billingTier?: UserTier;
     onSidebarVisibilityChange?: (open: boolean) => void;
     sharedUiScale?: number;
     onSharedUiScaleChange?: (scale: number) => void;
@@ -7356,6 +7367,8 @@ export default function AppPreviewEditor({
     onChangeViewMode,
     isProduction = false,
     billingState = "free",
+    billingAccessLoading = false,
+    billingTier,
     onSidebarVisibilityChange,
     sharedUiScale,
     onSharedUiScaleChange,
@@ -7619,6 +7632,8 @@ export default function AppPreviewEditor({
                     onChangeViewMode={onChangeViewMode}
                     isProduction={isProduction}
                     billingState={billingState}
+                    billingAccessLoading={billingAccessLoading}
+                    billingTier={billingTier}
                     onSidebarVisibilityChange={onSidebarVisibilityChange}
                     sharedUiScale={sharedUiScale}
                     onSharedUiScaleChange={onSharedUiScaleChange}

@@ -128,7 +128,7 @@ import { extractArchivedPageIdsFromRender, fetchRenderForDeployment, getArchived
 import { useModal } from "@/components/ui/ModalContext";
 import AppBuilderEditor from "@/components/AppBuilderEditorRouted";
 import WebsitePrePaywall from "@/components/WebsitePrePaywall";
-import { EARLY_GENERATION_PAYWALL_ENABLED, STRIPE_TRIAL_DAYS, TRIAL_CTA_LABEL } from "@/src/lib/billingAccess";
+import { EARLY_GENERATION_PAYWALL_ENABLED, hasSubscriptionAccess, STRIPE_TRIAL_DAYS, TRIAL_CTA_LABEL } from "@/src/lib/billingAccess";
 import { getPublicHttpUrlRejectionReason, validateAndNormalizePublicHttpUrl } from "@/src/lib/publicHttpUrl";
 import { recordDeployAnalytics } from "@/components/analytics";
 
@@ -5056,10 +5056,7 @@ export default function PreviewPage(): JSX.Element {
     }, [draftPromotionScanByDraftId, user?.uid]);
 
     useEffect(() => {
-        const hasDraftEditAccess =
-            userTier === "pro" ||
-            userTier === "agency" ||
-            stripeStatus === "trialing";
+        const hasDraftEditAccess = hasSubscriptionAccess(billingState);
 
         if (!user?.uid || !hasDraftEditAccess) return;
 
@@ -5086,7 +5083,7 @@ export default function PreviewPage(): JSX.Element {
 
             return changed ? next : prev;
         });
-    }, [stripeStatus, user?.uid, userTier]);
+    }, [billingState, user?.uid]);
 
     useEffect(() => {
         suppressedPromotedDraftsRef.current = suppressedPromotedDrafts;
@@ -6479,11 +6476,7 @@ export default function PreviewPage(): JSX.Element {
     ) => {
         if (!user) return;
 
-        const hasTrialOrPaidAccess =
-            stripeStatus === "trialing" ||
-            userTier === "pro" ||
-            userTier === "agency" ||
-            userTier === "enterprise";
+        const hasTrialOrPaidAccess = hasSubscriptionAccess(billingState);
         if (mode === "url" && ((isAdmin && devEarlyGenerationPaywallEnabled) || (EARLY_GENERATION_PAYWALL_ENABLED && !hasTrialOrPaidAccess))) {
             setShowCreditsPaywall("early_generation");
             return null;
@@ -7169,7 +7162,7 @@ export default function PreviewPage(): JSX.Element {
             push(message, "err");
             return null;
         }
-    }, [user, router, push, activeRenderId, openAppBuilderWithCookieGate, requestAppBuilderCookieConsent, stripeStatus, userTier, setDraftApps, setPendingDraftApps, isDev, isAdmin, devEarlyGenerationPaywallEnabled, setShowCreditsPaywall]);
+    }, [user, router, push, activeRenderId, openAppBuilderWithCookieGate, requestAppBuilderCookieConsent, billingState, stripeStatus, userTier, setDraftApps, setPendingDraftApps, isDev, isAdmin, devEarlyGenerationPaywallEnabled, setShowCreditsPaywall]);
 
     useEffect(() => {
         if (!pendingCreatedApp) {
@@ -7187,7 +7180,7 @@ export default function PreviewPage(): JSX.Element {
             return;
         }
 
-        if (userTier === "free" && stripeStatus !== "trialing") {
+        if (userTier === "free" && !hasSubscriptionAccess(billingState)) {
             pendingCreatedAppLaunchRequestedRef.current = null;
             if (appBuilderOpen) {
                 setAppBuilderOpen(false);
@@ -7227,8 +7220,8 @@ export default function PreviewPage(): JSX.Element {
         pendingAppBuilderAppId,
         pendingCreatedApp,
         blockedUrlGenerationAppId,
+        billingState,
         userTier,
-        stripeStatus,
         urlProcessingHandoff?.appId,
     ]);
 
@@ -8268,16 +8261,12 @@ export default function PreviewPage(): JSX.Element {
         if (!EARLY_GENERATION_PAYWALL_ENABLED || !signupPaywallRequested || !user?.uid) return;
         if (loading || userTier === "unknown") return;
 
-        const hasTrialOrPaidAccess =
-            stripeStatus === "trialing" ||
-            userTier === "pro" ||
-            userTier === "agency" ||
-            userTier === "enterprise";
+        const hasTrialOrPaidAccess = hasSubscriptionAccess(billingState);
         if (hasTrialOrPaidAccess || signupPaywallShownRef.current) return;
 
         signupPaywallShownRef.current = true;
         setShowCreditsPaywall("early_generation");
-    }, [loading, signupPaywallRequested, stripeStatus, user?.uid, userTier]);
+    }, [billingState, loading, signupPaywallRequested, user?.uid, userTier]);
 
     const startNextJsAppBuilder = useCallback(async (url: string) => {
         await handleCreateApp("url", undefined, url, {
@@ -8337,11 +8326,7 @@ export default function PreviewPage(): JSX.Element {
         async (raw: string) => {
             const normalized = validateAndNormalizePublicHttpUrl(raw || "");
             const forceEarlyPaywall = isAdmin && devEarlyGenerationPaywallEnabled;
-            const hasTrialOrPaidAccess =
-                stripeStatus === "trialing" ||
-                userTier === "pro" ||
-                userTier === "agency" ||
-                userTier === "enterprise";
+            const hasTrialOrPaidAccess = hasSubscriptionAccess(billingState);
             if (
                 normalized &&
                 (forceEarlyPaywall || (EARLY_GENERATION_PAYWALL_ENABLED && !hasTrialOrPaidAccess))
@@ -8386,7 +8371,7 @@ export default function PreviewPage(): JSX.Element {
                 },
             });
         },
-        [canUseScreenshotCredit, canUsePreviewCredit, devEarlyGenerationPaywallEnabled, fetch, isDev, isAdmin, push, setErr, setInfo, setPendingDraftApps, setDraftApps, setShowCreditsPaywall, setWebsiteSubmissionPendingUrl, setUrlProcessingHandoff, stripeStatus, userTier]
+        [billingState, canUseScreenshotCredit, canUsePreviewCredit, devEarlyGenerationPaywallEnabled, fetch, isDev, isAdmin, push, setErr, setInfo, setPendingDraftApps, setDraftApps, setShowCreditsPaywall, setWebsiteSubmissionPendingUrl, setUrlProcessingHandoff, stripeStatus, userTier]
     );
 
     const submitMiniUrlWithDuplicateConfirm = useCallback(
@@ -8433,11 +8418,7 @@ export default function PreviewPage(): JSX.Element {
             return;
         }
 
-        const hasTrialOrPaidAccess =
-            stripeStatus === "trialing" ||
-            userTier === "pro" ||
-            userTier === "agency" ||
-            userTier === "enterprise";
+        const hasTrialOrPaidAccess = hasSubscriptionAccess(billingState);
         if ((isAdmin && devEarlyGenerationPaywallEnabled) || (EARLY_GENERATION_PAYWALL_ENABLED && !hasTrialOrPaidAccess)) {
             setShowCreditsPaywall("early_generation");
             return;
@@ -8953,7 +8934,7 @@ export default function PreviewPage(): JSX.Element {
             setInfo((current) => current === "Starting scan…" ? "" : current);
         }
 
-    }, [canUsePreviewCredit, db, devEarlyGenerationPaywallEnabled, handleCreateApp, isDev, isAdmin, push, refreshUserTierNow, setDraftPromotionScanByDraftId, setShowCreditsPaywall, showWebsiteExitOfferPaywall, stripeStatus, targetUrl, user?.uid, userTier]);
+    }, [billingState, canUsePreviewCredit, db, devEarlyGenerationPaywallEnabled, handleCreateApp, isDev, isAdmin, push, refreshUserTierNow, setDraftPromotionScanByDraftId, setShowCreditsPaywall, showWebsiteExitOfferPaywall, stripeStatus, targetUrl, user?.uid, userTier]);
 
     useEffect(() => {
         promoteDraftToAppRef.current = promoteDraftToApp;
@@ -9260,11 +9241,7 @@ export default function PreviewPage(): JSX.Element {
                 return false;
             }
 
-            const hasTrialOrPaidAccess =
-                stripeStatus === "trialing" ||
-                userTier === "pro" ||
-                userTier === "agency" ||
-                userTier === "enterprise";
+            const hasTrialOrPaidAccess = hasSubscriptionAccess(billingState);
             if ((isAdmin && devEarlyGenerationPaywallEnabled) || (EARLY_GENERATION_PAYWALL_ENABLED && !hasTrialOrPaidAccess)) {
                 setErr("");
                 setInfo("");
@@ -9613,6 +9590,7 @@ export default function PreviewPage(): JSX.Element {
             user,
             setShowCreditsPaywall,
             shouldSendFrontendTimeoutAlert,
+            billingState,
             stripeStatus,
             userTier,
         ],
@@ -9637,11 +9615,7 @@ export default function PreviewPage(): JSX.Element {
         if (nonRetryAutoQueue && (loading || draftAppsLoading)) return;
         if (nonRetryAutoQueue && userTier === "unknown") return;
 
-        const hasTrialOrPaidAccess =
-            stripeStatus === "trialing" ||
-            userTier === "pro" ||
-            userTier === "agency" ||
-            userTier === "enterprise";
+        const hasTrialOrPaidAccess = hasSubscriptionAccess(billingState);
         if (nonRetryAutoQueue && EARLY_GENERATION_PAYWALL_ENABLED && signupPaywallRequested && !hasTrialOrPaidAccess) {
             if (!signupPaywallShownRef.current) {
                 signupPaywallShownRef.current = true;
@@ -9704,6 +9678,7 @@ export default function PreviewPage(): JSX.Element {
         markConsumedAutoQueuedRun,
         startRequested,
         submitMiniUrl,
+        billingState,
         stripeStatus,
         signupPaywallRequested,
         targetUrl,
@@ -11863,11 +11838,7 @@ export default function PreviewPage(): JSX.Element {
             return;
         }
 
-        const hasTrialOrPaidAccess =
-            stripeStatus === "trialing" ||
-            userTier === "pro" ||
-            userTier === "agency" ||
-            userTier === "enterprise";
+        const hasTrialOrPaidAccess = hasSubscriptionAccess(billingState);
         if ((isAdmin && devEarlyGenerationPaywallEnabled) || (EARLY_GENERATION_PAYWALL_ENABLED && !hasTrialOrPaidAccess)) {
             setShowCreditsPaywall("early_generation");
             return;
@@ -12008,6 +11979,7 @@ export default function PreviewPage(): JSX.Element {
         devEarlyGenerationPaywallEnabled,
         isDev,
         isAdmin,
+        billingState,
         stripeStatus,
         userTier,
     ]);
@@ -13494,12 +13466,8 @@ export default function PreviewPage(): JSX.Element {
         !hasAnyAppDoc;
 
     const forceTrialPromptInDev = process.env.NODE_ENV !== "production";
-    const isFreeTierNotTrialing = userTier === "free" && stripeStatus !== "trialing";
-    const isPaidOrTrialingTier =
-        stripeStatus === "trialing" ||
-        userTier === "pro" ||
-        userTier === "agency" ||
-        userTier === "enterprise";
+    const isPaidOrTrialingTier = hasSubscriptionAccess(billingState);
+    const isFreeTierNotTrialing = userTier === "free" && !isPaidOrTrialingTier;
     const isTourEligible = !loading && isPaidOrTrialingTier;
     const shouldForcePreviewTourInDev = process.env.NODE_ENV !== "production";
 

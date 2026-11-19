@@ -20,8 +20,9 @@ import { bootstrapServerSession, ensureSessionAndCsrf, resetAuthClientCaches } f
 import { shouldBypassEditorNavigationGuard } from "@/lib/editorNavigation";
 import { useVercelIntegration } from "@/src/hooks/useVercelIntegration";
 import { auth, db, storage } from "@/lib/firebase";
-import { BASIC_MONTHLY_PRICE_USD, TRIAL_CTA_LABEL } from "@/src/lib/billingAccess";
+import { BASIC_MONTHLY_PRICE_USD, hasSubscriptionAccess, TRIAL_CTA_LABEL } from "@/src/lib/billingAccess";
 import { CREDIT_LIMITS, TRIAL_AI_EDIT_CHANGE_LIMIT } from "@/src/lib/credits";
+import type { UserTier } from "@/src/lib/credits";
 import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
 import { doc, onSnapshot } from "firebase/firestore";
 import { resolveStorageUrl } from "@/src/lib/renders";
@@ -1543,6 +1544,8 @@ export default function AppBuilderEditor({
     appId,
     initialAppData = null,
     billingState = "free",
+    billingAccessLoading = false,
+    billingTier,
     initialViewMode,
     onCanonicalAppIdResolved,
     onClose,
@@ -1566,6 +1569,8 @@ export default function AppBuilderEditor({
     appId: string;
     initialAppData?: AppData | null;
     billingState?: "free" | "active" | "trialing" | "trial_cancelled";
+    billingAccessLoading?: boolean;
+    billingTier?: UserTier;
     initialViewMode?: LeftViewMode;
     onCanonicalAppIdResolved?: (canonicalAppId: string) => void;
     onClose: () => void;
@@ -1592,6 +1597,7 @@ export default function AppBuilderEditor({
     agentMode?: "v2" | "v3";
 }) {
     const { user, userTier, isAdmin, loading: authLoading } = useAuth();
+    const effectiveUserTier = billingTier ?? userTier;
     const { showConfirm, showAlert, hideModal } = useModal();
     const isDeletingApp = Boolean(isDeleting);
     const onMissingAppRef = useRef(onMissingApp);
@@ -2390,8 +2396,8 @@ export default function AppBuilderEditor({
         "border-neutral-200 bg-white/85 text-gray-700 shadow-[0_1px_0_rgba(255,255,255,0.75)] hover:-translate-y-0.5 hover:border-neutral-300 hover:bg-white";
     const viewModeTabActiveClass =
         "border-[#FF8D21]/20 bg-[#FF8D21] text-white shadow-[0_14px_28px_rgba(255,141,33,0.24)]";
-    const canUsePremiumImagesTab = userTier === "pro" || userTier === "agency";
-    const shouldLockImagesTab = !authLoading && !canUsePremiumImagesTab;
+    const canUsePremiumImagesTab = effectiveUserTier === "pro" || effectiveUserTier === "agency";
+    const shouldLockImagesTab = !billingAccessLoading && !authLoading && !canUsePremiumImagesTab;
 
     useEffect(() => {
         if (typeof window === "undefined") return;
@@ -2667,13 +2673,15 @@ export default function AppBuilderEditor({
     // Dashboard billing may be fresher than the auth context (notably just
     // after checkout). An active or trialing billing state grants editor access
     // while auth claims/Firestore tier catch up.
-    const hasCurrentSubscriptionAccess = billingState === "active" || billingState === "trialing";
-    const shouldLockBuilderEditor = accessLocked || (!hasCurrentSubscriptionAccess && userTier === "free");
+    const hasCurrentSubscriptionAccess = hasSubscriptionAccess(billingState);
+    const shouldLockBuilderEditor = !billingAccessLoading &&
+        (accessLocked || (!hasCurrentSubscriptionAccess && effectiveUserTier === "free"));
     const shouldShowBuilderTrialPrompt =
         trialPromptEnabled &&
         trialPromptSessionEligible &&
         !hasCurrentSubscriptionAccess &&
-        userTier === "free" &&
+        effectiveUserTier === "free" &&
+        !billingAccessLoading &&
         !authLoading &&
         !loading &&
         isPreviewBootReady;
@@ -8355,6 +8363,9 @@ export default function AppBuilderEditor({
                                                     viewMode={viewMode}
                                                     onChangeViewMode={(mode) => { void requestViewModeChange(mode); }}
                                                     isProduction={IS_PRODUCTION}
+                                                    billingState={billingState}
+                                                    billingAccessLoading={billingAccessLoading}
+                                                    billingTier={billingTier}
                                                     onSidebarVisibilityChange={setIsCustomSidebarOpen}
                                                     sharedUiScale={customPreviewScale}
                                                     onSharedUiScaleChange={setCustomPreviewScale}
