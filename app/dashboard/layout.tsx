@@ -20,6 +20,7 @@ import {
   Home,
   LayoutTemplate,
   BookText,
+  Inbox,
   Settings as SettingsIcon,
   LogOut,
   Archive,
@@ -154,6 +155,12 @@ const BASE_NAV_SECTIONS: NavSectionConfig[] = [
         href: "/admin/support-docs",
         label: "Support docs",
         icon: BookText,
+        adminOnly: true,
+      },
+      {
+        href: "/admin/support-inbox",
+        label: "Support inbox",
+        icon: Inbox,
         adminOnly: true,
       },
       {
