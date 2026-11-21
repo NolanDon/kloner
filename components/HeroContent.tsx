@@ -65,6 +65,11 @@ export default function HeroContent({
     );
   }
 
+  const subheadText = subhead ?? "Clone a website from a URL, customize it with AI, and launch your new site.";
+  const subheadSplitAt = subheadText.indexOf(", ");
+  const subheadLead = subheadInHeading && subheadSplitAt > 0 ? subheadText.slice(0, subheadSplitAt) : subheadText;
+  const subheadTail = subheadInHeading && subheadSplitAt > 0 ? subheadText.slice(subheadSplitAt) : "";
+
   function handlePaste(e: React.ClipboardEvent<HTMLInputElement>) {
     const pasted = e.clipboardData.getData("text");
     if (!pasted) return;
@@ -89,7 +94,7 @@ export default function HeroContent({
       >
         {eyebrow ? <div className="mb-6 hidden text-sm font-semibold uppercase tracking-[0.24em] text-white/80 sm:block md:mb-8" style={{ fontFamily: "var(--font-inter), Inter, sans-serif" }}>{eyebrow}</div> : null}
         <h1
-          className={`hero-title ${displayClassName} mx-auto max-w-[1400px] whitespace-normal leading-[1.02] font-extrabold tracking-[-0.055em] text-[#fff8ed]`}
+          className={`hero-title ${displayClassName} mx-auto max-w-[1400px] whitespace-normal leading-[1.02] font-extrabold tracking-[-0.055em] text-[#fff8ed]${subheadInHeading ? " inline" : ""}`}
           style={{
             fontFamily: "var(--font-manrope), Manrope, ui-sans-serif, sans-serif",
             WebkitFontSmoothing: "antialiased",
@@ -97,20 +102,26 @@ export default function HeroContent({
             textRendering: "optimizeLegibility",
           }}
         >
-          {heading ?? <>AI Website Cloner</>}
+          {subheadInHeading ? <span className="block">{heading ?? <>AI Website Cloner</>}</span> : (heading ?? <>AI Website Cloner</>)}
           {subheadInHeading ? (
             <span
-              className="hero-subhead mx-auto mt-[clamp(1rem,2.2vh,1.75rem)] block max-w-4xl text-lg font-medium tracking-normal text-white/90 sm:text-xl md:text-2xl lg:text-[1.65rem]"
+              className="hero-subhead mx-auto mt-[clamp(1rem,2.2vh,1.75rem)] inline-block max-w-4xl text-lg font-medium tracking-normal text-white/90 sm:text-xl md:text-2xl lg:text-[1.65rem]"
               style={{ fontFamily: "var(--font-inter), Inter, sans-serif" }}
             >
-              {subhead ?? "Clone a website from a URL, customize it with AI, and launch your new site."}
+              {subheadLead}
             </span>
           ) : null}
         </h1>
-
-        {subheadInHeading ? null : (
+        {subheadInHeading ? (
+          <span
+            className="hero-subhead text-lg font-medium tracking-normal text-white/90 sm:text-xl md:text-2xl lg:text-[1.65rem]"
+            style={{ fontFamily: "var(--font-inter), Inter, sans-serif" }}
+          >
+            {subheadTail}
+          </span>
+        ) : (
           <p className="hero-subhead mx-auto mt-[clamp(1rem,2.2vh,1.75rem)] max-w-4xl text-lg font-medium text-white/90 sm:text-xl md:text-2xl lg:text-[1.65rem]">
-            {subhead ?? "Clone a website from a URL, customize it with AI, and launch your new site."}
+            {subheadText}
           </p>
         )}
 
