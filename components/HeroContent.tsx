@@ -12,11 +12,13 @@ export default function HeroContent({
   eyebrow,
   heading,
   subhead,
+  subheadInHeading,
 }: {
   displayClassName: string;
   eyebrow?: string;
   heading?: React.ReactNode;
   subhead?: string;
+  subheadInHeading?: boolean;
 }) {
   const router = useRouter();
   const [url, setUrl] = useState("");
@@ -96,11 +98,21 @@ export default function HeroContent({
           }}
         >
           {heading ?? <>AI Website Cloner</>}
+          {subheadInHeading ? (
+            <span
+              className="hero-subhead mx-auto mt-[clamp(1rem,2.2vh,1.75rem)] block max-w-4xl text-lg font-medium tracking-normal text-white/90 sm:text-xl md:text-2xl lg:text-[1.65rem]"
+              style={{ fontFamily: "var(--font-inter), Inter, sans-serif" }}
+            >
+              {subhead ?? "Clone a website from a URL, customize it with AI, and launch your new site."}
+            </span>
+          ) : null}
         </h1>
 
-        <p className="hero-subhead mx-auto mt-[clamp(1rem,2.2vh,1.75rem)] max-w-4xl text-lg font-medium text-white/90 sm:text-xl md:text-2xl lg:text-[1.65rem]">
-          {subhead ?? "Clone a website from a URL, customize it with AI, and launch your new site."}
-        </p>
+        {subheadInHeading ? null : (
+          <p className="hero-subhead mx-auto mt-[clamp(1rem,2.2vh,1.75rem)] max-w-4xl text-lg font-medium text-white/90 sm:text-xl md:text-2xl lg:text-[1.65rem]">
+            {subhead ?? "Clone a website from a URL, customize it with AI, and launch your new site."}
+          </p>
+        )}
 
         <form onSubmit={onSubmit} className="hero-url-form mx-auto mt-[clamp(1.75rem,4vh,3rem)] w-full max-w-[800px] space-y-3">
           <label htmlFor="hero-url-input" className="sr-only">

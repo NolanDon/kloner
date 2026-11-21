@@ -23,6 +23,7 @@ export default function HomeClient() {
             <main className="h-screen snap-y snap-mandatory scroll-smooth motion-reduce:snap-none motion-reduce:scroll-auto">
                 <section id="hero" className="snap-start snap-always min-h-screen flex flex-col">
                     <Hero
+                        subheadInHeading
                         eyebrow="From idea to website, faster"
                         heading={<>AI Website <span className="text-[#ff922d]" style={{ fontStyle: "oblique 6deg" }}>Cloner</span></>}
                         subhead="Clone a website from a URL, customize it with AI, and launch your new site."
