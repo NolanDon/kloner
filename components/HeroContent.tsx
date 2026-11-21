@@ -94,15 +94,31 @@ export default function HeroContent({
       >
         {eyebrow ? <div className="mb-6 hidden text-sm font-semibold uppercase tracking-[0.24em] text-white/80 sm:block md:mb-8" style={{ fontFamily: "var(--font-inter), Inter, sans-serif" }}>{eyebrow}</div> : null}
         <h1
-          className={`hero-title ${displayClassName} mx-auto max-w-[1400px] whitespace-normal leading-[1.02] font-extrabold tracking-[-0.055em] text-[#fff8ed]${subheadInHeading ? " inline" : ""}`}
-          style={{
-            fontFamily: "var(--font-manrope), Manrope, ui-sans-serif, sans-serif",
-            WebkitFontSmoothing: "antialiased",
-            MozOsxFontSmoothing: "grayscale",
-            textRendering: "optimizeLegibility",
-          }}
+          className={subheadInHeading
+            ? "inline whitespace-normal text-lg font-medium text-white/90 sm:text-xl md:text-2xl lg:text-[1.65rem]"
+            : `hero-title ${displayClassName} mx-auto max-w-[1400px] whitespace-normal leading-[1.02] font-extrabold tracking-[-0.055em] text-[#fff8ed]`}
+          style={subheadInHeading
+            ? { fontFamily: "var(--font-inter), Inter, sans-serif" }
+            : {
+                fontFamily: "var(--font-manrope), Manrope, ui-sans-serif, sans-serif",
+                WebkitFontSmoothing: "antialiased",
+                MozOsxFontSmoothing: "grayscale",
+                textRendering: "optimizeLegibility",
+              }}
         >
-          {subheadInHeading ? <span className="block">{heading ?? <>AI Website Cloner</>}</span> : (heading ?? <>AI Website Cloner</>)}
+          {subheadInHeading ? (
+            <span
+              className={`hero-title ${displayClassName} block leading-[1.02] font-extrabold tracking-[-0.055em] text-[#fff8ed]`}
+              style={{
+                fontFamily: "var(--font-manrope), Manrope, ui-sans-serif, sans-serif",
+                WebkitFontSmoothing: "antialiased",
+                MozOsxFontSmoothing: "grayscale",
+                textRendering: "optimizeLegibility",
+              }}
+            >
+              {heading ?? <>AI Website Cloner</>}
+            </span>
+          ) : (heading ?? <>AI Website Cloner</>)}
           {subheadInHeading ? (
             <span
               className="hero-subhead mx-auto mt-[clamp(1rem,2.2vh,1.75rem)] inline-block max-w-4xl text-lg font-medium tracking-normal text-white/90 sm:text-xl md:text-2xl lg:text-[1.65rem]"
