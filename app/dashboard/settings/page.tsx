@@ -321,14 +321,6 @@ export default function SettingsPage(): JSX.Element {
     string | null
   >(null);
 
-  const [accountActionBusy, setAccountActionBusy] = useState(false);
-  const [accountActionError, setAccountActionError] = useState<string | null>(
-    null,
-  );
-  const [accountActionSuccess, setAccountActionSuccess] = useState<
-    string | null
-  >(null);
-
   const [vercelBlobTokenDraft, setVercelBlobTokenDraft] = useState("");
   const [vercelBlobTokenBusy, setVercelBlobTokenBusy] = useState(false);
   const [vercelBlobTokenError, setVercelBlobTokenError] = useState<
@@ -967,44 +959,6 @@ export default function SettingsPage(): JSX.Element {
       setDeleteDeploymentError(err?.message || "Delete failed.");
     } finally {
       setDeleteDeploymentBusy(false);
-    }
-  }
-
-  async function handleExportAccountData() {
-    setAccountActionError(null);
-    setAccountActionSuccess(null);
-
-    setAccountActionBusy(true);
-    try {
-      const csrf = await ensureSessionAndCsrf();
-      const res = await fetch("/api/me", {
-        method: "GET",
-        credentials: "include",
-        headers: {
-          ...(csrf ? { "x-csrf": csrf } : {}),
-        },
-      });
-
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data?.error || `Export failed (HTTP ${res.status})`);
-      }
-
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `kloner-export-${user?.uid || "account"}.json`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-
-      setAccountActionSuccess("Your data export is downloading.");
-    } catch (err: any) {
-      setAccountActionError(err?.message || "Export failed.");
-    } finally {
-      setAccountActionBusy(false);
     }
   }
 
@@ -1905,24 +1859,10 @@ export default function SettingsPage(): JSX.Element {
 
             <SettingsSection
               title="Account and data"
-              subtitle="Export your data or contact support to request account closure or data deletion."
+              subtitle="Contact support to request account closure or data deletion."
               icon={<ArchiveRestore className="h-4 w-4" />}
             >
               <div className="space-y-3">
-                <div className="flex flex-wrap items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => void handleExportAccountData()}
-                    disabled={accountActionBusy}
-                    className={btnClass({
-                      kind: "soft",
-                      disabled: accountActionBusy,
-                    })}
-                  >
-                    Export my data
-                  </button>
-                </div>
-
                 <div className="flex flex-wrap items-center gap-2">
                   <a
                     href="mailto:support@kloner.app?subject=Kloner%20account%20closure%20or%20data%20deletion%20request"
@@ -1934,15 +1874,6 @@ export default function SettingsPage(): JSX.Element {
                     support@kloner.app
                   </span>
                 </div>
-
-                {accountActionError && (
-                  <p className="text-xs text-red-600">{accountActionError}</p>
-                )}
-                {accountActionSuccess && (
-                  <p className="text-xs text-emerald-600">
-                    {accountActionSuccess}
-                  </p>
-                )}
               </div>
             </SettingsSection>
 
