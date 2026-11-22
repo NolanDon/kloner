@@ -183,6 +183,22 @@ async function sendCancellationFeedbackEmail(args: {
         }
 }
 
+async function alertCancellationFailure(uid: string, status: number, message: string, extra?: Record<string, unknown>) {
+    await captureCriticalEvent({
+        source: "vercel",
+        severity: "critical",
+        alwaysNotifySlack: true,
+        statusCode: status,
+        route: "/api/billing/cancel-subscription",
+        method: "POST",
+        action: "billing.cancelSubscription.failed",
+        service: "billing-subscription",
+        userId: uid,
+        message,
+        extra,
+    });
+}
+
 async function handler(req: NextRequest, uid: string) {
     const body = (await req.json().catch(() => ({}))) as {
         atPeriodEnd?: boolean;
@@ -204,6 +220,7 @@ async function handler(req: NextRequest, uid: string) {
 
     const subId = await getSubscriptionIdForUid(uid);
     if (!subId) {
+        await alertCancellationFailure(uid, 400, "Cancellation failed: no Stripe subscription linked to this account.", { atPeriodEnd });
         return NextResponse.json(
             { ok: false, error: "No Stripe subscription linked to this account." },
             { status: 400 },
@@ -214,6 +231,7 @@ async function handler(req: NextRequest, uid: string) {
 
     const retentionCoupon = retentionOfferRequested ? retentionCouponId() : "";
     if (retentionOfferRequested && !retentionCoupon) {
+        await alertCancellationFailure(uid, 503, "Cancellation failed: the retention offer is not configured yet.", { subId });
         return NextResponse.json(
             { ok: false, error: "The retention offer is not configured yet." },
             { status: 503 },
@@ -224,12 +242,14 @@ async function handler(req: NextRequest, uid: string) {
         try {
             const coupon = await stripe.coupons.retrieve(retentionCoupon);
             if (coupon.percent_off !== 40 || coupon.duration !== "once") {
+                await alertCancellationFailure(uid, 503, "Cancellation failed: the retention coupon must be a one-time 40% Stripe coupon.", { subId });
                 return NextResponse.json(
                     { ok: false, error: "The retention coupon must be a one-time 40% Stripe coupon." },
                     { status: 503 },
                 );
             }
         } catch {
+            await alertCancellationFailure(uid, 503, "Cancellation failed: the retention coupon could not be found in Stripe.", { subId });
             return NextResponse.json(
                 { ok: false, error: "The retention coupon could not be found in Stripe." },
                 { status: 503 },
@@ -264,6 +284,7 @@ async function handler(req: NextRequest, uid: string) {
                 );
             }
         } catch {
+            await alertCancellationFailure(uid, 503, "Cancellation failed: unable to verify retention-offer eligibility.", { subId });
             return NextResponse.json(
                 { ok: false, error: "Unable to verify retention-offer eligibility." },
                 { status: 503 },

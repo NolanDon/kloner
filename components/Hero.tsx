@@ -1,7 +1,7 @@
 import Image from "next/image";
 import HeroContent from "./HeroContent";
 
-export default function Hero({ eyebrow, heading, subhead }: { eyebrow?: string; heading?: React.ReactNode; subhead?: string } = {}) {
+export default function Hero({ eyebrow, heading, subhead, subheadInHeading }: { eyebrow?: string; heading?: React.ReactNode; subhead?: string; subheadInHeading?: boolean } = {}) {
   return (
     <section
       className="relative overflow-hidden bg-[#241b18]"
@@ -31,7 +31,7 @@ export default function Hero({ eyebrow, heading, subhead }: { eyebrow?: string; 
             <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(18,15,14,0.28)_0%,rgba(18,15,14,0.04)_48%,rgba(18,15,14,0.3)_100%)]" />
           </div>
 
-          <HeroContent displayClassName="tracking-tight" eyebrow={eyebrow} heading={heading} subhead={subhead} />
+          <HeroContent displayClassName="tracking-tight" eyebrow={eyebrow} heading={heading} subhead={subhead} subheadInHeading={subheadInHeading} />
         </div>
       </div>
     </section>

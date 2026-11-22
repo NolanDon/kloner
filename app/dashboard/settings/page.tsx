@@ -282,6 +282,7 @@ export default function SettingsPage(): JSX.Element {
 
   const [cancelBusy, setCancelBusy] = useState(false);
   const [retentionOfferBusy, setRetentionOfferBusy] = useState(false);
+  const [offerBusyLabel, setOfferBusyLabel] = useState("Working on it…");
   const [retentionOfferChecking, setRetentionOfferChecking] = useState(false);
   const [showRetentionOffer, setShowRetentionOffer] = useState(false);
   const [retentionOfferError, setRetentionOfferError] = useState<string | null>(null);
@@ -986,6 +987,7 @@ export default function SettingsPage(): JSX.Element {
     if (cancelBusy || retentionOfferChecking) return;
     const reason = cancelReason.trim();
     const feedback = cancelFeedback.trim();
+    const fromRetentionOffer = showRetentionOffer;
 
     if (!options?.skipRetentionOffer && !options?.acceptRetentionOffer) {
       setRetentionOfferError(null);
@@ -1045,7 +1047,13 @@ export default function SettingsPage(): JSX.Element {
       if (!res.ok || !data?.ok) {
         const message = data?.error || `Cancel failed (HTTP ${res.status})`;
         if (options?.acceptRetentionOffer) setRetentionOfferError(message);
-        else setCancelError(message);
+        else {
+          setCancelError(message);
+          if (fromRetentionOffer) {
+            setShowRetentionOffer(false);
+            setShowCancelFeedbackPopup(false);
+          }
+        }
         return;
       }
 
@@ -1054,25 +1062,34 @@ export default function SettingsPage(): JSX.Element {
         const failed = Number(access?.failed || 0);
         if (access?.status !== "queued" && failed > 0) {
           setCancelError(`Cancellation succeeded, but ${failed || "some"} project pause operation${failed === 1 ? "" : "s"} failed. Please try again or contact support.`);
+          if (fromRetentionOffer) {
+            setShowRetentionOffer(false);
+            setShowCancelFeedbackPopup(false);
+          }
           return;
         }
       }
 
-      setCancelSuccess(
-        options?.acceptRetentionOffer
-          ? "You’re staying with Kloner. Your 40% discount will apply to your next invoice."
-          : onTrial
+      const successMessage = options?.acceptRetentionOffer
+        ? "You’re staying with Kloner. Your 40% discount will apply to your next invoice."
+        : onTrial
           ? "Cancellation scheduled. Trial access is revoked immediately and website generation is disabled."
-          : "Cancellation scheduled. You’ll keep access until the end date.",
-      );
+          : "Cancellation scheduled. You’ll keep access until the end date.";
       setCancelReason("");
       setCancelFeedback("");
-      setShowRetentionOffer(false);
+      // Refresh first: loadTier clears the banner states, so the result
+      // message has to be set after it or it is wiped before it is seen.
       await loadTier();
+      setCancelSuccess(successMessage);
+      setShowRetentionOffer(false);
       setShowCancelFeedbackPopup(false);
     } catch (err: any) {
       console.error("Cancel subscription error", err);
       setCancelError(err?.message || "Cancel failed.");
+      if (fromRetentionOffer && !options?.acceptRetentionOffer) {
+        setShowRetentionOffer(false);
+        setShowCancelFeedbackPopup(false);
+      }
     } finally {
       setCancelBusy(false);
     }
@@ -1109,10 +1126,12 @@ export default function SettingsPage(): JSX.Element {
         return;
       }
 
+      // Refresh first: loadTier clears the banner states, so the result
+      // message has to be set after it or it is wiped before it is seen.
+      await loadTier();
       setRenewSuccess(
         "Cancellation removed. Subscription will continue normally.",
       );
-      await loadTier();
     } catch (err: any) {
       console.error("Renew subscription error", err);
       setRenewError(err?.message || "Renew failed.");
@@ -2261,15 +2280,23 @@ export default function SettingsPage(): JSX.Element {
                       </div>
                     </div>
                   </div>
-                  {retentionOfferError && (
-                    <p className="mt-3 text-xs text-red-600">{retentionOfferError}</p>
-                  )}
-                  <div className="mt-5 flex flex-col gap-2">
+                  {retentionOfferBusy ? (
+                    <div className="mt-5 flex flex-col items-center gap-3 py-3" role="status" aria-live="polite">
+                      <Loader2 className="h-8 w-8 animate-spin text-accent" />
+                      <p className="text-sm text-neutral-600">{offerBusyLabel}</p>
+                    </div>
+                  ) : (
+                    <>
+                      {retentionOfferError && (
+                        <p className="mt-3 text-xs text-red-600">{retentionOfferError}</p>
+                      )}
+                      <div className="mt-5 flex flex-col gap-2">
                     <button
                       type="button"
                       disabled={retentionOfferBusy}
                       onClick={async () => {
                         setRetentionOfferBusy(true);
+                        setOfferBusyLabel("Applying your discount…");
                         setRetentionOfferError(null);
                         try {
                           await handleCancelSubscription({ acceptRetentionOffer: true });
@@ -2289,6 +2316,7 @@ export default function SettingsPage(): JSX.Element {
                       disabled={retentionOfferBusy || cancelBusy}
                       onClick={async () => {
                         setRetentionOfferBusy(true);
+                        setOfferBusyLabel("Cancelling your subscription…");
                         setRetentionOfferError(null);
                         try {
                           await handleCancelSubscription({ skipRetentionOffer: true });
@@ -2303,7 +2331,9 @@ export default function SettingsPage(): JSX.Element {
                       {retentionOfferBusy ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> : null}
                       {retentionOfferBusy ? "Cancelling…" : "No thanks, continue cancelling"}
                     </button>
-                  </div>
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
             )}
