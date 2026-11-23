@@ -214,21 +214,21 @@ export default function TopupClient(): JSX.Element {
 
                     <section className="mx-auto max-w-4xl rounded-[30px] border border-neutral-200 bg-white p-6 shadow-sm sm:p-8">
                         <div className="grid gap-6 lg:grid-cols-[minmax(0,1.2fr)_minmax(280px,0.8fr)]">
-                            <div className="rounded-2xl border border-neutral-200 bg-neutral-50/80 p-5">
-                                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-neutral-500">
+            <div className="rounded-2xl border border-neutral-700 bg-[#292724] p-5">
+                                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-neutral-400">
                                     Amount
                                 </p>
-                                <h2 className="mt-1 text-lg font-semibold tracking-tight text-neutral-900">
+                                <h2 className="mt-1 text-lg font-semibold tracking-tight text-neutral-100">
                                     Choose a top-up amount
                                 </h2>
 
                                 {topupChoices.length ? (
                                     <div className="mt-4">
-                                        <label className="block text-[11px] font-semibold text-neutral-700">Top up amount</label>
+                                        <label className="block text-[11px] font-semibold text-neutral-300">Top up amount</label>
                                         <select
                                             value={selectedTopupId}
                                             onChange={(e) => setSelectedTopupId(e.target.value)}
-                                            className="mt-2 w-full rounded-xl border border-neutral-200 bg-white px-3 py-3 text-sm font-semibold text-neutral-900 focus:outline-none focus:ring-2 focus:ring-black/5"
+                                            className="mt-2 w-full rounded-xl border border-neutral-600 bg-[#34312e] px-3 py-3 text-sm font-semibold text-neutral-100 focus:outline-none focus:ring-2 focus:ring-white/10"
                                         >
                                             {topupChoices.map((choice) => (
                                                 <option key={choice.value} value={choice.value} disabled={choice.disabled}>
@@ -241,7 +241,7 @@ export default function TopupClient(): JSX.Element {
 
                                 {selectedTopupId === "custom" ? (
                                     <div className="mt-4">
-                                        <label className="block text-[11px] font-semibold text-neutral-700">Custom credits</label>
+                                        <label className="block text-[11px] font-semibold text-neutral-300">Custom credits</label>
                                         <input
                                             type="number"
                                             min={topupConfig?.minCredits ?? 50}
@@ -249,16 +249,16 @@ export default function TopupClient(): JSX.Element {
                                             step={topupConfig?.stepCredits ?? 50}
                                             value={customCredits}
                                             onChange={(e) => setCustomCredits(Number(e.target.value))}
-                                            className="mt-2 w-full rounded-xl border border-neutral-200 bg-white px-3 py-3 text-sm font-semibold text-neutral-900 focus:outline-none focus:ring-2 focus:ring-black/5"
+                                            className="mt-2 w-full rounded-xl border border-neutral-600 bg-[#34312e] px-3 py-3 text-sm font-semibold text-neutral-100 focus:outline-none focus:ring-2 focus:ring-white/10"
                                         />
-                                        <p className="mt-2 text-[11px] text-neutral-600">
+                                        <p className="mt-2 text-[11px] text-neutral-400">
                                             Pick between {topupConfig?.minCredits ?? 50} and {topupConfig?.maxCredits ?? 5000} credits.
                                         </p>
                                     </div>
                                 ) : null}
 
                                 <div className="mt-4">
-                                    <ul className="space-y-2 text-[12px] text-neutral-700">
+                                    <ul className="space-y-2 text-[12px] text-neutral-300">
                                         <Bullet>Top-ups never expire</Bullet>
                                         <Bullet>Applied to your account immediately after Stripe confirms</Bullet>
                                     </ul>
