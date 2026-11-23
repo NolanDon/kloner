@@ -9,7 +9,7 @@ export const runtime = "nodejs";
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || "";
 const geminiClient = GEMINI_API_KEY ? new GoogleGenerativeAI(GEMINI_API_KEY) : null;
-const GEMINI_EMBEDDING_MODEL = "gemini-embedding-2";
+const GEMINI_EMBEDDING_MODEL = "gemini-embedding-001";
 const SUPPORT_DOCS_COLLECTION = "support_doc";
 
 export async function POST(req: NextRequest) {
