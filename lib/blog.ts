@@ -1271,7 +1271,7 @@ Tools in this category start from different places, and the starting point decid
 | --- | --- | --- | --- | --- |
 | Starts from | A live website URL | Figma designs and prompts | Text prompts | A live URL, through a Chrome extension |
 | Free preview of your clone | Yes (limited), no card needed | No, it does not clone live sites | No, it does not clone live sites | Yes |
-| Multi-page and interaction capture | One page at a time | No | No | Yes |
+| Multi-page and interaction capture | Yes, multi-page crawl | No | No | Yes |
 | Downloadable code | Yes, on paid plans | Yes, HTML and React export | Design files for handoff | Yes |
 | Editing after capture | Visual editor and an AI agent | Design editor | Prompt editing | Limited editing |
 
