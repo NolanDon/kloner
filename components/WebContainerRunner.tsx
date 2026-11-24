@@ -3555,18 +3555,34 @@ export default function NavBar() {
         }
 
         // Ensure app scope cookie exists before privileged app-builder APIs.
-        const ensureAppScopeCookie = async () => {
+        // Returns the scope endpoint's HTTP status (null on network failure) so
+        // callers can tell "app does not exist" (404) apart from a warm cookie.
+        const ensureAppScopeCookie = async (): Promise<number | null> => {
           try {
-            await fetch(`/api/app-builder/${encodeURIComponent(appId)}/scope`, {
+            const res = await fetch(`/api/app-builder/${encodeURIComponent(appId)}/scope`, {
               method: 'GET',
               credentials: 'include',
               cache: 'no-store',
             });
+            return res.status;
           } catch {
             // best-effort; request path below still handles scope retry
+            return null;
           }
         };
-        await ensureAppScopeCookie();
+        const initialScopeStatus = await ensureAppScopeCookie();
+        if (initialScopeStatus === 404) {
+          // The app record does not exist (for example a draft whose scan was
+          // stopped at the paywall before the app was ever saved). Syncing
+          // files or starting a machine for it can only fail, so stop here
+          // instead of firing privileged calls that each report an error.
+          console.warn(`[WebContainerRunner] Skipping startup: app ${appId} not found (scope 404)`);
+          setIsLoading(false);
+          setConnectingToExisting(false);
+          setCanRetry(false);
+          setError('This project could not be found. It may have been deleted, or its scan never finished saving.');
+          return;
+        }
 
         // One-time: ensure jsconfig/tsconfig exists and has compilerOptions to avoid
         // Next dev bundler crashes (baseUrl read of undefined) which breaks HMR.

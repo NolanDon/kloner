@@ -1348,6 +1348,11 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
 
     }, [appId, isSupabaseConnected, previewReady, withCsrfHeaders]);
 
+    // Set when the scope endpoint reports 404: the app record does not exist
+    // (for example a draft whose scan was stopped at the paywall before the
+    // app was ever saved). App-scoped calls for such an app can only fail.
+    const scopeAppMissingRef = useRef(false);
+
     const bootstrapAppScope = useCallback(async (): Promise<boolean> => {
         // The app-scope cookie can be missing on fresh sessions (or expire ~30 min),
         // so we (re-)issue it before calling app-scoped routes.
@@ -1358,6 +1363,11 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                 credentials: "include",
                 cache: "no-store",
             });
+            if (res.status === 404) {
+                scopeAppMissingRef.current = true;
+            } else if (res.ok) {
+                scopeAppMissingRef.current = false;
+            }
             return res.ok;
         } catch {
             return false;
@@ -1473,7 +1483,10 @@ export default function AIAgentChat({ appId, files, onFileEdit, onFilesReplace, 
                 await bootstrapAppScope().catch(() => false);
             }
 
-            if (!cancelled) setScopeWarmupComplete(true);
+            // If the app record does not exist, never mark warmup complete:
+            // the chat-history and restore-points loads gated on it would only
+            // fire app-scoped calls that fail and report errors.
+            if (!cancelled && !scopeAppMissingRef.current) setScopeWarmupComplete(true);
         };
 
         void warmScope();
