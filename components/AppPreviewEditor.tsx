@@ -889,7 +889,7 @@ import { db, storage } from "@/lib/firebase"; // or wherever your db is
 import type { User as FirebaseUser } from "firebase/auth";
 import type { RenderDoc } from "@/app/dashboard/view/DashboardView";
 import { useAuth } from "@/src/hooks/useAuth";
-import { BASIC_MONTHLY_PRICE_USD, BILLING_STARTS_TODAY_CTA, BILLING_STARTS_TODAY_NOTE, TRIAL_CTA_LABEL, viewerBillsImmediately } from "@/src/lib/billingAccess";
+import { BASIC_MONTHLY_PRICE_USD, BILLING_STARTS_TODAY_CTA, BILLING_STARTS_TODAY_NOTE, ONE_CLICK_UPGRADE_CHARGE_NOTE, TRIAL_CTA_LABEL, viewerBillsImmediately } from "@/src/lib/billingAccess";
 import type { UserTier } from "@/src/lib/credits";
 import { hasSubscriptionAccess } from "@/src/lib/billingAccess";
 import { Camera, Check, ChevronDown, ChevronLeft, ChevronRight, Code2, Eye, EyeOff, FileText, Images, Lock, Loader2, Maximize2, MessageSquare, Minimize2, Monitor, Palette, Pencil, Pipette, Redo2, Rocket, RotateCcw, RotateCw, SlidersHorizontal, Smartphone, Tablet, Trash2Icon, Undo2, X } from "lucide-react";
@@ -7204,7 +7204,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                     description={viewerBillsImmediately(billingState, hasSubscriptionHistory) ? "Publish your website live from the editor. Upgrade to unlock one-click deploy and higher monthly credits. Upgrading starts your paid plan and billing today." : "Publish your website live from the editor. Upgrade to unlock one-click deploy and higher monthly credits."}
                     primaryLabel={viewerBillsImmediately(billingState, hasSubscriptionHistory) ? BILLING_STARTS_TODAY_CTA : TRIAL_CTA_LABEL}
                     secondaryLabel=""
-                    footerNote={viewerBillsImmediately(billingState, hasSubscriptionHistory) ? BILLING_STARTS_TODAY_NOTE : "Cancel anytime before renewal."}
+                    footerNote={viewerBillsImmediately(billingState, hasSubscriptionHistory) ? billingState === "trialing" ? ONE_CLICK_UPGRADE_CHARGE_NOTE : BILLING_STARTS_TODAY_NOTE : "Cancel anytime before renewal."}
                 />
 
                 {exportPrompt && (

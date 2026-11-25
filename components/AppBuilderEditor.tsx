@@ -20,7 +20,7 @@ import { bootstrapServerSession, ensureSessionAndCsrf, resetAuthClientCaches } f
 import { shouldBypassEditorNavigationGuard } from "@/lib/editorNavigation";
 import { useVercelIntegration } from "@/src/hooks/useVercelIntegration";
 import { auth, db, storage } from "@/lib/firebase";
-import { BASIC_MONTHLY_PRICE_USD, BILLING_STARTS_TODAY_CTA, BILLING_STARTS_TODAY_NOTE, hasSubscriptionAccess, TRIAL_CTA_LABEL, viewerBillsImmediately } from "@/src/lib/billingAccess";
+import { BASIC_MONTHLY_PRICE_USD, BILLING_STARTS_TODAY_CTA, BILLING_STARTS_TODAY_NOTE, hasSubscriptionAccess, ONE_CLICK_UPGRADE_CHARGE_NOTE, TRIAL_CTA_LABEL, viewerBillsImmediately } from "@/src/lib/billingAccess";
 import { CREDIT_LIMITS, TRIAL_AI_EDIT_CHANGE_LIMIT } from "@/src/lib/credits";
 import type { UserTier } from "@/src/lib/credits";
 import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
@@ -245,7 +245,7 @@ const TRIAL_AI_CREDITS_PAYWALL_COPY: UpgradePaywallCopy = {
         "Priority rendering and faster queues",
     ],
     primaryLabel: "Upgrade now — billing starts today",
-    footerNote: "Upgrade to keep using Kloner during your trial.",
+    footerNote: ONE_CLICK_UPGRADE_CHARGE_NOTE,
 };
 
 type PreviewMode = "webcontainer" | "vercel";
@@ -9069,7 +9069,7 @@ export default function AppBuilderEditor({
                     description={upgradePaywallCopy.description}
                     benefits={upgradePaywallCopy.benefits}
                     primaryLabel={upgradePaywallCopy.primaryLabel}
-                    footerNote={upgradePaywallCopy.footerNote}
+                    footerNote={billingState === "trialing" ? ONE_CLICK_UPGRADE_CHARGE_NOTE : upgradePaywallCopy.footerNote}
                 />
 
                 {vercelConnectOpen && (

@@ -128,7 +128,7 @@ import { extractArchivedPageIdsFromRender, fetchRenderForDeployment, getArchived
 import { useModal } from "@/components/ui/ModalContext";
 import AppBuilderEditor from "@/components/AppBuilderEditorRouted";
 import WebsitePrePaywall from "@/components/WebsitePrePaywall";
-import { BILLING_STARTS_TODAY_CTA, BILLING_STARTS_TODAY_NOTE, EARLY_GENERATION_PAYWALL_ENABLED, hasSubscriptionAccess, STRIPE_TRIAL_DAYS, TRIAL_CTA_LABEL, viewerBillsImmediately } from "@/src/lib/billingAccess";
+import { BILLING_STARTS_TODAY_CTA, BILLING_STARTS_TODAY_NOTE, EARLY_GENERATION_PAYWALL_ENABLED, hasSubscriptionAccess, ONE_CLICK_UPGRADE_CHARGE_NOTE, STRIPE_TRIAL_DAYS, TRIAL_CTA_LABEL, viewerBillsImmediately } from "@/src/lib/billingAccess";
 import { getPublicHttpUrlRejectionReason, validateAndNormalizePublicHttpUrl } from "@/src/lib/publicHttpUrl";
 import { recordDeployAnalytics } from "@/components/analytics";
 
@@ -15210,7 +15210,7 @@ export default function PreviewPage(): JSX.Element {
                                                 description="Deployment requires an active paid subscription and is not included in the free trial. Upgrading starts your paid plan and billing immediately."
                                                 primaryLabel="Upgrade now — billing starts today"
                                                 secondaryLabel={undefined}
-                                                footerNote="Deployment unlocks with an active paid subscription."
+                                                footerNote={billingState === "trialing" ? ONE_CLICK_UPGRADE_CHARGE_NOTE : "Deployment unlocks with an active paid subscription."}
                                             />
                                         ) : null}
 
@@ -15418,7 +15418,7 @@ export default function PreviewPage(): JSX.Element {
                                         </motion.button>
 
                                         <p className="mt-3 text-center text-[11px] text-neutral-500">
-                                            Cancel anytime before renewal.
+                                            {billingState === "trialing" ? ONE_CLICK_UPGRADE_CHARGE_NOTE : "Cancel anytime before renewal."}
                                         </p>
                                     </div>
 
@@ -15922,7 +15922,7 @@ export default function PreviewPage(): JSX.Element {
                                                                 </motion.button>
 
                                                                 <p className="mt-3 text-center text-[11px] text-neutral-500">
-                                                                    {!billingResolved ? "\u00A0" : viewerBillsImmediately(billingState, hasSubscriptionHistory) ? "Billed immediately. Cancel anytime before renewal." : `Free for ${STRIPE_TRIAL_DAYS} days, then billed monthly. Cancel anytime before renewal.`}
+                                                                    {!billingResolved ? "\u00A0" : billingState === "trialing" ? ONE_CLICK_UPGRADE_CHARGE_NOTE : viewerBillsImmediately(billingState, hasSubscriptionHistory) ? "Billed immediately. Cancel anytime before renewal." : `Free for ${STRIPE_TRIAL_DAYS} days, then billed monthly. Cancel anytime before renewal.`}
                                                                 </p>
                                                             </div>
                                                         </div>
@@ -16080,7 +16080,7 @@ export default function PreviewPage(): JSX.Element {
                                                                             </motion.button>
 
                                                                             <p className="mt-3 text-center text-[11px] text-neutral-500">
-                                                                                Billed immediately. 40% off applies to your first month.
+                                                                                {billingState === "trialing" ? ONE_CLICK_UPGRADE_CHARGE_NOTE : "Billed immediately. 40% off applies to your first month."}
                                                                             </p>
                                                                         </div>
 
@@ -16322,7 +16322,7 @@ export default function PreviewPage(): JSX.Element {
                             primaryLabel={showCreditsPaywall === "deploy" || showCreditsPaywall === "trial_snapshot" || showCreditsPaywall === "trial_ai" || viewerBillsImmediately(billingState, hasSubscriptionHistory) ? BILLING_STARTS_TODAY_CTA : TRIAL_CTA_LABEL}
                             billingStartsToday={viewerBillsImmediately(billingState, hasSubscriptionHistory)}
                             billingPending={!billingResolved}
-                            footerNote={showCreditsPaywall === "deploy" ? "Deployment unlocks with an active paid subscription." : showCreditsPaywall === "trial_snapshot" || showCreditsPaywall === "trial_ai" ? "Upgrade to continue using Kloner during your trial." : viewerBillsImmediately(billingState, hasSubscriptionHistory) ? BILLING_STARTS_TODAY_NOTE : "Cancel anytime before renewal."}
+                            footerNote={showCreditsPaywall === "deploy" ? billingState === "trialing" ? ONE_CLICK_UPGRADE_CHARGE_NOTE : "Deployment unlocks with an active paid subscription." : showCreditsPaywall === "trial_snapshot" || showCreditsPaywall === "trial_ai" ? ONE_CLICK_UPGRADE_CHARGE_NOTE : viewerBillsImmediately(billingState, hasSubscriptionHistory) ? BILLING_STARTS_TODAY_NOTE : "Cancel anytime before renewal."}
                             zIndexClassName="z-[12049]"
                         />
                     )

@@ -70,3 +70,9 @@ export const FREE_EDIT_MONTHLY_CREDITS = Math.max(
     0,
     readIntEnv(process.env.NEXT_PUBLIC_FREE_EDIT_CREDITS, 2),
 );
+
+/**
+ * Statement for one-click upgrade paywalls: the click itself charges the
+ * card on file and upgrades the account, with the amount spelled out.
+ */
+export const ONE_CLICK_UPGRADE_CHARGE_NOTE = `Clicking upgrade charges $${BASIC_MONTHLY_PRICE_USD.toFixed(2)} to your card on file right away and upgrades your account immediately. Cancel anytime.`;

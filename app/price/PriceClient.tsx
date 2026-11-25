@@ -9,7 +9,7 @@ import BillingBanner from "@/components/BillingBanner";
 import { useModal } from "@/components/ui/ModalContext";
 import { useAuth } from "@/src/hooks/useAuth";
 import { useAppActivityHeartbeat } from "@/src/hooks/useAppActivityHeartbeat";
-import { BASIC_MONTHLY_PRICE_USD, BILLING_STARTS_TODAY_CTA, STRIPE_TRIAL_DAYS, TRIAL_CTA_LABEL, viewerBillsImmediately } from "@/src/lib/billingAccess";
+import { BASIC_MONTHLY_PRICE_USD, BILLING_STARTS_TODAY_CTA, ONE_CLICK_UPGRADE_CHARGE_NOTE, STRIPE_TRIAL_DAYS, TRIAL_CTA_LABEL, viewerBillsImmediately } from "@/src/lib/billingAccess";
 import { Loader2 } from "lucide-react";
 import SuccessConfetti from "@/components/tools/SuccessConfetti";
 
@@ -556,9 +556,11 @@ export default function PriceClient(): JSX.Element {
                                             {isPro
                                                 ? !billingResolved
                                                     ? "\u00A0"
-                                                    : viewerBilledToday || !TRIAL_ENABLED
-                                                        ? "Billed immediately. Cancel anytime."
-                                                        : `Free for ${STRIPE_TRIAL_DAYS} days, then billed monthly. Cancel anytime.`
+                                                    : billingState === "trialing"
+                                                        ? ONE_CLICK_UPGRADE_CHARGE_NOTE
+                                                        : viewerBilledToday || !TRIAL_ENABLED
+                                                            ? "Billed immediately. Cancel anytime."
+                                                            : `Free for ${STRIPE_TRIAL_DAYS} days, then billed monthly. Cancel anytime.`
                                                 : isAgency
                                                     ? "Starts immediately. Cancel anytime."
                                                     : "Start cloning immediately. Upgrade when you hit limits."}
