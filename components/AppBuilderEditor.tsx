@@ -20,7 +20,7 @@ import { bootstrapServerSession, ensureSessionAndCsrf, resetAuthClientCaches } f
 import { shouldBypassEditorNavigationGuard } from "@/lib/editorNavigation";
 import { useVercelIntegration } from "@/src/hooks/useVercelIntegration";
 import { auth, db, storage } from "@/lib/firebase";
-import { BASIC_MONTHLY_PRICE_USD, hasSubscriptionAccess, TRIAL_CTA_LABEL } from "@/src/lib/billingAccess";
+import { BASIC_MONTHLY_PRICE_USD, BILLING_STARTS_TODAY_CTA, BILLING_STARTS_TODAY_NOTE, hasSubscriptionAccess, TRIAL_CTA_LABEL, viewerBillsImmediately } from "@/src/lib/billingAccess";
 import { CREDIT_LIMITS, TRIAL_AI_EDIT_CHANGE_LIMIT } from "@/src/lib/credits";
 import type { UserTier } from "@/src/lib/credits";
 import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
@@ -1544,6 +1544,7 @@ export default function AppBuilderEditor({
     appId,
     initialAppData = null,
     billingState = "free",
+    hasSubscriptionHistory = false,
     billingAccessLoading = false,
     billingTier,
     initialViewMode,
@@ -1569,6 +1570,7 @@ export default function AppBuilderEditor({
     appId: string;
     initialAppData?: AppData | null;
     billingState?: "free" | "active" | "trialing" | "trial_cancelled";
+    hasSubscriptionHistory?: boolean;
     billingAccessLoading?: boolean;
     billingTier?: UserTier;
     initialViewMode?: LeftViewMode;
@@ -2437,9 +2439,15 @@ export default function AppBuilderEditor({
     }, []);
 
     const openFreePlanUpgradePaywall = useCallback(() => {
-        setUpgradePaywallCopy(downloadBillingState === "trialing" ? TRIAL_AI_CREDITS_PAYWALL_COPY : FREE_PLAN_UPGRADE_PAYWALL_COPY);
+        setUpgradePaywallCopy(
+            downloadBillingState === "trialing"
+                ? TRIAL_AI_CREDITS_PAYWALL_COPY
+                : viewerBillsImmediately(downloadBillingState, hasSubscriptionHistory)
+                    ? { ...FREE_PLAN_UPGRADE_PAYWALL_COPY, primaryLabel: BILLING_STARTS_TODAY_CTA, footerNote: BILLING_STARTS_TODAY_NOTE }
+                    : FREE_PLAN_UPGRADE_PAYWALL_COPY,
+        );
         setShowDeployUpgradePaywall(true);
-    }, [downloadBillingState]);
+    }, [downloadBillingState, hasSubscriptionHistory]);
 
     const pageOptions = useMemo(() => {
         const seen = new Set<string>();
@@ -8364,6 +8372,7 @@ export default function AppBuilderEditor({
                                                     onChangeViewMode={(mode) => { void requestViewModeChange(mode); }}
                                                     isProduction={IS_PRODUCTION}
                                                     billingState={billingState}
+                                                    hasSubscriptionHistory={hasSubscriptionHistory}
                                                     billingAccessLoading={billingAccessLoading}
                                                     billingTier={billingTier}
                                                     onSidebarVisibilityChange={setIsCustomSidebarOpen}
@@ -9025,11 +9034,12 @@ export default function AppBuilderEditor({
                     checkoutBusy={trialCheckoutBusy || localTrialCheckoutBusy}
                     zIndexClassName="z-[9999999999]"
                     title="Your website is ready to edit"
-                    description="Start your 7-day free trial to unlock editing, customize your website, and publish when you're ready."
-                    primaryLabel="Start my 7-day free trial →"
+                    description={viewerBillsImmediately(billingState, hasSubscriptionHistory) ? "Start your paid plan to unlock editing, customize your website, and publish when you're ready. Billing starts today." : "Start your 7-day free trial to unlock editing, customize your website, and publish when you're ready."}
+                    primaryLabel={viewerBillsImmediately(billingState, hasSubscriptionHistory) ? BILLING_STARTS_TODAY_CTA : "Start my 7-day free trial →"}
                     secondaryLabel="No thanks, exit editor"
                     confirmExit
-                    footerNote={`Then $${BASIC_MONTHLY_PRICE_USD.toFixed(2)}/month. Cancel anytime.`}
+                    billingStartsToday={viewerBillsImmediately(billingState, hasSubscriptionHistory)}
+                    footerNote={viewerBillsImmediately(billingState, hasSubscriptionHistory) ? `$${BASIC_MONTHLY_PRICE_USD.toFixed(2)} billed today, then monthly. Cancel anytime.` : `Then $${BASIC_MONTHLY_PRICE_USD.toFixed(2)}/month. Cancel anytime.`}
                     dismissible={false}
                 />
 

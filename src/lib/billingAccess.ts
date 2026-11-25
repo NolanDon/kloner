@@ -27,6 +27,26 @@ export const EARLY_GENERATION_PAYWALL_ENABLED =
 export const TRIAL_CTA_LABEL =
     STRIPE_TRIAL_DAYS > 0 ? "Start for free today" : "Subscribe now";
 
+/** CTA label used whenever the viewer is billed the moment they upgrade. */
+export const BILLING_STARTS_TODAY_CTA = "Upgrade now — billing starts today";
+
+/** Small-print line paired with BILLING_STARTS_TODAY_CTA. */
+export const BILLING_STARTS_TODAY_NOTE =
+    "Upgrading starts your paid plan right away and bills you today. Cancel anytime.";
+
+/**
+ * True when a checkout started by this viewer bills immediately instead of
+ * starting a free trial: they are on a trial now, their trial is set to end,
+ * or they have any earlier subscription history. The checkout server only
+ * grants a trial to accounts with no subscription history at all, so every
+ * other viewer must be told billing starts today.
+ */
+export function viewerBillsImmediately(billingState: unknown, hasSubscriptionHistory: unknown): boolean {
+    const state = typeof billingState === "string" ? billingState.trim().toLowerCase() : "";
+    if (state === "trialing" || state === "trial_cancelled") return true;
+    return state === "free" && hasSubscriptionHistory === true;
+}
+
 /** The canonical subscription entitlement used by dashboard and editor gates. */
 export function hasSubscriptionAccess(billingState: unknown): boolean {
     const state = typeof billingState === "string" ? billingState.trim().toLowerCase() : "";

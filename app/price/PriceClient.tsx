@@ -9,7 +9,7 @@ import BillingBanner from "@/components/BillingBanner";
 import { useModal } from "@/components/ui/ModalContext";
 import { useAuth } from "@/src/hooks/useAuth";
 import { useAppActivityHeartbeat } from "@/src/hooks/useAppActivityHeartbeat";
-import { BASIC_MONTHLY_PRICE_USD, STRIPE_TRIAL_DAYS, TRIAL_CTA_LABEL } from "@/src/lib/billingAccess";
+import { BASIC_MONTHLY_PRICE_USD, BILLING_STARTS_TODAY_CTA, STRIPE_TRIAL_DAYS, TRIAL_CTA_LABEL, viewerBillsImmediately } from "@/src/lib/billingAccess";
 import { Loader2 } from "lucide-react";
 import SuccessConfetti from "@/components/tools/SuccessConfetti";
 
@@ -138,6 +138,37 @@ export default function PriceClient(): JSX.Element {
     const [topupSuccessCredits, setTopupSuccessCredits] = useState<number | null>(null);
     const { showAlert } = useModal();
     const { user, loading: authLoading } = useAuth();
+    const [billingState, setBillingState] = useState<string>("free");
+    const [hasSubscriptionHistory, setHasSubscriptionHistory] = useState(false);
+
+    // The checkout server only grants a free trial to accounts with no
+    // subscription history. Anyone else who clicks is billed immediately, so
+    // the Pro card must say so instead of promising a trial.
+    useEffect(() => {
+        if (!user?.uid) {
+            setBillingState("free");
+            setHasSubscriptionHistory(false);
+            return;
+        }
+        let cancelled = false;
+        void fetch("/api/billing/tier", { credentials: "include", cache: "no-store" })
+            .then(async (res) => {
+                if (!res.ok) return;
+                const data = await res.json().catch(() => ({}));
+                if (cancelled) return;
+                setBillingState(typeof data?.billingState === "string" ? data.billingState : "free");
+                setHasSubscriptionHistory(data?.hasSubscriptionHistory === true);
+            })
+            .catch(() => {
+                // Leave the defaults: new-visitor copy. The checkout itself
+                // still enforces the real trial rules.
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [user?.uid]);
+
+    const viewerBilledToday = viewerBillsImmediately(billingState, hasSubscriptionHistory);
     const PRICE_TOPUP_HANDLED_PREFIX = "kloner.price.topup.handled:";
 
     useAppActivityHeartbeat("price-page");
@@ -476,7 +507,7 @@ export default function PriceClient(): JSX.Element {
 
                                             {isPro ? (
                                                 <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[rgba(255,141,33,1)]">
-                                                    {TRIAL_ENABLED ? "7-day free trial" : "Billed immediately"}
+                                                    {viewerBilledToday ? "Billing starts today" : TRIAL_ENABLED ? "7-day free trial" : "Billed immediately"}
                                                 </span>
                                             ) : null}
                                         </div>
@@ -511,12 +542,14 @@ export default function PriceClient(): JSX.Element {
                                             className={"pricing-tier-button mt-5 min-h-[58px] w-full rounded-full px-6 py-4 text-base font-semibold transition " + (isAgency ? "pricing-tier-agency-button " : "") + buttonClass + (isLoading ? " opacity-70 cursor-not-allowed" : "")}
                                             style={isPro ? { backgroundColor: ACCENT } : undefined}
                                         >
-                                            {isLoading ? "Redirecting to Stripe…" : tier.cta}
+                                            {isLoading ? "Redirecting to Stripe…" : isPro && viewerBilledToday ? BILLING_STARTS_TODAY_CTA : tier.cta}
                                         </button>
 
                                         <p className="mt-3 text-[11px] text-neutral-500">
                                             {isPro
-                                                ? "Billed immediately. Cancel anytime."
+                                                ? viewerBilledToday || !TRIAL_ENABLED
+                                                    ? "Billed immediately. Cancel anytime."
+                                                    : `Free for ${STRIPE_TRIAL_DAYS} days, then billed monthly. Cancel anytime.`
                                                 : isAgency
                                                     ? "Starts immediately. Cancel anytime."
                                                     : "Start cloning immediately. Upgrade when you hit limits."}

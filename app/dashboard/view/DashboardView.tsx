@@ -128,7 +128,7 @@ import { extractArchivedPageIdsFromRender, fetchRenderForDeployment, getArchived
 import { useModal } from "@/components/ui/ModalContext";
 import AppBuilderEditor from "@/components/AppBuilderEditorRouted";
 import WebsitePrePaywall from "@/components/WebsitePrePaywall";
-import { EARLY_GENERATION_PAYWALL_ENABLED, hasSubscriptionAccess, STRIPE_TRIAL_DAYS, TRIAL_CTA_LABEL } from "@/src/lib/billingAccess";
+import { BILLING_STARTS_TODAY_CTA, BILLING_STARTS_TODAY_NOTE, EARLY_GENERATION_PAYWALL_ENABLED, hasSubscriptionAccess, STRIPE_TRIAL_DAYS, TRIAL_CTA_LABEL, viewerBillsImmediately } from "@/src/lib/billingAccess";
 import { getPublicHttpUrlRejectionReason, validateAndNormalizePublicHttpUrl } from "@/src/lib/publicHttpUrl";
 import { recordDeployAnalytics } from "@/components/analytics";
 
@@ -4215,6 +4215,7 @@ export default function PreviewPage(): JSX.Element {
     const [stripeStatus, setStripeStatus] = useState<string | null>(null);
     const [stripeCancelAtPeriodEnd, setStripeCancelAtPeriodEnd] = useState<boolean>(false);
     const [billingState, setBillingState] = useState<"free" | "active" | "trialing" | "trial_cancelled">("free");
+    const [hasSubscriptionHistory, setHasSubscriptionHistory] = useState<boolean>(false);
     const [dashboardCompactLayout, setDashboardCompactLayout] = useState<boolean>(false);
     const [showArchivedApps, setShowArchivedApps] = useState<boolean>(false);
     const workspaceAutonomyV3IsDefault =
@@ -4796,6 +4797,7 @@ export default function PreviewPage(): JSX.Element {
                         ? data.stripeStatus.trim().toLowerCase()
                         : null;
                 setBillingState(nextBillingState);
+                setHasSubscriptionHistory((data as any)?.hasSubscriptionHistory === true);
                 setStripeStatus(nextStripeStatus);
                 setStripeCancelAtPeriodEnd(!!data?.cancelAtPeriodEnd);
                 const normalized: UserTier =
@@ -5471,6 +5473,7 @@ export default function PreviewPage(): JSX.Element {
                             ? data.stripeStatus.trim().toLowerCase()
                             : null;
                     setBillingState(nextBillingState);
+                    setHasSubscriptionHistory((data as any)?.hasSubscriptionHistory === true);
                     setStripeStatus(nextStripeStatus);
                     setStripeCancelAtPeriodEnd(!!data?.cancelAtPeriodEnd);
                     if (t === "pro" || t === "agency" || t === "enterprise") {
@@ -10746,6 +10749,7 @@ export default function PreviewPage(): JSX.Element {
                             ? data.stripeStatus.trim().toLowerCase()
                             : null;
                     setBillingState(nextBillingState);
+                    setHasSubscriptionHistory((data as any)?.hasSubscriptionHistory === true);
                     setStripeStatus(nextStripeStatus);
                     setStripeCancelAtPeriodEnd(!!data?.cancelAtPeriodEnd);
 
@@ -15404,7 +15408,7 @@ export default function PreviewPage(): JSX.Element {
                                             whileTap={{ scale: 0.99 }}
                                             transition={{ duration: 0.16, ease: "easeOut" }}
                                         >
-                                            {checkoutBusy ? "Redirecting to Stripe…" : "Start your 7-day free trial & claim 40% off →"}
+                                            {checkoutBusy ? "Redirecting to Stripe…" : viewerBillsImmediately(billingState, hasSubscriptionHistory) ? "Upgrade now — billing starts today →" : "Start your 7-day free trial & claim 40% off →"}
                                         </motion.button>
 
                                         <p className="mt-3 text-center text-[11px] text-neutral-500">
@@ -15825,7 +15829,7 @@ export default function PreviewPage(): JSX.Element {
                                                         <div className="px-7 pb-6 pt-5">
                                                             {/* badge */}
                                                             <div className="inline-flex items-center rounded-full border border-neutral-200 bg-white px-3 py-1 text-[11px] font-extrabold tracking-[0.18em] text-neutral-800 uppercase">
-                                                                Start your free trial
+                                                                {viewerBillsImmediately(billingState, hasSubscriptionHistory) ? "Billing starts today" : "Start your free trial"}
                                                             </div>
 
                                                             {/* headline */}
@@ -15906,11 +15910,11 @@ export default function PreviewPage(): JSX.Element {
                                                                     whileTap={{ scale: 0.99 }}
                                                                     transition={{ duration: 0.16, ease: "easeOut" }}
                                                                 >
-                                                                    {checkoutBusy ? "Redirecting to Stripe…" : "Start your 7-day free trial & publish →"}
+                                                                    {checkoutBusy ? "Redirecting to Stripe…" : viewerBillsImmediately(billingState, hasSubscriptionHistory) ? "Upgrade now — billing starts today & publish →" : "Start your 7-day free trial & publish →"}
                                                                 </motion.button>
 
                                                                 <p className="mt-3 text-center text-[11px] text-neutral-500">
-                                                                    Billed immediately. Cancel anytime before renewal.
+                                                                    {viewerBillsImmediately(billingState, hasSubscriptionHistory) ? "Billed immediately. Cancel anytime before renewal." : `Free for ${STRIPE_TRIAL_DAYS} days, then billed monthly. Cancel anytime before renewal.`}
                                                                 </p>
                                                             </div>
                                                         </div>
@@ -16064,7 +16068,7 @@ export default function PreviewPage(): JSX.Element {
                                                                                 whileTap={{ scale: 0.99 }}
                                                                                 transition={{ duration: 0.16, ease: "easeOut" }}
                                                                             >
-                                                                                {checkoutBusy ? "Redirecting to Stripe…" : "Start Trial & Claim 40% off now →"}
+                                                                                {checkoutBusy ? "Redirecting to Stripe…" : viewerBillsImmediately(billingState, hasSubscriptionHistory) ? "Upgrade now — billing starts today →" : "Start Trial & Claim 40% off now →"}
                                                                             </motion.button>
 
                                                                             <p className="mt-3 text-center text-[11px] text-neutral-500">
@@ -16236,7 +16240,7 @@ export default function PreviewPage(): JSX.Element {
                             const isTrialLimitPaywall = showCreditsPaywall === "trial_snapshot" || showCreditsPaywall === "trial_ai";
                             void startProCheckout(showCreditsPaywall === "deploy", isTrialLimitPaywall);
                         }}
-                            showTrialChoice={showCreditsPaywall === "early_generation" && STRIPE_TRIAL_DAYS > 0}
+                            showTrialChoice={showCreditsPaywall === "early_generation" && STRIPE_TRIAL_DAYS > 0 && !viewerBillsImmediately(billingState, hasSubscriptionHistory)}
                             onTrialChoiceChange={(useTrial) => {
                                 if (useTrial) return;
                                 void sendKlonerSlackEvent("stripe_trial_option_disabled", {
@@ -16248,7 +16252,7 @@ export default function PreviewPage(): JSX.Element {
                                 const isDeploy = showCreditsPaywall === "deploy";
                                 const isEarlyPaywall = showCreditsPaywall === "early_generation";
                                 setShowCreditsPaywall(null);
-                                await startProCheckout(isDeploy, !useTrial, isEarlyPaywall ? ({ trial, requestedTrial, trialReason }) => sendKlonerSlackEvent("stripe_checkout_redirecting", {
+                                await startProCheckout(isDeploy, !useTrial || viewerBillsImmediately(billingState, hasSubscriptionHistory), isEarlyPaywall ? ({ trial, requestedTrial, trialReason }) => sendKlonerSlackEvent("stripe_checkout_redirecting", {
                                         email: user?.email,
                                         trial,
                                         requestedTrial,
@@ -16307,8 +16311,9 @@ export default function PreviewPage(): JSX.Element {
                                     ? [`${CREDIT_LIMITS.pro.screenshotMonthly / 10} website scans per month on Pro`, `${CREDIT_LIMITS.pro.editMonthly} AI edit credits each month`, "Keep using the AI agent to edit your website", "Unlock deployments and live URLs", "Download your website code"]
                                     : undefined}
                             secondaryLabel={showCreditsPaywall === "early_generation" ? "Not now — cancel scan" : undefined}
-                            primaryLabel={showCreditsPaywall === "deploy" || showCreditsPaywall === "trial_snapshot" || showCreditsPaywall === "trial_ai" ? "Upgrade now — billing starts today" : TRIAL_CTA_LABEL}
-                            footerNote={showCreditsPaywall === "deploy" ? "Deployment unlocks with an active paid subscription." : showCreditsPaywall === "trial_snapshot" || showCreditsPaywall === "trial_ai" ? "Upgrade to continue using Kloner during your trial." : "Cancel anytime before renewal."}
+                            primaryLabel={showCreditsPaywall === "deploy" || showCreditsPaywall === "trial_snapshot" || showCreditsPaywall === "trial_ai" || viewerBillsImmediately(billingState, hasSubscriptionHistory) ? BILLING_STARTS_TODAY_CTA : TRIAL_CTA_LABEL}
+                            billingStartsToday={viewerBillsImmediately(billingState, hasSubscriptionHistory)}
+                            footerNote={showCreditsPaywall === "deploy" ? "Deployment unlocks with an active paid subscription." : showCreditsPaywall === "trial_snapshot" || showCreditsPaywall === "trial_ai" ? "Upgrade to continue using Kloner during your trial." : viewerBillsImmediately(billingState, hasSubscriptionHistory) ? BILLING_STARTS_TODAY_NOTE : "Cancel anytime before renewal."}
                             zIndexClassName="z-[12049]"
                         />
                     )
@@ -16376,7 +16381,7 @@ export default function PreviewPage(): JSX.Element {
                                             className="rounded-md px-3 py-1.5 text-sm font-semibold text-white"
                                             style={{ backgroundColor: ACCENT }}
                                         >
-                                            Start your free trial
+                                            {viewerBillsImmediately(billingState, hasSubscriptionHistory) ? BILLING_STARTS_TODAY_CTA : "Start your free trial"}
                                         </button>
                                     </div>
                                 </div>

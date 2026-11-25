@@ -91,6 +91,21 @@ function getBillingState(data: any, tier: UserTier): BillingState {
     return "free";
 }
 
+/**
+ * Read-only history signal for paywall copy: true when this account has ever
+ * had a subscription or used a free trial. Checkout grants a trial only to
+ * accounts with no subscription history, so clients use this to avoid
+ * promising a trial (or "start for free") to viewers who would be billed
+ * immediately.
+ */
+function hasSubscriptionHistory(data: any): boolean {
+    if (!data || typeof data !== "object") return false;
+    if (data.freeTrialUsedAt || data.freeTrialUsed === true) return true;
+    if (typeof data.stripeSubscriptionId === "string" && data.stripeSubscriptionId.trim()) return true;
+    const status = typeof data.stripeStatus === "string" ? data.stripeStatus.trim().toLowerCase() : "";
+    return ["canceled", "cancelled", "past_due", "unpaid", "incomplete", "incomplete_expired"].includes(status);
+}
+
 function getActiveTierOverride(data: any, now: Date): UserTier | null {
     if (!data || typeof data !== "object") return null;
     const rawTier = typeof data.tierOverrideTier === "string" ? data.tierOverrideTier : "";
@@ -142,6 +157,7 @@ export async function GET(req: NextRequest) {
                             uid,
                             tier: overrideTier,
                             billingState,
+                            hasSubscriptionHistory: hasSubscriptionHistory(userData),
                             stripeStatus: userData.stripeStatus ?? null,
                             stripeSubscriptionId: userData.stripeSubscriptionId ?? null,
                             currentPeriodEnd: userData.stripeCurrentPeriodEnd ?? null,
@@ -179,6 +195,7 @@ export async function GET(req: NextRequest) {
                         uid,
                         tier: devTier,
                         billingState,
+                        hasSubscriptionHistory: hasSubscriptionHistory(userData),
                         stripeStatus: devStatus,
                         stripeSubscriptionId: devBilling.subscriptionId ?? null,
                         currentPeriodEnd: devBilling.currentPeriodEnd ?? null,
@@ -304,6 +321,7 @@ export async function GET(req: NextRequest) {
                         uid,
                         tier,
                         billingState,
+                        hasSubscriptionHistory: hasSubscriptionHistory(userData),
                         stripeStatus: userData.stripeStatus ?? null,
                         stripeSubscriptionId: userData.stripeSubscriptionId ?? null,
                         currentPeriodEnd: userData.stripeCurrentPeriodEnd ?? null,

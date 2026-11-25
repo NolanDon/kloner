@@ -65,8 +65,9 @@ export default function AppBuilderPageClient({
         loading: boolean;
         tier: UserTier;
         state: BillingState;
+        hasSubscriptionHistory: boolean;
         locked: boolean;
-    }>({ loading: true, tier: "free", state: "free", locked: false });
+    }>({ loading: true, tier: "free", state: "free", hasSubscriptionHistory: false, locked: false });
 
     useAppActivityHeartbeat("app-builder");
 
@@ -88,6 +89,7 @@ export default function AppBuilderPageClient({
                 loading: false,
                 tier: normalizeTier(data?.tier),
                 state,
+                hasSubscriptionHistory: data?.hasSubscriptionHistory === true,
                 locked: isDashboardProjectAccessLocked({
                     billingState: state,
                     stripeStatus: status,
@@ -115,6 +117,7 @@ export default function AppBuilderPageClient({
             billingAccessLoading={billingAccess.loading}
             billingTier={billingAccess.tier}
             billingState={billingAccess.state}
+            hasSubscriptionHistory={billingAccess.hasSubscriptionHistory}
             accessLocked={billingAccess.locked}
             showTour={true}
             onClose={() => {

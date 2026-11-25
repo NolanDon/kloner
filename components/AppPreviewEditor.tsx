@@ -115,6 +115,7 @@ type Props = {
     onChangeViewMode?: (mode: "ai" | "code" | "images" | "custom") => void;
     isProduction?: boolean;
     billingState?: "free" | "active" | "trialing" | "trial_cancelled";
+    hasSubscriptionHistory?: boolean;
     billingAccessLoading?: boolean;
     billingTier?: UserTier;
     appName?: string;
@@ -888,7 +889,7 @@ import { db, storage } from "@/lib/firebase"; // or wherever your db is
 import type { User as FirebaseUser } from "firebase/auth";
 import type { RenderDoc } from "@/app/dashboard/view/DashboardView";
 import { useAuth } from "@/src/hooks/useAuth";
-import { BASIC_MONTHLY_PRICE_USD, TRIAL_CTA_LABEL } from "@/src/lib/billingAccess";
+import { BASIC_MONTHLY_PRICE_USD, BILLING_STARTS_TODAY_CTA, BILLING_STARTS_TODAY_NOTE, TRIAL_CTA_LABEL, viewerBillsImmediately } from "@/src/lib/billingAccess";
 import type { UserTier } from "@/src/lib/credits";
 import { hasSubscriptionAccess } from "@/src/lib/billingAccess";
 import { Camera, Check, ChevronDown, ChevronLeft, ChevronRight, Code2, Eye, EyeOff, FileText, Images, Lock, Loader2, Maximize2, MessageSquare, Minimize2, Monitor, Palette, Pencil, Pipette, Redo2, Rocket, RotateCcw, RotateCw, SlidersHorizontal, Smartphone, Tablet, Trash2Icon, Undo2, X } from "lucide-react";
@@ -1362,6 +1363,7 @@ export function AppPreviewEditorCore({
     onChangeViewMode,
     isProduction = false,
     billingState = "free",
+    hasSubscriptionHistory = false,
     billingAccessLoading = false,
     billingTier,
     appName,
@@ -7179,11 +7181,12 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                     checkoutBusy={exporting || localTrialCheckoutBusy}
                     zIndexClassName="z-[30000]"
                     title="Your website is ready to edit"
-                    description="Start your 7-day free trial to unlock editing, customize your website, and publish when you're ready."
-                    primaryLabel="Start my 7-day free trial →"
+                    description={viewerBillsImmediately(billingState, hasSubscriptionHistory) ? "Start your paid plan to unlock editing, customize your website, and publish when you're ready. Billing starts today." : "Start your 7-day free trial to unlock editing, customize your website, and publish when you're ready."}
+                    primaryLabel={viewerBillsImmediately(billingState, hasSubscriptionHistory) ? BILLING_STARTS_TODAY_CTA : "Start my 7-day free trial →"}
                     secondaryLabel="No thanks, exit editor"
                     confirmExit
-                    footerNote={`Then $${BASIC_MONTHLY_PRICE_USD.toFixed(2)}/month. Cancel anytime.`}
+                    billingStartsToday={viewerBillsImmediately(billingState, hasSubscriptionHistory)}
+                    footerNote={viewerBillsImmediately(billingState, hasSubscriptionHistory) ? `$${BASIC_MONTHLY_PRICE_USD.toFixed(2)} billed today, then monthly. Cancel anytime.` : `Then $${BASIC_MONTHLY_PRICE_USD.toFixed(2)}/month. Cancel anytime.`}
                     dismissible={false}
                 />
 
@@ -7196,10 +7199,10 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
                     checkoutBusy={exporting || localTrialCheckoutBusy}
                     zIndexClassName="z-[30001]"
                     title="Upgrade to publish"
-                    description="Publish your website live from the editor. Upgrade to unlock one-click deploy and higher monthly credits."
-                    primaryLabel={TRIAL_CTA_LABEL}
+                    description={viewerBillsImmediately(billingState, hasSubscriptionHistory) ? "Publish your website live from the editor. Upgrade to unlock one-click deploy and higher monthly credits. Upgrading starts your paid plan and billing today." : "Publish your website live from the editor. Upgrade to unlock one-click deploy and higher monthly credits."}
+                    primaryLabel={viewerBillsImmediately(billingState, hasSubscriptionHistory) ? BILLING_STARTS_TODAY_CTA : TRIAL_CTA_LABEL}
                     secondaryLabel=""
-                    footerNote="Cancel anytime before renewal."
+                    footerNote={viewerBillsImmediately(billingState, hasSubscriptionHistory) ? BILLING_STARTS_TODAY_NOTE : "Cancel anytime before renewal."}
                 />
 
                 {exportPrompt && (
@@ -7306,6 +7309,7 @@ type AppSourcePreviewEditorProps = {
     onChangeViewMode?: (mode: "ai" | "code" | "images" | "custom") => void;
     isProduction?: boolean;
     billingState?: "free" | "active" | "trialing" | "trial_cancelled";
+    hasSubscriptionHistory?: boolean;
     billingAccessLoading?: boolean;
     billingTier?: UserTier;
     onSidebarVisibilityChange?: (open: boolean) => void;
@@ -7367,6 +7371,7 @@ export default function AppPreviewEditor({
     onChangeViewMode,
     isProduction = false,
     billingState = "free",
+    hasSubscriptionHistory = false,
     billingAccessLoading = false,
     billingTier,
     onSidebarVisibilityChange,
@@ -7632,6 +7637,7 @@ export default function AppPreviewEditor({
                     onChangeViewMode={onChangeViewMode}
                     isProduction={isProduction}
                     billingState={billingState}
+                    hasSubscriptionHistory={hasSubscriptionHistory}
                     billingAccessLoading={billingAccessLoading}
                     billingTier={billingTier}
                     onSidebarVisibilityChange={onSidebarVisibilityChange}

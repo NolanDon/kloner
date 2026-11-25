@@ -24,6 +24,7 @@ type WebsitePrePaywallProps = {
     primaryLabel?: string;
     secondaryLabel?: string;
     footerNote?: string;
+    billingStartsToday?: boolean;
     showTrialChoice?: boolean;
     onStartCheckoutWithChoice?: (useTrial: boolean) => void;
     onTrialChoiceChange?: (useTrial: boolean) => void;
@@ -68,6 +69,7 @@ export function WebsitePrePaywall({
     primaryLabel = TRIAL_CTA_LABEL,
     secondaryLabel = "No thanks, continue with limited features",
     footerNote = "Cancel anytime before renewal.",
+    billingStartsToday = false,
     showTrialChoice = false,
     onStartCheckoutWithChoice,
     onTrialChoiceChange,
@@ -178,7 +180,7 @@ export function WebsitePrePaywall({
             >
                 <h3 id={exitTitleId} className="text-2xl font-semibold">Leave your project?</h3>
                 <p id={exitDescriptionId} className="mt-3 text-base leading-relaxed text-neutral-600">
-                    Unlock your project to keep editing. {STRIPE_TRIAL_DAYS > 0 ? "You can start for free today!" : "Choose a plan to keep building."}
+                    Unlock your project to keep editing. {billingStartsToday ? "Upgrading starts your paid plan and billing today." : STRIPE_TRIAL_DAYS > 0 ? "You can start for free today!" : "Choose a plan to keep building."}
                 </p>
                 <div className="mt-7 flex flex-col gap-4">
                     <button
@@ -324,7 +326,7 @@ export function WebsitePrePaywall({
                                 ) : null}
 
                                 <p className="text-center text-[11px] text-neutral-500 sm:text-xs">
-                                    {STRIPE_TRIAL_DAYS > 0 && primaryLabel === TRIAL_CTA_LABEL && (!showTrialChoice || useTrial)
+                                    {STRIPE_TRIAL_DAYS > 0 && !billingStartsToday && primaryLabel === TRIAL_CTA_LABEL && (!showTrialChoice || useTrial)
                                         ? `${STRIPE_TRIAL_DAYS}-day free trial. `
                                         : null}
                                     {footerNote}
