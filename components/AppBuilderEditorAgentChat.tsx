@@ -7610,6 +7610,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                         <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-neutral-200 px-2 py-1 text-xs font-medium text-neutral-700 sm:hidden" aria-label={`${trialAiChangesRemaining ?? "Loading"} of ${TRIAL_AI_EDIT_CHANGE_LIMIT} AI changes remaining during trial`}>
                             <CoinLottieBadge className="h-5 w-5" />
                             <span>{trialAiChangesRemaining ?? "—"}/{TRIAL_AI_EDIT_CHANGE_LIMIT}</span>
+                            <span>tokens remaining</span>
                         </span>
                     ) : <button
                         type="button"
@@ -9148,7 +9149,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                 <div className="mb-2 hidden items-center justify-between sm:flex">
                     <div className="inline-flex items-center gap-1.5 text-[12px] text-gray-700">
                         {isTrialing ? (
-                            <><CoinLottieBadge className="h-8 w-8 shrink-0" /><span>{trialAiChangesRemaining ?? "—"}/{TRIAL_AI_EDIT_CHANGE_LIMIT}</span></>
+                            <><CoinLottieBadge className="h-8 w-8 shrink-0" /><span>{trialAiChangesRemaining ?? "—"}/{TRIAL_AI_EDIT_CHANGE_LIMIT}</span><span className="text-gray-500">tokens remaining</span></>
                         ) : <><CoinLottieBadge className="h-8 w-8 shrink-0" />{aiCreditsRemaining == null ? "Credits remaining: —" : `Credits remaining: ${aiCreditsRemaining}`}</>}
                     </div>
                     {!isTrialing ? <button
