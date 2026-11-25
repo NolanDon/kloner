@@ -7168,6 +7168,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
 
                 <WebsitePrePaywall
                     open={showAccessUpgradePaywall}
+                    billingPending={billingAccessLoading}
                     onClose={() => {
                         if (onRequestExitEditor) {
                             void onRequestExitEditor();
@@ -7192,6 +7193,7 @@ ${scoped} .kl-np-btn{display:inline-flex;align-items:center;justify-content:cent
 
                 <WebsitePrePaywall
                     open={showDeployUpgradePaywall}
+                    billingPending={billingAccessLoading}
                     onClose={() => setShowDeployUpgradePaywall(false)}
                     onStartCheckout={() => {
                         void startTrialCheckout();

@@ -25,6 +25,7 @@ type WebsitePrePaywallProps = {
     secondaryLabel?: string;
     footerNote?: string;
     billingStartsToday?: boolean;
+    billingPending?: boolean;
     showTrialChoice?: boolean;
     onStartCheckoutWithChoice?: (useTrial: boolean) => void;
     onTrialChoiceChange?: (useTrial: boolean) => void;
@@ -70,6 +71,7 @@ export function WebsitePrePaywall({
     secondaryLabel = "No thanks, continue with limited features",
     footerNote = "Cancel anytime before renewal.",
     billingStartsToday = false,
+    billingPending = false,
     showTrialChoice = false,
     onStartCheckoutWithChoice,
     onTrialChoiceChange,
@@ -180,7 +182,7 @@ export function WebsitePrePaywall({
             >
                 <h3 id={exitTitleId} className="text-2xl font-semibold">Leave your project?</h3>
                 <p id={exitDescriptionId} className="mt-3 text-base leading-relaxed text-neutral-600">
-                    Unlock your project to keep editing. {billingStartsToday ? "Upgrading starts your paid plan and billing today." : STRIPE_TRIAL_DAYS > 0 ? "You can start for free today!" : "Choose a plan to keep building."}
+                    Unlock your project to keep editing. {billingPending ? "Checking your plan first." : billingStartsToday ? "Upgrading starts your paid plan and billing today." : STRIPE_TRIAL_DAYS > 0 ? "You can start for free today!" : "Choose a plan to keep building."}
                 </p>
                 <div className="mt-7 flex flex-col gap-4">
                     <button
@@ -309,7 +311,7 @@ export function WebsitePrePaywall({
                             </div>
 
                             <div className="mt-5 flex flex-col gap-3">
-                                {showTrialChoice ? (
+                                {showTrialChoice && !billingPending ? (
                                     <div className="website-paywall-trial-choice flex items-center justify-end gap-2 text-xs text-neutral-600">
                                         <span>{STRIPE_TRIAL_DAYS}-day free trial</span>
                                         <button
@@ -326,19 +328,19 @@ export function WebsitePrePaywall({
                                 ) : null}
 
                                 <p className="text-center text-[11px] text-neutral-500 sm:text-xs">
-                                    {STRIPE_TRIAL_DAYS > 0 && !billingStartsToday && primaryLabel === TRIAL_CTA_LABEL && (!showTrialChoice || useTrial)
+                                    {STRIPE_TRIAL_DAYS > 0 && !billingPending && !billingStartsToday && primaryLabel === TRIAL_CTA_LABEL && (!showTrialChoice || useTrial)
                                         ? `${STRIPE_TRIAL_DAYS}-day free trial. `
                                         : null}
-                                    {footerNote}
+                                    {billingPending ? null : footerNote}
                                 </p>
 
                                 <button
                                     type="button"
                                     onClick={startCheckout}
                                     className="inline-flex min-h-16 w-full items-center justify-center rounded-full bg-[#FF8D21] px-6 py-4 text-xl font-bold tracking-tight text-white shadow-[0_14px_30px_rgba(255,141,33,0.22)] transition-all duration-200 hover:scale-[1.02] hover:shadow-[0_18px_36px_rgba(255,141,33,0.3)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF8D21] focus-visible:ring-offset-2 disabled:cursor-wait disabled:opacity-70 disabled:hover:scale-100 sm:min-h-[72px] sm:px-8 sm:py-5 sm:text-2xl"
-                                    disabled={checkoutBusy}
+                                    disabled={checkoutBusy || billingPending}
                                 >
-                                    {checkoutBusy ? "Redirecting to Stripe…" : checkoutLabel}
+                                    {checkoutBusy ? "Redirecting to Stripe…" : billingPending ? "Loading…" : checkoutLabel}
                                 </button>
 
                                 {secondaryLabel ? (

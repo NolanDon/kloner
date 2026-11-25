@@ -9027,6 +9027,7 @@ export default function AppBuilderEditor({
 
                 <WebsitePrePaywall
                     open={showAccessPaywall}
+                    billingPending={billingAccessLoading}
                     onClose={onClose}
                     onStartCheckout={() => {
                         requestDeployCheckout();
@@ -9045,6 +9046,7 @@ export default function AppBuilderEditor({
 
                 <WebsitePrePaywall
                     open={showDeployUpgradePaywall}
+                    billingPending={billingAccessLoading}
                     onClose={() => setShowDeployUpgradePaywall(false)}
                     onStartCheckout={() => {
                         if (upgradePaywallCopy === TRIAL_AI_CREDITS_PAYWALL_COPY) {

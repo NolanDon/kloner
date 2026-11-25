@@ -4216,6 +4216,7 @@ export default function PreviewPage(): JSX.Element {
     const [stripeCancelAtPeriodEnd, setStripeCancelAtPeriodEnd] = useState<boolean>(false);
     const [billingState, setBillingState] = useState<"free" | "active" | "trialing" | "trial_cancelled">("free");
     const [hasSubscriptionHistory, setHasSubscriptionHistory] = useState<boolean>(false);
+    const [billingResolved, setBillingResolved] = useState<boolean>(false);
     const [dashboardCompactLayout, setDashboardCompactLayout] = useState<boolean>(false);
     const [showArchivedApps, setShowArchivedApps] = useState<boolean>(false);
     const workspaceAutonomyV3IsDefault =
@@ -4798,6 +4799,7 @@ export default function PreviewPage(): JSX.Element {
                         : null;
                 setBillingState(nextBillingState);
                 setHasSubscriptionHistory((data as any)?.hasSubscriptionHistory === true);
+                setBillingResolved(true);
                 setStripeStatus(nextStripeStatus);
                 setStripeCancelAtPeriodEnd(!!data?.cancelAtPeriodEnd);
                 const normalized: UserTier =
@@ -5474,6 +5476,7 @@ export default function PreviewPage(): JSX.Element {
                             : null;
                     setBillingState(nextBillingState);
                     setHasSubscriptionHistory((data as any)?.hasSubscriptionHistory === true);
+                    setBillingResolved(true);
                     setStripeStatus(nextStripeStatus);
                     setStripeCancelAtPeriodEnd(!!data?.cancelAtPeriodEnd);
                     if (t === "pro" || t === "agency" || t === "enterprise") {
@@ -7816,6 +7819,7 @@ export default function PreviewPage(): JSX.Element {
                                 ? "active"
                                 : "free";
                 setBillingState(nextBillingState);
+                setBillingResolved(true);
                 if (nextStripeStatus) setStripeStatus(nextStripeStatus);
 
                 const cancelAtPeriodEnd = devStripeBilling?.cancelAtPeriodEnd ?? creditsMap.stripeCancelAtPeriodEnd;
@@ -10750,6 +10754,7 @@ export default function PreviewPage(): JSX.Element {
                             : null;
                     setBillingState(nextBillingState);
                     setHasSubscriptionHistory((data as any)?.hasSubscriptionHistory === true);
+                    setBillingResolved(true);
                     setStripeStatus(nextStripeStatus);
                     setStripeCancelAtPeriodEnd(!!data?.cancelAtPeriodEnd);
 
@@ -10760,6 +10765,7 @@ export default function PreviewPage(): JSX.Element {
                     }
                 } else {
                     setBillingState("free");
+                    setBillingResolved(true);
                     setStripeStatus(null);
                     setStripeCancelAtPeriodEnd(false);
                     // 2) Fallback: custom claims
@@ -15401,14 +15407,14 @@ export default function PreviewPage(): JSX.Element {
                                                 setShowAppExitOffer(false);
                                                 void startProCheckoutForAppDeploy({ returnAppId: appDeployWizardAppId });
                                             }}
-                                            disabled={checkoutBusy}
+                                            disabled={checkoutBusy || !billingResolved}
                                             className="w-full rounded-2xl px-5 py-4 text-[15px] font-extrabold text-white shadow-[0_18px_44px_rgba(0,0,0,0.28)] focus:outline-none focus:ring-2 focus:ring-black/10 disabled:cursor-wait disabled:opacity-70"
                                             style={{ backgroundColor: ACCENT }}
                                             whileHover={{ scale: 1.01 }}
                                             whileTap={{ scale: 0.99 }}
                                             transition={{ duration: 0.16, ease: "easeOut" }}
                                         >
-                                            {checkoutBusy ? "Redirecting to Stripe…" : viewerBillsImmediately(billingState, hasSubscriptionHistory) ? "Upgrade now — billing starts today →" : "Start your 7-day free trial & claim 40% off →"}
+                                            {checkoutBusy ? "Redirecting to Stripe…" : !billingResolved ? "Loading…" : viewerBillsImmediately(billingState, hasSubscriptionHistory) ? "Upgrade now — billing starts today →" : "Start your 7-day free trial & claim 40% off →"}
                                         </motion.button>
 
                                         <p className="mt-3 text-center text-[11px] text-neutral-500">
@@ -15828,9 +15834,11 @@ export default function PreviewPage(): JSX.Element {
                                                         {/* content */}
                                                         <div className="px-7 pb-6 pt-5">
                                                             {/* badge */}
-                                                            <div className="inline-flex items-center rounded-full border border-neutral-200 bg-white px-3 py-1 text-[11px] font-extrabold tracking-[0.18em] text-neutral-800 uppercase">
-                                                                {viewerBillsImmediately(billingState, hasSubscriptionHistory) ? "Billing starts today" : "Start your free trial"}
-                                                            </div>
+                                                            {billingResolved ? (
+                                                                <div className="inline-flex items-center rounded-full border border-neutral-200 bg-white px-3 py-1 text-[11px] font-extrabold tracking-[0.18em] text-neutral-800 uppercase">
+                                                                    {viewerBillsImmediately(billingState, hasSubscriptionHistory) ? "Billing starts today" : "Start your free trial"}
+                                                                </div>
+                                                            ) : null}
 
                                                             {/* headline */}
                                                             <h2 className="mt-3 text-[34px] font-bold leading-[1.05] text-neutral-900">
@@ -15903,18 +15911,18 @@ export default function PreviewPage(): JSX.Element {
                                                                 <motion.button
                                                                     type="button"
                                                                     onClick={() => void startProCheckout()}
-                                                                    disabled={checkoutBusy}
+                                                                    disabled={checkoutBusy || !billingResolved}
                                                                     className="w-full rounded-2xl px-5 py-4 text-[15px] font-extrabold text-white shadow-[0_18px_44px_rgba(0,0,0,0.28)] focus:outline-none focus:ring-2 focus:ring-black/10 disabled:cursor-wait disabled:opacity-70"
                                                                     style={{ backgroundColor: ACCENT }}
                                                                     whileHover={{ scale: 1.01 }}
                                                                     whileTap={{ scale: 0.99 }}
                                                                     transition={{ duration: 0.16, ease: "easeOut" }}
                                                                 >
-                                                                    {checkoutBusy ? "Redirecting to Stripe…" : viewerBillsImmediately(billingState, hasSubscriptionHistory) ? "Upgrade now — billing starts today & publish →" : "Start your 7-day free trial & publish →"}
+                                                                    {checkoutBusy ? "Redirecting to Stripe…" : !billingResolved ? "Loading…" : viewerBillsImmediately(billingState, hasSubscriptionHistory) ? "Upgrade now — billing starts today & publish →" : "Start your 7-day free trial & publish →"}
                                                                 </motion.button>
 
                                                                 <p className="mt-3 text-center text-[11px] text-neutral-500">
-                                                                    {viewerBillsImmediately(billingState, hasSubscriptionHistory) ? "Billed immediately. Cancel anytime before renewal." : `Free for ${STRIPE_TRIAL_DAYS} days, then billed monthly. Cancel anytime before renewal.`}
+                                                                    {!billingResolved ? "\u00A0" : viewerBillsImmediately(billingState, hasSubscriptionHistory) ? "Billed immediately. Cancel anytime before renewal." : `Free for ${STRIPE_TRIAL_DAYS} days, then billed monthly. Cancel anytime before renewal.`}
                                                                 </p>
                                                             </div>
                                                         </div>
@@ -16061,14 +16069,14 @@ export default function PreviewPage(): JSX.Element {
                                                                                     setShowExitOffer(false);
                                                                                     void startProCheckout();
                                                                                 }}
-                                                                                disabled={checkoutBusy}
+                                                                                disabled={checkoutBusy || !billingResolved}
                                                                                 className="w-full rounded-2xl px-5 py-4 text-[15px] font-extrabold text-white shadow-[0_18px_44px_rgba(0,0,0,0.28)] focus:outline-none focus:ring-2 focus:ring-black/10 disabled:cursor-wait disabled:opacity-70"
                                                                                 style={{ backgroundColor: ACCENT }}
                                                                                 whileHover={{ scale: 1.01 }}
                                                                                 whileTap={{ scale: 0.99 }}
                                                                                 transition={{ duration: 0.16, ease: "easeOut" }}
                                                                             >
-                                                                                {checkoutBusy ? "Redirecting to Stripe…" : viewerBillsImmediately(billingState, hasSubscriptionHistory) ? "Upgrade now — billing starts today →" : "Start Trial & Claim 40% off now →"}
+                                                                                {checkoutBusy ? "Redirecting to Stripe…" : !billingResolved ? "Loading…" : viewerBillsImmediately(billingState, hasSubscriptionHistory) ? "Upgrade now — billing starts today →" : "Start Trial & Claim 40% off now →"}
                                                                             </motion.button>
 
                                                                             <p className="mt-3 text-center text-[11px] text-neutral-500">
@@ -16313,6 +16321,7 @@ export default function PreviewPage(): JSX.Element {
                             secondaryLabel={showCreditsPaywall === "early_generation" ? "Not now — cancel scan" : undefined}
                             primaryLabel={showCreditsPaywall === "deploy" || showCreditsPaywall === "trial_snapshot" || showCreditsPaywall === "trial_ai" || viewerBillsImmediately(billingState, hasSubscriptionHistory) ? BILLING_STARTS_TODAY_CTA : TRIAL_CTA_LABEL}
                             billingStartsToday={viewerBillsImmediately(billingState, hasSubscriptionHistory)}
+                            billingPending={!billingResolved}
                             footerNote={showCreditsPaywall === "deploy" ? "Deployment unlocks with an active paid subscription." : showCreditsPaywall === "trial_snapshot" || showCreditsPaywall === "trial_ai" ? "Upgrade to continue using Kloner during your trial." : viewerBillsImmediately(billingState, hasSubscriptionHistory) ? BILLING_STARTS_TODAY_NOTE : "Cancel anytime before renewal."}
                             zIndexClassName="z-[12049]"
                         />
@@ -16378,10 +16387,11 @@ export default function PreviewPage(): JSX.Element {
                                                 setShowProPaywall(false);
                                                 startProCheckout();
                                             }}
-                                            className="rounded-md px-3 py-1.5 text-sm font-semibold text-white"
+                                            className="rounded-md px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-60"
                                             style={{ backgroundColor: ACCENT }}
+                                            disabled={!billingResolved}
                                         >
-                                            {viewerBillsImmediately(billingState, hasSubscriptionHistory) ? BILLING_STARTS_TODAY_CTA : "Start your free trial"}
+                                            {!billingResolved ? "Loading…" : viewerBillsImmediately(billingState, hasSubscriptionHistory) ? BILLING_STARTS_TODAY_CTA : "Start your free trial"}
                                         </button>
                                     </div>
                                 </div>
