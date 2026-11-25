@@ -2109,16 +2109,12 @@ export default function SettingsPage(): JSX.Element {
                 <div className="w-full max-w-xl rounded-3xl border border-neutral-200 bg-white p-4 shadow-2xl sm:p-5">
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <h3 className="text-base font-semibold text-neutral-900">
+                      <h3 className="text-2xl font-semibold text-neutral-900">
                         Cancel subscription
                       </h3>
                       <p className="mt-1 text-sm text-neutral-600">
-                        Tell us why you’re leaving. This helps us understand
-                        what to improve.
-                      </p>
-                      <p className="mt-2 text-sm font-medium text-neutral-700">
-                        Canceling your account will end your subscription and
-                        disable your live deployments.
+                        Canceling will end your subscription and disable your
+                        live deployments.
                       </p>
                     </div>
 
@@ -2151,7 +2147,7 @@ export default function SettingsPage(): JSX.Element {
                             className={[
                               "flex w-full items-center gap-3 rounded-2xl border px-4 py-3 text-left text-sm font-medium transition",
                               selected
-                                ? "border-neutral-900 bg-neutral-50 text-neutral-900"
+                                ? "border-[#FF8D21]/60 bg-[#FF8D21]/10 text-neutral-900"
                                 : "border-neutral-200 bg-white text-neutral-700 hover:bg-neutral-50",
                             ].join(" ")}
                           >
@@ -2159,7 +2155,7 @@ export default function SettingsPage(): JSX.Element {
                               className={[
                                 "grid h-5 w-5 shrink-0 place-items-center rounded-full border",
                                 selected
-                                  ? "border-neutral-900 bg-neutral-900"
+                                  ? "border-[#FF8D21] bg-[#FF8D21]"
                                   : "border-neutral-300 bg-white",
                               ].join(" ")}
                             >
@@ -2235,8 +2231,8 @@ export default function SettingsPage(): JSX.Element {
             )}
 
             {showRetentionOffer && (
-              <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/35 px-4">
-                <div className="w-full max-w-sm rounded-3xl border border-neutral-200 bg-white p-5 shadow-2xl">
+              <div className="fixed inset-0 z-[90] flex items-end justify-center bg-black/35 px-3 pb-3 sm:items-center">
+                <div className="w-full max-w-xl rounded-3xl border border-neutral-200 bg-white p-4 shadow-2xl sm:p-5">
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-orange-500">
