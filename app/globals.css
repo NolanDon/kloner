@@ -723,6 +723,11 @@ h6 {
     background-color: #514b41 !important;
 }
 
+:root[data-theme="dark"] .timeline-empty-state {
+    background-color: rgba(255, 141, 33, 0.08) !important;
+    border-color: rgba(255, 141, 33, 0.35) !important;
+}
+
 @media (max-width: 640px) {
     :root[data-theme="dark"] .url-processing-panel {
         border-radius: 1.75rem;

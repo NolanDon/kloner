@@ -7683,7 +7683,7 @@ export default function AppBuilderEditorAgentChat({ appId, files, currentFile, o
                         </div>
                         <div className="mt-3 space-y-2">
                             {restorePoints.length === 0 ? (
-                                <div className="min-w-0 rounded-lg border border-dashed border-[#FF8D21]/20 bg-[#FFF8F5] px-3 py-2 text-xs text-neutral-600">
+                                <div className="timeline-empty-state min-w-0 rounded-lg border border-dashed border-[#FF8D21]/20 bg-[#FFF8F5] px-3 py-2 text-xs text-neutral-600">
                                     No timeline checkpoints yet. A restore point is created automatically before AI applies edits.
                                 </div>
                             ) : (
