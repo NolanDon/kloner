@@ -189,7 +189,10 @@ export default function HeroContent({
           </div>
         </form>
         <p className="hero-tagline mt-8 text-sm text-white/80">
-          Limited free preview · <a href="/price" className="underline underline-offset-4">Pricing</a>
+          Limited free preview · Editing and publishing from $29/mo · <a href="/price" className="underline underline-offset-4">Pricing</a>
+        </p>
+        <p className="hero-social-proof mt-3 text-sm text-white/70">
+          Join 5,000+ users who clone, edit and publish their sites with Kloner
         </p>
 
         <div className="mt-[clamp(1rem,3.8vh,3rem)] flex justify-center">

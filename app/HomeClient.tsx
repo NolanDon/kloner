@@ -14,6 +14,7 @@ const FAQSection = dynamic(() => import("@/components/FaqSection"));
 const ParallaxTypeHero = dynamic(() => import("@/components/ParallaxTypeHero"));
 const PreviewDashboard = dynamic(() => import("@/components/StartsWithLabs"));
 const KlonerExamples = dynamic(() => import("@/components/KlonerExamples"));
+const HomeCompare = dynamic(() => import("@/components/HomeCompare"));
 
 export default function HomeClient() {
     return (
@@ -48,6 +49,10 @@ export default function HomeClient() {
 
                 <section id="examples" className="snap-start snap-always">
                     <KlonerExamples />
+                </section>
+
+                <section id="compare" className="snap-start snap-always">
+                    <HomeCompare />
                 </section>
 
                 <section id="whats-included" className="snap-start snap-always min-h-screen flex flex-col">
