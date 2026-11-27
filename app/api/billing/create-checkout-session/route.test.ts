@@ -419,8 +419,9 @@ describe("POST /api/billing/create-checkout-session", () => {
             expect.objectContaining({
                 trial_end: "now",
                 cancel_at_period_end: false,
-                payment_behavior: "error_if_incomplete",
+                payment_behavior: "allow_incomplete",
                 proration_behavior: "none",
+                expand: ["latest_invoice.payment_intent"],
                 items: [{ id: "si_trial", price: "price_live_agency" }],
             }),
             { idempotencyKey: "trial-upgrade:uid_1:sub_trial:agency" },

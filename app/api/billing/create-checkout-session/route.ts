@@ -10,6 +10,11 @@ import { resolveMonthlyPriceId } from "@/app/api/_lib/monthlyPrice";
 import { shouldRequireEarlyGenerationPaywall } from "@/app/api/_lib/earlyGenerationGate";
 import { hasPriorSubscriptionHistoryForAccount } from "@/app/api/_lib/freeTrial";
 import { parseFirstTouch, attributionToStripeMeta } from "@/lib/attribution";
+import {
+    filterBillableSubscriptions,
+    pickSurvivorSubscription,
+    resolveSubscriptionPaymentAction,
+} from "@/app/api/_lib/billingSubscriptionGuard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -435,8 +440,14 @@ async function handler({ req, uid }: { req: NextRequest; uid: string }) {
         const update: any = {
             trial_end: "now",
             cancel_at_period_end: false,
-            payment_behavior: "error_if_incomplete",
+            // "allow_incomplete" lets Stripe hold the subscription while the
+            // card's extra check (3D Secure) is completed, instead of
+            // failing the whole upgrade outright. The subscription stays
+            // past_due / incomplete — no paid access — until the payment
+            // actually completes.
+            payment_behavior: "allow_incomplete",
             proration_behavior: "none",
+            expand: ["latest_invoice.payment_intent"],
         };
         if (currentPriceId !== priceId) {
             update.items = [{ id: subscriptionItem.id, price: priceId }];
@@ -448,14 +459,42 @@ async function handler({ req, uid }: { req: NextRequest; uid: string }) {
                 update,
                 { idempotencyKey: `trial-upgrade:${uid}:${trialSubscription.id}:${plan}` },
             );
-            if (updatedSubscription.status !== "active") {
+            if (updatedSubscription.status === "active") {
+                await refreshTierFromStripeForUid(uid);
+                return NextResponse.json({ url: successUrl, upgradedTrial: true, trial: false }, { status: 200 });
+            }
+            // Not active yet: either the card needs its extra verification
+            // step, or the payment failed outright. Send the user to the
+            // verification page when Stripe has one; otherwise report the
+            // failed payment as before.
+            const action = await resolveSubscriptionPaymentAction({
+                stripe: stripe as any,
+                subscription: updatedSubscription,
+                returnUrl: successUrl,
+            });
+            if (action.subscriptionStatus === "active") {
+                await refreshTierFromStripeForUid(uid);
+                return NextResponse.json({ url: successUrl, upgradedTrial: true, trial: false }, { status: 200 });
+            }
+            if (action.actionUrl) {
                 return NextResponse.json(
-                    { error: "Your subscription wasn’t activated. Please check your payment method and try again." },
+                    { url: action.actionUrl, upgradedTrial: true, trial: false, requiresAction: true },
+                    { status: 200 },
+                );
+            }
+            if (action.paymentIntentStatus === "requires_payment_method") {
+                return NextResponse.json(
+                    {
+                        error: "We couldn’t charge your saved payment method to start the paid plan. Update your payment method in account settings, then try again.",
+                        paymentActionRequired: true,
+                    },
                     { status: 402 },
                 );
             }
-            await refreshTierFromStripeForUid(uid);
-            return NextResponse.json({ url: successUrl, upgradedTrial: true, trial: false }, { status: 200 });
+            return NextResponse.json(
+                { error: "Your subscription wasn’t activated. Please check your payment method and try again." },
+                { status: 402 },
+            );
         } catch (err: any) {
             await notifyStripeSubscriptionError({
                 action: "billing.createCheckoutSession.upgradeTrial",
@@ -466,6 +505,116 @@ async function handler({ req, uid }: { req: NextRequest; uid: string }) {
             return NextResponse.json(
                 {
                     error: "We couldn’t charge your saved payment method to start the paid plan. Update your payment method in account settings, then try again.",
+                    paymentActionRequired: true,
+                },
+                { status: 402 },
+            );
+        }
+    }
+
+    // A past_due / unpaid / incomplete subscription is still the customer's
+    // one live subscription. Convert it in place to the selected plan,
+    // exactly like the trial upgrade above, instead of falling through to
+    // Checkout, which used to stack a SECOND subscription on top of it.
+    // If several such subscriptions somehow exist, the survivor (past_due
+    // first, else the newest) is converted and the rest are left untouched.
+    const existingBillableSubscription = pickSurvivorSubscription(
+        filterBillableSubscriptions(existingSubs.data as any[]).filter(
+            (sub: any) =>
+                sub.status === "past_due" || sub.status === "unpaid" || sub.status === "incomplete",
+        ),
+    );
+
+    if (existingBillableSubscription) {
+        if (existingBillableSubscription.cancel_at_period_end === true) {
+            // The subscription is already set to cancel: a checkout must not
+            // silently reverse that, and it must not stack a new subscription
+            // either. Same response as the active-subscription case above.
+            return NextResponse.json(
+                {
+                    error: "You already have an active subscription. Please manage your existing subscription instead.",
+                    existingSubscription: true,
+                },
+                { status: 400 }
+            );
+        }
+
+        const subscriptionItem = existingBillableSubscription.items?.data?.[0];
+        if (!subscriptionItem?.id) {
+            return NextResponse.json(
+                { error: "We couldn’t update your existing subscription. Please manage it in account settings." },
+                { status: 409 },
+            );
+        }
+
+        const currentPriceId =
+            typeof subscriptionItem.price === "string"
+                ? subscriptionItem.price
+                : subscriptionItem.price?.id;
+        const update: any = {
+            cancel_at_period_end: false,
+            // Same as the trial upgrade above: let Stripe hold the
+            // subscription while the card's extra check (3D Secure) is
+            // completed, instead of failing outright. No paid access until
+            // the payment actually completes.
+            payment_behavior: "allow_incomplete",
+            proration_behavior: "none",
+            expand: ["latest_invoice.payment_intent"],
+        };
+        if (currentPriceId !== priceId) {
+            update.items = [{ id: subscriptionItem.id, price: priceId }];
+        }
+
+        try {
+            const updatedSubscription = await stripe.subscriptions.update(
+                existingBillableSubscription.id,
+                update,
+                { idempotencyKey: `existing-upgrade:${uid}:${existingBillableSubscription.id}:${plan}` },
+            );
+            if (updatedSubscription.status === "active") {
+                await refreshTierFromStripeForUid(uid);
+                return NextResponse.json({ url: successUrl, upgradedExisting: true, trial: false }, { status: 200 });
+            }
+            // Not active yet: either the card needs its extra verification
+            // step, or the payment failed outright.
+            const action = await resolveSubscriptionPaymentAction({
+                stripe: stripe as any,
+                subscription: updatedSubscription,
+                returnUrl: successUrl,
+            });
+            if (action.subscriptionStatus === "active") {
+                await refreshTierFromStripeForUid(uid);
+                return NextResponse.json({ url: successUrl, upgradedExisting: true, trial: false }, { status: 200 });
+            }
+            if (action.actionUrl) {
+                return NextResponse.json(
+                    { url: action.actionUrl, upgradedExisting: true, trial: false, requiresAction: true },
+                    { status: 200 },
+                );
+            }
+            if (action.paymentIntentStatus === "requires_payment_method") {
+                return NextResponse.json(
+                    {
+                        error: "We couldn’t charge your saved payment method to restart the paid plan. Update your payment method in account settings, then try again.",
+                        paymentActionRequired: true,
+                    },
+                    { status: 402 },
+                );
+            }
+            return NextResponse.json(
+                { error: "Your subscription wasn’t activated. Please check your payment method and try again." },
+                { status: 402 },
+            );
+        } catch (err: any) {
+            await notifyStripeSubscriptionError({
+                action: "billing.createCheckoutSession.upgradeExisting",
+                uid,
+                error: err,
+                extra: { plan, customerId, subscriptionId: existingBillableSubscription.id, priceId },
+            });
+            return NextResponse.json(
+                {
+                    error: "We couldn’t charge your saved payment method to restart the paid plan. Update your payment method in account settings, then try again.",
                     paymentActionRequired: true,
                 },
                 { status: 402 },

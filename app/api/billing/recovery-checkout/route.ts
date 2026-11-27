@@ -7,6 +7,11 @@ import { STRIPE_TRIAL_DAYS } from "@/src/lib/billingAccess";
 import { resolveMonthlyPriceId } from "@/app/api/_lib/monthlyPrice";
 import { shouldRequireEarlyGenerationPaywall } from "@/app/api/_lib/earlyGenerationGate";
 import { hasPriorSubscriptionHistoryForAccount } from "@/app/api/_lib/freeTrial";
+import {
+    filterBillableSubscriptions,
+    pickSurvivorSubscription,
+    resolveSubscriptionPaymentAction,
+} from "@/app/api/_lib/billingSubscriptionGuard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -144,6 +149,102 @@ export async function GET(req: NextRequest) {
             { ok: false, error: "You already have an active subscription." },
             { status: 400 },
         );
+    }
+
+    // A past_due / unpaid / incomplete subscription is still the customer's
+    // one live subscription. Convert it in place to the recovery plan
+    // instead of creating a SECOND subscription through a new Checkout
+    // session. If several such subscriptions somehow exist, the survivor
+    // (past_due first, else the newest) is converted and the rest are left
+    // untouched.
+    const existingBillableSubscription = pickSurvivorSubscription(
+        filterBillableSubscriptions(existingSubs.data as any[]).filter(
+            (sub: any) =>
+                sub.status === "past_due" || sub.status === "unpaid" || sub.status === "incomplete",
+        ),
+    );
+
+    if (existingBillableSubscription) {
+        if (existingBillableSubscription.cancel_at_period_end === true) {
+            // Already set to cancel: do not silently reverse that, and do
+            // not stack a new subscription either.
+            return NextResponse.json(
+                { ok: false, error: "You already have an active subscription." },
+                { status: 400 },
+            );
+        }
+
+        const subscriptionItem = existingBillableSubscription.items?.data?.[0];
+        if (!subscriptionItem?.id) {
+            return NextResponse.json(
+                { ok: false, error: "We couldn’t update your existing subscription." },
+                { status: 500 },
+            );
+        }
+
+        const currentPriceId =
+            typeof subscriptionItem.price === "string"
+                ? subscriptionItem.price
+                : subscriptionItem.price?.id;
+        const update: any = {
+            cancel_at_period_end: false,
+            // Same as create-checkout-session: let Stripe hold the
+            // subscription while the card's extra check (3D Secure) is
+            // completed, instead of failing outright. No paid access until
+            // the payment actually completes.
+            payment_behavior: "allow_incomplete",
+            proration_behavior: "none",
+            expand: ["latest_invoice.payment_intent"],
+        };
+        if (currentPriceId !== priceId) {
+            update.items = [{ id: subscriptionItem.id, price: priceId }];
+        }
+
+        // Carry the recovery discount onto the existing subscription.
+        const recoveryDiscounts = await resolveDiscount(isProd, DEFAULT_EXIT_CODE);
+        if (recoveryDiscounts?.length) {
+            update.discounts = recoveryDiscounts;
+        }
+
+        try {
+            const updatedSubscription = await stripe.subscriptions.update(
+                existingBillableSubscription.id,
+                update,
+                { idempotencyKey: `recovery-upgrade:${uid}:${existingBillableSubscription.id}` },
+            );
+            if (updatedSubscription.status === "active") {
+                return NextResponse.redirect(`${origin}/dashboard/view?billing=success&recovery=1`, 302);
+            }
+            // Not active yet: either the card needs its extra verification
+            // step, or the payment failed outright. Send the user to the
+            // verification page when Stripe has one.
+            const action = await resolveSubscriptionPaymentAction({
+                stripe: stripe as any,
+                subscription: updatedSubscription,
+                returnUrl: `${origin}/dashboard/view?billing=success&recovery=1`,
+            });
+            if (action.subscriptionStatus === "active") {
+                return NextResponse.redirect(`${origin}/dashboard/view?billing=success&recovery=1`, 302);
+            }
+            if (action.actionUrl) {
+                return NextResponse.redirect(action.actionUrl, 302);
+            }
+            if (action.paymentIntentStatus === "requires_payment_method") {
+                return NextResponse.json(
+                    { ok: false, error: "We couldn’t charge your saved payment method to restart the paid plan. Update your payment method in account settings, then try again." },
+                    { status: 402 },
+                );
+            }
+            return NextResponse.json(
+                { ok: false, error: "Your subscription wasn’t activated. Please check your payment method and try again." },
+                { status: 402 },
+            );
+        } catch (err: any) {
+            return NextResponse.json(
+                { ok: false, error: "We couldn’t charge your saved payment method to restart the paid plan. Update your payment method in account settings, then try again." },
+                { status: 402 },
+            );
+        }
     }
 
     let hasAnySubscriptionHistory =
